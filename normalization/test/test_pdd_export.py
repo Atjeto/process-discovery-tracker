@@ -870,6 +870,120 @@ def test_the_document_is_tool_neutral_and_has_no_dash_punctuation():
     assert " - " not in own and " -- " not in own
 
 
+
+# ---- analyst-added content (contract C16) -------------------------------------------
+
+def _pictures(doc):
+    """The sha1 of each embedded picture's bytes, in document order."""
+    import hashlib
+    return [hashlib.sha1(doc.part.related_parts[rid].blob).hexdigest()
+            for rid in doc.element.body.xpath(".//a:blip/@r:embed")]
+
+
+def _sha(data):
+    import hashlib
+    return hashlib.sha1(data).hexdigest()
+
+
+def test_the_system_set_on_a_step_wins_in_its_line_and_the_data_table():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["steps"][0]["system"] = "Order desk"            # a1, run 1
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    steps = _section(blocks, "3.2 Process steps")
+    assert steps[0] == "The process runs through Order desk, Contoso CRM, Outlook and Excel."
+    assert steps[steps.index("1. Look up the order") + 1].startswith("Order desk, Orders \u00b7 ")
+    data = _section(blocks, "5. Data")
+    assert data[1].startswith("Order number | Order desk, Orders | Look up the order | ORD-1")
+    apps = _section(blocks, "6.2 Time in each application")
+    assert any(row.startswith("Order desk | Orders | Look up the order") for row in apps)
+
+
+def test_a_step_without_a_time_says_no_time():
+    """C16: a step added by hand without a time (time_range null) prints no
+    time and no place in the recording, never "under 1s"."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["steps"].append({"step_id": "h1", "case_id": R1, "name": "Phone the customer",
+                                 "state": "manually_authored", "time_range": None,
+                                 "order": 1, "system": "Phone"})
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    steps = _section(blocks, "3.2 Process steps")
+    # After the timed steps of its run.
+    assert [t for k, t in blocks if k == "Heading 3"][-1] == "4. Phone the customer"
+    assert steps[steps.index("4. Phone the customer") + 1] == "Phone \u00b7 in 1 of 2 runs"
+    apps = _section(blocks, "6.2 Time in each application")
+    assert "Phone | Not recorded | Phone the customer | Not measured" in apps
+
+
+def test_the_screenshot_the_analyst_chose_is_the_one_printed():
+    """C16: `pdd_screenshot` names the one screenshot the PDD prints under a
+    step (a recorder screenshot's path or an analyst screenshot's id); a
+    recorder screenshot in `hidden_screenshots` is never printed; a choice
+    that cannot be printed (hidden, missing, outside the folder) falls back
+    to the step's screenshots, and an analyst file stays in the folder."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    shots = {"screenshots/s1.png": _make_png(2, 2), "screenshots/s2.png": _make_png(3, 2),
+             "screenshots/analyst/a1.png": _make_png(4, 2)}
+    with tempfile.TemporaryDirectory() as outer:
+        outer = Path(outer)
+        (outer / "secret.png").write_bytes(_make_png(5, 2))
+        session = outer / "session"
+        for rel, data in shots.items():
+            (session / rel).parent.mkdir(parents=True, exist_ok=True)
+            (session / rel).write_bytes(data)
+        step = annotations["steps"][0]
+        step["evidence"]["screenshot_refs"] = ["screenshots/s1.png", "screenshots/s2.png"]
+        sha = {rel: _sha(data) for rel, data in shots.items()}
+
+        def printed(**change):
+            for key in ("pdd_screenshot", "hidden_screenshots"):
+                step.pop(key, None)
+            step.update(change)
+            return _pictures(_render(session, manifest, annotations, stats, analysis, events))
+
+        assert printed() == [sha["screenshots/s1.png"], sha["screenshots/s2.png"]]
+        assert printed(pdd_screenshot="screenshots/s2.png") == [sha["screenshots/s2.png"]]
+        assert printed(hidden_screenshots=["screenshots/s1.png"]) == [sha["screenshots/s2.png"]]
+        assert printed(pdd_screenshot="screenshots/s1.png",
+                       hidden_screenshots=["screenshots/s1.png"]) == [sha["screenshots/s2.png"]]
+        both = [sha["screenshots/s1.png"], sha["screenshots/s2.png"]]
+        assert printed(pdd_screenshot="screenshots/gone.png") == both
+        assert printed(pdd_screenshot="../secret.png") == both
+        annotations["analyst_screenshots"] = [
+            {"id": "a1", "file": "a1.png", "step_id": step["step_id"]},
+            {"id": "evil", "file": "../../secret.png", "step_id": None}]
+        assert printed() == both + [sha["screenshots/analyst/a1.png"]]
+        assert printed(pdd_screenshot="a1") == [sha["screenshots/analyst/a1.png"]]
+        # An analyst file name never leaves screenshots/analyst/.
+        assert printed(pdd_screenshot="evil") == both + [sha["screenshots/analyst/a1.png"]]
+
+
+def test_attachments_are_listed_in_a_last_section_and_under_their_step():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["attachments"] = [
+        {"id": "x1", "file": "sop.pdf", "label": "Order desk SOP", "step_id": None},
+        {"id": "x2", "file": "attachments/form.docx", "label": "", "step_id": "a1"}]
+    assert pdd_export._file_name("attachments" + chr(92) + "form.docx") == "form.docx"
+    assert pdd_export._file_name("..") == "" and pdd_export._file_name(None) == ""
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert _numbered(blocks) == OUTLINE + ["8. Attachments"]
+    headings = [t for k, t in blocks if k == "Heading 3"]
+    steps = _section(blocks, "3.2 Process steps")
+    first = steps[steps.index(headings[0]):steps.index(headings[1])]
+    assert first[0] == "1. Look up the order" and "Attachments: form.docx." in first
+    assert sum(t.startswith("Attachments:") for t in steps) == 1
+    assert _section(blocks, "8. Attachments") == [
+        "The files are in the session folder's attachments folder.",
+        "Attachment | File", "Order desk SOP | sop.pdf", "form.docx | form.docx"]
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

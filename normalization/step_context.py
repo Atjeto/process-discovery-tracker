@@ -9,7 +9,8 @@ system and screen (the name no longer says them).
 System: the business system, named by the one vocabulary of systems
 (shared/system-names.json through app_names.system_name, the list the viewer
 reads too): "SAP", "Excel", and for a browser window the web system its
-title names ("Salesforce"), else the application's readable name.
+title names ("Salesforce"), else the application's readable name. A system
+the analyst set on the step (`step.system`, contract C16) wins.
 
 Screen: the step's window title, value-free (the shared screen-label rules,
 step_suggest.screen_label), without the title segments that only name the
@@ -163,7 +164,12 @@ class StepContext:
     def where(self, step: dict) -> tuple[str, str]:
         """(system, screen) of a step: its interactions' (where_datas);
         without interactions, the step's grain_keys (app, screen) or its
-        draft_key. ("", "") when unknown."""
+        draft_key. ("", "") when unknown. The system the analyst set on the
+        step (C16) wins over the derived one; the screen stays derived."""
+        system, screen = self._where(step)
+        return (step_system(step) or system), screen
+
+    def _where(self, step: dict) -> tuple[str, str]:
         found = self.where_datas(self._datas(step))
         if found != ("", ""):
             return found
@@ -188,19 +194,65 @@ class StepContext:
         return system, (named.pop() if len(named) == 1 else screen)
 
 
+def step_system(step: dict | None) -> str:
+    """The system the analyst set on the step (`step.system`, contract C16),
+    or "" when none is set. It wins over the system derived from the
+    step's recorded interactions."""
+    value = step.get("system") if isinstance(step, dict) else None
+    return value.strip() if isinstance(value, str) else ""
+
+
 def step_start(step: dict):
     """The step's start time (datetime), or None."""
-    return _parse_ts(((step or {}).get("time_range") or {}).get("start"))
+    tr = step.get("time_range") if isinstance(step, dict) else None
+    return _parse_ts(tr.get("start")) if isinstance(tr, dict) else None
 
 
 def step_ms(step: dict) -> float:
     """A step's duration in ms: its time_range, from its first to its last
     recorded action (0 when the range is missing or inverted)."""
-    tr = (step or {}).get("time_range") or {}
+    return step_duration_ms(step) or 0.0
+
+
+def step_duration_ms(step: dict) -> float | None:
+    """A step's measured duration in ms, or None when the step has no time
+    range (contract C16: a step added by hand may have `time_range: null`,
+    and timed statistics leave such steps out). An inverted range measures
+    0, as step_ms."""
+    tr = step.get("time_range") if isinstance(step, dict) else None
+    if not isinstance(tr, dict):
+        return None
     a, b = _parse_ts(tr.get("start")), _parse_ts(tr.get("end"))
-    if a is None or b is None or b < a:
-        return 0.0
-    return (b - a).total_seconds() * 1000.0
+    if a is None or b is None:
+        return None
+    return max(0.0, (b - a).total_seconds() * 1000.0)
+
+
+def untimed_key(step: dict) -> tuple[int, float]:
+    """Where a step without a start time sorts among its run's steps
+    (contract C16): after every step with a time, by its `order` (a number
+    the viewer sets, unique within the run); a step with neither comes
+    last. Compare it only with other untimed_key values; step_sort_key
+    puts the timed steps before them."""
+    order = step.get("order") if isinstance(step, dict) else None
+    if (isinstance(order, (int, float)) and not isinstance(order, bool)
+            and math.isfinite(order)):
+        return (1, float(order))
+    return (2, 0.0)
+
+
+def step_sort_key(step: dict) -> tuple[int, float]:
+    """The order of a run's steps (contract C16): a step with a start time
+    by that time, then the steps without one by their `order`
+    (untimed_key). Python's sort is stable, so equal keys keep the list
+    order."""
+    start = step_start(step)
+    if start is not None:
+        try:
+            return (0, start.timestamp())
+        except (OverflowError, OSError, ValueError):
+            pass
+    return untimed_key(step)
 
 
 def clock(ms: Any) -> str:

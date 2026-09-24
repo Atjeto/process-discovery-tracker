@@ -28,12 +28,24 @@ in the reader's order:
   7. Improvement and automation scope: the analyst's field, and the To-Be
      map when one was chosen.
   8. Notes: only when written.
+  8 or 9. Attachments: the files the analyst attached (label and file
+     name), only when there are any.
 
 A "[To be completed: ...]" gap stands only for a document field the analyst
 fills in the app. Every number is measured from the recording. Hidden steps
 never appear (RP-06); applications carry readable names, never executable
 tokens (app_names, step_context); every table has a grid; a map gets a page
 of its own, landscape when it is wide, so it prints legibly.
+
+What the analyst adds (contract C16) prints where it belongs: a step's
+system (`step.system`) wins over the derived one; a step shows the
+screenshot chosen for the PDD (`step.pdd_screenshot`), else all of its
+screenshots, the analyst's included, never a hidden one; a step names its
+attachments. A session without a recording (manifest.source "video" or
+"blank") has one implicit run, not a marked one, and says so; a step
+without a time (`time_range: null`) orders by its `order` and prints no
+time, never a zero. The notes pinned to steps and moments
+(annotations.analyst_notes) are not printed.
 
 Uses python-docx.
 """
@@ -64,8 +76,9 @@ from _dt import parse_ts_or_none as _parse_ts
 from facts import _NOISE_VALUES, REKEY_MIN_LEN, REKEY_MIN_LEN_VOCAB
 from findings import _fmt_ms as _fmt_duration
 from memo_export import run_rows
-from step_context import (StepContext, clock, has_video, step_ms, step_start,
-                          video_start)
+from session_io import has_recording, session_source
+from step_context import (StepContext, clock, has_video, step_duration_ms, step_start,
+                          step_system, untimed_key, video_start)
 from step_suggest import is_drafted_description, step_identity
 
 logger = logging.getLogger(__name__)
@@ -114,8 +127,10 @@ def write_pdd(
     _write_variations(doc, s)                           # 4
     _write_data(doc, s)                                 # 5
     _write_applications_and_time(doc, s)                # 6
-    _write_improvement(doc, s, tobe_map_image, notes)   # 7
+    _write_improvement(doc, s, tobe_map_image,          # 7
+                       notes or bool(s.attachments))
     _write_notes(doc, s)                                # 8, only when written
+    _write_attachments(doc, s, 9 if notes else 8)       # 8 or 9, only when any
     doc.save(str(out_path))
 
 
@@ -129,7 +144,12 @@ def _time_key(ts):
 
 
 def _start_key(step):
-    return _time_key((step.get("time_range") or {}).get("start"))
+    """The order of steps (contract C16): a step with a start time by that
+    time, then the steps without one (added by hand, `time_range: null`)
+    by their `order`."""
+    if step_start(step) is not None:
+        return _time_key(step["time_range"].get("start"))
+    return (True, *untimed_key(step))
 
 
 def _key_list(value):
@@ -173,12 +193,36 @@ def _members(unit) -> list:
     return members if isinstance(members, list) and members else [unit]
 
 
-def _unit_ms(unit) -> float:
-    return sum(step_ms(m) for m in _members(unit))
+def _unit_ms(unit) -> float | None:
+    """A unit's measured time: its members' durations added up, leaving out
+    a member without a time range; None when no member has one (C16: a
+    step added by hand may have no time, and it is never shown as 0)."""
+    timed = [ms for ms in (step_duration_ms(m) for m in _members(unit)) if ms is not None]
+    return sum(timed) if timed else None
 
 
 def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+# Where the screenshots the analyst adds by hand live in the session folder
+# (C16): screenshots/analyst/<file>, `file` being annotations.analyst_screenshots[].file.
+_ANALYST_SHOTS = "screenshots/analyst/"
+
+
+def _file_name(value) -> str:
+    """The file name of an analyst file entry's `file` (C16), without any
+    folder part, or "" when it is not a usable name."""
+    if not isinstance(value, str):
+        return ""
+    name = re.split(r"[\\/]", value.strip())[-1]
+    return "" if name in ("", ".", "..") else name
+
+
+def _attachment_label(entry) -> str:
+    """An attachment's label (C16), else its file name."""
+    label = entry.get("label")
+    return label.strip() if isinstance(label, str) and label.strip() else _file_name(entry.get("file"))
 
 
 def _text_of(v) -> str:
@@ -206,12 +250,23 @@ class _Session:
         started = self.manifest.get("started_at")
         self.captured = started[:10] if isinstance(started, str) and len(started) >= 10 else ""
         self.recording_start = _parse_ts(started)
+        # C16: a video or blank session has no recording of the screens.
+        self.source = session_source(self.manifest)
+        self.recorded = has_recording(self.manifest)
 
         # RP-06: a hidden step never reaches the document.
         self.steps = sorted((st for st in self.annotations.get("steps") or []
                              if isinstance(st, dict) and st.get("state") != "hidden"),
                             key=_start_key)
         self.runs = run_rows(self.stats)
+        # C16: the one run of a session without a recording and without
+        # marked runs covers the whole session; it is not a marked run.
+        self.implicit = any(run.get("implicit") is True for run in self.runs)
+        self.analyst_shots = [a for a in self.annotations.get("analyst_screenshots") or []
+                              if isinstance(a, dict) and isinstance(a.get("id"), str)
+                              and _file_name(a.get("file"))]
+        self.attachments = [a for a in self.annotations.get("attachments") or []
+                            if isinstance(a, dict) and _file_name(a.get("file"))]
         self.steps_by_run: dict = {}
         for st in self.steps:
             cid = st.get("case_id")
@@ -241,12 +296,14 @@ class _Session:
             self.units.append(steps if i == self.pattern_index or not pattern
                               else _collapse_merged(pattern, steps))
         self.key_runs: Counter = Counter()
-        self.key_ms: dict[str, list[float]] = {}
+        self.key_ms: dict[str, list[float]] = {}     # the timed units only (C16)
         for units in self.units:
             for key in {_align_key(u) for u in units}:
                 self.key_runs[key] += 1
             for u in units:
-                self.key_ms.setdefault(_align_key(u), []).append(_unit_ms(u))
+                ms = _unit_ms(u)
+                if ms is not None:
+                    self.key_ms.setdefault(_align_key(u), []).append(ms)
 
     def _pick_pattern(self):
         """C3: the run the analyst chose, when it names a recorded run; else
@@ -312,12 +369,19 @@ class _Session:
         start of the recording ("Run 1 at 0:19": the same on every machine,
         whatever its time zone), and the video time when the video's start
         is known ("Run 1 at 0:19 (video 12:45)"); for a step outside every
-        run, "0:19 into the recording"."""
+        run, "0:19 into the recording". A step without a time has no place
+        (C16). In a video session the session's clock is the video's, so
+        the place is the video time ("Run 1, video 0:19", "video 0:19" in
+        the implicit run, which is not a marked run)."""
         start = step_start(_members(step)[0])
         if start is None:
             return ""
         cid = step.get("case_id")
-        index = self.run_index.get(cid) if isinstance(cid, str) else None
+        index = self.run_index.get(cid) if isinstance(cid, str) and not self.implicit else None
+        if (self.source == "video" and self.video_start is not None
+                and start >= self.video_start):
+            video = "video " + clock((start - self.video_start).total_seconds() * 1000)
+            return f"Run {index + 1}, {video}" if index is not None else video
         at = ""
         if self.recording_start is not None and start >= self.recording_start:
             at = clock((start - self.recording_start).total_seconds() * 1000)
@@ -332,18 +396,24 @@ class _Session:
 
     def context_line(self, step) -> str:
         """The line under a step's heading: system and screen, its average
-        time, in how many runs it happened, where it is in the recording."""
+        time, in how many runs it happened, where it is in the recording.
+        Contract C16: the time leaves out the steps without a time range and
+        is not said when none of them has one; the implicit run (runs not
+        marked) is not counted in runs."""
         parts = []
         where = self.where(step)
         if where:
             parts.append(where)
+        own = _unit_ms(step)
         if self.runs:
             key = _align_key(step)
-            durations = self.key_ms.get(key) or [_unit_ms(step)]
-            parts.append(_duration(sum(durations) / len(durations)) + " on average")
-            parts.append(f"in {self.key_runs.get(key) or 1} of {_plural(len(self.runs), 'run')}")
-        else:
-            parts.append(_duration(_unit_ms(step)))
+            durations = self.key_ms.get(key) or ([own] if own is not None else [])
+            if durations:
+                parts.append(_duration(sum(durations) / len(durations)) + " on average")
+            if not self.implicit:
+                parts.append(f"in {self.key_runs.get(key) or 1} of {_plural(len(self.runs), 'run')}")
+        elif own is not None:
+            parts.append(_duration(own))
         position = self.position(step)
         if position:
             parts.append(position)
@@ -389,24 +459,71 @@ class _Session:
                 return " ".join(seen)
         return ""
 
-    def entries(self, step) -> list[tuple[str, str, dict, str]]:
-        """(field, value, interaction data, timestamp) of every field entry in
-        a step (its members' interactions, in order)."""
+    def entries(self, step) -> list[tuple[str, str, dict, str, dict]]:
+        """(field, value, interaction data, timestamp, step) of every field
+        entry in a step (its members' interactions, in order); the step is
+        the member the entry belongs to."""
         out = []
         for member in _members(step):
             for eid in (member.get("evidence") or {}).get("interaction_event_ids") or []:
                 data = self.interactions.get(eid)
                 got = _entered(data)
                 if got:
-                    out.append((got[0], got[1], data, self.times.get(eid, "")))
+                    out.append((got[0], got[1], data, self.times.get(eid, ""), member))
         return out
+
+    def entry_where(self, member, data) -> tuple[str, str]:
+        """(system, screen) of one field entry: where its interaction was,
+        the system the analyst set on its step first (C16)."""
+        system, screen = self.ctx.where_datas([data])
+        return (step_system(member) or system), screen
 
     def field_names(self, step) -> list[str]:
         """The distinct fields entered in a step, in the order first entered."""
         seen: dict[str, None] = {}
-        for field, _value, _data, _ts in self.entries(step):
+        for field, _value, _data, _ts, _member in self.entries(step):
             seen.setdefault(field, None)
         return list(seen)
+
+    def screenshots(self, step) -> list[str]:
+        """The screenshots (session-relative paths) the document prints under
+        a step (contract C16): the one the analyst chose for the PDD
+        (`pdd_screenshot`: a recorder screenshot's path or an analyst
+        screenshot's id) when that file is in the session folder; else every
+        screenshot of the step, its recorder screenshots and then the ones
+        the analyst added to it. A recorder screenshot the analyst took off
+        the step (`hidden_screenshots`) is never printed."""
+        hidden = {h for h in step.get("hidden_screenshots") or [] if isinstance(h, str)}
+        choice = step.get("pdd_screenshot")
+        chosen = self.screenshot_ref(choice)
+        if (chosen and choice not in hidden and chosen not in hidden
+                and (path := _safe_path(self.folder, chosen)) is not None and path.is_file()):
+            return [chosen]
+        refs = [r for r in (step.get("evidence") or {}).get("screenshot_refs") or []
+                if not (isinstance(r, str) and r in hidden)]
+        sid = step.get("step_id")
+        if isinstance(sid, str) and sid:
+            refs += [_ANALYST_SHOTS + _file_name(a["file"]) for a in self.analyst_shots
+                     if a.get("step_id") == sid and a["id"] not in hidden]
+        return refs
+
+    def screenshot_ref(self, ref) -> str:
+        """The session-relative path a screenshot reference names: an
+        analyst screenshot's file under screenshots/analyst/ for its id,
+        else the reference itself (a recorder screenshot's path)."""
+        if not isinstance(ref, str) or not ref.strip():
+            return ""
+        for shot in self.analyst_shots:
+            if shot["id"] == ref:
+                return _ANALYST_SHOTS + _file_name(shot["file"])
+        return ref
+
+    def step_attachments(self, step) -> list[str]:
+        """The labels of the attachments on a step (C16), in their order."""
+        sid = step.get("step_id")
+        if not isinstance(sid, str) or not sid:
+            return []
+        return [_attachment_label(a) for a in self.attachments if a.get("step_id") == sid]
 
 
 def _entered(data) -> tuple[str, str] | None:
@@ -639,12 +756,16 @@ def _write_title(doc, s):
 
 def _write_document_control(doc, s):
     doc.add_heading("1. Document control", level=1)
+    # C16: a blank session recorded nothing; the implicit run of a session
+    # without a recording is not a marked run.
+    recorded = ("Nothing recorded" if s.source == "blank"
+                else s.captured or "Not recorded")
     rows = [
         ("Process", s.field("title") or "Not named yet"),
         ("Session folder", s.folder.resolve().name or "Not recorded"),
-        ("Recorded", s.captured or "Not recorded"),
+        ("Recorded", recorded),
         ("Recorded by", s.recorded_by or "Not recorded"),
-        ("Runs recorded", str(len(s.runs))),
+        ("Runs recorded", "Not marked" if s.implicit else str(len(s.runs))),
         ("Video", "Attached" if s.has_video else "None"),
     ]
     project = s.project()
@@ -718,8 +839,10 @@ def _flow_rows(s) -> list[tuple[str, str]]:
         if not nexts:
             continue
         parts = sorted(nexts.items(), key=lambda kv: -len(kv[1]))
+        # The implicit run (C16) is not a marked run: no run counts.
         rows.append((names[key], "; ".join(
-            f"{names[b]} ({len(r)} of {_plural(runs, 'run')})" for b, r in parts)))
+            names[b] if s.implicit else f"{names[b]} ({len(r)} of {_plural(runs, 'run')})"
+            for b, r in parts)))
     return rows
 
 
@@ -735,7 +858,8 @@ def _write_as_is(doc, s, process_map_image):
         doc.add_heading("3.1 As-Is process map", level=2)
         rows = _flow_rows(s) if s.runs else []
         if rows:
-            doc.add_paragraph("Each step and the steps that followed it in the runs:")
+            doc.add_paragraph("Each step and the step that followed it:" if s.implicit
+                              else "Each step and the steps that followed it in the runs:")
             _table(doc, ("Step", "Followed by"), rows, widths=(2.4, 3.6))
         else:
             doc.add_paragraph("Runs were not marked in this recording, so there is no map.")
@@ -757,17 +881,26 @@ def _write_steps(doc, s):
             doc.add_paragraph(f"{why}, so every step is listed in time order.")
     else:
         steps = s.run_steps(s.pattern_index)
-        doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
-                          "the reference run.")
+        if s.implicit:
+            # C16: one implicit run holds every step; the order is the time,
+            # then `order` for the steps added without a time.
+            doc.add_paragraph("Runs were not marked in this session, so every "
+                              "step is listed in order.")
+        else:
+            doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
+                              "the reference run.")
         drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
         if drafts:
             doc.add_paragraph(f"{drafts} of these {_plural(len(steps), 'step')} "
                               f"{'is a draft' if drafts == 1 else 'are drafts'} "
                               "not confirmed yet.")
     if not steps:
-        doc.add_paragraph("No steps have been recorded for this run yet."
-                          if s.pattern_index is not None
-                          else "No steps have been recorded for this session yet.")
+        if not s.recorded:
+            doc.add_paragraph("No steps have been added to this session yet.")
+        else:
+            doc.add_paragraph("No steps have been recorded for this run yet."
+                              if s.pattern_index is not None
+                              else "No steps have been recorded for this session yet.")
         return
     for number, step in enumerate(steps, start=1):
         _write_step(doc, s, step, number)
@@ -775,14 +908,19 @@ def _write_steps(doc, s):
 
 def _write_step(doc, s, step, number):
     doc.add_heading(f"{number}. {_step_name(step)}", level=3)
-    _small(doc, s.context_line(step))
+    context = s.context_line(step)
+    if context:
+        _small(doc, context)
     desc = s.analyst_description(step)
     if desc:
         _text(doc, desc)
     fields = s.field_names(step)
     if fields:
         doc.add_paragraph("Fields: " + ", ".join(fields) + ".")
-    for ref in (step.get("evidence") or {}).get("screenshot_refs") or []:
+    attached = s.step_attachments(step)
+    if attached:
+        doc.add_paragraph("Attachments: " + ", ".join(attached) + ".")
+    for ref in s.screenshots(step):
         _embed_screenshot(doc, s.folder, ref, step)
     if (step.get("flags") or {}).get("waste") is True:
         p = doc.add_paragraph("Flagged as waste.")
@@ -790,18 +928,25 @@ def _write_step(doc, s, step, number):
             run.italic = True
 
 
-def _embed_screenshot(doc, folder, ref, step):
-    # `ref` is untrusted (it comes from annotations.json). pathlib honours
-    # absolute paths and `..`, so a malicious ref could embed an off-folder
-    # image into the export. Resolve and require containment (SEC Vuln 2).
+def _safe_path(folder, ref):
+    """The file a session-relative reference names, or None when the
+    reference is not a relative path inside the session folder. `ref` is
+    untrusted (it comes from annotations.json). pathlib honours absolute
+    paths and `..`, so a malicious ref could embed an off-folder image into
+    the export. Resolve and require containment (SEC Vuln 2)."""
     if not isinstance(ref, str) or not ref or Path(ref).is_absolute():
-        logger.warning("pdd_export: skipping screenshot ref %r for step %s",
-                       ref, step.get("step_id", "?"))
-        return
-    full = (folder / ref).resolve()
-    base = folder.resolve()
+        return None
+    full = (Path(folder) / ref).resolve()
+    base = Path(folder).resolve()
     if base != full and base not in full.parents:
-        logger.warning("pdd_export: skipping out-of-folder screenshot ref %s for step %s",
+        return None
+    return full
+
+
+def _embed_screenshot(doc, folder, ref, step):
+    full = _safe_path(folder, ref)
+    if full is None:
+        logger.warning("pdd_export: skipping out-of-folder screenshot ref %r for step %s",
                        ref, step.get("step_id", "?"))
         return
     if full.exists() and Inches is not None:
@@ -983,6 +1128,13 @@ def _write_variations(doc, s):
     if not s.runs:
         doc.add_paragraph("Runs were not marked in this recording, so there are "
                           "no runs to compare.")
+    elif s.implicit:
+        # C16: one implicit run covers the session; only its repeats show.
+        doc.add_paragraph("Runs were not marked in this session, so there are "
+                          "no runs to compare.")
+        if s.pattern_index is not None:
+            for line in _variation_lines(s, s.pattern_index):
+                doc.add_paragraph(line, style="List Bullet")
     elif s.pattern_index is None:
         doc.add_paragraph("None of the recorded runs has steps, so the runs "
                           "cannot be compared.")
@@ -1035,10 +1187,10 @@ def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
     for units in s.units:
         entries = []
         for unit in units:
-            for field, value, data, ts in s.entries(unit):
+            for field, value, data, ts, member in s.entries(unit):
                 v = _rekey_value(data, value)
                 if v:
-                    system = s.ctx.where_datas([data])[0]
+                    system = s.entry_where(member, data)[0]
                     entries.append((ts, field, system, v))
         first: dict[str, tuple[str, str]] = {}
         pairs = set()
@@ -1073,12 +1225,12 @@ def _write_data(doc, s):
     outside = s.steps_by_run.get(None, []) if s.runs else s.steps
     rows, seen = [], set()
     for unit in s.run_units() + outside:
-        for field, value, data, _ts in s.entries(unit):
+        for field, value, data, _ts, member in s.entries(unit):
             key = (field, _align_key(unit))
             if key in seen:
                 continue
             seen.add(key)
-            system, screen = s.ctx.where_datas([data])
+            system, screen = s.entry_where(member, data)
             rows.append([field, ", ".join(x for x in (system, screen) if x),
                          _step_name(unit), value, system])
     if not rows:
@@ -1108,12 +1260,16 @@ def _write_applications_and_time(doc, s):
     if not s.runs:
         doc.add_paragraph("Runs were not marked in this recording, so there is "
                           "no time per run.")
+    elif s.implicit:
+        doc.add_paragraph("Runs were not marked in this session, so there is "
+                          "no time per run.")
     else:
         rows = []
         for i, run in enumerate(s.runs):
-            wall = run.get("wall_clock_ms")
+            wall, active = run.get("wall_clock_ms"), run.get("active_ms")
             rows.append((s.run_label(i), len(s.run_steps(i)),
-                         _fmt_ms(run.get("active_ms")),
+                         # C16: a session without a recording measured no active time.
+                         "Not recorded" if active is None else _fmt_ms(active),
                          _fmt_ms(wall) if _num(wall) else "Not measured: the run was not ended"))
         _table(doc, ("Run", "Steps", "Active time", "Elapsed time"), rows,
                widths=(2.4, 0.8, 1.4, 1.4))
@@ -1124,22 +1280,36 @@ def _write_applications_and_time(doc, s):
     per: dict[str, dict] = {}
     for unit in units:
         system = s.system_of(unit) or "Not recorded"
-        row = per.setdefault(system, {"screens": {}, "steps": {}, "ms": 0.0})
+        row = per.setdefault(system, {"screens": {}, "steps": {}, "ms": 0.0, "timed": False})
         screen = s.ctx.where(_members(unit)[0])[1]
         if screen:
             row["screens"].setdefault(screen, None)
         row["steps"].setdefault(_align_key(unit), _step_name(unit))
-        row["ms"] += _unit_ms(unit)
+        ms = _unit_ms(unit)
+        if ms is not None:          # C16: a step without a time adds no time
+            row["ms"] += ms
+            row["timed"] = True
     if not per:
-        doc.add_paragraph("No steps have been recorded for this session yet.")
+        doc.add_paragraph("No steps have been added to this session yet." if not s.recorded
+                          else "No steps have been recorded for this session yet.")
         return
     runs = len(s.runs)
+
+    def time_of(row):
+        if not row["timed"]:
+            return "Not measured"
+        return _duration(row["ms"] / runs) if runs else _duration(row["ms"])
+
     ordered = sorted(per.items(), key=lambda kv: -kv[1]["ms"])
-    _table(doc, ("System", "Screens", "Steps", "Time per run" if runs else "Time"),
-           [(system, ", ".join(row["screens"]) or "Not recorded",
-             ", ".join(row["steps"].values()),
-             _duration(row["ms"] / runs) if runs else _duration(row["ms"]))
-            for system, row in ordered],
+    header = ("System", "Screens", "Steps")
+    rows = [(system, ", ".join(row["screens"]) or "Not recorded",
+             ", ".join(row["steps"].values())) for system, row in ordered]
+    if not any(row["timed"] for row in per.values()):
+        # No step has a time (C16): the table leaves the time out.
+        _table(doc, header, rows, widths=(1.3, 1.8, 2.9))
+        return
+    _table(doc, header + ("Time per run" if runs and not s.implicit else "Time",),
+           [r + (time_of(row),) for r, (_system, row) in zip(rows, ordered)],
            widths=(1.1, 1.6, 2.4, 0.9))
 
 
@@ -1154,11 +1324,28 @@ def _write_improvement(doc, s, tobe_map_image, notes_follow):
 
 
 def _write_notes(doc, s):
-    """8: the analyst's notes (C6 `document.notes`) as the last section. An
-    empty field adds nothing, no heading and no placeholder: notes are
-    optional, so their absence is not a gap in the document."""
+    """8: the analyst's notes (C6 `document.notes`), after the improvement
+    scope. An empty field adds nothing, no heading and no placeholder: notes
+    are optional, so their absence is not a gap in the document. The notes
+    the analyst pins to steps and moments (annotations.analyst_notes, C16)
+    are context in the viewer and are not printed."""
     notes = s.field("notes")
     if not notes:
         return
     doc.add_heading("8. Notes", level=1)
     _text(doc, notes)
+
+
+def _write_attachments(doc, s, number):
+    """The last section, only when the analyst attached files (contract
+    C16, annotations.attachments): each attachment's label and file name.
+    Nothing is embedded; the files stay in the session folder's
+    attachments/ folder. A step's attachments are also named under that
+    step (_write_step)."""
+    if not s.attachments:
+        return
+    doc.add_heading(f"{number}. Attachments", level=1)
+    doc.add_paragraph("The files are in the session folder's attachments folder.")
+    _table(doc, ("Attachment", "File"),
+           [(_attachment_label(a), _file_name(a.get("file"))) for a in s.attachments],
+           widths=(3.0, 3.0))

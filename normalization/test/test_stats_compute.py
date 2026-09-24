@@ -123,10 +123,47 @@ def test_step_stats_aggregates_duration_per_name():
                             "p90_ms", "p99_ms"}
 
 
-def test_step_stats_handles_missing_range():
-    rows = step_stats([{"case_id": "c1", "name": "X", "time_range": {}}])
+def test_step_stats_leaves_out_a_step_without_a_time_range():
+    """C16: a step added by hand may have no time; the step stats are timed
+    statistics, so it is left out rather than counted as 0 ms. An inverted
+    range is still a timed step and counts 0."""
+    for missing in ({}, None, {"start": "2026-05-14T09:00:00Z", "end": None}, {"start": "bad"}):
+        assert step_stats([{"case_id": "c1", "name": "X", "time_range": missing}]) == []
+    rows = step_stats([
+        {"case_id": "c1", "name": "X", "time_range": None, "order": 1},
+        _step_dur("c1", "X", "2026-05-14T09:00:05Z", "2026-05-14T09:00:01Z"),   # inverted
+    ])
     assert rows[0]["frequency"] == 1
     assert rows[0]["total_duration_ms"] == 0
+
+
+def test_step_variants_order_steps_without_a_time_by_order_after_the_timed():
+    """C16: in a run, the steps with a time in time order, then the steps
+    added without one in their `order`."""
+    steps = [
+        {"case_id": "c1", "name": "Late", "time_range": None, "order": 2},
+        {"case_id": "c1", "name": "Early", "time_range": None, "order": 1},
+        _step_dur("c1", "Timed B", "2026-05-14T09:00:05Z", "2026-05-14T09:00:06Z"),
+        {"case_id": "c1", "name": "No order", "time_range": None},
+        _step_dur("c1", "Timed A", "2026-05-14T09:00:01Z", "2026-05-14T09:00:02Z"),
+    ]
+    assert step_variants(steps)[0]["variant"] == [
+        "Timed A", "Timed B", "Early", "Late", "No order"]
+
+
+def test_case_stats_of_a_session_without_a_recording_measure_no_active_time():
+    """C16: nothing measured the foreground in a video or blank session, so
+    a run's active time is None, never a measured 0; the implicit run is
+    flagged."""
+    cases = {"imp": {"label": None, "parent_case_id": None,
+                     "start_ts": "2026-05-14T09:00:00Z", "end_ts": None,
+                     "end_reason": None, "implicit": True}}
+    row = case_stats([], cases, recorded=False)[0]
+    assert row["active_ms"] is None and row["wall_clock_ms"] is None
+    assert row["implicit"] is True
+    assert case_stats([], cases)[0]["active_ms"] == 0          # a recording: measured
+    plain = {"c1": {**cases["imp"], "implicit": False}}
+    assert "implicit" not in case_stats([], plain)[0]
 
 
 def test_compute_all_includes_step_stats():

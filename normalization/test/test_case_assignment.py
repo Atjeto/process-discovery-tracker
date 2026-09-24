@@ -196,3 +196,34 @@ def test_a_start_inserted_inside_a_run_splits_it_instead_of_nesting_later_runs()
     assert sorted(c["label"] for c in cases.values()) == ["Inserted", "Run 1", "Run 2", "Run 3"]
     assert all(c["parent_case_id"] is None for c in cases.values()), "a run was nested"
     assert all(c["end_ts"] for c in cases.values()), "a run was left without an end"
+
+
+def test_a_session_without_a_recording_and_without_a_start_has_one_implicit_run():
+    """C16: a video or blank session with no start marker gets one implicit
+    run covering the session: a deterministic id from the session id and a
+    fixed name, open, flagged `implicit`, holding every event there is. A
+    recording never gets one, and a start marker (inserted by hand) replaces
+    it."""
+    import uuid
+    from case_assignment import add_implicit_run, implicit_case_id, needs_implicit_run
+    base = datetime(2026, 5, 18, 9, 0, 0)
+    assert implicit_case_id("sess-1") == str(uuid.uuid5(
+        uuid.UUID("c35db218-e350-4efb-ae74-37c31a4f697a"), "sess-1:implicit-run"))
+    assert needs_implicit_run([], recorded=False)
+    assert not needs_implicit_run([], recorded=True)
+    end_only = [{"event_id": "e", "type": "marker", "timestamp": _iso(base),
+                 "data": {"marker_type": "end"}}]
+    assert needs_implicit_run(end_only, recorded=False)      # an end opens no run
+    edited, _n = apply_marker_edits([], {"marker_edits": [
+        {"id": "m1", "op": "insert", "marker_type": "start", "timestamp": _iso(base)}]})
+    assert not needs_implicit_run(edited, recorded=False)
+
+    events = [{"event_id": "i1", "type": "interaction", "timestamp": _iso(base),
+               "data": {"kind": "invoked", "case_ids": []}}]
+    stamped, cases = add_implicit_run(events, {}, "sess-1", "2026-05-18T08:59:00Z")
+    cid = implicit_case_id("sess-1")
+    assert cases == {cid: {"case_id": cid, "label": None, "parent_case_id": None,
+                           "start_ts": "2026-05-18T08:59:00Z", "end_ts": None,
+                           "end_reason": None, "implicit": True}}
+    assert stamped[0]["data"]["case_ids"] == [cid]
+    assert events[0]["data"]["case_ids"] == [], "the input was changed"

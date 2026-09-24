@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from step_context import untimed_key
 from step_suggest import step_identity
 
 MIN_LEN = 3
@@ -52,8 +53,16 @@ def _symbol(step: dict[str, Any]) -> str:
     return "" if key == "label:" else key
 
 
+def _order(step: dict[str, Any]) -> tuple:
+    """A step's place in its case: by `time_range.start`, then the steps
+    without a time by their `order` (contract C16)."""
+    start = (step.get("time_range") or {}).get("start") or ""
+    return (0, start) if start else untimed_key(step)
+
+
 def _per_case_step_lists(steps: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """Group steps by case_id and sort each case's steps by `time_range.start`.
+    """Group steps by case_id and sort each case's steps by `time_range.start`,
+    the steps without a time after them by their `order` (C16).
     Steps without a symbol are skipped (no signal for motif mining).
     Returns ordered lists ready to slice into symbol windows."""
     by_case: dict[str, list[dict[str, Any]]] = {}
@@ -63,7 +72,7 @@ def _per_case_step_lists(steps: list[dict[str, Any]]) -> dict[str, list[dict[str
         cid = s.get("case_id") or "__nocase__"
         by_case.setdefault(cid, []).append(s)
     for cid in by_case:
-        by_case[cid].sort(key=lambda s: ((s.get("time_range") or {}).get("start") or ""))
+        by_case[cid].sort(key=_order)
     return by_case
 
 

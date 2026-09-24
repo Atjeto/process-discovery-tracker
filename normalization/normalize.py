@@ -52,6 +52,7 @@ from process_filter import filter_excluded
 from session_io import (
     _coerce_event_shape, load_events, load_manifest, load_annotations,
     write_annotations, compute_screenshot_hashes, AnnotationsUnreadable,
+    has_recording,
 )
 from marker_edits import apply_marker_edits
 from pipeline_config import (
@@ -112,6 +113,9 @@ def normalize(
 
     manifest = load_manifest(session_folder)
     worker_id = (manifest.get("config", {}).get("worker") or {}).get("id", "unknown")
+    # Contract C16: a video or blank session (manifest.source) has an empty
+    # events.jsonl and no recording to measure.
+    recorded = has_recording(manifest)
 
     raw, dropped_lines = load_events(events_file)
     print(f"[normalize] loaded {len(raw)} raw events")
@@ -135,8 +139,10 @@ def normalize(
     # Stage 1a: coalesce typing bursts + apply annotation marker edits.
     coalesced, edited, edits_applied = _run_coalesce(raw, annotations, cal)
 
-    # Stage 2a/3: marker-based case assignment + app-vocab enrichment.
-    with_cases, cases, vocab_summary = _run_case_assignment(edited, session_id_str)
+    # Stage 2a/3: marker-based case assignment + app-vocab enrichment (with
+    # the implicit run of a session without a recording, C16).
+    with_cases, cases, vocab_summary = _run_case_assignment(
+        edited, session_id_str, manifest)
 
     existing_anno = _init_existing_anno(annotations, session_id_str)
     # Additive, regenerated each run: what the self/ignored-process filter dropped.
@@ -156,14 +162,15 @@ def normalize(
         session_folder, log_events, cases, existing_anno, taxonomy,
         taxonomy_path, taxonomy_report, worker_id, raw, dropped_lines,
         collapsed, total_interactions, edits_applied, merged_steps,
-        coalesced, vocab_summary, draft_summary=draft_summary)
+        coalesced, vocab_summary, draft_summary=draft_summary,
+        recorded=recorded)
 
     # Analysis layer (ADR-0008), best-effort -- never blocks the pipeline.
     # Phase A (LAB-PHASE-SPEC §A1-§A3): cases feed the additive
     # case_quality / facts / findings blocks.
     analysis_result = _run_analysis(
         session_folder, classified, existing_anno, summary, manifest,
-        cases=cases)
+        cases=cases, recorded=recorded)
 
     # The step-level BPMN (--mine) + the requested PDD export. A failed PDD
     # export raises ExportFailed after every analysis output is written.

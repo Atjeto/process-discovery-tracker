@@ -421,3 +421,43 @@ def test_a_short_flow_stays_one_row():
     shapes, _segments = _boxes_and_segments(_written(anno))
     centres = {round(y + h / 2) for (_x, y, _w, h) in shapes.values()}
     assert len(centres) == 1
+
+
+def _untimed(case_id, name, order, **extra):
+    return {"step_id": f"{name}-{case_id}", "case_id": case_id, "name": name,
+            "state": "manually_authored", "time_range": None, "order": order, **extra}
+
+
+def test_steps_without_a_time_follow_the_timed_ones_in_their_order():
+    """C16: a run's steps in time order, then the steps added without a time
+    (time_range null) by their `order`, in the log and the one-run chain."""
+    anno = {"steps": [
+        _untimed("A", "Late", 2),
+        _step("A", "Second", "2026-05-18T09:00:10Z"),
+        _untimed("A", "Early", 1),
+        _step("A", "First", "2026-05-18T09:00:00Z"),
+    ]}
+    trace = next(iter(build_annotation_log(anno)))
+    assert [e["concept:name"] for e in trace] == ["First", "Second", "Early", "Late"]
+    assert "time:timestamp" not in trace[2]
+    assert session_sequence(anno) == ["First", "Second", "Early", "Late"]
+
+
+def test_the_documentation_says_no_time_for_steps_without_one():
+    """C16: the average leaves out the steps without a time; a label no timed
+    step has says no time (never "under 1s"), and the implicit run of a
+    session without a recording is not counted in runs."""
+    anno = {"steps": [_untimed("imp", "Log it", 1, system="SAP"),
+                      _untimed("imp", "Reply", 2),
+                      _step("imp", "Check", "2026-05-18T09:00:10Z")]}
+    anno["steps"][2]["time_range"]["end"] = "2026-05-18T09:00:40Z"
+    from step_context import StepContext
+    ctx = StepContext({}, {}, vocabs=[])
+    tasks = _by_name(_written(anno, context=ctx, implicit_runs=["imp"]), "task")
+    assert tasks["Log it"].find(f"{_BPMN}documentation").text == "SAP."
+    assert tasks["Reply"].find(f"{_BPMN}documentation") is None
+    assert tasks["Check"].find(f"{_BPMN}documentation").text == "30s on average."
+    # The same run, marked: the runs are counted.
+    tasks = _by_name(_written(anno, context=ctx), "task")
+    assert tasks["Log it"].find(f"{_BPMN}documentation").text == "SAP. In 1 of 1 run."
+    assert tasks["Check"].find(f"{_BPMN}documentation").text == "In 1 of 1 run, 30s on average."

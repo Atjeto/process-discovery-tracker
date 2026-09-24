@@ -322,11 +322,24 @@ Everything the analyst adds lives in the session folder, so it travels with it.
 - **Runs.** Video and blank sessions with no run markers have one implicit run covering
   the whole session, so the analyst can add steps at once. Markers inserted by hand
   (`marker_edits`, synthetic `insert-<edit_id>` events) replace it, exactly as in a
-  recorder session.
+  recorder session. Settled by V3-P: "no run markers" means no start marker in the
+  derived stream (an end marker alone opens no run, so it does not remove the implicit
+  run). The implicit run's `case_id` is `uuid5(<C9 namespace>, "<session_id>:implicit-run")`;
+  it is open (no end), starts at `manifest.started_at`, and its `stats.json` `case_stats`
+  row carries `implicit: true` (label, end_ts, wall_clock_ms, end_reason and active_ms
+  null); `analysis.case_quality.mode` is `"implicit"`. It contains every step: a
+  preserved step whose `case_id` is not a current run (null included) joins it, a step
+  without a time too. When start markers replace it, preserved steps move by time
+  containment (C9), and a step without a time then belongs to no run.
 - **Steps without times.** A hand-added step may have `time_range: null` (blank
   sessions, or a step added without a playhead). Such steps order by `order` (an
   integer, set by the viewer, unique within the run); a step with a time orders by
-  time. Every pipeline stage, the map and the PDD accept both.
+  time. Every pipeline stage, the map and the PDD accept both. Settled by V3-P: within
+  a run, the steps with a time come first in time order, then the steps without one in
+  `order`, then any step with neither (list order). A step without a time has no
+  duration: the timed figures leave it out (step_stats, the step-based analysis, the
+  PDD's times, the map's average time) and nothing prints a time for it. A time range
+  the viewer writes is read as measured.
 - **System of a hand-added step.** `step.system` (string), set by the analyst. For a
   recorded step the system is derived (C14); an explicit `step.system` wins.
 - **Screenshots added by hand.** Files go to `screenshots/analyst/<id>.<png|jpg>`;
@@ -335,16 +348,30 @@ Everything the analyst adds lives in the session folder, so it travels with it.
   `step.pdd_screenshot` names the one the PDD prints (a recorder screenshot path or an
   analyst screenshot id; absent means the current rule), and
   `step.hidden_screenshots[]` lists recorder screenshots taken off the step (raw
-  files are never deleted).
-- **Notes.** `annotations.notes[]`: `{id, text, step_id | null, at | null (ISO
+  files are never deleted). Settled by V3-P: `file` is the file name only (the
+  pipeline reads `screenshots/analyst/` plus its last part); the current rule prints
+  the step's `screenshot_refs` minus the hidden ones, then the analyst screenshots
+  whose `step_id` is the step; a `pdd_screenshot` that names no file in the folder, or
+  a hidden one, counts as absent.
+- **Notes.** `annotations.analyst_notes[]`: `{id, text, step_id | null, at | null (ISO
   time), added_at}`. A note shows where its step or moment shows (the step pane, the
   timeline, the panel). Notes are context in the viewer, not printed in the PDD (the
-  document's own Notes field is). If annotations.json already holds a legacy notes key
-  from the product edition, round-trip it untouched (C10) and choose a key that does not
-  collide.
+  document's own Notes field is). Key changed by V3-P from `notes`: `annotations.notes`
+  already holds the product edition's Flow notes (`{id, type: "note", timestamp,
+  video_offset_s, text}`), both writers seed it as `[]`, and the v1.5.0 viewer reads
+  `timestamp` on every entry, so it round-trips untouched (C10) under its own name.
 - **Attachments.** Files go to `attachments/<name>` (a numeric suffix when the name
   exists); `annotations.attachments[]`: `{id, file, label, step_id | null, added_at}`.
   The PDD lists them (label and file name) in one short section, and a step's
-  attachments by label under that step. Nothing is embedded.
+  attachments by label under that step. Nothing is embedded. Settled by V3-P: `file`
+  is the file name only; the section is the last one ("8. Attachments", or "9." after
+  "8. Notes"); an empty label prints the file name.
+- **Nothing recorded.** Settled by V3-P: in a video or blank session each run's
+  `case_stats.active_ms` is null, and `analysis.json` writes the step-based block,
+  `facts`, `findings` and `pdd_findings` as null with no `stage_errors` entry (nothing
+  failed; C12's null with an entry still means "could not run"); `case_quality` still
+  counts the runs, coverage null. The PDD says "Runs were not marked in this session"
+  for the implicit run, "Runs recorded: Not marked", "Recorded: Nothing recorded" for
+  a blank session, and points at the video time in a video session.
 - **Removal.** Removing a screenshot, note or attachment the analyst added deletes its
   entry and its copied file; recorder screenshots are only hidden.

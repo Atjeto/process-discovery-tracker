@@ -122,3 +122,34 @@ def test_the_video_start_prefers_the_synced_attached_video():
         assert video_start(manifest, odd) == datetime(2026, 5, 14, 8, 59, 50, tzinfo=timezone.utc)
     assert has_video(manifest, {}) and has_video({}, synced)
     assert not has_video({}, {}) and not has_video({"obs": {"recording_path": " "}}, {})
+
+
+def test_a_system_the_analyst_set_on_the_step_wins():
+    """C16: `step.system` names the system of a step added by hand, and wins
+    over the system derived from a recorded step's interactions; the screen
+    stays derived."""
+    ctx = _ctx({"xl": {"process_name": "EXCEL.EXE", "window_title": "Excel | Order Tracking.xlsx"}})
+    assert ctx.where(_step("xl", system="Finance workbook")) == (
+        "Finance workbook", "Order Tracking.xlsx")
+    assert ctx.where(_step(system="  SAP  ")) == ("SAP", "")
+    assert ctx.where(_step("xl", system="  ")) == ("Excel", "Order Tracking.xlsx")
+    assert ctx.where(_step("xl", system=42)) == ("Excel", "Order Tracking.xlsx")
+
+
+def test_a_step_without_a_time_has_no_duration_and_sorts_by_order_after_the_timed():
+    from step_context import step_duration_ms, step_sort_key
+    timed = lambda s, e: {"time_range": {"start": s, "end": e}}  # noqa: E731
+    assert step_duration_ms(timed("2026-05-14T09:00:01Z", "2026-05-14T09:00:04Z")) == 3000
+    assert step_duration_ms(timed("2026-05-14T09:00:05Z", "2026-05-14T09:00:04Z")) == 0
+    for untimed in ({}, {"time_range": None}, {"time_range": {}}, {"time_range": "x"},
+                    timed("2026-05-14T09:00:01Z", None), timed("bad", "2026-05-14T09:00:01Z")):
+        assert step_duration_ms(untimed) is None, untimed
+        assert step_ms(untimed) == 0
+    steps = [{"n": "b", "time_range": None, "order": 2},
+             {"n": "none", "time_range": None},
+             {"n": "t2", **timed("2026-05-14T09:00:05Z", "2026-05-14T09:00:06Z")},
+             {"n": "a", "time_range": None, "order": 1},
+             {"n": "bool", "time_range": None, "order": True},
+             {"n": "t1", **timed("2026-05-14T09:00:01Z", "2026-05-14T09:00:02Z")}]
+    assert [s["n"] for s in sorted(steps, key=step_sort_key)] == [
+        "t1", "t2", "a", "b", "none", "bool"]

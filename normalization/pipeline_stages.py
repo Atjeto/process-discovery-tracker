@@ -27,7 +27,9 @@ from typing import Any
 # embeddable too.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from case_assignment import assign_case_ids, collect_cases
+from case_assignment import (
+    assign_case_ids, collect_cases, needs_implicit_run, add_implicit_run,
+)
 from coalesce import coalesce_typing_bursts
 from classification import (
     classify_events,
@@ -43,11 +45,12 @@ from step_suggest import (
 import app_vocab
 from app_names import build_app_names
 import stats_compute as stats
-from session_io import write_annotations, compute_screenshot_hashes
+from session_io import write_annotations, compute_screenshot_hashes, has_recording
 from marker_edits import apply_marker_edits
 from pipeline_config import (
     _step_ignored_processes, _excluded_ranges, _step_calibration_kwargs,
 )
+from step_context import step_duration_ms
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,16 @@ logger = logging.getLogger(__name__)
 class ExportFailed(Exception):
     """A requested export failed after the analysis outputs were written.
     Contract C13 exit code 3 (RP-09)."""
+
+
+def _session_start(manifest: dict | None, events: list[dict[str, Any]]) -> str | None:
+    """Where the implicit run of a session without a recording starts (C16):
+    manifest.started_at, else the first event's timestamp, else None."""
+    started = manifest.get("started_at") if isinstance(manifest, dict) else None
+    if isinstance(started, str) and started.strip():
+        return started
+    first = next((ev.get("timestamp") for ev in events or [] if ev.get("timestamp")), None)
+    return first if isinstance(first, str) else None
 
 
 def _run_coalesce(
@@ -77,12 +90,20 @@ def _run_coalesce(
 def _run_case_assignment(
     edited: list[dict[str, Any]],
     session_id_str: str,
+    manifest: dict | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict]:
     """Stage 2a/3: marker-based case assignment + app-vocab enrichment.
     Returns (with_cases, cases, vocab_summary). `session_id_str` seeds the
-    deterministic case ids (RP-01)."""
+    deterministic case ids (RP-01). A session without a recording (the
+    `manifest` says video or blank) and without a start marker gets one
+    implicit run covering the whole session (contract C16)."""
     with_cases = assign_case_ids(edited, session_id=session_id_str)
     cases = collect_cases(with_cases)
+    if needs_implicit_run(with_cases, has_recording(manifest)):
+        with_cases, cases = add_implicit_run(
+            with_cases, cases, session_id_str, _session_start(manifest, with_cases))
+        print("[normalize] no start marker in a session without a recording: "
+              "one implicit run covers the session")
     print(f"[normalize] identified {len(cases)} cases")
 
     # App vocabulary enrichment (ADR-0002). Non-destructive: adds
@@ -240,14 +261,17 @@ def _run_stats(
     coalesced: list[dict[str, Any]],
     vocab_summary: dict,
     draft_summary: dict | None = None,
+    recorded: bool = True,
 ) -> tuple[dict[str, Any], Path]:
     """Compute the statistics summary and write stats.json. Returns
     (summary, stats_path). `draft_summary` is the structure-only numbers of
-    this analyze's drafts (step_suggest.draft_summary), counts only."""
+    this analyze's drafts (step_suggest.draft_summary), counts only.
+    `recorded` is False for a session without a recording (C16)."""
     summary = stats.compute_all(
         log_events, cases,
         excluded_ranges=_excluded_ranges(existing_anno),
         steps=_visible_steps(existing_anno),
+        recorded=recorded,
     )
     summary["screenshot_hashes"] = compute_screenshot_hashes(session_folder)
     summary["meta"] = {
@@ -295,6 +319,7 @@ def _run_analysis(
     summary: dict,
     manifest: dict,
     cases: Any = None,
+    recorded: bool = True,
 ) -> Any:
     """Analysis layer (ADR-0008 / IMPROVEMENTS.md Cluster N). Heuristic
     IE/CI findings -- waste classification, time study, automation
@@ -311,7 +336,16 @@ def _run_analysis(
     Stage failures (contract C12, RP-10): a stage that fails leaves its
     output key null, never [] or zeros, and adds one
     {"stage", "error"} entry to `stage_errors`, which is always written
-    (empty when every stage ran). Hidden steps are left out (RP-06)."""
+    (empty when every stage ran). Hidden steps are left out (RP-06).
+
+    The step-based block is timed statistics, so it leaves out the steps
+    without a time range (contract C16). A session without a recording
+    (`recorded` False: a video or blank session, C16) has nothing for the
+    measurements of the recording to measure: the step-based block,
+    `facts`, `findings` and `pdd_findings` are written null with no
+    stage_errors entry, because nothing failed. A renderer says that
+    nothing was recorded. `case_quality` still counts the runs (the
+    implicit run, or the runs marked by hand), with coverage null."""
     stage_errors: list[dict[str, str]] = []
 
     def _failed(stage: str, error: str) -> None:
@@ -319,21 +353,27 @@ def _run_analysis(
         stage_errors.append({"stage": stage, "error": error})
 
     steps = _visible_steps(existing_anno)
+    timed = [s for s in steps if step_duration_ms(s) is not None]
     analysis_result = None
-    try:
-        from analysis import run_analysis
-        analysis_result = run_analysis(
-            events=classified,
-            steps=steps,
-            stats=summary,
-            manifest=manifest,
-            annotations=existing_anno,
-        )
-    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
-        _failed("step_analysis", f"{type(e).__name__}: {e}")
+    if recorded:
+        try:
+            from analysis import run_analysis
+            analysis_result = run_analysis(
+                events=classified,
+                steps=timed,
+                stats=summary,
+                manifest=manifest,
+                annotations=existing_anno,
+            )
+            meta = analysis_result.get("meta") if isinstance(analysis_result, dict) else None
+            if isinstance(meta, dict):
+                meta["step_count"] = len(steps)     # every visible step, timed or not
+        except Exception as e:  # noqa: BLE001 (recorded as a stage error)
+            _failed("step_analysis", f"{type(e).__name__}: {e}")
     if analysis_result is None:
-        # The classic layer failed entirely; still attempt the Tier-1
-        # blocks on a minimal shell rather than losing the whole file.
+        # The classic layer failed entirely (or the session has no
+        # recording, so it did not run); the rest of the file is still
+        # written, on a minimal shell, rather than losing the whole file.
         analysis_result = {"meta": {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "session_id": (manifest or {}).get("session_id", ""),
@@ -346,14 +386,23 @@ def _run_analysis(
 
     try:
         from case_quality import compute_case_quality
-        analysis_result["case_quality"] = compute_case_quality(classified, cases)
+        analysis_result["case_quality"] = compute_case_quality(
+            classified, cases, recorded=recorded)
         cq = analysis_result["case_quality"]
+        coverage = ("none (nothing recorded)" if cq["coverage"] is None
+                    else f"{cq['coverage']:.0%}")
         print(f"[normalize] case quality: {cq['mode']}, "
-              f"coverage {cq['coverage']:.0%}, "
+              f"coverage {coverage}, "
               f"tier2 {'unlocked' if cq['tier2_unlocked'] else 'locked'}")
     except Exception as e:  # noqa: BLE001 -- recorded as a stage error
         analysis_result["case_quality"] = None
         _failed("case_quality", f"{type(e).__name__}: {e}")
+    if not recorded:
+        for key in ("facts", "findings", "pdd_findings"):
+            analysis_result[key] = None
+        print("[normalize] nothing recorded: the measurements of the "
+              "recording are written as null")
+        return _write_analysis(session_folder, analysis_result, stage_errors)
     motifs: list | None = None
     bounces: list | None = None
     try:
@@ -419,8 +468,13 @@ def _run_analysis(
     except Exception as e:  # noqa: BLE001 (recorded as a stage error)
         analysis_result["pdd_findings"] = None
         _failed("pdd_findings", f"{type(e).__name__}: {e}")
-    analysis_result["stage_errors"] = stage_errors
+    return _write_analysis(session_folder, analysis_result, stage_errors)
 
+
+def _write_analysis(session_folder: Path, analysis_result: dict,
+                    stage_errors: list[dict[str, str]]) -> dict:
+    """Write analysis.json with its stage_errors; returns the result."""
+    analysis_result["stage_errors"] = stage_errors
     try:
         analysis_path = session_folder / "analysis.json"
         with open(analysis_path, "w", encoding="utf-8") as f:
@@ -463,10 +517,13 @@ def _run_mining_exports(
                      if e.get("type") == "interaction" and e.get("event_id")
                      and isinstance(e.get("data"), dict)},
                     ((summary or {}).get("meta") or {}).get("app_names"))
+                # The implicit run of a session without a recording (C16).
+                implicit = [r.get("case_id") for r in (summary or {}).get("case_stats") or []
+                            if isinstance(r, dict) and r.get("implicit")]
                 if bpmn_observed.write_observed_bpmn(
                         existing_anno,
                         str(session_folder / "process_map_step.bpmn"),
-                        context=context):
+                        context=context, implicit_runs=implicit):
                     print(f"[normalize] wrote {session_folder / 'process_map_step.bpmn'}")
         except Exception as e:
             print(f"[normalize] WARNING: step BPMN failed: {e}")

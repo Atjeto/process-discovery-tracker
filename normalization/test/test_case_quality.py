@@ -87,6 +87,18 @@ def test_malformed_events_do_not_crash():
     assert 0.0 <= cq["coverage"] <= 1.0
 
 
+def test_the_implicit_run_of_a_session_without_a_recording():
+    """C16: the one implicit run of a video or blank session: mode
+    `implicit`, one run, and no coverage to measure (None, never 0)."""
+    cq = compute_case_quality([], {"imp": {"implicit": True}}, recorded=False)
+    assert cq == {"mode": "implicit", "case_count": 1, "coverage": None,
+                  "tier2_unlocked": False}
+    # Runs marked by hand in such a session are markers, still unmeasured.
+    cq = compute_case_quality([], {"c1": {}, "c2": {}}, recorded=False)
+    assert cq["mode"] == "markers" and cq["coverage"] is None
+    assert cq["tier2_unlocked"] is False
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):

@@ -19,6 +19,7 @@ from typing import Any
 from _dt import parse_ts as _parse_ts  # public re-export
 from analysis_common import step_group_label
 from facts import _active_duration_ms, _idle_intervals
+from step_context import step_duration_ms, untimed_key
 
 
 def _filter_excluded(
@@ -115,13 +116,19 @@ def activity_stats(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def case_stats(
     events: list[dict[str, Any]],
     cases: dict[str, dict[str, Any]],
+    recorded: bool = True,
 ) -> list[dict[str, Any]]:
     """Per-case duration -- both wall-clock and active (§5.4).
 
     Active time is measured the way facts measures it (RP-07): each
     foreground run stamped to the case, minus the idle time the recorder
     measured inside it, limited to the case's own start/end span. So a run's
-    active time never counts idle time and never exceeds its elapsed time."""
+    active time never counts idle time and never exceeds its elapsed time.
+
+    In a session without a recording (`recorded` False: a video or blank
+    session, contract C16) nothing measured the foreground, so `active_ms`
+    is None, never a measured 0. The implicit run of such a session carries
+    `implicit: True` (case_assignment.add_implicit_run)."""
     windows = {cid: (_safe_parse(meta.get("start_ts")), _safe_parse(meta.get("end_ts")))
                for cid, meta in cases.items()}
     idle = _idle_intervals(events)
@@ -137,16 +144,19 @@ def case_stats(
     for cid, meta in cases.items():
         start, end = windows[cid]
         wall = int((end - start).total_seconds() * 1000) if (start and end and end >= start) else None
-        rows.append({
+        row = {
             "case_id": cid,
             "label": meta.get("label"),
             "parent_case_id": meta.get("parent_case_id"),
             "start_ts": meta.get("start_ts"),
             "end_ts": meta.get("end_ts"),
             "wall_clock_ms": wall,
-            "active_ms": round(active_by_case.get(cid, 0)),
+            "active_ms": round(active_by_case.get(cid, 0)) if recorded else None,
             "end_reason": meta.get("end_reason"),
-        })
+        }
+        if meta.get("implicit"):
+            row["implicit"] = True
+        rows.append(row)
     rows.sort(key=lambda r: r["start_ts"] or "")
     return rows
 
@@ -242,16 +252,17 @@ def step_variants(
     the raw activity sequence, this captures the analyst's stepped view
     of the process, which is usually the more meaningful comparison.
 
-    A case's variant is its steps ordered by start time. Steps with no
-    case_id are skipped (they cannot be attributed to a process
-    instance)."""
-    by_case: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    A case's variant is its steps ordered by start time, then the steps
+    without a time by their `order` (contract C16). Steps with no case_id
+    are skipped (they cannot be attributed to a process instance)."""
+    by_case: dict[str, list[tuple[tuple, str]]] = defaultdict(list)
     for s in steps or []:
         cid = s.get("case_id")
         if not cid:
             continue
         start = ((s.get("time_range") or {}).get("start")) or ""
-        by_case[cid].append((start, step_group_label(s)))
+        key = (0, start) if start else untimed_key(s)
+        by_case[cid].append((key, step_group_label(s)))
 
     variant_counts: Counter[tuple[str, ...]] = Counter()
     for seq in by_case.values():
@@ -273,19 +284,15 @@ def step_stats(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     `activity_stats`, so the stepped view gets the SAME frequency + duration
     treatment as the activity view (resolving the activity/step stats
     split-brain, where only the activity level had a distribution). A step's
-    duration is its `time_range`; a missing or inverted range counts as 0 ms
-    but still contributes to frequency. Same row shape as `activity_stats`,
-    keyed on `step_name`."""
+    duration is its `time_range`; an inverted range counts as 0 ms. A step
+    without a time range (a step added by hand with `time_range: null`, or
+    an unreadable one) is left out: these are timed statistics (contract
+    C16). Same row shape as `activity_stats`, keyed on `step_name`."""
     by_name: dict[str, list[float]] = defaultdict(list)
     for s in steps or []:
-        tr = s.get("time_range") or {}
-        start, end = tr.get("start"), tr.get("end")
-        dur = 0.0
-        if start and end:
-            try:
-                dur = max(0.0, (_parse_ts(end) - _parse_ts(start)).total_seconds() * 1000)
-            except (ValueError, TypeError):
-                dur = 0.0
+        dur = step_duration_ms(s)
+        if dur is None:
+            continue
         by_name[step_group_label(s)].append(dur)
     rows = []
     total = sum(len(v) for v in by_name.values()) or 1
@@ -308,11 +315,14 @@ def compute_all(
     cases: dict[str, dict[str, Any]],
     excluded_ranges: list[dict[str, Any]] | None = None,
     steps: list[dict[str, Any]] | None = None,
+    recorded: bool = True,
 ) -> dict[str, Any]:
+    """Every statistic of stats.json. `recorded` is False for a session
+    without a recording (C16): the runs' active time is then None."""
     events = _filter_excluded(events, excluded_ranges)
     return {
         "activity_stats": activity_stats(events),
-        "case_stats": case_stats(events, cases),
+        "case_stats": case_stats(events, cases, recorded=recorded),
         "trace_variants": trace_variants(events, cases),
         "step_variants": step_variants(steps or []),
         "step_stats": step_stats(steps or []),

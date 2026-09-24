@@ -103,6 +103,26 @@ def load_manifest(session_folder: Path) -> dict[str, Any]:
         return json.load(f)
 
 
+# manifest.source (contract C16): how the session was made. The viewer
+# creates "video" and "blank" sessions, with an empty events.jsonl; the
+# capture app's sessions carry no source, which means "recorder".
+SOURCES = ("recorder", "video", "blank")
+SOURCES_WITHOUT_RECORDING = ("video", "blank")
+
+
+def session_source(manifest: dict | None) -> str:
+    """The session's kind: manifest.source when it is "video" or "blank",
+    else "recorder" (absent or unknown)."""
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    return source if source in SOURCES else "recorder"
+
+
+def has_recording(manifest: dict | None) -> bool:
+    """False for a session without a recording (a video or blank session,
+    C16): the stages that measure the recording have nothing to measure."""
+    return session_source(manifest) not in SOURCES_WITHOUT_RECORDING
+
+
 class AnnotationsUnreadable(Exception):
     """annotations.json exists but cannot be read as an annotations object.
 

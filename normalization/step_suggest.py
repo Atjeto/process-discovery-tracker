@@ -855,8 +855,14 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
     to the end of the recording. When nested runs both contain the step, the
     outermost wins, matching auto_suggest_steps, which files steps under the
     outermost case. Among containing sibling runs (a zero-length step on the
-    boundary), the one that opened last wins."""
+    boundary), the one that opened last wins.
+
+    The implicit run of a session without a recording (contract C16,
+    case_assignment.add_implicit_run) covers the whole session, so it
+    contains every step, one without a time included."""
     cases = cases or {}
+    implicit = next((cid for cid, c in cases.items()
+                     if isinstance(c, dict) and c.get("implicit")), None)
     spans = []
     for cid, c in cases.items():
         start = _parse_ts_or_none(c.get("start_ts"))
@@ -869,6 +875,10 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
         cid_now = s.get("case_id")
         if s.get("state") not in PRESERVED_STATES or (
                 isinstance(cid_now, str) and cid_now in cases):
+            continue
+        if implicit is not None:
+            restamped += 1
+            s["case_id"] = implicit
             continue
         bounds = _step_bounds(s)
         containing = [] if bounds is None else [

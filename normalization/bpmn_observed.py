@@ -22,17 +22,14 @@ from typing import Any
 from pm4py.objects.log.obj import Event, EventLog, Trace
 
 from _dt import parse_ts as _parse_ts  # public re-export
+from step_context import step_duration_ms, step_sort_key
 
 
-def _start_key(step: dict[str, Any]) -> float:
-    """Sortable epoch for a step's start; missing/invalid sorts first."""
-    ts = (step.get("time_range") or {}).get("start")
-    if not ts:
-        return 0.0
-    try:
-        return _parse_ts(ts).timestamp()
-    except (ValueError, TypeError, OverflowError):
-        return 0.0
+def _start_key(step: dict[str, Any]) -> tuple[int, float]:
+    """A run's step order (contract C16, step_context.step_sort_key): the
+    steps with a start time by that time, then the steps without one (added
+    by hand, `time_range: null`) by their `order`."""
+    return step_sort_key(step)
 
 
 def _step_label(s: dict[str, Any]) -> str:
@@ -175,15 +172,22 @@ def _analyst_description(step: dict[str, Any], context: Any) -> str:
     return desc if step.get("state") == "manually_authored" else ""
 
 
-def task_documentation(anno: dict[str, Any], context: Any = None) -> dict[str, str]:
+def task_documentation(anno: dict[str, Any], context: Any = None,
+                       implicit_runs: Any = ()) -> dict[str, str]:
     """{task label: documentation} for the step map: the step's description
     (the analyst's, from the pattern run's step with that label first, else
     any step with it), then one line with its system and screen, in how many
     runs it happened and its average time. `context` is a
-    step_context.StepContext (system, screen, interactions), optional."""
-    from step_context import step_ms
+    step_context.StepContext (system, screen, interactions), optional.
+
+    Contract C16: the average leaves out the steps without a time range,
+    and a label no timed step has says no time; the implicit run of a
+    session without a recording (`implicit_runs`, its case id) was not
+    marked, so the line does not count runs there. A step with no system,
+    no screen, no time and no description gets no documentation."""
     steps = sorted(_run_steps(anno), key=_start_key)
     runs = len({s.get("case_id") for s in steps})
+    implicit = set(implicit_runs or ())
     chosen = anno.get("pattern_run")
     pattern = chosen.get("case_id") if isinstance(chosen, dict) else None
     groups: dict[str, list[dict[str, Any]]] = {}
@@ -196,13 +200,20 @@ def task_documentation(anno: dict[str, Any], context: Any = None) -> dict[str, s
         desc = next((d for d in (_analyst_description(s, context) for s in ordered) if d), "")
         system, screen = context.where(ordered[0]) if context is not None else ("", "")
         n = len({s.get("case_id") for s in group})
-        avg = sum(step_ms(s) for s in group) / len(group)
+        timed = [ms for ms in (step_duration_ms(s) for s in group) if ms is not None]
         where = ", ".join(x for x in (system, screen) if x)
-        facts = (f"In {n} of {runs} run{'' if runs == 1 else 's'}, "
-                 f"{_duration(avg)} on average.")
+        facts = []
+        if not ({s.get("case_id") for s in group} <= implicit):
+            facts.append(f"in {n} of {runs} run{'' if runs == 1 else 's'}")
+        if timed:
+            facts.append(f"{_duration(sum(timed) / len(timed))} on average")
+        said = ", ".join(facts)
+        said = said[:1].upper() + said[1:] + "." if said else ""
         lines = [desc] if desc else []
-        lines.append(f"{where}. {facts}" if where else facts)
-        out[label] = "\n".join(lines)
+        if where or said:
+            lines.append(" ".join(x for x in (f"{where}." if where else "", said) if x))
+        if lines:
+            out[label] = "\n".join(lines)
     return out
 
 
@@ -276,6 +287,7 @@ def write_observed_bpmn(
     noise_threshold: float = 0.2,
     *,
     context: Any = None,
+    implicit_runs: Any = (),
 ) -> bool:
     """Mine the observed step flow into BPMN and write it (with layout).
 
@@ -301,6 +313,11 @@ def write_observed_bpmn(
     (annotations.document, the first line of each), and are unnamed while
     those are empty; each branch is named "N of M runs" (branch_names).
     `context` (a step_context.StepContext) supplies the system and screen.
+    `implicit_runs` holds the case id of a session's implicit run (C16),
+    whose steps the documentation does not count in runs.
+
+    A run's steps are in time order, then the steps without a time by
+    their `order` (C16), both here and in the viewer's map.
     """
     import mining  # local import: PM4Py is only needed when --mine is on
     from pm4py.objects.bpmn.obj import BPMN
@@ -316,7 +333,7 @@ def write_observed_bpmn(
         bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
     trigger = _first_line(_document_field(anno, "trigger"))
     result = _first_line(_document_field(anno, "result"))
-    docs_by_label = task_documentation(anno, context)
+    docs_by_label = task_documentation(anno, context, implicit_runs)
     documentation: dict[int, str] = {}
     for node in bpmn.get_nodes():
         if isinstance(node, BPMN.StartEvent):

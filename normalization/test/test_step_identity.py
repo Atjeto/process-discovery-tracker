@@ -183,3 +183,31 @@ def test_restamp_prefers_the_outermost_run_and_an_open_run_spans_to_the_end():
     restamp_preserved_case_ids([nested, late], cases)
     assert nested["case_id"] == "outer"
     assert late["case_id"] == "open"
+
+
+def test_the_implicit_run_takes_every_step_whose_run_is_gone_timed_or_not():
+    """C16: the implicit run of a video or blank session covers the whole
+    session, so a preserved step with no current run (a null case_id, or a
+    run removed with its markers) joins it, a step without a time too."""
+    from step_suggest import restamp_preserved_case_ids
+    cases = {"imp": {**_run("imp", "2026-05-18T09:00:00Z", None), "implicit": True}}
+    untimed = _step("M1", "manually_authored", [])
+    untimed["case_id"], untimed["time_range"], untimed["order"] = None, None, 1
+    early = _timed("M2", "edited", "a-removed-run",
+                   "2026-05-18T08:00:00Z", "2026-05-18T08:01:00Z")
+    current = _timed("M3", "confirmed", "imp",
+                     "2026-05-18T09:11:00Z", "2026-05-18T09:12:00Z")
+    moved = restamp_preserved_case_ids([untimed, early, current], cases)
+    assert [s["case_id"] for s in (untimed, early, current)] == ["imp", "imp", "imp"]
+    assert moved == 2
+
+
+def test_without_the_implicit_run_a_step_without_a_time_is_in_no_run():
+    """A recording (or a session whose runs were marked by hand) restamps by
+    time, so a step without one belongs to no run."""
+    from step_suggest import restamp_preserved_case_ids
+    cases = {"run-1": _run("run-1", "2026-05-18T09:00:00Z", None)}
+    untimed = _step("M1", "manually_authored", [])
+    untimed["case_id"], untimed["time_range"] = "gone", None
+    restamp_preserved_case_ids([untimed], cases)
+    assert untimed["case_id"] is None

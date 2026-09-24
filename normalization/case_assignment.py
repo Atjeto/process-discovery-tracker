@@ -14,6 +14,13 @@ re-analyzing the same recording yields the same case ids and the analyst's
 confirmed steps stay attached to their run. A synthetic start marker inserted
 through annotations.json marker_edits carries the event id
 `insert-<edit_id>` (marker_edits.py), which is equally stable.
+
+A session without a recording (manifest.source "video" or "blank", contract
+C16) that has no start marker has one implicit run covering the whole
+session (add_implicit_run), so the analyst can add steps at once. Its id is
+`uuid5(CASE_ID_NAMESPACE, "<session_id>:implicit-run")`. Start markers
+inserted by hand replace it, exactly as in a recording. A recording keeps
+the marker rule: no start marker, no runs.
 """
 
 from __future__ import annotations
@@ -33,6 +40,63 @@ CASE_ID_NAMESPACE = uuid.UUID("c35db218-e350-4efb-ae74-37c31a4f697a")
 def marker_case_id(session_id: str, start_event_id: str) -> str:
     """The deterministic case_id of the run opened by one start marker."""
     return str(uuid.uuid5(CASE_ID_NAMESPACE, f"{session_id}:{start_event_id}"))
+
+
+# The fixed name the implicit run's id is derived from (C16). No start
+# marker can carry it: recorded markers have uuid event ids and inserted
+# ones "insert-<edit_id>".
+IMPLICIT_RUN_NAME = "implicit-run"
+
+
+def implicit_case_id(session_id: str) -> str:
+    """The deterministic case_id of a session's implicit run (C16)."""
+    return marker_case_id(session_id, IMPLICIT_RUN_NAME)
+
+
+def needs_implicit_run(events: list[dict[str, Any]], recorded: bool) -> bool:
+    """C16: a session without a recording (manifest.source "video" or
+    "blank", session_io.has_recording) gets an implicit run while its
+    derived stream (the marker edits applied) has no start marker. A
+    recording never does."""
+    if recorded:
+        return False
+    return not any(ev.get("type") == "marker" and _event_data(ev).get("marker_type") == "start"
+                   for ev in events or [])
+
+
+def add_implicit_run(
+    events: list[dict[str, Any]],
+    cases: dict[str, dict[str, Any]],
+    session_id: str,
+    start_ts: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Add the implicit run of a session without a recording (C16): one run
+    covering the whole session, open (no end), starting at `start_ts`
+    (manifest.started_at). Every activity and interaction event is stamped
+    with it, so anything the stream holds is inside the run. The case
+    carries `implicit: True`. Returns (events, cases), both new."""
+    cid = implicit_case_id(session_id)
+    out: list[dict[str, Any]] = []
+    for ev in events:
+        if ev.get("type") in ("activity", "interaction"):
+            new_ev = dict(ev)
+            new_ev["data"] = {**_event_data(ev), "case_ids": [cid]}
+            out.append(new_ev)
+        else:
+            out.append(ev)
+    run: dict[str, Any] = {
+        "case_id": cid,
+        "label": None,
+        "parent_case_id": None,
+        "start_ts": start_ts,
+        "end_ts": None,
+        "end_reason": None,
+        "implicit": True,
+    }
+    activity_ids = [ev["event_id"] for ev in out if ev.get("type") == "activity"]
+    if activity_ids:
+        run["activity_event_ids"] = activity_ids
+    return out, {**cases, cid: run}
 
 
 def _event_data(ev: dict[str, Any]) -> dict[str, Any]:

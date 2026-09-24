@@ -4,7 +4,7 @@ A captured session is a self-contained folder: the integration seam between
 capture, normalization and the viewer (section 2.1 of the design). This file
 is the authoritative format reference;
 [DATA-MODEL.md](../docs/architecture/DATA-MODEL.md) is the working summary.
-Contract numbers (C1 to C13) refer to
+Contract numbers (C1 to C16) refer to
 `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; the decisions
 behind the light version are in [ADR-0029](../docs/adr/0029-ba-helper-refocus.md).
 
@@ -16,6 +16,8 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   manifest.json           # session metadata, status, consent, OBS reference
   config.yaml             # the session's configuration snapshot
   screenshots/            # event-triggered screenshots
+  screenshots/analyst/    # screenshots the analyst added by hand (C16)
+  attachments/            # files the analyst attached (C16)
   obs/sync.json           # tracker to OBS clock offset, when OBS recorded
   session-integrity.json  # file manifest (name and size) written at session end
   capture.log             # the capture app's per-session log
@@ -32,6 +34,13 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
 
 Two small stores live outside any session folder, on the analyst's machine:
 see "Analyst library" below.
+
+**Sessions without a recording (C16).** The viewer can also start a session
+from a video or from nothing (`manifest.source` `"video"` or `"blank"`): a
+new folder with `manifest.json`, an empty `events.jsonl` and
+`annotations.json`. Everything the analyst adds (steps, screenshots, notes,
+attachments) lives in the folder, so it travels with it. The capture files
+(`config.yaml`, `obs/`, `session-integrity.json`, `capture.log`) are absent.
 
 ## events.jsonl envelope
 
@@ -222,6 +231,9 @@ assigns runs and drafts steps, and writes the merged steps back.
   "excluded_ranges": [],
   "memo_selection": [],
   "analysis_overrides": [],
+  "analyst_screenshots": [],
+  "analyst_notes": [],
+  "attachments": [],
   "notes": [],
   "annotations": [],
   "process_exclusions": {},
@@ -248,9 +260,11 @@ file over `annotations.json`.
 
 **`external_video`** *(object or null)*: the attached video,
 `{ path, offset_ms, attached_at }`, written by the viewer when a video is
-attached and synced. `path` is absolute. `offset_ms` places the video on the
-session clock: video time 0 is `manifest.started_at` plus `offset_ms`. When
-the file exists, it wins over the manifest's OBS recording.
+attached and synced. `path` is absolute, or relative to the session folder
+for a video kept in the folder (a video session's, C16). `offset_ms` places
+the video on the session clock: video time 0 is `manifest.started_at` plus
+`offset_ms`. When the file exists, it wins over the manifest's OBS
+recording.
 
 **`pattern_run`** *(object or null; contract C3, viewer-written)*: the run
 the analyst confirms as the reference, and the P1 draft-quality probe
@@ -293,9 +307,69 @@ document-level sections, as fields that survive re-export:
 ```
 
 Plain multi-line strings. The PDD renders each non-empty field in place of
-the matching placeholder (`notes` becomes a final section 7); an empty
-field keeps the export's placeholder text. The pipeline preserves this key
-verbatim.
+the matching placeholder (`notes` becomes section 8, followed only by the
+attachments, C16); an empty field keeps the export's placeholder text. The
+pipeline preserves this key verbatim.
+
+**`analyst_screenshots`** *(array; contract C16, viewer-written)*: the
+screenshots the analyst added by hand (a video frame, a pasted image, a
+file):
+
+```json
+"analyst_screenshots": [
+  { "id": "uuid", "file": "<id>.png", "step_id": "uuid or null",
+    "at": "ISO 8601 or null", "source": "video_frame | paste | file",
+    "added_at": "ISO 8601" }
+]
+```
+
+- The image is copied to `screenshots/analyst/<file>`; `file` is the file
+  name only (`<id>.png` or `<id>.jpg`). The pipeline reads the file as
+  `screenshots/analyst/` plus the last part of `file`, so a name never leaves
+  that folder.
+- `step_id` attaches the screenshot to a step; `at` is the moment it shows
+  (a video frame's time). Either may be null.
+- Removing one deletes its entry and its file. A step's `pdd_screenshot` may
+  name it by `id` (see the step entity).
+- The pipeline never writes this key; re-normalization round-trips it
+  untouched.
+
+**`analyst_notes`** *(array; contract C16, viewer-written)*: notes the
+analyst pins to a step or a moment:
+
+```json
+"analyst_notes": [
+  { "id": "uuid", "text": "Ask Ana about the credit block.",
+    "step_id": "uuid or null", "at": "ISO 8601 or null", "added_at": "ISO 8601" }
+]
+```
+
+A note shows where its step or moment shows (the step pane, the timeline,
+the panel). Notes are context in the viewer: the PDD does not print them
+(the document's own Notes field, `document.notes`, is printed). The key is
+not `notes`: that one holds the product edition's Flow notes (see "Notes and
+marker edits"). Removing a note deletes its entry. The pipeline never writes
+this key and round-trips it untouched.
+
+**`attachments`** *(array; contract C16, viewer-written)*: files the
+analyst attached to the session or to a step (an example email, an input
+spreadsheet, an SOP, a form):
+
+```json
+"attachments": [
+  { "id": "uuid", "file": "order-email.msg", "label": "Example order email",
+    "step_id": "uuid or null", "added_at": "ISO 8601" }
+]
+```
+
+- The file is copied to `attachments/<file>` (a numeric suffix when the name
+  exists); `file` is the file name only.
+- The PDD lists every attachment (label and file name) in a last section,
+  "Attachments", and names a step's attachments by label under that step
+  ("Attachments: Example order email."); an empty label prints the file
+  name. Nothing is embedded.
+- Removing one deletes its entry and its copied file. The pipeline never
+  writes this key and round-trips it untouched.
 
 **`memo_selection`** *(string array)*: the `findings[].id` values the analyst
 picked for the PDD's findings section (section 1; before the refocus this
@@ -342,7 +416,13 @@ key. An absent or empty block reproduces the default output exactly.
 }
 ```
 
-`notes[]` are timestamped notes; the PDD does not print them.
+`notes[]` are the product edition's Flow notes (timestamped, written by
+the v1.5.0 viewer's Notes tab, which the light version cut). Both writers
+still seed the key as an empty list; nothing writes an entry and the PDD
+does not print them; re-normalization round-trips them untouched (C10). The
+notes the analyst pins to a step or a moment are `analyst_notes[]`, a
+different key with a different shape, so an old session's notes and the
+product edition's reader keep working.
 
 `marker_edits[]` supports `field: "label"` (rename a marker), `field:
 "timestamp"` (move it), `op: "delete"` (drop it from the derived stream; the
@@ -505,6 +585,10 @@ undo, so Ctrl+Z reverts a fork, rename, kind, PDD role or delete.
   },
   "description": "string",
   "time_range": { "start": "iso", "end": "iso" },
+  "order": "integer, steps without a time only (C16)",
+  "system": "string, optional: the system the analyst set (C16)",
+  "pdd_screenshot": "string, optional: the screenshot the PDD prints (C16)",
+  "hidden_screenshots": ["screenshots/file.jpg"],
   "evidence": {
     "interaction_event_ids": ["uuid"],
     "screenshot_refs": ["screenshots/file.jpg"],
@@ -519,6 +603,41 @@ undo, so Ctrl+Z reverts a fork, rename, kind, PDD role or delete.
   "phase_id": null
 }
 ```
+
+**What the analyst adds to a step (contract C16).** All four keys are
+viewer-written and optional; re-normalization keeps them on every step it
+preserves. A draft (`auto_suggested`) is drafted again on every analysis, so
+the viewer turns a draft it adds one of them to into `edited`, as every
+other change to a draft does.
+
+- **`time_range`** may be `null` on a step the analyst added
+  (`manually_authored`) without a time: a step of a blank session, or one
+  added without a playhead. Such a step carries **`order`**, a number the
+  viewer sets, unique within its run. The steps of a run are in time order
+  (the start time), then the steps without a time in `order`, then any step
+  with neither, in the list's order. The stats, the differences, the map
+  (`process_map_step.bpmn`), the PDD and the viewer use that one order. A
+  step without a time has no duration: the timed figures (step stats, the
+  step-based analysis, the PDD's times, the map's average time) leave it
+  out, and nothing prints a time for it. A time range the viewer writes is
+  read as measured, so it is written only when the analyst placed the step
+  on the clock.
+- **`system`**: the business system, set by the analyst (for a step added
+  by hand, or to correct a recorded one). It wins over the system derived
+  from the step's interactions (C14) in the PDD (the step's line, the
+  systems of the process, the data table, Applications and time) and in the
+  step map's task documentation; the screen stays derived.
+- **`pdd_screenshot`**: the one screenshot the PDD prints under the step: a
+  recorder screenshot's session-relative path (one of `screenshot_refs`), or
+  the `id` of an entry of `analyst_screenshots`. Absent (or naming a file
+  that is not in the session folder, or a hidden one) means the default:
+  every screenshot of the step, its `screenshot_refs` and then the analyst
+  screenshots whose `step_id` is the step. A path outside the session folder
+  is never embedded.
+- **`hidden_screenshots`**: recorder screenshots (paths as in
+  `screenshot_refs`) taken off the step. They are never printed, and the raw
+  files are never deleted; removing a screenshot the analyst added deletes
+  it instead (`analyst_screenshots`).
 
 `flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)).
 Older files may still carry `conditional`, `exception_path`,
@@ -670,6 +789,7 @@ Entries a reader skips are kept on disk as they are.
 ```json
 {
   "session_id": "uuid",
+  "source": "recorder | video | blank (optional; absent means recorder)",
   "engagement_id": "default",
   "engagement_name": "project name from setup (optional; null until set)",
   "started_at": "ISO 8601",
@@ -700,6 +820,30 @@ Entries a reader skips are kept on disk as they are.
 
 `started_at` is the session clock's reference: an attached video's and a
 transcript's `offset_ms` are relative to it.
+
+`source` (contract C16) says how the session was made. The capture app
+writes none, which means `"recorder"`. The viewer writes `"video"` for a
+session started from a video (`started_at` is the moment the analyst says
+the video starts, by default the file's creation time; `annotations.json`
+gets `external_video` with the path relative to the folder and `offset_ms:
+0`) and `"blank"` for a session started from nothing (`started_at` is the
+creation time). Both have an empty `events.jsonl` and no capture fields
+(`config`, `obs`, `consent` and the rest are absent). The pipeline reads
+them as sessions without a recording:
+
+- **One implicit run.** While the derived stream has no start marker (the
+  marker edits applied), the session has one implicit run covering the
+  whole session: `case_id` `uuid5(<fixed namespace>,
+  "<session_id>:implicit-run")` (C9's namespace), open (no end), starting at
+  `started_at`. It contains every step, one without a time included: a
+  preserved step whose `case_id` is not a current run joins it. A start
+  marker inserted by hand (`marker_edits`) replaces it, exactly as in a
+  recording, and the steps then move to the run that contains their time.
+  A recording keeps the marker rule (no start marker, no runs).
+- **Nothing recorded.** No foreground time was measured: each run's
+  `active_ms` is `null` in `stats.json`, and the analysis stages that
+  measure the recording are `null` in `analysis.json` without a
+  `stage_errors` entry (see analysis.json).
 
 `consent` is the worker-consent record (section 11f), always present. With
 no consent gate configured (`config.consent.mode: "off"`, the default) it is
@@ -910,7 +1054,7 @@ a session without steps too (the step-based blocks are empty there).
   },
   "stage_errors": [],
   "case_quality": {
-    "mode": "markers | unsegmented",
+    "mode": "markers | implicit | unsegmented",
     "case_count": 0,
     "coverage": 0.0,
     "tier2_unlocked": false
@@ -940,11 +1084,14 @@ a session without steps too (the step-based blocks are empty there).
 `findings.py` and `motifs.py`):
 
 - **`case_quality`**: the gate for run-based surfaces. `mode` is `markers`
-  when the session has runs, else `unsegmented`; `coverage` is the fraction
-  of interaction events inside a run; `tier2_unlocked` is `mode !=
-  "unsegmented" AND coverage >= 0.7 AND case_count >= 2` (one run has nothing
-  to compare against). Run-based figures (cycle times, variants, per-run
-  comparison) must not render as established facts while it is false.
+  when the session has runs from markers, `implicit` when its one run is the
+  implicit run of a session without a recording (C16), else `unsegmented`;
+  `coverage` is the fraction of interaction events inside a run (`null` in a
+  session without a recording, which has none to count); `tier2_unlocked`
+  is `mode != "unsegmented" AND coverage >= 0.7 AND case_count >= 2` (one
+  run has nothing to compare against). Run-based figures (cycle times,
+  variants, per-run comparison) must not render as established facts while
+  it is false.
 - **`facts`**: direct measurements over the derived stream, no estimates:
   foreground time, measured idle, top apps by share, switch rate, the
   longest unbroken same-app stretch, values re-keyed across two or more apps
@@ -1006,6 +1153,17 @@ go `null` together), `case_quality`, `motifs` (the repeated-sequence input to
 detectors read all of them and a partial run would under-report. Every
 renderer (Overview, PDD) shows a failed stage as "this check could not run
 on this recording", never as a measured negative.
+
+**Nothing recorded (C16).** A session without a recording
+(`manifest.source` `"video"` or `"blank"`) has nothing for the measurements
+of the recording to measure. There, the step-based block
+(`waste_classification`, `time_study`, `segments`, `automation_candidates`,
+`efficiency`), `facts`, `findings` and `pdd_findings` are `null` **without**
+a `stage_errors` entry, since nothing failed; `case_quality` still counts the
+runs. A renderer tells the two apart by `stage_errors`: `null` with an entry
+is "this check could not run", `null` without one is "nothing was recorded".
+In every session the step-based block leaves out the steps without a time
+range: they have no time to measure.
 
 ## Invariants
 
@@ -1078,7 +1236,7 @@ cross-cutting conventions.
 | Identifiers | Treat every id as opaque. `event_id`, `session_id` and `step_id` are RFC 4122 v4 UUIDs in lowercase hex; a run's `case_id` is a v5 UUID derived from the session and its start marker (C9). A synthetic marker's event id is `insert-<edit_id>`; other ids carry a prefix (`rm_` reference maps, `proc-` saved processes, `t0001` transcript segments). |
 | Timestamps | ISO 8601 with millisecond precision and a timezone (`...Z` for UTC). Always emit UTC; comparing across sessions needs no timezone work. |
 | Encoding | Text files are UTF-8 without a byte order mark. `events.jsonl` uses LF line endings, even on Windows. |
-| Paths inside session artifacts | Relative to the session folder, forward slashes (`screenshots/foo.jpg`). The one exception is `external_video.path`, which is absolute. |
+| Paths inside session artifacts | Relative to the session folder, forward slashes (`screenshots/foo.jpg`). `external_video.path` may be absolute. The `file` of an `analyst_screenshots` or `attachments` entry is a file name inside `screenshots/analyst/` or `attachments/` (C16). |
 | Numeric durations | Milliseconds (`duration_ms`, `total_ms`) unless the field name says `_s` for seconds (`video_offset_s`, `start_s`). |
 
 ## Activity events: what `duration_ms` measures
@@ -1108,7 +1266,9 @@ events with the same `(app, title, label, case_ids)`. The collapsed event's
 
 A **run** is one pass through the process, bracketed by markers. Case
 detection is markers only: anchor-based detection is gone (ADR-0029), and a
-session with no markers has no runs.
+recording with no markers has no runs. A session without a recording (a
+video or blank session, C16) with no start marker has one implicit run
+covering the whole session instead (see manifest.json `source`).
 
 - A `start` marker opens a run. **Runs never nest.** A `start` that arrives
   while a run is open ends that run first. The capture app's run hotkey
@@ -1185,10 +1345,10 @@ field") instead of the signature's default.
 | Top-level key | Shape | What it is for |
 |---|---|---|
 | `activity_stats` | `[{ activity_label, frequency, frequency_pct, total_duration_ms, mean_ms, median_ms, p90_ms, p99_ms }]` | Per-activity roll-ups across the session. |
-| `case_stats` | `[{ case_id, label, parent_case_id, start_ts, end_ts, wall_clock_ms, active_ms, end_reason }]` | One row per run, in start order. `parent_case_id` is always `null` now. `active_ms` is foreground time inside the run minus the idle time the recorder measured (RP-07). `end_reason` is the end marker's `reason`, `auto_close_for_sibling` when the next start ended the run, or `null`. The viewer's runs come from here. |
+| `case_stats` | `[{ case_id, label, parent_case_id, start_ts, end_ts, wall_clock_ms, active_ms, end_reason, implicit? }]` | One row per run, in start order. `parent_case_id` is always `null` now. `active_ms` is foreground time inside the run minus the idle time the recorder measured (RP-07); `null` in a session without a recording (C16). `end_reason` is the end marker's `reason`, `auto_close_for_sibling` when the next start ended the run, or `null`. `implicit: true` marks the implicit run of a session without a recording (C16; the key is absent on every other row): its `label`, `end_ts`, `wall_clock_ms` and `end_reason` are `null`. The viewer's runs come from here. |
 | `trace_variants` | `[{ variant: ["A", "B", "C"], frequency, length }]` | Distinct activity sequences per run, most frequent first. |
-| `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct step sequences per run, each element the value-free `process_label` ([ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)). Built from the visible steps; empty until the session has steps. |
-| `step_stats` | `[{ step_name, frequency, frequency_pct, total_duration_ms, mean_ms, median_ms, p90_ms, p99_ms }]` | Per-step duration distribution, keyed on `process_label`, so a step seen in N runs is one row with `frequency = N`. Visible steps only. |
+| `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct step sequences per run, each element the value-free `process_label` ([ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)), in the run's step order (time, then `order`, C16). Built from the visible steps; empty until the session has steps. |
+| `step_stats` | `[{ step_name, frequency, frequency_pct, total_duration_ms, mean_ms, median_ms, p90_ms, p99_ms }]` | Per-step duration distribution, keyed on `process_label`, so a step seen in N runs is one row with `frequency = N`. Visible steps with a time range only (a step without one is left out, C16). |
 | `app_outliers` | `[{ app, case_count, case_pct }]` | Apps that appear in fewer than 5% of runs. |
 | `rework_loops` | `[{ activity_label, rework_count }]` | Activities revisited within a single run. |
 | `screenshot_hashes` | `[{ filename, hash }]` | A 64-bit average hash (16 hex characters) per screenshot. The viewer's screenshot gallery uses it to collapse runs of near-identical frames. Empty when Pillow is unavailable. |
