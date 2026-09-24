@@ -328,15 +328,15 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       same(obs.titles, ["Data typed twice", "Where the time goes"]) && obs.closed === 2 &&
       obs.takeaways.every((t) => t.length > 0)),
     JSON.stringify(obs && { title: obs.title, modules: obs.modules, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
-  record("(c) Data typed twice says the field pair: Product code in Google Chrome (browser) typed again as Material number in SAP GUI",
+  record("(c) Data typed twice says the field pair: Product code in Google Chrome typed again as Material number in SAP (the app names of lane LUX-P)",
     !!(obs && Array.isArray(obs.retyped) &&
-      obs.retyped[0] === "Product code in Google Chrome (browser) typed again as Material number in SAP GUI"),
+      obs.retyped[0] === "Product code in Google Chrome typed again as Material number in SAP"),
     JSON.stringify(obs && obs.retyped));
   record("(c) Where the time goes: per step and per application, each with its time per run and in N of 4 runs (the Notepad lookup in 1 of 4)",
     !!(stepsTable && appsTable && same(stepsTable.head, ["Step", "Per run", "Runs"]) &&
       same(appsTable.head, ["Application", "Per run", "Runs"]) && stepsTable.rows.length >= 5 &&
       stepsTable.rows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
-      appsTable.rows.some((r) => r[0] === "SAP GUI" && r[2] === "in 4 of 4 runs") &&
+      appsTable.rows.some((r) => r[0] === "SAP" && r[2] === "in 4 of 4 runs") &&
       appsTable.rows.some((r) => r[0] === "Notepad" && r[2] === "in 1 of 4 runs")),
     JSON.stringify(obs && obs.tables));
 

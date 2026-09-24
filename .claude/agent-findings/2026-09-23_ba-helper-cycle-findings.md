@@ -124,6 +124,14 @@ the user cannot perform on each object (create, add, edit, remove, attach, link)
 before any analysis layer; propose no verification, detection or lifecycle
 feature the owner did not ask for.
 
+### BH11: a fourth spend-limit kill, both lanes again (environment, V1 + C)
+Around 00:30 both running lanes died with HTTP 429 ("resets 2:20am"). The tree
+check (parse every touched JS file, reading `git status` codes so a deletion or a
+staged rename is not mistaken for a parse failure) found V1 consistent (33 files,
+one deliberate deletion, one git mv rename) and C untouched. Both resumed with
+their inventories. RULE (refines BH9): classify status codes (M, D, R, ??) before
+parse-checking; a D or the old side of an R is not a broken file.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
