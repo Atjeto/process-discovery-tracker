@@ -71,6 +71,19 @@ async function diagnose() {
       cpu: app.getAppMetrics().map((m) => m.type + " " + Math.round(m.cpu.percentCPUUsage) + "%") };
   }), 10000);
   console.log("[panel-e2e] viewer: " + JSON.stringify(info));
+  const wins = await within(live.v.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => ({
+    title: w.getTitle(), visible: w.isVisible(), focused: w.isFocused(), minimized: w.isMinimized(), bounds: w.getBounds(),
+    loading: w.webContents.isLoading(), waiting: w.webContents.isWaitingForResponse(), pid: w.webContents.getOSProcessId() }))), 10000);
+  console.log("[panel-e2e] windows: " + JSON.stringify(wins));
+  if (process.platform === "win32") {
+    // The desktop at the stall (CI uploads it) and the windows on it.
+    const shot = path.join(process.env.PDT_E2E_STALL_DIR || os.tmpdir(), "pdt-stall-desktop.png");
+    const ps = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; " +
+      "$i=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($i); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); " +
+      "$i.Save('" + shot + "'); Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { $_.ProcessName + ': ' + $_.MainWindowTitle }";
+    try { console.log("[panel-e2e] desktop windows:" + String.fromCharCode(10) + execFileSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf-8", timeout: 20000 }).trim()); }
+    catch (e) { console.log("[panel-e2e] no desktop view: " + String(e.message).split(String.fromCharCode(10))[0]); }
+  }
   const cdp = live.cdp;
   if (!cdp) throw new Error("no debugger session");
   const paused = new Promise((r) => cdp.once("Debugger.paused", r));
@@ -284,8 +297,9 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   const CHECK = "va01: Check document";
   let twice = {};
   try {
-    at("(g2) tap the map box");
+    at("(g2) tap the map box (the evaluate)");
     await page.evaluate((id) => document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"), CHECK);
+    at("(g2) tap the map box (the name shows)");
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, CHECK, { timeout: T });
     at("(g2) read the panel");
     twice.st = await panelState(page);
