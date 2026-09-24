@@ -556,8 +556,8 @@ no separate image file per map (the owner's remark about images described today'
 - **Where it shows (viewer).** Steps and Map share one current level (`State.mapPath`, a path of
   nodes, `[]` the main map).
   - *Steps*: inside a sub-process a breadcrumb names the way down (the main map by the process
-    name the document gives, else "Main process"; each crumb goes up). A sub-process row reads
-    "▸ N sub-steps" and opens on double-click or Open. Inside, the list has one block per visit
+    name the document gives, else "Main process"; each crumb goes up). A sub-process row carries a
+    "▸ N sub-steps" button that opens its level (a double-click keeps renaming, as on every row). Inside, the list has one block per visit
     ("Transaction 2", "Transaction 2, again"), the reference transaction's block marked as at the
     main level, with the same row facts (steps, time, differences against the reference visit).
     The step pane is the same at every level; Go to lists the visit's steps plus End.
