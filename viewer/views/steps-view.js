@@ -333,11 +333,34 @@ function _reference(pattern) {
   return { kind: "pattern", steps: pattern.run.visible, noun: RunDiff.REFERENCE_RUN, caseId: pattern.run.caseId };
 }
 
-/* A run's differences from the reference (item 3), or null for the pattern
-   run itself and without a reference. */
+/* The stretches of `run` left out of the analysis (annotations.excluded_ranges
+   cut to the run's span; run-differences.js leftOutStretches). */
+function _leftOut(run) {
+  const sess = State.getSession();
+  const ranges = (sess && sess.annotations && sess.annotations.excluded_ranges) || [];
+  return RunDiff.leftOutStretches(ranges, { startMs: run.startMs, endMs: run.endMs });
+}
+
+/* A run's differences from the reference (item 3), the one line on its
+   stretches left out of the analysis first; null without a reference. The
+   pattern run itself lists only that line (null when it has no stretch left
+   out): it is compared with nothing. */
 function _runDiffs(ref, run) {
-  if (!ref || (ref.kind === "pattern" && run.caseId === ref.caseId)) return null;
-  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT });
+  if (!ref) return null;
+  const leftOut = _leftOut(run);
+  const originMs = recordingStartMs(State.getSession());
+  if (ref.kind === "pattern" && run.caseId === ref.caseId) {
+    return leftOut.length ? [{ kind: "left_out", text: RunDiff.leftOutText(leftOut, originMs, RunDiff.RUN_UNIT) }] : null;
+  }
+  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT, leftOut, originMs });
+}
+
+/* A run's meta, its differences counted (not the left-out line), for a run
+   compared with the reference. */
+function _diffMeta(diffs, compared) {
+  if (!diffs || !compared) return "";
+  const n = RunDiff.differenceCount(diffs);
+  return " · " + (n ? _plural(n, "difference", "differences") : "no differences");
 }
 
 /* ===== The Steps level ================================================== */
@@ -843,7 +866,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   // (no count on the reference run the others are compared with).
   const diffs = _runDiffs(ref, run);
   const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "") +
-    (diffs ? " · " + (diffs.length ? _plural(diffs.length, "difference", "differences") : "no differences") : "");
+    _diffMeta(diffs, !isPattern);
   // AD-28: only the reference run is confirmed, so only it carries a status,
   // read from its confirmation (C3); the other runs are reviewed by opening
   // them. P3.8: "Use as reference run" is a once-a-session choice, so it
@@ -899,7 +922,8 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   if (diffs && diffs.length) {
     const list = document.createElement("ul");
     list.className = "run-diffs";
-    list.title = "How this transaction differs from the reference transaction";
+    list.title = isPattern ? "The part of this transaction left out of the analysis: the Timeline shows it"
+      : "How this transaction differs from the reference transaction";
     for (const d of diffs) {
       const li = document.createElement("li");
       li.dataset.kind = d.kind;
@@ -997,8 +1021,8 @@ function renderRunGuide(host, model, pattern, ref) {
     const firstStep = !!(run && !run.members.length && (!pattern.run || isPattern));
     paras = firstStep ? [GUIDE_FIRST_STEP]
       : isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
-    const diffs = run && !firstStep ? _runDiffs(ref, run) : null;
-    if (diffs && !diffs.length) {
+    const diffs = run && !firstStep && !isPattern ? _runDiffs(ref, run) : null;
+    if (diffs && !RunDiff.differenceCount(diffs)) {
       paras.unshift("It has no differences from " + RunDiff.REFERENCE_RUN + ".");
     }
   } else {
@@ -1009,8 +1033,7 @@ function renderRunGuide(host, model, pattern, ref) {
     "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
 }
 
-/* The readable name of an application token: RunsModel.readableApp (shared
-   with the Overview's Where the time goes). */
+/* The readable name of an application token: RunsModel.readableApp. */
 const readableApp = RunsModel.readableApp;
 
 function _appNames() {

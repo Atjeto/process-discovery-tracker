@@ -1,37 +1,33 @@
 /*
- * analysis-view.js: the Overview's Observations (step-back review 4.4). Two
- * items, each a collapsible module whose one-line takeaway shows while it is
- * closed (closed by default; the analyst's choice persists per item under
- * the pdt.analysis.* keys):
+ * analysis-view.js: the Overview's Observations (step-back review 4.4), one
+ * source with the PDD (lane CC). Two items, each a collapsible module whose
+ * one-line takeaway shows while it is closed (closed by default; the
+ * analyst's choice persists per item under the pdt.analysis.* keys):
  *
- *   Data typed twice: the re-keyed data, said per field where the recording
- *     says which field a value went into ("Product code in Salesforce typed
- *     again as Material number in SAP"), each place named by its system (the
- *     one vocabulary, C14). Read from the
- *     pipeline's re-typed values finding and the events it names; when the
- *     events do not name the fields, the finding's own sentence stands.
- *   Where the time goes: per step, its average time in the runs that have
- *     it ("Average time") and in how many of them it happened ("Happened in",
- *     "4 of 4 transactions": a run is a transaction to the reader, AD-29);
- *     then the same per system (C14), where the automation
- *     candidates fold in (the time each system takes in a run). Computed from
- *     the runs' visible steps as they are now, grouped the way the map groups
- *     them (process-map-levels.mapNodeLabel), so a rename shows at once.
+ *   Data: the PDD's section 5 as it prints it: every field entered, with its
+ *     system and screen, its step, an example value and how it is re-keyed,
+ *     then the Re-keyed data (a value typed in one system and again in
+ *     another in the same transaction).
+ *   Applications and time: the PDD's section 6: the Time per transaction
+ *     (each transaction's steps, active and elapsed time, and the line on
+ *     the walkthrough) and the Time in each application (each system's
+ *     screens, steps and time per transaction, the most time first).
  *
- * Nothing here chooses what the PDD prints: each item has its own place in
- * the document (the re-keyed data with the data, the times with the steps and
- * the applications). No dot strip, no total over the runs, no judgment
- * editor: the business-required split was cut with the findings ticks.
+ * Both are the rows the pipeline wrote into analysis.json (`pdd_data`,
+ * `pdd_time`; normalization/pdd_export.py data_section and time_section,
+ * the functions the PDD prints the sections with): nothing is measured
+ * here, so the Overview and the PDD read one fact in the same words, pinned
+ * by shared/pdd-rows-golden.json. A failed stage is said (C12), never shown
+ * as zero; an analysis from before the rows (format 2) is analyzed again as
+ * the project opens (normalize-result.js analysisNeed).
  */
 
 "use strict";
 
 const { escapeHtml, escapeAttr } = require("../dom.js");
-const RunsModel = require("../runs-model.js");
-const { mapNodeLabel } = require("../process-map-levels.js");
-const SystemNames = require("../system-names.js");
 
 const STAGE_NOT_RUN = "This check could not run on this recording";
+const NOT_YET = "Not measured in this project's analysis yet: the project is analyzed again as it opens.";
 
 /* ---- Collapsible modules ------------------------------------------------- */
 
@@ -59,191 +55,93 @@ function _moduleShell(key, mod) {
   "</details>";
 }
 
-/* ---- Data typed twice ------------------------------------------------------ */
+/* ---- The PDD's rows ----------------------------------------------------------- */
 
-function _appKey(app) {
-  const k = String(app || "").trim().toLowerCase();
-  return k.endsWith(".exe") ? k.slice(0, -4) : k;
+/* Where a block stands: "ok" (its rows are there), "not-run" (its stage
+   failed, C12), "not-yet" (an analysis from before the rows). */
+function _rowsStatus(analysis, key) {
+  const v = analysis ? analysis[key] : undefined;
+  if (v && typeof v === "object") return "ok";
+  if (v === null) return "not-run";
+  return "not-yet";
 }
 
-function _fieldName(data) {
-  const n = typeof data.name === "string" ? data.name.trim() : "";
-  if (n) return n;
-  return typeof data.automation_id === "string" ? data.automation_id.trim() : "";
+/* One of the PDD's tables as it prints it: `header` and `rows` (every cell
+   the text printed). `num`: the columns that hold a number or a time, set
+   right in the mono type. */
+function rowsTableHtml(header, rows, num) {
+  const right = new Set(num || []);
+  const cell = (tag, text, i) => "<" + tag + (right.has(i) ? ' class="num"' : "") + ">" + escapeHtml(String(text == null ? "" : text)) + "</" + tag + ">";
+  return '<table class="ov-rows">' +
+    "<thead><tr>" + (header || []).map((h, i) => cell("th", h, i)).join("") + "</tr></thead>" +
+    "<tbody>" + (rows || []).map((r) => "<tr>" + r.map((c, i) => cell("td", c, i)).join("") + "</tr>").join("") + "</tbody>" +
+    "</table>";
 }
 
-/* The re-keyed data as lines, per field where the events allow. Returns
-   { status, lines }: status "not-run" when the findings stage failed (C12:
-   null with a stage_errors entry, said, never read as "none"), "nothing"
-   when there was nothing to check (C16: null without an entry, a session
-   without a recording), "none" when nothing was typed twice, else "ok".
-   Pure. */
-function retypedLines(analysis, events, appNames) {
-  const findings = analysis ? analysis.findings : undefined;
-  if (findings === null) {
-    const failed = (Array.isArray(analysis.stage_errors) ? analysis.stage_errors : []).some((e) => e && e.stage === "findings");
-    return { status: failed ? "not-run" : "nothing", lines: [] };
-  }
-  const f = (Array.isArray(findings) ? findings : []).find((x) => x && x.detector === "rekey_transfer");
-  if (!f) return { status: "none", lines: [] };
-  const values = Array.isArray((f.evidence || {}).values) ? f.evidence.values : [];
-  const lines = [];
-  for (const v of values) {
-    if (!v || typeof v.value !== "string") continue;
-    const apps = new Set((v.apps || []).map(_appKey));
-    const entries = (Array.isArray(events) ? events : [])
-      .filter((e) => e && e.type === "interaction" && e.data && e.data.value === v.value &&
-        apps.has(_appKey(e.data.process_name)))
-      .sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
-    // Each place the value went into, in the order it was typed there.
-    const places = [];
-    for (const e of entries) {
-      const field = _fieldName(e.data);
-      const name = SystemNames.systemName(e.data.process_name, e.data.window_title, appNames) || String(e.data.process_name || "");
-      const where = name.toLowerCase();
-      if (!places.some((p) => p.field === field && p.where === where)) places.push({ field, where, name });
-    }
-    const first = places[0];
-    for (const p of places.slice(1)) {
-      if (!first || p.where === first.where) continue;
-      const line = first.field && p.field
-        ? first.field + " in " + first.name + " typed again as " + p.field + " in " + p.name
-        : "A value typed in " + first.name + " typed again in " + p.name;
-      if (!lines.includes(line)) lines.push(line);
-    }
-  }
-  // The events did not name the places: the finding's own sentence stands.
-  if (!lines.length && typeof f.claim === "string" && f.claim.trim()) lines.push(f.claim.trim());
-  return { status: lines.length ? "ok" : "none", lines };
+const _note = (text) => '<p class="analysis-note ov-rows-note">' + escapeHtml(text) + "</p>";
+const _subtitle = (text) => '<div class="ov-rows-title">' + escapeHtml(text) + "</div>";
+
+function _notRun(title, what) {
+  return { title, takeaway: STAGE_NOT_RUN,
+    body: '<p class="analysis-note ov-stage-not-run">' + escapeHtml(STAGE_NOT_RUN + ", so " + what + ".") + "</p>" };
 }
 
-function _retypedItem(sess) {
-  const appNames = (sess.stats && sess.stats.meta && sess.stats.meta.app_names) || {};
-  const r = retypedLines(sess.analysis, sess.events, appNames);
-  if (r.status === "not-run") {
-    return { title: "Data typed twice", takeaway: STAGE_NOT_RUN,
-      body: '<p class="analysis-note ov-stage-not-run">' + escapeHtml(STAGE_NOT_RUN +
-        ", so it cannot say whether data was typed twice.") + "</p>" };
-  }
-  if (r.status === "nothing") {
-    return { title: "Data typed twice", takeaway: "Nothing recorded",
-      body: '<p class="analysis-note">Nothing was recorded in this project, so there is no typed data to compare.</p>' };
-  }
-  if (r.status === "none") {
-    return { title: "Data typed twice", takeaway: "None seen in this recording",
-      body: '<p class="analysis-note">No value was typed into more than one application in this recording.</p>' };
-  }
+/* Section 5, Data: the table of the fields entered, then the Re-keyed data. */
+function dataItem(analysis) {
+  const title = "Data";
+  const status = _rowsStatus(analysis, "pdd_data");
+  if (status === "not-run") return _notRun(title, "the fields entered are not listed");
+  if (status === "not-yet") return { title, takeaway: "Not measured yet", body: _note(NOT_YET) };
+  const d = analysis.pdd_data;
+  if (d.note) return { title: d.heading || title, takeaway: d.note, body: _note(d.note) };
+  const rows = Array.isArray(d.rows) ? d.rows : [];
+  const rekeyed = Array.isArray(d.rekeyed) ? d.rekeyed : [];
+  const takeaway = rekeyed.length
+    ? rekeyed[0] + (rekeyed.length > 1 ? " (+" + (rekeyed.length - 1) + " more)" : "")
+    : rows.length + (rows.length === 1 ? " field" : " fields") + " entered, none re-keyed";
   return {
-    title: "Data typed twice",
-    takeaway: r.lines[0] + (r.lines.length > 1 ? " (+" + (r.lines.length - 1) + " more)" : ""),
-    body: '<ul class="ov-retyped">' + r.lines.map((l) => "<li>" + escapeHtml(l) + "</li>").join("") + "</ul>",
+    title: d.heading || title,
+    takeaway,
+    body: rowsTableHtml(d.header, rows) +
+      (rekeyed.length ? _subtitle("Re-keyed data") +
+        '<ul class="ov-rekeyed">' + rekeyed.map((l) => "<li>" + escapeHtml(l) + "</li>").join("") + "</ul>" : ""),
   };
 }
 
-/* ---- Where the time goes ----------------------------------------------------- */
-
-function _stepMs(st) {
-  const tr = (st && st.time_range) || {};
-  const a = Date.parse(tr.start || ""), b = Date.parse(tr.end || "");
-  return (Number.isFinite(a) && Number.isFinite(b) && b > a) ? b - a : 0;
-}
-
-/* Per step (the map's grouping) and per system (C14): the time in each run
-   that has it, averaged over those runs, and how many runs they are. A step
-   without a time range has no time (C16) and is left out, and so are rows
-   with no measured time; the most time first. Pure.
-   `interactionsById` (optional) names a step's system from its own
-   interactions, else from its grain keys.
-   Returns { runCount, steps: [row], apps: [row] }, row = { label, avgMs,
-   runs, totalMs }. */
-function timePerStep(stats, steps, appNames, interactionsById) {
-  const runs = RunsModel.buildRuns(stats, steps).runs;
-  const byStep = new Map(), byApp = new Map();
-  const add = (map, key, ms) => {
-    const cur = map.get(key) || { total: 0, runs: 0 };
-    cur.total += ms;
-    cur.runs += 1;
-    map.set(key, cur);
-  };
-  for (const r of runs) {
-    const stepMs = new Map(), appMs = new Map();
-    for (const st of r.visible) {
-      if (!Number.isFinite(Date.parse((st.time_range || {}).start))) continue;
-      const ms = _stepMs(st);
-      const label = mapNodeLabel(st);
-      stepMs.set(label, (stepMs.get(label) || 0) + ms);
-      const system = SystemNames.whereOfStep(st, interactionsById || {}, appNames).system;
-      if (system) appMs.set(system, (appMs.get(system) || 0) + ms);
-    }
-    for (const [k, ms] of stepMs) add(byStep, k, ms);
-    for (const [k, ms] of appMs) add(byApp, k, ms);
-  }
-  const rows = (map, name) => [...map.entries()]
-    .map(([k, v]) => ({ label: name(k), totalMs: v.total, runs: v.runs, avgMs: Math.round(v.total / v.runs) }))
-    .filter((row) => row.totalMs > 0)
-    .sort((a, b) => (b.totalMs - a.totalMs) || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+/* Section 6, Applications and time: the time per transaction, then the time
+   in each application. */
+function timeItem(analysis) {
+  const title = "Applications and time";
+  const status = _rowsStatus(analysis, "pdd_time");
+  if (status === "not-run") return _notRun(title, "the times are not measured");
+  if (status === "not-yet") return { title, takeaway: "Not measured yet", body: _note(NOT_YET) };
+  const t = analysis.pdd_time;
+  const tx = t.per_transaction || {};
+  const app = t.per_application || {};
+  const appRows = Array.isArray(app.rows) ? app.rows : [];
+  const timed = Array.isArray(app.header) && app.header.length === 4;
+  let takeaway;
+  if (app.note) takeaway = app.note;
+  else if (timed && appRows.length) {
+    takeaway = "Most time in " + appRows[0][0] + ": " + appRows[0][3] +
+      (app.header[3] === "Time per transaction" ? " per transaction" : "");
+  } else takeaway = appRows.length + (appRows.length === 1 ? " system" : " systems") + ", no time measured";
+  const txBody = tx.note ? _note(tx.note)
+    : rowsTableHtml(tx.header, tx.rows, [1, 2, 3]) + (tx.after ? '<p class="ov-rows-after">' + escapeHtml(tx.after) + "</p>" : "");
+  const appBody = app.note ? _note(app.note) : rowsTableHtml(app.header, appRows, timed ? [3] : []);
   return {
-    runCount: runs.length,
-    steps: rows(byStep, (k) => k),
-    apps: rows(byApp, (k) => k),
-  };
-}
-
-/* An average time as the tables say it (AD-29): "10 s", "1 min 5 s",
-   "1 h 4 min"; "under 1 s" below half a second. "" when unknown. */
-function averageTime(ms) {
-  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "";
-  if (ms < 500) return "under 1 s";
-  const secs = Math.round(ms / 1000);
-  if (secs < 60) return secs + " s";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return mins + " min" + (secs % 60 ? " " + (secs % 60) + " s" : "");
-  const hours = Math.floor(mins / 60);
-  return hours + " h" + (mins % 60 ? " " + (mins % 60) + " min" : "");
-}
-
-/* "4 of 4 transactions": in how many transactions a row happened. */
-function happenedIn(n, runCount) {
-  return n + " of " + runCount + " transaction" + (runCount === 1 ? "" : "s");
-}
-
-function _timeTable(caption, rows, runCount) {
-  return '<table class="ov-time">' +
-    "<thead><tr><th>" + escapeHtml(caption) + '</th><th class="num">Average time</th><th>Happened in</th></tr></thead><tbody>' +
-    rows.map((row) => "<tr>" +
-      '<td class="ov-time-name" title="' + escapeAttr(row.label) + '">' + escapeHtml(row.label) + "</td>" +
-      '<td class="num">' + escapeHtml(averageTime(row.avgMs)) + "</td>" +
-      "<td>" + escapeHtml(happenedIn(row.runs, runCount)) + "</td></tr>").join("") +
-    "</tbody></table>";
-}
-
-function _timeItem(sess) {
-  const appNames = (sess.stats && sess.stats.meta && sess.stats.meta.app_names) || {};
-  const inter = {};
-  for (const ev of sess.events || []) if (ev && ev.type === "interaction" && ev.event_id) inter[ev.event_id] = ev;
-  const t = timePerStep(sess.stats, (sess.annotations || {}).steps || [], appNames, inter);
-  if (!t.runCount) {
-    return { title: "Where the time goes", takeaway: "No transactions are marked yet",
-      body: '<p class="analysis-note">The time per step is measured in the transactions; mark the transactions first.</p>' };
-  }
-  if (!t.steps.length) {
-    return { title: "Where the time goes", takeaway: "No step has a measured time yet",
-      body: '<p class="analysis-note">The transactions have no steps with a measured time.</p>' };
-  }
-  const top = t.steps[0];
-  return {
-    title: "Where the time goes",
-    // A step's name can hold a colon, so the time goes in parentheses.
-    takeaway: "Most time in " + top.label + " (" + averageTime(top.avgMs) + " on average)",
-    body: _timeTable("Step", t.steps, t.runCount) +
-      (t.apps.length ? _timeTable("System", t.apps, t.runCount) : ""),
+    title: t.heading || title,
+    takeaway,
+    body: _subtitle(tx.heading || "Time per transaction") + txBody +
+      _subtitle(app.heading || "Time in each application") + appBody,
   };
 }
 
 /* ---- The block ------------------------------------------------------------- */
 
-/* Who fills the Observations, beside their title (AD-29): nobody types them. */
-const OBSERVATIONS_WHO = "Measured from the recording";
+/* Who fills the Observations, beside their title (AD-29): nobody types them,
+   and the PDD prints the same rows. */
+const OBSERVATIONS_WHO = "Measured from the recording. The PDD prints them in sections 5 and 6.";
 
 /* The Observations block of the Overview for one session. Pure (no DOM, no
    State): the unit tests render fixture sessions through it. */
@@ -252,8 +150,8 @@ function observationsHtml(sess) {
   return '<section class="ov-section ov-observations" id="ov-observations">' +
     '<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
       '<div class="ov-block-who">' + escapeHtml(OBSERVATIONS_WHO) + "</div></div>" +
-    _moduleShell("retyped", _retypedItem(sess)) +
-    _moduleShell("time", _timeItem(sess)) +
+    _moduleShell("data", dataItem(sess.analysis)) +
+    _moduleShell("time", timeItem(sess.analysis)) +
     "</section>";
 }
 
@@ -265,4 +163,4 @@ function wireObservations(host) {
   });
 }
 
-module.exports = { observationsHtml, wireObservations, retypedLines, timePerStep, averageTime, happenedIn };
+module.exports = { observationsHtml, wireObservations, dataItem, timeItem, rowsTableHtml, OBSERVATIONS_WHO };

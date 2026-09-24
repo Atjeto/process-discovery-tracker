@@ -66,8 +66,10 @@ The Python pipeline the viewer runs by itself; see
   hand wins.
 - **Statistics and observations.** Times per run and per step, the variants
   of the runs, the data typed again in another system, and how much of each
-  application the recorder could see. A check that could not run says so,
-  never shows zero.
+  application the recorder could see; the rows the PDD prints in its
+  sections 5 and 6, written into `analysis.json` for the viewer's Overview.
+  A stretch the analyst left out of the analysis is left out of all of them.
+  A check that could not run says so, never shows zero.
 - **The step map.** A BPMN 2.0 file of the transactions' steps
   (`process_map_step.bpmn`) that prints legibly: left to right, wrapped into
   rows, each task carrying its description, system and transaction count,
@@ -86,7 +88,9 @@ The Python pipeline the viewer runs by itself; see
   time, "in N of M transactions", "Transaction 1 at 0:19", "Only when" its
   condition, its description, the fields it entered, its screenshots and
   attachments, a waste flag, and where the process goes after it besides
-  the next step); variations, business rules and exceptions; one data
+  the next step); variations (a transaction with a stretch left out of the
+  analysis says so, and the steps done in it are not read as skipped),
+  business rules and exceptions; one data
   table; applications and time; improvement and automation scope with the
   To-Be map; notes; attachments. The analyst's fields survive every
   re-export; an empty field leaves a visible gap.
@@ -119,8 +123,9 @@ The viewer says *transaction* for one pass through the process and
   document, export the PDD), each ticked once done and explained in its
   tooltip, with one button for the next act.
 - **The project line**: who recorded it, its transactions, the reference
-  transaction's steps, the video and the transcript with Attach, and a
-  warning only when one is needed.
+  transaction's steps, the video and the transcript with Attach, Replace
+  and Remove (each taken out with its files in the folder, and back with
+  Ctrl+Z), and a warning only when one is needed.
 - **The document** ("You write these. The PDD prints them."): ten fields
   that print in their own places in the PDD (title, purpose, scope,
   trigger, result, contacts, business rules, exceptions, improvement and
@@ -129,9 +134,14 @@ The viewer says *transaction* for one pass through the process and
   With it, the project's attachments and the transcript's sentences with
   *Add to* a field; a sentence said before the recording started reads
   "0:28 before".
-- **Observations** ("Measured from the recording"): data typed twice, per
-  field; where the time goes, per step and per system, with the Average
-  time and in how many transactions it happened.
+- **Observations** ("Measured from the recording. The PDD prints them in
+  sections 5 and 6."): *Data*, every field entered with its system, its
+  step and an example value, and the *Re-keyed data* (a value typed again
+  in another system); *Applications and time*, the time of each
+  transaction and each system's screens, steps and time per transaction.
+  They are the PDD's own rows, from the same analysis, so the two say one
+  fact in the same words; they are measured again with each analysis and
+  each PDD export.
 
 **Timeline**
 
@@ -141,11 +151,18 @@ The viewer says *transaction* for one pass through the process and
   its left (a key that looks like its marks, its name, a tooltip saying
   what it shows). A video project's timeline runs on its video.
 - **The video beside it**, attached and synced with two clicks and copied
-  into the folder so it travels with it; a small playback bar.
+  into the folder so it travels with it; *Remove video* takes it out with
+  its copy, *Replace* takes out the copy it replaces, and Ctrl+Z brings
+  either back; a small playback bar.
 - **Transaction repair**: *Start a transaction here* and *End the
   transaction here* from a right-click; move, rename and delete markers,
   shown at once as pending until *Apply marker changes*; insert a
-  transaction from a selected range, or exclude a range from the analysis.
+  transaction from a selected range.
+- **Leave out of the analysis**: a selected stretch (a break, a detour)
+  drafts no step and counts no time. The timeline shows it hatched, and a
+  click on it offers *Include again*; Ctrl+Z undoes either. A transaction
+  with a stretch left out says so, in Steps and in the PDD, and the steps
+  done in it are not read as skipped.
 - **Notes at a moment**, and the screenshots in a side panel and a gallery.
 
 **Steps**
@@ -209,7 +226,11 @@ The viewer says *transaction* for one pass through the process and
   copy), kept once something is changed in it: leaving the editor without a
   change keeps nothing. An analysis never changes a copy; a copy made before
   the step map had its colours, notes and attachments offers *Copy again*
-  for them.
+  for them. *Delete* takes a copy out with its file, and Ctrl+Z brings both
+  back.
+- **Boxes moved by hand**: on how the transactions ran, a dragged box stays
+  where it was put (per map, on this computer), and *Reset layout*, beside
+  fit, puts the boxes back.
 - **A map per sub-process**: with a sub-process in the project, *Map:
   <name>* picks the map shown, the main process or any sub-process (each
   with its number, as the PDD numbers its chapter), and Steps shows the same
@@ -235,3 +256,7 @@ The viewer says *transaction* for one pass through the process and
   project to someone. Every export opens its folder with the file selected.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
   and a dark theme.
+- **An unreadable annotations file** is said in a banner, and nothing is
+  saved over it; *Restore the newest backup* puts back the newest backup
+  that can be read (it asks first, naming when it was saved) and keeps the
+  unreadable file beside it.

@@ -10,8 +10,10 @@
  *      is reported, never treated as a transcript);
  *   2. rewrites its offset_ms when the analyst syncs it (temp file + rename,
  *      like annotations-store.js, every other key kept as it is on disk);
- *   3. deletes it (Remove transcript); the copy under transcript/ stays, so
- *      nothing that cannot be imported again is lost.
+ *   3. takes it out (Remove transcript, lane CC): transcript.json and the
+ *      originals under transcript/ (transcriptFiles) leave the folder
+ *      together, parked for an Undo (main.js, analyst-files.js parkFiles),
+ *      which brings them all back.
  */
 
 "use strict";
@@ -79,17 +81,19 @@ function saveTranscriptOffset(root, offsetMs, fs = nodeFs) {
   return { path: read.path };
 }
 
-/* Delete transcript.json only; the original under transcript/ stays.
-   Returns { path, removed } (removed false when there was no file). */
-function removeTranscript(root, fs = nodeFs) {
-  const p = transcriptPath(root);
-  try {
-    fs.unlinkSync(p);
-  } catch (e) {
-    if (e && e.code === "ENOENT") return { path: p, removed: false };
-    throw e;
-  }
-  return { path: p, removed: true };
+/* The files the transcript has in the folder, session-relative with "/":
+   transcript.json when it is there, and every file directly in transcript/
+   (the original this import copied, and those of earlier imports). What
+   Remove transcript takes out. */
+const ORIGINALS_DIR = "transcript";
+function transcriptFiles(root, fs = nodeFs) {
+  const out = [];
+  if (fs.existsSync(transcriptPath(root))) out.push(FILE);
+  let names = [];
+  try { names = fs.readdirSync(path.join(root, ORIGINALS_DIR), { withFileTypes: true }); }
+  catch (e) { if (!e || e.code !== "ENOENT") throw e; }
+  for (const d of names) if (d.isFile()) out.push(ORIGINALS_DIR + "/" + d.name);
+  return out;
 }
 
-module.exports = { FILE, transcriptPath, readTranscriptFile, saveTranscriptOffset, removeTranscript };
+module.exports = { FILE, ORIGINALS_DIR, transcriptPath, readTranscriptFile, saveTranscriptOffset, transcriptFiles };

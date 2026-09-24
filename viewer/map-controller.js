@@ -4,10 +4,12 @@
  * map-controller.js: the Map level's process map (BA-helper cycle). One Flow
  * diagram, a directly-follows graph built from the runs' steps
  * (process-map-levels.buildAnnotationDfg), drawn by dfg-viewer.js (dagre,
- * left to right) with time-weighted edges, and its one control: "fit"
- * (scroll zooms and drag pans the map itself). Every path shows: a map of 3
- * to 5 runs has no rare path to thin, and its exception branches are what the
- * PDD needs.
+ * left to right) with time-weighted edges, and its controls: "fit" (scroll
+ * zooms and drag pans the map itself) and, once a box was dragged, "Reset
+ * layout" beside it (lane CC: the boxes go back where the map lays them out;
+ * the dragged arrangement is kept per level on this computer). Every path
+ * shows: a map of 3 to 5 runs has no rare path to thin, and its exception
+ * branches are what the PDD needs.
  *
  * The controller owns the control wiring; it does NOT own the data. The
  * caller's `dataSource()` resolves the graph for the loaded session:
@@ -51,6 +53,13 @@ function createMapController(config) {
     }
   }
 
+  /* Reset layout (lane CC) shows beside fit only while the map drawn has
+     boxes moved by hand. */
+  function _syncReset() {
+    const btn = zoomControls && zoomControls.reset;
+    if (btn) btn.hidden = !(PdtDfg && typeof PdtDfg.layoutSaved === "function" && PdtDfg.layoutSaved());
+  }
+
   /* Draw `data` into the host. */
   function _renderDfg(data) {
     if (!hostDfg || !PdtDfg) return;
@@ -64,6 +73,8 @@ function createMapController(config) {
       nodeSystems: (data && data.nodeSystems) || null,
       subNodes: (data && data.subNodes) || [],
       layoutScope: (data && data.layoutScope) || "",
+      // A box dragged: Reset layout shows.
+      onLayoutChange: _syncReset,
     };
     if (onNodeDblClick) opts.onNodeDblClick = onNodeDblClick;
     // §B2: the data source decides the edge-weight encoding ("time" for the
@@ -75,6 +86,7 @@ function createMapController(config) {
     if (flowEdges(dfg).length) {
       PdtDfg.render(hostDfg, dfg, opts);
       _setZoomVisible(true);
+      _syncReset();
       return;
     }
     // Nothing to draw: take any previous graph down so no export reads it.
@@ -82,6 +94,7 @@ function createMapController(config) {
     hostDfg.innerHTML = '<div class="map-empty-inline">' +
       ((data && data.emptyMessage) || "No steps to draw yet.") + "</div>";
     _setZoomVisible(false);
+    _syncReset();
   }
 
   /* Draw the map: the single entry point. */
@@ -101,8 +114,16 @@ function createMapController(config) {
       if (PdtDfg && PdtDfg.fit) PdtDfg.fit();
     });
   }
+  // Reset layout: the boxes moved by hand go back where the map lays them out.
+  if (zoomControls && zoomControls.reset) {
+    zoomControls.reset.addEventListener("click", () => {
+      if (!PdtDfg || typeof PdtDfg.resetLayout !== "function") return;
+      PdtDfg.resetLayout();
+      render();
+    });
+  }
 
-  return { render };
+  return { render, syncReset: _syncReset };
 }
 
 module.exports = { createMapController };

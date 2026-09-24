@@ -69,7 +69,7 @@ const fs = require("fs");
 const os = require("os");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright-core");
-const { launchViewer } = require("./throwaway-profile.js");
+const { launchViewer, logActionError } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
@@ -416,6 +416,59 @@ const lockProbe = () => {
   }).catch((e) => ({ err: e.message }));
   record("(d) the map follows the steps live: a hidden step leaves the map and comes back with it",
     !!(live && !live.err && live.steps >= 1 && live.before && live.hiddenOff && live.back), JSON.stringify(live));
+
+  // (d2) Lane CC: a box dragged by hand is kept (per level, on this computer)
+  // and Reset layout shows beside fit; Reset layout puts the boxes back where
+  // the map lays them out and hides itself. A real mouse drag on the canvas.
+  const reset = {};
+  try {
+    const btnState = () => page.evaluate(() => {
+      const b = document.getElementById("btn-session-map-reset-layout");
+      const fit = document.getElementById("btn-session-map-zoom-fit");
+      return { shown: !!(b && !b.hidden && getComputedStyle(b).display !== "none"), text: b ? b.textContent.trim() : null,
+        besideFit: !!(b && fit && b.parentElement === fit.parentElement),
+        keys: Object.keys(localStorage).filter((k) => k.startsWith("pdt.dfgLayout.")).length };
+    });
+    reset.before = await btnState();
+    const where = await page.evaluate(() => {
+      const host = document.getElementById("session-map-dfg-host");
+      const cy = host.__cy;
+      const n = cy.nodes().filter((x) => x.data("kind") !== "event")[1];
+      const p = n.renderedPosition(), r = host.getBoundingClientRect();
+      return { id: n.id(), x: r.left + p.x, y: r.top + p.y, model: Object.assign({}, n.position()) };
+    });
+    reset.id = where.id;
+    await page.mouse.move(where.x, where.y);
+    await page.mouse.down();
+    await page.mouse.move(where.x + 30, where.y + 40, { steps: 6 });
+    await page.mouse.move(where.x + 60, where.y + 80, { steps: 6 });
+    await page.mouse.up();
+    await wait(300);
+    reset.moved = await page.evaluate((w) => {
+      const n = document.getElementById("session-map-dfg-host").__cy.getElementById(w.id);
+      const p = n.position();
+      return Math.abs(p.x - w.model.x) + Math.abs(p.y - w.model.y) > 20;
+    }, where);
+    reset.dragged = await btnState();
+    await shot(page, "cc-reset-layout.png");
+    await page.locator("#btn-session-map-reset-layout").click({ timeout: 20000 });
+    await wait(500);
+    reset.back = await page.evaluate((w) => {
+      const n = document.getElementById("session-map-dfg-host").__cy.getElementById(w.id);
+      const p = n.position();
+      return Math.abs(p.x - w.model.x) + Math.abs(p.y - w.model.y) < 2;
+    }, where);
+    reset.after = await btnState();
+  } catch (e) {
+    logActionError("(d2) reset layout", e);
+    reset.err = String(e.message).split("\n")[0];
+    await shot(page, "fail-map-reset-layout.png");
+  }
+  record("(d2) lane CC: a box dragged on how the transactions ran shows Reset layout beside fit; Reset layout puts the boxes back where the map lays them out and goes (no layout kept)",
+    !!(!reset.err && reset.before && !reset.before.shown && reset.moved && reset.dragged.shown && reset.dragged.besideFit &&
+      reset.dragged.text === "Reset layout" && reset.dragged.keys >= 1 && reset.back && !reset.after.shown &&
+      reset.after.keys === reset.before.keys),
+    JSON.stringify(reset));
 
   // (e) The reference-maps gallery is collapsed until asked for.
   const gallery = await page.evaluate(() => {

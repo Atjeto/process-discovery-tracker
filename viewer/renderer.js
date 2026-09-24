@@ -55,6 +55,10 @@ initFlowView({
 
 initSession({
   renderSessionPills: () => renderSessionPills(),
+  // An undo or a redo that changes the stretches left out of the analysis
+  // analyzes again; one that changes the video reloads the project.
+  reloadSession: (folder) => loadSessionIntoView(folder),
+  analyzeSession: () => analyzeSession(),
 });
 
 /* ============ Recent sessions ===================================== */
@@ -267,6 +271,8 @@ function _ensureSessionMapCtrl() {
     hostDfg: document.getElementById("session-map-dfg-host"),
     zoomControls: {
       fit: document.getElementById("btn-session-map-zoom-fit"),
+      // Lane CC: beside fit once a box was dragged.
+      reset: document.getElementById("btn-session-map-reset-layout"),
       wrap: document.getElementById("session-map-zoom"),
     },
     dataSource: _sessionMapData,
@@ -632,6 +638,9 @@ async function exportArtifact(kind) {
     try { fs.unlinkSync(tmpPath); } catch (_) { /* absent, or a partial file the OS will clean from temp */ }
     return;
   }
+  // The PDD's run wrote analysis.json too, with the rows it printed in
+  // sections 5 and 6: the Overview shows those (one source, lane CC).
+  _rereadAnalysis(target);
   const suggested = "process." + kind + "." + ext;
   let out = null;
   try {
@@ -644,6 +653,21 @@ async function exportArtifact(kind) {
     toast("Exported: " + path.basename(out), "success");
   }
   try { fs.unlinkSync(tmpPath); } catch (_) {}
+}
+
+/* Read the project's analysis.json again into the project on screen (the
+   PDD's run rewrote it) and redraw what shows it: the Overview's
+   Observations are the rows the PDD printed. */
+function _rereadAnalysis(target) {
+  const now = State.getSession();
+  if (!now || !target || now.sessionFolder !== target.sessionFolder) return;
+  try {
+    now.analysis = JSON.parse(fs.readFileSync(path.join(now.sessionFolder, "analysis.json"), "utf-8"));
+  } catch (e) {
+    console.error("[renderer] analysis.json could not be read after the PDD export:", e);
+    return;
+  }
+  State.emit("analysis");
 }
 
 /* AD-11: the Session Export menu carries the two map exports. "Process map

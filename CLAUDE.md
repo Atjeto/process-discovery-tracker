@@ -97,7 +97,7 @@ the folder.
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
 | `e2e/` | The in-repo Playwright gate: eight smokes against the real viewer, all run by `run-all.js`. |
-| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19). |
+| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19); `pdd-rows-golden.json` (pins the PDD's rows of sections 5 and 6 that the Overview shows). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
 | `sessions/example-aggregate/` | The committed demo: 10 sessions of one order-to-cash process. |
@@ -238,11 +238,16 @@ the folder.
   `transcript.json`. A sentence is placed through its own sync, else the
   attached video's; added to a description or a document field, it reaches
   the PDD.
-- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 2 now):
-  the viewer analyzes a folder on open when it is missing or lower.
+- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 3 now):
+  the viewer analyzes a folder on open when it is missing or lower. 3 added
+  `pdd_data` and `pdd_time`, the rows the PDD prints in sections 5 and 6,
+  which the Overview's Observations show as they are (one source, pinned by
+  `shared/pdd-rows-golden.json`).
 - **Raw data is immutable.** `events.jsonl` is append-only; analyst edits
   live in `annotations.json`, replaced atomically, the viewer keeping
-  `annotations.json.2` (newest) to `.5`. An unreadable one is reported and
+  `annotations.json.2` (newest) to `.5`; the unreadable banner's *Restore the
+  newest backup* puts the newest readable one back, keeping the unreadable
+  file as `annotations.unreadable-<time>.json`. An unreadable one is reported and
   never overwritten. Keys of cut features round-trip (C10).
 - **Honest failures.** A failed stage writes its key as `null` plus one
   `stage_errors` entry (C12), shown as "could not run", never as zero.

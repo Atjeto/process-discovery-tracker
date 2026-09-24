@@ -139,6 +139,26 @@
     try { ls.setItem(_layoutKey(c), JSON.stringify(pos)); } catch (_) {}
   }
 
+  /* Whether the map drawn has a dragged arrangement kept (Reset layout shows
+     only then). */
+  function layoutSaved() {
+    if (!cy) return false;
+    const ls = _layoutStore(); if (!ls) return false;
+    try { return ls.getItem(_layoutKey(cy)) != null; } catch (_) { return false; }
+  }
+
+  /* Reset layout (lane CC), the inverse of dragging a box: forget the
+     arrangement kept for the map drawn (this level's key); the caller draws
+     the map again, laid out afresh. Returns whether one was kept. */
+  function resetLayout() {
+    if (!cy) return false;
+    const ls = _layoutStore(); if (!ls) return false;
+    const key = _layoutKey(cy);
+    let had = false;
+    try { had = ls.getItem(key) != null; ls.removeItem(key); } catch (_) { /* nothing kept */ }
+    return had;
+  }
+
   /* Compact duration for the edge tooltip ("1h 04m", "4m 32s", "12s",
      "<1s"). Mirrors the Python claim formatter. */
   function _fmtDur(ms) {
@@ -423,8 +443,12 @@
         setTimeout(() => onNodeDblClick(id), 0);
       });
     }
-    // Persist a dragged node arrangement so it survives a re-render / re-open.
-    cy.on("dragfree", "node", () => _saveLayout(cy));
+    // Persist a dragged node arrangement so it survives a re-render / re-open;
+    // the caller shows Reset layout once there is one (opts.onLayoutChange).
+    cy.on("dragfree", "node", () => {
+      _saveLayout(cy);
+      if (typeof opts.onLayoutChange === "function") opts.onLayoutChange();
+    });
 
     /* §B2 / P2.4: edge hover tooltip. The canvas has no DOM titles, so a
        small positioned div says what the arrow carries, in words: how often
@@ -510,5 +534,5 @@
     }
   }
 
-  module.exports = { render, clear, fit, resize, selectNode, exportPng };
+  module.exports = { render, clear, fit, resize, selectNode, exportPng, layoutSaved, resetLayout };
 })();

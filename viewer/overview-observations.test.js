@@ -1,205 +1,161 @@
 "use strict";
 /*
- * The Overview's Observations (step-back review 4.4, lane V1 item 3): two
- * items in place of the findings feed, the evidence modules and the
- * "include in PDD" ticks.
- *   Data typed twice: the re-typed values finding, said per field where the
- *     events name the fields ("Product code in Salesforce typed again as
- *     Material number in SAP", each place named by its system, C14); a failed
- *     findings stage is said (C12), never read as "none".
- *   Where the time goes: per step (the map's grouping) its "Average time"
- *     ("10 s") and where it "Happened in" ("N of M transactions", AD-29); per
- *     system the same (where the automation candidates fold in); no dot
- *     strip, no total over the runs, no business-required editor.
- * The block's title says who fills it: "Measured from the recording".
- * The viewer no longer reads analysis.json pdd_findings or
- * annotations.memo_selection.
+ * The Overview's Observations, one source with the PDD (lane CC): two items,
+ * the PDD's section 5 and section 6 as it prints them.
+ *   Data: the table of the fields entered (Field, System and screen, Step,
+ *     Example value, Re-keyed), then the Re-keyed data sentences.
+ *   Applications and time: Time per transaction (with the line on the
+ *     walkthrough) and Time in each application.
+ * Nothing is measured here: the rows are analysis.json `pdd_data` and
+ * `pdd_time`, which the pipeline computes with the functions the PDD prints
+ * them with. shared/pdd-rows-golden.json pins both sides: this file checks
+ * that the Overview shows each case's rows cell by cell, under the PDD's
+ * headings; normalization/test/test_pdd_rows_golden.py that the pipeline gives
+ * them and the PDD prints them. A failed stage is said (C12); an analysis
+ * from before the rows says it is not measured yet.
  */
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { overviewHtml } = require("./views/overview-view.js");
-const { observationsHtml, retypedLines, timePerStep, averageTime, happenedIn } = require("./views/analysis-view.js");
+const { observationsHtml, dataItem, timeItem, rowsTableHtml, OBSERVATIONS_WHO } = require("./views/analysis-view.js");
 
-const t = (sec) => new Date(Date.UTC(2026, 4, 14, 9, 0, sec)).toISOString();
-// A window title's separator, built so this file holds no dash punctuation.
-const SF_ORDER = "Salesforce" + " " + String.fromCharCode(45) + " " + "Order";
+const GOLDEN = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "pdd-rows-golden.json"), "utf-8"));
 
-/* Two runs of the demo's shape: run 1 types SKU-1 into Salesforce's Product
-   code (in Chrome) and SAP's Material number; run 2 does the same and looks
-   the code up in Notepad in between. */
-const EVENTS = [
-  { type: "activity", timestamp: t(0), data: {} },
-  { type: "interaction", event_id: "e1", timestamp: t(10), data: { kind: "value_changed", process_name: "chrome.exe",
-    window_title: SF_ORDER, name: "Product code", automation_id: "product-code", value: "SKU-1" } },
-  { type: "interaction", event_id: "e2", timestamp: t(20), data: { kind: "value_changed", process_name: "SAPGUI.exe",
-    name: "Material number", automation_id: "material-number", value: "SKU-1" } },
-  { type: "interaction", event_id: "e3", timestamp: t(40), data: { kind: "value_changed", process_name: "chrome.exe",
-    window_title: SF_ORDER, name: "Product code", automation_id: "product-code", value: "SKU-1" } },
-  { type: "interaction", event_id: "e4", timestamp: t(45), data: { kind: "text_changed", process_name: "notepad.exe",
-    name: "", automation_id: "mapping-search", value: "SKU-1" } },
-  { type: "interaction", event_id: "e5", timestamp: t(50), data: { kind: "value_changed", process_name: "SAPGUI.exe",
-    name: "Material number", automation_id: "material-number", value: "SKU-1" } },
-  { type: "activity", timestamp: t(59), data: {} },
-];
-const APP_NAMES = { "chrome.exe": "Google Chrome (browser)", "SAPGUI.exe": "SAP GUI", "notepad.exe": "Notepad" };
-const REKEY = { id: "rekey-1", detector: "rekey_transfer", tier: 1,
-  claim: "1 value was typed into more than one app; for example, \"SKU-1\" was entered in Google Chrome (browser), Notepad, SAP GUI (6 times in total).",
-  evidence: { rekey_count: 1, values: [{ value: "SKU-1", apps: ["chrome.exe", "notepad.exe", "sapgui.exe"], entry_count: 5 }] } };
-
-function step(id, caseId, name, fromSec, toSec, app, extra) {
-  return Object.assign({ step_id: id, case_id: caseId, name, state: "auto_suggested",
-    draft_key: app + "|screen|" + name, grain_keys: { app, screen: app === "chrome" ? SF_ORDER : "screen", element: "e" },
-    time_range: { start: t(fromSec), end: t(toSec) } }, extra || {});
+/* The text of an HTML fragment's cells, table by table: [[[cell, ...], ...], ...]
+   (the header row first), decoded as the page shows them. */
+function decode(s) {
+  return s.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+}
+function tablesOf(html) {
+  return [...html.matchAll(/<table class="ov-rows">([\s\S]*?)<\/table>/g)].map((m) =>
+    [...m[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((r) =>
+      [...r[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => decode(c[1]))));
+}
+function listOf(html, cls) {
+  const m = new RegExp('<ul class="' + cls + '">([\\s\\S]*?)</ul>').exec(html);
+  return m ? [...m[1].matchAll(/<li>([\s\S]*?)<\/li>/g)].map((x) => decode(x[1])) : [];
+}
+function titlesOf(html) {
+  return [...html.matchAll(/<div class="ov-rows-title">([\s\S]*?)<\/div>/g)].map((m) => decode(m[1]));
+}
+function moduleOf(html, key) {
+  const at = html.indexOf('data-module="' + key + '"');
+  assert.ok(at >= 0, "the " + key + " module is there");
+  const end = html.indexOf("</details>", at);
+  return html.slice(at, end);
 }
 
-function session(over) {
-  const s = {
-    sessionFolder: null,
-    analysis: { case_quality: { mode: "markers", case_count: 2, coverage: 1, tier2_unlocked: true },
-      findings: [REKEY], stage_errors: [] },
-    stats: {
-      meta: { worker_id: "w1", app_names: APP_NAMES, draft_summary: {} },
-      case_stats: [
-        { case_id: "c1", start_ts: t(5), end_ts: t(30) },
-        { case_id: "c2", start_ts: t(35), end_ts: t(58) },
-      ],
-    },
-    annotations: { steps: [
-      step("a", "c1", "Look up the order", 8, 14, "chrome"),
-      step("b", "c1", "Create the sales order", 18, 26, "sapgui"),
-      step("c", "c2", "Look up the order", 38, 42, "chrome"),
-      step("d", "c2", "Find the material number", 44, 46, "notepad"),
-      step("e", "c2", "Create the sales order", 48, 52, "sapgui"),
-      step("f", "c2", "Create the sales order", 53, 57, "sapgui"),
-    ] },
-    manifest: { engagement_id: "eng-1", engagement_name: "Order intake", started_at: t(0) },
-    events: EVENTS,
-  };
-  return Object.assign(s, over || {});
+/* ---- the shared golden: the Overview shows the PDD's rows ------------------- */
+
+test("golden: the fixture covers the tables, the notes and the re-keyed data", () => {
+  assert.equal(GOLDEN.version, 1);
+  const cases = GOLDEN.cases.map((c) => c.expected);
+  assert.ok(cases.some((c) => c.pdd_data.rekeyed.length), "a case re-keys a value");
+  assert.ok(cases.some((c) => c.pdd_data.note), "a case has no field entry");
+  assert.ok(cases.some((c) => c.pdd_time.per_transaction.note), "a case has no transaction marked");
+});
+
+for (const c of GOLDEN.cases) {
+  test("golden: the Overview shows the PDD's rows cell by cell: " + c.name, () => {
+    const analysis = { case_quality: {}, stage_errors: [], pdd_data: c.expected.pdd_data, pdd_time: c.expected.pdd_time };
+    const html = observationsHtml({ analysis });
+    const d = c.expected.pdd_data, t = c.expected.pdd_time;
+    // Data: the PDD's heading, its table (or its sentence), its Re-keyed data.
+    const data = moduleOf(html, "data");
+    assert.ok(data.includes('<span class="analysis-module-title">' + d.heading + "</span>"), "titled as the PDD's section 5");
+    if (d.note) {
+      assert.ok(decode(data).includes(d.note), "the PDD's sentence in place of the table");
+      assert.deepEqual(tablesOf(data), []);
+    } else {
+      assert.deepEqual(tablesOf(data), [[d.header].concat(d.rows)], "the table, cell by cell");
+    }
+    assert.deepEqual(listOf(data, "ov-rekeyed"), d.rekeyed, "the Re-keyed data, sentence by sentence");
+    assert.equal(titlesOf(data).includes("Re-keyed data"), d.rekeyed.length > 0);
+    // Applications and time: 6.1 and 6.2 under the PDD's sub-headings.
+    const time = moduleOf(html, "time");
+    assert.ok(time.includes('<span class="analysis-module-title">' + t.heading + "</span>"), "titled as the PDD's section 6");
+    assert.deepEqual(titlesOf(time), [t.per_transaction.heading, t.per_application.heading]);
+    const want = [];
+    if (!t.per_transaction.note) want.push([t.per_transaction.header].concat(t.per_transaction.rows));
+    if (!t.per_application.note) want.push([t.per_application.header].concat(t.per_application.rows));
+    assert.deepEqual(tablesOf(time), want, "the tables, cell by cell");
+    for (const s of [t.per_transaction.note, t.per_transaction.after, t.per_application.note]) {
+      if (s) assert.ok(decode(time).includes(s), "the PDD's line: " + s);
+    }
+  });
 }
 
-/* ---- Data typed twice ------------------------------------------------------ */
+/* ---- the takeaways, the states ----------------------------------------------------- */
 
-test("data typed twice is said per field: the first place the value went, then each other system it was typed into again, named by the one vocabulary of systems", () => {
-  const r = retypedLines(session().analysis, EVENTS, APP_NAMES);
-  assert.equal(r.status, "ok");
-  assert.deepEqual(r.lines, [
-    "Product code in Salesforce typed again as Material number in SAP",
-    "Product code in Salesforce typed again as mapping-search in Notepad",
-  ]);
+const FULL = GOLDEN.cases[0].expected;
+
+test("the takeaways: the first re-keyed sentence (and how many more), the system with the most time per transaction", () => {
+  const d = dataItem({ pdd_data: FULL.pdd_data });
+  assert.equal(d.takeaway, FULL.pdd_data.rekeyed[0] + " (+1 more)");
+  const t = timeItem({ pdd_time: FULL.pdd_time });
+  const top = FULL.pdd_time.per_application.rows[0];
+  assert.equal(t.takeaway, "Most time in " + top[0] + ": " + top[3] + " per transaction");
+  const none = dataItem({ pdd_data: Object.assign({}, FULL.pdd_data, { rekeyed: [] }) });
+  assert.equal(none.takeaway, FULL.pdd_data.rows.length + " fields entered, none re-keyed");
+  const hand = GOLDEN.cases[1].expected;
+  assert.equal(dataItem({ pdd_data: hand.pdd_data }).takeaway, hand.pdd_data.note);
+  assert.equal(timeItem({ pdd_time: hand.pdd_time }).takeaway, "2 systems, no time measured");
 });
 
-test("without field names in the events the finding's own sentence stands; nothing typed twice says none", () => {
-  const bare = EVENTS.map((e) => (e.type === "interaction" ? Object.assign({}, e, { data: Object.assign({}, e.data, { value: "other" }) }) : e));
-  assert.deepEqual(retypedLines(session().analysis, bare, APP_NAMES), { status: "ok", lines: [REKEY.claim] });
-  assert.deepEqual(retypedLines({ findings: [] }, EVENTS, APP_NAMES), { status: "none", lines: [] });
+test("a failed rows stage says the check could not run, never an empty table (C12)", () => {
+  const analysis = { pdd_data: null, pdd_time: null, stage_errors: [{ stage: "pdd_rows", error: "x" }] };
+  const html = observationsHtml({ analysis });
+  assert.ok(html.includes("This check could not run on this recording, so the fields entered are not listed."));
+  assert.ok(html.includes("This check could not run on this recording, so the times are not measured."));
+  assert.ok(!html.includes('class="ov-rows"'));
 });
 
-test("a failed findings stage says the check could not run, never 'none' (C12)", () => {
-  assert.deepEqual(retypedLines({ findings: null, stage_errors: [{ stage: "findings", error: "x" }] }, EVENTS, APP_NAMES),
-    { status: "not-run", lines: [] });
-  const html = observationsHtml(session({ analysis: { case_quality: {}, findings: null,
-    stage_errors: [{ stage: "findings", error: "x" }] } }));
-  assert.ok(html.includes("This check could not run on this recording, so it cannot say whether data was typed twice."));
-  assert.ok(!html.includes("None seen"));
+test("an analysis from before the rows (format 2) says they are not measured yet; it is analyzed again as it opens", () => {
+  const html = decode(observationsHtml({ analysis: { case_quality: {}, stage_errors: [] } }));
+  assert.equal((html.match(/Not measured in this project's analysis yet/g) || []).length, 2);
+  assert.ok(!html.includes('class="ov-rows"'));
 });
 
-test("a session without a recording says nothing was recorded, never that the check could not run (C16)", () => {
-  assert.deepEqual(retypedLines({ findings: null, stage_errors: [] }, [], APP_NAMES), { status: "nothing", lines: [] });
-  const html = observationsHtml(session({ events: [], analysis: { case_quality: {}, findings: null, stage_errors: [] } }));
-  assert.ok(html.includes(">Nothing recorded<"));
-  assert.ok(!html.includes("could not run") && !html.includes("None seen"));
-});
-
-test("where the time goes leaves out a step without a time (C16)", () => {
-  const s = session();
-  s.annotations.steps.push({ step_id: "u", case_id: "c1", name: "Find the material number", state: "manually_authored",
-    time_range: null, order: 1 });
-  const row = timePerStep(s.stats, s.annotations.steps, APP_NAMES).steps.find((x) => x.label === "Find the material number");
-  assert.deepEqual([row.avgMs, row.runs], [2000, 1]);
-});
-
-/* ---- Where the time goes ----------------------------------------------------- */
-
-test("where the time goes: per step, the average time per run and in how many runs, most time first", () => {
-  const r = timePerStep(session().stats, session().annotations.steps, APP_NAMES);
-  assert.equal(r.runCount, 2);
-  assert.deepEqual(r.steps.map((x) => [x.label, x.avgMs, x.runs]), [
-    // 8 s in run 1, 4 + 4 s in run 2 (the step was done twice): 8 s per run.
-    ["Create the sales order", 8000, 2],
-    ["Look up the order", 5000, 2],
-    ["Find the material number", 2000, 1],
-  ]);
-});
-
-test("where the time goes: per system too, the browser named by the web system its window shows (the automation candidates fold in here)", () => {
-  const r = timePerStep(session().stats, session().annotations.steps, APP_NAMES);
-  assert.deepEqual(r.apps.map((x) => [x.label, x.avgMs, x.runs]), [
-    ["SAP", 8000, 2],
-    ["Salesforce", 5000, 2],
-    ["Notepad", 2000, 1],
-  ]);
-});
-
-test("where the time goes: a system the analyst set on a step wins over the derived one (C16)", () => {
-  const s = session();
-  s.annotations.steps.push({ step_id: "p", case_id: "c1", name: "Call the customer", state: "manually_authored",
-    system: "Phone", time_range: { start: t(26), end: t(29) } });
-  s.annotations.steps[0].system = "CRM";
-  const r = timePerStep(s.stats, s.annotations.steps, APP_NAMES);
-  assert.deepEqual(r.apps.map((x) => [x.label, x.avgMs, x.runs]), [
-    ["SAP", 8000, 2],
-    ["CRM", 6000, 1],
-    ["Salesforce", 4000, 1],
-    ["Phone", 3000, 1],
-    ["Notepad", 2000, 1],
-  ]);
-});
-
-test("hidden steps and steps outside the runs are not counted; a step with no measured time is left out", () => {
-  const s = session();
-  s.annotations.steps.push(step("g", null, "Outside", 1, 4, "chrome"));
-  s.annotations.steps.push(step("h", "c1", "Hidden one", 26, 29, "chrome", { state: "hidden" }));
-  s.annotations.steps.push(step("i", "c1", "No time", 29, 29, "chrome"));
-  const labels = timePerStep(s.stats, s.annotations.steps, APP_NAMES).steps.map((x) => x.label);
-  assert.deepEqual(labels, ["Create the sales order", "Look up the order", "Find the material number"]);
-});
-
-test("the Observations block holds exactly its two items, with no dot strip, total, editor or tick", () => {
-  const html = observationsHtml(session());
+test("the Observations block holds exactly its two items and says the PDD prints them", () => {
+  const html = observationsHtml({ analysis: { pdd_data: FULL.pdd_data, pdd_time: FULL.pdd_time } });
   assert.equal((html.match(/data-module="/g) || []).length, 2);
-  assert.ok(html.includes('data-module="retyped"') && html.includes('data-module="time"'));
+  assert.ok(html.includes('data-module="data"') && html.includes('data-module="time"'));
   assert.ok(html.includes('<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
-    '<div class="ov-block-who">Measured from the recording</div></div>'), "the title says who fills the block");
-  assert.ok(html.includes(">Data typed twice<") && html.includes(">Where the time goes<"));
-  assert.equal((html.match(/<thead><tr><th>(Step|System)<\/th><th class="num">Average time<\/th><th>Happened in<\/th><\/tr><\/thead>/g) || []).length, 2,
-    "both tables: Step or System, Average time, Happened in");
-  assert.ok(html.includes('<td class="num">8 s</td><td>2 of 2 transactions</td>') &&
-    html.includes('<td class="num">2 s</td><td>1 of 2 transactions</td>'));
-  assert.ok(!/Per run|\bruns?\b/.test(html.slice(html.indexOf('data-module="time"'))), "no run wording in the table");
-  assert.ok(html.includes("Most time in Create the sales order (8 s on average)"));
-  for (const gone of ["ts-dot", "ts-strip", "waste-row", "business-required", "include in PDD", "data-act=\"memo\"", "Automation candidates"]) {
+    '<div class="ov-block-who">' + OBSERVATIONS_WHO + "</div></div>"), "the title says who fills the block");
+  assert.equal(OBSERVATIONS_WHO, "Measured from the recording. The PDD prints them in sections 5 and 6.");
+  for (const gone of ["Data typed twice", "Where the time goes", "Average time", "Happened in", "ov-time", "ov-retyped"]) {
     assert.ok(!html.includes(gone), gone);
   }
 });
 
-test("with no transactions marked, where the time goes says so", () => {
-  const html = observationsHtml(session({ stats: { meta: { app_names: APP_NAMES }, case_stats: [] },
-    annotations: { steps: [] } }));
-  assert.ok(html.includes("No transactions are marked yet"));
-  assert.ok(html.includes("mark the transactions first"));
-});
-
-test("an average time reads in whole units (10 s, 1 min 5 s, 1 h 4 min), and a count as N of M transactions", () => {
-  assert.deepEqual([400, 500, 10000, 10400, 59600, 65000, 120000, 3840000, 7200000].map(averageTime),
-    ["under 1 s", "1 s", "10 s", "10 s", "1 min", "1 min 5 s", "2 min", "1 h 4 min", "2 h"]);
-  assert.equal(averageTime(NaN), "");
-  assert.equal(happenedIn(4, 4), "4 of 4 transactions");
-  assert.equal(happenedIn(1, 1), "1 of 1 transaction");
+test("a table escapes its cells and sets the number columns right", () => {
+  const html = rowsTableHtml(["A", "Time"], [["<b>", "1m 07s"]], [1]);
+  assert.ok(html.includes("<td>&lt;b&gt;</td>") && html.includes('<td class="num">1m 07s</td>') && html.includes('<th class="num">Time</th>'));
 });
 
 /* ---- The home -------------------------------------------------------------- */
+
+const t = (sec) => new Date(Date.UTC(2026, 4, 14, 9, 0, sec)).toISOString();
+function session(over) {
+  const s = {
+    sessionFolder: null,
+    analysis: { case_quality: { mode: "markers", case_count: 2, coverage: 1, tier2_unlocked: true },
+      findings: [], stage_errors: [], pdd_data: FULL.pdd_data, pdd_time: FULL.pdd_time },
+    stats: { meta: { worker_id: "w1", app_names: {} },
+      case_stats: [{ case_id: "c1", start_ts: t(5), end_ts: t(30) }, { case_id: "c2", start_ts: t(35), end_ts: t(58) }] },
+    annotations: { steps: [
+      { step_id: "a", case_id: "c1", name: "Look up the order", state: "auto_suggested", draft_key: "k1", time_range: { start: t(8), end: t(14) } },
+      { step_id: "b", case_id: "c2", name: "Look up the order", state: "auto_suggested", draft_key: "k1", time_range: { start: t(38), end: t(42) } },
+    ] },
+    manifest: { engagement_id: "eng-1", engagement_name: "Order intake", started_at: t(0) },
+    events: [],
+  };
+  return Object.assign(s, over || {});
+}
 
 test("the home is the Checklist, the project line, the document, then the Observations; no findings, evidence or ticks", () => {
   const html = overviewHtml(session({ analysis: Object.assign(session().analysis, {
@@ -216,7 +172,7 @@ test("the home is the Checklist, the project line, the document, then the Observ
 
 test("the coverage finding is a warning on the project line, not an observation", () => {
   const cov = { id: "cov-1", detector: "coverage_caveat", claim: "The recorder saw less detail in 1 of 3 apps: Citrix (a remote window).", evidence: {} };
-  const html = overviewHtml(session({ analysis: Object.assign({}, session().analysis, { findings: [REKEY, cov] }) }));
+  const html = overviewHtml(session({ analysis: Object.assign({}, session().analysis, { findings: [cov] }) }));
   const summary = html.slice(html.indexOf('id="ov-summary"'), html.indexOf('id="ov-doc"'));
   assert.ok(summary.includes("⚠ The recorder saw less detail in 1 of 3 apps: Citrix (a remote window)."));
   assert.equal((html.match(/The recorder saw less detail/g) || []).length, 1);

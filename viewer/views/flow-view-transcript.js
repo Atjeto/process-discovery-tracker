@@ -26,6 +26,7 @@
 
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
+const Session = require("../session.js");
 const TM = require("../transcript-model.js");
 const { $, escapeAttr, toast, recordingStartMs } = require("../dom.js");
 const Video = require("./flow-view-video.js");
@@ -270,18 +271,49 @@ async function attachTranscript() {
   toast(TM.attachedMessage(now.transcript, !!(placed && placed.synced)), "success");
 }
 
-async function removeTranscript() {
-  const sess = State.getSession();
-  if (!sess) return;
+/* Remove transcript (lane CC): transcript.json and its originals under
+   transcript/ leave the folder, parked for an Undo; Ctrl+Z puts them back
+   and Ctrl+Y takes them out again (session.js recordFileAct). */
+async function _takeOut(folder) {
   let r;
-  try { r = await Ipc.removeTranscript({ sessionFolder: sess.sessionFolder }); }
+  try { r = await Ipc.removeTranscript({ sessionFolder: folder }); }
   catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   if (!r || !r.ok) {
     toast("The transcript was not removed: " + ((r && r.error) || "no reason was given"), "error");
-    return;
+    return null;
   }
-  await loadSessionIntoView(sess.sessionFolder);
-  toast("Transcript removed. The original file stays in the project's transcript folder.", "success");
+  return r;
+}
+async function removeTranscript() {
+  const sess = State.getSession();
+  if (!sess) return;
+  const folder = sess.sessionFolder;
+  let parked = await _takeOut(folder);
+  if (!parked) return;
+  await Session.recordFileAct("Remove the transcript", {
+    undo: async () => {
+      let r;
+      try { r = await Ipc.restoreTranscript({ sessionFolder: folder, tag: parked.tag, files: parked.files }); }
+      catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+      if (!r || !r.ok) {
+        toast("The transcript was not put back: " + ((r && r.error) || "no reason was given"), "error");
+        return false;
+      }
+      await loadSessionIntoView(folder);
+      return true;
+    },
+    redo: async () => {
+      const again = await _takeOut(folder);
+      if (!again) return false;
+      parked = again;
+      await loadSessionIntoView(folder);
+      return true;
+    },
+  });
+  await loadSessionIntoView(folder);
+  const originals = parked.files.filter((f) => f.startsWith("transcript/")).length;
+  toast("Transcript removed" + (originals ? ", with its original file" + (originals > 1 ? "s" : "") : "") +
+    ". Ctrl+Z brings " + (originals ? "them" : "it") + " back.", "success");
 }
 
 /* After every session load (flow-view.js): a sync in progress belongs to the

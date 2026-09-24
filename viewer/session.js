@@ -31,6 +31,8 @@ const Dom = require("./dom.js");
 
 /* Injected by renderer.js. */
 let renderSessionPills = () => {};
+let reloadSession = async () => {};
+let analyzeSession = async () => {};
 
 function resetUndoStack() { State.resetUndo(); }
 function canUndo() {
@@ -107,6 +109,12 @@ async function writeAnnotations(sessionFolder, annotations, what) {
     throw _surfacedError(msg);
   }
   if (r.backupError) Dom.toast("Saved, but the backup copy of annotations.json failed: " + r.backupError, "error");
+  // A file the change takes out of the folder, or an undo brings back, that
+  // main could not move: said, and held over the act's own success message.
+  if (r.filesError) {
+    Dom.toast("Saved, but a file was not moved out of the project folder or back into it (" + r.filesError +
+      "). A file open in another program cannot be moved.", "error", { hold: true });
+  }
   return r;
 }
 
@@ -157,6 +165,24 @@ async function saveAnnotationsDirect(annotations, what) {
    nothing (writeAnnotations has already shown the error). */
 function performUndo() { return _revert("undo"); }
 function performRedo() { return _revert("redo"); }
+
+/* A change of the project's files that is not an annotations edit, made
+   undoable (lane CC: Remove transcript, whose files are not named by
+   annotations.json). `act` = { undo: async () => bool, redo: async () =>
+   bool }: each puts the files back or takes them out again and says whether
+   it did (a failure has been shown to the analyst). The entry holds the
+   annotations as they are, so an undo past it leaves them alone. */
+function recordFileAct(label, act) {
+  const session = State.getSession();
+  if (!session || !session.sessionFolder || !act) return Promise.resolve();
+  // After the saves already queued, so the entries keep the order of the acts.
+  return _serial(async () => {
+    if (State.getSession() !== session) return;
+    State.recordEdit({ label: label || "edit", sessionFolder: session.sessionFolder,
+      annotations: _baseline !== null ? _baseline : snapshotAnnotations(session.annotations), fileAct: act });
+  });
+}
+
 function _revert(which) {
   const session = State.getSession();
   if (!session) return Promise.resolve();
@@ -164,6 +190,18 @@ function _revert(which) {
     if (State.getSession() !== session) return;   // another session was opened meanwhile
     const popped = which === "undo" ? State.popUndo(session.sessionFolder) : State.popRedo(session.sessionFolder);
     if (!popped) { Dom.toast(which === "undo" ? "Nothing to undo" : "Nothing to redo"); return; }
+    if (popped.fileAct) {
+      let ok = false;
+      try { ok = !!(await (which === "undo" ? popped.fileAct.undo() : popped.fileAct.redo())); }
+      catch (e) { console.error("[session] the " + which + " of " + popped.label + " failed:", e); }
+      if (!ok) {
+        if (which === "undo") State.pushUndo(popped); else State.pushRedo(popped);
+        return;
+      }
+      if (which === "undo") State.pushRedo(popped); else State.pushUndo(popped);
+      Dom.toast((which === "undo" ? "Undone: " : "Redone: ") + popped.label);
+      return;
+    }
     // Opening a run is not an edit (steps-view.js _markOpened): the runs
     // opened so far stay opened across an undo or a redo.
     const opened = (session.annotations && session.annotations.opened_runs) || [];
@@ -190,11 +228,28 @@ function _revert(which) {
     Dom.toast((which === "undo" ? "Undone: " : "Redone: ") + popped.label);
   });
 }
+/* What an undo or a redo from `before` to `after` needs beyond the in-place
+   refresh: "analyze" when the stretches left out of the analysis changed
+   (the steps and the statistics depend on them, so Leave out of the analysis
+   and Include again are undone with the analysis they ran), "reload" when the
+   attached video changed (where the video is, and its sync, are read when the
+   project loads), else null. Pure. */
+function revertFollowUp(before, after) {
+  const same = (k) => JSON.stringify((before && before[k]) || null) === JSON.stringify((after && after[k]) || null);
+  const ranges = (a) => JSON.stringify((a && Array.isArray(a.excluded_ranges) && a.excluded_ranges.length) ? a.excluded_ranges : []);
+  if (ranges(before) !== ranges(after)) return "analyze";
+  if (!same("external_video")) return "reload";
+  return null;
+}
+
 /* Swap a reverted annotations blob into the loaded session and refresh
    every annotation-derived surface -- the in-place alternative to a
-   full session reload. */
+   full session reload. An undo that changes what the analysis reads, or the
+   video, then analyzes or reloads (revertFollowUp). */
 function applyRevertedAnnotations(annotations) {
-  State.getSession().annotations = ensureAnnoShape(annotations);
+  const sess = State.getSession();
+  const follow = revertFollowUp(sess.annotations, annotations);
+  sess.annotations = ensureAnnoShape(annotations);
   State.batch(() => {
     State.emit("steps");
     State.emit("timeline");
@@ -202,6 +257,10 @@ function applyRevertedAnnotations(annotations) {
     State.emit("analysis");
   });
   renderSessionPills();
+  // Not awaited: the write chain this runs in must not wait for an analysis
+  // (which reloads the project when it ends).
+  if (follow === "analyze") Promise.resolve(analyzeSession()).catch((e) => console.error("[session] the analysis after the undo failed:", e));
+  else if (follow === "reload") Promise.resolve(reloadSession(sess.sessionFolder)).catch((e) => console.error("[session] the reload after the undo failed:", e));
 }
 
 function ensureAnnoShape(anno) {
@@ -263,14 +322,17 @@ if (typeof window !== "undefined" && window && typeof window.addEventListener ==
   });
 }
 
-/* deps = { renderSessionPills }. Call once at boot. */
+/* deps = { renderSessionPills, reloadSession(folder), analyzeSession() }.
+   Call once at boot. */
 function initSession(deps) {
   renderSessionPills = deps.renderSessionPills || (() => {});
+  reloadSession = deps.reloadSession || (async () => {});
+  analyzeSession = deps.analyzeSession || (async () => {});
 }
 
 module.exports = {
   initSession, resetUndoStack, captureBaseline, canUndo, canRedo,
-  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect,
-  performUndo, performRedo, applyRevertedAnnotations,
+  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct,
+  performUndo, performRedo, applyRevertedAnnotations, revertFollowUp,
   ensureAnnoShape, persistAnnotations,
 };

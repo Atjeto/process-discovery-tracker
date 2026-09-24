@@ -68,12 +68,14 @@ test("loadSessionData hands the renderer the transcript, or one line on why it c
   assert.deepEqual([bad.transcript, bad.transcriptError], [null, "it has no list of sentences"]);
 });
 
-test("removeTranscript deletes transcript.json only; the copied original stays", () => {
+test("transcriptFiles: transcript.json and every original under transcript/ (what Remove transcript takes out)", () => {
   const dir = session(JSON.stringify(DOC));
+  assert.deepEqual(Store.transcriptFiles(dir), ["transcript.json"], "no transcript/ folder: the file alone");
   fs.mkdirSync(path.join(dir, "transcript"));
   fs.writeFileSync(path.join(dir, "transcript", "m.vtt"), "WEBVTT\n");
-  assert.equal(Store.removeTranscript(dir).removed, true);
-  assert.equal(fs.existsSync(path.join(dir, "transcript.json")), false);
-  assert.equal(fs.readFileSync(path.join(dir, "transcript", "m.vtt"), "utf-8"), "WEBVTT\n");
-  assert.equal(Store.removeTranscript(dir).removed, false);
+  fs.writeFileSync(path.join(dir, "transcript", "earlier.docx"), "docx");
+  fs.mkdirSync(path.join(dir, "transcript", "not-a-file"));
+  assert.deepEqual(Store.transcriptFiles(dir).sort(), ["transcript.json", "transcript/earlier.docx", "transcript/m.vtt"]);
+  fs.unlinkSync(path.join(dir, "transcript.json"));
+  assert.deepEqual(Store.transcriptFiles(dir).sort(), ["transcript/earlier.docx", "transcript/m.vtt"]);
 });

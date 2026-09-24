@@ -180,6 +180,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span class="lg-marker">pending marker</span>
               <span class="lg-screenshot">screenshot</span>
               <span class="lg-note">note</span>
+              <span class="lg-left-out">left out of the analysis</span>
             </div>
           </div>
 
@@ -188,8 +189,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="video-controls">
                 <div class="vc-status"><span id="vc-status-text">VIDEO</span></div>
                 <div class="vc-buttons">
-                  <!-- Shown only while a video is attached (flow-view.js syncVideoControls). -->
+                  <!-- Shown only while a video is attached (flow-view.js syncVideoControls);
+                       Remove video only while the video is the one the analyst attached. -->
                   <button id="btn-sync-video" class="vc-text-btn" type="button" hidden title="Sync the video: click a moment in it, then the same moment on the timeline.">Sync video...</button>
+                  <button id="btn-video-remove" class="vc-text-btn" type="button" hidden title="Take the video out of this project: its copy in the project's video folder is deleted. Ctrl+Z brings it back.">Remove video</button>
                   <button id="btn-video-expand" title="Expand video to 70% width">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
                   </button>
@@ -293,6 +296,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
               <div class="map-zoom" id="session-map-zoom" style="display:none">
                 <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit the whole map in view (scroll to zoom, drag to pan)">fit</button>
+                <!-- Shown only while how the transactions ran shows with boxes moved by hand (map-controller.js). -->
+                <button class="icon-btn xs" id="btn-session-map-reset-layout" type="button" hidden title="Put the boxes you moved back where the map lays them out">Reset layout</button>
               </div>
               <div class="refmap-tools">
                 <!-- The Map's one act (refmap-ui.js syncForkButton sets its
@@ -422,7 +427,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Reference transaction.</strong> In Steps, check transaction 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm transaction</em>.</li>
             <li><strong>Other transactions.</strong> The other transactions arrive drafted and named like the reference transaction. Open each one in Steps: it lists how it differs from the reference transaction (extra, skipped or reordered steps). Fix a step where needed; the other transactions are not confirmed.</li>
             <li><strong>Document.</strong> On the Overview, you write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is the one the Map shows first: your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the process map.</li>
+            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is the one the Map shows first: your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the process map. <em>Edited maps</em> lists your copies; <em>Delete</em> takes one out with its file, and Ctrl+Z brings both back.</li>
           </ol>
           <p>Every change you make saves itself to the project folder: the top bar says <em>Saved</em>, and pointing at it shows the folder. That folder holds the whole project, with its video, transcript, screenshots, attachments and edited maps. To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it.</p>
           <h3>What the Overview shows</h3>
@@ -430,12 +435,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Checklist</strong>: the five acts above, each ticked once it is done. The export is never ticked: the app keeps no record of it.</li>
             <li><strong>Document</strong>: you write these fields; the PDD prints them. Its line names the fields still empty.</li>
             <li><strong>From the transcript</strong>: what was said outside the transactions, from the meeting transcript you attached; the app places each sentence by its time.</li>
-            <li><strong>Observations</strong>: the app measures these from the recording: the data typed twice, and where the time goes (the average time of each step and system, and in how many transactions it happened).</li>
+            <li><strong>Observations</strong>: the app measures these from the recording, and the PDD prints the same rows in its sections 5 and 6: <em>Data</em> (every field entered, with its system, its step and an example value, and the <em>Re-keyed data</em>: a value typed again in another system) and <em>Applications and time</em> (the time of each transaction, and each system's screens, steps and time per transaction). They are measured again with each analysis and each PDD export.</li>
           </ul>
           <h3>Optional inputs</h3>
           <ul class="help-list">
-            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview (the line under the Checklist) or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. It is copied into the project folder, so the folder carries it.</li>
-            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview (the line under the Checklist). Its sentences show beside the document fields, and with each step once the transcript is placed in time: a synced video places it, or use <em>Sync</em> on the Timeline's Transcript lane (pick a sentence, then click where it was said). A sentence said before the recording started shows how long before (for example <em>0:28 before</em>). A sentence you add to a step's description or a field is printed in the PDD.</li>
+            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview (the line under the Checklist) or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. It is copied into the project folder, so the folder carries it. <em>Remove</em>, beside it on the Overview (or <em>Remove video</em> beside <em>Sync video</em> on the Timeline), takes the video out of the project with its copy in the folder; <em>Replace</em> takes out the copy it replaces. Ctrl+Z brings it back.</li>
+            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview (the line under the Checklist). Its sentences show beside the document fields, and with each step once the transcript is placed in time: a synced video places it, or use <em>Sync</em> on the Timeline's Transcript lane (pick a sentence, then click where it was said). A sentence said before the recording started shows how long before (for example <em>0:28 before</em>). A sentence you add to a step's description or a field is printed in the PDD. <em>Remove</em> takes the transcript out of the project with its original file; Ctrl+Z brings them back.</li>
           </ul>
           <h3>Starting without a recording</h3>
           <p>In the New menu, <em>New project from a video</em> makes a project from a video of the process (a Teams recording, a screen video): the video is copied into the new folder and the Timeline follows it. <em>New empty project</em> makes a project with nothing in it. Either is one transaction until you mark where each one starts on the Timeline. Add its steps in Steps with <em>+ Add step</em> (Alt+Up and Alt+Down move a step without a time), or on the Timeline with <em>+ Step</em> at the video's playhead. The step pane's <em>System</em> field says which system a step happens in.</p>
@@ -458,7 +463,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Fixes that carry to the other transactions</h3>
           <p>A merge in the reference transaction is also made in the other transactions wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every transaction. Splits and added steps are made in each transaction that needs them.</p>
           <h3>Differences between transactions</h3>
-          <p>Every other transaction is compared with the reference transaction step by step, the way the PDD compares them: an open transaction lists its extra steps (and where they happen), its skipped steps and the steps done in a different order. The other transactions are not confirmed: once each has been opened, the Overview's Checklist ticks <em>Review the other transactions</em>.</p>
+          <p>Every other transaction is compared with the reference transaction step by step, the way the PDD compares them: an open transaction lists its extra steps (and where they happen), its skipped steps and the steps done in a different order, and first, when part of it was left out of the analysis, which part. The other transactions are not confirmed: once each has been opened, the Overview's Checklist ticks <em>Review the other transactions</em>.</p>
           <h3>Sub-processes</h3>
           <p>A step can hold steps of its own: a <strong>sub-process</strong>. <em>Open as a sub-process</em>, in the step pane, gives a step one step per action recorded in it (a field typed, a click); <em>Group into a sub-process</em>, in the Steps toolbar once two or more steps one after the other are ticked, moves them into a new one. Either is made in every transaction. The <em>&#9656; N sub-steps</em> button on its row opens it, one block per transaction that goes through it, and the line above the list goes back up. <em>Dissolve sub-process</em> undoes it, and Ctrl+Z undoes that. Confirm transaction confirms every level.</p>
           <h3>The flow of the steps</h3>
@@ -478,6 +483,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Leaving things out</h3>
           <ul class="help-list">
             <li><strong>Apps outside the process</strong>, in the Steps toolbar: tick the apps that are not part of the process, for example Teams or Outlook used during the call; the steps and the map are updated without them.</li>
+            <li><strong>Leave out of the analysis</strong>, on the Timeline: Shift-drag across a stretch (a break, a detour) and choose it on the card that opens. The steps and the map are drafted again without that stretch, and its time is not counted; a transaction with a stretch left out says so, and the reference transaction's steps done in it are not read as skipped. The Timeline shows the stretch hatched, <em>Left out of the analysis</em>: click it and choose <em>Include again</em> to bring it back. Ctrl+Z undoes either.</li>
             <li><strong>Hide step</strong>: takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
           <h3>Waste</h3>
@@ -525,12 +531,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
-          <p class="help-hint">Undo covers every edit (steps, markers, document fields, the list of edited maps), up to 50, until you open another project. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map there.</p>
+          <p class="help-hint">Undo covers every edit (steps, markers, document fields, the edited maps, the video, a stretch left out of the analysis, a removed transcript), up to 50, until you open another project. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map there.</p>
           <h3>Clicks</h3>
           <ul class="help-list">
             <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>
             <li>Click a step band on the timeline to open the step panel beside it.</li>
-            <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment.</li>
+            <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>
+            <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>fit</em>, puts the boxes back where the map lays them out.</li>
             <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>.</li>
           </ul>
         </section>
@@ -543,6 +550,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
             <dt>A Citrix or remote desktop window shows as one app</dt>
             <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the transaction markers and a video for that part and add its steps by hand in Steps.</dd>
+
+            <dt>The annotations for this project cannot be read</dt>
+            <dd>A banner at the top says so, and nothing is saved while it shows. <em>Restore the newest backup</em>, on the banner, puts back the newest backup that can be read (it asks first and says when that backup was saved) and keeps the file that cannot be read beside it, as <em>annotations.unreadable</em> with the time.</dd>
 
             <dt>The steps or the map are missing or out of date</dt>
             <dd>The app analyzes a project by itself when it opens. If that stopped (it was cancelled, or it failed and the log at the top says why), analyze it again. Your confirmed, edited, added and hidden steps are kept.

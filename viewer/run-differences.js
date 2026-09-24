@@ -32,6 +32,19 @@
  * longest common order is a "Different order"; every reference step whose key
  * the run lacks is "Skipped" (with its number in the reference). A key that
  * repeats within a list counts at its first occurrence only.
+ *
+ * A stretch of the run left out of the analysis (annotations.excluded_ranges,
+ * cut to the run's span: leftOutStretches) drafts no step, so the reference
+ * steps done in it would read as skipped. They are not: a stretch falls
+ * between the run's steps (a unit is before it when it starts before the
+ * stretch starts; a step without a time is after), and the reference steps
+ * after the reference position of the nearest unit before it that the
+ * reference has, and before that of the nearest such unit after it (the
+ * reference's start and end when there is none), are left out of the Skipped
+ * lines. Instead the run says once, first: "Part of this run was left out of
+ * the analysis (1:10 to 1:45)." (the times since the recording started,
+ * several stretches joined "a, b and c"; no times when the start of the
+ * recording is not known).
  */
 
 "use strict";
@@ -108,7 +121,9 @@ function _mergeTargets(refSteps) {
 }
 
 /* The run's steps with each stretch that spells a merged reference step
-   folded into one unit (see the header). Steps are kept as they are. */
+   folded into one unit (see the header). Steps are kept as they are. A
+   folded unit keeps the run's steps it stands for under `members` (their
+   times); the rule reads only its first member's start. */
 function collapseToReference(refSteps, runSteps) {
   const run = Array.isArray(runSteps) ? runSteps : [];
   const targets = _mergeTargets(refSteps);
@@ -123,7 +138,7 @@ function collapseToReference(refSteps, runSteps) {
       if (n >= 2) { best = t; bestLen = n; }
     }
     if (best) {
-      out.push({ name: best.step.name, draft_keys: best.keys.slice() });
+      out.push({ name: best.step.name, draft_keys: best.keys.slice(), members: run.slice(i, i + bestLen) });
       i += bestLen;
     } else {
       out.push(run[i]);
@@ -131,6 +146,101 @@ function collapseToReference(refSteps, runSteps) {
     }
   }
   return out;
+}
+
+/* ---- the stretches left out of the analysis ---------------------------------------- */
+
+/* An ISO time in ms, NaN when it cannot be read. A time without a zone is
+   read as UTC, as the pipeline's parser reads it (_dt.parse_ts), so the two
+   sides place a hand-edited range the same way. */
+function _ms(iso) {
+  if (typeof iso !== "string" || !iso.trim()) return NaN;
+  const s = iso.trim();
+  const zoned = /T.*([zZ]|[+-]\d{2}:?\d{2})$/.test(s) || !s.includes("T");
+  const t = Date.parse(zoned ? s : s + "Z");
+  return Number.isFinite(t) ? t : NaN;
+}
+
+/* When a unit starts (ms), NaN when it has no time: a folded unit starts with
+   its first member. */
+function _unitStart(unit) {
+  const u = Array.isArray(unit && unit.members) && unit.members.length ? unit.members[0] : unit;
+  return _ms(u && u.time_range && u.time_range.start);
+}
+
+/* The stretches of one run left out of the analysis: each excluded range
+   ({ start, end }, ISO) cut to the run's span ({ startMs, endMs }, endMs
+   null or missing for a run left open), in time order, overlapping ones
+   joined; a range outside the span, or one that cannot be read, is dropped.
+   No span start: nothing can be placed in the run. [{ startMs, endMs }]. */
+function leftOutStretches(ranges, span) {
+  const lo = span && Number.isFinite(span.startMs) ? span.startMs : NaN;
+  if (!Number.isFinite(lo)) return [];
+  const hi = span && Number.isFinite(span.endMs) ? span.endMs : Infinity;
+  const cut = [];
+  for (const r of Array.isArray(ranges) ? ranges : []) {
+    const a = _ms(r && r.start), b = _ms(r && r.end);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) continue;
+    const s = Math.max(a, lo), e = Math.min(b, hi);
+    if (e > s) cut.push({ startMs: s, endMs: e });
+  }
+  cut.sort((x, y) => x.startMs - y.startMs || x.endMs - y.endMs);
+  const out = [];
+  for (const c of cut) {
+    const last = out[out.length - 1];
+    if (last && c.startMs <= last.endMs) last.endMs = Math.max(last.endMs, c.endMs);
+    else out.push({ startMs: c.startMs, endMs: c.endMs });
+  }
+  return out;
+}
+
+/* A time since the recording started, "0:19", "12:05", "1:02:03"; "" when it
+   cannot be said (unknown, or before the start). step_context.clock's rule. */
+function _since(ms, originMs) {
+  const d = ms - originMs;
+  if (!Number.isFinite(d) || d < 0) return "";
+  const total = Math.floor(d / 1000);
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
+}
+
+/* "a", "a and b", "a, b and c" (pdd_export._joined). */
+function _joined(items) {
+  if (items.length <= 1) return items.join("");
+  return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+}
+
+/* The one line a run with stretches left out says (see the header); "" for
+   none. `originMs`: when the recording started. */
+function leftOutText(stretches, originMs, unit) {
+  const list = Array.isArray(stretches) ? stretches : [];
+  if (!list.length) return "";
+  const spans = list.map((s) => [_since(s.startMs, originMs), _since(s.endMs, originMs)]);
+  const times = spans.every(([a, b]) => a && b) ? " (" + _joined(spans.map(([a, b]) => a + " to " + b)) + ")" : "";
+  return "Part of this " + (unit || "run") + " was left out of the analysis" + times + ".";
+}
+
+/* The indexes in the reference of the steps inside the stretches (see the
+   header): a Skipped line is not written for them. `units`: the run after
+   folding; `refIndex`: key => the index of its first step in the reference. */
+function _insideStretches(units, refIndex, refLength, stretches) {
+  const inside = new Set();
+  for (const s of stretches) {
+    let at = 0;
+    for (const u of units) if (_unitStart(u) < s.startMs) at++;
+    let lo = -1, hi = refLength;
+    for (let i = at - 1; i >= 0; i--) {
+      const k = alignKey(units[i]);
+      if (refIndex.has(k)) { lo = refIndex.get(k); break; }
+    }
+    for (let i = at; i < units.length; i++) {
+      const k = alignKey(units[i]);
+      if (refIndex.has(k)) { hi = refIndex.get(k); break; }
+    }
+    for (let j = lo + 1; j < hi; j++) inside.add(j);
+  }
+  return inside;
 }
 
 /* { key, step, index } for the first step of each alignment key. */
@@ -168,16 +278,20 @@ function commonOrder(a, b) {
 }
 
 /* The differences of a run from its reference, each as
-     { kind: "extra" | "order" | "skipped", name, where?, number?, text }
-   in the PDD's order: the run's extra and reordered steps in run order, then
-   the reference steps the run skipped. `text` is the line pdd_export writes;
+     { kind: "left_out" | "extra" | "order" | "skipped", name?, where?, number?, text }
+   in the PDD's order: the one line on the stretches left out (when the run
+   has any), the run's extra and reordered steps in run order, then the
+   reference steps the run skipped. `text` is the line pdd_export writes;
    opts.reference names the reference in a Skipped line ("the pattern run" by
    default; the Steps level passes REFERENCE_RUN) and opts.unit what a run is
    called in the other lines ("run" by default; the Steps level passes
-   RUN_UNIT). Both lists are the visible steps in time order. */
+   RUN_UNIT). opts.leftOut: the run's stretches left out of the analysis
+   (leftOutStretches), opts.originMs when the recording started. Both lists
+   are the visible steps in time order. */
 function differences(refSteps, runSteps, opts) {
   const reference = (opts && opts.reference) || PATTERN_REFERENCE;
   const unit = (opts && opts.unit) || "run";
+  const stretches = (opts && Array.isArray(opts.leftOut)) ? opts.leftOut : [];
   const ref = Array.isArray(refSteps) ? refSteps : [];
   const units = collapseToReference(ref, runSteps);
   const pat = firstOccurrences(ref);
@@ -188,6 +302,9 @@ function differences(refSteps, runSteps, opts) {
   const runSet = new Set(runKeys);
   const inOrder = commonOrder(patKeys, runKeys);
   const out = [];
+  if (stretches.length) {
+    out.push({ kind: "left_out", text: leftOutText(stretches, opts && opts.originMs, unit) });
+  }
   for (const { key, step, index } of run) {
     const where = index ? "after " + stepName(units[index - 1]) : "at the start of the " + unit;
     const name = stepName(step);
@@ -197,8 +314,10 @@ function differences(refSteps, runSteps, opts) {
       out.push({ kind: "order", name, where, text: "Different order: " + name + " (in this " + unit + " " + where + ")." });
     }
   }
+  const inside = stretches.length
+    ? _insideStretches(units, new Map(pat.map((x) => [x.key, x.index])), ref.length, stretches) : new Set();
   for (const { key, step, index } of pat) {
-    if (runSet.has(key)) continue;
+    if (runSet.has(key) || inside.has(index)) continue;
     const name = stepName(step);
     out.push({ kind: "skipped", name, number: index + 1,
       text: "Skipped: " + name + " (step " + (index + 1) + " of " + reference + ")." });
@@ -206,7 +325,13 @@ function differences(refSteps, runSteps, opts) {
   return out;
 }
 
+/* How many of `diffs` are differences (the left-out line is not one). */
+function differenceCount(diffs) {
+  return (Array.isArray(diffs) ? diffs : []).filter((d) => d && d.kind !== "left_out").length;
+}
+
 module.exports = {
   PATTERN_REFERENCE, REFERENCE_RUN, RUN_UNIT,
   stepKeys, mergeKey, alignKey, stepName, collapseToReference, firstOccurrences, commonOrder, differences,
+  leftOutStretches, leftOutText, differenceCount, isoMs: _ms,
 };

@@ -578,8 +578,7 @@ function stepApp(step, interactionsById) {
    "EXCEL.EXE"): the recording's own name for it (stats.json meta.app_names,
    the names the findings and the PDD use), else the executable name without
    its extension, capitalized when it is a machine token. Mirrors
-   normalization/app_names.display_name. Used by the Steps level and the
-   Overview's Where the time goes. */
+   normalization/app_names.display_name. Used by the Steps level. */
 function readableApp(app, names) {
   const raw = String(app || "").trim();
   if (!raw || raw === "(app)") return "";

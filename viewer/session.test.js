@@ -28,7 +28,7 @@ Ipc.saveAnnotations = SAVE_OK;
    capture stub stands in (the failure tests read what the analyst saw). */
 const Dom = require("./dom.js");
 const toasts = [];
-Dom.toast = (msg, kind) => { toasts.push({ msg, kind }); };
+Dom.toast = (msg, kind, opts) => { toasts.push({ msg, kind, hold: !!(opts && opts.hold) }); };
 
 const State = require("./state.js");
 const Session = require("./session.js");
@@ -91,6 +91,21 @@ test("a failed save is shown to the analyst, rejects, and records no undo entry"
   assert.equal(State.canUndo("F1"), false, "an unsaved edit must not become undoable");
   assert.equal(State.getSession().annotations.steps[0].name, "lost?",
     "the edit stays in memory (and on screen), so the next save still writes it");
+});
+
+test("a save that could not move a file says so, held over the act's own success message, and stays undoable", async () => {
+  loadFakeSession("F1b", [{ step_id: "a", name: "orig" }]);
+  toasts.length = 0;
+  Ipc.saveAnnotations = async () => ({ ok: true, filesError: "video/call.webm: EBUSY: resource busy or locked" });
+  try {
+    await editStepNameInPlace("saved", "Remove the video");
+  } finally {
+    Ipc.saveAnnotations = SAVE_OK;
+  }
+  const shown = toasts[toasts.length - 1];
+  assert.ok(shown && shown.kind === "error" && shown.hold, "a held error toast was shown");
+  assert.match(shown.msg, /^Saved, but a file was not moved out of the project folder or back into it \(video\/call\.webm: EBUSY/);
+  assert.equal(State.canUndo("F1b"), true, "the save reached the disk: it is undoable");
 });
 
 test("the undo baseline does not advance on a failed save", async () => {
@@ -200,4 +215,63 @@ test("ensureAnnoShape seeds no key of a cut feature and keeps an older file's ke
   const kept = Session.ensureAnnoShape(JSON.parse(JSON.stringify(older)));
   assert.deepEqual(kept.phases, older.phases, "an existing phases key round-trips untouched");
   assert.deepEqual(kept.drift_markers, older.drift_markers, "an existing drift_markers key round-trips untouched");
+});
+
+/* ---- lane CC: an undo that changes what the analysis reads, or the video --- */
+
+test("revertFollowUp: a change of the stretches left out analyzes again; a change of the video reloads; else nothing", () => {
+  const R = { start: "2026-05-14T09:01:00Z", end: "2026-05-14T09:02:00Z", reason: "manual" };
+  const V = { path: "video/a.mp4", offset_ms: 0 };
+  assert.equal(Session.revertFollowUp({ excluded_ranges: [] }, { excluded_ranges: [R] }), "analyze", "Include again undone");
+  assert.equal(Session.revertFollowUp({ excluded_ranges: [R] }, {}), "analyze", "Leave out undone");
+  assert.equal(Session.revertFollowUp({ excluded_ranges: [R], external_video: V }, { excluded_ranges: [R] }), "reload", "Attach video undone");
+  assert.equal(Session.revertFollowUp({}, { external_video: V }), "reload", "Remove video undone");
+  assert.equal(Session.revertFollowUp({ external_video: V }, { external_video: Object.assign({}, V, { offset_ms: 900 }) }), "reload", "a sync undone");
+  assert.equal(Session.revertFollowUp({ excluded_ranges: [], steps: [1] }, { steps: [2] }), null, "a step edit: refreshed in place");
+});
+
+test("an undo of Leave out of the analysis analyzes again; an undo of Remove video reloads the project", async () => {
+  const calls = [];
+  Session.initSession({ renderSessionPills: () => {}, analyzeSession: async () => { calls.push("analyze"); },
+    reloadSession: async (f) => { calls.push("reload " + f); } });
+  loadFakeSession("CC1", [{ step_id: "a", name: "x" }]);
+  const anno = Session.ensureAnnoShape(State.getSession().annotations);
+  anno.excluded_ranges.push({ start: "2026-05-14T09:01:00Z", end: "2026-05-14T09:02:00Z", reason: "manual" });
+  await Session.saveAnnotationsWithUndo(anno, "Leave out of the analysis");
+  await Session.performUndo();
+  assert.deepEqual(calls, ["analyze"]);
+  assert.deepEqual(State.getSession().annotations.excluded_ranges, []);
+  calls.length = 0;
+  loadFakeSession("CC2", [{ step_id: "a", name: "x" }]);
+  State.getSession().annotations.external_video = { path: "video/a.mp4", offset_ms: 0 };
+  Session.captureBaseline();
+  const a2 = State.getSession().annotations;
+  delete a2.external_video;
+  await Session.saveAnnotationsWithUndo(a2, "Remove the video");
+  await Session.performUndo();
+  assert.deepEqual(calls, ["reload CC2"]);
+  assert.deepEqual(State.getSession().annotations.external_video, { path: "video/a.mp4", offset_ms: 0 });
+  Session.initSession({ renderSessionPills: () => {} });
+});
+
+test("recordFileAct: Remove transcript is undone and redone by its own acts, and leaves the annotations alone", async () => {
+  loadFakeSession("CC3", [{ step_id: "a", name: "x" }]);
+  const log = [];
+  let writes = 0;
+  Ipc.saveAnnotations = async () => { writes += 1; return { ok: true }; };
+  await Session.recordFileAct("Remove the transcript", {
+    undo: async () => { log.push("put back"); return true; },
+    redo: async () => { log.push("taken out"); return true; },
+  });
+  toasts.length = 0;
+  await Session.performUndo();
+  await Session.performRedo();
+  assert.deepEqual(log, ["put back", "taken out"]);
+  assert.equal(writes, 0, "no annotations write for a files act");
+  assert.deepEqual(toasts.map((t) => t.msg), ["Undone: Remove the transcript", "Redone: Remove the transcript"]);
+  // A failed act puts the entry back where it was.
+  await Session.recordFileAct("Remove the transcript", { undo: async () => false, redo: async () => true });
+  await Session.performUndo();
+  assert.ok(State.canUndo("CC3"), "the entry is still there to undo");
+  Ipc.saveAnnotations = SAVE_OK;
 });

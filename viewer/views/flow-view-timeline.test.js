@@ -189,3 +189,24 @@ test("a lane the Lanes menu lists has the same name there as at the timeline's l
   assert.deepEqual(named.map(([key]) => key).sort(), ["cases", "notes", "screenshots", "steps", "transcript"]);
   for (const [key, word] of named) assert.equal(word, Timeline.LANE_NAMES[key].name, key);
 });
+
+/* ---- the stretches left out of the analysis (lane CC) ------------------- */
+
+test("leftOutBands: the excluded ranges the Timeline draws, readable ones only, in time order, each with its entry", () => {
+  const a = { start: "2026-05-14T09:02:00Z", end: "2026-05-14T09:02:30Z", reason: "manual" };
+  const b = { start: "2026-05-14T09:00:10Z", end: "2026-05-14T09:00:40Z" };
+  const bands = Timeline.leftOutBands([a, { start: "x", end: "y" }, { start: a.end, end: a.start }, null, b]);
+  assert.deepEqual(bands.map((x) => x.range), [b, a], "the entry itself, for Include again");
+  assert.deepEqual(bands.map((x) => [x.startMs, x.endMs]), [[Date.parse(b.start), Date.parse(b.end)], [Date.parse(a.start), Date.parse(a.end)]]);
+  assert.deepEqual(Timeline.leftOutBands(undefined), []);
+});
+
+test("a band left out says what it is and what a click does; its label is the legend's words", () => {
+  assert.equal(Timeline.LEFT_OUT_LABEL, "Left out of the analysis");
+  assert.equal(Timeline.leftOutTitle("1:10", "1:45"),
+    "Left out of the analysis, 1:10 to 1:45: its steps are not drafted and its time is not counted. Click to include it again.");
+  assert.ok(Timeline.leftOutTitle("", "").startsWith("Left out of the analysis: "));
+  // The label: whole where it fits, its first words on a narrower band, none on a thin one.
+  assert.deepEqual([200, 150, 149, 64, 63, 0].map(Timeline.leftOutLabel),
+    ["Left out of the analysis", "Left out of the analysis", "Left out", "Left out", "", ""]);
+});

@@ -138,3 +138,66 @@ test("load path: with no backups the message says so", () => {
   assert.deepEqual(s.annotationsError.backups, []);
   assert.match(s.annotationsError.message, /No backups \(annotations\.json\.2 to annotations\.json\.5\) were found/);
 });
+
+/* ---- Restore the newest backup (the unreadable banner's act, lane CC) ---- */
+
+test("the newest backup that can be read is offered: a broken .2 gives way to .3; the message names it and its time", () => {
+  const dir = tempSession("not json");
+  fs.writeFileSync(path.join(dir, "annotations.json.2"), "{ broken");
+  fs.writeFileSync(path.join(dir, "annotations.json.3"), '{"steps":["older"]}');
+  fs.writeFileSync(path.join(dir, "annotations.json.4"), '{"steps":["oldest"]}');
+  const newest = Store.newestReadableBackup(dir);
+  assert.equal(newest.name, "annotations.json.3");
+  const s = loadSessionData(dir);
+  assert.equal(s.annotationsError.newest.name, "annotations.json.3");
+  // Its time as the message writes it: the banner's confirm repeats this string.
+  assert.equal(typeof s.annotationsError.newest.saved, "string");
+  assert.ok(s.annotationsError.message.includes(", saved " + s.annotationsError.newest.saved + " ("));
+  assert.match(s.annotationsError.message, /Restore the newest backup puts back annotations\.json\.3, saved /);
+  assert.match(s.annotationsError.message, /the file that cannot be read is kept beside it/);
+  const none = tempSession("not json");
+  fs.writeFileSync(path.join(none, "annotations.json.2"), "[1]");
+  assert.equal(Store.newestReadableBackup(none), null);
+  assert.match(loadSessionData(none).annotationsError.message, /None of the backups found \(annotations\.json\.2\) can be read either/);
+});
+
+test("Restore the newest backup keeps the unreadable file beside it, puts the backup in place, and the project reads again", () => {
+  const dir = tempSession('{"steps":[{"name":"half written');
+  fs.writeFileSync(path.join(dir, "annotations.json.2"), '{"steps":["good backup"]}');
+  const now = new Date(2026, 8, 25, 14, 3, 9).getTime();
+  const r = Store.restoreNewestBackup(dir, { expect: "annotations.json.2", nowMs: now });
+  assert.deepEqual([r.backup, r.keptAs], ["annotations.json.2", "annotations.unreadable-20260925-140309.json"]);
+  assert.equal(read(dir, "annotations.json"), '{"steps":["good backup"]}');
+  assert.equal(read(dir, r.keptAs), '{"steps":[{"name":"half written', "the unreadable file is kept as it was");
+  assert.equal(read(dir, "annotations.json.2"), '{"steps":["good backup"]}', "the backup stays");
+  assert.deepEqual(leftoverTemps(dir), []);
+  const s = loadSessionData(dir);
+  assert.equal(s.annotationsError, null);
+  assert.deepEqual(s.annotations, { steps: ["good backup"] });
+  // A second unreadable file the same second is kept under another name.
+  fs.writeFileSync(path.join(dir, "annotations.json"), "broken again");
+  assert.equal(Store.restoreNewestBackup(dir, { nowMs: now }).keptAs, "annotations.unreadable-20260925-140309 (2).json");
+});
+
+test("Restore the newest backup refuses a readable file, a folder with no readable backup, and a backup other than the one confirmed", () => {
+  const ok = tempSession('{"steps":[]}');
+  fs.writeFileSync(path.join(ok, "annotations.json.2"), "{}");
+  assert.throws(() => Store.restoreNewestBackup(ok), /can be read, so there is nothing to restore/);
+  const none = tempSession("not json");
+  assert.throws(() => Store.restoreNewestBackup(none), /no backup of annotations\.json can be read/);
+  assert.equal(read(none, "annotations.json"), "not json", "nothing moved");
+  const moved = tempSession("not json");
+  fs.writeFileSync(path.join(moved, "annotations.json.3"), "{}");
+  assert.throws(() => Store.restoreNewestBackup(moved, { expect: "annotations.json.2" }), /the backups changed/);
+  assert.equal(read(moved, "annotations.json"), "not json");
+  assert.deepEqual(fs.readdirSync(moved).filter((n) => n.startsWith("annotations.unreadable-")), []);
+});
+
+test("a failed copy of the backup puts the unreadable file back where it was", () => {
+  const dir = tempSession("not json");
+  fs.writeFileSync(path.join(dir, "annotations.json.2"), '{"steps":[]}');
+  assert.throws(() => Store.restoreNewestBackup(dir, {}, failingFs("write")), /ENOSPC/);
+  assert.equal(read(dir, "annotations.json"), "not json");
+  assert.deepEqual(fs.readdirSync(dir).filter((n) => n.startsWith("annotations.unreadable-")), []);
+  assert.deepEqual(leftoverTemps(dir), []);
+});

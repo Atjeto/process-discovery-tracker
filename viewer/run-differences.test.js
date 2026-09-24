@@ -25,10 +25,11 @@ const GOLDEN = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "
 
 test("golden: the fixture covers every kind of difference and every kind of key", () => {
   assert.equal(GOLDEN.version, 1);
-  assert.ok(GOLDEN.cases.length >= 4 && GOLDEN.cases.length <= 6, "4 to 6 cases");
+  // Six cases, and two since the stretches left out of the analysis joined the rule (lane CC).
+  assert.ok(GOLDEN.cases.length >= 4 && GOLDEN.cases.length <= 8, "4 to 8 cases");
   const lines = GOLDEN.cases.flatMap((c) => c.expected);
   const keys = GOLDEN.cases.flatMap((c) => c.run_keys);
-  for (const prefix of ["Extra step: ", "Skipped: ", "Different order: "]) {
+  for (const prefix of ["Extra step: ", "Skipped: ", "Different order: ", "Part of this run was left out of the analysis ("]) {
     assert.ok(lines.some((l) => l.startsWith(prefix)), "a case expects a line starting " + JSON.stringify(prefix));
   }
   for (const prefix of ["draft:", "merge:", "label:"]) {
@@ -37,12 +38,78 @@ test("golden: the fixture covers every kind of difference and every kind of key"
   assert.ok(GOLDEN.cases.some((c) => c.expected.length === 0), "a case expects no differences");
 });
 
+/* A case's options: its stretches left out (cut to its run's span) and when
+   the recording started; none for a case without excluded ranges. */
+function caseOpts(c) {
+  if (!c.excluded_ranges) return undefined;
+  const span = { startMs: Date.parse(c.run_span.start), endMs: c.run_span.end ? Date.parse(c.run_span.end) : null };
+  return { leftOut: RD.leftOutStretches(c.excluded_ranges, span), originMs: Date.parse(c.origin) };
+}
+
 for (const c of GOLDEN.cases) {
   test("golden: " + c.name, () => {
     assert.deepEqual(RD.collapseToReference(c.pattern, c.run).map(RD.alignKey), c.run_keys, "alignment keys after folding");
-    assert.deepEqual(RD.differences(c.pattern, c.run).map((d) => d.text), c.expected, "difference lines");
+    assert.deepEqual(RD.differences(c.pattern, c.run, caseOpts(c)).map((d) => d.text), c.expected, "difference lines");
   });
 }
+
+/* ---- the stretches left out of the analysis ------------------------------------------ */
+
+const at = (hms) => Date.parse("2026-05-14T" + hms + "Z");
+
+test("leftOutStretches: each range cut to the run's span, in time order, overlapping ones joined; outside, unreadable or no span: none", () => {
+  const span = { startMs: at("09:01:00"), endMs: at("09:03:00") };
+  const R = (a, b) => ({ start: "2026-05-14T" + a + "Z", end: "2026-05-14T" + b + "Z" });
+  assert.deepEqual(RD.leftOutStretches([R("09:02:00", "09:02:30"), R("09:00:30", "09:01:10"), R("09:02:20", "09:04:00")], span),
+    [{ startMs: at("09:01:00"), endMs: at("09:01:10") }, { startMs: at("09:02:00"), endMs: at("09:03:00") }]);
+  assert.deepEqual(RD.leftOutStretches([R("08:00:00", "08:10:00"), R("09:03:00", "09:04:00")], span), [], "outside, or only touching the end");
+  assert.deepEqual(RD.leftOutStretches([{ start: "x", end: "y" }, { start: "2026-05-14T09:02:00Z" }, R("09:02:30", "09:02:00")], span), []);
+  assert.deepEqual(RD.leftOutStretches([R("09:02:00", "09:02:30")], { startMs: NaN, endMs: null }), [], "no span start: nothing placed");
+  assert.deepEqual(RD.leftOutStretches([R("09:02:00", "09:09:30")], { startMs: at("09:01:00"), endMs: null }),
+    [{ startMs: at("09:02:00"), endMs: at("09:09:30") }], "a run left open reaches to the end");
+  // A hand-edited range without a zone is read as UTC, as the pipeline reads it.
+  assert.deepEqual(RD.leftOutStretches([{ start: "2026-05-14T09:02:00", end: "2026-05-14T09:02:30" }], span),
+    [{ startMs: at("09:02:00"), endMs: at("09:02:30") }]);
+});
+
+test("leftOutText: once per run, the times since the recording started; none when the start is not known or a time falls before it", () => {
+  const s = [{ startMs: at("09:01:10"), endMs: at("09:01:45") }];
+  assert.equal(RD.leftOutText(s, at("09:00:00"), "transaction"), "Part of this transaction was left out of the analysis (1:10 to 1:45).");
+  assert.equal(RD.leftOutText(s, NaN, "transaction"), "Part of this transaction was left out of the analysis.");
+  assert.equal(RD.leftOutText(s, at("09:05:00")), "Part of this run was left out of the analysis.");
+  assert.equal(RD.leftOutText([], at("09:00:00")), "");
+  const three = [{ startMs: at("09:00:10"), endMs: at("09:00:20") }, { startMs: at("09:30:00"), endMs: at("09:31:00") },
+    { startMs: at("10:00:00"), endMs: at("10:00:05") }];
+  assert.equal(RD.leftOutText(three, at("09:00:00"), "transaction"),
+    "Part of this transaction was left out of the analysis (0:10 to 0:20, 30:00 to 31:00 and 1:00:00 to 1:00:05).");
+});
+
+test("differences with a stretch left out: the line leads, is no difference, and a step outside the stretch is still skipped", () => {
+  const ref = [P("Find", { draft_key: "f" }), P("Check", { draft_key: "c" }), P("Save", { draft_key: "s" }), P("Send", { draft_key: "e" })];
+  const T = (a, b) => ({ start: "2026-05-14T" + a + "Z", end: "2026-05-14T" + b + "Z" });
+  const run = [P("Find", { draft_key: "f", time_range: T("09:01:00", "09:01:05") }),
+    P("Save", { draft_key: "s", time_range: T("09:02:00", "09:02:05") })];
+  const leftOut = [{ startMs: at("09:01:10"), endMs: at("09:01:50") }];
+  const d = RD.differences(ref, run, { leftOut, originMs: at("09:00:00"), reference: RD.REFERENCE_RUN, unit: RD.RUN_UNIT });
+  assert.deepEqual(d.map((x) => x.kind), ["left_out", "skipped"]);
+  assert.equal(d[0].text, "Part of this transaction was left out of the analysis (1:10 to 1:50).");
+  assert.equal(d[1].text, "Skipped: Send (step 4 of the reference transaction).", "Check falls in the stretch, Send does not");
+  assert.equal(RD.differenceCount(d), 1, "the left-out line is not counted as a difference");
+  // Without the stretch, Check reads as skipped (the control).
+  assert.deepEqual(RD.differences(ref, run).map((x) => x.kind), ["skipped", "skipped"]);
+});
+
+test("differences with a stretch left out: a folded unit starts with its first member", () => {
+  const ref = [P("Find", { draft_key: "f" }), P("Merged", { draft_keys: ["a", "b"] }), P("Check", { draft_key: "c" }), P("Save", { draft_key: "s" })];
+  const T = (a, b) => ({ start: "2026-05-14T" + a + "Z", end: "2026-05-14T" + b + "Z" });
+  const run = [P("Find", { draft_key: "f", time_range: T("09:01:00", "09:01:05") }),
+    P("A", { draft_key: "a", time_range: T("09:01:10", "09:01:15") }), P("B", { draft_key: "b", time_range: T("09:01:20", "09:01:25") }),
+    P("Save", { draft_key: "s", time_range: T("09:03:00", "09:03:05") })];
+  const units = RD.collapseToReference(ref, run);
+  assert.equal(units[1].members.length, 2, "the folded unit keeps its members");
+  const d = RD.differences(ref, run, { leftOut: [{ startMs: at("09:02:00"), endMs: at("09:02:30") }], originMs: at("09:00:00") });
+  assert.deepEqual(d.map((x) => x.text), ["Part of this run was left out of the analysis (2:00 to 2:30)."], "Check falls between the merge and Save");
+});
 
 /* ---- the key rule ---------------------------------------------------------------- */
 

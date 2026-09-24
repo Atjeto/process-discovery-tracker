@@ -1,5 +1,5 @@
 {
-  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 6.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, and the difference lines. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). Change a case only together with both implementations.",
+  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 4.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, the difference lines, and the stretches of a run left out of the analysis. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). A case with `excluded_ranges` also gives `run_span` (the run's start and end) and `origin` (when the recording started): each range is cut to the run's span, the pattern steps inside a stretch are not Skipped, and the run says once, first, that part of it was left out, with the times since the recording started. Change a case only together with both implementations.",
   "version": 1,
   "cases": [
     {
@@ -129,6 +129,62 @@
         "draft:crm|Orders|Button:save"
       ],
       "expected": []
+    },
+    {
+      "name": "a stretch left out of the run: the pattern steps inside it are not skipped, one outside it is, and the run says so once, first",
+      "origin": "2026-05-14T09:00:00Z",
+      "run_span": { "start": "2026-05-14T09:01:00Z", "end": "2026-05-14T09:03:00Z" },
+      "excluded_ranges": [
+        { "start": "2026-05-14T09:01:10Z", "end": "2026-05-14T09:01:45Z", "reason": "manual" },
+        { "start": "2026-05-14T08:59:00Z", "end": "2026-05-14T08:59:30Z", "reason": "manual" }
+      ],
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Check the customer", "draft_key": "crm|Customer|Button:check" },
+        { "name": "Create the order", "draft_key": "sap|va01|Button:create" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Log the order", "draft_key": "excel|Log book|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find", "time_range": { "start": "2026-05-14T09:01:02Z", "end": "2026-05-14T09:01:05Z" } },
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save", "time_range": { "start": "2026-05-14T09:01:50Z", "end": "2026-05-14T09:01:55Z" } },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send", "time_range": { "start": "2026-05-14T09:02:00Z", "end": "2026-05-14T09:02:05Z" } }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:crm|Orders|Button:save",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Part of this run was left out of the analysis (1:10 to 1:45).",
+        "Skipped: Log the order (step 5 of the pattern run)."
+      ]
+    },
+    {
+      "name": "stretches cut to the run's span at its start and at its end: the steps before the first step the run has are not skipped, and two stretches make one line",
+      "origin": "2026-05-14T09:00:00Z",
+      "run_span": { "start": "2026-05-14T09:10:00Z", "end": "2026-05-14T09:12:00Z" },
+      "excluded_ranges": [
+        { "start": "2026-05-14T09:09:50Z", "end": "2026-05-14T09:10:30Z", "reason": "manual" },
+        { "start": "2026-05-14T09:11:50Z", "end": "2026-05-14T09:13:00Z", "reason": "manual" }
+      ],
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save", "time_range": { "start": "2026-05-14T09:10:40Z", "end": "2026-05-14T09:10:45Z" } },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send", "time_range": { "start": "2026-05-14T09:11:00Z", "end": "2026-05-14T09:11:05Z" } }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:save",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Part of this run was left out of the analysis (10:00 to 10:30 and 11:50 to 12:00)."
+      ]
     }
   ]
 }

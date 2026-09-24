@@ -475,6 +475,14 @@ class _Session:
     def run_steps(self, index) -> list:
         return self.steps_by_run.get(self.runs[index]["case_id"], [])
 
+    def left_out(self, index) -> list[tuple]:
+        """The stretches of run `index` left out of the analysis
+        (annotations.excluded_ranges cut to the run's span, a run left open
+        reaching to the end: _left_out_stretches)."""
+        run = self.runs[index]
+        return _left_out_stretches(self.annotations.get("excluded_ranges"),
+                                   _parse_ts(run.get("start_ts")), _parse_ts(run.get("end_ts")))
+
     def run_units(self) -> list:
         """Every unit of every run, the reference run first."""
         order = ([self.pattern_index] if self.pattern_index is not None else []) + [
@@ -1363,18 +1371,96 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
     return out
 
 
-def _difference_items(pattern_steps, run_steps) -> list[tuple]:
+def _left_out_stretches(ranges, start, end) -> list[tuple]:
+    """The stretches of one run left out of the analysis: each excluded range
+    (annotations.excluded_ranges, {"start", "end"} ISO) cut to the run's
+    span (`start`, `end` datetimes; `end` None for a run left open), in time
+    order, overlapping ones joined; a range outside the span, or one that
+    cannot be read, is dropped, and without a `start` nothing is placed.
+    [(start, end)]. The rule of viewer/run-differences.js leftOutStretches,
+    pinned with it by shared/run-differences-golden.json."""
+    if start is None:
+        return []
+    cut = []
+    for r in ranges if isinstance(ranges, list) else []:
+        if not isinstance(r, dict):
+            continue
+        a, b = _parse_ts(r.get("start")), _parse_ts(r.get("end"))
+        if a is None or b is None or b < a:
+            continue
+        s, e = max(a, start), (min(b, end) if end is not None else b)
+        if e > s:
+            cut.append((s, e))
+    out: list[list] = []
+    for s, e in sorted(cut):
+        if out and s <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return [(s, e) for s, e in out]
+
+
+def _left_out_text(stretches, origin, unit="run") -> str:
+    """The one line a run with stretches left out says: "Part of this run was
+    left out of the analysis (1:10 to 1:45)." with the times since the
+    recording started (`origin`), several stretches joined "a, b and c", no
+    times when the start is not known or a time falls before it; "" for no
+    stretch. viewer/run-differences.js leftOutText, pinned with it."""
+    if not stretches:
+        return ""
+    spans = []
+    for s, e in stretches:
+        a = clock((s - origin).total_seconds() * 1000) if origin is not None else ""
+        b = clock((e - origin).total_seconds() * 1000) if origin is not None else ""
+        spans.append((a, b))
+    times = (" (" + _joined(f"{a} to {b}" for a, b in spans) + ")"
+             if all(a and b for a, b in spans) else "")
+    return f"Part of this {unit} was left out of the analysis{times}."
+
+
+def _inside_stretches(units, ref_index, ref_length, stretches) -> set:
+    """The indexes in the pattern run of the steps inside the stretches left
+    out: a stretch falls between the run's units (a unit is before it when it
+    starts before the stretch starts; a unit without a time is after), and
+    the pattern steps after the pattern position of the nearest unit before
+    it the pattern has, and before that of the nearest such unit after it
+    (the pattern's start and end when there is none), are inside. No Skipped
+    line is written for them (viewer/run-differences.js, the same rule)."""
+    inside: set = set()
+    for s, _e in stretches:
+        at = sum(1 for u in units
+                 if (t := step_start(_members(u)[0])) is not None and t < s)
+        lo, hi = -1, ref_length
+        for i in range(at - 1, -1, -1):
+            key = _align_key(units[i])
+            if key in ref_index:
+                lo = ref_index[key]
+                break
+        for i in range(at, len(units)):
+            key = _align_key(units[i])
+            if key in ref_index:
+                hi = ref_index[key]
+                break
+        inside.update(range(lo + 1, hi))
+    return inside
+
+
+def _difference_items(pattern_steps, run_steps, left_out=None) -> list[tuple]:
     """The differences of a run from the pattern run, as
     (kind, key, unit, previous unit or None, index in the pattern run or None)
     with kind "extra", "order" or "skipped": extra steps and steps in a
     different order, in the run's order, then the pattern steps the run
     skipped. Steps are matched by their align key, after the run's stretches
     that spell a merged pattern step are folded (_collapse_merged); a step
-    repeated within a run counts once here."""
+    repeated within a run counts once here. `left_out`: the run's stretches
+    left out of the analysis (_left_out_stretches); the pattern steps inside
+    them are not skipped (_inside_stretches)."""
     units = _collapse_merged(pattern_steps, run_steps)
     pat, run = _first_occurrences(pattern_steps), _first_occurrences(units)
     pat_keys, run_keys = [k for k, _s, _i in pat], [k for k, _s, _i in run]
     in_order = _common_order(pat_keys, run_keys)
+    inside = (_inside_stretches(units, {k: i for k, _s, i in pat}, len(pattern_steps), left_out)
+              if left_out else set())
     items = []
     for key, step, i in run:
         prev = units[i - 1] if i else None
@@ -1383,20 +1469,21 @@ def _difference_items(pattern_steps, run_steps) -> list[tuple]:
         elif key not in in_order:
             items.append(("order", key, step, prev, None))
     for key, step, i in pat:
-        if key not in run_keys:
+        if key not in run_keys and i not in inside:
             items.append(("skipped", key, step, None, i))
     return items
 
 
-def _differences(pattern_steps, run_steps) -> list[str]:
-    """One line per difference of a run from the pattern run (_difference_items):
-    the viewer's differences review (viewer/run-differences.js) builds the
+def _differences(pattern_steps, run_steps, left_out=None, origin=None) -> list[str]:
+    """One line per difference of a run from the pattern run (_difference_items),
+    after the one line on its stretches left out (_left_out_text) when it has
+    any: the viewer's differences review (viewer/run-differences.js) builds the
     same lines; both are pinned by shared/run-differences-golden.json, so
     their wording changes only together with the viewer's and the golden's.
     The document does not print these lines: it words the differences for
     its reader (_variation_lines)."""
-    out = []
-    for kind, _key, step, prev, index in _difference_items(pattern_steps, run_steps):
+    out = [_left_out_text(left_out, origin)] if left_out else []
+    for kind, _key, step, prev, index in _difference_items(pattern_steps, run_steps, left_out):
         where = f"after {_step_name(prev)}" if prev is not None else "at the start of the run"
         if kind == "extra":
             out.append(f"Extra step: {_step_name(step)} ({where}).")
@@ -1408,15 +1495,18 @@ def _differences(pattern_steps, run_steps) -> list[str]:
 
 
 def _variation_lines(s, run_index) -> list[str]:
-    """The document's lines for one run: its differences from the reference
-    transaction (each extra step with its system, in how many transactions
-    it happened and what was done; each skipped step with how many
-    transactions did it), then the steps it repeated."""
+    """The document's lines for one run: first, once, the part of it left
+    out of the analysis (annotations.excluded_ranges, cut to its span), then
+    its differences from the reference transaction (each extra step with its
+    system, in how many transactions it happened and what was done; each
+    skipped step with how many transactions did it; a reference step inside
+    a stretch left out is not skipped), then the steps it repeated."""
     m = len(s.runs)
-    lines = []
+    stretches = s.left_out(run_index)
+    lines = [_left_out_text(stretches, s.recording_start, "transaction")] if stretches else []
     if run_index != s.pattern_index:
         pattern = s.run_steps(s.pattern_index)
-        for kind, key, step, prev, _index in _difference_items(pattern, s.run_steps(run_index)):
+        for kind, key, step, prev, _index in _difference_items(pattern, s.run_steps(run_index), stretches):
             name = _step_name(step)
             if kind == "extra":
                 where = (f" after {_step_name(prev)}" if prev is not None
@@ -1532,15 +1622,30 @@ def _rekey_sentence(src, dst, n, runs) -> str:
     return f"{src[0]} ({src[1]}) is typed again as {dst[0]} ({dst[1]}) {often}."
 
 
-def _write_data(doc, s):
-    """The distinct fields entered across the process, each with its system
-    and screen and its step: the reference run's first, then what only the
-    other runs (and the steps outside the runs) entered. Re-keyed fields are
-    marked, and each re-keying is stated below the table."""
-    doc.add_heading("5. Data", level=1)
+# The rows sections 5 and 6 print are computed once, as plain data
+# (data_section, time_section), and printed from that data: the pipeline
+# writes the same data into analysis.json (`pdd_data`, `pdd_time`, through
+# pdd_rows), and the viewer's Overview shows it, so the Overview and the PDD
+# say one fact in the same words (shared/pdd-rows-golden.json pins it).
+
+DATA_HEADER = ("Field", "System and screen", "Step", "Example value", "Re-keyed")
+_DATA_WIDTHS = (1.15, 1.35, 1.35, 1.15, 1.0)
+
+
+def data_section(s) -> dict:
+    """Section 5, Data, as the document prints it: {"heading": "Data",
+    "note": a sentence printed in place of the table (no field entries, or
+    none available to the export) or None, "header": the table's columns,
+    "rows": one row per distinct field entered across the process (field,
+    its system and screen, its step, an example value, how it is re-keyed:
+    the reference run's first, then what only the other runs and the steps
+    outside the runs entered), "rekeyed": one sentence per re-keying (a value
+    typed in one system and again in another in the same transaction), most
+    frequent first}."""
+    out = {"heading": "Data", "note": None, "header": list(DATA_HEADER), "rows": [], "rekeyed": []}
     if not s.have_events:
-        doc.add_paragraph("The recorded field entries were not available to this export.")
-        return
+        out["note"] = "The recorded field entries were not available to this export."
+        return out
     outside = s.steps_by_run.get(None, []) if s.runs else s.steps
     rows, seen = [], set()
     for unit in s.run_units() + outside:
@@ -1553,49 +1658,71 @@ def _write_data(doc, s):
             rows.append([field, ", ".join(x for x in (system, screen) if x),
                          _step_name(unit), value, system])
     if not rows:
-        doc.add_paragraph("No field entries were recorded in the steps of this process.")
-        return
+        out["note"] = "No field entries were recorded in the steps of this process."
+        return out
     rekeys = _rekeyed(s)
     marks: dict[tuple[str, str], list[str]] = {}
     for src, dst, _n in rekeys:
         marks.setdefault(src, []).append(f"as {dst[0]} ({dst[1]})")
         marks.setdefault(dst, []).append(f"from {src[0]} ({src[1]})")
-    _table(doc, ("Field", "System and screen", "Step", "Example value", "Re-keyed"),
-           [(f, where, step, value, "; ".join(marks.get((f, system), [])))
-            for f, where, step, value, system in rows],
-           widths=(1.15, 1.35, 1.35, 1.15, 1.0))
-    if rekeys:
+    out["rows"] = [[f, where, step, value, "; ".join(marks.get((f, system), []))]
+                   for f, where, step, value, system in rows]
+    out["rekeyed"] = [_rekey_sentence(src, dst, n, len(s.runs) or 1) for src, dst, n in rekeys]
+    return out
+
+
+def _write_data(doc, s):
+    """5: the distinct fields entered across the process, each with its
+    system and screen and its step; re-keyed fields are marked, and each
+    re-keying is stated below the table (data_section)."""
+    d = data_section(s)
+    doc.add_heading("5. " + d["heading"], level=1)
+    if d["note"]:
+        doc.add_paragraph(d["note"])
+        return
+    _table(doc, d["header"], d["rows"], widths=_DATA_WIDTHS)
+    if d["rekeyed"]:
         doc.add_paragraph().add_run("Re-keyed data").bold = True
-        for src, dst, n in rekeys:
-            doc.add_paragraph(_rekey_sentence(src, dst, n, len(s.runs) or 1),
-                              style="List Bullet")
+        for sentence in d["rekeyed"]:
+            doc.add_paragraph(sentence, style="List Bullet")
 
 
 # ---- 6. Applications and time -------------------------------------------------
 
-def _write_applications_and_time(doc, s):
-    doc.add_heading("6. Applications and time", level=1)
-    doc.add_heading("6.1 Time per transaction", level=2)
+def time_section(s) -> dict:
+    """Section 6, Applications and time, as the document prints it:
+    {"heading": "Applications and time",
+     "per_transaction": {"heading": "Time per transaction", "note": the
+       sentence printed in place of the table when the transactions are not
+       marked (else None), "header", "rows": one row per transaction (its
+       name, its steps, its active and elapsed time), "after": the line under
+       the table (the times are a walkthrough's) or None},
+     "per_application": {"heading": "Time in each application", "note": the
+       sentence printed when there is no step (else None), "header" (the
+       time column only when a step has a time: "Time per transaction", or
+       "Time" without marked transactions), "rows": one row per system (its
+       screens, its steps, its time per transaction), the most time first}}.
+    Every cell is the text printed."""
+    per_tx = {"heading": "Time per transaction", "note": None,
+              "header": ["Transaction", "Steps", "Active time", "Elapsed time"], "rows": [], "after": None}
     if not s.runs:
-        doc.add_paragraph("Transactions were not marked in this recording, so there "
+        per_tx["note"] = ("Transactions were not marked in this recording, so there "
                           "is no time per transaction.")
     elif s.implicit:
-        doc.add_paragraph("Transactions were not marked in this project, so there "
+        per_tx["note"] = ("Transactions were not marked in this project, so there "
                           "is no time per transaction.")
     else:
-        rows = []
         for i, run in enumerate(s.runs):
             wall, active = run.get("wall_clock_ms"), run.get("active_ms")
-            rows.append((s.run_label(i), len(s.run_steps(i)),
-                         # C16: a session without a recording measured no active time.
-                         "Not recorded" if active is None else _fmt_ms(active),
-                         _fmt_ms(wall) if _num(wall)
-                         else "Not measured: the transaction was not ended"))
-        _table(doc, ("Transaction", "Steps", "Active time", "Elapsed time"), rows,
-               widths=(2.4, 0.8, 1.4, 1.4))
+            per_tx["rows"].append([s.run_label(i), str(len(s.run_steps(i))),
+                                   # C16: a session without a recording measured no active time.
+                                   "Not recorded" if active is None else _fmt_ms(active),
+                                   _fmt_ms(wall) if _num(wall)
+                                   else "Not measured: the transaction was not ended"])
         # AD-28: the transactions are a walkthrough, not the day-to-day work.
-        doc.add_paragraph(_WALKTHROUGH)
-    doc.add_heading("6.2 Time in each application", level=2)
+        per_tx["after"] = _WALKTHROUGH
+    per_app = {"heading": "Time in each application", "note": None,
+               "header": ["System", "Screens", "Steps"], "rows": []}
     units = s.run_units() if s.runs else s.steps
     per: dict[str, dict] = {}
     for unit in units:
@@ -1610,27 +1737,57 @@ def _write_applications_and_time(doc, s):
             row["ms"] += ms
             row["timed"] = True
     if not per:
-        doc.add_paragraph("No steps have been added to this project yet." if not s.recorded
-                          else "No steps have been recorded for this project yet.")
-        return
-    runs = len(s.runs)
+        per_app["note"] = ("No steps have been added to this project yet." if not s.recorded
+                           else "No steps have been recorded for this project yet.")
+    else:
+        runs = len(s.runs)
 
-    def time_of(row):
-        if not row["timed"]:
-            return "Not measured"
-        return _duration(row["ms"] / runs) if runs else _duration(row["ms"])
+        def time_of(row):
+            if not row["timed"]:
+                return "Not measured"
+            return _duration(row["ms"] / runs) if runs else _duration(row["ms"])
 
-    ordered = sorted(per.items(), key=lambda kv: -kv[1]["ms"])
-    header = ("System", "Screens", "Steps")
-    rows = [(system, ", ".join(row["screens"]) or "Not recorded",
-             ", ".join(row["steps"].values())) for system, row in ordered]
-    if not any(row["timed"] for row in per.values()):
-        # No step has a time (C16): the table leaves the time out.
-        _table(doc, header, rows, widths=(1.3, 1.8, 2.9))
+        ordered = sorted(per.items(), key=lambda kv: -kv[1]["ms"])
+        rows = [[system, ", ".join(row["screens"]) or "Not recorded",
+                 ", ".join(row["steps"].values())] for system, row in ordered]
+        if any(row["timed"] for row in per.values()):
+            per_app["header"].append("Time per transaction" if runs and not s.implicit else "Time")
+            rows = [r + [time_of(row)] for r, (_system, row) in zip(rows, ordered)]
+        # else: no step has a time (C16), and the table leaves the time out.
+        per_app["rows"] = rows
+    return {"heading": "Applications and time", "per_transaction": per_tx, "per_application": per_app}
+
+
+def _write_applications_and_time(doc, s):
+    """6: the time of every transaction (6.1) and each system's screens,
+    steps and time per transaction (6.2), from time_section."""
+    t = time_section(s)
+    doc.add_heading("6. " + t["heading"], level=1)
+    tx = t["per_transaction"]
+    doc.add_heading("6.1 " + tx["heading"], level=2)
+    if tx["note"]:
+        doc.add_paragraph(tx["note"])
+    else:
+        _table(doc, tx["header"], tx["rows"], widths=(2.4, 0.8, 1.4, 1.4))
+        if tx["after"]:
+            doc.add_paragraph(tx["after"])
+    app = t["per_application"]
+    doc.add_heading("6.2 " + app["heading"], level=2)
+    if app["note"]:
+        doc.add_paragraph(app["note"])
         return
-    _table(doc, header + ("Time per transaction" if runs and not s.implicit else "Time",),
-           [r + (time_of(row),) for r, (_system, row) in zip(rows, ordered)],
-           widths=(1.1, 1.6, 2.4, 0.9))
+    _table(doc, app["header"], app["rows"],
+           widths=(1.1, 1.6, 2.4, 0.9) if len(app["header"]) == 4 else (1.3, 1.8, 2.9))
+
+
+def pdd_rows(*, session_folder, annotations, stats, manifest, events) -> dict:
+    """What the PDD prints in sections 5 and 6, as the pipeline writes it into
+    analysis.json: {"pdd_data": data_section, "pdd_time": time_section}, for
+    the same inputs write_pdd reads (the derived event stream, the steps,
+    stats.json and the manifest), so the Overview and the PDD print one set of
+    rows. Needs no python-docx."""
+    s = _Session(session_folder, annotations, stats, manifest, events)
+    return {"pdd_data": data_section(s), "pdd_time": time_section(s)}
 
 
 # ---- 7. Improvement and automation scope, 8. Notes ---------------------------------

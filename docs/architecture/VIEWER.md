@@ -61,9 +61,18 @@ The viewer is an Electron app: one **main process**
   with its result; a handler that asks for a file first reports nothing
   when the dialog is cancelled. The top bar's save state listens (section
   9). The analysis and the exports report nothing.
-- **Removed files wait for an Undo.** A screenshot or an attachment the
-  analyst removed moves to `<userData>/pdt-removed/`, and back when an Undo
-  names it again; that folder is emptied when the viewer starts.
+- **Removed files wait for an Undo.** A screenshot, an attachment, the
+  attached video's copy in `video/` (Remove video, and the copy Replace
+  video replaces) or an edited map's file in `derived_maps/` (the Map's
+  Delete) the analyst removed moves to `<userData>/pdt-removed/`, and back
+  when an Undo names it again (`analyst-files.js`: the files
+  `annotations.json` names). Remove transcript parks `transcript.json` and
+  its originals there too, under a folder of its own, and its Undo puts them
+  back. A video kept anywhere else, the OBS recording included, is never
+  moved. That folder is emptied when the viewer starts. A file that cannot
+  be moved (open in another program, no room left) is named in the save's
+  answer (`filesError`), and the viewer says so in an error message that
+  the act's own success message does not cover (`dom.js` toast `hold`).
 - **Libraries.** `index.html` loads cytoscape, cytoscape-dagre and the
   bpmn-js modeler as globals (the live map, the map editor and the
   off-screen map pictures). `dfg-viewer.js` requires `@dagrejs/dagre` to lay
@@ -110,7 +119,8 @@ container. The Overview is the default on load.
   act; it shrinks to one line once only the export is left); the project
   line (its name, who recorded it, its transactions, the reference
   transaction's steps, the video and the transcript with their Attach,
-  Replace and Remove, and warning lines only when a marker problem, a
+  Replace and Remove (the video's Remove only for a video the analyst
+  attached), and warning lines only when a marker problem, a
   missing file, a check that could not run or an app recorded with less
   detail needs one); the Document ("You write these. The PDD prints them.":
   the ten fields of contract C6, an empty one showing its question in light
@@ -118,9 +128,15 @@ container. The Overview is the default on load.
   written, names the empty ones, the Attachments list, and "From the
   transcript" while one is attached); the Observations
   ([`views/analysis-view.js`](../../viewer/views/analysis-view.js),
-  "Measured from the recording": Data typed twice, and Where the time goes
-  per step and per system, with its Average time and in how many
-  transactions it Happened). Until the project is analyzed it shows one
+  "Measured from the recording. The PDD prints them in sections 5 and 6.",
+  lane CC): *Data* (the PDD's section 5: every field entered with its
+  system and screen, its step, an example value and how it is re-keyed, then
+  the Re-keyed data sentences) and *Applications and time* (section 6: Time
+  per transaction and Time in each application). Both are the rows the
+  pipeline wrote into `analysis.json` (`pdd_data`, `pdd_time`) with the
+  functions the PDD prints them with, shown as they are, so the Overview and
+  the PDD say one fact in the same words; they follow each analysis, and a
+  PDD export reads them again. Until the project is analyzed it shows one
   note that says where the analysis is.
 - **Timeline**: the timeline with its lanes and their header column (a key
   and a name per lane, like a video editor's track headers), the video pane,
@@ -182,7 +198,10 @@ container. The Overview is the default on load.
   one line saying the copy has none, as the PDD prints it. The live map
   draws that level from its traces; a sub-process's box carries a + (a click
   opens the panel at that level, a double-click its map), and dragged
-  layouts are kept per level. bpmn-js's own drill down (its arrow, its
+  layouts are kept per level. Once a box of the live map was dragged,
+  *Reset layout* shows beside fit (`#btn-session-map-reset-layout`, lane
+  CC): it forgets the arrangement kept for that level and draws the map
+  laid out again. bpmn-js's own drill down (its arrow, its
   breadcrumbs) moves `State.mapPath` and the picker with it; a plane the
   project has no map for leaves them as they are.
 
@@ -289,10 +308,10 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `annotations-store.js` | Reading `annotations.json` (an unreadable file is reported, never treated as absent), the backups `.2` to `.5`, the temp-file-then-rename write. |
+| `annotations-store.js` | Reading `annotations.json` (an unreadable file is reported, never treated as absent, with the newest backup that can be read), the backups `.2` to `.5`, the temp-file-then-rename write, and Restore the newest backup (`restoreNewestBackup`: the unreadable file kept as `annotations.unreadable-<time>.json`, the backup copied into place). |
 | `names-store.js` | The remembered step names, `<userData>/pdt-library/remembered-names.json` (contract C4). |
-| `transcript-store.js` | `transcript.json`: read, save the sync offset, remove (C8). |
-| `analyst-files.js` | The files the analyst adds (C16): screenshots in `screenshots/analyst/`, attachments in `attachments/` (a free name when one is taken), the move of removed files and back, which attachment opens. |
+| `transcript-store.js` | `transcript.json`: read, save the sync offset, and the files Remove transcript takes out (`transcriptFiles`: the file and the originals in `transcript/`) (C8). |
+| `analyst-files.js` | The files the analyst adds (C16): screenshots in `screenshots/analyst/`, attachments in `attachments/` (a free name when one is taken), the move of removed files and back (the video's copy in `video/` and the edited maps' files too, lane CC), the parking of a removed transcript's files for its Undo (`parkFiles`, `restoreParked`), which attachment opens. |
 | `new-project.js` | A session without a recording (C16): `manifest.json` (`session_id`, `source`, `started_at`, `label`), an empty `events.jsonl`, `annotations.json`, and for a video project the video copied into `video/` at offset 0. |
 | `video-path.js` | Pure: where an attached video is kept (copied into `video/`, stored relative to the folder) and how a stored path is found again on another machine. |
 | `project-zip.js` | Export, Whole project (.zip): where the zip goes (next to the folder, `<name>.zip`, else `<name> (2).zip` and on), one more try when a save replaced a file while the zip was made, the sentence for a failure, the size. |
@@ -303,10 +322,10 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `overview-view.js` | The Overview: the Checklist (`pathState`), the project line, the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), the note shown while the analysis is missing. |
-| `analysis-view.js` | The Overview's Observations: Data typed twice, Where the time goes (`averageTime`, `happenedIn`). |
-| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, range selection, the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table. |
-| `flow-view-timeline.js` | The timeline: the lane stack, the minimap, the lanes menu, zoom and scroll persistence, the summary line. |
-| `flow-view-video.js` | The video and the timeline: the span a video project runs on, the playhead, seeking, Attach video and Sync video (two clicks). |
+| `analysis-view.js` | The Overview's Observations: Data and Applications and time, the PDD's rows of sections 5 and 6 from `analysis.json` (`dataItem`, `timeItem`, `rowsTableHtml`). |
+| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, range selection and its card (Insert transaction from selection; Leave out of the analysis, and Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
+| `flow-view-timeline.js` | The timeline: the lane stack, the stretches left out of the analysis drawn hatched over the Systems lane (`leftOutBands`), the minimap, the lanes menu, zoom and scroll persistence, the summary line. |
+| `flow-view-video.js` | The video and the timeline: the span a video project runs on, the playhead, seeking, Attach video (Replace) and Sync video (two clicks), each one undoable edit of `external_video`, and Remove video (lane CC). |
 | `flow-view-screenshots.js` | The Screenshots panel, the gallery, and the guarded open of a screenshot. |
 | `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
 | `flow-view-transcript.js` | The Transcript lane, the transcript's Sync, Attach, Replace and Remove. |
@@ -337,7 +356,7 @@ their module as `<name>.test.js`.
 | `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`); whether a copy is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its colours, notes and attachments (C18). |
 | `case-scope.js` | The Transaction select's options ("Transaction 1 · Order #10900"), escaped. |
 | `recognition.js` | Platform recognition of an interaction (ADR-0011), for the step pane's interaction list. |
-| `identity-line.js` | The one readable line per captured control in that list. |
+| `identity-line.js` | The one readable line per captured control in that list (no marker on it: a project is recorded once, lane CC). |
 | `timeline/timeline-core.js` | Ticks, lane packing and the lane stack ([VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md)). |
 
 **Widgets**
@@ -401,7 +420,8 @@ which the renderer shows.
 | | `viewer:loadSession` | Loads a folder (below). |
 | Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`; `--names` when the store exists); streams its log. |
 | | `viewer:cancelNormalize` | Stops the run in progress. |
-| Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back. |
+| Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back (screenshots, attachments, the video's copy, the edited maps' files). |
+| | `viewer:restoreAnnotationsBackup` | The unreadable banner's Restore the newest backup: keeps the unreadable file as `annotations.unreadable-<time>.json`, copies the newest readable backup into place (the one confirmed, else refused). |
 | Remembered step names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName` | Save, read, forget a name. |
 | Export and shell | `viewer:exportFile` | A save dialog, then a copy of the given file. |
 | | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
@@ -409,9 +429,10 @@ which the renderer shows.
 | | `viewer:revealFile` | Shows a file in its folder (Explorer, the file selected). |
 | | `viewer:openExternal` | Opens a screenshot, after the path checks (section 1). |
 | Video | `viewer:attachExternalVideo` | The video file picker. |
-| | `viewer:saveExternalVideoSync` | Copies the video into `video/` when it is outside the folder, then writes `external_video` (relative path, offset). |
+| | `viewer:copyVideoIn` | Copies the video into `video/` when it is outside the folder and answers the path to store (relative when it is in the folder); the renderer writes `external_video` as one undoable edit. |
 | Transcript (C8) | `viewer:importTranscript` | The file picker, then `transcript_import.py`. |
-| | `viewer:removeTranscript` | Deletes `transcript.json` (the copied original stays). |
+| | `viewer:removeTranscript` | Parks `transcript.json` and the originals in `transcript/` for an Undo; answers where (`tag`, `files`). |
+| | `viewer:restoreTranscript` | The Undo of a removal: the parked files come back (a file attached since is kept). |
 | | `viewer:saveTranscriptSync` | Writes the sync offset. |
 | New projects (C16) | `viewer:chooseNewProject` | For a video project the video, then one save dialog for the project's name and folder. |
 | | `viewer:createProject` | Makes the folder chosen last. |
@@ -479,8 +500,8 @@ the bus. The topics and who listens (`renderer.js`):
 | `pdt.timelineLanes` | `flow-view-timeline.js` | Which lanes are shown. |
 | `pdt.timelineHeight`, `pdt.videoWidth` | `layout-controls.js` | The dragged pane sizes. |
 | `pdt.stepsSplit` | `pane-splitter.js` | The Steps level's divider: the transactions' share of the width. |
-| `pdt.analysis.<item>` | `analysis-view.js` | Whether an Observations item is open. |
-| `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes (and per level below the main map, C19). |
+| `pdt.analysis.<item>` | `analysis-view.js` | Whether an Observations item (`data`, `time`) is open. |
+| `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes (and per level below the main map, C19); Reset layout removes it. |
 
 ## 7. Render pipeline
 
@@ -526,11 +547,13 @@ itself:
 - **On open**, when `normalize-result.analysisNeed(session)` says so: no
   `stats.json` or `analysis.json`, or an `analysis.json` whose `format` is
   missing or lower than `ANALYSIS_FORMAT` (the number
-  `normalization/pipeline_stages.py` writes, 2 now). Once per folder in a
+  `normalization/pipeline_stages.py` writes, 3 now: the Overview's
+  Observations read `pdd_data` and `pdd_time`). Once per folder in a
   window, never from an analysis's own reload, and not while
   `annotations.json` cannot be read.
-- **After a change the drafts depend on**: *Apps outside the process* and a
-  range excluded from the analysis.
+- **After a change the drafts depend on**: *Apps outside the process*, a
+  stretch left out of the analysis and *Include again*, and an undo or a
+  redo of either of those two (`session.js` `revertFollowUp`).
 - **Inside the acts that need a current map file**: *Edit as the As-Is map*,
   the PDD export and the two map exports, when `process_map_step.bpmn` is
   missing or older than the steps.
@@ -574,6 +597,13 @@ Every annotation write in the renderer goes through `session.js`:
 - `performUndo()` and `performRedo()` write the snapshot back and re-render
   in place. Opening a run is not an edit: the runs opened so far stay
   opened across an undo. The stacks are reset when another folder opens.
+  An undo or a redo that changes `excluded_ranges` analyzes again, and one
+  that changes `external_video` reloads the project (where the video is is
+  read as it loads): `revertFollowUp` (lane CC).
+- `recordFileAct(label, { undo, redo })` puts a change of files that
+  `annotations.json` does not name on the same stacks: Remove transcript,
+  whose undo puts its parked files back and whose redo takes them out
+  again (lane CC).
 - The map editor has its own undo (bpmn-js's command stack): while it
   shows, Ctrl+Z and Ctrl+Y are its keys, and `renderer.js` runs none of the
   viewer's shortcuts (lane MV).
@@ -590,9 +620,11 @@ pane a step's fields (its flow, `only_when` and `links`, included), its
 screenshots, notes and attachments; the Overview `document` and the
 attachments; the Map `reference_maps` and the copies' files in
 `derived_maps/` (a new copy only at its first change: the Map's Edit left
-without one writes nothing). Written by the main process directly, not through the undo
-stack: `external_video` (Attach and Sync video), the transcript's sync, and
-the store of remembered step names on the analyst's machine. (The saved
+without one writes nothing). Attach, Replace, Sync and Remove video write
+`external_video` through the undo stack like any edit (lane CC). Written by
+the main process directly, not through the undo stack: the transcript's
+attach and sync, and the store of remembered step names on the analyst's
+machine. (The saved
 processes of contract C5 left the app on 2026-09-24: a process is recorded
 once; a `processes.json` left in `pdt-library` is not read.)
 

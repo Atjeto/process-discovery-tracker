@@ -279,31 +279,20 @@ test("renderInteractionList: each row carries a composed identity line", () => {
   assert.ok(html.includes("Customer lookup"));
 });
 
-test("renderInteractionList: a volatile automation_id renders the marker + tooltip", () => {
-  // No name, a render-counter-looking id -> identityLine flags it volatile.
-  const events = [inter({
-    kind: "invoked", control_type: "Button", automation_id: "btn-4821",
-  })];
-  const html = renderInteractionList(events, 1);
-  assert.ok(html.includes("si-marker-volatile"), "volatile marker class must render");
-  assert.ok(/auto-generated/.test(html), "the marker's tooltip note must render");
-});
-
-test("renderInteractionList: a class-name-only control renders the weak marker", () => {
-  const events = [inter({
-    kind: "invoked", control_type: "Pane", class_name: "TfrmMain",
-  })];
-  const html = renderInteractionList(events, 1);
-  assert.ok(html.includes("si-marker-weak"), "weak-identity marker class must render");
-});
-
-test("renderInteractionList: a strong named control renders no marker", () => {
-  const events = [inter({
-    kind: "invoked", control_type: "Button", name: "Save",
-  })];
-  const html = renderInteractionList(events, 1);
-  assert.ok(html.includes("si-identity"));
-  assert.ok(!html.includes("si-marker-"), "a stable named control needs no marker");
+test("renderInteractionList: the identity line carries no marker, whatever the control's identity (a project is recorded once)", () => {
+  for (const data of [
+    { kind: "invoked", control_type: "Button", automation_id: "btn-4821" },   // a counter-like id
+    { kind: "invoked", control_type: "Pane", class_name: "TfrmMain" },       // a class name only
+    { kind: "invoked", control_type: "Button", name: "Save" },               // a named control
+    { kind: "invoked" },                                                      // nothing to name it by
+  ]) {
+    const html = renderInteractionList([inter(data)], 1);
+    assert.ok(html.includes("si-identity"), "the identity line stays");
+    assert.ok(!html.includes("si-marker"), "no marker glyph");
+    assert.ok(!/change between recordings|auto-generated|Weak identity/.test(html), "no marker note");
+  }
+  const html = renderInteractionList([inter({ kind: "invoked", control_type: "Button", automation_id: "btn-4821" })], 1);
+  assert.ok(html.includes("Button · &quot;btn-4821&quot;") || html.includes('Button · "btn-4821"'), "the identity reads as it is");
 });
 
 /* ---- the step pane: no Save button, the fields typed ----------------- */

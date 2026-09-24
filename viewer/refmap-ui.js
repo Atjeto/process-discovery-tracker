@@ -38,6 +38,7 @@ const Planes = require("./map-planes.js");
 const MapView = require("./map-view.js");
 const SaveState = require("./save-state.js");
 const { toast, escapeHtml } = require("./dom.js");
+const { confirmModal } = require("./modals.js");
 
 let _deps = {};
 let _editingId = null;
@@ -303,6 +304,10 @@ function syncMapView() {
   // map's controller shows it or not with its own drawing.
   const zoom = $("session-map-zoom");
   if (zoom && showMap) zoom.style.display = "";
+  // Reset layout is the live map's (its boxes can be dragged); the picture
+  // the PDD prints has none to reset.
+  const reset = $("btn-session-map-reset-layout");
+  if (reset && showMap) reset.hidden = true;
   if (!showMap) {
     AsIsView.hideNote();
     // The live map is drawn while it shows (its host has its size then).
@@ -427,7 +432,16 @@ async function onRowAction(act, id) {
   if (act === "del") {
     const e = RefStore.find(s.annotations, id);
     if (!e) return;
-    if (!window.confirm('Delete the map "' + (e.name || "") + '" from this project? Ctrl+Z restores it.')) return;
+    // Lane CC: the save takes its file out of derived_maps/ too, and Ctrl+Z
+    // brings both back (analyst-files.js).
+    const ok = await confirmModal({
+      title: "Delete this map?",
+      message: 'The map "' + (e.name || "") + '" leaves this project, with its file in the project folder.',
+      detail: "Ctrl+Z brings both back.",
+      okLabel: "Delete map",
+      danger: true,
+    });
+    if (!ok || session() !== s) return;
     RefStore.destroy({ sessionFolder: s.sessionFolder, anno: s.annotations, id });
     await persist("Delete map");
     if (_editingId === id) closeEditor();

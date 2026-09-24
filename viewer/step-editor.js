@@ -751,23 +751,15 @@
 
   /* The one composed human identity line for an interaction row, via the
      shared identityLine (App Library pass): `<ControlType> · "<best identity>"
-     · <window>` with the volatility/weak marker rendered as a tooltip'd glyph.
-     The event's own `data` blob carries exactly the signature fields
-     identityLine reads (control_type / automation_id / name / class_name /
-     window_title), so it is passed straight through. Kept alongside the action
-     verb (describeInteraction) so a row reads "what happened" AND "on which
-     control" -- the identity replaces the old raw automation_id / window-title
-     fallback, not the verb. Returns "" when there is no identity worth a second
-     line (an unidentified control still gets the muted marker). */
+     · <window>`. The event's own `data` blob carries exactly the signature
+     fields identityLine reads (control_type / automation_id / name /
+     class_name / window_title), so it is passed straight through. Kept
+     alongside the action verb (describeInteraction) so a row reads "what
+     happened" AND "on which control". */
   function interactionIdentityHtml(ev) {
     const data = (ev && ev.data) || {};
     const line = identityLine(data);
-    const marker = line.marker
-      ? `<span class="si-marker si-marker-${escapeAttr(line.marker.kind)}" title="${escapeAttr(line.marker.note)}">${line.marker.kind === "volatile" ? "⚠" : "?"}</span>`
-      : "";
-    // Identity text (ellipsized) + the marker glyph share one inline row so the
-    // marker sits right after the identity, not wrapped to its own line.
-    return `<span class="si-idrow"><span class="si-identity" title="${escapeAttr(line.text)}">${escapeHtml(line.text)}</span>${marker}</span>`;
+    return `<span class="si-identity" title="${escapeAttr(line.text)}">${escapeHtml(line.text)}</span>`;
   }
 
   function renderInteractionList(events, total, opts) {

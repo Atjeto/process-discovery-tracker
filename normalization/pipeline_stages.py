@@ -235,7 +235,9 @@ def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
 # The format number analysis.json carries: raised when the layout of the
 # analysis outputs changes, so the viewer knows an older analysis for what it
 # is (viewer/normalize-result.js ANALYSIS_FORMAT reads the same number).
-ANALYSIS_FORMAT = 2
+# 3: `pdd_data` and `pdd_time`, the rows of the PDD's sections 5 and 6 the
+# Overview shows (lane CC).
+ANALYSIS_FORMAT = 3
 
 # The analysis.json keys the step-grained analysis layer (analysis.run_analysis)
 # writes. When the layer fails as a whole, each is written as null (C12).
@@ -357,6 +359,15 @@ def _run_analysis(
         print(f"[normalize] WARNING: {stage} failed: {error}")
         stage_errors.append({"stage": stage, "error": error})
 
+    # The PDD's sections 5 and 6 read the same stream the PDD does (a step
+    # the analyst kept inside a stretch left out keeps its fields).
+    pdd_events = classified
+    # The stretches the analyst left out of the analysis (excluded_ranges)
+    # are left out of every measurement here too, as they are of the drafting
+    # and the statistics: the run check, the step-based blocks, the facts and
+    # the findings read the stream without them.
+    classified = stats._filter_excluded(classified, _excluded_ranges(existing_anno))
+
     steps = _visible_steps(existing_anno)
     timed = [s for s in steps if step_duration_ms(s) is not None]
     analysis_result = None
@@ -402,6 +413,19 @@ def _run_analysis(
     except Exception as e:  # noqa: BLE001 -- recorded as a stage error
         analysis_result["case_quality"] = None
         _failed("case_quality", f"{type(e).__name__}: {e}")
+    # The rows the PDD prints in section 5 (Data) and section 6 (Applications
+    # and time), computed by the function the PDD prints them with, from the
+    # inputs it reads: the Overview shows exactly these (one source). Written
+    # for every session, one without a recording included (the PDD prints the
+    # sections there too).
+    try:
+        from pdd_export import pdd_rows
+        analysis_result.update(pdd_rows(
+            session_folder=session_folder, annotations=existing_anno, stats=summary,
+            manifest=manifest, events=pdd_events))
+    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
+        analysis_result["pdd_data"] = analysis_result["pdd_time"] = None
+        _failed("pdd_rows", f"{type(e).__name__}: {e}")
     if not recorded:
         for key in ("facts", "findings", "pdd_findings"):
             analysis_result[key] = None

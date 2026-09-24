@@ -31,6 +31,7 @@ const AC = require("../analyst-content.js");
 const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
 const { numberOnlyLabel } = RunsModel;
+const { isoMs } = require("../run-differences.js");
 const SPM = require("../sub-process-maps.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
@@ -69,6 +70,36 @@ function timeAtClientX(clientX, rect, firstMs, lastMs) {
 let currentScopeRange = () => null;
 let showMarkerInsertMenu = () => {};
 let showCaseContextMenu = () => {};
+let includeAgain = async () => {};
+
+/* The stretches left out of the analysis (annotations.excluded_ranges) the
+   Timeline draws, in time order: [{ range, startMs, endMs }] for each entry
+   that can be read (start before end), `range` the entry itself (Include
+   again removes it). Pure + unit-tested (flow-view-timeline.test.js). */
+function leftOutBands(ranges) {
+  const out = [];
+  for (const r of Array.isArray(ranges) ? ranges : []) {
+    // Read as the differences rule reads them (a time without a zone is UTC).
+    const a = isoMs(r && r.start), b = isoMs(r && r.end);
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) out.push({ range: r, startMs: a, endMs: b });
+  }
+  return out.sort((x, y) => x.startMs - y.startMs);
+}
+
+/* What a band left out of the analysis says under the pointer. */
+function leftOutTitle(startText, endText) {
+  return "Left out of the analysis" + (startText && endText ? ", " + startText + " to " + endText : "") +
+    ": its steps are not drafted and its time is not counted. Click to include it again.";
+}
+const LEFT_OUT_LABEL = "Left out of the analysis";
+const LEFT_OUT_LABEL_SHORT = "Left out";
+/* The label a band `px` wide shows: the whole of it where it fits, else its
+   first words, else none (the tooltip and the legend say it). Pure +
+   unit-tested. */
+function leftOutLabel(px) {
+  const w = Number(px) || 0;
+  return w >= 150 ? LEFT_OUT_LABEL : w >= 64 ? LEFT_OUT_LABEL_SHORT : "";
+}
 
 /* P1.10: persistent timeline zoom + scroll per session. Keyed by
    sessionFolder so each session reopens to where the analyst left it.
@@ -685,6 +716,9 @@ function renderTimeline() {
   const observedApps = new Map();
   const appNames = ((State.getSession().stats || {}).meta || {}).app_names || {};
   const scopeRange = currentScopeRange();
+  // The stretches left out of the analysis, drawn over the Systems lane where
+  // they are made (a Shift-drag range, Leave out of the analysis).
+  const leftOut = leftOutBands(_anno.excluded_ranges).filter((b) => b.endMs > first && b.startMs < last);
 
   // ===== Time-axis ticks =====
   // Tick positions, intervals, and labels come from the shared timeline
@@ -919,6 +953,43 @@ function renderTimeline() {
           host.appendChild(lbl);
         }
       }
+
+      // The stretches left out of the analysis: a quiet hatch over the lane,
+      // its label where it fits; a click (or a right-click) offers Include
+      // again, the inverse of Leave out of the analysis.
+      const hostW = host.clientWidth || 800;
+      for (const b of leftOut) {
+        const s = Math.max(b.startMs, first), e = Math.min(b.endMs, last);
+        const x = ((s - first) / span) * 100;
+        const w = Math.max(0.15, ((e - s) / span) * 100);
+        const band = document.createElement("div");
+        band.className = "tl-left-out";
+        band.dataset.start = b.range.start;
+        band.dataset.end = b.range.end;
+        band.style.left = x + "%";
+        band.style.width = w + "%";
+        band.style.top = activityTop + "px";
+        band.style.height = activityH + "px";
+        band.title = leftOutTitle(sinceStart(b.range.start, origin), sinceStart(b.range.end, origin));
+        const text = leftOutLabel((w / 100) * hostW);
+        if (text) {
+          const lbl = document.createElement("span");
+          lbl.className = "tl-left-out-label";
+          lbl.textContent = text;
+          band.appendChild(lbl);
+        }
+        const menu = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          _menu(ev.clientX, ev.clientY, [
+            ["Include again", () => includeAgain(b.range)],
+            ["Go to its start", () => seekToTimestamp(new Date(b.startMs).toISOString())],
+          ]);
+        };
+        band.addEventListener("click", menu);
+        band.addEventListener("contextmenu", menu);
+        host.appendChild(band);
+      }
     },
   };
 
@@ -1068,6 +1139,7 @@ function renderTimeline() {
     ".lg-marker": markerRows.some((m) => m.pending),
     ".lg-screenshot": !!lanes.screenshots && evs.length > 0,
     ".lg-note": notesH > 0,
+    ".lg-left-out": leftOut.length > 0,
   };
   for (const [sel, on] of Object.entries(legendShows)) {
     const el = document.querySelector("#timeline-legend " + sel);
@@ -1177,12 +1249,14 @@ function monitorBadgeFor(bounds) {
   return null;
 }
 
-/* deps = { currentScopeRange, showMarkerInsertMenu, showCaseContextMenu }:
-   the flow-view-resident glue, injected at boot. */
+/* deps = { currentScopeRange, showMarkerInsertMenu, showCaseContextMenu,
+   includeAgain }: the flow-view-resident glue, injected at boot
+   (includeAgain(range): Include again on a band left out of the analysis). */
 function initTimeline(deps) {
   currentScopeRange    = (deps && deps.currentScopeRange)    || (() => null);
   showMarkerInsertMenu = (deps && deps.showMarkerInsertMenu) || (() => {});
   showCaseContextMenu  = (deps && deps.showCaseContextMenu)  || (() => {});
+  includeAgain         = (deps && deps.includeAgain)         || (async () => {});
 }
 
 module.exports = {
@@ -1191,4 +1265,5 @@ module.exports = {
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
   caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES, stepsForLevel,
+  leftOutBands, leftOutTitle, leftOutLabel, LEFT_OUT_LABEL,
 };

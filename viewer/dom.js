@@ -88,11 +88,16 @@ function cryptoRandomId() {
 }
 
 let toastTimer = null;
+let toastHeldUntil = 0;
 /* A transient message at the bottom of the window. opts.action =
    { label, act, onClick } adds one button to it (an offer such as "Hide in all
    runs", or an Undo): the toast then stays a little longer and takes clicks
-   while it shows (only then: a hidden toast never catches a click). */
+   while it shows (only then: a hidden toast never catches a click).
+   opts.hold (an error the analyst must read, such as a save that moved no
+   file): it stays as long, and no message but another error replaces it
+   meanwhile, so the success message of the same act does not cover it. */
 function toast(text, kind, opts) {
+  if (kind !== "error" && Date.now() < toastHeldUntil) return;
   const el = $("#toast");
   const action = opts && opts.action;
   el.textContent = text;
@@ -109,8 +114,10 @@ function toast(text, kind, opts) {
     });
     el.appendChild(b);
   }
+  const hold = !!(opts && opts.hold);
+  toastHeldUntil = hold ? Date.now() + 8000 : 0;
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), action ? 8000 : 3500);
+  toastTimer = setTimeout(() => el.classList.remove("show"), action || hold ? 8000 : 3500);
 }
 
 /* Where a w x h context menu opened at the click point (x, y) goes so all of

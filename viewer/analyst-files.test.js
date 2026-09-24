@@ -87,3 +87,77 @@ test("a blank project starts at its creation time; a folder that is not empty is
   await assert.rejects(NewProject.createProject({ folder, kind: "blank", name: "x", id: "id-3", now: t0 }), /not empty/);
   assert.equal(NewProject.folderProblem(path.join(where, "free")), null);
 });
+
+/* ---- lane CC: the video's copy, the edited maps' files, the transcript ---- */
+
+test("namedFiles: the attached video's copy in video/ and the edited maps' files; a video kept elsewhere never", () => {
+  const anno = {
+    external_video: { path: "video/call.webm", offset_ms: 0 },
+    reference_maps: [{ map_id: "m1", file: "derived_maps/m1.bpmn" }, { map_id: "m2", file: "../escape.bpmn" }, { map_id: "m3" }],
+  };
+  assert.deepEqual([...AF.namedFiles(anno)].sort(), ["derived_maps/m1.bpmn", "video/call.webm"]);
+  const BS = String.fromCharCode(92);
+  for (const p of ["D:" + BS + "Videos" + BS + "call.mp4", "C:/Users/pm/call.mp4", "recording.mp4", "obs/rec.mkv", "video/sub/x.mp4",
+    "video/..", "", null]) {
+    assert.deepEqual([...AF.namedFiles({ external_video: { path: p } })], [], "not the app's copy: " + p);
+    assert.equal(AF.isVideoCopy(p), false, p);
+  }
+  assert.deepEqual([...AF.namedFiles({ external_video: { path: "video" + String.fromCharCode(92) + "call (2).mp4" } })],
+    ["video/call (2).mp4"], "either slash");
+  assert.equal(AF.isVideoCopy("video/call.webm"), true);
+});
+
+test("Remove video and Replace video: the save takes the copy out of video/, and Undo (a save naming it again) brings it back", () => {
+  const root = tmp("vid"), hold = tmp("vhold");
+  fs.mkdirSync(path.join(root, "video"));
+  fs.writeFileSync(path.join(root, "video", "a.mp4"), "first video");
+  fs.writeFileSync(path.join(root, "video", "b.mp4"), "second video");
+  const withA = { external_video: { path: "video/a.mp4", offset_ms: 100 } };
+  const withB = { external_video: { path: "video/b.mp4", offset_ms: 0 } };
+  const none = {};
+  // Replace a by b: a leaves, b stays.
+  let out = AF.moveRemoved(root, AF.namedFiles(withA), AF.namedFiles(withB), hold);
+  assert.deepEqual(out.removed, ["video/a.mp4"]);
+  assert.ok(!fs.existsSync(path.join(root, "video", "a.mp4")) && fs.existsSync(path.join(root, "video", "b.mp4")));
+  // Undo the replace: a comes back, b leaves.
+  out = AF.moveRemoved(root, AF.namedFiles(withB), AF.namedFiles(withA), hold);
+  assert.deepEqual([out.removed, out.restored], [["video/b.mp4"], ["video/a.mp4"]]);
+  assert.equal(fs.readFileSync(path.join(root, "video", "a.mp4"), "utf8"), "first video");
+  // Remove: a leaves; Undo: it comes back.
+  AF.moveRemoved(root, AF.namedFiles(withA), AF.namedFiles(none), hold);
+  assert.ok(!fs.existsSync(path.join(root, "video", "a.mp4")));
+  AF.moveRemoved(root, AF.namedFiles(none), AF.namedFiles(withA), hold);
+  assert.equal(fs.readFileSync(path.join(root, "video", "a.mp4"), "utf8"), "first video");
+});
+
+test("Delete map: the save takes its file out of derived_maps/; Undo brings the file back with its edits", () => {
+  const root = tmp("map"), hold = tmp("mhold");
+  fs.mkdirSync(path.join(root, "derived_maps"));
+  fs.writeFileSync(path.join(root, "derived_maps", "rm_1.bpmn"), "<edited/>");
+  const kept = { reference_maps: [{ map_id: "rm_1", file: "derived_maps/rm_1.bpmn" }] };
+  AF.moveRemoved(root, AF.namedFiles(kept), AF.namedFiles({ reference_maps: [] }), hold);
+  assert.ok(!fs.existsSync(path.join(root, "derived_maps", "rm_1.bpmn")));
+  AF.moveRemoved(root, AF.namedFiles({ reference_maps: [] }), AF.namedFiles(kept), hold);
+  assert.equal(fs.readFileSync(path.join(root, "derived_maps", "rm_1.bpmn"), "utf8"), "<edited/>");
+});
+
+test("Remove transcript parks its files together, and its Undo puts them back; a file of the same name attached since stays", () => {
+  const root = tmp("tr"), hold = tmp("thold");
+  fs.writeFileSync(path.join(root, "transcript.json"), "{}");
+  fs.mkdirSync(path.join(root, "transcript"));
+  fs.writeFileSync(path.join(root, "transcript", "m.vtt"), "WEBVTT");
+  const files = ["transcript.json", "transcript/m.vtt", "transcript/gone.vtt"];
+  const out = AF.parkFiles(root, files, hold, "transcript-1");
+  assert.deepEqual([out.parked, out.errors], [["transcript.json", "transcript/m.vtt"], []], "a missing file is skipped");
+  assert.ok(!fs.existsSync(path.join(root, "transcript.json")) && !fs.existsSync(path.join(root, "transcript", "m.vtt")));
+  // A later removal parks under its own tag, never over this one.
+  fs.writeFileSync(path.join(root, "transcript.json"), '{"later":1}');
+  AF.parkFiles(root, ["transcript.json"], hold, "transcript-2");
+  fs.writeFileSync(path.join(root, "transcript.json"), '{"newest":1}');
+  const back = AF.restoreParked(root, out.parked, hold, "transcript-1");
+  assert.deepEqual([back.restored, back.kept], [["transcript/m.vtt"], ["transcript.json"]]);
+  assert.equal(fs.readFileSync(path.join(root, "transcript.json"), "utf8"), '{"newest":1}', "the file attached since stays");
+  assert.equal(fs.readFileSync(path.join(root, "transcript", "m.vtt"), "utf8"), "WEBVTT");
+  assert.throws(() => AF.parkFiles(root, files, hold, "../x"), /bad parking tag/);
+  assert.deepEqual(AF.parkFiles(root, ["../manifest.json", "C:/x"], hold, "t3").errors.length, 2, "never outside the folder");
+});

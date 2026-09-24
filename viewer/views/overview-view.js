@@ -41,6 +41,7 @@ const RunDiff = require("../run-differences.js");
 const SessionSummary = require("../session-summary.js");
 const { pushRecent } = require("../recent.js");
 const AnalystUI = require("./analyst-ui.js");
+const { isVideoCopy } = require("../analyst-files.js");
 
 /* ---- Stage failures (contract C12, RP-10) -------------------------------- */
 
@@ -227,8 +228,12 @@ function pathState(sess) {
   const opened = new Set(Array.isArray(anno.opened_runs) ? anno.opened_runs : []);
   const others = runs.filter((r) => r.caseId !== patternId);
   const nextOther = others.find((r) => !opened.has(r.caseId)) || null;
+  // Compared as Steps compares them: a reference step inside a stretch left
+  // out of the analysis is not a difference, nor is the left-out line.
+  const excluded = Array.isArray(anno.excluded_ranges) ? anno.excluded_ranges : [];
   const differing = pattern.run
-    ? others.filter((r) => RunDiff.differences(pattern.run.visible, r.visible).length > 0).length : 0;
+    ? others.filter((r) => RunDiff.differenceCount(RunDiff.differences(pattern.run.visible, r.visible,
+      { leftOut: RunDiff.leftOutStretches(excluded, { startMs: r.startMs, endMs: r.endMs }) })) > 0).length : 0;
   const doc = documentStatus(anno.document);
   const done = {
     runs: runs.length > 0,
@@ -338,9 +343,18 @@ function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
    Attach video flow syncs it with two clicks, flow-view-video.attachVideo;
    the transcript acts are delegated by id in flow-view-transcript.js). */
 function _mediaParts(sess) {
+  // Remove (lane CC), Attach's inverse: only for the video the analyst attached
+  // (annotations.external_video), never the recorder's own.
+  const attached = !!(sess && sess.recordingAvailable && sess.externalVideoOffsetMs != null &&
+    sess.annotations && sess.annotations.external_video && sess.annotations.external_video.path);
+  const copy = attached && isVideoCopy(sess.annotations.external_video.path);
   const video = sess && sess.recordingAvailable
     ? '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
-      'title="Attach another video in place of this one, then sync it: click a moment in the video, then the same moment on the timeline.">Replace</button>'
+      'title="' + escapeAttr("Attach another video in place of this one, then sync it: click a moment in the video, then the same moment on the timeline." +
+        (copy ? " The copy it replaces leaves the project folder; Ctrl+Z brings it back." : " Ctrl+Z brings this one back.")) + '">Replace</button>' +
+      (attached ? ' <button type="button" class="link-btn" id="btn-remove-video" title="' +
+        escapeAttr("Take the video out of this project" + (copy ? ": its copy in the project's video folder is deleted." : ".") +
+          " Ctrl+Z brings it back.") + '">Remove</button>' : "")
     : '<span data-summary="video">No video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
       'title="Attach a video of the recording (a Teams recording or a screen video), then sync it: click a moment in the video, then the same moment on the timeline.">Attach</button>';
   const hasFile = !!(sess && (sess.transcript || sess.transcriptError));
@@ -472,9 +486,16 @@ function _wireSummary(host) {
       else btn.disabled = false;
     });
   });
-  // Lazy require: flow-view-video.js wires DOM controls at require() time.
-  const attachVideo = host.querySelector("#btn-attach-video");
+  _wireVideoActs(host);
+}
+
+/* The project line's video acts: Attach (Replace) and Remove. Lazy require:
+   flow-view-video.js wires DOM controls at require() time. */
+function _wireVideoActs(host) {
+  const attachVideo = host.querySelector("#ov-summary #btn-attach-video");
   if (attachVideo) attachVideo.addEventListener("click", () => require("./flow-view-video.js").attachVideo());
+  const removeVideo = host.querySelector("#ov-summary #btn-remove-video");
+  if (removeVideo) removeVideo.addEventListener("click", () => require("./flow-view-video.js").removeVideo());
 }
 
 /* ---- 3. The document (contract C6) ------------------------------------------ */
@@ -724,8 +745,7 @@ function _refreshPathInPlace() {
   const summary = host.querySelector("#ov-summary .ov-summary-line");
   if (summary) {
     summary.outerHTML = _summaryLine(sess, state);
-    const attachVideo = host.querySelector("#ov-summary #btn-attach-video");
-    if (attachVideo) attachVideo.addEventListener("click", () => require("./flow-view-video.js").attachVideo());
+    _wireVideoActs(host);
   }
 }
 

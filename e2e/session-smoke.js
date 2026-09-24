@@ -21,10 +21,9 @@
  *     New and Open two menus, the Transaction select on the Timeline only
  *     ("Transaction 1 · <label>"), the version in Help, the active level
  *     legible under the mouse,
- *   - the Overview's Where the time goes: every step of the runs with its
- *     average time and in how many transactions it happened, and every
- *     application (the automation candidates fold in there); no dot strip, no
- *     total, no editor,
+ *   - the Overview's Applications and time: the PDD's section 6 as
+ *     analysis.json holds it (lane CC, one source), the time of every
+ *     transaction and of every system; no dot strip, no total, no editor,
  *   - every map export opens its folder at the file (the reveal is stubbed
  *     and its path checked),
  *   - the Timeline's side panel opens on Screenshots (no Notes), its
@@ -233,6 +232,41 @@ async function unreadableAnnotationsPin() {
     /Analysis stopped, nothing was changed: .*annotations\.json in this project folder cannot be read/.test(analyzeMsg) &&
       /^Analysis stopped, nothing was changed: /.test(failureFirst) && afterAnalyze,
     "first=" + JSON.stringify(failureFirst.slice(0, 120)) + " filesUntouched=" + afterAnalyze);
+
+  // Lane CC: the banner's Restore the newest backup. It asks first, naming
+  // the backup and its time; then the unreadable file is kept beside it as
+  // annotations.unreadable-<time>.json, the backup is put in its place and
+  // the project opens again, readable.
+  const restore = {};
+  try {
+    await p.keyboard.press("Escape").catch(() => {});
+    restore.button = ((await p.locator("#annotations-error-banner #btn-restore-annotations").textContent({ timeout: T })) || "").trim();
+    await p.locator("#annotations-error-banner #btn-restore-annotations").click({ timeout: T });
+    await p.waitForSelector(".modal-confirm", { state: "visible", timeout: T });
+    restore.confirm = ((await p.locator(".modal-confirm").textContent({ timeout: T })) || "").replace(/\s+/g, " ").trim();
+    await p.locator(".modal-confirm .modal-ok").click({ timeout: T });
+    await p.waitForFunction(() => {
+      const b = document.getElementById("annotations-error-banner");
+      const s = require("./state.js").getSession();
+      return !!(b && getComputedStyle(b).display === "none" && s && s.annotations && !s.annotationsError);
+    }, null, { timeout: T });
+    const kept = fs.readdirSync(dir).filter((n) => /^annotations\.unreadable-\d{8}-\d{6}\.json$/.test(n));
+    restore.kept = kept;
+    restore.keptIsTheBrokenFile = kept.length === 1 && fs.readFileSync(path.join(dir, kept[0]), "utf-8") === truncated;
+    let parsed = null;
+    try { parsed = JSON.parse(fs.readFileSync(path.join(dir, "annotations.json"), "utf-8")); } catch (_) { /* reported below */ }
+    restore.readable = !!(parsed && Array.isArray(parsed.steps));
+    restore.toast = ((await p.$eval("#toast", (el) => el.textContent || "").catch(() => "")) || "").trim();
+    // The project opened with its annotations analyzes by itself (it has no
+    // analysis yet): let that end before the window closes.
+    await p.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 }).catch(() => {});
+  } catch (e) { logActionError("CC restore the newest backup", e); restore.err = String(e.message).split("\n")[0]; }
+  record("lane CC: Restore the newest backup (the banner's act) asks first naming the backup and its time, keeps the unreadable file as annotations.unreadable-<time>.json and opens the project again with the backup",
+    !!(!restore.err && restore.button === "Restore the newest backup" &&
+      /Restore the newest backup\?/.test(restore.confirm || "") && /Put back the backup saved .+ \(annotations\.json\.2\)/.test(restore.confirm || "") &&
+      restore.keptIsTheBrokenFile && restore.readable && /^Restored the backup saved /.test(restore.toast || "")),
+    JSON.stringify(restore));
+  if (restore.err || !restore.readable) await shot(p, "fail-cc-restore-backup.png");
 
   // The refused save logs one console error by design ("[session]
   // annotations.json not saved"); anything else is a real page error.
@@ -644,54 +678,41 @@ async function unreadableAnnotationsPin() {
     !!(grainGone && !grainGone.err && grainGone.slider === 0 && grainGone.stateGrain === "undefined"),
     JSON.stringify(grainGone));
 
-  // V1 (step-back review 4.4): the Overview's Observations. Where the time
-  // goes lists every step of the runs (the map's grouping) with its average
-  // time per run and in how many runs, then every application: the
-  // automation candidates fold in as time per application. No dot strip, no
-  // total over the runs, no business-required editor, no candidate cards.
+  // Lane CC (one source with the PDD): the Overview's Observations are the
+  // PDD's sections 5 and 6 as analysis.json holds them. Applications and time
+  // lists the time of each transaction and each system (Salesforce, never
+  // the browser) with its screens, steps and time per transaction; no dot
+  // strip, no business-required editor, no candidate cards.
   const STATE_TIMEOUT = 15000;
   await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }).catch(() => {});
   await page.waitForSelector('#ov-observations .analysis-module[data-module="time"]', { timeout: STATE_TIMEOUT }).catch(() => {});
-  // AD-29: an average time reads in whole units ("10 s", "1 min 5 s").
-  const AVG_TIME = /^(under 1 s|\d+ s|\d+ min( \d+ s)?|\d+ h( \d+ min)?)$/;
   const timeGoes = await page.evaluate(() => {
     const s = require("./state.js").getSession();
-    const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
-    const label = require("./process-map-levels.js").mapNodeLabel;
+    const t = (s.analysis || {}).pdd_time || null;
     const mod = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
     if (!mod) return { present: false };
-    const tables = [...mod.querySelectorAll("table.ov-time")];
-    const rows = (t) => [...t.querySelectorAll("tbody tr")].map((tr) => [...tr.children].map((td) => (td.textContent || "").trim()));
-    const timed = new Set();
-    for (const r of runs) for (const st of r.visible) {
-      const ms = Date.parse(st.time_range.end) - Date.parse(st.time_range.start);
-      if (ms > 0) timed.add(label(st));
-    }
-    const apps = new Set(((s.analysis || {}).automation_candidates || []).map((c) => c.app));
+    const tables = [...mod.querySelectorAll("table.ov-rows")].map((tb) =>
+      [...tb.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent)));
     return {
-      present: true, runs: runs.length,
-      heads: tables.map((t) => [...t.querySelectorAll("th")].map((th) => (th.textContent || "").trim())),
-      stepRows: tables[0] ? rows(tables[0]) : [],
-      appRows: tables[1] ? rows(tables[1]) : [],
-      timedSteps: [...timed].sort(),
-      candidateApps: apps.size,
+      present: true, format: (s.analysis || {}).format,
+      tables,
+      want: t ? [[t.per_transaction.header].concat(t.per_transaction.rows), [t.per_application.header].concat(t.per_application.rows)] : null,
       gone: document.querySelectorAll("#overview-content .ts-dot, #overview-content .ts-strip, #overview-content .waste-row, " +
-        "#overview-content .auto-cards, #overview-content .ov-finding, #overview-evidence").length,
+        "#overview-content .auto-cards, #overview-content .ov-finding, #overview-evidence, #overview-content table.ov-time").length,
       takeaway: ((mod.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim(),
       items: [...document.querySelectorAll("#ov-observations .analysis-module")].map((m) => m.dataset.module),
     };
   }).catch((e) => ({ err: e.message }));
-  const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.runs === 4 &&
-    JSON.stringify(timeGoes.heads) === JSON.stringify([["Step", "Average time", "Happened in"], ["System", "Average time", "Happened in"]]) &&
-    JSON.stringify(timeGoes.stepRows.map((r) => r[0]).sort()) === JSON.stringify(timeGoes.timedSteps) &&
-    timeGoes.stepRows.every((r) => AVG_TIME.test(r[1]) && /^[1-4] of 4 transactions$/.test(r[2])) &&
-    timeGoes.appRows.length >= timeGoes.candidateApps && timeGoes.appRows.every((r) => /^[1-4] of 4 transactions$/.test(r[2])) &&
-    timeGoes.appRows.some((r) => r[0] === "Salesforce") && !timeGoes.appRows.some((r) => /Chrome/.test(r[0])) &&
-    timeGoes.gone === 0 && /^Most time in .+ \(.+ on average\)$/.test(timeGoes.takeaway) &&
-    JSON.stringify(timeGoes.items) === JSON.stringify(["retyped", "time"]));
-  record("V1 + V2 item 3 + AD-29: the Observations' Where the time goes lists every timed step of the runs (Average time \"10 s\", Happened in \"N of 4 transactions\") and every system; no dot strip, total, editor or candidate cards",
+  const apps = timeGoes && timeGoes.tables && timeGoes.tables[1] ? timeGoes.tables[1].slice(1) : [];
+  const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.format === 3 && timeGoes.want &&
+    JSON.stringify(timeGoes.tables) === JSON.stringify(timeGoes.want) && timeGoes.tables[0].length === 5 &&
+    JSON.stringify(timeGoes.tables[1][0]) === JSON.stringify(["System", "Screens", "Steps", "Time per transaction"]) &&
+    apps.some((r) => r[0] === "Salesforce") && !apps.some((r) => /Chrome/.test(r[0])) &&
+    timeGoes.gone === 0 && /^Most time in .+: .+ per transaction$/.test(timeGoes.takeaway) &&
+    JSON.stringify(timeGoes.items) === JSON.stringify(["data", "time"]));
+  record("lane CC: the Observations' Applications and time is the PDD's section 6 as analysis.json holds it (Time per transaction for the 4 transactions, Time in each application with Salesforce, never the browser); no dot strip, total, editor or candidate cards",
     tgOk, JSON.stringify(timeGoes));
-  if (!tgOk) await shot(page, "fail-where-the-time-goes.png");
+  if (!tgOk) await shot(page, "fail-applications-and-time.png");
 
   // Item 21: an Observations item's open state persists per analyst
   // (localStorage, pdt.analysis.* keys); closed is the default. Both
@@ -1038,7 +1059,8 @@ async function unreadableAnnotationsPin() {
   // first when the steps changed, then copies; the copy is a one-way leaf) ->
   // Edit (full bpmn-js palette) -> Save (debounced saveXML to
   // derived_maps/<id>.bpmn) -> reload (reopen re-reads the blob) -> Delete+Undo
-  // (the blob is retained so Ctrl+Z restores a WORKING, still-edited entry).
+  // (the file leaves with the row, lane CC; Ctrl+Z restores both, a WORKING,
+  // still-edited entry).
   // Validated end-to-end in _pdt_verify/refmap-verify.js; pinned here so the
   // round-trip + inverse can't silently regress.
   //
@@ -1364,27 +1386,31 @@ async function unreadableAnnotationsPin() {
       JSON.stringify({ before: g0, afterFirst: g1, afterSecond: g2 }));
     if (!g2.shown) await page.click("#btn-toggle-refmaps").catch(() => {});   // leave it open, as found
 
-    // Inverse: Delete drops the row but keeps the blob, so one Ctrl+Z restores a
-    // WORKING entry that still carries the edit (the COHERENCE-AUDIT requirement).
+    // Inverse: Delete drops the row and (lane CC) its file leaves
+    // derived_maps/ with the save; one Ctrl+Z restores a WORKING entry, its
+    // file back and still carrying the edit (the COHERENCE-AUDIT requirement).
     const delUndo = await page.evaluate(async (probe) => {
       const State = require("./state.js"), RM = require("./reference-maps.js"), Session = require("./session.js");
       const s = State.getSession();
       const m = RM.list(s.annotations)[0];
       if (!m) return { err: "no map to delete" };
+      const fileBefore = RM.fileExists(s.sessionFolder, m);
       RM.destroy({ sessionFolder: s.sessionFolder, anno: s.annotations, id: m.map_id });
       await Session.saveAnnotationsWithUndo(s.annotations, "Delete reference map");
       const afterDel = RM.list(s.annotations).length;
+      const fileAfterDel = RM.fileExists(s.sessionFolder, m);
       await Session.performUndo();
       const restored = RM.list(s.annotations)[0] || null;
       const xml = restored ? RM.readBpmn(s.sessionFolder, restored) : null;
       return {
-        afterDel, afterUndo: RM.list(s.annotations).length,
+        fileBefore, afterDel, fileAfterDel, afterUndo: RM.list(s.annotations).length,
+        fileBack: !!(restored && RM.fileExists(s.sessionFolder, restored)),
         restoredHasEdit: !!(xml && xml.indexOf(probe) !== -1),
       };
     }, PROBE).catch((e) => ({ err: e.message }));
-    const invOk = delUndo && !delUndo.err && delUndo.afterDel === 0 &&
-      delUndo.afterUndo === 1 && delUndo.restoredHasEdit;
-    record("reference map: Delete -> Ctrl+Z restores the edited copy (inverse)", invOk,
+    const invOk = delUndo && !delUndo.err && delUndo.fileBefore && delUndo.afterDel === 0 && delUndo.fileAfterDel === false &&
+      delUndo.afterUndo === 1 && delUndo.fileBack && delUndo.restoredHasEdit;
+    record("reference map: Delete takes the copy and its file in derived_maps/ out; Ctrl+Z restores both, the edit kept (inverse)", invOk,
       JSON.stringify(delUndo));
     if (!invOk) await shot(page, "fail-refmap-undo.png");
 
@@ -1620,6 +1646,150 @@ async function unreadableAnnotationsPin() {
         vid.after.syncVideo.shown === false && vid.after.addStep === false && vid.after.attachVideo.text === "Attach"),
       JSON.stringify(vid));
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
+  }
+
+  // --- Lane CC: a stretch left out of the analysis, on the Timeline --------
+  // Shift-drag over transaction 2's first steps, Leave out of the analysis:
+  // the Timeline draws the stretch hatched with its legend, its steps are
+  // not drafted, and transaction 2 says once that part of it was left out
+  // (its reference steps inside the stretch are not skipped). A click on the
+  // band offers Include again, which brings the steps back; Ctrl+Z and
+  // Ctrl+Y take either back, each with its analysis.
+  if (FRESH) {
+    const lo = {};
+    const T = 20000;
+    const idle = () => page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+    const pickRun = () => page.evaluate(() => {
+      const s = require("./state.js").getSession();
+      const RM = require("./runs-model.js");
+      const runs = RM.buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+      const ref = RM.patternRun(s.annotations || {}, runs).run;
+      const r = runs.find((x) => x !== ref && x.visible.length >= 4 && x.visible.every((st) => st.time_range));
+      return r ? { caseId: r.caseId, title: r.title } : null;
+    });
+    let RUN = null;
+    const probe = () => page.evaluate((cid) => {
+      const s = require("./state.js").getSession();
+      const RM = require("./runs-model.js");
+      const runs = RM.buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+      const run = runs.find((x) => x.caseId === cid);
+      const band = document.querySelector("#timeline .tl-left-out");
+      const lg = document.querySelector("#timeline-legend .lg-left-out");
+      return {
+        ranges: ((s.annotations || {}).excluded_ranges || []).map((r) => [r.start, r.end]),
+        run2: run ? { start: run.startMs, end: run.endMs, steps: run.visible.length,
+          starts: run.visible.map((x) => Date.parse(x.time_range && x.time_range.start)) } : null,
+        band: band ? { title: band.title, label: ((band.querySelector(".tl-left-out-label") || {}).textContent || ""),
+          start: band.dataset.start, end: band.dataset.end } : null,
+        legend: !!(lg && getComputedStyle(lg).display !== "none"),
+      };
+    }, RUN && RUN.caseId);
+    try {
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: STATE_TIMEOUT });
+      await idle();
+      RUN = await pickRun();
+      lo.run = RUN;
+      lo.before = await probe();
+      // From just before transaction 2 starts to the end of its third step.
+      const target = await page.evaluate((cid) => {
+        const s = require("./state.js").getSession();
+        const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+        const r = runs.find((x) => x.caseId === cid), third = r.visible[2];
+        const evs = s.events, f = Date.parse(evs[0].timestamp), l = Date.parse(evs[evs.length - 1].timestamp);
+        const a = r.startMs - 400, b = Date.parse(third.time_range.end) + 400;
+        const host = document.getElementById("timeline");
+        host.scrollIntoView({ block: "center" });
+        const rect = host.getBoundingClientRect();
+        const xa = rect.left + ((a - f) / (l - f)) * rect.width, xb = rect.left + ((b - f) / (l - f)) * rect.width;
+        // A point of the timeline's own background at both x (the drag starts there).
+        let y = null;
+        for (let yy = rect.bottom - 3; yy > rect.top; yy -= 2) {
+          if (document.elementFromPoint(xa, yy) === host && document.elementFromPoint(xb, yy) === host) { y = yy; break; }
+        }
+        return { xa, xb, y, names: r.visible.slice(0, 3).map((x) => x.name) };
+      }, RUN.caseId);
+      lo.target = target;
+      await page.keyboard.down("Shift");
+      await page.mouse.move(target.xa, target.y);
+      await page.mouse.down();
+      await page.mouse.move((target.xa + target.xb) / 2, target.y, { steps: 4 });
+      await page.mouse.move(target.xb, target.y, { steps: 4 });
+      await page.mouse.up();
+      await page.keyboard.up("Shift");
+      lo.card = ((await page.locator("#tl-selection-exclude").textContent({ timeout: T })) || "").trim();
+      await page.locator("#tl-selection-exclude").click({ timeout: T });
+      await page.waitForSelector(".modal-confirm", { state: "visible", timeout: T });
+      lo.confirm = ((await page.locator(".modal-confirm").textContent({ timeout: T })) || "").replace(/\s+/g, " ").trim();
+      await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+      await page.waitForSelector("#timeline .tl-left-out", { timeout: T });
+      await idle();
+      await page.waitForSelector("#timeline .tl-left-out", { timeout: T });
+      lo.left = await probe();
+      await shot(page, "cc-left-out-band.png");
+      // Transaction 2 in Steps: the one line first, no Skipped for the steps inside.
+      await page.evaluate((cid) => {
+        const s = require("./state.js").getSession();
+        const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+        const r = runs.find((x) => x.caseId === cid);
+        const first = r && r.visible[0];
+        require("./state.js").setSelectedStepId(first ? first.step_id : null);
+      }, RUN.caseId);
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.waitForSelector("#step-list .run-group.open .run-diffs li", { timeout: T });
+      lo.diffs = await page.evaluate(() => [...document.querySelectorAll("#step-list .run-group.open .run-diffs li")]
+        .map((li) => ({ kind: li.dataset.kind, text: li.textContent })));
+      lo.openRun = await page.evaluate(() => (document.querySelector("#step-list .run-group.open .run-title") || {}).textContent);
+      // Include again, from the band's own menu.
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+      await page.locator("#timeline .tl-left-out").click({ timeout: T });
+      lo.menu = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => d.textContent));
+      await page.locator("#tl-ctx-menu div", { hasText: "Include again" }).click({ timeout: T });
+      await page.waitForFunction(() => !document.querySelector("#timeline .tl-left-out"), null, { timeout: T });
+      await idle();
+      lo.included = await probe();
+      // Ctrl+Z puts the stretch back (and analyzes); Ctrl+Y includes it again.
+      await page.evaluate(async () => { await require("./session.js").performUndo(); });
+      await page.waitForSelector("#timeline .tl-left-out", { timeout: T });
+      await wait(300);
+      await idle();
+      lo.undone = await probe();
+      await page.evaluate(async () => { await require("./session.js").performRedo(); });
+      await page.waitForFunction(() => !document.querySelector("#timeline .tl-left-out"), null, { timeout: T });
+      await wait(300);
+      await idle();
+      lo.redone = await probe();
+    } catch (e) {
+      logActionError("CC left out of the analysis", e);
+      lo.err = String(e.message).split("\n")[0];
+      await shot(page, "fail-cc-left-out.png");
+      await page.keyboard.up("Shift").catch(() => {});
+    }
+    const inside = (st, r) => !!(r && st.some((t) => t >= Date.parse(r[0]) && t <= Date.parse(r[1])));
+    const L = lo.left || {}, B = lo.before || {};
+    const origin = Date.parse(JSON.parse(fs.readFileSync(path.join(SESSION, "manifest.json"), "utf-8")).started_at);
+    const since = (ms) => { const d = Math.floor((ms - origin) / 1000); return Math.floor(d / 60) + ":" + String(d % 60).padStart(2, "0"); };
+    const want = L.ranges && L.ranges[0] && L.run2
+      ? "Part of this transaction was left out of the analysis (" + since(Math.max(Date.parse(L.ranges[0][0]), L.run2.start)) +
+        " to " + since(Math.min(Date.parse(L.ranges[0][1]), L.run2.end)) + ")." : null;
+    record("lane CC: Leave out of the analysis (a Shift-drag's card, asked first) draws the stretch on the Timeline, hatched, with its legend; its steps are not drafted",
+      !!(!lo.err && lo.card === "Leave out of the analysis" && /Leave this stretch out of the analysis\?/.test(lo.confirm || "") &&
+        B.ranges && B.ranges.length === 0 && !B.band &&
+        L.ranges && L.ranges.length === 1 && L.band && /^Left out of the analysis, \d+:\d\d to \d+:\d\d: /.test(L.band.title) &&
+        L.band.start === L.ranges[0][0] && L.legend &&
+        !inside(L.run2.starts, L.ranges[0]) && L.run2.steps < B.run2.steps),
+      JSON.stringify({ card: lo.card, confirm: lo.confirm, before: B, left: L, err: lo.err }));
+    const skipped = (lo.diffs || []).filter((d) => d.kind === "skipped").map((d) => d.text);
+    record("lane CC: the transaction says once, first, that part of it was left out (the times since the recording started), and none of the steps done in the stretch reads as skipped",
+      !!(!lo.err && RUN && lo.openRun === RUN.title && lo.diffs && lo.diffs[0] && lo.diffs[0].kind === "left_out" && lo.diffs[0].text === want &&
+        lo.diffs.filter((d) => d.kind === "left_out").length === 1 &&
+        !((lo.target && lo.target.names) || []).some((n) => skipped.some((t) => t.startsWith("Skipped: " + n + " (")))),
+      JSON.stringify({ want, diffs: lo.diffs, inStretch: lo.target && lo.target.names }));
+    record("lane CC: a click on the band offers Include again, which takes the stretch out of excluded_ranges and drafts its steps again; Ctrl+Z leaves it out again and Ctrl+Y includes it again, each analyzed",
+      !!(!lo.err && Array.isArray(lo.menu) && lo.menu[0] === "Include again" &&
+        lo.included && lo.included.ranges.length === 0 && !lo.included.band && lo.included.run2.steps === B.run2.steps &&
+        lo.undone && lo.undone.ranges.length === 1 && lo.undone.band && lo.undone.run2.steps === L.run2.steps &&
+        lo.redone && lo.redone.ranges.length === 0 && !lo.redone.band && lo.redone.run2.steps === B.run2.steps),
+      JSON.stringify({ menu: lo.menu, included: lo.included, undone: lo.undone, redone: lo.redone }));
   }
 
   // Page errors gate (checked last so we capture errors from every interaction).

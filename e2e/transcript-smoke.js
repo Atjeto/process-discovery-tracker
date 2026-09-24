@@ -34,8 +34,9 @@
  *   (g) an unsupported file fails with the import's message and the previous
  *       transcript stays;
  *   (i) the pulled sentences reach the exported PDD (word/document.xml);
- *   (h) Remove transcript deletes transcript.json, keeps the original, and
- *       every transcript surface is gone;
+ *   (h) Remove transcript takes out transcript.json and its original (lane
+ *       CC), every transcript surface is gone, and Ctrl+Z brings both files
+ *       back (Ctrl+Y takes them out again);
  *   (j) a transcript.json that cannot be read is said once, in a toast, and
  *       Remove transcript clears it;
  *   and zero page errors.
@@ -515,12 +516,29 @@ const WANT_OFFSET = -30000;
       await openOverviewTranscript();
       ov = (await surfaces()).overview;
     } catch (e) { err = errText(e); }
-    const ok = !err && !fs.existsSync(TRANSCRIPT) && fs.existsSync(COPY) &&
+    const gone = { json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY) };
+    const ok = !err && !gone.json && !gone.copy &&
       st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden && st.label === null && st.laneName === null &&
       st.blocks.length === 0 && stepSaid === null && ov === null && !(await page.$("#transcript-sync-card"));
-    record("(h) Remove transcript deletes transcript.json, keeps transcript/meeting-transcript.vtt, and every transcript surface is gone",
-      ok, JSON.stringify({ err, json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY), st, stepSaid, ov }));
+    record("(h) lane CC: Remove transcript takes out transcript.json and its original transcript/meeting-transcript.vtt, and every transcript surface is gone",
+      ok, JSON.stringify({ err, gone, st, stepSaid, ov }));
     if (!ok) await shot(page, "fail-transcript-remove.png");
+    // Ctrl+Z puts both files back and the transcript shows again; Ctrl+Y
+    // takes them out again.
+    let undo = null, redo = null, uerr = null;
+    try {
+      await page.evaluate(async () => { await require("./session.js").performUndo(); });
+      await page.waitForFunction(() => !!(require("./state.js").getSession() || {}).transcript, null, { timeout: 20000 });
+      undo = Object.assign({ json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY) }, await surfaces());
+      await page.evaluate(async () => { await require("./session.js").performRedo(); });
+      await page.waitForFunction(() => !(require("./state.js").getSession() || {}).transcript, null, { timeout: 20000 });
+      redo = Object.assign({ json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY) }, await surfaces());
+    } catch (e) { uerr = errText(e); }
+    const uok = !uerr && undo && undo.json && undo.copy && undo.attach === "Replace" && undo.lineState === "Transcript" && !undo.removeHidden &&
+      redo && !redo.json && !redo.copy && redo.attach === "Attach" && redo.lineState === "No transcript";
+    record("(h) lane CC: Ctrl+Z brings the transcript and its original file back (the project line says Transcript again), Ctrl+Y takes them out again",
+      uok, JSON.stringify({ uerr, undo: undo && [undo.json, undo.copy, undo.attach, undo.lineState], redo: redo && [redo.json, redo.copy, redo.attach, redo.lineState] }));
+    if (!uok) await shot(page, "fail-transcript-remove-undo.png");
   }
 
   // ---- (j) a transcript.json that cannot be read --------------------------

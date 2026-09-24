@@ -123,9 +123,13 @@ folder without `events.jsonl` exits 1 with a traceback ending in
 
 The viewer shows a banner: the file cannot be read, nothing is saved until
 it is fixed, and the backups it found, newest first. `normalize.py` exits 2
-and writes nothing. To recover, close the viewer, copy the newest good
-backup (`annotations.json.2` is the newest, `.5` the oldest) over
-`annotations.json`, and open the recording again.
+and writes nothing. To recover, click *Restore the newest backup* on the
+banner: it names the newest backup that can be read and when it was saved,
+asks first, keeps the unreadable file beside it as
+`annotations.unreadable-<YYYYMMDD-HHMMSS>.json`, puts the backup in place
+and opens the project again. Without the viewer (or when no backup can be
+read), copy a good backup (`annotations.json.2` is the newest, `.5` the
+oldest) over `annotations.json` by hand, and open the project again.
 
 ### "Dropped N malformed JSONL line(s)"
 

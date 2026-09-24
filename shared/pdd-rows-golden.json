@@ -1,0 +1,326 @@
+{
+  "_README": "One source for the PDD's sections 5 and 6 and the Overview's Observations. The pipeline computes the rows the PDD prints in section 5 (Data) and section 6 (Applications and time) with normalization/pdd_export.py data_section and time_section, writes them into analysis.json as `pdd_data` and `pdd_time` (pdd_rows), and prints the document from the same functions; the viewer's Overview (viewer/views/analysis-view.js) shows exactly those rows, under the PDD's headings. Each case gives a fixture (the manifest, stats.json, annotations.json and the derived events the pipeline reads) and the rows it gives. normalization/test/test_pdd_rows_golden.py checks that pdd_rows gives them and that the exported PDD prints them cell by cell; viewer/overview-observations.test.js checks that the Overview shows them cell by cell. Change a case only together with both sides.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "two transactions: a value typed again in another system, in both and in one",
+      "fixture": {
+        "manifest": { "session_id": "golden-1", "started_at": "2026-05-14T09:00:00Z" },
+        "stats": {
+          "meta": {
+            "app_names": { "chrome.exe": "Google Chrome", "SAPGUI.exe": "SAP GUI", "notepad.exe": "Notepad" }
+          },
+          "case_stats": [
+            {
+              "case_id": "c1",
+              "label": "Order #1",
+              "parent_case_id": null,
+              "start_ts": "2026-05-14T09:00:10Z",
+              "end_ts": "2026-05-14T09:01:10Z",
+              "wall_clock_ms": 60000,
+              "active_ms": 50000
+            },
+            {
+              "case_id": "c2",
+              "label": "Order #2",
+              "parent_case_id": null,
+              "start_ts": "2026-05-14T09:02:00Z",
+              "end_ts": "2026-05-14T09:03:30Z",
+              "wall_clock_ms": 90000,
+              "active_ms": 70500
+            }
+          ]
+        },
+        "annotations": {
+          "pattern_run": { "case_id": "c1" },
+          "steps": [
+            {
+              "step_id": "s1",
+              "case_id": "c1",
+              "name": "Save the order in Salesforce",
+              "draft_key": "chrome|Order|Button:Save order",
+              "state": "confirmed",
+              "time_range": { "start": "2026-05-14T09:00:15Z", "end": "2026-05-14T09:00:20Z" },
+              "evidence": {
+                "interaction_event_ids": ["e1", "e2"],
+                "screenshot_refs": []
+              }
+            },
+            {
+              "step_id": "s2",
+              "case_id": "c1",
+              "name": "Create the sales order",
+              "draft_key": "sapgui|va01|Button:Save",
+              "state": "confirmed",
+              "time_range": { "start": "2026-05-14T09:00:40Z", "end": "2026-05-14T09:00:45Z" },
+              "evidence": {
+                "interaction_event_ids": ["e3", "e4"],
+                "screenshot_refs": []
+              }
+            },
+            {
+              "step_id": "s3",
+              "case_id": "c2",
+              "name": "Save the order in Salesforce",
+              "draft_key": "chrome|Order|Button:Save order",
+              "state": "auto_suggested",
+              "time_range": { "start": "2026-05-14T09:02:10Z", "end": "2026-05-14T09:02:15Z" },
+              "evidence": {
+                "interaction_event_ids": ["e5", "e6"],
+                "screenshot_refs": []
+              }
+            },
+            {
+              "step_id": "s4",
+              "case_id": "c2",
+              "name": "Look up the material number",
+              "draft_key": "notepad|mappings|(visit)",
+              "state": "auto_suggested",
+              "time_range": { "start": "2026-05-14T09:02:30Z", "end": "2026-05-14T09:02:32Z" },
+              "evidence": {
+                "interaction_event_ids": ["e7"],
+                "screenshot_refs": []
+              }
+            },
+            {
+              "step_id": "s5",
+              "case_id": "c2",
+              "name": "Create the sales order",
+              "draft_key": "sapgui|va01|Button:Save",
+              "state": "auto_suggested",
+              "time_range": { "start": "2026-05-14T09:02:50Z", "end": "2026-05-14T09:02:55Z" },
+              "evidence": {
+                "interaction_event_ids": ["e8", "e9"],
+                "screenshot_refs": []
+              }
+            }
+          ]
+        },
+        "events": [
+          {
+            "type": "interaction",
+            "event_id": "e1",
+            "timestamp": "2026-05-14T09:00:15Z",
+            "data": {
+              "kind": "value_changed",
+              "process_name": "chrome.exe",
+              "window_title": "Salesforce | Order",
+              "name": "Product code",
+              "control_type": "Edit",
+              "value": "SKU-4471"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e2",
+            "timestamp": "2026-05-14T09:00:20Z",
+            "data": {
+              "kind": "invoked",
+              "process_name": "chrome.exe",
+              "window_title": "Salesforce | Order",
+              "name": "Save order",
+              "control_type": "Button"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e3",
+            "timestamp": "2026-05-14T09:00:40Z",
+            "data": {
+              "kind": "value_changed",
+              "process_name": "SAPGUI.exe",
+              "window_title": "Create Sales Order (VA01)",
+              "name": "Material number",
+              "control_type": "Edit",
+              "value": "SKU-4471"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e4",
+            "timestamp": "2026-05-14T09:00:45Z",
+            "data": {
+              "kind": "invoked",
+              "process_name": "SAPGUI.exe",
+              "window_title": "Create Sales Order (VA01)",
+              "name": "Save",
+              "control_type": "Button"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e5",
+            "timestamp": "2026-05-14T09:02:10Z",
+            "data": {
+              "kind": "value_changed",
+              "process_name": "chrome.exe",
+              "window_title": "Salesforce | Order",
+              "name": "Product code",
+              "control_type": "Edit",
+              "value": "SKU-9000"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e6",
+            "timestamp": "2026-05-14T09:02:15Z",
+            "data": {
+              "kind": "invoked",
+              "process_name": "chrome.exe",
+              "window_title": "Salesforce | Order",
+              "name": "Save order",
+              "control_type": "Button"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e7",
+            "timestamp": "2026-05-14T09:02:30Z",
+            "data": {
+              "kind": "text_changed",
+              "process_name": "notepad.exe",
+              "window_title": "Internal mappings.txt",
+              "name": "Mapping search",
+              "control_type": "Edit",
+              "value": "SKU-9000"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e8",
+            "timestamp": "2026-05-14T09:02:50Z",
+            "data": {
+              "kind": "value_changed",
+              "process_name": "SAPGUI.exe",
+              "window_title": "Create Sales Order (VA01)",
+              "name": "Material number",
+              "control_type": "Edit",
+              "value": "SKU-9000"
+            }
+          },
+          {
+            "type": "interaction",
+            "event_id": "e9",
+            "timestamp": "2026-05-14T09:02:55Z",
+            "data": {
+              "kind": "invoked",
+              "process_name": "SAPGUI.exe",
+              "window_title": "Create Sales Order (VA01)",
+              "name": "Save",
+              "control_type": "Button"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "pdd_data": {
+          "heading": "Data",
+          "note": null,
+          "header": ["Field", "System and screen", "Step", "Example value", "Re-keyed"],
+          "rows": [
+            ["Product code", "Salesforce, Order", "Save the order in Salesforce", "SKU-4471", "as Material number (SAP); as Mapping search (Notepad)"],
+            ["Material number", "SAP, Create Sales Order", "Create the sales order", "SKU-4471", "from Product code (Salesforce)"],
+            ["Mapping search", "Notepad, Internal mappings.txt", "Look up the material number", "SKU-9000", "from Product code (Salesforce)"]
+          ],
+          "rekeyed": ["Product code (Salesforce) is typed again as Material number (SAP) in every transaction.", "Product code (Salesforce) is typed again as Mapping search (Notepad) in 1 of 2 transactions."]
+        },
+        "pdd_time": {
+          "heading": "Applications and time",
+          "per_transaction": {
+            "heading": "Time per transaction",
+            "note": null,
+            "header": ["Transaction", "Steps", "Active time", "Elapsed time"],
+            "rows": [
+              ["Transaction 1: Order #1", "2", "50s", "1m"],
+              ["Transaction 2: Order #2", "3", "1m 10s", "1m 30s"]
+            ],
+            "after": "The transactions were recorded during a walkthrough, with explanations, so these times show the recording, not the usual handling time."
+          },
+          "per_application": {
+            "heading": "Time in each application",
+            "note": null,
+            "header": ["System", "Screens", "Steps", "Time per transaction"],
+            "rows": [
+              ["Salesforce", "Order", "Save the order in Salesforce", "5s"],
+              ["SAP", "Create Sales Order", "Create the sales order", "5s"],
+              ["Notepad", "Internal mappings.txt", "Look up the material number", "1s"]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "a project made by hand, no transaction marked, no step with a time",
+      "fixture": {
+        "manifest": { "session_id": "golden-2", "started_at": "2026-05-14T10:00:00Z", "source": "blank" },
+        "stats": {
+          "meta": {
+            "app_names": {}
+          },
+          "case_stats": [
+            {
+              "case_id": "i1",
+              "label": null,
+              "parent_case_id": null,
+              "start_ts": "2026-05-14T10:00:00Z",
+              "end_ts": null,
+              "wall_clock_ms": null,
+              "active_ms": null,
+              "implicit": true
+            }
+          ]
+        },
+        "annotations": {
+          "steps": [
+            {
+              "step_id": "m1",
+              "case_id": "i1",
+              "name": "Call the customer",
+              "state": "manually_authored",
+              "time_range": null,
+              "order": 1,
+              "system": "Phone"
+            },
+            {
+              "step_id": "m2",
+              "case_id": "i1",
+              "name": "Write the call note",
+              "state": "manually_authored",
+              "time_range": null,
+              "order": 2
+            }
+          ]
+        },
+        "events": []
+      },
+      "expected": {
+        "pdd_data": {
+          "heading": "Data",
+          "note": "No field entries were recorded in the steps of this process.",
+          "header": ["Field", "System and screen", "Step", "Example value", "Re-keyed"],
+          "rows": [],
+          "rekeyed": []
+        },
+        "pdd_time": {
+          "heading": "Applications and time",
+          "per_transaction": {
+            "heading": "Time per transaction",
+            "note": "Transactions were not marked in this project, so there is no time per transaction.",
+            "header": ["Transaction", "Steps", "Active time", "Elapsed time"],
+            "rows": [],
+            "after": null
+          },
+          "per_application": {
+            "heading": "Time in each application",
+            "note": null,
+            "header": ["System", "Screens", "Steps"],
+            "rows": [
+              ["Phone", "Not recorded", "Call the customer"],
+              ["Not recorded", "Not recorded", "Write the call note"]
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

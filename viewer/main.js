@@ -485,25 +485,25 @@ ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder }) => {
   return { path: r.filePaths[0] };
 });
 
-ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, videoPath, offsetMs }) => {
-  /* Write to annotations.json under external_video; preserve all other
-     annotation state. A read-modify-write: RP-04 refuses it when the current
-     file exists but cannot be read (it used to start from {} and replace the
-     analyst's work), and writes through the same backup + atomic path as
-     every other save. V2 item 5: a video outside the folder is copied into
-     its video/ folder first and stored relative to the folder, so the
-     folder carries it; when the copy fails, the absolute path is stored and
-     the result says why (copyError). Result { ok, stored, copied, copyError }. */
+ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {}) => {
+  /* Attach, Replace and Sync video (lane CC): the video the project is to
+     play, kept in the folder. V2 item 5: a video outside the folder is copied
+     into its video/ folder and stored relative to the folder, so the folder
+     carries it; when the copy fails, the absolute path is stored and the
+     result says why (copyError). The renderer then writes
+     annotations.external_video as one undoable edit (flow-view-video.js), so
+     Undo takes an attach, a replace or a sync back, and the save moves a
+     replaced copy out of video/ for that Undo (analyst-files.js). Refused
+     before anything is copied while annotations.json cannot be read (RP-04).
+     Result { ok, stored, copied, copyError } or { ok: false, error }. */
   const w = _projectWrite(sessionFolder, "video");
   w.start();
   try {
-    const root = path.resolve(sessionFolder);
-    if (!fs.existsSync(path.join(root, "manifest.json"))) {
+    const root = path.resolve(String(sessionFolder || ""));
+    if (!sessionFolder || !fs.existsSync(path.join(root, "manifest.json"))) {
       return w.end({ ok: false, error: "Not a project folder" }, NO_PROJECT);
     }
-    let busy = _refuseWhileAnalyzing(root);
-    if (busy) return w.end(busy);
-    AnnoStore.assertWritable(root);   // refused before anything is copied
+    AnnoStore.assertWritable(root);
     const plan = VideoPath.storePlan(root, videoPath, {
       exists: fs.existsSync,
       size: (p) => { try { return fs.statSync(p).size; } catch (_) { return null; } },
@@ -519,16 +519,6 @@ ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, video
         try { fs.unlinkSync(plan.copyTo); } catch (_) { /* nothing was written */ }
       }
     }
-    busy = _refuseWhileAnalyzing(root);
-    if (busy) return w.end(busy);
-    const current = AnnoStore.assertWritable(root);
-    const anno = current.status === "ok" ? current.annotations : {};
-    anno.external_video = {
-      path: stored,
-      offset_ms: offsetMs || 0,
-      attached_at: new Date().toISOString(),
-    };
-    AnnoStore.writeAnnotationsFile(root, anno);
     return w.end({ ok: true, stored, copied: !!plan.copyTo && !copyError, copyError });
   } catch (e) {
     return w.end({ ok: false, error: e.message }, e);
@@ -566,15 +556,43 @@ ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => 
   }
 });
 
-/* Remove transcript: deletes transcript.json only (the original copied into
-   transcript/ stays). Result { ok: true, removed } or { ok: false, error }. */
+/* Remove transcript (lane CC): transcript.json and the originals under
+   transcript/ leave the folder together, parked for an Undo (the holding
+   folder of removed files, analyst-files.js parkFiles). Result { ok: true,
+   removed, tag, files } (tag and files: what restoreTranscript puts back) or
+   { ok: false, error }. */
 ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
   const w = _projectWrite(sessionFolder, "transcript");
   w.start();
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
-    return w.end({ ok: true, removed: TranscriptStore.removeTranscript(root).removed });
+    const files = TranscriptStore.transcriptFiles(root);
+    const tag = "transcript-" + Date.now() + "-" + require("node:crypto").randomBytes(3).toString("hex");
+    const r = AnalystFiles.parkFiles(root, files, _holdDir(root), tag);
+    if (r.errors.length) {
+      // Put back what moved: a removal is whole or not at all.
+      AnalystFiles.restoreParked(root, r.parked, _holdDir(root), tag);
+      return w.end({ ok: false, error: "the transcript's files could not be moved: " + r.errors.join("; ") });
+    }
+    return w.end({ ok: true, removed: r.parked.includes(TranscriptStore.FILE), tag, files: r.parked });
+  } catch (e) {
+    return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
+  }
+});
+
+/* Undo of Remove transcript: the files parked under `tag` come back (a file
+   of the same name attached since is kept). Result { ok: true, restored,
+   kept } or { ok: false, error }. */
+ipcMain.handle("viewer:restoreTranscript", (_e, { sessionFolder, tag, files } = {}) => {
+  const w = _projectWrite(sessionFolder, "transcript");
+  w.start();
+  try {
+    const root = _sessionRoot(sessionFolder);
+    if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
+    const r = AnalystFiles.restoreParked(root, Array.isArray(files) ? files : [], _holdDir(root), String(tag || ""));
+    if (r.errors.length) return w.end({ ok: false, error: "the transcript's files could not be put back: " + r.errors.join("; ") });
+    return w.end({ ok: true, restored: r.restored, kept: r.kept });
   } catch (e) {
     return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
@@ -718,8 +736,9 @@ ipcMain.handle("viewer:openAttachment", async (_e, { sessionFolder, file } = {})
 /* H8 + RP-04: every save keeps five versions (annotations.json.2 newest to
    .5 oldest) by COPYING the current file, then writes the new content to a
    temp file and renames it over annotations.json, so a failed write leaves
-   the previous file in place (annotations-store.js). Recovery is manual: the
-   analyst copies a .N file back over annotations.json.
+   the previous file in place (annotations-store.js). An unreadable file is
+   recovered from the banner: Restore the newest backup
+   (viewer:restoreAnnotationsBackup, below).
 
    Result contract: { ok: true, path, backupError } or { ok: false, code,
    error } (code "ANNOTATIONS_UNREADABLE" when the current file cannot be
@@ -744,15 +763,44 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
     if (r.backupError) console.warn("[viewer:saveAnnotations] saved, but the backup copy failed: " + r.backupError);
     // C16: a screenshot or attachment the analyst removed leaves the folder;
     // Undo (a save that names it again) brings it back (analyst-files.js).
+    // A file that could not be moved (open in another program, no room) is
+    // reported with the save (filesError), which the renderer shows.
+    let filesError = null;
     if (before.status === "ok") {
       const moved = AnalystFiles.moveRemoved(root, AnalystFiles.namedFiles(before.annotations),
         AnalystFiles.namedFiles(annotations), _holdDir(root));
-      if (moved.errors.length) console.warn("[viewer:saveAnnotations] files not moved: " + moved.errors.join("; "));
+      if (moved.errors.length) {
+        filesError = moved.errors.join("; ");
+        console.warn("[viewer:saveAnnotations] files not moved: " + filesError);
+      }
     }
-    return w.end({ ok: true, path: r.path, backupError: r.backupError });
+    return w.end({ ok: true, path: r.path, backupError: r.backupError, filesError });
   } catch (e) {
     console.error("[viewer:saveAnnotations] not saved:", e && e.message);
     return w.end({ ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e) }, e);
+  }
+});
+
+/* The unreadable banner's Restore the newest backup (RP-04, lane CC): the
+   unreadable annotations.json is kept beside it as
+   annotations.unreadable-<time>.json and the newest backup that can be read
+   is copied into place (annotations-store.js restoreNewestBackup). `expect`
+   is the backup the analyst confirmed; another newest backup refuses. Not
+   while the project's analysis runs. Result { ok: true, backup, mtimeMs,
+   keptAs } or { ok: false, error } (a sentence). */
+ipcMain.handle("viewer:restoreAnnotationsBackup", (_e, { sessionFolder, expect } = {}) => {
+  const w = _projectWrite(sessionFolder, "annotations");
+  w.start();
+  try {
+    const root = _sessionRoot(sessionFolder);
+    if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
+    const busy = _refuseWhileAnalyzing(root);
+    if (busy) return w.end(busy);
+    const r = AnnoStore.restoreNewestBackup(root, { expect: typeof expect === "string" ? expect : null });
+    return w.end({ ok: true, backup: r.backup, mtimeMs: r.mtimeMs, keptAs: r.keptAs });
+  } catch (e) {
+    console.error("[viewer:restoreAnnotationsBackup] not restored:", e && e.message);
+    return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
 });
 

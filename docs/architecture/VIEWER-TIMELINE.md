@@ -8,11 +8,11 @@
 
 | File | Owns |
 |---|---|
-| [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) | `renderTimeline()`: the lane stack, the legend, the playhead, a background click that seeks; the minimap; the lanes menu; zoom, scroll and their persistence; the summary line. |
+| [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) | `renderTimeline()`: the lane stack, the stretches left out of the analysis (`leftOutBands`), the legend, the playhead, a background click that seeks; the minimap; the lanes menu; zoom, scroll and their persistence; the summary line. |
 | [`timeline/timeline-core.js`](../../viewer/timeline/timeline-core.js) | Pure layout: `chooseTicks` (the tick positions and labels), `packLanes`, `layoutLaneStack` and `renderLaneStack` (a stack of lane plugins). Unit-tested. |
-| [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | `timelineSpan()` (the stretch of time the timeline lays out), the playhead's place, seeking, Attach video and Sync video. |
+| [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | `timelineSpan()` (the stretch of time the timeline lays out), the playhead's place, seeking, Attach video, Sync video and Remove video. |
 | [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane and the transcript's Sync. |
-| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, jumps to a step; a transaction band's menu), range selection, the Transaction select. |
+| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis, Include again, the Transaction select. |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
 
 ## The one clock
@@ -52,7 +52,7 @@ lane of height 0 is skipped. From top to bottom:
 |---|---|---|
 | Ticks | The time since the recording started; tick lines run down through the activity lane. | |
 | Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest), and the bands follow the markers the last analysis used. | Click: go to the transaction's start. Right-click: Jump to start, Jump to end. |
-| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. Idle stretches and pending marker bars lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. |
+| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. Idle stretches, pending marker bars and the stretches left out of the analysis lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. A stretch left out: click or right-click for Include again. |
 | Transcript | Only while a transcript is attached: the sentences said while the recording ran, at their times, once the transcript is placed (its own sync, else the synced video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
 | Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: go there. Right-click: Edit note, Delete note. |
 | Screenshots | A rail of the recorder's screenshots. | Click: open it in the image viewer. |
@@ -89,7 +89,8 @@ there is one); Screenshots starts off. The choice persists in
 `pdt.timelineLanes`. The activity lane has no toggle.
 
 **The legend** under the timeline names the systems drawn and explains only
-the marks on screen: idle, a pending marker, a screenshot, a note.
+the marks on screen: idle, a pending marker, a screenshot, a note, a
+stretch left out of the analysis.
 
 ## The timeline menu
 
@@ -105,8 +106,26 @@ menu at the moment clicked:
 **Range selection.** Shift-drag on the background selects a range; a card
 shows its length, events, markers, screenshots and systems, with *Insert
 transaction from selection* (a Start and an End marker, pending),
-*Exclude from analysis* (the range goes into `annotations.excluded_ranges`
-and the analysis runs again) and *Clear selection*. Esc clears it.
+*Leave out of the analysis* (only in a project with a recording: it asks
+first, the range goes into `annotations.excluded_ranges` and the analysis
+runs again) and *Clear selection*. Esc clears it.
+
+**The stretches left out of the analysis** (lane CC) are drawn where they
+are made: a quiet hatch over the Systems lane (`.tl-left-out`, its
+`data-start` and `data-end` the entry's), the bands under it muted, reading
+"Left out of the analysis" where it is wide enough and "Left out" where
+only that fits (`leftOutLabel`); its tooltip gives the
+times and says that its steps are not drafted and its time not counted.
+The legend's "left out of the analysis" shows while one is drawn. A click
+(or a right-click) on it opens the timeline menu with *Include again* (the
+inverse: the entry leaves `excluded_ranges` and the analysis runs again,
+drafting its steps) and *Go to its start*. Both are one undoable edit, and
+an undo or a redo of either analyzes again (`session.js`
+`revertFollowUp`). Steps and the PDD then read the transaction with a
+stretch left out as such: it says once, first, "Part of this transaction
+was left out of the analysis (m:ss to m:ss)", and the reference steps done
+in the stretch are not listed as skipped (`run-differences.js`, pinned
+with the PDD by `shared/run-differences-golden.json`).
 
 ## The video beside it
 
@@ -125,6 +144,13 @@ a slim band with *Attach video...*.
   chosen with Attach video takes its place and keeps the stored sync.
 - **Sync video...** (the pane's header, only with a video) runs the two
   clicks again.
+- **Remove video** (the pane's header, and *Remove* on the Overview's
+  project line; only for the video the analyst attached) takes
+  `external_video` out and, for the copy the app made in `video/`, the file
+  with it; it asks first. *Replace* (Attach video over a video) takes out
+  the copy it replaces the same way. Attach, Replace, Sync and Remove are
+  each one undoable edit: Ctrl+Z brings back the entry and its file, and the
+  project is loaded again with its video (lane CC).
 - **+ Step** (the timeline's header, only with a video; or the S key) adds a
   step at the playhead.
 - A step's own playback is in the step panel (Watch), beside the steps.

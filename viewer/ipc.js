@@ -42,6 +42,13 @@ function saveAnnotations(payload) {
   return ipcRenderer.invoke("viewer:saveAnnotations", payload);
 }
 
+/** The unreadable banner's Restore the newest backup.
+ *  @param {{sessionFolder: string, expect: string}} payload
+ *  @returns {Promise<{ok: boolean, backup?: string, mtimeMs?: number, keptAs?: string, error?: string}>} */
+function restoreAnnotationsBackup(payload) {
+  return ipcRenderer.invoke("viewer:restoreAnnotationsBackup", payload);
+}
+
 /* ---- Remembered names (C4) ---- */
 
 /** Remember a step name for its draft key.
@@ -100,9 +107,12 @@ function attachExternalVideo(payload) {
   return ipcRenderer.invoke("viewer:attachExternalVideo", payload);
 }
 
-/** @param {object} payload @returns {Promise<any>} */
-function saveExternalVideoSync(payload) {
-  return ipcRenderer.invoke("viewer:saveExternalVideoSync", payload);
+/** Keep the video the project plays in its folder (copied into video/ when
+ *  it is outside it); the renderer then writes annotations.external_video.
+ *  @param {{sessionFolder: string, videoPath: string}} payload
+ *  @returns {Promise<{ok: boolean, stored?: string, copied?: boolean, copyError?: string|null, error?: string}>} */
+function copyVideoIn(payload) {
+  return ipcRenderer.invoke("viewer:copyVideoIn", payload);
 }
 
 /* ---- Meeting transcript (C8) ---- */
@@ -114,11 +124,18 @@ function importTranscript(payload) {
   return ipcRenderer.invoke("viewer:importTranscript", payload);
 }
 
-/** Remove the transcript (transcript.json only).
+/** Remove the transcript: transcript.json and its originals, parked for an Undo.
  *  @param {{sessionFolder: string}} payload
- *  @returns {Promise<{ok: boolean, removed?: boolean, error?: string}>} */
+ *  @returns {Promise<{ok: boolean, removed?: boolean, tag?: string, files?: string[], error?: string}>} */
 function removeTranscript(payload) {
   return ipcRenderer.invoke("viewer:removeTranscript", payload);
+}
+
+/** Undo of Remove transcript: its parked files come back.
+ *  @param {{sessionFolder: string, tag: string, files: string[]}} payload
+ *  @returns {Promise<{ok: boolean, restored?: string[], kept?: string[], error?: string}>} */
+function restoreTranscript(payload) {
+  return ipcRenderer.invoke("viewer:restoreTranscript", payload);
 }
 
 /** Save the transcript's sync offset.
@@ -186,11 +203,11 @@ function onProjectWrite(fn) {
 module.exports = {
   loadSession, openSessionFolder,
   runNormalizeExtended, cancelNormalize,
-  saveAnnotations,
+  saveAnnotations, restoreAnnotationsBackup,
   rememberStepName, readRememberedNames, forgetStepName,
   exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip,
-  attachExternalVideo, saveExternalVideoSync,
-  importTranscript, removeTranscript, saveTranscriptSync,
+  attachExternalVideo, copyVideoIn,
+  importTranscript, removeTranscript, restoreTranscript, saveTranscriptSync,
   chooseNewProject, createProject, addScreenshot, addAttachment, openAttachment,
   onNormalizeLog, onOpenInitialSession, onProjectWrite,
 };

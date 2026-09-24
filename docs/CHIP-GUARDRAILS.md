@@ -75,15 +75,19 @@ every push.
    the viewer; the step flow's edges (contract C17: the live map and the
    step BPMN) and the maps a project holds (contract C19: one per
    sub-process, their traces and numbers) are rules written in both, each
-   pinned by one golden. *Guards:* the shared goldens
+   pinned by one golden; the Overview's Observations are the PDD's rows of
+   sections 5 and 6, written by the pipeline and shown as they are (lane
+   CC). *Guards:* the shared goldens
    (`process-label-golden.json`, `screen-label-golden.json`,
-   `run-differences-golden.json`, `flow-links-golden.json`,
-   `sub-process-maps-golden.json`) pinned from both sides
+   `run-differences-golden.json` (the stretches left out of the analysis
+   too), `flow-links-golden.json`, `sub-process-maps-golden.json`,
+   `pdd-rows-golden.json`) pinned from both sides
    (`test_process_label.py`, `test_screen_label.py`,
    `test_run_differences_golden.py`, `test_flow_links_golden.py`,
-   `test_app_names.py` and the pipeline's test of the sub-process maps;
-   `process-map-levels.test.js`, `run-differences.test.js`,
-   `system-names.test.js`, `sub-process-maps.test.js`).
+   `test_app_names.py`, the pipeline's test of the sub-process maps and
+   `test_pdd_rows_golden.py`; `process-map-levels.test.js`,
+   `run-differences.test.js`, `system-names.test.js`,
+   `sub-process-maps.test.js`, `overview-observations.test.js`).
 7. **User-facing copy is plain business English, without dashes.** No
    internal vocabulary in rendered strings (the banned list and its
    replacements are in [DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md), UI
@@ -188,8 +192,12 @@ others):
 **Shell:** the empty state `#session-empty` (`#btn-open-session-hero`,
 `#recent-list-session li[data-folder]`, `#recent-clear-all`); the loaded
 session `#session-loaded`; `#annotations-error-banner` (an unreadable
-`annotations.json`); the analysis log `#log-host` (`#log-failure`,
-`#normalize-log`), shown only after a failed run; `#toast`.
+`annotations.json`) with, when a backup can be read, its act
+`#btn-restore-annotations` (Restore the newest backup: a `.modal-confirm`
+naming the backup's time, then the unreadable file kept as
+`annotations.unreadable-<YYYYMMDD-HHMMSS>.json` and the project opened
+again); the analysis log `#log-host` (`#log-failure`, `#normalize-log`),
+shown only after a failed run; `#toast`.
 
 **Overview** (`#overview-content`, `views/overview-view.js`):
 - Before the first analysis: `#ov-waiting` (`data-run` = the run state).
@@ -197,17 +205,27 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `.ov-next-stage[data-stage="runs"|"pattern"|"review"|"document"|"export"]`,
   `.done` when done) and its one button `#btn-ov-next` (`data-next-act`).
 - The project line `#ov-summary`: `[data-summary="runs"|"steps"|"video"|"transcript"]`,
-  `#btn-attach-video`, `#btn-attach-transcript`, `#btn-remove-transcript`,
-  the marker fixes `.summary-fix[data-fix]`.
+  `#btn-attach-video` (Attach, or Replace), `#btn-remove-video` (only for a
+  video the analyst attached; a `.modal-confirm` first),
+  `#btn-attach-transcript`, `#btn-remove-transcript`, the marker fixes
+  `.summary-fix[data-fix]`. Remove video, Replace and Remove transcript
+  take their files out of the folder and Ctrl+Z brings them back (lane CC;
+  a smoke waits for the reload after the undo: the video's
+  `State.getSession().recordingPath`, the transcript's `.transcript`).
 - The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"improvement"|"notes"]`
   (saved on change), who fills it `#ov-doc-who`, `#ov-doc-status` (the
   count, and the empty fields by name); the attachments `#ov-attach`
   (`#btn-ov-attach`, `.att-row[data-att-id]` with `.att-label-input` and
   `[data-att-act="open"|"remove"]`); the transcript `#ov-tr` (`#ov-tr-list`,
   `.tr-add-to[data-seg]` opens `#ov-tr-add-menu [data-doc-target]`).
-- Observations `#ov-observations details[data-module="retyped"|"time"]`,
-  who fills them `#ov-observations .ov-block-who`, the tables `table.ov-time`
-  (headers Average time, Happened in).
+- Observations `#ov-observations details[data-module="data"|"time"]`
+  (titled as the PDD's sections 5 and 6, Data and Applications and time),
+  who fills them `#ov-observations .ov-block-who`, the tables
+  `table.ov-rows` (their first row the PDD's header row; Data's one table,
+  then Time per transaction and Time in each application), the sub-titles
+  `.ov-rows-title`, the Re-keyed data `.ov-rekeyed li`, the walkthrough line
+  `.ov-rows-after`. They are `analysis.json` `pdd_data` and `pdd_time` as
+  they are, cell by cell (lane CC).
 
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
 - Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
@@ -233,11 +251,22 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#btn-tl-attach-video`.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
   text: "Start a transaction here…", "End the transaction here", "Add note
-  here…", "Jump to step here"; on a step band "Open in Steps"). A Shift-drag
+  here…", "Jump to step here"; on a step band "Open in Steps"; on a
+  stretch left out "Include again", "Go to its start"). A Shift-drag
   range shows `#tl-selection-stats` (`#tl-selection-case`,
-  `#tl-selection-exclude`, `#tl-selection-clear`).
+  `#tl-selection-exclude` "Leave out of the analysis", only with a
+  recording, asking with a `.modal-confirm`; `#tl-selection-clear`). A
+  Shift-drag starts only on the timeline's own background: find a point
+  where `document.elementFromPoint(x, y) === #timeline`.
+- The stretches left out of the analysis (lane CC): `.tl-left-out` over the
+  Systems lane (`data-start`, `data-end` the `excluded_ranges` entry's; a
+  click or a right-click opens its menu), its label `.tl-left-out-label`
+  where it fits, the legend's `#timeline-legend .lg-left-out`. Leave out,
+  Include again and an undo or a redo of either each run an analysis: wait
+  for `require("./views/flow-view.js").analysisBusy()` to be false.
 - Video: `#video`, `#no-video` with `#btn-link-recording` (Attach video),
-  `#btn-sync-video` (only with a video), the sync card `#video-sync-card`
+  `#btn-sync-video` (only with a video), `#btn-video-remove` (Remove video,
+  only for a video the analyst attached), the sync card `#video-sync-card`
   (`.vs-mark`, `.vs-cancel`; the transcript's is `#transcript-sync-card`),
   `#btn-video-expand`, `#btn-video-fullscreen`.
 - Side panel: `.anno-tab[data-anno="screens"|"markers"]`; `#screenshots-grid`,
@@ -354,6 +383,10 @@ the transactions ran one click away):
   a `dbltap` on it opens its map. At a level the chosen As-Is copy has no
   plane for, the picture is the process map's plane and `#map-view-why`
   says so.
+- Beside `#btn-session-map-zoom-fit`: `#btn-session-map-reset-layout`
+  (Reset layout, lane CC), shown only while how the transactions ran shows
+  with a box dragged (a key `pdt.dfgLayout.<hash>` in `localStorage`); a
+  click forgets that level's arrangement and draws the map again.
 - The map the PDD prints first: `#session-map-asis`, the chosen As-Is copy,
   else `process_map_step.bpmn` (`#map-view-title` says which). The map
   itself is `#map-asis-canvas`, a bpmn-js
@@ -375,9 +408,10 @@ the transactions ran one click away):
   without one, nothing is kept (no `reference_maps` entry, no file in
   `derived_maps/`). `#btn-toggle-refmaps` (`#refmap-count`)
   shows `#refmap-panel`: `#refmap-list .refmap-row` with
-  `[data-rm-act="edit"|"dup"|"refork"|"del"]` and, under a copy the
-  process map changed after, `.refmap-row-note` (what Copy again gives);
-  or `#refmap-empty`.
+  `[data-rm-act="edit"|"dup"|"refork"|"del"]` (Delete asks with a
+  `.modal-confirm`, then the row and its file in `derived_maps/` go; Ctrl+Z
+  brings both back) and, under a copy the process map changed after,
+  `.refmap-row-note` (what Copy again gives); or `#refmap-empty`.
 - The editor overlay `#refmap-editor-overlay`: `#refmap-editor-name`,
   `#refmap-editor-pdd` (None, As-Is map, To-Be map), `#refmap-editor-host`
   (bpmn-js shapes `.djs-element[data-element-id]`),
@@ -409,7 +443,13 @@ recording* in the Open menu are the New menu's two items. Gone since
 2026-09-24 (owner: a process is recorded once): the saved processes (C5),
 with *Save as this process*, the "Compared with saved process" line
 (`.runs-compare`, *Stop comparing*, *Forget this saved process*) and
-`processes-store.js`.
+`processes-store.js`. Gone since 2026-09-25 (lane CC): the Raw events
+row's *+ to step* (Split, Merge and + Add step set a step's boundaries); the
+identity line's marker (the ⚠ and ? glyphs, `.si-marker`, `.si-idrow`: a
+project is recorded once); the Observations' *Data typed twice* and *Where
+the time goes* (`data-module="retyped"`, `table.ov-time`, `.ov-retyped`),
+now the PDD's own rows; *Exclude from analysis* on the selection card, now
+*Leave out of the analysis* (same id).
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

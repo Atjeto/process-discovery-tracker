@@ -83,8 +83,10 @@ function pddExportOutcome(result, file) {
 
 /* The analysis.json format this viewer reads: the number the pipeline writes
    as analysis.json `format` (normalization/pipeline_stages.py
-   ANALYSIS_FORMAT; V2 item 10). */
-const ANALYSIS_FORMAT = 2;
+   ANALYSIS_FORMAT; V2 item 10). 3: the Overview's Data and Applications and
+   time read the PDD's rows (`pdd_data`, `pdd_time`; lane CC), so an older
+   analysis is analyzed again as the project opens. */
+const ANALYSIS_FORMAT = 3;
 
 /* Whether a recording needs an analysis as it opens (AD-22): "missing" when
    it has none (no stats.json or no analysis.json), "stale" when its analysis

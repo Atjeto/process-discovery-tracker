@@ -14,6 +14,14 @@
  * never touched. The holding folder is emptied when the viewer starts (the
  * undo history does not outlive the app).
  *
+ * The same rule covers the other copies the app makes in the folder (lane
+ * CC): the attached video's copy in video/ (external_video.path, "video/<name>";
+ * Remove video and Replace video take it out, Undo brings it back; a video
+ * kept anywhere else, the OBS recording included, is never moved), and an
+ * edited map's file in derived_maps/ (reference_maps[].file; the Map's Delete).
+ * The transcript is not named by annotations.json: Remove transcript parks its
+ * files here itself (parkFiles, restoreParked) and Undo brings them back.
+ *
  * Every function takes an optional `fs` so the unit tests can use a fake.
  */
 
@@ -24,6 +32,8 @@ const path = require("node:path");
 
 const SHOTS_DIR = "screenshots/analyst";
 const ATTACH_DIR = "attachments";
+const VIDEO_DIR = "video";
+const MAPS_DIR = "derived_maps";
 
 /* The last part of a file name written on any machine, or "" when it is not
    a plain name ("..", empty). */
@@ -32,8 +42,19 @@ function fileName(p) {
   return n === "." || n === ".." ? "" : n;
 }
 
+/* "<dir>/<name>" when `p` is exactly a plain name in the folder's `dir`
+   ("video/call.mp4", either slash), else "": an absolute path, a deeper one
+   or one elsewhere in the folder is not a copy the app made there. */
+function _inDir(p, dir) {
+  const parts = String(p == null ? "" : p).trim().split(/[\\/]/);
+  if (parts.length !== 2 || parts[0].toLowerCase() !== dir.toLowerCase()) return "";
+  const n = fileName(parts[1]);
+  return n && n === parts[1] ? dir + "/" + n : "";
+}
+
 /* The session-relative paths (with "/") of the files an annotations object
-   names: its analyst screenshots and its attachments. */
+   names: its analyst screenshots and its attachments, the copy of its video
+   in video/ and its edited maps' files in derived_maps/. */
 function namedFiles(anno) {
   const out = new Set();
   const a = anno && typeof anno === "object" ? anno : {};
@@ -43,7 +64,19 @@ function namedFiles(anno) {
       if (n) out.add(dir + "/" + n);
     }
   }
+  const video = a.external_video && typeof a.external_video === "object" ? _inDir(a.external_video.path, VIDEO_DIR) : "";
+  if (video) out.add(video);
+  for (const m of Array.isArray(a.reference_maps) ? a.reference_maps : []) {
+    const f = m && _inDir(m.file, MAPS_DIR);
+    if (f) out.add(f);
+  }
   return out;
+}
+
+/* Whether a stored external_video.path is the copy the app made in video/
+   (Remove video then deletes it; Undo brings it back). */
+function isVideoCopy(stored) {
+  return !!_inDir(stored, VIDEO_DIR);
 }
 
 /* A file name not taken in `dir`: the name itself, else "stem (2).ext", ... */
@@ -130,6 +163,61 @@ function moveRemoved(root, before, after, holdDir, fs = nodeFs) {
   return out;
 }
 
+/* The folder of one parked removal: `tag`, a plain name (a removal's own, so
+   a later one never overwrites an earlier one's files). */
+function _parkDir(holdDir, tag) {
+  const t = fileName(tag);
+  if (!t || t !== String(tag)) throw new Error("bad parking tag");
+  return path.join(holdDir, ".parked", t);
+}
+
+/* A plain session-relative path ("transcript.json", "transcript/m.vtt"), or
+   "": the files a parked removal moves never leave the folder's own tree. */
+function _plainRel(rel) {
+  const parts = String(rel == null ? "" : rel).split(/[\\/]/);
+  return parts.length && parts.every((p) => p && p !== "." && p !== "..") && !/^[a-zA-Z]:$/.test(parts[0])
+    ? parts.join("/") : "";
+}
+
+/* Move the files `rels` (session-relative) of the folder at `root` into the
+   parking of one removal (`tag`, under `holdDir`), for an Undo: the files
+   that are there move, the others are skipped. Returns { parked, errors }. */
+function parkFiles(root, rels, holdDir, tag, fs = nodeFs) {
+  const dir = _parkDir(holdDir, tag);
+  const out = { parked: [], errors: [] };
+  for (const r of rels || []) {
+    const rel = _plainRel(r);
+    if (!rel) { out.errors.push(String(r) + ": not a path inside the project"); continue; }
+    const from = path.join(root, rel);
+    try {
+      if (!fs.existsSync(from)) continue;
+      _move(fs, from, path.join(dir, rel));
+      out.parked.push(rel);
+    } catch (e) { out.errors.push(rel + ": " + ((e && e.message) || e)); }
+  }
+  return out;
+}
+
+/* Put back the files of the removal `tag` (Undo): each comes back unless the
+   folder has a file of that name again (a later one stays: it is kept, and
+   the parked one with it). Returns { restored, kept, errors }. */
+function restoreParked(root, rels, holdDir, tag, fs = nodeFs) {
+  const dir = _parkDir(holdDir, tag);
+  const out = { restored: [], kept: [], errors: [] };
+  for (const r of rels || []) {
+    const rel = _plainRel(r);
+    if (!rel) { out.errors.push(String(r) + ": not a path inside the project"); continue; }
+    const to = path.join(root, rel), held = path.join(dir, rel);
+    try {
+      if (!fs.existsSync(held)) continue;
+      if (fs.existsSync(to)) { out.kept.push(rel); continue; }
+      _move(fs, held, to);
+      out.restored.push(rel);
+    } catch (e) { out.errors.push(rel + ": " + ((e && e.message) || e)); }
+  }
+  return out;
+}
+
 /* File types an attachment opens with (documents, images, mail); any other
    type is shown in its folder instead, so a file received in a session
    folder never runs as a program from a click. */
@@ -147,6 +235,6 @@ function attachmentTarget(root, file, exists) {
 }
 
 module.exports = {
-  SHOTS_DIR, ATTACH_DIR, fileName, namedFiles, freeName, imageKind, writeScreenshot, copyAttachment,
-  moveRemoved, attachmentTarget,
+  SHOTS_DIR, ATTACH_DIR, VIDEO_DIR, MAPS_DIR, fileName, namedFiles, isVideoCopy, freeName, imageKind,
+  writeScreenshot, copyAttachment, moveRemoved, parkFiles, restoreParked, attachmentTarget,
 };

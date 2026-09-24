@@ -28,6 +28,7 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   session-integrity.json  # file manifest (name and size) written at session end
   annotations.json        # analyst sidecar (written by the viewer and the pipeline)
   annotations.json.2..5   # the viewer's rotating backups of it
+  annotations.unreadable-<YYYYMMDD-HHMMSS>.json  # an unreadable file kept by Restore the newest backup
   derived_maps/           # forked, editable reference maps (ADR-0019)
   stats.json              # pipeline outputs: see "Post-normalization artifacts"
   analysis.json
@@ -264,8 +265,13 @@ a rotation of four backups, `annotations.json.2` (most recent) to
 `annotations.json.5` (oldest). A file that exists but cannot be read is
 never treated as absent and never overwritten: the viewer shows a banner
 naming it and its backups and refuses to save or analyze, and `normalize.py`
-exits 2 before writing anything (C13). Recovery is a manual copy of a `.N`
-file over `annotations.json`.
+exits 2 before writing anything (C13). The banner's *Restore the newest
+backup* recovers (lane CC): it asks first, naming the backup and when it was
+saved, then renames the unreadable file to
+`annotations.unreadable-<YYYYMMDD-HHMMSS>.json` (local time; ` (2)` and on
+when taken) and copies the newest backup that can be read (`.2`, else `.3`,
+and on) into place through a temp file. Nothing reads the kept file; it
+stays for the analyst.
 
 **`external_video`** *(object or null)*: the attached video,
 `{ path, offset_ms, attached_at }`, written by the viewer when a video is
@@ -276,7 +282,12 @@ when the copy failed. A path that no longer resolves falls back to a file of
 that name at the folder's top or in `video/`. `offset_ms` places the video
 on the session clock: video time 0 is `manifest.started_at` plus
 `offset_ms`. When the file exists, it wins over the manifest's OBS
-recording.
+recording. Attach, Replace, Sync and Remove video each write this key as one
+undoable edit (lane CC). A save that no longer names a copy the viewer made
+in `video/` (`path` exactly `video/<name>`) moves that file out of the
+folder, and an Undo that names it again brings it back (the same rule as
+the analyst's screenshots and attachments, and as an edited map's file in
+`derived_maps/`); a video kept anywhere else is never moved.
 
 **`pattern_run`** *(object or null; contract C3, viewer-written)*: the run
 the analyst confirms as the reference, and the P1 draft-quality probe
@@ -530,9 +541,18 @@ A `step_id` entry wins over a `process_label` entry for waste.
 
 ### Excluded range (`excluded_ranges[]`)
 
-Time spans the analyst marked out of scope on the timeline (a lunch break,
-an unrelated detour). Drafting and `stats.json` skip every event whose
-`timestamp` falls inside one on the next run; `events.jsonl` is untouched.
+Time spans the analyst left out of the analysis on the timeline (a lunch
+break, an unrelated detour). Drafting, `stats.json` and the measurements of
+`analysis.json` (the run check, the step-based blocks, the facts and the
+findings) skip every event whose `timestamp` falls inside one on the next
+run; `events.jsonl` is untouched. The viewer draws each on the Timeline and
+offers *Include again* (the entry removed, the analysis run again). A run
+with a stretch left out (each range cut to its span) says so once, first,
+in the Steps level's differences and the PDD's 4.1 ("Part of this
+transaction was left out of the analysis (m:ss to m:ss)."), and the
+reference steps done inside the stretch are not listed as skipped: the rule
+of `viewer/run-differences.js` and `pdd_export.py`, pinned by
+`shared/run-differences-golden.json`.
 
 ```json
 {
@@ -1240,7 +1260,29 @@ a session without steps too (the step-based blocks are empty there).
       "tier": 1,
       "confidence_note": "how the number was measured and its limits" }
   ],
-  "pdd_findings": { "eligible": ["finding id"], "default": ["finding id"] }
+  "pdd_findings": { "eligible": ["finding id"], "default": ["finding id"] },
+  "pdd_data": {
+    "heading": "Data",
+    "note": "a sentence printed in place of the table, or null",
+    "header": ["Field", "System and screen", "Step", "Example value", "Re-keyed"],
+    "rows": [["Product code", "Salesforce, Order", "Save order", "SKU-4471", "as Material number (SAP)"]],
+    "rekeyed": ["Product code (Salesforce) is typed again as Material number (SAP) in every transaction."]
+  },
+  "pdd_time": {
+    "heading": "Applications and time",
+    "per_transaction": {
+      "heading": "Time per transaction", "note": null,
+      "header": ["Transaction", "Steps", "Active time", "Elapsed time"],
+      "rows": [["Transaction 1: Order #10900", "7", "42s", "43s"]],
+      "after": "The transactions were recorded during a walkthrough, ..."
+    },
+    "per_application": {
+      "heading": "Time in each application", "note": null,
+      "header": ["System", "Screens", "Steps", "Time per transaction"],
+      "rows": [["Salesforce", "Account lookup, Order", "Search, Save order", "14s"]]
+    }
+  },
+  "format": 3
 }
 ```
 
@@ -1271,8 +1313,28 @@ a session without steps too (the step-based blocks are empty there).
   `confidence_note` stating the measurement's limits. `tier` is 1 for
   detectors that need no runs, 2 for run-based ones (`repetition`). Ids are
   stable across re-runs (detector plus a content hash). The viewer's
-  Overview reads two of them: `rekey_transfer` (Data typed twice) and
-  `coverage_caveat` (a warning line). The PDD prints none.
+  Overview reads one of them, `coverage_caveat` (a warning line); its
+  re-keyed data are the PDD's (`pdd_data` below). The PDD prints none. The
+  measured blocks, like the step-based ones, read the derived stream without
+  the stretches the analyst left out (`annotations.excluded_ranges`).
+- **`pdd_data`** and **`pdd_time`** (lane CC, one source): the rows the PDD
+  prints in its section 5 (Data) and section 6 (Applications and time),
+  computed by `pdd_export.data_section` and `time_section`, the functions
+  the PDD prints the sections with, from the inputs it reads (the steps,
+  `stats.json`, the manifest and the derived events), so every cell is the
+  text printed. The viewer's Overview shows them as they are, under the
+  PDD's headings (`heading`, a table's `heading`, `header`); `note` is the
+  sentence the PDD prints instead of a table (no field entered, no
+  transaction marked, no step), `after` the line under the time per
+  transaction. `per_application.header` has the time column only when a
+  step has a time ("Time per transaction", or "Time" without marked
+  transactions). Written for every session, one without a recording
+  included. A failure writes both `null` with one `stage_errors` entry
+  (`pdd_rows`). Pinned with the viewer by `shared/pdd-rows-golden.json`.
+- **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`, 3
+  since `pdd_data` and `pdd_time`); the viewer analyzes a project again as
+  it opens when the number is missing or lower
+  (`normalize-result.js` `analysisNeed`).
 - **`pdd_findings`**: the findings the PDD's former findings section could
   print (`eligible`) and printed by default (`default`), for the "include in
   PDD" ticks. The section and the ticks are cut; the key is still written
@@ -1322,9 +1384,11 @@ and `efficiency`, which does not run without the waste split);
 `facts`); `facts`; `findings`, which does not run when `step_analysis`,
 `motifs`, `facts`, `time_study`, `segments` or `automation_candidates`
 failed, since its detectors read all of them and a partial run would
-under-report; and `pdd_findings`. The viewer's Overview shows a failed stage
-as "this check could not run on this recording", never as a measured
-negative. The PDD reads no analysis stage.
+under-report; `pdd_findings`; and `pdd_rows` (`pdd_data` and `pdd_time`
+together). The viewer's Overview shows a failed stage as "this check could
+not run on this recording", never as a measured negative. The PDD reads no
+analysis stage: it prints sections 5 and 6 with the functions that wrote
+`pdd_data` and `pdd_time`.
 
 **Nothing recorded (C16).** A session without a recording
 (`manifest.source` `"video"` or `"blank"`) has nothing for the measurements
@@ -1332,7 +1396,8 @@ of the recording to measure. There, the step-based block
 (`waste_classification`, `time_study`, `segments`, `automation_candidates`,
 `efficiency`), `facts`, `findings` and `pdd_findings` are `null` **without**
 a `stage_errors` entry, since nothing failed; `case_quality` still counts the
-runs. A renderer tells the two apart by `stage_errors`: `null` with an entry
+runs, and `pdd_data` and `pdd_time` are written as the PDD prints them there
+too. A renderer tells the two apart by `stage_errors`: `null` with an entry
 is "this check could not run", `null` without one is "nothing was recorded".
 In every session the step-based block leaves out the steps without a time
 range: they have no time to measure.
@@ -1355,7 +1420,7 @@ range: they have no time to measure.
 | File | Contents |
 |---|---|
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
+| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings, pdd_data, pdd_time, format }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
 | `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below), one plane per sub-process (C19). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |

@@ -38,8 +38,8 @@ const ATTACH_TITLE = "Attach the meeting transcript Teams saved (.vtt or .docx).
   "timeline, next to each step and beside the document fields.";
 const REPLACE_TITLE = "Replace the transcript with another Teams file (.vtt or .docx). Sync the new one again " +
   "unless a video is attached.";
-const REMOVE_TITLE = "Take the transcript out of this project. The original file stays in the project's " +
-  "transcript folder.";
+const REMOVE_TITLE = "Take the transcript out of this project, with its original file in the project's " +
+  "transcript folder. Ctrl+Z brings them back.";
 
 /* Why a parsed transcript.json cannot be used, in one line, or null when it
    can: a version 1 object with a segments list. */

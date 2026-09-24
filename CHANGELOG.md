@@ -163,6 +163,21 @@ implementation notes
     the As-Is view; *Show how the transactions ran* switches to the live map.
   - Opening the editor and leaving it without a change keeps no copy.
   - Ctrl+Z and Ctrl+Y undo and redo map edits inside the editor.
+- **Every feature complete or cut** (the feature audit of 2026-09-24):
+  - A stretch left out of the analysis shows on the Timeline, hatched, and a
+    click offers *Include again*; Ctrl+Z undoes either. A transaction with a
+    stretch left out says so, in Steps and in the PDD, and the steps done in
+    it are not read as skipped. The findings leave it out too.
+  - *Remove video*, on the project line and beside Sync video, takes the
+    video out with its copy in the folder; *Replace* takes out the copy it
+    replaces. Attach, Replace, Sync and Remove are each undoable.
+  - Deleting an edited map deletes its file, and removing the transcript
+    deletes its original too; Ctrl+Z brings the files back.
+  - *Reset layout*, beside fit on how the transactions ran, puts boxes
+    moved by hand back.
+  - *Restore the newest backup*, on the banner of an unreadable
+    annotations file, puts back the newest readable backup and keeps the
+    unreadable file beside it.
 
 ### Changed
 
@@ -197,9 +212,11 @@ implementation notes
   and transcript actions sit on the project line, Apps outside the process
   and Remembered step names in the Steps toolbar. Flow is now called the Timeline.
 - **Observations instead of findings** on the Overview, measured from the
-  recording: the data typed twice (per field, where the recording says
-  which) and where the time goes (per step and per system, with the
-  Average time and in how many transactions it Happened).
+  recording, and one source with the PDD: *Data* and *Applications and
+  time* are the rows the PDD prints in its sections 5 and 6, under its
+  headings: each analysis writes them into `analysis.json` with the PDD's
+  own functions, and a PDD export analyzes first, so the two say one fact in
+  the same words. Projects analyzed before are analyzed again as they open.
 - **Attaching a video goes straight into syncing it**: pause at a moment
   you recognize, then click the same moment on the timeline.
 - **Only the reference transaction is confirmed**: the other transactions
@@ -332,6 +349,9 @@ Preserved in full on the `product-edition` branch.
 - **The capture app's Live Session window and hotkey overlay** (replaced by
   the recording bar), with their counters and event feed, and the
   interaction count in the end summary.
+- **The raw events' *+ to step*** (Split, Merge and + Add step set a step's
+  boundaries) and the "may change between recordings" marker on an
+  interaction's identity line (a project is recorded once).
 - **The example sessions in the viewer release.**
 
 ## [1.5.0] - 2026-07-03 — approachability redesign

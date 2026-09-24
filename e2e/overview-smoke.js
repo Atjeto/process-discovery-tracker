@@ -13,9 +13,10 @@
  *       transcript with their Attach), the document, then the Observations;
  *       the findings feed, its evidence and the "include in PDD" ticks are
  *       gone, and no "More" menu or "Analyze session" button exists anywhere;
- *   (c) the Observations, "Measured from the recording": Data typed twice
- *       (per field) and Where the time goes (per step and per system,
- *       Average time and Happened in "N of 4 transactions");
+ *   (c) the Observations, "Measured from the recording. The PDD prints
+ *       them in sections 5 and 6.": Data and Applications and time, the
+ *       rows analysis.json holds (pdd_data, pdd_time), cell by cell, and the
+ *       exported PDD's own tables equal to them (lane CC, one source);
  *   (c2) the moved controls are where they are used (ids kept);
  *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
  *   (d) the analyst path, walked on the demo: every next act lands where it
@@ -169,6 +170,15 @@ function readZipEntry(buf, name) {
   });
   return r === undefined ? null : r;
 }
+/* The tables of a document.xml, each as rows of cell texts (the text runs of
+   a cell joined, the XML entities read back). */
+function docxTables(xml) {
+  const dec = (t) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  const text = (frag) => [...frag.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => dec(m[1])).join("");
+  return [...String(xml || "").matchAll(/<w:tbl\b[^>]*>([\s\S]*?)<\/w:tbl>/g)].map((t) =>
+    [...t[1].matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g)].map((r) =>
+      [...r[1].matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map((c) => text(c[1]))));
+}
 function zipNames(buf) {
   const names = [];
   zipCentral(buf, (n) => { names.push(n); return undefined; });
@@ -257,7 +267,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       summaryH: sum ? Math.round(sum.getBoundingClientRect().height) : null,
       removed: document.querySelectorAll(".ov-tile, .ov-facts, .ov-badge, #ov-mark-runs, .ov-export-bar, " +
         "#btn-ov-export-pdd, #session-summary, .ov-tier2").length,
-      // "N of 4 transactions" in Where the time goes is a time's frequency, not the count.
+      // "N of 4 transactions" in the Re-keyed data sentence is how often it happened, not the count.
       runsSaid: (text.match(/(?<!of )\b4 transactions\b/g) || []).length,
       oldWords: (text.match(/\bruns?\b|What is left/gi) || []).length,
       casesSaid: (text.match(/\b4 cases\b/g) || []).length,
@@ -302,9 +312,11 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       gone.analyze === 0 && gone.actionsBar === 0 && gone.log === "none" && gone.status === ""),
     JSON.stringify(gone));
 
-  // (c) The Observations: two items, closed on a fresh profile with their
-  // takeaways; opened, Data typed twice speaks per field and Where the time
-  // goes per step and per system.
+  // (c) The Observations (lane CC, one source with the PDD): two items,
+  // closed on a fresh profile with their takeaways; opened, Data is the PDD's
+  // section 5 and Applications and time its section 6, table by table, as
+  // analysis.json holds them (the PDD export below compares them with the
+  // document itself).
   const obs = await page.evaluate(async () => {
     const host = document.getElementById("ov-observations");
     if (!host) return { present: false };
@@ -313,46 +325,50 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const takeaways = items.map((m) => ((m.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim());
     for (const m of items) if (!m.open) m.querySelector("summary").click();
     await new Promise((r) => setTimeout(r, 100));
-    const retyped = [...host.querySelectorAll('[data-module="retyped"] .ov-retyped li')].map((li) => li.textContent.trim());
-    const tables = [...host.querySelectorAll('[data-module="time"] table.ov-time')].map((t) => ({
-      head: [...t.querySelectorAll("th")].map((th) => th.textContent.trim()),
-      rows: [...t.querySelectorAll("tbody tr")].map((tr) => [...tr.children].map((td) => td.textContent.trim())),
-    }));
-    for (const m of items) m.querySelector("summary").click();   // close again (the default)
-    await new Promise((r) => setTimeout(r, 50));
-    try { for (const k of ["retyped", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
-    return {
+    const tablesOf = (el) => [...el.querySelectorAll("table.ov-rows")].map((t) =>
+      [...t.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent)));
+    const data = host.querySelector('[data-module="data"]'), time = host.querySelector('[data-module="time"]');
+    const out = {
       present: true, title: ((host.querySelector(".ov-section-title") || {}).textContent || "").trim(),
       who: ((host.querySelector(".ov-section-head .ov-block-who") || {}).textContent || "").trim(),
       modules: items.map((m) => m.dataset.module),
       titles: items.map((m) => ((m.querySelector(".analysis-module-title") || {}).textContent || "").trim()),
-      closed, takeaways, retyped, tables,
+      closed, takeaways,
+      dataTables: data ? tablesOf(data) : null,
+      rekeyed: data ? [...data.querySelectorAll(".ov-rekeyed li")].map((li) => li.textContent) : null,
+      subtitles: [...host.querySelectorAll(".ov-rows-title")].map((d) => d.textContent),
+      timeTables: time ? tablesOf(time) : null,
+      after: time ? ((time.querySelector(".ov-rows-after") || {}).textContent || "") : null,
+      analysis: (() => { const a = require("./state.js").getSession().analysis || {}; return { pdd_data: a.pdd_data, pdd_time: a.pdd_time, format: a.format }; })(),
     };
+    for (const m of items) m.querySelector("summary").click();   // close again (the default)
+    await new Promise((r) => setTimeout(r, 50));
+    try { for (const k of ["data", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
+    return out;
   }).catch((e) => ({ err: e.message }));
-  const stepsTable = obs && obs.tables && obs.tables[0];
-  const appsTable = obs && obs.tables && obs.tables[1];
-  record("(c) Observations (\"Measured from the recording\"): two items, Data typed twice and Where the time goes, closed by default with their takeaways",
-    !!(obs && !obs.err && obs.present && obs.title === "Observations" && obs.who === "Measured from the recording" &&
-      same(obs.modules, ["retyped", "time"]) &&
-      same(obs.titles, ["Data typed twice", "Where the time goes"]) && obs.closed === 2 &&
-      obs.takeaways.every((t) => t.length > 0)),
-    JSON.stringify(obs && { title: obs.title, who: obs.who, modules: obs.modules, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
-  record("(c) Data typed twice says the field pair, each place named by its system: Product code in Salesforce typed again as Material number in SAP (V2 item 3)",
-    !!(obs && Array.isArray(obs.retyped) &&
-      obs.retyped[0] === "Product code in Salesforce typed again as Material number in SAP"),
-    JSON.stringify(obs && obs.retyped));
-  // AD-29: "Step | Average time | Happened in", values like "10 s" and "4 of 4 transactions".
-  const AVG_TIME = /^(under 1 s|\d+ s|\d+ min( \d+ s)?|\d+ h( \d+ min)?)$/;
-  record("(c) Where the time goes: per step and per system (V2 item 3: Salesforce, never the browser), each with its Average time and where it Happened in, N of 4 transactions (the Notepad lookup in 1 of 4)",
-    !!(stepsTable && appsTable && same(stepsTable.head, ["Step", "Average time", "Happened in"]) &&
-      same(appsTable.head, ["System", "Average time", "Happened in"]) && stepsTable.rows.length >= 5 &&
-      stepsTable.rows.every((r) => AVG_TIME.test(r[1]) && /^[1-4] of 4 transactions$/.test(r[2])) &&
-      appsTable.rows.every((r) => AVG_TIME.test(r[1])) &&
-      appsTable.rows.some((r) => r[0] === "SAP" && r[2] === "4 of 4 transactions") &&
-      appsTable.rows.some((r) => r[0] === "Salesforce" && r[2] === "4 of 4 transactions") &&
-      !appsTable.rows.some((r) => /Chrome/.test(r[0])) &&
-      appsTable.rows.some((r) => r[0] === "Notepad" && r[2] === "1 of 4 transactions")),
-    JSON.stringify(obs && obs.tables));
+  record("(c) Observations (\"Measured from the recording. The PDD prints them in sections 5 and 6.\"): two items under the PDD's headings, Data and Applications and time, closed by default with their takeaways",
+    !!(obs && !obs.err && obs.present && obs.title === "Observations" &&
+      obs.who === "Measured from the recording. The PDD prints them in sections 5 and 6." &&
+      same(obs.modules, ["data", "time"]) && same(obs.titles, ["Data", "Applications and time"]) && obs.closed === 2 &&
+      obs.takeaways[0] === "Product code (Salesforce) is typed again as Material number (SAP) in every transaction. (+1 more)" &&
+      /^Most time in Salesforce: \d+s per transaction$/.test(obs.takeaways[1])),
+    JSON.stringify(obs && { title: obs.title, who: obs.who, modules: obs.modules, titles: obs.titles, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
+  const A = obs && obs.analysis;
+  record("(c) Data shows analysis.json's pdd_data cell by cell (the PDD's section 5: Field, System and screen, Step, Example value, Re-keyed), then its Re-keyed data sentences",
+    !!(A && A.format === 3 && A.pdd_data && obs.dataTables && obs.dataTables.length === 1 &&
+      same(obs.dataTables[0], [A.pdd_data.header].concat(A.pdd_data.rows)) &&
+      same(obs.dataTables[0][0], ["Field", "System and screen", "Step", "Example value", "Re-keyed"]) &&
+      same(obs.rekeyed, A.pdd_data.rekeyed) && A.pdd_data.rekeyed.length === 2),
+    JSON.stringify(obs && { rows: obs.dataTables && obs.dataTables[0] && obs.dataTables[0].length, rekeyed: obs.rekeyed }));
+  record("(c) Applications and time shows pdd_time cell by cell: Time per transaction (4 transactions, with the walkthrough line) and Time in each application (Salesforce, never the browser; Notepad in its own row)",
+    !!(A && A.pdd_time && obs.timeTables && obs.timeTables.length === 2 &&
+      same(obs.timeTables[0], [A.pdd_time.per_transaction.header].concat(A.pdd_time.per_transaction.rows)) &&
+      same(obs.timeTables[1], [A.pdd_time.per_application.header].concat(A.pdd_time.per_application.rows)) &&
+      obs.timeTables[0].length === 5 && obs.after === A.pdd_time.per_transaction.after &&
+      same(obs.subtitles, ["Re-keyed data", "Time per transaction", "Time in each application"]) &&
+      obs.timeTables[1].some((r) => r[0] === "Salesforce") && obs.timeTables[1].some((r) => r[0] === "Notepad") &&
+      !obs.timeTables[1].some((r) => /Chrome/.test(r[0]))),
+    JSON.stringify(obs && obs.timeTables));
 
   // (c2) The moved controls, where they are used, with their ids.
   const moved = await page.evaluate(() => {
@@ -689,6 +705,29 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(docChecks.purpose && docChecks.title && docChecks.purposePlaceholderGone && docChecks.keptAfterExport),
     JSON.stringify(Object.assign({ xmlBytes: first.xml ? first.xml.length : 0 }, docChecks)));
 
+  // Lane CC, one source: the Overview's Data and Applications and time, read
+  // after the export (the export's analysis wrote them), are the document's
+  // own tables of sections 5 and 6, cell by cell, and its Re-keyed data lines.
+  const ovAfter = await page.evaluate(async () => {
+    const host = document.getElementById("ov-observations");
+    const items = [...host.querySelectorAll(".analysis-module[data-module]")];
+    for (const m of items) if (!m.open) m.querySelector("summary").click();
+    await new Promise((r) => setTimeout(r, 100));
+    const tables = [...host.querySelectorAll("table.ov-rows")].map((t) =>
+      [...t.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent)));
+    const rekeyed = [...host.querySelectorAll(".ov-rekeyed li")].map((li) => li.textContent);
+    for (const m of items) m.querySelector("summary").click();
+    try { for (const k of ["data", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
+    return { tables, rekeyed };
+  }).catch((e) => ({ err: e.message }));
+  const docTables = docxTables(first.xml);
+  const printed = (ovAfter.tables || []).map((ot) => docTables.find((dt) => same(dt[0], ot[0])) || null);
+  record("(d9b) one source: the Overview's three tables (Data, Time per transaction, Time in each application) are the exported PDD's tables of sections 5 and 6 cell by cell, and its Re-keyed data sentences are in the PDD",
+    !!(!ovAfter.err && ovAfter.tables.length === 3 && printed.every((t, i) => t && same(t, ovAfter.tables[i])) &&
+      ovAfter.rekeyed.length === 2 && ovAfter.rekeyed.every((line) => first.xml && first.xml.includes(line))),
+    JSON.stringify({ overview: (ovAfter.tables || []).map((t) => t.length), inPdd: printed.map((t) => (t ? t.length : null)),
+      rekeyed: ovAfter.rekeyed, err: ovAfter.err }));
+
   // 6. The As-Is map is the Map's own act (no stage): an edited As-Is copy
   // and a To-Be copy, then the export hands both.
   const mapProbe = {};
@@ -858,6 +897,86 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       attach.saved && attach.saved.path === path.basename(VIDEO) && Math.abs(attach.saved.offset - attach.wantOffset) <= 3000 &&
       attach.after && attach.after.line === "Video" && attach.after.button === "Replace" && attach.after.sync),
     JSON.stringify({ step2: attach.step2, saved: attach.saved, wantOffset: attach.wantOffset, at: attach.at, after: attach.after }));
+
+  // (h2) Lane CC: Replace and Remove video, each with its Undo. A video from
+  // outside the folder is copied into video/; Replace takes out the copy it
+  // replaces, Remove takes out the entry and the copy; Ctrl+Z brings back
+  // the entry and the file each time.
+  const OUTSIDE = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-e2e-videos-"));
+  const V1 = path.join(OUTSIDE, "first call.webm"), V2 = path.join(OUTSIDE, "second call.webm");
+  fs.writeFileSync(V1, Buffer.alloc(96, 1));
+  fs.writeFileSync(V2, Buffer.alloc(128, 2));
+  const inVideo = (name) => fs.existsSync(path.join(SESSION_MARKED, "video", name));
+  const storedPath = () => ((readAnno().external_video || {}).path || null);
+  const replaceWith = async (file) => {
+    await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, file);
+    await goOverview();
+    await page.locator("#ov-summary #btn-attach-video").click({ timeout: T });
+    await page.waitForSelector("#video-sync-card .vs-mark", { state: "visible", timeout: T });
+    await page.locator("#video-sync-card .vs-mark").click({ timeout: T });
+    await page.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
+    const box = await page.locator("#timeline").boundingBox();
+    await page.mouse.click(box.x + box.width * 0.2, box.y + 60);
+    await page.waitForFunction(() => /Video replaced/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    await page.waitForFunction((name) => {
+      const s = require("./state.js").getSession();
+      return !!(s && s.recordingPath && s.recordingPath.split(String.fromCharCode(92)).join("/").endsWith("/video/" + name));
+    }, path.basename(file), { timeout: T });
+  };
+  const undo = async (want) => {
+    await page.evaluate(async () => { await require("./session.js").performUndo(); });
+    await page.waitForFunction((w) => {
+      const s = require("./state.js").getSession();
+      const p = s && s.annotations && s.annotations.external_video && s.annotations.external_video.path;
+      // The reload after the undo (session.js revertFollowUp) has read the video back.
+      return w === null ? !p : (p === w && !!(s.recordingAvailable && s.recordingPath &&
+        s.recordingPath.split(String.fromCharCode(92)).join("/").endsWith("/" + w)));
+    }, want, { timeout: T });
+  };
+  const vid = {};
+  try {
+    await replaceWith(V1);
+    vid.first = { stored: storedPath(), copied: inVideo("first call.webm") };
+    await replaceWith(V2);
+    vid.second = { stored: storedPath(), secondIn: inVideo("second call.webm"), firstGone: !inVideo("first call.webm") };
+    await undo("video/first call.webm");
+    vid.undoReplace = { stored: storedPath(), firstBack: inVideo("first call.webm"), secondGone: !inVideo("second call.webm") };
+    await goOverview();
+    vid.line = await page.evaluate(() => [...document.querySelectorAll("#ov-summary .ov-summary-line button")].map((b) => b.id + ":" + b.textContent.trim()));
+    vid.header = await page.evaluate(() => {
+      const b = document.getElementById("btn-video-remove");
+      return { shown: !!b && !b.hidden && getComputedStyle(b).display !== "none", text: b ? b.textContent.trim() : null };
+    });
+    await page.locator("#ov-summary #btn-remove-video").click({ timeout: T });
+    await page.waitForSelector(".modal-confirm", { state: "visible", timeout: T });
+    vid.confirm = ((await page.locator(".modal-confirm").textContent({ timeout: T })) || "").replace(/\s+/g, " ").trim();
+    await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+    await page.waitForFunction(() => /Video removed/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    vid.removed = { stored: storedPath(), fileGone: !inVideo("first call.webm"),
+      line: await page.evaluate(() => ((document.querySelector('#ov-summary [data-summary="video"]') || {}).textContent || "").trim()),
+      removeBtn: await page.evaluate(() => !!document.getElementById("btn-remove-video")) };
+    await undo("video/first call.webm");
+    vid.undoRemove = { stored: storedPath(), fileBack: inVideo("first call.webm") };
+    await goOverview();
+    vid.lineAfterUndo = await page.evaluate(() => ((document.querySelector('#ov-summary [data-summary="video"]') || {}).textContent || "").trim());
+  } catch (e) {
+    logActionError("(h2) replace and remove video", e);
+    vid.err = String(e.message).split("\n")[0];
+    await shot(page, "fail-overview-remove-video.png");
+  }
+  record("(h2) Replace video copies the new video into video/ and takes out the copy it replaces; Ctrl+Z brings the replaced entry and its file back and takes the new copy out",
+    !!(!vid.err && vid.first && vid.first.stored === "video/first call.webm" && vid.first.copied &&
+      vid.second.stored === "video/second call.webm" && vid.second.secondIn && vid.second.firstGone &&
+      vid.undoReplace.stored === "video/first call.webm" && vid.undoReplace.firstBack && vid.undoReplace.secondGone),
+    JSON.stringify({ first: vid.first, second: vid.second, undoReplace: vid.undoReplace, err: vid.err }));
+  record("(h2) Remove video (the project line's Remove, and Remove video beside Sync video) asks first, then takes out the entry and its copy in video/; Ctrl+Z brings both back",
+    !!(!vid.err && Array.isArray(vid.line) && vid.line.includes("btn-attach-video:Replace") && vid.line.includes("btn-remove-video:Remove") &&
+      vid.header && vid.header.shown && vid.header.text === "Remove video" &&
+      /Remove the video\?/.test(vid.confirm || "") && /copy in the project's video folder is deleted/.test(vid.confirm || "") &&
+      /Ctrl\+Z brings it back/.test(vid.confirm || "") &&
+      vid.removed && vid.removed.stored === null && vid.removed.fileGone && vid.removed.line === "No video" && !vid.removed.removeBtn &&
+      vid.undoRemove && vid.undoRemove.stored === "video/first call.webm" && vid.undoRemove.fileBack && vid.lineAfterUndo === "Video"),
+    JSON.stringify({ line: vid.line, header: vid.header, confirm: vid.confirm, removed: vid.removed, undoRemove: vid.undoRemove, after: vid.lineAfterUndo }));
 
   await close();
 

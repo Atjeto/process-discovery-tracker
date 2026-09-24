@@ -154,17 +154,29 @@ helpers in `pipeline_stages.py`, in this order:
    outlier and rework statistics plus `meta`, including
    `step_state_breakdown`, `draft_summary` and `app_names`. The step
    variants use every visible (not hidden) step; the step durations use the
-   visible steps that have a time.
+   visible steps that have a time. The events inside a stretch the analyst
+   left out of the analysis (`annotations.excluded_ranges`) are skipped here,
+   as in step drafting.
 7. **Analysis** (`_run_analysis`). `analysis.json`: the measured blocks
    (`case_quality`, `facts`, `findings`) and the step-based estimates (waste,
    time study, segments, automation candidates, efficiency) over the visible
    steps that have a time ([ADR-0008](../adr/0008-build-the-analysis-layer.md),
    [ADR-0016](../adr/0016-segment-level-automation-candidacy.md)). A stage that
    fails writes its key as `null` and one entry in `stage_errors` (contract
-   C12); the findings stage does not run when one of its inputs failed. In a
-   session without a recording the measurements are `null` with no entry:
-   nothing failed, nothing was recorded. The viewer's Overview reads two
-   findings (the re-keyed data and the coverage caveat); the PDD prints none.
+   C12); the findings stage does not run when one of its inputs failed. Every
+   measurement here (the run check, the step-based blocks, the facts and the
+   findings) reads the derived stream without the stretches left out of the
+   analysis (lane CC). In a session without a recording the measurements are
+   `null` with no entry: nothing failed, nothing was recorded. The viewer's
+   Overview reads one finding (the coverage caveat); the PDD prints none.
+   Then `pdd_export.pdd_rows` writes `pdd_data` and `pdd_time`: the rows the
+   PDD prints in its sections 5 and 6, computed by the functions it prints
+   them with (`data_section`, `time_section`) from the inputs it reads (the
+   full derived stream, so a step kept inside a stretch left out keeps its
+   fields), for every session; the Overview shows them as they are (one
+   source, pinned by `shared/pdd-rows-golden.json`). `format` is
+   `pipeline_stages.ANALYSIS_FORMAT`, 3: the viewer analyzes a project again
+   as it opens when its `analysis.json` carries a lower one.
 8. **Step map and PDD** (`_run_mining_exports`). With `--mine`,
    `bpmn_observed.py` writes `process_map_step.bpmn` from the visible steps
    that belong to a run (below). With `--pdd-out`, `pdd_export.write_pdd`
@@ -333,16 +345,24 @@ gaps. The sections, in the reader's order:
    from the reference run (extra steps with their system, where and in how
    many runs; skipped steps; a different order; steps repeated within a
    run), aligned by draft key, merge key, else label: the rule the viewer's
-   differences view uses, pinned by `shared/run-differences-golden.json`.
+   differences view uses, pinned by `shared/run-differences-golden.json`. A
+   run with a stretch left out of the analysis (each excluded range cut to
+   its span) says so first, once: "Part of this transaction was left out of
+   the analysis (m:ss to m:ss).", and the reference steps inside the
+   stretch (after the reference position of the nearest step before it that
+   the reference has, before that of the nearest one after it) are not
+   listed as skipped.
    4.2 Business rules, 4.3 Exceptions (application errors included).
 5. **Data.** One table: every field entered, with its system and screen, its
    step, an example value and a Re-keyed mark; below it, one sentence per
    field whose value is typed in one system and typed again in another in
-   the same run, with the number of runs that did it.
+   the same run, with the number of runs that did it (`data_section`).
 6. **Applications and time.** 6.1 each run's steps, active time and elapsed
    time, with a line saying the runs were recorded as a walkthrough, so the
    times show the recording, not the usual handling time. 6.2 per system:
-   its screens, its steps and its time per run.
+   its screens, its steps and its time per run (`time_section`). Sections 5
+   and 6 print the rows these two functions return, the rows the analysis
+   writes into `analysis.json` for the viewer's Overview.
 7. **Improvement and automation scope.** The analyst's field; 7.1 the To-Be
    map picture when one was passed.
 8. **Notes**, only when written.
@@ -412,7 +432,7 @@ the stages apart:
 - **Nothing recorded.** Each run's `active_ms` is `null`; the step-based
   block, `facts`, `findings` and `pdd_findings` are `null` with no
   `stage_errors` entry; `case_quality` still counts the runs, coverage
-  `null`. The PDD says the runs were not marked (implicit run) or that
+  `null`; `pdd_data` and `pdd_time` are written as the PDD prints them. The PDD says the runs were not marked (implicit run) or that
   nothing was recorded (blank session), and points at the video time in a
   video session.
 
@@ -449,7 +469,7 @@ SCHEMA.md.
 | `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
-| `pdd_export.py` | The PDD (above). |
+| `pdd_export.py` | The PDD (above), and `pdd_rows` (the rows of its sections 5 and 6 the analysis writes into `analysis.json`). |
 | `memo_export.py` | What is left of the findings memo: `run_rows` (the runs the PDD's tables read), the "could not run" wording, and `pdd_findings` (still written to `analysis.json`; nothing reads it). No memo document is written. |
 | `transcript_import.py` | The transcript parser and its CLI (above). |
 | `golden_check.py` | The session golden (above). |

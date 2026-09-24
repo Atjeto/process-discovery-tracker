@@ -695,6 +695,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   color: var(--fg-3); font-size: 10px; flex-shrink: 0; white-space: nowrap; }
 .map-zoom .icon-btn.xs { padding: 2px 8px; font-size: 11px; min-width: 22px;
   width: auto; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
+/* Reset layout (lane CC) shows beside fit only once a box was dragged. */
+.map-zoom .icon-btn.xs[hidden] { display: none; }
 
 .map-host { position: relative; background: var(--bg-3); border-radius: var(--radius-sm);
   border: 1px solid var(--rule); height: 420px; min-height: 180px;
@@ -1009,20 +1011,28 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   margin-top: 6px; font-style: normal; color: var(--fg-2); }
 .ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);
   font-family: var(--font-mono); overflow-wrap: anywhere; }
-/* Observations: two items, each an .analysis-module inside the section. */
+/* Observations: two items, each an .analysis-module inside the section: the
+   PDD's sections 5 and 6 as it prints them (analysis-view.js), a table per
+   PDD table, a small title per PDD sub-heading. */
 .ov-observations { display: flex; flex-direction: column; gap: 8px; }
 .ov-observations .ov-section-title { margin-bottom: 2px; }
 .ov-obs-item { box-shadow: none; border: 1px solid var(--rule-soft); }
-.ov-retyped { margin: 0; padding-left: 18px; font-size: 13px; color: var(--fg); line-height: 1.6; }
-.ov-time { width: 100%; border-collapse: collapse; font-size: 12px; margin: 0 0 10px; }
-.ov-time:last-child { margin-bottom: 0; }
-.ov-time th { text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.4px;
-  text-transform: uppercase; color: var(--fg-3); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); }
-.ov-time td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule-soft); color: var(--fg-2); white-space: nowrap; }
-.ov-time td.ov-time-name { color: var(--fg); white-space: normal; width: 60%; }
-.ov-time .num { text-align: right; font-family: var(--font-mono); font-size: 11px; }
-/* "Happened in" keeps its distance from the right-aligned average time. */
-.ov-time th:last-child, .ov-time td:last-child { padding-left: 16px; }
+/* A value longer than the item is wide (one long word) scrolls inside it. */
+.ov-obs-item .analysis-module-body { overflow-x: auto; }
+.ov-rows-title { font-size: 12px; font-weight: 600; color: var(--fg); margin: 12px 0 4px; }
+.ov-rows-title:first-child { margin-top: 0; }
+.ov-rows { width: 100%; border-collapse: collapse; font-size: 12px; margin: 0; table-layout: auto; }
+.ov-rows th { text-align: left; font-weight: 600; font-size: 10px; letter-spacing: 0.4px; vertical-align: bottom;
+  text-transform: uppercase; color: var(--fg-3); padding: 4px 10px 4px 0; border-bottom: 1px solid var(--rule); }
+.ov-rows td { padding: 4px 10px 4px 0; border-bottom: 1px solid var(--rule-soft); color: var(--fg);
+  vertical-align: top; overflow-wrap: break-word; }
+.ov-rows td:first-child { font-weight: 600; }
+.ov-rows .num { text-align: right; white-space: nowrap; }
+.ov-rows td.num { font-family: var(--font-mono); font-size: 11px; }
+.ov-rows th:last-child, .ov-rows td:last-child { padding-right: 0; }
+.ov-rekeyed { margin: 0; padding-left: 18px; font-size: 13px; color: var(--fg); line-height: 1.6; }
+.ov-rows-after { margin: 6px 0 0; font-size: 11px; color: var(--fg-3); }
+.analysis-note.ov-rows-note { padding-top: 0; }
 
 /* The document (contract C6): the Observations' disclosure
    (.analysis-module) around a grid of the PDD's document fields. */
@@ -1323,6 +1333,9 @@ details.analysis-module { padding: 0; }
    and the Remembered step names dialog. */
 .run-diffs { margin: 0 0 6px; padding: 0 0 0 16px; font-size: 11px; color: var(--fg-2); }
 .run-diffs li { margin: 1px 0; overflow-wrap: anywhere; }
+/* The line on a stretch left out of the analysis (lane CC): said first, a note
+   about the comparison rather than a difference. */
+.run-diffs li[data-kind="left_out"] { font-style: italic; }
 .rn-intro { margin-top: 0; }
 .rn-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--rule); }
 .rn-text { flex: 1 1 auto; min-width: 0; }
@@ -1435,18 +1448,11 @@ details.analysis-module { padding: 0; }
    the identity is muted + smaller so the verb still leads the row. */
 .editor-detail-pane .si-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .editor-detail-pane .si-text { color: var(--fg-2); word-break: break-word; }
-/* Identity text (ellipsized, shrinks) + its marker glyph share one inline
-   row -- the marker stays pinned right after the identity. */
-.editor-detail-pane .si-idrow { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+/* The identity line (ellipsized, shrinks) under the verb. */
 .editor-detail-pane .si-identity {
   color: var(--fg-3); font-size: 10px; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* Volatility / weak-identity marker (identityLine.marker) -- a small tooltip'd
-   glyph after the identity line; warm-warn for a volatile id, muted for weak. */
-.editor-detail-pane .si-marker { flex: none; font-size: 10px; cursor: help; }
-.editor-detail-pane .si-marker-volatile { color: var(--warn); }
-.editor-detail-pane .si-marker-weak { color: var(--fg-4); }
 .editor-detail-pane .si-time {
   flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px;
 }
@@ -1536,6 +1542,8 @@ details.analysis-module { padding: 0; }
   overflow-wrap: anywhere;
 }
 .anno-error-banner strong { color: var(--bad); margin-right: 4px; }
+/* Its one act (lane CC): Restore the newest backup, on a line of its own. */
+.anno-error-banner .anno-error-restore { display: block; margin-top: 8px; }
 
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {
@@ -2230,6 +2238,22 @@ button.danger:disabled {
   font-size: 10px; color: var(--bg); background: var(--accent); border-radius: 3px; cursor: pointer; z-index: 3; }
 .tl-note:hover { transform: scale(1.2); }
 .lg-note::before { background: var(--accent); border-radius: 2px !important; }
+/* A stretch left out of the analysis (annotations.excluded_ranges, lane CC):
+   a quiet hatch over the Systems lane where the stretch was left out, the
+   bands under it muted, its label where it fits; a click offers Include
+   again. The legend's key is the same hatch. */
+.tl-left-out { position: absolute; z-index: 3; cursor: pointer; box-sizing: border-box; overflow: hidden;
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--bg-2) 78%, transparent) 0 5px,
+    color-mix(in srgb, var(--fg-3) 32%, var(--bg-2)) 5px 7px);
+  border-left: 1px dashed var(--fg-3); border-right: 1px dashed var(--fg-3); }
+.tl-left-out:hover { border-color: var(--accent); }
+.tl-left-out-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+  max-width: calc(100% - 12px); box-sizing: border-box; padding: 1px 6px; border-radius: 2px;
+  font-size: 10px; font-weight: 600; color: var(--fg-2); background: var(--bg-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.lg-left-out::before { border: 1px dashed var(--fg-3); box-sizing: border-box;
+  background: repeating-linear-gradient(135deg, var(--bg-2) 0 2px, color-mix(in srgb, var(--fg-3) 45%, var(--bg-2)) 2px 3px); }
 /* The step panel's notes of an occurrence. */
 .sp-notes { list-style: none; margin: 0; padding: 0; }
 .sp-note { font-size: 11px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }

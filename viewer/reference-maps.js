@@ -365,11 +365,13 @@ function duplicate({ sessionFolder, anno, srcEntry, nowIso }) {
   return entry;
 }
 
-/* "Delete" removes the manifest ROW only; the .bpmn blob is RETAINED on disk so
-   the annotations-undo layer can restore a working entry with one Ctrl+Z (the
-   undo stack snapshots annotations, not files — unlinking here would resurrect a
-   row pointing at a deleted file). A retained blob with no row is a harmless,
-   invisible orphan. `sessionFolder` is kept for signature parity with fork. */
+/* "Delete" removes the manifest ROW here; the save of the annotations that
+   follows takes its .bpmn out of derived_maps/ (lane CC: main.js moves a file
+   no entry names any more to the holding folder of removed files,
+   analyst-files.js), and one Ctrl+Z writes the row back, which brings the file
+   back with it, a working entry that still carries its edits. Unlinking here
+   would leave an Undo a row pointing at a deleted file. `sessionFolder` is kept
+   for signature parity with fork. */
 function destroy({ sessionFolder, anno, id }) {
   void sessionFolder;
   return remove(anno, id);

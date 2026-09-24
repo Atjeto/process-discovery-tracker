@@ -20,6 +20,9 @@
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const { $, formatDuration, toast } = require("../dom.js");
+const { saveAnnotationsWithUndo } = require("../session.js");
+const { confirmModal } = require("../modals.js");
+const { isVideoCopy } = require("../analyst-files.js");
 
 /* Injected by flow-view.js via initVideo() -- kept out of a require() to
    avoid a flow-view <-> video cycle. */
@@ -343,7 +346,10 @@ function startVideoSync(opts) {
 }
 /* Save the offset (and, for an attach, the video's path), then reload. The
    main process copies a video from outside the folder into its video/
-   folder first (V2 item 5), which takes a moment for a long video.
+   folder first (V2 item 5), which takes a moment for a long video; then
+   annotations.external_video is written as one undoable edit (lane CC):
+   Ctrl+Z takes an attach, a replace or a sync back, and a Replace takes the
+   copy it replaces out of video/ (Undo brings it back, analyst-files.js).
    `relink`: the stored sync was kept for a video found again. */
 async function applyVideoSync(offsetMs, pendingPath, relink) {
   const session = State.getSession();
@@ -352,14 +358,32 @@ async function applyVideoSync(offsetMs, pendingPath, relink) {
   cancelVideoSync();
   if (!session) return;
   if (pendingPath) toast("Attaching the video...", "info");
-  const r = await Ipc.saveExternalVideoSync({
-    sessionFolder: session.sessionFolder,
-    videoPath: pendingPath || session.recordingPath,
-    offsetMs,
-  });
-  if (!r || !r.ok) {
+  const failed = (why) => {
     toast((pendingPath ? "The video was not attached: " : "Could not save the video sync: ") +
-      ((r && r.error) || "no reason was given"), "error");
+      (why || "no reason was given"), "error");
+    if (pendingPath) _showVideo(null);
+  };
+  let r;
+  try {
+    r = await Ipc.copyVideoIn({ sessionFolder: session.sessionFolder, videoPath: pendingPath || session.recordingPath });
+  } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+  if (!r || !r.ok) { failed(r && r.error); return; }
+  if (State.getSession() !== session) return;
+  const anno = session.annotations || {};
+  const before = anno.external_video;
+  // A replaced video, not a re-link: the previous one plays now (the OBS
+  // recording's, or an attached one found in the folder).
+  const replacing = !!pendingPath && !relink && !!session.recordingAvailable;
+  anno.external_video = {
+    path: r.stored,
+    offset_ms: offsetMs || 0,
+    attached_at: pendingPath || !(before && before.attached_at) ? new Date().toISOString() : before.attached_at,
+  };
+  try {
+    await saveAnnotationsWithUndo(anno, pendingPath ? (replacing ? "Replace the video" : "Attach the video") : "Sync the video");
+  } catch (_) {
+    // Already shown to the analyst (session.js); the entry goes back as it was.
+    if (before === undefined) delete anno.external_video; else anno.external_video = before;
     if (pendingPath) _showVideo(null);
     return;
   }
@@ -368,11 +392,52 @@ async function applyVideoSync(offsetMs, pendingPath, relink) {
       "), so a copy of the folder will not carry it.", "error");
   } else {
     const plain = !(session.events || []).length;
-    toast((relink ? "Video found: it keeps its sync (Sync video changes it)." : plain && pendingPath ? "Video attached."
+    toast((relink ? "Video found: it keeps its sync (Sync video changes it)." : replacing ? "Video replaced."
+      : plain && pendingPath ? "Video attached."
       : pendingPath ? "Video attached and synced." : "Video synced.") +
-      (r.copied ? " It is copied into the project folder." : ""), "success");
+      (r.copied ? " It is copied into the project folder." : "") + (replacing ? " Ctrl+Z brings the previous one back." : ""), "success");
   }
   await loadSessionIntoView(session.sessionFolder);
+}
+
+/* Whether the project plays a video the analyst attached (its entry is
+   annotations.external_video and the file was found): Remove video applies. */
+function attachedVideoShown(sess) {
+  const s = sess || State.getSession();
+  return !!(s && s.recordingAvailable && s.externalVideoOffsetMs != null &&
+    s.annotations && s.annotations.external_video && s.annotations.external_video.path);
+}
+
+/* Remove video (lane CC), the inverse of Attach video: the
+   annotations.external_video entry goes, and with it the copy the app made
+   in the folder's video/ (moved out for an Undo, analyst-files.js); a video
+   kept anywhere else stays where it is. One undoable edit: Ctrl+Z brings the
+   entry and the file back. Asks first. */
+async function removeVideo() {
+  const session = State.getSession();
+  if (!session || !attachedVideoShown(session)) return;
+  const entry = session.annotations.external_video;
+  const copy = isVideoCopy(entry.path);
+  const ok = await confirmModal({
+    title: "Remove the video?",
+    message: "The project plays no video after this: the Timeline and the step panel show none.",
+    detail: (copy ? "Its copy in the project's video folder is deleted." : "The video file stays where it is.") +
+      " Ctrl+Z brings it back.",
+    okLabel: "Remove video",
+    danger: true,
+  });
+  if (!ok || State.getSession() !== session) return;
+  cancelVideoSync();
+  const anno = session.annotations;
+  delete anno.external_video;
+  try {
+    await saveAnnotationsWithUndo(anno, "Remove the video");
+  } catch (_) {
+    anno.external_video = entry;   // already shown to the analyst (session.js)
+    return;
+  }
+  await loadSessionIntoView(session.sessionFolder);
+  toast("Video removed." + (copy ? " Its copy left the project folder." : "") + " Ctrl+Z brings it back.", "success");
 }
 /* Wall-clock ms at a clicked x on the Flow timeline. #timeline spans the
    full (zoomed) session width and its left edge tracks the scroll, so a
@@ -393,9 +458,12 @@ function initVideo(deps) {
   loadSessionIntoView = (deps && deps.loadSessionIntoView) || (async () => {});
 }
 
-// Self-wire the require()-time listener of the re-sync button.
+// Self-wire the require()-time listeners of the re-sync and remove buttons.
 if ($("#btn-sync-video")) {
   $("#btn-sync-video").addEventListener("click", startVideoSync);
+}
+if (document.getElementById("btn-video-remove")) {
+  document.getElementById("btn-video-remove").addEventListener("click", () => removeVideo());
 }
 
 module.exports = {
@@ -403,5 +471,5 @@ module.exports = {
   setVideoOverlay, positionPlayhead,
   videoStartTs, formatPlayback, videoTimeToSessionTs,
   seekToTimestamp, movePlayheadToTimestamp, jumpToStepInFlow,
-  startVideoSync, cancelVideoSync, attachVideo,
+  startVideoSync, cancelVideoSync, attachVideo, removeVideo, attachedVideoShown,
 };

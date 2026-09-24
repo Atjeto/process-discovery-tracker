@@ -11,7 +11,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { fitMenuPosition } = require("./dom.js");
+const { fitMenuPosition, toast } = require("./dom.js");
 
 const VW = 1366, VH = 768, M = 4;
 const W = 200, H = 105;   // the Flow timeline menu: 3 items
@@ -68,4 +68,32 @@ test("from any click point inside the window every edge of the menu is inside it
 
 test("the margin defaults to 4 px", () => {
   assert.deepEqual(fitMenuPosition(1366, 768, W, H, VW, VH), fitMenuPosition(1366, 768, W, H, VW, VH, 4));
+});
+
+/* ---- the toast: a held error is not covered by the act's success message ---- */
+
+test("a held error toast stays until it ends: a success or info message does not replace it, another error does", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const el = { textContent: "", className: "", classList: { remove() { el.className = ""; } }, appendChild() {} };
+  global.document = { querySelector: (sel) => (sel === "#toast" ? el : null) };
+  try {
+    toast("Saved, but a file was not moved.", "error", { hold: true });
+    toast("Video removed.", "success");
+    toast("Undone: Remove the video", undefined);
+    assert.equal(el.textContent, "Saved, but a file was not moved.");
+    assert.equal(el.className, "toast show error");
+    t.mock.timers.tick(7999);
+    toast("Still held.", "info");
+    assert.equal(el.textContent, "Saved, but a file was not moved.");
+    t.mock.timers.tick(1);
+    toast("Video removed.", "success");
+    assert.equal(el.textContent, "Video removed.");
+    toast("Kept for a while.", "error", { hold: true });
+    toast("A second failure.", "error");
+    assert.equal(el.textContent, "A second failure.", "another error replaces a held one");
+    toast("Done.", "success");
+    assert.equal(el.textContent, "Done.", "a plain error holds nothing");
+  } finally {
+    delete global.document;
+  }
 });

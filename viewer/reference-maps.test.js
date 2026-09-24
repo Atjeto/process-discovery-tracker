@@ -290,7 +290,7 @@ test("duplicate copies the blob as a To-Be map with no PDD role, fresh id + file
   assert.equal(RM.pddPick(anno, "as_is").map_id, src.map_id, "the As-Is map keeps its role");
 });
 
-test("destroy removes the manifest row but KEEPS the blob (undo-safe)", () => {
+test("destroy removes the manifest row and leaves the blob to the save that follows (it moves the file out for an undo, analyst-files.js)", () => {
   const sf = tmpSession();
   const anno = {};
   const e = RM.fork({ sessionFolder: sf, anno, xml: "<a/>", source: { level: "activity" }, nowIso: "t" });
@@ -298,7 +298,8 @@ test("destroy removes the manifest row but KEEPS the blob (undo-safe)", () => {
   assert.ok(fs.existsSync(full));
   RM.destroy({ sessionFolder: sf, anno, id: e.map_id });
   assert.equal(RM.list(anno).length, 0);
-  // Blob retained so a one-step annotations undo restores a WORKING entry.
+  // The blob is not unlinked here: the annotations save moves it out of the
+  // folder for an undo (analyst-files.test.js), which brings back a WORKING entry.
   assert.ok(fs.existsSync(full), "blob must survive delete so Ctrl+Z restores a usable map");
   RM.upsert(anno, e);                       // simulate undo restoring the row
   assert.equal(RM.readBpmn(sf, e), "<a/>"); // and it still opens

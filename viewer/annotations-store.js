@@ -85,27 +85,123 @@ function listAnnotationBackups(root, fs = nodeFs) {
   return out;
 }
 
+/* Read one annotations file (the current one or a backup) the way
+   readAnnotationsFile does: { status: "ok", annotations } or { status:
+   "unreadable", error } (a missing file is unreadable here). */
+function _readObject(p, fs) {
+  let buf;
+  try { buf = fs.readFileSync(p); }
+  catch (e) { return { status: "unreadable", error: (e && e.code ? e.code + ": " : "") + ((e && e.message) || String(e)) }; }
+  let data;
+  try { data = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buf)); }
+  catch (e) { return { status: "unreadable", error: ((e && e.name) || "Error") + ": " + ((e && e.message) || String(e)) }; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return { status: "unreadable", error: "not an object" };
+  return { status: "ok", annotations: data };
+}
+
+/* The newest backup that can be read, { name, mtimeMs }, or null: the
+   rotation's order (annotations.json.2 is the newest), each one read the way
+   annotations.json is. */
+function newestReadableBackup(root, fs = nodeFs) {
+  for (const b of listAnnotationBackups(root, fs)) {
+    if (_readObject(path.join(root, b.name), fs).status === "ok") return b;
+  }
+  return null;
+}
+
+/* The locale a backup's time is written in: the app's, the one the viewer's
+   pages write every other date in (the machine's regional format can differ
+   from it); the default outside Electron (the unit tests). */
+function _timeLocale() {
+  try {
+    const { app } = require("electron");
+    return app && typeof app.getLocale === "function" && app.isReady() ? app.getLocale() : undefined;
+  } catch (_) { return undefined; }
+}
+
+/* When a backup was saved, as the analyst reads it: this machine's date and
+   time, written the way the viewer writes dates. */
+function backupTime(mtimeMs, locale) {
+  const d = new Date(mtimeMs);
+  if (!Number.isFinite(d.getTime())) return "at an unknown time";
+  try { return d.toLocaleString(locale === undefined ? _timeLocale() : locale); }
+  catch (_) { return d.toLocaleString(); }
+}
+
 /* The analyst-facing explanation for an unreadable annotations.json: what is
-   wrong, what it means, and how to recover (the backups that exist). */
-function unreadableMessage(root, reason, backups) {
+   wrong, what it means, and how to recover (the newest backup that can be
+   read, which the banner's Restore the newest backup puts back). */
+function unreadableMessage(root, reason, backups, newest) {
   const names = (backups || []).map((b) => b.name);
   return "The file " + FILE + " in this project folder cannot be read (" + reason + "). " +
     "Your steps, marker changes and notes for this project are not shown, and nothing " +
     "will be saved until the file is fixed. " +
-    (names.length
-      ? "To recover, close the viewer, copy the newest good backup over " + FILE +
-        " (backups found, newest first: " + names.join(", ") + "), then open the project again."
-      : "No backups (" + FILE + ".2 to " + FILE + "." + BACKUP_DEPTH + ") were found in the folder.") +
+    (newest
+      ? "Restore the newest backup puts back " + newest.name + ", saved " + backupTime(newest.mtimeMs) +
+        " (backups found, newest first: " + names.join(", ") + "); the file that cannot be read is kept beside it."
+      : names.length
+        ? "None of the backups found (" + names.join(", ") + ") can be read either."
+        : "No backups (" + FILE + ".2 to " + FILE + "." + BACKUP_DEPTH + ") were found in the folder.") +
     " Folder: " + root;
 }
 
 /* The load-time report for an unreadable file, or null when the file is
-   absent or fine. Shape: { file, reason, backups, message }. */
+   absent or fine. Shape: { file, reason, backups, newest, message } (newest:
+   the newest backup that can be read, { name, mtimeMs, saved }, or null;
+   saved is its time as the message writes it, which the banner's confirm
+   repeats). */
 function annotationsLoadError(read, root, fs = nodeFs) {
   if (!read || read.status !== "unreadable") return null;
   const backups = listAnnotationBackups(root, fs);
-  return { file: read.path, reason: read.error, backups: backups.map((b) => b.name),
-    message: unreadableMessage(root, read.error, backups) };
+  const found = newestReadableBackup(root, fs);
+  const newest = found ? Object.assign({}, found, { saved: backupTime(found.mtimeMs) }) : null;
+  return { file: read.path, reason: read.error, backups: backups.map((b) => b.name), newest,
+    message: unreadableMessage(root, read.error, backups, newest) };
+}
+
+/* The name the unreadable file is kept under beside the restored one:
+   annotations.unreadable-<YYYYMMDD-HHMMSS>.json (local time), with " (2)",
+   ... when that name is taken. */
+function keptName(root, nowMs, fs = nodeFs) {
+  const d = new Date(nowMs);
+  const p2 = (n) => String(n).padStart(2, "0");
+  const stamp = d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+  for (let n = 1; n < 100; n++) {
+    const name = "annotations.unreadable-" + stamp + (n === 1 ? "" : " (" + n + ")") + ".json";
+    if (!fs.existsSync(path.join(root, name))) return name;
+  }
+  throw new Error("no free name to keep the unreadable file under");
+}
+
+/* Restore the newest backup (the unreadable banner's act): only while
+   annotations.json cannot be read. The unreadable file is kept beside it
+   (keptName), then the newest backup that can be read is copied into place
+   (a temp file renamed over, so annotations.json is never left missing for
+   long). `expect` (optional): the backup's name the analyst confirmed; a
+   different newest backup refuses (the folder changed meanwhile). Returns
+   { backup, mtimeMs, keptAs }; throws with a sentence when it cannot. */
+function restoreNewestBackup(root, opts, fs = nodeFs) {
+  const o = opts || {};
+  const current = readAnnotationsFile(root, fs);
+  if (current.status !== "unreadable") throw new Error("the file " + FILE + " can be read, so there is nothing to restore.");
+  const newest = newestReadableBackup(root, fs);
+  if (!newest) throw new Error("no backup of " + FILE + " can be read.");
+  if (o.expect && o.expect !== newest.name) throw new Error("the backups changed since the question was asked; open the project again.");
+  const keptAs = keptName(root, Number.isFinite(o.nowMs) ? o.nowMs : Date.now(), fs);
+  const target = annotationsPath(root);
+  const text = fs.readFileSync(path.join(root, newest.name));
+  _renameWithRetry(fs, target, path.join(root, keptAs));
+  const tmp = path.join(root, FILE + ".tmp-" + process.pid + "-" + Date.now());
+  try {
+    fs.writeFileSync(tmp, text);
+    _renameWithRetry(fs, tmp, target);
+  } catch (e) {
+    // Put the unreadable file back where it was: nothing half done stays.
+    try { fs.rmSync(tmp, { force: true }); } catch (_) { /* reported with e */ }
+    try { if (!fs.existsSync(target)) _renameWithRetry(fs, path.join(root, keptAs), target); } catch (_) { /* reported with e */ }
+    throw e;
+  }
+  return { backup: newest.name, mtimeMs: newest.mtimeMs, keptAs };
 }
 
 /* Throws AnnotationsUnreadableError when annotations.json exists but cannot be
@@ -113,7 +209,8 @@ function annotationsLoadError(read, root, fs = nodeFs) {
 function assertWritable(root, fs = nodeFs) {
   const read = readAnnotationsFile(root, fs);
   if (read.status === "unreadable") {
-    throw new AnnotationsUnreadableError(unreadableMessage(root, read.error, listAnnotationBackups(root, fs)));
+    throw new AnnotationsUnreadableError(unreadableMessage(root, read.error, listAnnotationBackups(root, fs),
+      newestReadableBackup(root, fs)));
   }
   return read;
 }
@@ -182,6 +279,7 @@ module.exports = {
   FILE, BACKUP_DEPTH,
   AnnotationsUnreadableError,
   readAnnotationsFile, listAnnotationBackups, unreadableMessage, annotationsLoadError,
+  newestReadableBackup, backupTime, keptName, restoreNewestBackup,
   assertWritable, writeAnnotationsFile,
   // The same temp-then-rename step for the remembered-names store (names-store.js).
   renameWithRetry: _renameWithRetry,

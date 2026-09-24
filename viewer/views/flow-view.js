@@ -23,7 +23,7 @@ const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotat
 const SaveState = require("../save-state.js");
 const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
-const SPM = require("../sub-process-maps.js");
+const { isVideoCopy } = require("../analyst-files.js");
 const { caseScopeOptionsHtml } = require("../case-scope.js");
 const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
@@ -469,16 +469,34 @@ function syncVideoControls() {
   // A video project (C16) has nothing to sync the video with: the Timeline is the video.
   const sync = document.getElementById("btn-sync-video");
   if (sync && !(sess && (sess.events || []).length)) sync.hidden = true;
+  // Remove video, Attach video's inverse: only for the video the analyst attached.
+  const remove = document.getElementById("btn-video-remove");
+  if (remove) {
+    remove.hidden = !Video.attachedVideoShown(sess);
+    if (!remove.hidden) {
+      remove.title = "Take the video out of this project" +
+        (isVideoCopy(sess.annotations.external_video.path) ? ": its copy in the project's video folder is deleted." : ".") +
+        " Ctrl+Z brings it back.";
+    }
+  }
 }
 
 /* RP-04: an annotations.json that exists but cannot be read is an error the
    analyst must see, never an empty session. main.js reports it as
-   session.annotationsError ({ file, reason, backups, message }); this
-   persistent banner names the file, what it means, and the backups to
-   restore. Saves and Analyze are refused in main while it lasts. */
+   session.annotationsError ({ file, reason, backups, newest, message }); this
+   persistent banner names the file, what it means, and the backups. Saves
+   and Analyze are refused in main while it lasts. Lane CC: when a backup can
+   be read, the banner offers Restore the newest backup
+   (#btn-restore-annotations): it asks first, naming the backup's time, keeps
+   the unreadable file beside it and opens the project again. */
 function annotationsErrorBannerHtml(err) {
   if (!err || !err.message) return "";
-  return '<strong>The annotations for this project cannot be read.</strong> ' + escapeHtml(err.message);
+  return '<strong>The annotations for this project cannot be read.</strong> ' + escapeHtml(err.message) +
+    (err.newest && err.newest.name
+      ? ' <button type="button" class="primary anno-error-restore" id="btn-restore-annotations" title="' +
+        escapeHtml("Put back " + err.newest.name + ", saved " + backupSaved(err.newest) +
+          ". The file that cannot be read is kept beside it.") + '">Restore the newest backup</button>'
+      : "");
 }
 function renderAnnotationsErrorBanner() {
   const el = document.getElementById("annotations-error-banner");
@@ -486,6 +504,42 @@ function renderAnnotationsErrorBanner() {
   const html = annotationsErrorBannerHtml(State.getSession() && State.getSession().annotationsError);
   el.innerHTML = html;
   el.style.display = html ? "" : "none";
+  const btn = el.querySelector("#btn-restore-annotations");
+  if (btn) btn.addEventListener("click", () => restoreNewestBackup());
+}
+
+/* When the newest backup was saved, in the words the banner's message uses
+   (main writes it once, so the banner, its confirm and the toast agree). */
+function backupSaved(newest) {
+  return (newest && newest.saved) || new Date(newest && newest.mtimeMs).toLocaleString();
+}
+
+/* Restore the newest backup (the unreadable banner's act): asks first,
+   naming the backup and when it was saved; then main keeps the unreadable
+   file as annotations.unreadable-<time>.json, puts the backup in its place,
+   and the project opens again with it. */
+async function restoreNewestBackup() {
+  const sess = State.getSession();
+  const err = sess && sess.annotationsError;
+  if (!err || !err.newest) return;
+  const when = backupSaved(err.newest);
+  const ok = await confirmModal({
+    title: "Restore the newest backup?",
+    message: "Put back the backup saved " + when + " (" + err.newest.name + ") as this project's annotations.",
+    detail: "The file that cannot be read is kept beside it, renamed annotations.unreadable with the time. " +
+      "What was changed after " + when + " is not in the backup.",
+    okLabel: "Restore",
+  });
+  if (!ok || State.getSession() !== sess) return;
+  let r;
+  try { r = await Ipc.restoreAnnotationsBackup({ sessionFolder: sess.sessionFolder, expect: err.newest.name }); }
+  catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+  if (!r || !r.ok) {
+    toast("The backup was not restored: " + ((r && r.error) || "no reason was given"), "error");
+    return;
+  }
+  await loadSessionIntoView(sess.sessionFolder);
+  toast("Restored the backup saved " + when + ". The file that could not be read is kept as " + r.keptAs + ".", "success");
 }
 
 /* Wire the video element's listeners ONCE. loadSessionIntoView runs on every
@@ -708,6 +762,9 @@ function renderSelectionStats() {
     .map(([system, n]) => system + " (" + n + ")")
     .join(", ");
   const dur = State.getSelectionRange().endMs - State.getSelectionRange().startMs;
+  // A project with nothing recorded (C16) has no events to leave out: the
+  // act is offered only where it acts.
+  const recorded = evs.length > 0;
   card.innerHTML =
     '<h4>Selection</h4>' +
     '<div class="row"><span>Duration</span><span>' + escapeHtml(formatDuration(dur)) + '</span></div>' +
@@ -716,11 +773,11 @@ function renderSelectionStats() {
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
     '<button class="summary-fix" id="tl-selection-case">Insert transaction from selection</button>' +
-    '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without the events in this range.">Exclude from analysis</button>' +
+    (recorded ? '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without what was recorded in this stretch. The Timeline then shows it hatched: click it to include it again.">Leave out of the analysis</button>' : '') +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
   document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
-  document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
+  if (recorded) document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
 }
 
 /* The screenshot surfaces (hover thumb, grid, gallery, openScreenshot)
@@ -906,21 +963,24 @@ async function queueCaseFromSelection() {
   toast("Transaction markers added. Click Apply marker changes to update the transactions.", "success");
 }
 
-/* H6: mark the current timeline range as excluded from analysis. The
-   range is stored in annotations.json.excluded_ranges; the analysis skips
-   every event inside it when it drafts the steps and computes the
-   statistics. Lets the analyst cut a lunch break or an unrelated detour out
-   of a long passive recording without touching the raw event log. The steps
-   depend on it, so the analysis runs by itself right after (AD-22), as it
-   does after Apps outside the process. */
+/* H6: Leave out of the analysis: the current timeline range goes into
+   annotations.json.excluded_ranges; the analysis skips every event inside it
+   when it drafts the steps and computes the statistics and the findings.
+   Lets the analyst cut a lunch break or an unrelated detour out of a
+   recording without touching the raw event log. The steps depend on it, so
+   the analysis runs by itself right after (AD-22), as it does after Apps
+   outside the process. The Timeline draws the stretch hatched over the
+   Systems lane (flow-view-timeline.js); a click on it offers Include again
+   (includeRangeAgain, the inverse). Undo takes either back and analyzes
+   again (session.js applyRevertedAnnotations). */
 async function queueExcludeRange() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;
   const ok = await confirmModal({
-    title: "Exclude this range from analysis?",
-    message: "The steps and the map are drafted again without the events in the selected range.",
-    detail: "The recording itself keeps them.",
-    okLabel: "Exclude range",
+    title: "Leave this stretch out of the analysis?",
+    message: "The steps and the map are drafted again without what was recorded in the selected stretch.",
+    detail: "The recording keeps it. The Timeline shows the stretch hatched: click it to include it again.",
+    okLabel: "Leave out",
   });
   if (!ok) return;
   const a = State.getSession().annotations || {};
@@ -931,13 +991,37 @@ async function queueExcludeRange() {
     reason: "manual",
   });
   try {
-    await saveAnnotationsWithUndo(a, "exclude range from analysis");
+    await saveAnnotationsWithUndo(a, "Leave out of the analysis");
     State.getSession().annotations = a;
   } catch (err) {
     return;   // already shown to the analyst by session.js
   }
-  toast("Range excluded.", "success");
+  toast("Left out of the analysis: the Timeline shows the stretch hatched.", "success");
   clearSelectionRange();
+  renderTimeline();
+  analyzeSession();
+}
+
+/* Include again (a click on a stretch left out, on the Timeline): the range
+   leaves annotations.excluded_ranges and the analysis runs again, as it does
+   after leaving one out; its steps are drafted again. One undoable edit. */
+async function includeRangeAgain(range) {
+  const sess = State.getSession();
+  if (!sess || !range) return;
+  const a = sess.annotations || {};
+  const list = Array.isArray(a.excluded_ranges) ? a.excluded_ranges : [];
+  const i = list.findIndex((r) => r && r.start === range.start && r.end === range.end);
+  if (i === -1) return;
+  list.splice(i, 1);
+  a.excluded_ranges = list;
+  try {
+    await saveAnnotationsWithUndo(a, "Include again");
+    sess.annotations = a;
+  } catch (_) {
+    return;   // already shown to the analyst by session.js
+  }
+  toast("Included again: its steps are drafted again.", "success");
+  renderTimeline();
   analyzeSession();
 }
 
@@ -1054,8 +1138,9 @@ function renderEventTable() {
   $("#event-count").textContent = String(count);
 }
 
-/* Per-row action cell for the raw events table: jump to the event,
-   spin a new step off it, or attach it to the selected step. */
+/* Per-row action cell for the raw events table: jump to the event, or
+   start a step at its time. (A step's boundaries are set in Steps: Split,
+   Merge and + Add step; the table adds no event to a step.) */
 function buildEventActions(ev) {
   const cell = document.createElement("td");
   cell.className = "t-actions";
@@ -1072,44 +1157,7 @@ function buildEventActions(ev) {
     () => seekToTimestamp(ev.timestamp)));
   cell.appendChild(mkBtn("+ step", "Create a step at this event's time",
     () => addStepAtTimestamp(ev.timestamp)));
-  if (ev.type === "interaction" && ev.event_id) {
-    cell.appendChild(mkBtn("+ to step", "Add this interaction to the selected step",
-      () => addEventToSelectedStep(ev)));
-  }
   return cell;
-}
-
-/* Append an interaction event to the currently-selected step's
-   evidence and stretch the step's time range to cover it. */
-async function addEventToSelectedStep(ev) {
-  if (!State.getSession()) return;
-  const sid = State.getSelectedStepId();
-  if (!sid) { toast("Select a step in the Steps view first", "error"); return; }
-  const anno = State.getSession().annotations || {};
-  anno.steps = anno.steps || [];
-  // C19: the selected step may be a sub-step, at any level.
-  const found = SPM.findStep(anno.steps, sid);
-  const step = found && found.step;
-  if (!step) { toast("The selected step no longer exists", "error"); return; }
-  if (Array.isArray(step.sub_steps)) {
-    toast('"' + (step.name || "The step") + '" is a sub-process: add the interaction to one of its steps inside it, or dissolve it first.', "error");
-    return;
-  }
-  step.evidence = step.evidence || { interaction_event_ids: [], screenshot_refs: [] };
-  step.evidence.interaction_event_ids = step.evidence.interaction_event_ids || [];
-  if (step.evidence.interaction_event_ids.includes(ev.event_id)) {
-    toast("That event is already in this step", "");
-    return;
-  }
-  step.evidence.interaction_event_ids.push(ev.event_id);
-  const tr = step.time_range || (step.time_range = { start: ev.timestamp, end: ev.timestamp });
-  if (!tr.start || ev.timestamp < tr.start) tr.start = ev.timestamp;
-  if (!tr.end || ev.timestamp > tr.end) tr.end = ev.timestamp;
-  step.state = step.state === "manually_authored" ? "manually_authored" : "edited";
-  await saveAnnotationsWithUndo(anno, "add event to step");
-  State.getSession().annotations = anno;
-  renderStepsLevel();
-  toast('Added event to "' + (step.name || "step") + '"', "success");
 }
 
 $("#event-filter").addEventListener("input", () => renderEventTable());
@@ -1182,6 +1230,7 @@ function initFlowView(deps) {
   // timeline <-> flow-view graph acyclic.
   Timeline.initTimeline({
     currentScopeRange, showMarkerInsertMenu, showCaseContextMenu,
+    includeAgain: (range) => includeRangeAgain(range),
   });
   // The transcript's menu actions reload the session; its sync redraws the lane.
   Transcript.initTranscript({ loadSessionIntoView, renderTimeline });
