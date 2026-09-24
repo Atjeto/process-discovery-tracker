@@ -438,3 +438,6 @@ map editor. The default after a step is always the next step in its transaction.
   task opens the step panel for the step it stands for (matched by the map's node rule on the
   task name, as the live map does); a data object opens its attachment; a text annotation shows
   its note. Editing stays in the editor.
+- **Illustrated map (Export only)**: Export "Illustrated map (image)" renders, in the viewer,
+  one PNG from the same data (the C17 flow edges; each step's name, system, the screenshot the
+  PDD prints, its description or first note), saves it and opens Explorer. Not in the PDD.
