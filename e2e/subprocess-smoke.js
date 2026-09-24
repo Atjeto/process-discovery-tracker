@@ -532,7 +532,7 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
       await pickMap("Main process");
       // A double-click on a marked box opens its map.
-      await page.evaluate((n) => document.getElementById("session-map-dfg-host").__cy.getElementById(n).emit("dbltap"), GROUP);
+      await page.evaluate((n) => { document.getElementById("session-map-dfg-host").__cy.getElementById(n).emit("dbltap"); }, GROUP);   // a block body: returning the collection hangs CI (BH13)
       await page.waitForFunction((n) => (document.getElementById("map-picker-name") || {}).textContent === n, GROUP, { timeout: T });
       await wait(600);
       dbl = await mapState();
