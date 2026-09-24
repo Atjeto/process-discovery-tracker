@@ -204,6 +204,21 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   font-family: var(--font-mono); font-size: 13px; line-height: 1;
   color: var(--fg-2); border-color: var(--rule); background: transparent; }
 .theme-toggle:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+/* The save state (save-state.js): one quiet word before Export, in the error
+   colour while a write failed. It fades in again after each save. */
+.save-state { font-size: 11px; color: var(--fg-3); white-space: nowrap;
+  padding: 2px 4px; border-radius: var(--radius-sm); cursor: default; }
+.save-state[data-state="failed"] { color: var(--bad); font-weight: 600; }
+.save-state:focus-visible { outline: 1px dotted var(--accent); outline-offset: 2px; }
+.save-state.fade { animation: save-state-fade 0.4s ease-out; }
+@keyframes save-state-fade { from { opacity: 0.2; } to { opacity: 1; } }
+/* Export while the project zip is made (renderer.js exportProjectZip): the
+   status line's pulsing dot, before the word. */
+.project-btn.busy::before { content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); animation: run-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .save-state.fade, .project-btn.busy::before { animation: none; }
+}
 .help-cta { color: var(--fg-3); font-size: 11px; margin-top: 16px; }
 .help-action { margin-top: 8px; }
 

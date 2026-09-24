@@ -46,6 +46,15 @@
  *         each other; (s) Ctrl+Z takes the early end's when, then the link,
  *         back (the map follows), Ctrl+Y redoes both; (t) hiding step 2 drops
  *         the link to it with one toast, and Ctrl+Z brings both back.
+ *   Saving and the handover zip, on the video project:
+ *     (u) the top bar's save state: Saved (the folder, then the time, in its
+ *         tooltip) after an edit; Not saved in the error colour, with the
+ *         reason, while annotations.json is read-only, until an edit saves
+ *         again (both changes then on disk);
+ *     (v) Export, Whole project (.zip): the whole folder, byte for byte (the
+ *         video and annotations.json among its entries), as "Order call.zip"
+ *         next to it, shown in its folder; a second one is
+ *         "Order call (2).zip"; the Help line.
  *   Zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -785,6 +794,162 @@ function zipFiles(buf) {
       t.toasts[0] === "Step hidden. The link to it was removed; Ctrl+Z brings both back." &&
       JSON.stringify(t.back) === JSON.stringify([{ to: ids[FN[1]], when: LOOP }]),
     JSON.stringify(t));
+  { // D. its own scope: C above declares the same helper names
+  // ================= D. Saving and the handover zip =================
+  // (u) The save state in the top bar (save-state.js). Opened again, the
+  // project says Saved and names its folder; an edit shows Saved with the
+  // time; with annotations.json read-only an edit shows Not saved in the
+  // error colour with the reason (the error toast as before), and it stays;
+  // writable again, the next edit saves both changes and shows Saved.
+  const ANNO = path.join(VPROJ, "annotations.json");
+  const saveState = () => page.evaluate(() => {
+    const el = document.getElementById("save-state");
+    if (!el) return null;
+    const probe = document.createElement("span");
+    probe.style.color = "var(--bad)";
+    document.body.appendChild(probe);
+    const bad = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = getComputedStyle(el);
+    const had = document.activeElement;
+    el.focus();
+    const focusable = document.activeElement === el;
+    if (had && had.focus) had.focus(); else el.blur();
+    return { text: el.textContent, title: el.title, state: el.dataset.state, color: cs.color, bad, focusable,
+      shown: cs.display !== "none" && el.getBoundingClientRect().width > 0, inBar: !!el.closest("header.topbar"),
+      role: el.getAttribute("role"), live: el.getAttribute("aria-live") };
+  });
+  const docField = async (key, value) => {
+    await level("overview");
+    await page.evaluate(() => { const d = document.getElementById("ov-doc"); if (d) d.open = true; });
+    const el = page.locator('#ov-doc [data-doc="' + key + '"]');
+    await el.fill(value, { timeout: T });
+    await el.press("Tab");
+  };
+  const stateIs = (text, titleRe) => page.waitForFunction(([t, re]) => {
+    const el = document.getElementById("save-state");
+    return !!el && el.textContent === t && new RegExp(re).test(el.title);
+  }, [text, titleRe], { timeout: T });
+  const DOC = { purpose: "Hand the order call over to the team", scope: "From the call to the sales order", trigger: "A customer calls the order desk" };
+  let o = {};
+  const errsBefore = errs.length;
+  try {
+    // Another project, then this one again: the state starts over.
+    await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), BLANK);
+    await opened(BLANK);
+    await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), VPROJ);
+    await opened(VPROJ);
+    await settled();
+    o.opened = await saveState();
+    await docField("purpose", DOC.purpose);
+    await stateIs("Saved", "^Saved at ");
+    o.saved = await saveState();
+    o.savedOnDisk = (readJson(ANNO).document || {}).purpose;
+    // A forced write failure: annotations.json read-only.
+    fs.chmodSync(ANNO, 0o444);
+    const before = fs.readFileSync(ANNO, "utf8");
+    await docField("scope", DOC.scope);
+    await stateIs("Not saved", "");
+    await page.waitForFunction(() => /was not saved/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    o.failed = await saveState();
+    o.toast = await page.evaluate(() => document.getElementById("toast").textContent);
+    await wait(1500);
+    o.stays = (await saveState()).text;
+    o.untouched = fs.readFileSync(ANNO, "utf8") === before;
+    // Writable again (the failed save's backup copy took the read-only flag too).
+    for (const f of fs.readdirSync(VPROJ)) if (/^annotations\.json(\.\d)?$/.test(f)) fs.chmodSync(path.join(VPROJ, f), 0o666);
+    await docField("trigger", DOC.trigger);
+    await stateIs("Saved", "^Saved at ");
+    o.recovered = await saveState();
+    const doc = readJson(ANNO).document || {};
+    o.onDisk = [doc.purpose, doc.scope, doc.trigger];
+  } catch (x) { o.err = errText(x); }
+  // The failed save's own console line (session.js) belongs to this check,
+  // not to the page errors; anything else still counts there.
+  const during = errs.splice(errsBefore);
+  o.expectedErrors = during.filter((t) => /\[session\] annotations\.json not saved/.test(t)).length;
+  errs.push(...during.filter((t) => !/\[session\] annotations\.json not saved/.test(t)));
+  const wantFolder = "Every change saves itself to the project folder: " + path.resolve(VPROJ) + ".";
+  record("(u) the save state in the top bar (role status, polite, focusable): the project opened again says Saved and names its folder; an edit shows Saved with the time; " +
+    "annotations.json read-only, an edit shows Not saved in the error colour with the reason (the error toast as before), and it stays; writable again, the next edit saves both changes and shows Saved",
+    !o.err && o.opened.text === "Saved" && o.opened.title === wantFolder && o.opened.state === "saved" && o.opened.inBar && o.opened.shown &&
+      o.opened.role === "status" && o.opened.live === "polite" && o.opened.focusable && o.opened.color !== o.opened.bad &&
+      o.saved.text === "Saved" && o.saved.title.endsWith(" " + wantFolder) && o.savedOnDisk === DOC.purpose &&
+      o.failed.text === "Not saved" && o.failed.state === "failed" && o.failed.color === o.failed.bad &&
+      /^Your change was not saved: a file in the project folder is read-only, or another program holds it \(EPERM: /.test(o.failed.title) &&
+      /It stays on screen and is saved with your next change once the problem is fixed\.$/.test(o.failed.title) &&
+      /was not saved/.test(o.toast) && o.stays === "Not saved" && o.untouched &&
+      o.recovered.text === "Saved" && o.recovered.state === "saved" && o.recovered.color !== o.recovered.bad &&
+      JSON.stringify(o.onDisk) === JSON.stringify([DOC.purpose, DOC.scope, DOC.trigger]) && o.expectedErrors >= 1,
+    JSON.stringify(o));
+
+  // (v) Export, Whole project (.zip): "Order call.zip" next to the folder with
+  // the whole folder in it, byte for byte (annotations.json and the video
+  // among its entries); Export is busy while it is made, then its folder
+  // opens with the zip selected; a second export makes "Order call (2).zip"
+  // and leaves the first as it was. Help says how a project is handed over.
+  let p = {};
+  const ZIP1 = path.join(TMP, "Order call.zip"), ZIP2 = path.join(TMP, "Order call (2).zip");
+  const folderFiles = (root) => {
+    const out = [];
+    (function walk(dir, rel) {
+      for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (d.isDirectory()) walk(path.join(dir, d.name), rel + d.name + "/");
+        else out.push(rel + d.name);
+      }
+    })(root, path.basename(root) + "/");
+    return out.sort();
+  };
+  const zipVia = async (want) => {
+    await page.click("#btn-session-export-menu");
+    await page.locator("#btn-session-zip").click({ timeout: T });
+    await page.waitForFunction((re) => new RegExp(re).test((document.getElementById("toast") || {}).textContent || ""),
+      "^Exported: " + want.replace(/[.()]/g, "\\$&") + " \\(\\d", { timeout: 120000 });
+  };
+  try {
+    await app.evaluate(({ shell }) => { global.__shown = []; shell.showItemInFolder = (f) => { global.__shown.push(f); }; });
+    await page.evaluate(() => {
+      window.__busy = [];
+      const btn = document.getElementById("btn-session-export-menu");
+      new MutationObserver(() => window.__busy.push(btn.getAttribute("aria-busy")))
+        .observe(btn, { attributes: true, attributeFilter: ["aria-busy"] });
+    });
+    p.item = await page.evaluate(() => {
+      const b = document.getElementById("btn-session-zip");
+      return b && { text: b.textContent, inExport: !!b.closest("#session-export-popup"), last: b === b.parentElement.lastElementChild };
+    });
+    await zipVia("Order call.zip");
+    p.shown = await app.evaluate(() => global.__shown.slice());
+    p.busy = await page.evaluate(() => window.__busy.slice());
+    const files = zipFiles(fs.readFileSync(ZIP1));
+    const inZip = Object.keys(files).filter((n) => !n.endsWith("/")).sort();
+    const inFolder = folderFiles(VPROJ);
+    p.whole = JSON.stringify(inZip) === JSON.stringify(inFolder);
+    p.sameBytes = inZip.every((n) => sha1(files[n]) === sha1(fs.readFileSync(path.join(TMP, ...n.split("/")))));
+    p.count = inZip.length;
+    p.anno = !!files["Order call/annotations.json"] && (JSON.parse(files["Order call/annotations.json"].toString("utf8")).document || {}).trigger;
+    p.video = sha1(files["Order call/video/" + path.basename(VIDEO)] || Buffer.alloc(0)) === sha1(fs.readFileSync(VIDEO));
+    p.nextTo = fs.readdirSync(TMP).filter((n) => /^Order call.*\.zip/.test(n)).sort();
+    const firstHash = sha1(fs.readFileSync(ZIP1));
+    await zipVia("Order call (2).zip");
+    p.second = fs.existsSync(ZIP2) && !!zipFiles(fs.readFileSync(ZIP2))["Order call/annotations.json"];
+    p.firstKept = sha1(fs.readFileSync(ZIP1)) === firstHash;
+    p.itemAfter = await page.evaluate(() => { const b = document.getElementById("btn-session-zip"); return { text: b.textContent, disabled: b.disabled }; });
+    p.help = await page.evaluate(() => {
+      const t = ((document.querySelector('.help-section[data-section="start"]') || {}).textContent || "").replace(/\s+/g, " ");
+      return /Every change you make saves itself to the project folder/.test(t) && /To hand the project to someone, use Export, Whole project \(\.zip\)/.test(t);
+    });
+  } catch (x) { p.err = errText(x); }
+  record("(v) Export, Whole project (.zip): 'Order call.zip' next to the folder holds the whole folder byte for byte (annotations.json with the last edit, the video); Export is busy while it is made, " +
+    "then its folder opens with the zip selected; a second export makes 'Order call (2).zip' and leaves the first as it was; Help says how a project is handed over",
+    !p.err && p.item && p.item.text === "Whole project (.zip)" && p.item.inExport && p.item.last &&
+      p.whole && p.sameBytes && p.anno === DOC.trigger && p.video &&
+      JSON.stringify(p.nextTo) === '["Order call.zip"]' && p.shown.length === 1 && path.resolve(p.shown[0]) === path.resolve(ZIP1) &&
+      JSON.stringify(p.busy) === '["true","false"]' &&
+      p.second && p.firstKept && p.itemAfter.text === "Whole project (.zip)" && !p.itemAfter.disabled && p.help,
+    JSON.stringify(p));
+
+  } // end of D.
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();

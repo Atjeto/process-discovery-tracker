@@ -37,6 +37,7 @@ const RunsModel = require("./runs-model.js");
 const SystemNames = require("./system-names.js");
 const RefmapUI = require("./refmap-ui.js");
 const { pddExportOutcome } = require("./normalize-result.js");
+const SaveState = require("./save-state.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -576,6 +577,50 @@ if ($("#btn-session-pdd")) {
   });
 }
 
+/* Export, Whole project (.zip): the project folder as one zip next to it,
+   "<name>.zip" (a number added when that name is taken), then its folder
+   opens with the zip selected, like every export. The main process writes it
+   (project-zip.js); a long video takes a while, so until it is done Export
+   pulses (aria-busy) and its menu item says so. */
+let _zipBusy = false;
+function _setZipBusy(busy) {
+  _zipBusy = busy;
+  const btn = document.getElementById("btn-session-export-menu");
+  if (btn) {
+    if (!btn.dataset.idleTitle) btn.dataset.idleTitle = btn.title;
+    btn.classList.toggle("busy", busy);
+    btn.setAttribute("aria-busy", busy ? "true" : "false");
+    btn.title = busy ? "Making the zip of the whole project: its folder opens when the zip is ready" : btn.dataset.idleTitle;
+  }
+  const item = document.getElementById("btn-session-zip");
+  if (item) {
+    item.disabled = busy;
+    item.textContent = busy ? "Making the zip..." : "Whole project (.zip)";
+  }
+}
+async function exportProjectZip() {
+  const sess = State.getSession();
+  if (!sess) { toast("Open a project first.", "error"); return; }
+  if (_zipBusy) return;
+  _setZipBusy(true);
+  toast("Making the zip of the whole project. A long video takes a while: its folder opens when the zip is ready.", "info");
+  let r;
+  try {
+    r = await Ipc.exportProjectZip({ sessionFolder: sess.sessionFolder });
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  } finally {
+    _setZipBusy(false);
+  }
+  if (!r || !r.ok) {
+    toast("The zip was not made. " + ((r && r.error) || "No reason was given."), "error");
+    return;
+  }
+  await Ipc.revealFile(r.path);
+  toast("Exported: " + path.basename(r.path) + " (" + r.size + ")", "success");
+}
+if ($("#btn-session-zip")) $("#btn-session-zip").addEventListener("click", () => exportProjectZip());
+
 /* ============ Keyboard shortcuts ================================== */
 
 document.addEventListener("keydown", (e) => {
@@ -813,6 +858,8 @@ $("#help-modal").addEventListener("click", (e) => {
 renderRecent();
 // P3.1: the version lives in Help, not in the top bar.
 $("#help-version").textContent = "Version " + require("./package.json").version;
+// The save state in the top bar: Saved, Saving... or Not saved (save-state.js).
+SaveState.mount(document.getElementById("save-state"), { subscribe: Ipc.onProjectWrite });
 
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */

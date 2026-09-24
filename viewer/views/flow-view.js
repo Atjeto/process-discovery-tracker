@@ -20,6 +20,7 @@ const Ipc = require("../ipc.js");
 const { $, $$, escapeHtml, formatDuration, toast, placeMenu } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
+const SaveState = require("../save-state.js");
 const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
 const { caseScopeOptionsHtml } = require("../case-scope.js");
@@ -349,6 +350,8 @@ async function loadSessionIntoView(folder, opts) {
   const shell = document.querySelector(".app");
   if (shell) shell.classList.add("has-session");
   renderAnnotationsErrorBanner();
+  // The top bar's save state follows the project on screen (save-state.js).
+  SaveState.projectOpened(State.getSession());
   // A failed run's log belongs to the recording it ran on.
   const _run = State.getAnalysisRun();
   if (!_run || _run.folder !== State.getSession().sessionFolder || _run.status !== "failed") hideAnalysisLog();

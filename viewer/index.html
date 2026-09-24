@@ -70,6 +70,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
          action that applies pending marker changes. -->
     <div class="session-pills session-only" id="session-pills" role="status" aria-live="polite"></div>
     <span class="flex-spacer"></span>
+    <!-- The save state (save-state.js): every change saves itself to the
+         project folder. Saved (the time and the folder in the tooltip),
+         Saving... while a write lasts, Not saved (the reason in the tooltip)
+         until a later save succeeds. Focusable, so a keyboard reaches it. -->
+    <span class="save-state session-only" id="save-state" role="status" aria-live="polite" tabindex="0" data-state="saved" title="Every change saves itself to the project folder.">Saved</span>
     <div class="project-menu session-only" id="session-export-menu">
       <button class="project-btn" id="btn-session-export-menu" title="Export this project: each export opens its folder with the file selected">
         <span>Export</span><span class="project-menu-caret">▾</span>
@@ -80,6 +85,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              when there is one, else the process map on the Map level. -->
         <button class="project-menu-item" id="btn-session-map-svg" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
         <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
+        <!-- One zip of the whole project folder, next to it (project-zip.js). -->
+        <button class="project-menu-item" id="btn-session-zip" title="Make one zip of the whole project folder, next to it: the recording, your work, the video, the transcript, screenshots, attachments and edited maps. The way to hand the project to someone.">Whole project (.zip)</button>
       </div>
     </div>
     <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
@@ -373,6 +380,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Document.</strong> On the Overview, you write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
             <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the transactions. <em>Save as this process</em>, on the confirmed reference transaction, keeps its steps on this computer: a later recording of the same process is compared with them.</li>
           </ol>
+          <p>Every change you make saves itself to the project folder: the top bar says <em>Saved</em>, and pointing at it shows the folder. That folder holds the whole project, with its video, transcript, screenshots, attachments and edited maps. To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it.</p>
           <h3>What the Overview shows</h3>
           <ul class="help-list">
             <li><strong>Checklist</strong>: the five acts above, each ticked once it is done. The export is never ticked: the app keeps no record of it.</li>

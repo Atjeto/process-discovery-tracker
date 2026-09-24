@@ -36,6 +36,7 @@ const ProcessesStore = require("./processes-store.js");
 const VideoPath = require("./video-path.js");
 const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
+const ProjectZip = require("./project-zip.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 
 /* Contract C4: the remembered-names store, one per analyst machine, under the
@@ -84,6 +85,41 @@ const ANALYSIS_RUNNING_ERROR = "the steps and the map are being updated. Make th
 function _refuseWhileAnalyzing(root) {
   return _normalizeFolder !== null && _normalizeFolder === root
     ? { ok: false, code: "ANALYSIS_RUNNING", error: ANALYSIS_RUNNING_ERROR } : null;
+}
+
+/* The save state in the top bar (save-state.js). Each write of a project
+   folder says when it starts and how it ended, on viewer:projectWrite:
+   { folder, channel, phase: "start" }, then { folder, channel, phase: "end",
+   ok, error, code }. channel: "annotations", "video", "transcript",
+   "screenshot" or "attachment". A handler that asks for a file first starts
+   its write once the file is chosen, so a cancelled dialog writes nothing and
+   says nothing. The analysis and the exports report nothing. */
+const NO_PROJECT = { code: "NO_PROJECT" };
+function _projectWrite(sessionFolder, channel) {
+  const folder = path.resolve(String(sessionFolder || ""));
+  let started = false;
+  const send = (msg) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send("viewer:projectWrite", Object.assign({ folder, channel }, msg));
+  };
+  const w = {
+    start() {
+      if (!started) { started = true; send({ phase: "start" }); }
+    },
+    /* Report the handler's result and hand it back as it is. `err`: what
+       failed, for its code (a file-system code such as EPERM, or NO_PROJECT). */
+    end(result, err) {
+      w.start();
+      const ok = !!(result && result.ok);
+      send({
+        phase: "end", ok,
+        error: ok ? null : String((result && result.error) || (err && err.message) || "no reason was given"),
+        code: ok ? null : ((err && err.code) || (result && result.code) || null),
+      });
+      return result;
+    },
+  };
+  return w;
 }
 
 /* Set of session-folder roots the main process has loaded (resolved,
@@ -202,6 +238,33 @@ ipcMain.handle("viewer:saveSvgFile", async (_e, { content, suggestedName }) => {
     return { ok: true, path: r.filePath };
   } catch (e) {
     return { ok: false, error: e.message };
+  }
+});
+
+/* Export, Whole project (.zip): the open project's folder as one zip next to
+   it, "<name>.zip" or "<name> (2).zip", ... (project-zip.js), to hand the
+   project to someone. The renderer then shows it in its folder, like every
+   export. Not while the project's analysis runs: the pipeline replaces files
+   in the folder through temporary files, which a zip must not catch halfway.
+   One zip of a project at a time. Result { ok: true, path, bytes, size,
+   entries } or { ok: false, error } (a sentence). */
+const _zipping = new Set();
+ipcMain.handle("viewer:exportProjectZip", async (_e, { sessionFolder } = {}) => {
+  const root = _sessionRoot(sessionFolder);
+  if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
+  if (_normalizeFolder !== null && _normalizeFolder === root) {
+    return { ok: false, error: "The steps and the map are being updated: make the zip once the update is done." };
+  }
+  if (_zipping.has(root)) return { ok: false, error: "A zip of this project is being made already." };
+  _zipping.add(root);
+  try {
+    const r = await ProjectZip.zipProject(root);
+    return { ok: true, path: r.zipPath, bytes: r.bytes, size: ProjectZip.humanSize(r.bytes), entries: r.entries };
+  } catch (e) {
+    console.error("[viewer:exportProjectZip] not made:", e && (e.stack || e.message));
+    return { ok: false, error: ProjectZip.describeZipError(e) };
+  } finally {
+    _zipping.delete(root);
   }
 });
 
@@ -435,13 +498,15 @@ ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, video
      its video/ folder first and stored relative to the folder, so the
      folder carries it; when the copy fails, the absolute path is stored and
      the result says why (copyError). Result { ok, stored, copied, copyError }. */
+  const w = _projectWrite(sessionFolder, "video");
+  w.start();
   try {
     const root = path.resolve(sessionFolder);
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
-      return { ok: false, error: "Not a project folder" };
+      return w.end({ ok: false, error: "Not a project folder" }, NO_PROJECT);
     }
     let busy = _refuseWhileAnalyzing(root);
-    if (busy) return busy;
+    if (busy) return w.end(busy);
     AnnoStore.assertWritable(root);   // refused before anything is copied
     const plan = VideoPath.storePlan(root, videoPath, {
       exists: fs.existsSync,
@@ -459,7 +524,7 @@ ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, video
       }
     }
     busy = _refuseWhileAnalyzing(root);
-    if (busy) return busy;
+    if (busy) return w.end(busy);
     const current = AnnoStore.assertWritable(root);
     const anno = current.status === "ok" ? current.annotations : {};
     anno.external_video = {
@@ -468,9 +533,9 @@ ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, video
       attached_at: new Date().toISOString(),
     };
     AnnoStore.writeAnnotationsFile(root, anno);
-    return { ok: true, stored, copied: !!plan.copyTo && !copyError, copyError };
+    return w.end({ ok: true, stored, copied: !!plan.copyTo && !copyError, copyError });
   } catch (e) {
-    return { ok: false, error: e.message };
+    return w.end({ ok: false, error: e.message }, e);
   }
 });
 
@@ -488,43 +553,49 @@ function _sessionRoot(sessionFolder) {
    { ok: true, summary }, or { ok: false, code, error } (error: the script's
    reason; exit 2 and 3 leave the previous transcript in place). */
 ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => {
+  const w = _projectWrite(sessionFolder, "transcript");
   const root = _sessionRoot(sessionFolder);
-  if (!root) return { ok: false, code: null, error: "this is not a project folder." };
+  if (!root) return w.end({ ok: false, code: null, error: "this is not a project folder." }, NO_PROJECT);
   const r = await dialog.showOpenDialog(mainWindow, {
     title: "Attach transcript",
     properties: ["openFile"],
     filters: [{ name: "Teams transcript", extensions: ["vtt", "docx"] }],
   });
   if (r.canceled || !r.filePaths.length) return null;
+  w.start();
   try {
-    return transcriptImportResult(await runTranscriptImport({ sessionFolder: root, file: r.filePaths[0] }));
+    return w.end(transcriptImportResult(await runTranscriptImport({ sessionFolder: root, file: r.filePaths[0] })));
   } catch (e) {
-    return { ok: false, code: null, error: (e && e.message) || String(e) };
+    return w.end({ ok: false, code: null, error: (e && e.message) || String(e) }, e);
   }
 });
 
 /* Remove transcript: deletes transcript.json only (the original copied into
    transcript/ stays). Result { ok: true, removed } or { ok: false, error }. */
 ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
+  const w = _projectWrite(sessionFolder, "transcript");
+  w.start();
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a project folder." };
-    return { ok: true, removed: TranscriptStore.removeTranscript(root).removed };
+    if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
+    return w.end({ ok: true, removed: TranscriptStore.removeTranscript(root).removed });
   } catch (e) {
-    return { ok: false, error: (e && e.message) || String(e) };
+    return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
 });
 
 /* Sync: rewrites transcript.json's offset_ms (atomically) and nothing else.
    Result { ok: true } or { ok: false, error }. */
 ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {}) => {
+  const w = _projectWrite(sessionFolder, "transcript");
+  w.start();
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a project folder." };
+    if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
     TranscriptStore.saveTranscriptOffset(root, offsetMs);
-    return { ok: true };
+    return w.end({ ok: true });
   } catch (e) {
-    return { ok: false, error: (e && e.message) || String(e) };
+    return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
 });
 
@@ -590,25 +661,28 @@ ipcMain.handle("viewer:createProject", async () => {
    { ok: true, id, file } or { ok: false, error }. The renderer then adds the
    analyst_screenshots entry (an undoable edit). */
 ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data } = {}) => {
+  const w = _projectWrite(sessionFolder, "screenshot");
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a project folder." };
+    if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
     let buf;
     if (source === "file") {
       const r = await dialog.showOpenDialog(mainWindow, { title: "Add a screenshot", properties: ["openFile"],
         filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg"] }] });
       if (r.canceled || !r.filePaths.length) return null;
+      w.start();
       buf = fs.readFileSync(r.filePaths[0]);
     } else if (source === "video_frame" || source === "paste") {
+      w.start();
       buf = Buffer.from(String(data || ""), "base64");
     } else {
-      return { ok: false, error: "unknown screenshot source." };
+      return w.end({ ok: false, error: "unknown screenshot source." });
     }
     const id = require("node:crypto").randomUUID();
-    const w = AnalystFiles.writeScreenshot(root, id, buf);
-    return { ok: true, id, file: w.file };
+    const shot = AnalystFiles.writeScreenshot(root, id, buf);
+    return w.end({ ok: true, id, file: shot.file });
   } catch (e) {
-    return { ok: false, error: (e && e.message) || String(e) };
+    return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
 });
 
@@ -616,15 +690,17 @@ ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data 
    suffix when the name is taken). Result null (cancelled), { ok: true, file,
    label } (label: the original file name) or { ok: false, error }. */
 ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
+  const w = _projectWrite(sessionFolder, "attachment");
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a project folder." };
+    if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
     const r = await dialog.showOpenDialog(mainWindow, { title: "Attach a file", properties: ["openFile"] });
     if (r.canceled || !r.filePaths.length) return null;
+    w.start();
     const c = AnalystFiles.copyAttachment(root, r.filePaths[0]);
-    return { ok: true, file: c.file, label: path.basename(r.filePaths[0]) };
+    return w.end({ ok: true, file: c.file, label: path.basename(r.filePaths[0]) });
   } catch (e) {
-    return { ok: false, error: (e && e.message) || String(e) };
+    return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
 });
 
@@ -658,13 +734,15 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
      resolved path doesn't contain a manifest (i.e. is not actually a
      session folder). Prevents accidental writes to arbitrary paths
      via a manipulated IPC payload. */
+  const w = _projectWrite(sessionFolder, "annotations");
+  w.start();
   try {
     const root = path.resolve(String(sessionFolder || ""));
     if (!sessionFolder || !fs.existsSync(path.join(root, "manifest.json"))) {
-      return { ok: false, code: null, error: "Refusing to write annotations: not a project folder." };
+      return w.end({ ok: false, code: null, error: "Refusing to write annotations: not a project folder." }, NO_PROJECT);
     }
     const busy = _refuseWhileAnalyzing(root);
-    if (busy) return busy;
+    if (busy) return w.end(busy);
     const before = AnnoStore.readAnnotationsFile(root);
     const r = AnnoStore.writeAnnotationsFile(root, annotations);
     if (r.backupError) console.warn("[viewer:saveAnnotations] saved, but the backup copy failed: " + r.backupError);
@@ -675,10 +753,10 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
         AnalystFiles.namedFiles(annotations), _holdDir(root));
       if (moved.errors.length) console.warn("[viewer:saveAnnotations] files not moved: " + moved.errors.join("; "));
     }
-    return { ok: true, path: r.path, backupError: r.backupError };
+    return w.end({ ok: true, path: r.path, backupError: r.backupError });
   } catch (e) {
     console.error("[viewer:saveAnnotations] not saved:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e) };
+    return w.end({ ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e) }, e);
   }
 });
 

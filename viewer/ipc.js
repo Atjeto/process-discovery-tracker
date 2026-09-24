@@ -115,6 +115,13 @@ function openExternal(filePath) {
   return ipcRenderer.invoke("viewer:openExternal", filePath);
 }
 
+/** Export, Whole project (.zip): the project folder as "<name>.zip" next to it.
+ *  @param {{sessionFolder: string}} payload
+ *  @returns {Promise<{ok: boolean, path?: string, bytes?: number, size?: string, entries?: number, error?: string}>} */
+function exportProjectZip(payload) {
+  return ipcRenderer.invoke("viewer:exportProjectZip", payload);
+}
+
 /* ---- External video ---- */
 
 /** @param {object} payload @returns {Promise<any>} */
@@ -198,15 +205,22 @@ function onOpenInitialSession(fn) {
   ipcRenderer.on("viewer:openInitialSession", (_e, folder) => fn(folder));
 }
 
+/** @param {Function} fn called with each write of a project folder, for the
+ *  save state: { folder, channel, phase: "start" } then { folder, channel,
+ *  phase: "end", ok, error, code } */
+function onProjectWrite(fn) {
+  ipcRenderer.on("viewer:projectWrite", (_e, evt) => fn(evt));
+}
+
 module.exports = {
   loadSession, openSessionFolder,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations,
   rememberStepName, readRememberedNames, forgetStepName,
   readProcesses, saveProcess, undoSaveProcess, forgetProcess,
-  exportFile, saveSvgFile, revealFile, openExternal,
+  exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip,
   attachExternalVideo, saveExternalVideoSync,
   importTranscript, removeTranscript, saveTranscriptSync,
   chooseNewProject, createProject, addScreenshot, addAttachment, openAttachment,
-  onNormalizeLog, onOpenInitialSession,
+  onNormalizeLog, onOpenInitialSession, onProjectWrite,
 };
