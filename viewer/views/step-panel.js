@@ -248,12 +248,16 @@ function _cue(stepId) {
   const step = _find(stepId);
   if (!video || video.hidden || !video.getAttribute("src") || !step) return;
   _stopAt = null;
-  if (!video.paused) video.pause();
   const at = _videoSecs(step);
-  // The seek waits for the next turn: a seek in the same turn as the pause of
-  // a playing video froze the whole page on a machine without a GPU (the CI
-  // runner; BH13), and a later cue to another row cancels this one.
-  if (isFinite(at) && at >= 0) setTimeout(() => { if (_cuedId === stepId) video.currentTime = at; }, 0);
+  // The pause and the seek wait for the next turn, outside the click that
+  // opened the panel: pausing the playing video inside it froze the whole
+  // page on a machine without a GPU (the CI runner; BH13). A later cue to
+  // another row cancels this one.
+  setTimeout(() => {
+    if (_cuedId !== stepId) return;
+    if (!video.paused) video.pause();
+    if (isFinite(at) && at >= 0) video.currentTime = at;
+  }, 0);
 }
 
 function _show(open) {
