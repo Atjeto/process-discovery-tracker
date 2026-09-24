@@ -272,7 +272,7 @@ def test_every_pm4py_start_and_end_event_variant_gets_its_event_element():
 
 # ---- lane LUX-P: what a process manager moving the map into a BPMN tool gets ----
 
-_DI = "{http://www.omg.org/spec/BPMN/20100524/DI}"
+_DI = "{http://www.omg.org/spec/DD/20100524/DI}"      # di:waypoint (mining._DI_NS)
 _DC = "{http://www.omg.org/spec/DD/20100524/DC}"
 _BPMNDI = "{http://www.omg.org/spec/BPMN/20100524/DI}"
 
@@ -315,8 +315,9 @@ def test_each_task_documents_its_description_system_screen_runs_and_time():
     tasks = _by_name(root, "task")
     doc = lambda name: tasks[name].find(f"{_BPMN}documentation").text  # noqa: E731
     assert doc("Search") == ("Search by the ticket number.\n"
-                             "ServiceNow, Incident. In 2 of 2 runs, under 1s on average.")
-    assert doc("Escalate") == "ServiceNow, Incident. In 1 of 2 runs, under 1s on average."
+                             "ServiceNow, Incident. In 2 of 2 transactions, under 1s on average.")
+    assert doc("Escalate") == (
+        "ServiceNow, Incident. In 1 of 2 transactions, under 1s on average.")
     # BPMN 2.0 order: the documentation comes before the task's flow references.
     first = list(tasks["Search"])[0]
     assert first.tag == f"{_BPMN}documentation"
@@ -327,7 +328,7 @@ def test_a_drafted_narration_is_not_documented_as_a_description():
     anno["steps"][0]["description"] = "Clicked Go."       # what the drafting writes
     root = _written(anno, context=_context(anno))
     text = _by_name(root, "task")["Search"].find(f"{_BPMN}documentation").text
-    assert text == "ServiceNow, Incident. In 2 of 2 runs, under 1s on average."
+    assert text == "ServiceNow, Incident. In 2 of 2 transactions, under 1s on average."
 
 
 def test_the_events_take_the_trigger_and_the_result_and_are_unnamed_without():
@@ -357,12 +358,22 @@ def test_each_branch_says_in_how_many_runs_it_was_taken():
     for flow in process.findall(f"{_BPMN}sequenceFlow"):
         if flow.get("name"):
             names[ids[flow.get("targetRef")].get("name")] = flow.get("name")
-    assert names == {"Open ticket": "2 of 3 runs", "Escalate": "1 of 3 runs"}
-    # Every named flow carries its label's place on the diagram.
+    assert names == {"Open ticket": "2 of 3 transactions", "Escalate": "1 of 3 transactions"}
+    # Every named flow carries its label's place on the diagram: a box two
+    # lines tall (bpmn-js wraps "2 of 3 transactions" at 90 px of 11 px text
+    # and draws it from the box's top) that does not reach the line it names.
     edges = {e.get("bpmnElement"): e for e in root.iter(f"{_BPMNDI}BPMNEdge")}
     for flow in process.findall(f"{_BPMN}sequenceFlow"):
         if flow.get("name"):
-            assert edges[flow.get("id")].find(f"{_BPMNDI}BPMNLabel/{_DC}Bounds") is not None
+            bounds = edges[flow.get("id")].find(f"{_BPMNDI}BPMNLabel/{_DC}Bounds")
+            assert bounds is not None
+            box = tuple(float(bounds.get(k)) for k in ("x", "y", "width", "height"))
+            assert box[3] >= 2 * 11 * 1.2, box
+            pts = [(float(w.get("x")), float(w.get("y")))
+                   for w in edges[flow.get("id")].findall(f"{_DI}waypoint")]
+            assert len(pts) >= 2, pts
+            for seg in zip(pts, pts[1:]):
+                assert not _crosses(seg, box), (flow.get("name"), seg, box)
 
 
 def _boxes_and_segments(root):
@@ -459,5 +470,6 @@ def test_the_documentation_says_no_time_for_steps_without_one():
     assert tasks["Check"].find(f"{_BPMN}documentation").text == "30s on average."
     # The same run, marked: the runs are counted.
     tasks = _by_name(_written(anno, context=ctx), "task")
-    assert tasks["Log it"].find(f"{_BPMN}documentation").text == "SAP. In 1 of 1 run."
-    assert tasks["Check"].find(f"{_BPMN}documentation").text == "In 1 of 1 run, 30s on average."
+    assert tasks["Log it"].find(f"{_BPMN}documentation").text == "SAP. In 1 of 1 transaction."
+    assert tasks["Check"].find(f"{_BPMN}documentation").text == (
+        "In 1 of 1 transaction, 30s on average.")

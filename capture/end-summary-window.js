@@ -3,8 +3,9 @@
 /*
  * end-summary-window.js: the one screen the SME sees when a recording stops.
  *
- * "Recording saved", the runs and the duration in one line, a warning when
- * no run was marked, where the recording folder is, "Make a zip for the
+ * "Recording saved", the transactions and the duration in one line ("4
+ * transactions, 0:11"), a warning when no transaction was marked, where
+ * the recording folder is, "Make a zip for the
  * analyst" (a zip written next to the folder and shown in Explorer; nothing
  * is sent anywhere), "Show the folder", an optional name for the recording,
  * and Done. No counts of clicks, events or screenshots.
@@ -25,7 +26,7 @@ const { jsonForScript } = require("./json-for-script.js");
 const { injectTokens } = require("./ui/tokens.js");
 
 /* Room for the longest note (a zip error in four lines) without scrolling;
-   the no-run warning adds its box. */
+   the no-transaction warning adds its box. */
 const WIDTH = 480;
 const HEIGHT = 420;
 const HEIGHT_WITH_WARNING = 500;

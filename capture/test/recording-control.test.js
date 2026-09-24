@@ -1,7 +1,7 @@
 "use strict";
 // The one start (recording-control.js): the Start recording button, the tray
-// item, the welcome's button and the run key all start the recording with
-// Run 1; each later start is the next run; runs never nest (the tracker ends
+// item, the welcome's button and the transaction key all start the recording with
+// Transaction 1; each later start is the next run; runs never nest (the tracker ends
 // the open run first); Stop ends the recording; presses during a start or a
 // stop are absorbed.
 
@@ -12,7 +12,7 @@ const path = require("node:path");
 const { createRecordingControl } = require("../recording-control.js");
 
 /* A recording double with the tracker's run rule: a start while a run is
-   open ends that run first ("Run N" counts every start). */
+   open ends that run first ("Transaction N" counts every start). */
 function fakeRecording(opts = {}) {
   const rec = {
     recording: false,
@@ -33,7 +33,7 @@ function fakeRecording(opts = {}) {
   rec.startRun = (label) => {
     if (rec.open) rec.log.push("end " + rec.open);
     rec.startCount += 1;
-    rec.open = label || "Run " + rec.startCount;
+    rec.open = label || "Transaction " + rec.startCount;
     rec.log.push("start " + rec.open);
     return rec.open;
   };
@@ -60,12 +60,12 @@ function deferred() {
   return { promise, resolve };
 }
 
-test("one start: with nothing recording, start() starts the recording with Run 1", async () => {
+test("one start: with nothing recording, start() starts the recording with Transaction 1", async () => {
   const rec = fakeRecording();
   const r = await rec.control.start();
-  assert.deepStrictEqual(r, { started: true, run: "Run 1", newRecording: true });
+  assert.deepStrictEqual(r, { started: true, run: "Transaction 1", newRecording: true });
   assert.strictEqual(rec.recordingsStarted, 1);
-  assert.deepStrictEqual(rec.log, ["start Run 1"]);
+  assert.deepStrictEqual(rec.log, ["start Transaction 1"]);
 });
 
 test("one start: each later start is the next run, never a second recording, and runs never nest", async () => {
@@ -73,11 +73,11 @@ test("one start: each later start is the next run, never a second recording, and
   await rec.control.start();
   const r2 = await rec.control.start();
   const r3 = await rec.control.start();
-  assert.deepStrictEqual([r2.run, r3.run], ["Run 2", "Run 3"]);
+  assert.deepStrictEqual([r2.run, r3.run], ["Transaction 2", "Transaction 3"]);
   assert.strictEqual(r2.newRecording, false);
   assert.strictEqual(rec.recordingsStarted, 1);
   assert.deepStrictEqual(rec.log, [
-    "start Run 1", "end Run 1", "start Run 2", "end Run 2", "start Run 3",
+    "start Transaction 1", "end Transaction 1", "start Transaction 2", "end Transaction 2", "start Transaction 3",
   ]);
 });
 
@@ -86,7 +86,7 @@ test("one start: a named run is started the same way and takes its name", async 
   await rec.control.start();
   const r = await rec.control.start("Refund flow");
   assert.strictEqual(r.run, "Refund flow");
-  assert.deepStrictEqual(rec.log, ["start Run 1", "end Run 1", "start Refund flow"]);
+  assert.deepStrictEqual(rec.log, ["start Transaction 1", "end Transaction 1", "start Refund flow"]);
 });
 
 // Timeouts: a regression here must fail, never hang the suite on the gate.
@@ -101,9 +101,9 @@ test("one start: presses while the recording is still starting are absorbed, not
   const [r1, r2, r3] = await Promise.all([first, second, third]);
   assert.deepStrictEqual(r2, { started: false, reason: "starting" });
   assert.deepStrictEqual(r3, { started: false, reason: "starting" });
-  assert.strictEqual(r1.run, "Run 1");
+  assert.strictEqual(r1.run, "Transaction 1");
   assert.strictEqual(rec.recordingsStarted, 1);
-  assert.deepStrictEqual(rec.log, ["start Run 1"]);
+  assert.deepStrictEqual(rec.log, ["start Transaction 1"]);
   assert.strictEqual(rec.control.busy(), null);
 });
 
@@ -131,7 +131,7 @@ test("one start: a start that throws leaves the control usable", async () => {
   assert.strictEqual(calls, 2);
 });
 
-test("stop ends the recording; the next start is a new recording with Run 1", async () => {
+test("stop ends the recording; the next start is a new recording with Transaction 1", async () => {
   const rec = fakeRecording();
   await rec.control.start();
   await rec.control.start();
@@ -139,7 +139,7 @@ test("stop ends the recording; the next start is a new recording with Run 1", as
   assert.deepStrictEqual(stopped, { stopped: true, result: "folder-1" });
   assert.strictEqual(rec.recording, false);
   const r = await rec.control.start();
-  assert.deepStrictEqual(r, { started: true, run: "Run 1", newRecording: true });
+  assert.deepStrictEqual(r, { started: true, run: "Transaction 1", newRecording: true });
   assert.strictEqual(rec.recordingsStarted, 2);
 });
 
@@ -161,7 +161,7 @@ test("a start or a second stop while stopping is absorbed: no run after the reco
   assert.deepStrictEqual(started, { started: false, reason: "stopping" });
   assert.deepStrictEqual(stoppedAgain, { stopped: false, reason: "stopping" });
   assert.strictEqual(rec.stops, 1);
-  assert.deepStrictEqual(rec.log, ["start Run 1", "end Run 1"]);
+  assert.deepStrictEqual(rec.log, ["start Transaction 1", "end Transaction 1"]);
 });
 
 // Wiring guard: main.js is Electron-only, so the rule is pinned at the
@@ -180,11 +180,11 @@ test("main.js: the button, the tray, the welcome, the key and pdt:startSession a
   assert.match(src, /registerHotkey\(config\.hotkeys\.start_picker, \(\) => \{ startFromUi\(\); \}\)/);
   assert.match(src, /if \(action === "start"\) return startFromUi\(\);/);
   assert.match(src, /label: "Start recording",\s*accelerator: keyFor\("start"\) \|\| undefined,\s*click: \(\) => \{ startFromUi\(\); \}/);
-  assert.match(src, /label: "Next run",\s*accelerator: keyFor\("start"\) \|\| undefined,\s*click: \(\) => \{ startFromUi\(\); \}/);
+  assert.match(src, /label: "Next transaction",\s*accelerator: keyFor\("start"\) \|\| undefined,\s*click: \(\) => \{ startFromUi\(\); \}/);
   assert.ok(!/fireStartMarker/.test(src), "the old two-way start is gone");
 });
 
-test("the recording bar's Start recording and Next run buttons both send the one start", () => {
+test("the recording bar's Start recording and Next transaction buttons both send the one start", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "ui", "recording-bar.html"), "utf-8");
   assert.match(html, /\$\("btn-start"\)\.addEventListener\("click", async \(\) => \{ await ipcRenderer\.invoke\("pdt:fireStart"\)/);
   assert.match(html, /\$\("btn-next"\)\.addEventListener\("click", async \(\) => \{ await ipcRenderer\.invoke\("pdt:fireStart"\)/);

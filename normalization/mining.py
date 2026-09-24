@@ -58,7 +58,12 @@ _NODE_H = 72
 _EVENT_SIZE = 36
 _GW_SIZE = 50
 _H_GAP = 60        # between two columns: room for the edges' bends
-_SPLIT_GAP = 110   # after a column with a branching gateway: room for "3 of 4 runs"
+_SPLIT_GAP = 110   # after a column with a branching gateway: room for "3 of 4 transactions"
+# A branch's name ("3 of 4 transactions", AD-29) takes two lines in bpmn-js,
+# which wraps an external label at 90 px of 11 px Arial and draws it from the
+# top of its box: the box is two lines tall and ends clear of the line it names.
+_BRANCH_LABEL_W = 84
+_BRANCH_LABEL_H = 28
 _V_GAP = 30        # between two nodes of one column
 _MARGIN = 30
 _CHANNEL = 24      # the band above and below each row of nodes, for edges
@@ -405,15 +410,18 @@ def _label_bounds(points: list[tuple[int, int]],
     """Where a branch's name sits: above the last stretch into its target
     (straight or one elbow), or beside the drop into its channel, on the
     channel's open side (below a bottom channel's line, above a top
-    channel's), clear of the row's boxes."""
+    channel's), clear of the row's boxes. The box is two lines tall
+    (_BRANCH_LABEL_H) and ends 4 px above a line it sits over, 2 px beside a
+    channel's line."""
+    above = _BRANCH_LABEL_H + 4
     if len(points) == 2:
-        x, y = points[0][0] + 6, points[0][1] - 18
+        x, y = points[0][0] + 6, points[0][1] - above
     elif len(points) == 4:
-        x, y = points[2][0] + 4, points[2][1] - 18
+        x, y = points[2][0] + 4, points[2][1] - above
     else:
         below = lane is not None and lane[0] == "bottom"
-        x, y = points[1][0] + 6, points[2][1] + (2 if below else -16)
-    return x, y, 84, 14
+        x, y = points[1][0] + 6, points[2][1] + (2 if below else -(_BRANCH_LABEL_H + 2))
+    return x, y, _BRANCH_LABEL_W, _BRANCH_LABEL_H
 
 
 def export_bpmn(bpmn_obj, out_path: str, *,

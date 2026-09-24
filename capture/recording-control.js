@@ -4,9 +4,10 @@
  * recording-control.js: the one start.
  *
  * Every way of starting (the Start recording button on the recording bar,
- * the tray item, the welcome's Start recording and the run key) calls
+ * the tray item, the welcome's Start recording and the transaction key) calls
  * start(). When nothing is recording it starts the recording and then
- * Run 1; while recording, each start() is the next run. The tracker ends
+ * Transaction 1; while recording, each start() is the next run (the next
+ * transaction, in the SME's words, AD-29). The tracker ends
  * the open run first (tracker.startRun), so runs never nest. stop() ends
  * the recording. A recording without a run is therefore not a state the
  * SME can reach by starting.
@@ -23,14 +24,14 @@
  *   startRecording()  starts one; resolves truthy when it started (falsy
  *                     when consent was declined or a required part failed)
  *   startRun(label)   starts the next run of the running recording and
- *                     returns its name ("Run N", or the named run)
+ *                     returns its name ("Transaction N", or the named run)
  *   stopRecording()   stops the running recording
  */
 function createRecordingControl({ isRecording, startRecording, startRun, stopRecording }) {
   let busy = null; // "starting" | "stopping" | null
 
   /* Resolves { started, run, newRecording }: `run` is the run's name,
-     `newRecording` is true when this start began the recording (Run 1). */
+     `newRecording` is true when this start began the recording (Transaction 1). */
   async function start(label) {
     if (busy) return { started: false, reason: busy };
     let newRecording = false;

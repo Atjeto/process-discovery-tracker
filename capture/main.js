@@ -3,7 +3,8 @@
  *
  * Wires up:
  *   - Tray menu, the recording bar and the end summary; global keys (the
- *     one start: start recording or the next run; end run; screenshot)
+ *     one start: start recording or the next transaction; end transaction;
+ *     screenshot). The SME reads "transaction" for a run (AD-29).
  *   - Session lifecycle with per-session config (YAML)
  *   - Active-window polling (tracker.js)
  *   - Idle detection via powerMonitor.getSystemIdleTime (§3.3)
@@ -198,7 +199,7 @@ async function fireScreenshot(kind, opts) {
       screenshotFailureNotified = true;
       notifyUser(
         "Process Discovery Tracker",
-        "Screenshots are failing. Runs, clicks and typing are still recorded. To get screenshots back, stop the recording and start a new one.",
+        "Screenshots are failing. Transactions, clicks and typing are still recorded. To get screenshots back, stop the recording and start a new one.",
         { urgency: "normal" }
       );
     }
@@ -248,7 +249,7 @@ function _checkBrowserForegroundWatchdog() {
     notifyUser(
       "Process Discovery Tracker",
       "Clicks and typing in " + guidance.friendlyAppName(status.currentApp) +
-      " are not being recorded. Keep going and tell the analyst; runs and " +
+      " are not being recorded. Keep going and tell the analyst; transactions and " +
       "screenshots are still recorded.",
       { urgency: "normal" }
     );
@@ -370,7 +371,7 @@ function checkDeadMan() {
     refreshTray();
     notifyUser(
       "Clicks and typing are not being recorded",
-      "Nothing has been recorded for over 2 minutes. Runs and screenshots " +
+      "Nothing has been recorded for over 2 minutes. Transactions and screenshots " +
       "still work. Stop the recording, start a new one, and tell the analyst.",
       { urgency: "critical" }
     );
@@ -830,7 +831,7 @@ async function startRecorderForSession() {
         if (tracker) tracker.fireSystem("recorder_dead_permanent");
         notifyUser(
           "Process Discovery Tracker",
-          "Clicks and typing are no longer recorded. Runs and screenshots still are. To fix it, stop the recording and start a new one.",
+          "Clicks and typing are no longer recorded. Transactions and screenshots still are. To fix it, stop the recording and start a new one.",
           { urgency: "critical" }
         );
       },
@@ -884,12 +885,13 @@ function handleTrackerNotice(kind, payload) {
   notifyUser(
     "Process Discovery Tracker",
     "Clicks and typing in " + guidance.friendlyAppName(payload && payload.app) +
-    " are not being recorded. Keep going and tell the analyst; runs and screenshots are still recorded."
+    " are not being recorded. Keep going and tell the analyst; transactions and screenshots are still recorded."
   );
 }
 
 /* The one-screen end summary (end-summary-window.js): "Recording saved",
-   the runs and the duration, a warning when no run was marked, the folder
+   the transactions and the duration, a warning when no transaction was
+   marked, the folder
    with Show the folder and Make a zip for the analyst, and an optional
    name. One window per recording, so a summary still open from an earlier
    recording keeps its unsaved name. */
@@ -981,7 +983,7 @@ async function endSessionNow(opts) {
   return oldFolder;
 }
 
-/* The next run: "Run N", or a named run's label. tracker.startRun ends a
+/* The next run: "Transaction N", or a named run's label. tracker.startRun ends a
    run that is still open first, so runs never nest. Reached only through
    the one start below, which starts the recording first when nothing
    records. Returns the run's name. */
@@ -996,9 +998,9 @@ function startRunNow(label) {
 }
 
 /* The one start (recording-control.js). The Start recording button on the
-   bar, the tray item, the welcome's button, the run key and pdt:startSession
+   bar, the tray item, the welcome's button, the transaction key and pdt:startSession
    all call startFromUi: with nothing recording it starts the recording with
-   Run 1, while recording it starts the next run. Presses during a start or
+   Transaction 1, while recording it starts the next one. Presses during a start or
    a stop are absorbed. */
 const control = createRecordingControl({
   isRecording: () => !!tracker,
@@ -1113,7 +1115,7 @@ function togglePause() {
 ipcMain.handle("pdt:togglePause", () => togglePause());
 
 /* Kept for drivers that start a recording over IPC: the same one start (the
-   recording, then Run 1), never a recording without a run. */
+   recording, then Transaction 1), never a recording without a run. */
 ipcMain.handle("pdt:startSession", async () => {
   const r = await startFromUi();
   return r.started && session ? { sessionFolder: session.sessionFolder } : null;
@@ -1168,7 +1170,7 @@ ipcMain.handle("pdt:zipFolder", async (_e, sessionFolder) => {
 });
 
 /* The recording bar: its height follows its content (a problem line), and
-   the caret next to Next run offers the named runs. */
+   the caret next to Next transaction offers the named ones. */
 ipcMain.handle("pdt:barResize", (_e, size) => {
   recordingBar.fitHeight(size && size.height);
 });
@@ -1203,7 +1205,7 @@ function openRecordingsFolder() {
   shell.openPath(baseDir);
 }
 
-/* The tray's first line and tooltip: "Not recording", "Recording: Run 2". */
+/* The tray's first line and tooltip: "Not recording", "Recording: Transaction 2". */
 function statusLine() {
   return guidance.trayStatusLine(currentStatus());
 }
@@ -1287,15 +1289,15 @@ function buildMenu() {
     });
   } else {
     items.push({
-      label: "Next run",
+      label: "Next transaction",
       accelerator: keyFor("start") || undefined,
       click: () => { startFromUi(); },
     });
-    // Named runs from the recording setup (process_labels). Like the run
-    // key, each ends the open run first; runs never nest.
+    // Named transactions from the recording setup (process_labels). Like
+    // the transaction key, each ends the open run first; runs never nest.
     if (hasNamedRuns()) {
       items.push({
-        label: "Start a named run",
+        label: "Start a named transaction",
         submenu: config.process_labels.map((label) => ({
           label,
           click: () => { startFromUi(label); },
@@ -1307,7 +1309,7 @@ function buildMenu() {
         ? lastStatus.openMarkers[lastStatus.openMarkers.length - 1]
         : null;
     items.push({
-      label: openRun ? `End run (${openRun})` : "End run",
+      label: openRun ? `End transaction (${openRun})` : "End transaction",
       accelerator: keyFor("end") || undefined,
       enabled: !!openRun,
       click: () => fireEndMarker(),
@@ -1419,7 +1421,7 @@ app.whenReady().then(() => {
   // explicitly (not via setContextMenu) so right-click does not
   // double-fire -- see refreshTray().
   // D1: while recording, a left-click shows the recording bar again (if
-  // it was hidden) so the SME can always reach Next run, Pause and Stop.
+  // it was hidden) so the SME can always reach Next transaction, Pause and Stop.
   // When nothing records, a left-click opens the menu (to start). Right
   // click always opens the menu.
   tray.on("click", () => {
@@ -1447,7 +1449,8 @@ app.whenReady().then(() => {
     return { ok: false, key: accelerator, fellBack: false };
   }
 
-  // The one start: the recording with Run 1, then one press per run.
+  // The one start: the recording with Transaction 1, then one press per
+  // transaction.
   const startHK = registerHotkey(config.hotkeys.start_picker, () => { startFromUi(); });
   const endHK = registerHotkey(config.hotkeys.end_innermost, () => fireEndMarker());
   const shotHK = registerHotkey(config.hotkeys.manual_screenshot, () => fireManualScreenshot());
@@ -1464,8 +1467,8 @@ app.whenReady().then(() => {
      could not be registered at all (boot.log alone is too quiet; some
      screen-recorder / password-manager combos grab Ctrl+Shift+S). */
   const hotkeyInfo = [
-    ["Start recording and the next run", config.hotkeys.start_picker, startHK],
-    ["End run", config.hotkeys.end_innermost, endHK],
+    ["Start recording and the next transaction", config.hotkeys.start_picker, startHK],
+    ["End transaction", config.hotkeys.end_innermost, endHK],
     ["Take a screenshot", config.hotkeys.manual_screenshot, shotHK],
   ];
   const fmt = guidance.formatHotkey;
@@ -1504,7 +1507,7 @@ app.whenReady().then(() => {
       if (!r.ok && r.reason !== "no-zip") {
         notifyUser(
           "Process Discovery Tracker",
-          "Clicks and typing cannot be recorded on this computer. Runs and screenshots still work; tell the analyst.",
+          "Clicks and typing cannot be recorded on this computer. Transactions and screenshots still work; tell the analyst.",
           { urgency: "normal" }
         );
       }

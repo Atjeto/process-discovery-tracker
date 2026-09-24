@@ -114,6 +114,10 @@ notes, attachments, a step's system.
 
 ## Key concepts
 
+- **The words** (AD-29). People read *transaction* for one pass through the
+  process and *project* for what the analyst opens or starts; code, data
+  keys (`case_id`, `pattern_run`), CLI flags and file names keep run, case
+  and session.
 - **The drafting rule** (C1, `step_suggest.py`). Within a run, a step is a
   stretch on one screen ending at a commit (a button, menu item or link
   invocation, or a vocab `completion: true`), inclusive; at the first

@@ -235,7 +235,8 @@ def main():
     setup_logging()
 
     if not args.session_folder or not args.session_folder.is_dir():
-        _fail(1, f"{args.session_folder} is not a session folder")
+        # The viewer shows this line; a person calls the folder a project.
+        _fail(1, f"{args.session_folder} is not a project folder")
     try:
         result = normalize(
             args.session_folder,

@@ -399,7 +399,7 @@ def test_the_cli_exit_codes_for_bad_arguments_and_an_unreadable_session(tmp_path
     not_a_session = tmp_path / "plain-folder"
     not_a_session.mkdir()
     code, _out, err = _cli(not_a_session, source)
-    assert code == 1 and "is not a session folder" in err
+    assert code == 1 and "is not a project folder" in err
     assert list(not_a_session.iterdir()) == []
 
     session = _session(tmp_path, '{"steps": [ truncated')

@@ -10,8 +10,9 @@ No Process Template is required. The model comes purely from the annotations, mi
 PM4Py inductive miner + pure-Python BPMNDI layout in mining.py
 (`mining.discover_inductive` + `mining.export_bpmn`). Each task carries its
 step's description and context as documentation, the start and end events
-take the document's Trigger and Result, and each branch says in how many runs
-it was taken (write_observed_bpmn).
+take the document's Trigger and Result, and each branch says in how many
+transactions it was taken (write_observed_bpmn). The names and the
+documentation a person reads say "transaction" for a run (AD-29).
 """
 
 from __future__ import annotations
@@ -177,7 +178,8 @@ def task_documentation(anno: dict[str, Any], context: Any = None,
     """{task label: documentation} for the step map: the step's description
     (the analyst's, from the pattern run's step with that label first, else
     any step with it), then one line with its system and screen, in how many
-    runs it happened and its average time. `context` is a
+    transactions it happened ("In 3 of 4 transactions") and its average
+    time. `context` is a
     step_context.StepContext (system, screen, interactions), optional.
 
     Contract C16: the average leaves out the steps without a time range,
@@ -204,7 +206,7 @@ def task_documentation(anno: dict[str, Any], context: Any = None,
         where = ", ".join(x for x in (system, screen) if x)
         facts = []
         if not ({s.get("case_id") for s in group} <= implicit):
-            facts.append(f"in {n} of {runs} run{'' if runs == 1 else 's'}")
+            facts.append(f"in {n} of {runs} transaction{'' if runs == 1 else 's'}")
         if timed:
             facts.append(f"{_duration(sum(timed) / len(timed))} on average")
         said = ", ".join(facts)
@@ -254,7 +256,7 @@ def _replay(start_nodes, out_arcs, trace: list[str]):
 
 
 def branch_names(bpmn, traces: list[list[str]]) -> dict[int, str]:
-    """{id(flow): "N of M runs"} for every branch of the model: each flow
+    """{id(flow): "N of M transactions"} for every branch of the model: each flow
     leaving a gateway that splits (two or more outgoing flows), with N the
     runs whose steps take it (_replay) and M the runs. A branch no run took
     stays unnamed."""
@@ -277,7 +279,8 @@ def branch_names(bpmn, traces: list[list[str]]) -> dict[int, str]:
         if isinstance(node, BPMN.Gateway) and len(arcs) >= 2:
             for flow in arcs:
                 if used[id(flow)]:
-                    names[id(flow)] = f"{used[id(flow)]} of {runs} run{'' if runs == 1 else 's'}"
+                    names[id(flow)] = (f"{used[id(flow)]} of {runs} "
+                                       f"transaction{'' if runs == 1 else 's'}")
     return names
 
 
@@ -311,7 +314,7 @@ def write_observed_bpmn(
     count and average time as <bpmn:documentation> (task_documentation); the
     start and end events are named from the document's Trigger and Result
     (annotations.document, the first line of each), and are unnamed while
-    those are empty; each branch is named "N of M runs" (branch_names).
+    those are empty; each branch is named "N of M transactions" (branch_names).
     `context` (a step_context.StepContext) supplies the system and screen.
     `implicit_runs` holds the case id of a session's implicit run (C16),
     whose steps the documentation does not count in runs.

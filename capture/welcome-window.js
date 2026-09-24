@@ -2,9 +2,10 @@
  * First-run welcome window.
  *
  * Shown the first time the capture app starts on a machine (a one-shot flag
- * in userData/welcome-shown.json). Three lines with the real keys, then
- * Start recording (the one start: the recording begins with Run 1), Help
- * and Close.
+ * in userData/welcome-shown.json). Three lines with the real keys (the
+ * first says what a transaction is, where the SME first meets the word),
+ * then Start recording (the one start: the recording begins with
+ * Transaction 1), Help and Close.
  */
 
 "use strict";
@@ -13,7 +14,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { BrowserWindow, app } = require("electron");
 const { injectTokens } = require("./ui/tokens.js");
-const { formatHotkey } = require("./capture-guidance.js");
+const { formatHotkey, TRANSACTION_MEANS } = require("./capture-guidance.js");
 
 const FLAG_FILE = "welcome-shown.json";
 
@@ -49,7 +50,7 @@ function showWelcomeWindow(opts) {
   }
   welcomeWindow = new BrowserWindow({
     width: 540,
-    height: 262,
+    height: 300,     // the three lines with the definition need 298 (measured)
     useContentSize: true,
     title: "Welcome to Process Discovery Tracker",
     resizable: false,
@@ -76,19 +77,20 @@ function showWelcomeWindow(opts) {
   return welcomeWindow;
 }
 
-/* The two lines that name the run key. `opts.keys.start` is the key
-   actually registered (an Electron accelerator), or empty when another
+/* The two lines that name the transaction key. `opts.keys.start` is the
+   key actually registered (an Electron accelerator), or empty when another
    program holds it; then the lines point at the tray and the bar instead. */
 function welcomeLines(opts) {
   const key = formatHotkey(opts && opts.keys && opts.keys.start);
   const k = key ? "<kbd>" + escapeHtml(key) + "</kbd>" : "";
   return {
-    start: key
-      ? "Press " + k + " to start recording. It starts with Run 1."
-      : "Choose <strong>Start recording</strong> in the tray menu. It starts with Run 1.",
+    start: (key
+      ? "Press " + k + " to start recording. It starts with Transaction 1. "
+      : "Choose <strong>Start recording</strong> in the tray menu. It starts with Transaction 1. ") +
+      escapeHtml(TRANSACTION_MEANS),
     next: key
-      ? "Each time you start the process again, press " + k + " for the next run."
-      : "Each time you start the process again, click <strong>Next run</strong> on the recording bar.",
+      ? "Each time you start the process again, press " + k + " for the next transaction."
+      : "Each time you start the process again, click <strong>Next transaction</strong> on the recording bar.",
   };
 }
 

@@ -5,9 +5,10 @@
  * It replaces the 460x720 Live Session panel and the hotkey overlay.
  *
  * One small frameless strip, always on top: the state (Recording, Paused,
- * Not recording), the run in progress, the elapsed time, Next run with its
- * key, Pause or Resume, and Stop with an inline confirm. A problem (clicks
- * and typing not recorded) adds one line under it. Nothing else: no
+ * Not recording), the transaction in progress, the elapsed time, Next
+ * transaction with its key, Pause or Resume, and Stop with an inline
+ * confirm. A problem (clicks and typing not recorded) adds one line under
+ * it. Nothing else: no
  * counters, no event feed, no program name or window title. The page
  * (ui/recording-bar.html) only paints the view model main.js sends with
  * pdt:status (capture-guidance.barModel).
@@ -17,7 +18,7 @@
  *     it was put (userData/recording-bar.json); a position on a monitor that
  *     is gone falls back to the bottom right of the main screen;
  *   - it appears without taking the keyboard focus (showInactive), so the
- *     run key pressed in a program never moves the typing into the bar;
+ *     transaction key pressed in a program never moves the typing into the bar;
  *   - it asks Windows to leave it out of screen captures
  *     (setContentProtection), so a shared screen, the OBS video and the
  *     recording's own screenshots show the work, not the bar.
@@ -31,11 +32,12 @@ const path = require("node:path");
 const { jsonForScript } = require("./json-for-script.js");
 const { injectTokens } = require("./ui/tokens.js");
 
-/* Measured in the real renderer: "Recording · between runs · 1:02:05"
-   beside Next run (with its key), Pause and Stop needs 520 px; the
-   named-run caret adds 30. */
-const BAR_WIDTH = 520;
-const NAMED_RUNS_EXTRA = 30; // the caret next to Next run, when named runs are set up
+/* Measured in the real renderer (AD-29 words): "Recording · between
+   transactions · 1:02:05" beside Next transaction (with its key), Pause
+   and Stop needs 615 px, 5 more are kept for font rendering; the
+   named-transaction caret adds 29 (30 kept). */
+const BAR_WIDTH = 620;
+const NAMED_RUNS_EXTRA = 30; // the caret next to Next transaction, when named transactions are set up
 const BAR_HEIGHT = 44;       // one row; a problem line makes it taller (fitHeight)
 const BAR_MAX_HEIGHT = 200;
 const MARGIN = 16;
@@ -107,8 +109,9 @@ function getBar() {
   return isOpen() ? bar : null;
 }
 
-/* The bar's width: wide enough for "Recording · between runs · 1:02:05"
-   beside its buttons, plus the named-run caret when named runs are set up. */
+/* The bar's width: wide enough for "Recording · between transactions ·
+   1:02:05" beside its buttons, plus the named-transaction caret when named
+   transactions are set up. */
 function barWidth(namedRuns) {
   return BAR_WIDTH + (namedRuns ? NAMED_RUNS_EXTRA : 0);
 }

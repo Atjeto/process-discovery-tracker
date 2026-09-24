@@ -375,11 +375,13 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
         "30s on average · video 0:10", "Open the order from the customer's mail."]
     assert _under(blocks, "2. Check the stock") == ["SAP · 30s on average · video 1:00"]
     control = _section(blocks, "1. Document control")
-    assert "Runs recorded | Not marked" in control and "Video | Attached" in control
-    assert _section(blocks, "4.1 Differences between runs") == [
-        "Runs were not marked in this session, so there are no runs to compare."]
-    assert _section(blocks, "6.1 Time per run") == [
-        "Runs were not marked in this session, so there is no time per run."]
+    assert "Transactions recorded | Not marked" in control and "Video | Attached" in control
+    assert _section(blocks, "4.1 Differences between transactions") == [
+        "Transactions were not marked in this project, so there are no transactions "
+        "to compare."]
+    assert _section(blocks, "6.1 Time per transaction") == [
+        "Transactions were not marked in this project, so there is no time per "
+        "transaction."]
     assert _section(blocks, "6.2 Time in each application") == [
         "System | Screens | Steps | Time",
         "Not recorded | Not recorded | Open the order, Confirm the order | 50s",
@@ -413,11 +415,12 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "1. Open the order", "2. Check the stock"]
     assert _under(blocks, "2. Check the stock")[0] == (
-        "SAP · 30s on average · in 1 of 2 runs · Run 1, video 1:00")
-    assert _section(blocks, "6.1 Time per run")[:3] == [
-        "Run | Steps | Active time | Elapsed time",
-        "Run 1: Order 1 | 2 | Not recorded | 1m 45s",
-        "Run 2: Order 2 | 1 | Not recorded | Not measured: the run was not ended"]
+        "SAP · 30s on average · in 1 of 2 transactions · Transaction 1, video 1:00")
+    assert _section(blocks, "6.1 Time per transaction")[:3] == [
+        "Transaction | Steps | Active time | Elapsed time",
+        "Transaction 1: Order 1 | 2 | Not recorded | 1m 45s",
+        "Transaction 2: Order 2 | 1 | Not recorded | "
+        "Not measured: the transaction was not ended"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -450,11 +453,11 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
         f"{i}. {name}" for i, name in enumerate(order, start=1)]
     control = _section(blocks, "1. Document control")
     assert "Recorded | Nothing recorded" in control
-    assert "Runs recorded | Not marked" in control
+    assert "Transactions recorded | Not marked" in control
     steps_text = _section(blocks, "3.2 Process steps")
     assert steps_text[:2] == [
         "The process runs through SAP.",
-        "Runs were not marked in this session, so every step is listed in order."]
+        "Transactions were not marked in this project, so every step is listed in order."]
     assert _section(blocks, "6.2 Time in each application") == [
         "System | Screens | Steps",
         "Not recorded | Not recorded | Receive the request, Check the stock, "
@@ -489,7 +492,7 @@ def test_the_blank_pdd_prints_the_chosen_screenshots_and_the_attachments(tmp_pat
     headings = [t for k, t in blocks if k == "Heading 1"]
     assert headings[-1] == "8. Attachments"            # no document notes: 8
     assert _section(blocks, "8. Attachments") == [
-        "The files are in the session folder's attachments folder.",
+        "The files are in the project folder's attachments folder.",
         "Attachment | File",
         "Example order email | order-email.msg",
         "Input spreadsheet | orders.xlsx"]
@@ -516,11 +519,12 @@ def test_a_new_blank_session_without_steps_analyzes_and_exports(tmp_path):
     assert not (session / "process_map_step.bpmn").exists()
     blocks = _pdd(pdd)
     assert _section(blocks, "3.2 Process steps") == [
-        "No steps have been added to this session yet."]
-    assert _section(blocks, "4.1 Differences between runs") == [
-        "Runs were not marked in this session, so there are no runs to compare."]
+        "No steps have been added to this project yet."]
+    assert _section(blocks, "4.1 Differences between transactions") == [
+        "Transactions were not marked in this project, so there are no transactions "
+        "to compare."]
     assert _section(blocks, "6.2 Time in each application") == [
-        "No steps have been added to this session yet."]
+        "No steps have been added to this project yet."]
 
 
 def test_attachments_follow_the_document_notes(tmp_path):
@@ -601,9 +605,10 @@ def test_a_step_without_a_time_in_a_marked_run_of_a_recording(tmp_path):
     blocks = _pdd(pdd)
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "1. CRM | Orders: Find", "2. CRM | Orders: Save", "3. Phone the customer"]
-    assert _under(blocks, "3. Phone the customer") == ["Phone · in 1 of 2 runs"]
-    assert _section(blocks, "4.1 Differences between runs") == [
-        "Run 2: Order b", "Skipped: Phone the customer (done in 1 of 2 runs)."]
+    assert _under(blocks, "3. Phone the customer") == ["Phone · in 1 of 2 transactions"]
+    assert _section(blocks, "4.1 Differences between transactions") == [
+        "Transaction 2: Order b",
+        "Skipped: Phone the customer (done in 1 of 2 transactions)."]
     variants = {tuple(v["variant"]) for v in _read(session, "stats.json")["step_variants"]}
     assert ("CRM | Orders: Find", "CRM | Orders: Save", "Phone the customer") in variants
 

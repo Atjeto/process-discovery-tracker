@@ -11,7 +11,7 @@
 ## Purpose and runtime
 
 The capture app runs on the SME's machine and records the SME performing a
-business process a few times, one run each time
+business process a few times, one transaction each time
 ([ADR-0029](../adr/0029-ba-helper-refocus.md)). It is an **Electron** app that
 lives in the tray, with a small recording bar and a few utility windows,
 plus a separate **C# .NET 8 recorder sidecar** process for UI interactions.
@@ -29,20 +29,22 @@ folder:
 - **The tray icon.** While recording, a left click shows the recording bar
   again; otherwise a left click opens the menu. A right click always opens
   the menu. The tooltip and the menu's first line say the state: "Not
-  recording", "Recording: Run 2", "Paused: between runs".
+  recording", "Recording: Transaction 2", "Paused: between transactions".
 - **The tray menu.** Not recording: Start recording (with its key), Open
   recordings folder, Show recording bar, Help, Setup (analyst), Quit.
-  Recording: Next run, Start a named run (when named runs are set up), End
-  run (naming the open run), Take a screenshot, Pause or Resume recording,
-  Stop recording, then the same items as above. Quit stops a running
-  recording first, without the end summary.
+  Recording: Next transaction, Start a named transaction (when named
+  transactions are set up), End transaction (naming the open one), Take a
+  screenshot, Pause or Resume recording, Stop recording, then the same
+  items as above. Quit stops a running recording first, without the end
+  summary.
 - **The recording bar** (`recording-bar.js`), the SME's one window while
   recording. One small frameless strip, always on top: the state
-  (Recording, Paused, Not recording), the run in progress ("Run 2", or
-  "between runs" after End run), the elapsed time (m:ss, h:mm:ss from an
-  hour), Next run with its key, a caret with the named runs when they are
-  set up, Pause or Resume, and Stop with an inline confirm (Keep recording,
-  Stop recording). A problem line appears under it only when clicks and
+  (Recording, Paused, Not recording), the transaction in progress
+  ("Transaction 2", or "between transactions" after End transaction), the
+  elapsed time (m:ss, h:mm:ss from an hour), Next transaction with its key,
+  a caret with the named transactions when they are set up, Pause or
+  Resume, and Stop with an inline confirm (Keep recording, Stop
+  recording). A problem line appears under it only when clicks and
   typing are not being recorded. Made for recording during a Teams call: it
   appears without taking the keyboard focus, asks Windows to leave it out of
   screen captures (a shared screen, the OBS video and the recording's own
@@ -52,60 +54,69 @@ folder:
   It opens when a recording starts and closes when it stops; the tray's
   Hide recording bar and Show recording bar toggle it.
 - **The welcome** (first launch only, flagged in
-  `userData/welcome-shown.json`): three lines with the real run key, then
-  Start recording, Help and Close.
-- **Help**: one screen for the SME: how to start, the next run, pause, stop,
-  handing the recording over, what is recorded (password fields are not),
-  where the recordings are, the other keys, the version. Everything for
-  whoever installs or supports the app is in this document instead.
+  `userData/welcome-shown.json`): three lines with the real transaction
+  key, the first saying what a transaction is, then Start recording, Help
+  and Close.
+- **Help**: one screen for the SME: how to start, what a transaction is and
+  how to start the next one, pause, stop, handing the recording over, what
+  is recorded (password fields are not), where the recordings are, the
+  other keys, the version. Everything for whoever installs or supports the
+  app is in this document instead.
 - **The end summary** (`end-summary-window.js`), the one screen after Stop:
-  "Recording saved", the runs and the duration in one line ("3 runs,
-  12:04"), a warning when no run was marked, the folder, **Make a zip for
-  the analyst**, **Show the folder**, an optional "Name this recording", and
-  Done. No counts of clicks, events or screenshots. One window per
-  recording, so a summary still open from an earlier recording keeps its
-  unsaved name.
+  "Recording saved", the transactions and the duration in one line ("3
+  transactions, 12:04"), a warning when no transaction was marked, the
+  folder, **Make a zip for the analyst**, **Show the folder**, an optional
+  "Name this recording", and Done. No counts of clicks, events or
+  screenshots. One window per recording, so a summary still open from an
+  earlier recording keeps its unsaved name.
 - **Toasts**, only for something the SME should act on or tell the analyst:
   clicks and typing not recorded (in one program, in a browser, or at all),
   screenshots failing, the recording could not be saved to disk, keys that
   changed or are not available at launch, a recordings folder that cannot be
   written to, a declined consent. Each says what still works and what to do.
 
-The SME reads "recording" and "run": "Recording", "Paused", "Not
-recording", "Run 2", "between runs". `capture-guidance.js` holds the words
-of the bar, the tray's status line and the end summary, and they never say
-"session", "events", "interactions" or "Tracking".
+The SME reads "recording" and "transaction" (AD-29; the code and the data
+keep "run"): "Recording", "Paused", "Not recording", "Transaction 2",
+"between transactions". A transaction is one pass through the process, for
+example one order or one ticket; the welcome and Help say so.
+`capture-guidance.js` holds the words of the bar, the tray's status line
+and the end summary, and that definition (`TRANSACTION_MEANS`), and they
+never say "run", "session", "events", "interactions" or "Tracking".
 
-## One start, one key per run
+## One start, one key per transaction
 
 Every way of starting calls one rule (`recording-control.js`): the Start
-recording button on the bar, the tray item, the welcome's button, the run
-key and `pdt:startSession`. With nothing recording it starts the recording
-and then Run 1; while recording it starts the next run. So a recording
-without a run is not a state the SME can reach by starting. A press that
-arrives while a start or a stop is still in progress (the consent window
-open, OBS connecting, the recorder draining) is absorbed, not queued.
+recording button on the bar, the tray item, the welcome's button, the
+transaction key and `pdt:startSession`. With nothing recording it starts
+the recording and then Transaction 1; while recording it starts the next
+transaction. So a recording without a transaction is not a state the SME
+can reach by starting. A press that arrives while a start or a stop is
+still in progress (the consent window open, OBS connecting, the recorder
+draining) is absorbed, not queued.
 
-- **Runs never nest.** A new run first ends the open one (`tracker.startRun`,
-  end reason `auto_close_for_sibling`). A run is named "Run N" (N counts
-  every start in the recording) or, from the bar's caret or the tray's Start
-  a named run, a named run from the Recording setup (`process_labels`).
-- **End run** (the second key, or the tray) ends the open run without
-  starting another; the bar then reads "between runs". It never has to be
-  pressed: stopping ends the open run by itself.
+- **Transactions never nest.** A new transaction first ends the open one
+  (`tracker.startRun`, end reason `auto_close_for_sibling`). An unnamed one
+  is labelled "Transaction N" ("Run N" in recordings made before 2.0.0; N
+  counts every start in the recording) or, from the bar's caret or the
+  tray's Start a named transaction, a named one from the Recording setup
+  (`process_labels`).
+- **End transaction** (the second key, or the tray) ends the open
+  transaction without starting another; the bar then reads "between
+  transactions". It never has to be pressed: stopping ends the open
+  transaction by itself.
 - **Pause** pauses the tracker and the recorder until Resume; the idle
   monitor skips while paused.
 - **Idle.** After `auto_end_idle_minutes` (default 30) without mouse or
-  keyboard input, the open run ends (end reason `auto_end_idle`, at most
-  once per idle stretch) and the recording goes on. With
-  `auto_end_on_idle: false` the run stays open through idle; the idle
+  keyboard input, the open transaction ends (end reason `auto_end_idle`, at
+  most once per idle stretch) and the recording goes on. With
+  `auto_end_on_idle: false` the transaction stays open through idle; the idle
   stretch is recorded either way.
 - **Keys.** Three global keys (`hotkeys`): start recording, then the next
-  run (default Ctrl+Shift+S); end run (Ctrl+Shift+E); take a screenshot
-  (Ctrl+Shift+P). A key another program already holds falls back to its
-  Ctrl+Alt variant at launch (a "Keys changed" toast) or is not registered
-  ("Keys not available"). The bar, the welcome, Help and the tray name the
-  keys actually registered, never the configured ones.
+  transaction (default Ctrl+Shift+S); end transaction (Ctrl+Shift+E); take
+  a screenshot (Ctrl+Shift+P). A key another program already holds falls
+  back to its Ctrl+Alt variant at launch (a "Keys changed" toast) or is not
+  registered ("Keys not available"). The bar, the welcome, Help and the
+  tray name the keys actually registered, never the configured ones.
 
 ## What it records
 
@@ -113,9 +124,9 @@ open, OBS connecting, the recorder draining) is absorbed, not queued.
 |---|---|---|
 | Foreground window | `active-win` polled every 5 s | `activity` events |
 | UI interactions | The C# UI Automation recorder sidecar | `interaction` events |
-| Runs | One start per run, End run, Stop, a long idle stretch | `marker` events (`start` / `end`) |
+| Transactions (runs) | One start per transaction, End transaction, Stop, a long idle stretch | `marker` events (`start` / `end`) |
 | Lifecycle | Start and stop, pause, idle, OBS, recorder health, dropped writes, programs the recorder cannot see | `system` events |
-| Screen | Electron `desktopCapturer`: on an app switch, when a run starts or ends, on resume after a long idle stretch, and by hand | screenshots |
+| Screen | Electron `desktopCapturer`: on an app switch, when a transaction starts or ends, on resume after a long idle stretch, and by hand | screenshots |
 | Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | a video file and `obs/sync.json` |
 
 Events are appended to `events.jsonl` through a small batching queue:
@@ -139,9 +150,9 @@ collapse to one capture; a screenshot taken by hand is never suppressed.
   `session.js` creates the folder and `manifest.json` (`status: active`), the
   config snapshot is written, the tracker starts polling, the display
   geometry is stamped on the manifest, the recorder sidecar starts, the
-  dead-man monitor is armed, and Run 1 starts. Without `obs.required`, OBS
-  connects in the background; without OBS the recording goes on without
-  video and says nothing.
+  dead-man monitor is armed, and Transaction 1 starts. Without
+  `obs.required`, OBS connects in the background; without OBS the
+  recording goes on without video and says nothing.
 - **Stop** (single-flight: the bar and the tray at once stop it only once).
   The recorder stops and drains its last values; OBS stops; the tracker
   ends the open run (`endOpenRuns`) before `session_end`; `manifest.json`
@@ -149,9 +160,9 @@ collapse to one capture; a screenshot taken by hand is never suppressed.
   last, so the viewer can tell an incomplete copy. The bar closes and the
   end summary opens (not on Quit, and not when a failed start is torn down).
 - **Crash recovery.** At the next launch, `session.js` marks every recording
-  still `active` with no `ended_at` as `recovered`. A run left open stays
-  open in `events.jsonl`; the pipeline treats it as running to the end of
-  the recording, and its elapsed time is not measured.
+  still `active` with no `ended_at` as `recovered`. A transaction left open
+  stays open in `events.jsonl`; the pipeline treats it as running to the
+  end of the recording, and its elapsed time is not measured.
 
 ## Handing the recording over
 
@@ -192,8 +203,8 @@ cross-cutting modules out of it.
 | File | Role |
 |---|---|
 | `main.js` | The main process (above). |
-| `recording-control.js` | The one start (pure, injectable): starts the recording with Run 1, or the next run; absorbs presses during a start or a stop. |
-| `capture-guidance.js` | Pure module: the words of the recording bar (`barModel`), the tray's status line and the end summary (`summaryModel`), from one status snapshot, and the program names in toasts. |
+| `recording-control.js` | The one start (pure, injectable): starts the recording with Transaction 1, or the next transaction; absorbs presses during a start or a stop. |
+| `capture-guidance.js` | Pure module: the words of the recording bar (`barModel`), the tray's status line and the end summary (`summaryModel`), from one status snapshot; what a transaction is (`TRANSACTION_MEANS`, for the welcome and Help); and the program names in toasts. |
 | `tracker.js` | The 5 second active-window polling loop; runs (`startRun` ends the open run first, `endOpenRuns`); event append with `_seq`; the write queue and dropped-batch accounting (RP-21); programs the recorder cannot see (`uncaptured_app`). |
 | `session.js` | Recording folder creation, `manifest.json` I/O (`updateManifest` is one read-modify-write), orphan recovery, the integrity file, the optional name, `isRecordingFolder` (the end summary acts only on a real recording folder), `removeSessionFolder` (the folder and its zip). |
 | `zip-folder.js` | One recording folder as one zip next to it; local only (`node:fs`, `node:zlib`). |
@@ -223,9 +234,9 @@ shared with the viewer.
 | `welcome-window.js` | `welcome.html` | The first-launch welcome. |
 | `help-window.js` | `help-window.html` | Help, one screen, static and sandboxed. |
 | `consent-window.js` | `consent.html` | The consent gate (below). The pure decision and record logic is in `consent.js`. |
-| `settings-window.js` | `settings.html` | Setup (analyst), Settings: keys, OBS, screenshots, the storage limit and the idle end of the open run. |
+| `settings-window.js` | `settings.html` | Setup (analyst), Settings: keys, OBS, screenshots, the storage limit and the idle end of the open transaction. |
 | `profile-window.js` | `profile.html` | Setup (analyst), Profile: who is recording. |
-| `session-config-window.js` | `session-config.html` | Setup (analyst), Recording setup: the project and the named runs. |
+| `session-config-window.js` | `session-config.html` | Setup (analyst), Recording setup: the project and the named transactions. |
 
 **Other:** `build-package.js` (the `electron-packager` wrapper for
 releases), `test/` (the `node:test` suite: `npm test`), `recorder/` (the C#
@@ -238,12 +249,12 @@ The main process answers these `pdt:*` channels from the windows:
 | Channel | Used by | Does |
 |---|---|---|
 | `pdt:status` | recording bar | The status snapshot plus the bar's view model |
-| `pdt:fireStart` | recording bar | The one start (a named run's label optional) |
-| `pdt:namedRunMenu` | recording bar | Pops up the named runs under the caret |
+| `pdt:fireStart` | recording bar | The one start (a named transaction's label optional) |
+| `pdt:namedRunMenu` | recording bar | Pops up the named transactions under the caret |
 | `pdt:togglePause` | recording bar | Pause or Resume |
 | `pdt:endSession` | recording bar | Stop (the end summary follows) |
 | `pdt:barResize` | recording bar | The bar's height follows its content (a problem line) |
-| `pdt:fireEnd` | drivers | End run |
+| `pdt:fireEnd` | drivers | End transaction |
 | `pdt:startSession` | drivers | The one start; returns the folder |
 | `pdt:showFolder` | end summary | Explorer with the recording folder selected |
 | `pdt:zipFolder` | end summary | Make a zip for the analyst: `{ ok, zipName, size }` or `{ ok: false, error }` |
@@ -270,24 +281,25 @@ Settings come in layers, each merged over the one before:
 2. A YAML file: `PDT_CONFIG=path\to\config.yaml` set before launch (the whole
    schema: `capture/sample-config.yaml`), else `userData/quick-config.yaml`,
    written by Setup (analyst), Recording setup (the project code and name,
-   the named runs; offered only while nothing records, read at the next
-   launch).
+   the named transactions; offered only while nothing records, read at
+   the next launch).
 3. `userData/user-config.json`: Setup (analyst), Settings (keys, OBS,
-   screenshots, the storage limit, the idle end of the open run) and Profile
-   (id, display name, role, team, stamped on every manifest). Saved settings
-   apply at once, except keys, which register at the next launch.
+   screenshots, the storage limit, the idle end of the open transaction)
+   and Profile (id, display name, role, team, stamped on every manifest).
+   Saved settings apply at once, except keys, which register at the next
+   launch.
 
 | Key | Default | Purpose |
 |---|---|---|
 | `engagement_id`, `engagement_name` | `"default"`, `"Default engagement"` | The project code and name, stamped on the manifest; the code is the folder above the recordings. |
 | `worker` | the Windows login | Who is recording: `id`, `name`, `role`, `bu` (team). |
-| `process_labels` | `[]` | The named runs: the caret next to Next run on the bar, and the tray's Start a named run. |
-| `auto_end_idle_minutes` | `30` | Inactivity that ends the open run. |
-| `auto_end_on_idle` | `true` | `false` keeps the run open through idle (all-day recordings); idle is recorded either way. |
+| `process_labels` | `[]` | The named transactions: the caret next to Next transaction on the bar, and the tray's Start a named transaction. |
+| `auto_end_idle_minutes` | `30` | Inactivity that ends the open transaction. |
+| `auto_end_on_idle` | `true` | `false` keeps the transaction open through idle (all-day recordings); idle is recorded either way. |
 | `poll_interval_seconds` | `5` | Not read: the active-window poll is fixed at 5 s (`tracker.js`). |
 | `idle_threshold_seconds` | `60` | OS idle time before an `idle_start` is recorded. |
 | `storage_warn_gb` | `50` | Setup (analyst) flags the recordings on this computer when their total size is above it. |
-| `hotkeys.start_picker`, `.end_innermost`, `.manual_screenshot` | `Control+Shift+S`, `Control+Shift+E`, `Control+Shift+P` | Start recording, then the next run; End run; Take a screenshot. |
+| `hotkeys.start_picker`, `.end_innermost`, `.manual_screenshot` | `Control+Shift+S`, `Control+Shift+E`, `Control+Shift+P` | Start recording, then the next transaction; End transaction; Take a screenshot. |
 | `screenshots.enabled`, `.quality`, `.on_app_switch`, `.on_marker_fire`, `.on_idle_resume_minutes`, `.display` | `true`, `60`, `true`, `true`, `5`, `"active"` | The screenshot triggers, JPEG quality, and the monitor: `active` (the display with the focused window), `primary`, or `all` (one screenshot per display). |
 | `obs.required`, `.websocket_url`, `.websocket_password`, `.scene_name`, `.auto_create_scene` | `false`, `ws://127.0.0.1:4455`, none, the default scene named in `config.js`, `true` | OBS (below). |
 | `consent.mode`, `.version`, `.text` | `"off"`, `2`, the default text | The consent gate (below). |
@@ -365,7 +377,7 @@ silently thin or lost:
   stretch with no interaction from it (often one running as administrator,
   or one with no UI Automation) gets one `uncaptured_app` system event and
   a toast. A browser in front for 8 s with no interaction from any browser
-  gets one toast per recording. Runs and screenshots still record.
+  gets one toast per recording. Transactions and screenshots still record.
 
 ## The C# recorder sidecar (`capture/recorder/`)
 
@@ -474,9 +486,9 @@ the Citrix session, RDP host or virtual desktop when its profile allows
 unsigned Electron apps: inside, the program's UI Automation tree is local
 and rich again. Otherwise run it on the local machine: the recording shows
 one Citrix Workspace band for the whole time, the video (if any) still shows
-the content, runs are marked with the run key as usual, and the analyst
-names the inner programs. Check this on a representative machine before
-relying on it. More in [DEPLOY.md](../DEPLOY.md).
+the content, transactions are marked with the transaction key as usual, and
+the analyst names the inner programs. Check this on a representative
+machine before relying on it. More in [DEPLOY.md](../DEPLOY.md).
 
 ## Storage
 
@@ -504,9 +516,9 @@ lists the recording folders older than 90 days and `--apply` deletes them
   missing tray icon file, antivirus blocking the executable, a YAML syntax
   error in the config file (the boot log says `whenReady failed`).
 - **A recording shows as recovered.** The app did not stop cleanly (a crash,
-  a forced quit, a power loss); the next launch marks it recovered. A run
-  left open stays open in `events.jsonl`; the pipeline treats it as running
-  to the end of the recording.
+  a forced quit, a power loss); the next launch marks it recovered. A
+  transaction left open stays open in `events.jsonl`; the pipeline treats
+  it as running to the end of the recording.
 - **Clicks and typing in Chrome or Edge are not recorded.** The recorder
   wakes Chromium's accessibility tree itself; when a managed browser still
   shows nothing, closing and reopening the browser can help, or IT can
@@ -514,7 +526,7 @@ lists the recording folders older than 90 days and `--apply` deletes them
   [DEPLOY.md](../DEPLOY.md)). The SME's toast only says to keep going and
   tell the analyst.
 - **Clicks and typing in another program are not recorded.** It may run as
-  administrator, or expose no UI Automation; runs and screenshots still
+  administrator, or expose no UI Automation; transactions and screenshots still
   record, and the readiness check (Setup (analyst)) shows how much the
   recorder sees per program before a recording.
 - **The recorder never starts.** See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)

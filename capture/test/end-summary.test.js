@@ -27,17 +27,17 @@ test("the summary offers the hand-off: Show the folder, Make a zip for the analy
   assert.ok(!/https?:|mailto:|fetch\(|WebSocket/.test(PAGE), "nothing is sent from the summary");
 });
 
-test("the no-run warning reaches the page; a recording with runs has none", () => {
+test("the no-transaction warning reaches the page; a recording with transactions has none", () => {
   const noRun = summaryModel({ runs: 0, durationMs: 5000, sessionFolder: "D:\\r\\default\\x", hotkey: "Control+Shift+S" });
   const html = buildSummaryHtml(noRun);
-  assert.ok(scriptOf(html).includes("No run was marked"), "the warning is in the page's model");
+  assert.ok(scriptOf(html).includes("No transaction was marked"), "the warning is in the page's model");
   assert.match(PAGE, /if \(S\.warning\) \{\s*\$\("warning"\)\.textContent = S\.warning;\s*\$\("warning"\)\.hidden = false;/);
   const withRuns = buildSummaryHtml(summaryModel({ runs: 2, durationMs: 5000, sessionFolder: "D:\\r\\default\\x" }));
-  assert.ok(!scriptOf(withRuns).includes("No run was marked"));
+  assert.ok(!scriptOf(withRuns).includes("No transaction was marked"));
 });
 
 test("a folder path cannot break out of the summary's script", () => {
-  const html = buildSummaryHtml({ headline: "1 run, 0:05", folder: "C:\\x\\</script><img src=x onerror=alert(1)>", warning: null });
+  const html = buildSummaryHtml({ headline: "1 transaction, 0:05", folder: "C:\\x\\</script><img src=x onerror=alert(1)>", warning: null });
   const script = scriptOf(html);
   assert.ok(!script.includes("<img"), "no raw markup from the model");
   assert.ok(!html.includes("{{SUMMARY}}"), "the slot is filled");

@@ -58,15 +58,15 @@ test("fireMarker writes marker events and tracks open-marker depth", () => {
 // a failed assertion must fail the test, not leave the 5 s poll interval
 // alive and hang the runner.
 
-test("startRun: one key per run -- 'Run N' labels, the open run ends first, runs never nest", () => {
+test("startRun: one key per run, 'Transaction N' labels (AD-29), the open run ends first, runs never nest", () => {
   const { dir, file } = tmpEvents();
   const t = startTracker({ sessionId: "s", eventsFile: file });
   try {
     t.startRun();
-    assert.deepStrictEqual(t.getStatus().openMarkers, ["Run 1"]);
+    assert.deepStrictEqual(t.getStatus().openMarkers, ["Transaction 1"]);
     t.startRun();                        // run 1 still open: end it, then start run 2
     assert.strictEqual(t.getStatus().markerDepth, 1);
-    assert.deepStrictEqual(t.getStatus().openMarkers, ["Run 2"]);
+    assert.deepStrictEqual(t.getStatus().openMarkers, ["Transaction 2"]);
     t.fireMarker({ markerType: "end" }); // the end hotkey
     assert.strictEqual(t.getStatus().markerDepth, 0);
     t.startRun();
@@ -74,11 +74,11 @@ test("startRun: one key per run -- 'Run N' labels, the open run ends first, runs
     t.stop();
     const markers = readEvents(file).filter((e) => e.type === "marker");
     assert.deepStrictEqual(markers.map((e) => e.data), [
-      { marker_type: "start", label: "Run 1" },
+      { marker_type: "start", label: "Transaction 1" },
       { marker_type: "end", label: null, reason: "auto_close_for_sibling" },
-      { marker_type: "start", label: "Run 2" },
+      { marker_type: "start", label: "Transaction 2" },
       { marker_type: "end", label: null },
-      { marker_type: "start", label: "Run 3" },
+      { marker_type: "start", label: "Transaction 3" },
       { marker_type: "end", label: null },   // stop() ends the open run
     ]);
     for (const e of markers) {
@@ -91,18 +91,18 @@ test("startRun: one key per run -- 'Run N' labels, the open run ends first, runs
   }
 });
 
-test("startRun(label): a named run counts toward the next 'Run N'", () => {
+test("startRun(label): a named run counts toward the next 'Transaction N'", () => {
   const { dir, file } = tmpEvents();
   const t = startTracker({ sessionId: "s", eventsFile: file });
   try {
     t.startRun("Order entry");
     t.startRun();
-    assert.deepStrictEqual(t.getStatus().openMarkers, ["Run 2"]);
+    assert.deepStrictEqual(t.getStatus().openMarkers, ["Transaction 2"]);
     t.stop();
     const starts = readEvents(file)
       .filter((e) => e.type === "marker" && e.data.marker_type === "start")
       .map((e) => e.data.label);
-    assert.deepStrictEqual(starts, ["Order entry", "Run 2"]);
+    assert.deepStrictEqual(starts, ["Order entry", "Transaction 2"]);
   } finally {
     t.stop();
     fs.rmSync(dir, { recursive: true, force: true });

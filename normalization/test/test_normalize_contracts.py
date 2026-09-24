@@ -331,6 +331,15 @@ def test_the_removed_step_bpmn_flag_is_a_usage_error_not_exit_2(tmp_path):
     assert not (session / "annotations.json").exists()
 
 
+def test_a_missing_folder_is_a_usage_error_the_viewer_can_show(tmp_path):
+    """The viewer shows the ERROR line; it names the folder a person opened
+    as a project (AD-29)."""
+    missing = tmp_path / "no-such-project-folder"
+    proc = _run_cli(missing)
+    assert proc.returncode == 1
+    assert _error_lines(proc) == [f"[normalize] ERROR: {missing} is not a project folder"]
+
+
 def test_help_lists_exactly_the_c11_options():
     proc = _run_cli("--help")
     assert proc.returncode == 0

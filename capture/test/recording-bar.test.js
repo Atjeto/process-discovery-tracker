@@ -13,14 +13,24 @@ const SIZE = { width: BAR_WIDTH, height: BAR_HEIGHT };
 const LAPTOP = { x: 0, y: 0, width: 1366, height: 728 };
 const RIGHT = { x: 1366, y: 0, width: 1920, height: 1040 };
 
-test("the bar is small: one row, under 40% of a 1366 wide screen, a tenth of the old panel's area at most", () => {
+test("the bar is small: one row, under half of a 1366 wide screen, a tenth of the old panel's area at most", () => {
   for (const named of [false, true]) {
     const w = barWidth(named);
-    assert.ok(w <= 0.41 * 1366, "width " + w);
+    // Under 41% (560 px) until the AD-29 words: "between transactions" and
+    // "Next transaction" need 95 px more than "between runs" and "Next run".
+    assert.ok(w <= 0.5 * 1366, "width " + w);
     assert.ok(BAR_HEIGHT <= 48, "height " + BAR_HEIGHT);
     assert.ok(w * BAR_HEIGHT <= (460 * 720) / 10, "area against the 460x720 panel: " + w * BAR_HEIGHT);
   }
-  assert.strictEqual(barWidth(true) - barWidth(false), 30, "the named-run caret");
+  assert.strictEqual(barWidth(true) - barWidth(false), 30, "the named-transaction caret");
+});
+
+test("the bar is wide enough for its longest line, as measured in the real renderer", () => {
+  // "Recording · between transactions · 1:02:05" beside Next transaction
+  // (with Ctrl+Shift+S), Pause and Stop: 615 px, and 644 px with the
+  // named-transaction caret (the Plus Jakarta Sans the bar embeds).
+  assert.ok(barWidth(false) >= 615, "width " + barWidth(false));
+  assert.ok(barWidth(true) >= 644, "width " + barWidth(true));
 });
 
 test("with nothing saved, the bar opens at the bottom right of the main screen, above the taskbar", () => {

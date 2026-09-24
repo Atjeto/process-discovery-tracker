@@ -106,7 +106,7 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   let eventCount = 0;
   let markerCount = 0;
   /* Start markers written this session = runs recorded; the next
-     unnamed run is "Run <startMarkerCount + 1>". */
+     unnamed run is "Transaction <startMarkerCount + 1>" (AD-29). */
   let startMarkerCount = 0;
   let screenshotCount = 0;
   let interactionCount = 0;
@@ -383,11 +383,12 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
 
   /* One key per run: end the open run (reason auto_close_for_sibling, the
      existing close-then-open value), then start the next one. Runs never
-     nest. An unnamed run is "Run N", N counting every start marker this
+     nest. An unnamed run is "Transaction N" (the SME's word, AD-29; "Run N"
+     in recordings made before it), N counting every start marker this
      session, so a named run (a task shortcut) takes a number too. */
   function startRun(label) {
     endOpenRuns("auto_close_for_sibling");
-    return fireMarker({ markerType: "start", label: label || `Run ${startMarkerCount + 1}` });
+    return fireMarker({ markerType: "start", label: label || `Transaction ${startMarkerCount + 1}` });
   }
 
   function fireSystem(kind, payload) {

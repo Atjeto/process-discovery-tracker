@@ -110,12 +110,12 @@
 <fieldset>
   <legend>Hotkeys</legend>
   <div class="hk-row">
-    <span class="hk-label">Start recording, then the next run</span>
+    <span class="hk-label">Start recording, then the next transaction</span>
     <input type="text" id="hk-start" class="hk-input" readonly />
     <button type="button" class="hk-rec" data-target="hk-start">Change</button>
   </div>
   <div class="hk-row">
-    <span class="hk-label">End run</span>
+    <span class="hk-label">End transaction</span>
     <input type="text" id="hk-end" class="hk-input" readonly />
     <button type="button" class="hk-rec" data-target="hk-end">Change</button>
   </div>
@@ -163,7 +163,7 @@
     </div>
   </div>
   <label class="check"><input type="checkbox" id="ss-onswitch" /><span>Capture on app switch</span></label>
-  <label class="check"><input type="checkbox" id="ss-onmarker" /><span>Capture when a run starts or ends</span></label>
+  <label class="check"><input type="checkbox" id="ss-onmarker" /><span>Capture when a transaction starts or ends</span></label>
   <label class="fld" for="ss-idle">Capture on resume after idle (minutes)</label>
   <input type="number" id="ss-idle" min="0" max="240" step="1" />
   <div class="help-hint">After this many minutes of idle, the next activity triggers one screenshot.</div>
@@ -174,9 +174,9 @@
   <label class="fld" for="store-warn">Flag the recordings on this computer above (GB)</label>
   <input type="number" id="store-warn" min="1" max="10000" step="1" />
   <div class="help-hint">The tray's <strong>Setup (analyst)</strong> menu shows the size of all recordings and flags it above this limit, next to <strong>Delete recordings older than</strong>.</div>
-  <label class="fld" for="store-idle">End the open run after inactivity (minutes)</label>
+  <label class="fld" for="store-idle">End the open transaction after inactivity (minutes)</label>
   <input type="number" id="store-idle" min="1" max="480" step="1" />
-  <label class="check"><input type="checkbox" id="store-autoend" /><span>End the open run after this long without activity (uncheck for all-day recordings; the inactivity is noted either way)</span></label>
+  <label class="check"><input type="checkbox" id="store-autoend" /><span>End the open transaction after this long without activity (uncheck for all-day recordings; the inactivity is noted either way)</span></label>
 </fieldset>
 
 </div>

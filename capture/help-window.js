@@ -2,10 +2,11 @@
  * Capture-side help window, opened from the tray's Help item and the
  * welcome's Help button.
  *
- * One screen for the SME: how to start, how to mark the next run, how to
- * pause and stop, how to hand the recording over, what is recorded and
- * where the recordings are. The keys are the ones actually registered and
- * the folder is the real one. The developer reference (OBS setup, the
+ * One screen for the SME: how to start, what a transaction is and how to
+ * mark the next one, how to pause and stop, how to hand the recording
+ * over, what is recorded and where the recordings are. The keys are the
+ * ones actually registered and the folder is the real one. The developer
+ * reference (OBS setup, the
  * config files, the session folder's files, Citrix, troubleshooting) lives
  * in docs/architecture/CAPTURE.md, not here.
  */
@@ -16,7 +17,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { BrowserWindow } = require("electron");
 const { injectTokens } = require("./ui/tokens.js");
-const { formatHotkey } = require("./capture-guidance.js");
+const { formatHotkey, TRANSACTION_MEANS } = require("./capture-guidance.js");
 
 function escapeHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -35,15 +36,15 @@ function helpLines(keys) {
   const end = k(keys && keys.end);
   const shot = k(keys && keys.shot);
   const other = [];
-  if (end) other.push(end + " ends the current run without starting the next.");
+  if (end) other.push(end + " ends the current transaction without starting the next.");
   if (shot) other.push(shot + " takes a screenshot.");
   return {
     start: start
       ? "Press " + start + ", or choose Start recording in the tray menu."
       : "Choose Start recording in the tray menu.",
     next: start
-      ? "press " + start + " (or click Next run on the bar)."
-      : "click Next run on the bar.",
+      ? "press " + start + " (or click Next transaction on the bar)."
+      : "click Next transaction on the bar.",
     other: other.join(" "),
   };
 }
@@ -55,6 +56,7 @@ function buildHelpHtml(opts) {
   return injectTokens(fs.readFileSync(path.join(__dirname, "ui", "help-window.html"), "utf-8"))
     .split("{{START_HOW}}").join(lines.start)
     .split("{{NEXT_HOW}}").join(lines.next)
+    .split("{{TRANSACTION}}").join(escapeHtml(TRANSACTION_MEANS))
     .split("{{OTHER_KEYS}}").join(lines.other)
     .split("{{OTHER_HIDDEN}}").join(lines.other ? "" : " hidden")
     .split("{{FOLDER}}").join(escapeHtml(o.folder || ""))
@@ -64,7 +66,7 @@ function buildHelpHtml(opts) {
 function showHelpWindow(opts) {
   const win = new BrowserWindow({
     width: 560,
-    height: 610,
+    height: 640,     // one screen with every key listed needs 638 (measured)
     useContentSize: true,
     title: "How to record",
     autoHideMenuBar: true,

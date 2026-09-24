@@ -88,8 +88,8 @@
     <button class="primary" id="btn-start">Start recording<kbd id="kbd-start"></kbd></button>
   </div>
   <div class="controls" id="controls-rec" hidden>
-    <button class="primary" id="btn-next">Next run<kbd id="kbd-next"></kbd></button>
-    <button class="caret" id="btn-named" title="Start a named run" aria-label="Start a named run" hidden>&#9662;</button>
+    <button class="primary" id="btn-next">Next transaction<kbd id="kbd-next"></kbd></button>
+    <button class="caret" id="btn-named" title="Start a named transaction" aria-label="Start a named transaction" hidden>&#9662;</button>
     <button id="btn-pause">Pause</button>
     <button class="stop" id="btn-stop">Stop</button>
   </div>
@@ -164,8 +164,9 @@ async function tick() {
   } catch (_) { /* the next tick tries again */ }
 }
 
-// Start recording and Next run are the same one start: it starts the
-// recording with Run 1 when nothing records, and the next run otherwise.
+// Start recording and Next transaction are the same one start: it starts
+// the recording with Transaction 1 when nothing records, and the next
+// transaction otherwise.
 $("btn-start").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:fireStart"); tick(); });
 $("btn-next").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:fireStart"); tick(); });
 $("btn-named").addEventListener("click", () => { ipcRenderer.invoke("pdt:namedRunMenu"); });

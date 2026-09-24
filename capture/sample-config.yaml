@@ -15,9 +15,10 @@ auto_end_idle_minutes: 30
 poll_interval_seconds: 5
 idle_threshold_seconds: 60
 
-# Named runs ("task shortcuts") offered on the recording bar (the caret
-# next to Next run) and in the tray's "Start a named run" submenu. Set per
-# project. Leave empty and the run hotkey labels runs "Run 1", "Run 2", ...
+# Named transactions ("task shortcuts") offered on the recording bar (the
+# caret next to Next transaction) and in the tray's "Start a named
+# transaction" submenu. Set per project. Leave empty and the transaction key
+# labels them "Transaction 1", "Transaction 2", ...
 process_labels: []
 
 # OBS integration. Set required: true in production so a session fails

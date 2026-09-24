@@ -6,8 +6,10 @@
  * (ui/recording-bar.html paints the model it is sent), the tray's status
  * line and tooltip, the end summary and the toasts.
  *
- * The SME's words: "Recording", "Paused", "Not recording", "Run 1",
- * "between runs". Never "Tracking", "session", "events" or "interactions".
+ * The SME's words (AD-29): "Recording", "Paused", "Not recording",
+ * "Transaction 1", "between transactions"; a transaction is one pass
+ * through the process (TRANSACTION_MEANS). Never "run", "Tracking",
+ * "session", "events" or "interactions". The code keeps "run" for it.
  *
  * Pure module: no DOM, no Electron, no IPC. Unit-tested in
  * test/capture-guidance.test.js.
@@ -46,14 +48,20 @@ function recordingState(status) {
   return s.paused ? "paused" : "recording";
 }
 
-/* The run in progress: the open run's name, or "between runs" after an
-   End run (or an idle stretch that ended it). Empty when not recording. */
+/* The transaction in progress: the open run's name ("Transaction 2", or a
+   named one), or "between transactions" after an End transaction (or an
+   idle stretch that ended it). Empty when not recording. */
 function runText(status) {
   const s = status || {};
   if (!s.tracking) return "";
   const open = Array.isArray(s.openMarkers) ? s.openMarkers : [];
-  return open.length ? String(open[open.length - 1]) : "between runs";
+  return open.length ? String(open[open.length - 1]) : "between transactions";
 }
+
+/* What a transaction is, where the SME first meets the word (the welcome)
+   and in Help. */
+const TRANSACTION_MEANS =
+  "A transaction is one pass through the process, for example one order or one ticket.";
 
 const CLICKS_NOT_RECORDED =
   "Clicks and typing are not being recorded. Keep going and tell the analyst.";
@@ -91,7 +99,8 @@ function barModel({ status, hotkey, namedRuns } = {}) {
 }
 
 /* The tray's first menu line (and, prefixed with the app name, its
-   tooltip): "Not recording", "Recording: Run 2", "Paused: between runs". */
+   tooltip): "Not recording", "Recording: Transaction 2", "Paused: between
+   transactions". */
 function trayStatusLine(status) {
   const m = barModel({ status });
   if (m.state === "idle") return m.stateText;
@@ -99,22 +108,23 @@ function trayStatusLine(status) {
   return m.problem ? line + " (clicks and typing not recorded)" : line;
 }
 
-/* The end summary: runs and duration in one line, where the folder is, and
-   a warning when no run was marked. No counts of clicks, events or
-   screenshots: the SME acts on none of them. */
+/* The end summary: transactions and duration in one line ("4 transactions,
+   0:11"), where the folder is, and a warning when no transaction was
+   marked. No counts of clicks, events or screenshots: the SME acts on none
+   of them. */
 function summaryModel({ runs, durationMs, sessionFolder, hotkey } = {}) {
   const n = Number.isFinite(runs) && runs > 0 ? runs : 0;
   const key = formatHotkey(hotkey);
   const folder = sessionFolder || "";
   const base = folder.split(/[\\/]/).filter(Boolean).pop() || "";
   return {
-    headline: (n === 1 ? "1 run" : n + " runs") + ", " + formatElapsed(durationMs),
+    headline: (n === 1 ? "1 transaction" : n + " transactions") + ", " + formatElapsed(durationMs),
     folder,
     zipName: base ? base + ".zip" : "",
     warning: n > 0 ? null
-      : "No run was marked, so the analyst cannot tell where each run starts. " +
-        "Tell the analyst, or record again and " +
-        (key ? "press " + key : "click Next run on the recording bar") +
+      : "No transaction was marked, so the analyst cannot tell where each " +
+        "transaction starts. Tell the analyst, or record again and " +
+        (key ? "press " + key : "click Next transaction on the recording bar") +
         " each time you start the process.",
   };
 }
@@ -146,4 +156,5 @@ module.exports = {
   summaryModel,
   friendlyAppName,
   CLICKS_NOT_RECORDED,
+  TRANSACTION_MEANS,
 };

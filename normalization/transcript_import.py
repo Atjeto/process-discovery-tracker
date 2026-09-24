@@ -579,7 +579,8 @@ def main(argv: list[str] | None = None) -> int:
         return _fail(1, USAGE)
     session, source = Path(args[0]), Path(args[1])
     if not session.is_dir() or not (session / "events.jsonl").is_file():
-        return _fail(1, f"{session} is not a session folder (it has no events.jsonl)")
+        # The viewer shows this line; a person calls the folder a project.
+        return _fail(1, f"{session} is not a project folder (it has no events.jsonl)")
     try:
         doc = import_transcript(session, source)
     except TranscriptError as e:

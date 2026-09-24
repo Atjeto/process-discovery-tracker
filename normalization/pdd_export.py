@@ -5,31 +5,36 @@ as it is, in place of the maps and documents built by hand. Its wording is
 tool-neutral (any automation technology or application work), and it reads
 in the reader's order:
 
-  1. Document control: the process, the session folder (a developer's way
-     into the recording), who recorded it, the runs, whether a video is
-     attached.
+  1. Document control: the process, the project folder (a developer's way
+     into the recording), who recorded it, the transactions, whether a video
+     is attached.
   2. Purpose and scope: the analyst's document fields (annotations.document,
      contract C6): purpose, scope, trigger, result and key contacts.
   3. As-Is process: the systems the process runs through, the As-Is map on
-     a page of its own, and the steps of the reference run (the pattern run,
-     contract C3). Each step says its system and screen, its average time,
-     in how many runs it happened and where it is in the recording ("Run 1
-     at 0:19", and the video time when the video's start is known); its
-     description (C7) is its text.
-  4. Variations, rules and exceptions: how each other run differed from the
-     reference run (aligned by draft key; the rule is pinned with the viewer
-     by shared/run-differences-golden.json), steps repeated within a run,
-     then the business rules and the exceptions.
+     a page of its own, and the steps of the reference transaction (the
+     pattern run, contract C3). Each step says its system and screen, its
+     average time, in how many transactions it happened and where it is in
+     the recording ("Transaction 1 at 0:19", and the video time when the
+     video's start is known); its description (C7) is its text.
+  4. Variations, rules and exceptions: how each other transaction differed
+     from the reference transaction (aligned by draft key; the rule is
+     pinned with the viewer by shared/run-differences-golden.json), steps
+     repeated within a transaction, then the business rules and the
+     exceptions.
   5. Data: every field entered, with its system and screen, its step and an
      example value. Re-keyed data (a value typed again in another system in
-     the same run) is marked and stated as a requirement.
-  6. Applications and time: the time of every run, and each system's
-     screens, steps and time per run.
+     the same transaction) is marked and stated as a requirement.
+  6. Applications and time: the time of every transaction, and each
+     system's screens, steps and time per transaction.
   7. Improvement and automation scope: the analyst's field, and the To-Be
      map when one was chosen.
   8. Notes: only when written.
   8 or 9. Attachments: the files the analyst attached (label and file
      name), only when there are any.
+
+The words (AD-29): one pass through the process is a "transaction" and what
+the analyst opens is a "project"; the code and the data keep run, case and
+session (case_id, pattern_run, the run_* names below).
 
 A "[To be completed: ...]" gap stands only for a document field the analyst
 fills in the app. Every number is measured from the recording. Hidden steps
@@ -42,7 +47,7 @@ system (`step.system`) wins over the derived one; a step shows the
 screenshot chosen for the PDD (`step.pdd_screenshot`), else all of its
 screenshots, the analyst's included, never a hidden one; a step names its
 attachments. A session without a recording (manifest.source "video" or
-"blank") has one implicit run, not a marked one, and says so; a step
+"blank") has one implicit run, not a marked transaction, and says so; a step
 without a time (`time_range: null`) orders by its `order` and prints no
 time, never a zero. The notes pinned to steps and moments
 (annotations.analyst_notes) are not printed.
@@ -87,9 +92,14 @@ logger = logging.getLogger(__name__)
 _TYPED_KINDS = ("value_changed", "text_changed")
 # A field value longer than this is cut in the document.
 _VALUE_MAX = 200
-# The line under the times of the runs (AD-28).
-_WALKTHROUGH = ("The runs were recorded as a walkthrough, with explanations, so "
-                "these times show the recording, not the usual handling time.")
+# The line under the times of the transactions (AD-28).
+_WALKTHROUGH = ("The transactions were recorded during a walkthrough, with "
+                "explanations, so these times show the recording, not the usual "
+                "handling time.")
+# The capture app labels an unnamed run "Transaction N" ("Run N" before the
+# AD-29 words): a label that only repeats the transaction's own name is not
+# printed beside it, as in the viewer's list of runs.
+_DEFAULT_LABEL_WORDS = ("transaction", "run")
 # The step context line's separator (a middle dot, as the viewer's fact line).
 _SEP = " · "
 
@@ -343,9 +353,14 @@ class _Session:
         return code if code and code != "default" else ""
 
     def run_label(self, index) -> str:
+        """"Transaction 2: Refund", or "Transaction 2" when the run has no
+        label or its label only repeats that name ("Transaction 2", or the
+        capture app's older "Run 2")."""
         label = self.runs[index].get("label")
         label = label.strip() if isinstance(label, str) else ""
-        return f"Run {index + 1}: {label}" if label else f"Run {index + 1}"
+        if label.lower() in {f"{word} {index + 1}" for word in _DEFAULT_LABEL_WORDS}:
+            label = ""
+        return f"Transaction {index + 1}: {label}" if label else f"Transaction {index + 1}"
 
     def run_steps(self, index) -> list:
         return self.steps_by_run.get(self.runs[index]["case_id"], [])
@@ -365,14 +380,15 @@ class _Session:
         return self.ctx.where(_members(step)[0])[0]
 
     def position(self, step) -> str:
-        """Where a step is in the recording: its run and its time from the
-        start of the recording ("Run 1 at 0:19": the same on every machine,
-        whatever its time zone), and the video time when the video's start
-        is known ("Run 1 at 0:19 (video 12:45)"); for a step outside every
-        run, "0:19 into the recording". A step without a time has no place
-        (C16). In a video session the session's clock is the video's, so
-        the place is the video time ("Run 1, video 0:19", "video 0:19" in
-        the implicit run, which is not a marked run)."""
+        """Where a step is in the recording: its transaction and its time
+        from the start of the recording ("Transaction 1 at 0:19": the same
+        on every machine, whatever its time zone), and the video time when
+        the video's start is known ("Transaction 1 at 0:19 (video 12:45)");
+        for a step outside every run, "0:19 into the recording". A step
+        without a time has no place (C16). In a video session the session's
+        clock is the video's, so the place is the video time ("Transaction
+        1, video 0:19", "video 0:19" in the implicit run, which is not a
+        marked transaction)."""
         start = step_start(_members(step)[0])
         if start is None:
             return ""
@@ -381,12 +397,12 @@ class _Session:
         if (self.source == "video" and self.video_start is not None
                 and start >= self.video_start):
             video = "video " + clock((start - self.video_start).total_seconds() * 1000)
-            return f"Run {index + 1}, {video}" if index is not None else video
+            return f"Transaction {index + 1}, {video}" if index is not None else video
         at = ""
         if self.recording_start is not None and start >= self.recording_start:
             at = clock((start - self.recording_start).total_seconds() * 1000)
         if index is not None:
-            out = f"Run {index + 1} at {at}" if at else f"Run {index + 1}"
+            out = f"Transaction {index + 1} at {at}" if at else f"Transaction {index + 1}"
         else:
             out = f"{at} into the recording" if at else ""
         if self.video_start is not None and start >= self.video_start:
@@ -396,10 +412,11 @@ class _Session:
 
     def context_line(self, step) -> str:
         """The line under a step's heading: system and screen, its average
-        time, in how many runs it happened, where it is in the recording.
-        Contract C16: the time leaves out the steps without a time range and
-        is not said when none of them has one; the implicit run (runs not
-        marked) is not counted in runs."""
+        time, in how many transactions it happened ("in 3 of 4
+        transactions"), where it is in the recording. Contract C16: the time
+        leaves out the steps without a time range and is not said when none
+        of them has one; the implicit run (transactions not marked) is not
+        counted."""
         parts = []
         where = self.where(step)
         if where:
@@ -411,7 +428,8 @@ class _Session:
             if durations:
                 parts.append(_duration(sum(durations) / len(durations)) + " on average")
             if not self.implicit:
-                parts.append(f"in {self.key_runs.get(key) or 1} of {_plural(len(self.runs), 'run')}")
+                parts.append(f"in {self.key_runs.get(key) or 1} of "
+                             f"{_plural(len(self.runs), 'transaction')}")
         elif own is not None:
             parts.append(_duration(own))
         position = self.position(step)
@@ -757,15 +775,15 @@ def _write_title(doc, s):
 def _write_document_control(doc, s):
     doc.add_heading("1. Document control", level=1)
     # C16: a blank session recorded nothing; the implicit run of a session
-    # without a recording is not a marked run.
+    # without a recording is not a marked transaction.
     recorded = ("Nothing recorded" if s.source == "blank"
                 else s.captured or "Not recorded")
     rows = [
         ("Process", s.field("title") or "Not named yet"),
-        ("Session folder", s.folder.resolve().name or "Not recorded"),
+        ("Project folder", s.folder.resolve().name or "Not recorded"),
         ("Recorded", recorded),
         ("Recorded by", s.recorded_by or "Not recorded"),
-        ("Runs recorded", "Not marked" if s.implicit else str(len(s.runs))),
+        ("Transactions recorded", "Not marked" if s.implicit else str(len(s.runs))),
         ("Video", "Attached" if s.has_video else "None"),
     ]
     project = s.project()
@@ -812,8 +830,9 @@ def _systems_in_order(s) -> list[str]:
 def _flow_rows(s) -> list[tuple[str, str]]:
     """The map from the runs as rows (step, what followed it): for each step
     of the runs, in the order the reference run (then the others) first did
-    it, the steps that came next, each with the number of runs in which it
-    did. A step repeated back to back counts once, as on the map."""
+    it, the steps that came next, each with the number of transactions in
+    which it did ("Save (3 of 4 transactions)"). A step repeated back to
+    back counts once, as on the map."""
     runs = len(s.runs)
     names: dict[str, str] = {"start": "Start", "end": "End"}
     order: dict[str, None] = {"start": None}
@@ -839,9 +858,10 @@ def _flow_rows(s) -> list[tuple[str, str]]:
         if not nexts:
             continue
         parts = sorted(nexts.items(), key=lambda kv: -len(kv[1]))
-        # The implicit run (C16) is not a marked run: no run counts.
+        # The implicit run (C16) is not a marked transaction: no counts.
         rows.append((names[key], "; ".join(
-            names[b] if s.implicit else f"{names[b]} ({len(r)} of {_plural(runs, 'run')})"
+            names[b] if s.implicit
+            else f"{names[b]} ({len(r)} of {_plural(runs, 'transaction')})"
             for b, r in parts)))
     return rows
 
@@ -859,12 +879,13 @@ def _write_as_is(doc, s, process_map_image):
         rows = _flow_rows(s) if s.runs else []
         if rows:
             doc.add_paragraph("Each step and the step that followed it:" if s.implicit
-                              else "Each step and the steps that followed it in the runs:")
+                              else "Each step and the steps that followed it in the transactions:")
             _table(doc, ("Step", "Followed by"), rows, widths=(2.4, 3.6))
         else:
-            doc.add_paragraph("Runs were not marked in this recording, so there is no map.")
+            doc.add_paragraph("Transactions were not marked in this recording, "
+                              "so there is no map.")
         if (s.folder / "process_map_step.bpmn").exists():
-            doc.add_paragraph("The map file is process_map_step.bpmn in the session folder.")
+            doc.add_paragraph("The map file is process_map_step.bpmn in the project folder.")
     _write_steps(doc, s)
 
 
@@ -876,19 +897,19 @@ def _write_steps(doc, s):
     if s.pattern_index is None:
         steps = s.steps
         if steps:
-            why = ("Runs were not marked in this recording" if not s.runs
-                   else "None of the recorded runs has steps")
+            why = ("Transactions were not marked in this recording" if not s.runs
+                   else "None of the recorded transactions has steps")
             doc.add_paragraph(f"{why}, so every step is listed in time order.")
     else:
         steps = s.run_steps(s.pattern_index)
         if s.implicit:
             # C16: one implicit run holds every step; the order is the time,
             # then `order` for the steps added without a time.
-            doc.add_paragraph("Runs were not marked in this session, so every "
-                              "step is listed in order.")
+            doc.add_paragraph("Transactions were not marked in this project, so "
+                              "every step is listed in order.")
         else:
             doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
-                              "the reference run.")
+                              "the reference transaction.")
         drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
         if drafts:
             doc.add_paragraph(f"{drafts} of these {_plural(len(steps), 'step')} "
@@ -896,11 +917,11 @@ def _write_steps(doc, s):
                               "not confirmed yet.")
     if not steps:
         if not s.recorded:
-            doc.add_paragraph("No steps have been added to this session yet.")
+            doc.add_paragraph("No steps have been added to this project yet.")
         else:
-            doc.add_paragraph("No steps have been recorded for this run yet."
+            doc.add_paragraph("No steps have been recorded for this transaction yet."
                               if s.pattern_index is not None
-                              else "No steps have been recorded for this session yet.")
+                              else "No steps have been recorded for this project yet.")
         return
     for number, step in enumerate(steps, start=1):
         _write_step(doc, s, step, number)
@@ -1078,8 +1099,10 @@ def _difference_items(pattern_steps, run_steps) -> list[tuple]:
 def _differences(pattern_steps, run_steps) -> list[str]:
     """One line per difference of a run from the pattern run (_difference_items):
     the viewer's differences review (viewer/run-differences.js) builds the
-    same lines; both are pinned by shared/run-differences-golden.json. The
-    document words them for its reader (_variation_lines)."""
+    same lines; both are pinned by shared/run-differences-golden.json, so
+    their wording changes only together with the viewer's and the golden's.
+    The document does not print these lines: it words the differences for
+    its reader (_variation_lines)."""
     out = []
     for kind, _key, step, prev, index in _difference_items(pattern_steps, run_steps):
         where = f"after {_step_name(prev)}" if prev is not None else "at the start of the run"
@@ -1094,9 +1117,9 @@ def _differences(pattern_steps, run_steps) -> list[str]:
 
 def _variation_lines(s, run_index) -> list[str]:
     """The document's lines for one run: its differences from the reference
-    run (each extra step with its system, in how many runs it happened and
-    what was done; each skipped step with how many runs did it), then the
-    steps it repeated."""
+    transaction (each extra step with its system, in how many transactions
+    it happened and what was done; each skipped step with how many
+    transactions did it), then the steps it repeated."""
     m = len(s.runs)
     lines = []
     if run_index != s.pattern_index:
@@ -1104,17 +1127,20 @@ def _variation_lines(s, run_index) -> list[str]:
         for kind, key, step, prev, _index in _difference_items(pattern, s.run_steps(run_index)):
             name = _step_name(step)
             if kind == "extra":
-                where = f" after {_step_name(prev)}" if prev is not None else " at the start of the run"
+                where = (f" after {_step_name(prev)}" if prev is not None
+                         else " at the start of the transaction")
                 system = s.system_of(step)
                 shown = f"{name} ({system})" if system and system.lower() not in name.lower() else name
-                line = f"Extra step{where}: {shown}, in {s.key_runs.get(key) or 1} of {m} runs."
+                line = (f"Extra step{where}: {shown}, in {s.key_runs.get(key) or 1} "
+                        f"of {m} transactions.")
                 done = s.what_was_done(step)
                 lines.append(f"{line} {done}" if done else line)
             elif kind == "order":
                 after = f"after {_step_name(prev)}" if prev is not None else "first"
-                lines.append(f"Different order: {name}, done {after} in this run.")
+                lines.append(f"Different order: {name}, done {after} in this transaction.")
             else:
-                lines.append(f"Skipped: {name} (done in {s.key_runs.get(key) or 0} of {m} runs).")
+                lines.append(f"Skipped: {name} (done in {s.key_runs.get(key) or 0} "
+                             f"of {m} transactions).")
     counts = Counter(_align_key(u) for u in s.units[run_index])
     for key, unit, _i in _first_occurrences(s.units[run_index]):
         if counts[key] > 1:
@@ -1124,20 +1150,20 @@ def _variation_lines(s, run_index) -> list[str]:
 
 def _write_variations(doc, s):
     doc.add_heading("4. Variations, rules and exceptions", level=1)
-    doc.add_heading("4.1 Differences between runs", level=2)
+    doc.add_heading("4.1 Differences between transactions", level=2)
     if not s.runs:
-        doc.add_paragraph("Runs were not marked in this recording, so there are "
-                          "no runs to compare.")
+        doc.add_paragraph("Transactions were not marked in this recording, so there "
+                          "are no transactions to compare.")
     elif s.implicit:
         # C16: one implicit run covers the session; only its repeats show.
-        doc.add_paragraph("Runs were not marked in this session, so there are "
-                          "no runs to compare.")
+        doc.add_paragraph("Transactions were not marked in this project, so there "
+                          "are no transactions to compare.")
         if s.pattern_index is not None:
             for line in _variation_lines(s, s.pattern_index):
                 doc.add_paragraph(line, style="List Bullet")
     elif s.pattern_index is None:
-        doc.add_paragraph("None of the recorded runs has steps, so the runs "
-                          "cannot be compared.")
+        doc.add_paragraph("None of the recorded transactions has steps, so the "
+                          "transactions cannot be compared.")
     else:
         same = []
         for i in range(len(s.runs)):
@@ -1146,14 +1172,15 @@ def _write_variations(doc, s):
                 if i != s.pattern_index:
                     same.append(s.run_label(i))
                 continue
-            label = s.run_label(i) + (" (the reference run)" if i == s.pattern_index else "")
+            label = s.run_label(i) + (" (the reference transaction)"
+                                      if i == s.pattern_index else "")
             doc.add_paragraph().add_run(label).bold = True
             for line in lines:
                 doc.add_paragraph(line, style="List Bullet")
         if len(s.runs) == 1:
-            doc.add_paragraph("Only one run was recorded.")
+            doc.add_paragraph("Only one transaction was recorded.")
         elif same:
-            doc.add_paragraph(f"No differences from the reference run: {_joined(same)}.")
+            doc.add_paragraph(f"No differences from the reference transaction: {_joined(same)}.")
     doc.add_heading("4.2 Business rules", level=2)
     _field_or_placeholder(doc, s.field("business_rules"),
                           "the business rules the process follows")
@@ -1207,7 +1234,7 @@ def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
 
 
 def _rekey_sentence(src, dst, n, runs) -> str:
-    often = "in every run" if n >= runs else f"in {n} of {runs} runs"
+    often = "in every transaction" if n >= runs else f"in {n} of {runs} transactions"
     if src[0] == dst[0]:
         return f"{src[0]} is typed in {src[1]} and again in {dst[1]} {often}."
     return f"{src[0]} ({src[1]}) is typed again as {dst[0]} ({dst[1]}) {often}."
@@ -1256,13 +1283,13 @@ def _write_data(doc, s):
 
 def _write_applications_and_time(doc, s):
     doc.add_heading("6. Applications and time", level=1)
-    doc.add_heading("6.1 Time per run", level=2)
+    doc.add_heading("6.1 Time per transaction", level=2)
     if not s.runs:
-        doc.add_paragraph("Runs were not marked in this recording, so there is "
-                          "no time per run.")
+        doc.add_paragraph("Transactions were not marked in this recording, so there "
+                          "is no time per transaction.")
     elif s.implicit:
-        doc.add_paragraph("Runs were not marked in this session, so there is "
-                          "no time per run.")
+        doc.add_paragraph("Transactions were not marked in this project, so there "
+                          "is no time per transaction.")
     else:
         rows = []
         for i, run in enumerate(s.runs):
@@ -1270,10 +1297,11 @@ def _write_applications_and_time(doc, s):
             rows.append((s.run_label(i), len(s.run_steps(i)),
                          # C16: a session without a recording measured no active time.
                          "Not recorded" if active is None else _fmt_ms(active),
-                         _fmt_ms(wall) if _num(wall) else "Not measured: the run was not ended"))
-        _table(doc, ("Run", "Steps", "Active time", "Elapsed time"), rows,
+                         _fmt_ms(wall) if _num(wall)
+                         else "Not measured: the transaction was not ended"))
+        _table(doc, ("Transaction", "Steps", "Active time", "Elapsed time"), rows,
                widths=(2.4, 0.8, 1.4, 1.4))
-        # AD-28: the runs are a walkthrough, not the day-to-day work.
+        # AD-28: the transactions are a walkthrough, not the day-to-day work.
         doc.add_paragraph(_WALKTHROUGH)
     doc.add_heading("6.2 Time in each application", level=2)
     units = s.run_units() if s.runs else s.steps
@@ -1290,8 +1318,8 @@ def _write_applications_and_time(doc, s):
             row["ms"] += ms
             row["timed"] = True
     if not per:
-        doc.add_paragraph("No steps have been added to this session yet." if not s.recorded
-                          else "No steps have been recorded for this session yet.")
+        doc.add_paragraph("No steps have been added to this project yet." if not s.recorded
+                          else "No steps have been recorded for this project yet.")
         return
     runs = len(s.runs)
 
@@ -1308,7 +1336,7 @@ def _write_applications_and_time(doc, s):
         # No step has a time (C16): the table leaves the time out.
         _table(doc, header, rows, widths=(1.3, 1.8, 2.9))
         return
-    _table(doc, header + ("Time per run" if runs and not s.implicit else "Time",),
+    _table(doc, header + ("Time per transaction" if runs and not s.implicit else "Time",),
            [r + (time_of(row),) for r, (_system, row) in zip(rows, ordered)],
            widths=(1.1, 1.6, 2.4, 0.9))
 
@@ -1345,7 +1373,7 @@ def _write_attachments(doc, s, number):
     if not s.attachments:
         return
     doc.add_heading(f"{number}. Attachments", level=1)
-    doc.add_paragraph("The files are in the session folder's attachments folder.")
+    doc.add_paragraph("The files are in the project folder's attachments folder.")
     _table(doc, ("Attachment", "File"),
            [(_attachment_label(a), _file_name(a.get("file"))) for a in s.attachments],
            widths=(3.0, 3.0))
