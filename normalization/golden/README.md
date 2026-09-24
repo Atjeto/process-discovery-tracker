@@ -15,8 +15,10 @@ A projection, not the full outputs: the full files change on every run
   after the collapse, interactions, runs, marker edits applied, vocabulary
   matches, steps and the steps per state);
 - the step count and the distinct `process_label` set;
-- the step map (`process_map_step.bpmn`): its task names, and its one start
-  and one end event.
+- the step map (`process_map_step.bpmn`): its task names, its tasks counted
+  by kind (contract C18: a recorded step is a user task, a step added by hand
+  a manual task; none is left a plain task), and its one start and one end
+  event, with the end's name (the Result's first line, else "End").
 
 Gateway and flow counts are left out on purpose. They come from pm4py's
 inductive miner, which CI installs unpinned while the app bundles its own

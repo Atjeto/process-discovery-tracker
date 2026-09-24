@@ -20,10 +20,19 @@ edges instead (step_flow.flow_edges, the rule the viewer's live map shares):
 an exclusive gateway after a step with several ways out and before a step
 with several ways in, each declared label the name of its flow
 (_flow_bpmn).
+
+Contract C18 draws the map the way BPM tools do, from what the session
+already holds: the main end event is named by the outcome (the Result, else
+"End") and each link to the end ends at an end event of its own, named by
+its `when`; a step added by hand is a manual task and a recorded step a user
+task; the analyst's notes on a step are a text annotation joined to its
+task, and the files attached to it data objects joined to it; each task
+takes its system's colour, with a legend that names them (_map_extras).
 """
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,7 +40,7 @@ from pm4py.objects.log.obj import Event, EventLog, Trace
 
 import step_flow
 from _dt import parse_ts as _parse_ts  # public re-export
-from step_context import step_duration_ms, step_sort_key
+from step_context import step_duration_ms, step_sort_key, step_system
 
 
 def _start_key(step: dict[str, Any]) -> tuple[int, float]:
@@ -195,6 +204,26 @@ def _analyst_description(step: dict[str, Any], context: Any) -> str:
     return desc if step.get("state") == "manually_authored" else ""
 
 
+def _pattern_case(anno: dict[str, Any]) -> Any:
+    """The case id of the reference transaction the analyst chose
+    (annotations.pattern_run), or None."""
+    chosen = anno.get("pattern_run")
+    return chosen.get("case_id") if isinstance(chosen, dict) else None
+
+
+def _node_steps(anno: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """{task label: its steps}: the visible steps of the runs grouped by map
+    node, those of the reference transaction first, then the others, each
+    part in time order (then `order`, C16)."""
+    pattern = _pattern_case(anno)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for s in sorted(_run_steps(anno), key=_start_key):
+        groups.setdefault(_step_label(s), []).append(s)
+    return {label: ([s for s in group if s.get("case_id") == pattern]
+                    + [s for s in group if s.get("case_id") != pattern])
+            for label, group in groups.items()}
+
+
 def task_documentation(anno: dict[str, Any], context: Any = None,
                        implicit_runs: Any = ()) -> dict[str, str]:
     """{task label: documentation} for the step map: the step's description
@@ -212,8 +241,7 @@ def task_documentation(anno: dict[str, Any], context: Any = None,
     steps = sorted(_run_steps(anno), key=_start_key)
     runs = len({s.get("case_id") for s in steps})
     implicit = set(implicit_runs or ())
-    chosen = anno.get("pattern_run")
-    pattern = chosen.get("case_id") if isinstance(chosen, dict) else None
+    pattern = _pattern_case(anno)
     groups: dict[str, list[dict[str, Any]]] = {}
     for s in steps:
         groups.setdefault(_step_label(s), []).append(s)
@@ -315,17 +343,24 @@ def _taken(n: int, runs: int) -> str:
 _FLOW_NAME_MAX = 48
 
 
+def _cut(text: str, limit: int) -> str:
+    """`text` when it holds at most `limit` characters, else cut after the
+    last whole word that fits in `limit` characters, with an ellipsis."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 1]
+    at = max(cut.rfind(" "), cut.rfind("\n"))
+    if at > 0:
+        cut = cut[:at]
+    return cut.rstrip(" ,;:.\n") + "…"
+
+
 def _flow_name(label: str) -> str:
     """A declared label as the map names its flow: one line, cut after the
     last whole word that fits in _FLOW_NAME_MAX characters, with an ellipsis.
-    The whole label is the flow's documentation and the PDD prints it."""
-    line = " ".join(label.split())
-    if len(line) <= _FLOW_NAME_MAX:
-        return line
-    cut = line[:_FLOW_NAME_MAX - 1]
-    if " " in cut:
-        cut = cut.rsplit(" ", 1)[0]
-    return cut.rstrip(" ,;:.") + "…"
+    The whole label is the flow's documentation and the PDD prints it. An
+    early end event (C18) and a data object are named the same way."""
+    return _cut(" ".join(label.split()), _FLOW_NAME_MAX)
 
 
 class _OrderedModel:
@@ -353,32 +388,71 @@ class _OrderedModel:
         return list(self._flows)
 
 
+def _arcs(edges: list[dict]) -> list[tuple[Any, Any, Any, dict]]:
+    """The step flow edges as the map's arcs, (from, to, label, edge).
+    Contract C18: an edge into the end that no transaction took and that a
+    link to the end declared is one arc per label: each link's `when` to an
+    end event of its own (the key (END, n)), "otherwise" (the path around a
+    last step that happens only under a condition) to the main end. Every
+    other edge is one arc, its labels joined as the edge's label."""
+    arcs: list[tuple[Any, Any, Any, dict]] = []
+    early = 0
+    for e in edges:
+        parts = e.get("labels") or []
+        if (e["to"] == step_flow.END and not e["observed"]
+                and any(p != step_flow.OTHERWISE for p in parts)):
+            for part in parts:
+                if part == step_flow.OTHERWISE:
+                    arcs.append((e["from"], step_flow.END, part, e))
+                else:
+                    arcs.append((e["from"], (step_flow.END, early), part, e))
+                    early += 1
+        else:
+            arcs.append((e["from"], e["to"], e["label"], e))
+    return arcs
+
+
 def _flow_bpmn(edges: list[dict], runs: int, count_runs: bool = True):
-    """(model, {id(flow): name}, {id(flow): documentation}) of the step flow
-    edges (contract C17, step_flow.flow_edges): a start event, one task per
-    node, one end event; an exclusive gateway after a node with several ways
-    out (a split) and before a node with several ways in (a join); each edge
-    one sequence flow from its source's split (else the source) to its
-    target's join (else the target). A flow is named by the edge's declared
-    label (_flow_name; a label cut for the map is whole in the flow's
-    documentation); an observed branch leaving a split without one says how
+    """(model, {id(flow): name}, {id(flow or end event): documentation},
+    {id(early end event)}) of the step flow edges (contract C17,
+    step_flow.flow_edges): a start event, one task per node, the main
+    end event and (C18) an end event for each link to the end (_arcs), named
+    by its `when` (_flow_name; the whole `when` its documentation when cut);
+    an exclusive gateway after a node with several ways out (a split) and
+    before a node with several ways in (a join); each arc one sequence flow
+    from its source's split (else the source) to its target's join (else the
+    target). A flow is named by the arc's declared label (_flow_name; a
+    label cut for the map is whole in the flow's documentation), except a
+    flow into an early end, which carries no name: its end event says the
+    `when` once (the viewer's live map keeps the label on its line into its
+    one End). An observed branch leaving a split without a label says how
     many of the `runs` transactions took it, unless `count_runs` is off (the
     implicit run of a session without a recording is not a marked
     transaction, C16)."""
     from pm4py.objects.bpmn.obj import BPMN
     model = _OrderedModel()
-    outs: dict[str, list[dict]] = {}
-    ins: dict[str, list[dict]] = {}
-    for e in edges:
-        outs.setdefault(e["from"], []).append(e)
-        ins.setdefault(e["to"], []).append(e)
-    nodes: dict[str, Any] = {}
-    for key in [step_flow.START] + [k for e in edges for k in (e["from"], e["to"])]:
+    arcs = _arcs(edges)
+    outs: dict[Any, list] = {}
+    ins: dict[Any, list] = {}
+    for arc in arcs:
+        outs.setdefault(arc[0], []).append(arc)
+        ins.setdefault(arc[1], []).append(arc)
+    names: dict[int, str] = {}
+    docs: dict[int, str] = {}
+    early: set[int] = set()
+    nodes: dict[Any, Any] = {}
+    for key in [step_flow.START] + [k for arc in arcs for k in (arc[0], arc[1])]:
         if key not in nodes:
             if key == step_flow.START:
                 node = BPMN.StartEvent(name="start")
             elif key == step_flow.END:
                 node = BPMN.EndEvent(name="end")
+            elif isinstance(key, tuple):
+                when = ins[key][0][2]
+                node = BPMN.EndEvent(name=_flow_name(when))
+                early.add(id(node))
+                if node.get_name() != when:
+                    docs[id(node)] = when
             else:
                 node = BPMN.Task(name=key)
             nodes[key] = model.add_node(node)
@@ -394,18 +468,181 @@ def _flow_bpmn(edges: list[dict], runs: int, count_runs: bool = True):
                 gateway_direction=BPMN.Gateway.Direction.DIVERGING))
             model.add_flow(BPMN.Flow(node, split))
             exit_[key] = split
-    names: dict[int, str] = {}
-    docs: dict[int, str] = {}
-    for e in edges:
-        flow = model.add_flow(BPMN.Flow(exit_[e["from"]], entry[e["to"]]))
-        name = _flow_name(e["label"]) if e["label"] else ""
-        if name and name != e["label"]:
-            docs[id(flow)] = e["label"]
-        if not name and e["observed"] and count_runs and len(outs[e["from"]]) > 1:
+    for source, target, label, e in arcs:
+        flow = model.add_flow(BPMN.Flow(exit_[source], entry[target]))
+        name = _flow_name(label) if label and not isinstance(target, tuple) else ""
+        if name and name != label:
+            docs[id(flow)] = label
+        if not name and e["observed"] and count_runs and len(outs[source]) > 1:
             name = _taken(e["transactions"], runs)
         if name:
             names[id(flow)] = name
-    return model, names, docs
+    return model, names, docs, early
+
+
+# ---- contract C18: what the map shows beside its tasks -------------------------
+
+# The main end's name while the document's Result is empty.
+_MAIN_END = "End"
+# A fill and a stroke per system, in the order the systems were first used
+# (_systems_in_order): light fills, dark strokes. bpmn-js writes a task's
+# name in its stroke colour, 6.9:1 or more on its fill, so a coloured task
+# stays legible in the PDD's print. Each colour is named for the legend.
+_PALETTE = (("blue", "#bfdbfe", "#1e3a8a"), ("orange", "#fed7aa", "#7c2d12"),
+            ("green", "#bbf7d0", "#14532d"), ("purple", "#ddd6fe", "#4c1d95"),
+            ("red", "#fecaca", "#7f1d1d"), ("teal", "#99f6e4", "#134e4a"),
+            ("pink", "#fbcfe8", "#831843"), ("yellow", "#fef08a", "#713f12"),
+            ("grey", "#e5e7eb", "#374151"))
+_LEGEND_TITLE = "Colour by system"
+_UNCOLOURED = "no colour"
+# The longest text a note shows on the map (about five lines of the note,
+# mining._NOTE_W wide); the whole notes are the annotation's documentation.
+_NOTE_MAX = 90
+_ID_BAD = re.compile(r"[^A-Za-z0-9_\-]")
+
+
+def _hand_added(step: dict[str, Any]) -> bool:
+    """True for a step the analyst added by hand: manually authored, with no
+    recorded interaction."""
+    evidence = step.get("evidence")
+    ids = evidence.get("interaction_event_ids") if isinstance(evidence, dict) else None
+    return step.get("state") == "manually_authored" and not ids
+
+
+def _system_of(step: dict[str, Any], context: Any) -> str:
+    """A step's system as its task's documentation names it
+    (StepContext.where); without a context, the one the analyst set (C16)."""
+    return context.where(step)[0] if context is not None else step_system(step)
+
+
+def _systems_in_order(anno: dict[str, Any], run_order: Any,
+                      node_system: dict[str, str]) -> list[str]:
+    """The systems of the map's tasks in the order the reference transaction,
+    then the others (in the viewer's order), first used them: the order the
+    PDD lists the systems of the process in."""
+    pattern = _pattern_case(anno)
+    transactions = sorted(_transactions(anno, run_order),
+                          key=lambda t: 0 if any(s.get("case_id") == pattern for s in t) else 1)
+    seen: dict[str, None] = {}
+    for steps in transactions:
+        for s in sorted(steps, key=_start_key):
+            system = node_system.get(_step_label(s))
+            if system:
+                seen.setdefault(system, None)
+    return list(seen)
+
+
+def _notes_of(anno: dict[str, Any], steps: list[dict[str, Any]]) -> str:
+    """The analyst's notes on these steps (analyst_notes with their step_id,
+    C16) in the steps' order, then the list's: one line each, its whitespace
+    collapsed, a note written twice once."""
+    by_step: dict[str, list[str]] = {}
+    for note in anno.get("analyst_notes") or []:
+        if not (isinstance(note, dict) and isinstance(note.get("step_id"), str)
+                and isinstance(note.get("text"), str)):
+            continue
+        text = " ".join(note["text"].split())
+        if text:
+            by_step.setdefault(note["step_id"], []).append(text)
+    texts: list[str] = []
+    for s in steps:
+        for text in by_step.get(s.get("step_id"), []):
+            if text not in texts:
+                texts.append(text)
+    return "\n".join(texts)
+
+
+def _file_name(value: Any) -> str:
+    """The file name of an attachment's `file` without any folder part, or ""
+    when it is not a usable name (the PDD's rule, C16)."""
+    if not isinstance(value, str):
+        return ""
+    name = re.split(r"[\\/]", value.strip())[-1]
+    return "" if name in ("", ".", "..") else name
+
+
+def _data_objects(anno: dict[str, Any], steps: list[dict[str, Any]],
+                  used: set[str]) -> list[tuple[str, str, str]]:
+    """[(key, name, documentation)] of the files attached to these steps
+    (attachments with their step_id, C16), in the steps' order, then the
+    list's. The name is the label, else the file name (_flow_name); the
+    documentation is the whole label when the name was cut, then the file's
+    place in the project folder. The key is the attachment's id, fit for an
+    XML id and unique (`used`)."""
+    by_step: dict[str, list[dict]] = {}
+    for att in anno.get("attachments") or []:
+        if isinstance(att, dict) and isinstance(att.get("step_id"), str) and _file_name(att.get("file")):
+            by_step.setdefault(att["step_id"], []).append(att)
+    out = []
+    for s in steps:
+        for att in by_step.get(s.get("step_id"), []):
+            file = _file_name(att.get("file"))
+            label = att.get("label")
+            label = " ".join(label.split()) if isinstance(label, str) else ""
+            name = _flow_name(label or file)
+            doc = f"attachments/{file}"
+            if label and name != label:
+                doc = f"{label}\n{doc}"
+            key = _ID_BAD.sub("_", str(att.get("id") or ""))[:40] or "file"
+            base, n = key, 1
+            while key in used:
+                n += 1
+                key = f"{base}_{n}"
+            used.add(key)
+            out.append((key, name, doc))
+    return out
+
+
+def _map_extras(anno: dict[str, Any], model: Any, context: Any,
+                run_order: Any) -> dict[str, Any]:
+    """What contract C18 puts beside the map's tasks, as mining.export_bpmn
+    takes it (keyed by a task's id()): its kind (a manual task when every
+    step it stands for was added by hand, else a user task); its system's
+    fill and stroke (_PALETTE, the systems in _systems_in_order; a system
+    past the palette's end keeps the default look); its steps' notes (one
+    text annotation, cut at _NOTE_MAX characters, whole in its
+    documentation when cut); the files attached to its steps (a data object
+    each, _data_objects); and the legend naming each system's colour. A
+    task's system is the one its documentation names (its reference
+    transaction's step first). When one label is on several tasks (a
+    transaction that came back to a step), the first holds its notes and
+    files."""
+    from pm4py.objects.bpmn.obj import BPMN
+    by_label = _node_steps(anno)
+    node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
+    systems = _systems_in_order(anno, run_order, node_system)
+    palette = dict(zip(systems, _PALETTE))
+    task_tags: dict[int, str] = {}
+    colours: dict[int, tuple[str, str]] = {}
+    notes: dict[int, tuple[str, str | None]] = {}
+    data: dict[int, list[tuple[str, str, str]]] = {}
+    done: set[str] = set()
+    used: set[str] = set()
+    for node in model.get_nodes():
+        label = node.get_name() if isinstance(node, BPMN.Activity) else None
+        if label not in by_label:
+            continue
+        steps = by_label[label]
+        task_tags[id(node)] = "manualTask" if all(_hand_added(s) for s in steps) else "userTask"
+        if node_system[label] in palette:
+            colours[id(node)] = palette[node_system[label]][1:]
+        if label in done:
+            continue
+        done.add(label)
+        text = _notes_of(anno, steps)
+        if text:
+            shown = _cut(text, _NOTE_MAX)
+            notes[id(node)] = (shown, text if shown != text else None)
+        objects = _data_objects(anno, steps, used)
+        if objects:
+            data[id(node)] = objects
+    legend = None
+    if systems:
+        legend = "\n".join([_LEGEND_TITLE] + [
+            f"{system}: {palette[system][0] if system in palette else _UNCOLOURED}"
+            for system in systems])
+    return {"task_tags": task_tags, "colours": colours, "notes": notes, "data": data,
+            "legend": legend}
 
 
 def write_observed_bpmn(
@@ -437,9 +674,12 @@ def write_observed_bpmn(
     What a process manager moving the map into a BPMN tool gets besides the
     shapes: each task carries its step's description, system, screen, run
     count and average time as <bpmn:documentation> (task_documentation); the
-    start and end events are named from the document's Trigger and Result
-    (annotations.document, the first line of each), and are unnamed while
-    those are empty; each branch is named "N of M transactions" (branch_names).
+    start event is named from the first line of the document's Trigger
+    (annotations.document; unnamed while it is empty) and the main end event
+    from the first line of its Result, else "End" (C18); each branch is
+    named "N of M transactions" (branch_names). Contract C18 adds the task
+    kinds, the systems' colours and their legend, the notes and the data
+    objects (_map_extras).
     `context` (a step_context.StepContext) supplies the system and screen.
     `implicit_runs` holds the case id of a session's implicit run (C16),
     whose steps the documentation does not count in runs.
@@ -453,7 +693,8 @@ def write_observed_bpmn(
     viewer's live map draws, with the declared labels as flow names and room
     for them (mining.export_bpmn label_room). `run_order` lists the case
     ids in the viewer's transaction order, the order the labels of one flow
-    are joined in.
+    are joined in. Each link to the end ends at an end event of its own,
+    named by its `when` (C18, _arcs).
     """
     import mining  # local import: PM4Py is only needed when --mine is on
     from pm4py.objects.bpmn.obj import BPMN
@@ -466,11 +707,12 @@ def write_observed_bpmn(
     declared = step_flow.changes_map(edges)
     flow_names = None
     documentation: dict[int, str] = {}
+    early_ends: set[int] = set()
     if declared:
         implicit = set(implicit_runs or ())
         marked = not {s.get("case_id") for t in transactions for s in t} <= implicit
-        bpmn, flow_names, documentation = _flow_bpmn(edges, len(transactions),
-                                                     count_runs=marked)
+        bpmn, flow_names, documentation, early_ends = _flow_bpmn(
+            edges, len(transactions), count_runs=marked)
     elif real_case_count(anno) <= 1:
         # One run: one observed path. Linearise its steps in time order
         # instead of mining.
@@ -478,18 +720,20 @@ def write_observed_bpmn(
     else:
         bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
     trigger = _first_line(_document_field(anno, "trigger"))
-    result = _first_line(_document_field(anno, "result"))
+    result = _first_line(_document_field(anno, "result")) or _MAIN_END
     docs_by_label = task_documentation(anno, context, implicit_runs)
     for node in bpmn.get_nodes():
         if isinstance(node, BPMN.StartEvent):
             node.set_name(trigger)
         elif isinstance(node, BPMN.EndEvent):
-            node.set_name(result)
+            if id(node) not in early_ends:
+                node.set_name(result)
         elif isinstance(node, BPMN.Activity) and node.get_name() in docs_by_label:
             documentation[id(node)] = docs_by_label[node.get_name()]
     if flow_names is None:
         traces = [[e["concept:name"] for e in trace] for trace in log]
         flow_names = branch_names(bpmn, traces)
     mining.export_bpmn(bpmn, out_path, documentation=documentation,
-                       flow_names=flow_names, label_room=declared)
+                       flow_names=flow_names, label_room=declared,
+                       **_map_extras(anno, bpmn, context, run_order))
     return True

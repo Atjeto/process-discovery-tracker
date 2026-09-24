@@ -219,6 +219,10 @@ def _restore_root_logging():
 
 # ---- reading the outputs back --------------------------------------------------
 
+# Contract C18: a recorded step is a user task, a step added by hand a manual task.
+_TASKS = tuple(f"{_BPMN}{kind}" for kind in ("task", "userTask", "manualTask"))
+
+
 def _chain(bpmn_path: Path) -> list[str]:
     """The task names met walking a linear step BPMN from its start event."""
     process = ET.parse(bpmn_path).getroot().find(f"{_BPMN}process")
@@ -237,7 +241,7 @@ def _chain(bpmn_path: Path) -> list[str]:
         if not nxt:
             break
         at = nxt[0]
-        if nodes[at].tag == f"{_BPMN}task":
+        if nodes[at].tag in _TASKS:
             names.append(nodes[at].get("name"))
     assert nodes[at].tag == f"{_BPMN}endEvent"
     return names
@@ -245,13 +249,13 @@ def _chain(bpmn_path: Path) -> list[str]:
 
 def _bpmn_tasks(bpmn_path: Path) -> dict[str, ET.Element]:
     process = ET.parse(bpmn_path).getroot().find(f"{_BPMN}process")
-    return {el.get("name"): el for el in process if el.tag == f"{_BPMN}task"}
+    return {el.get("name"): el for el in process if el.tag in _TASKS}
 
 
 def _reaches(bpmn_path: Path, a: str, b: str) -> bool:
     """True when a path of sequence flows leads from task `a` to task `b`."""
     process = ET.parse(bpmn_path).getroot().find(f"{_BPMN}process")
-    ids = {el.get("name"): el.get("id") for el in process if el.tag == f"{_BPMN}task"}
+    ids = {el.get("name"): el.get("id") for el in process if el.tag in _TASKS}
     adj: dict[str, list[str]] = {}
     for el in process:
         if el.tag == f"{_BPMN}sequenceFlow":
@@ -445,6 +449,8 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
     bpmn = session / "process_map_step.bpmn"
     assert _chain(bpmn) == order
     tasks = _bpmn_tasks(bpmn)
+    # C18: every step of a blank project was added by hand.
+    assert {el.tag for el in tasks.values()} == {f"{_BPMN}manualTask"}
     assert tasks["Log it in SAP"].find(f"{_BPMN}documentation").text == "SAP."
     assert tasks["Receive the request"].find(f"{_BPMN}documentation") is None
 

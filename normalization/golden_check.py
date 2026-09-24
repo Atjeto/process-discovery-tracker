@@ -6,9 +6,9 @@ unit suites can't be — it catches "the map/segmentation silently changed" acro
 whole session, which is exactly the class of bug that ships past green unit tests.
 
 Why a projection (not the full artifacts): a curated set of stable scalars + the
-distinct process-label set + the step-level BPMN's tasks and start/end events diffs
-cleanly and survives benign churn; full-artifact verbatim drifts on every timestamp,
-and pixel diffs are theme-fragile.
+distinct process-label set + the step-level BPMN's tasks (by kind) and start/end
+events (the end's name too) diffs cleanly and survives benign churn; full-artifact
+verbatim drifts on every timestamp, and pixel diffs are theme-fragile.
 (See PDT-ROADMAP-CODEBASE-FIT.md §11.)
 
 The reference input is copied to a temp dir and normalized THERE, so the committed
@@ -77,12 +77,16 @@ _BPMN_NS = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
 
 # The step BPMN elements whose count the golden pins. Only what the recorded
 # steps decide is pinned: the tasks (one per distinct step label, their names
-# pinned too) and the one start and one end event. Gateway and sequence-flow
-# counts are left out on purpose: they come from pm4py's inductive miner,
-# which CI installs unpinned (2.7.11 or newer) while the app bundles 2.7.22.2,
-# so they may move with the miner version. The map's shape is pinned by the
-# viewer e2e connectivity check instead.
-_PINNED_BPMN_ELEMENTS = ("task", "startEvent", "endEvent")
+# pinned too), counted by kind (contract C18: a recorded step is a user task, a
+# step added by hand a manual task, so a plain task pins that none is left
+# untyped), and the one start and one end event, with the end's name (C18: the
+# Result's first line, else "End"). Gateway and sequence-flow counts are left
+# out on purpose: they come from pm4py's inductive miner, which CI installs
+# unpinned (2.7.11 or newer) while the app bundles 2.7.22.2, so they may move
+# with the miner version. The map's shape is pinned by the viewer e2e
+# connectivity check instead.
+_TASK_KINDS = ("task", "userTask", "manualTask")
+_PINNED_BPMN_ELEMENTS = _TASK_KINDS + ("startEvent", "endEvent")
 
 
 def _session_src(name: str) -> str:
@@ -135,24 +139,33 @@ def build_projection(session_name: str) -> dict:
 
 def _step_bpmn_projection(path: str) -> dict | None:
     """The pinned part of the step BPMN (see _PINNED_BPMN_ELEMENTS): how many
-    tasks, start events and end events its process holds, and the sorted task
-    names; None when the file is missing or unreadable. No ids or layout: pm4py
-    hands back the mined nodes in a run-dependent order, so element ids and
-    coordinates change from run to run."""
+    tasks of each kind, start events and end events its process holds, the
+    sorted task names and the sorted end event names; None when the file is
+    missing or unreadable. No ids or layout: pm4py hands back the mined nodes
+    in a run-dependent order, so element ids and coordinates change from run
+    to run."""
     try:
         root = ET.parse(path).getroot()
     except (OSError, ET.ParseError):
         return None
     counts = dict.fromkeys(_PINNED_BPMN_ELEMENTS, 0)
     task_names: list[str] = []
+    end_names: list[str] = []
     for process in root.findall(f"{_BPMN_NS}process"):
         for element in process:
             tag = element.tag.split("}", 1)[-1]
             if tag in counts:
                 counts[tag] += 1
-            if tag == "task":
+            if tag in _TASK_KINDS:
                 task_names.append(element.get("name") or "")
-    return {**counts, "task_names": sorted(task_names)}
+            elif tag == "endEvent":
+                end_names.append(element.get("name") or "")
+    return {**counts, "task_names": sorted(task_names), "end_names": sorted(end_names)}
+
+
+def _task_count(bpmn: dict) -> int:
+    """How many tasks of any kind a step BPMN projection counts."""
+    return sum(bpmn.get(kind, 0) for kind in _TASK_KINDS)
 
 
 def _read_json(path: str):
@@ -210,7 +223,7 @@ def check_all(update: bool = False) -> int:
                 json.dump(proj, f, indent=2, sort_keys=True)
                 f.write("\n")
             print(f"[golden] wrote {name}: {proj['meta']['case_count']} cases, "
-                  f"{proj['steps']['count']} steps, {bpmn.get('task', 0)} step BPMN tasks")
+                  f"{proj['steps']['count']} steps, {_task_count(bpmn)} step BPMN tasks")
             continue
         golden = load_golden(name)
         if golden is None:
@@ -225,7 +238,7 @@ def check_all(update: bool = False) -> int:
                 print(f"    {m}")
         else:
             print(f"[golden] OK {name}: {proj['meta']['case_count']} cases, "
-                  f"{proj['steps']['count']} steps, {bpmn.get('task', 0)} step BPMN tasks")
+                  f"{proj['steps']['count']} steps, {_task_count(bpmn)} step BPMN tasks")
     return 1 if failures else 0
 
 

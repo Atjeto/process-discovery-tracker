@@ -19,8 +19,12 @@
   "session": "sess-2026-0512-1410",
   "step_bpmn": {
     "endEvent": 1,
+    "end_names": [
+      "End"
+    ],
+    "manualTask": 0,
     "startEvent": 1,
-    "task": 7,
+    "task": 0,
     "task_names": [
       "Excel - Order Tracking.xlsx: Save workbook",
       "Outlook - Order confirmation: Send",
@@ -29,7 +33,8 @@
       "Salesforce - Order: Save order",
       "va01: Check document",
       "va01: Create sales order"
-    ]
+    ],
+    "userTask": 7
   },
   "steps": {
     "count": 20,

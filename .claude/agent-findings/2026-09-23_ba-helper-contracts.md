@@ -424,8 +424,9 @@ map editor. The default after a step is always the next step in its transaction.
 - **Step BPMN** (process_map_step.bpmn, so also the As-Is copy made from it and the PDD's map
   image): end events named by outcome: the main end takes the first line of
   `document.result` (else "End"); each C17 link to "end" gets its own end event named from its
-  `when` (for example "Order rejected" from "the order is rejected": the analyst's words, trimmed,
-  not rewritten). The analyst's notes on a step (`analyst_notes` with that `step_id`) become one
+  `when` (the analyst's words, trimmed, not rewritten: "the order is rejected" names its end
+  "the order is rejected"; M-P corrected the earlier example, which rewrote them). The analyst's
+  notes on a step (`analyst_notes` with that `step_id`) become one
   `textAnnotation` per step, joined by an `association` to its task. Attachments on a step become
   a `dataObjectReference` named by the attachment's label, joined by a data association to its
   task. Each task gets a fill and stroke per system through the bpmn-js colour attributes
@@ -433,6 +434,32 @@ map editor. The default after a step is always the next step in its transaction.
   with one legend `textAnnotation` listing the systems. Steps added by hand are
   `bpmn:manualTask`, recorded steps `bpmn:userTask`. Task names stay the step names. Diagram
   interchange covers every new element and the layout keeps them clear of boxes and lines.
+  Settled by M-P (`bpmn_observed._map_extras`, `mining.export_bpmn`): a task is a manual task when
+  every step it stands for is manually authored with no recorded interaction, else a user task;
+  its system is the one its documentation names (the reference transaction's step first). Only an
+  edge to the end that no transaction took is split into its own ends, one per `when` (its
+  "otherwise" part stays on the main end); an end the transactions reached stays the main end, and
+  a link without a `when` ends there too. An early end is named like a flow (cut after a whole word
+  within 48 characters, whole in its documentation). The flow into an early end carries no name,
+  so the end event says the `when` once (coordinator's call; a BPMN rendering rule only: the live
+  map keeps its label on the line into its one End, and C17 and flow-links-golden.json do not
+  change). Notes: the
+  step's notes in order, one line each, cut at 90 characters, whole in the annotation's
+  documentation; a note on a moment is on no task; a label on several tasks (a chain that comes
+  back to a step) shows its notes and files on the first. Attachments: `DataObjectReference_<id>`
+  and `DataObject_<id>` (the attachment id, so the viewer opens the file), named by the label else
+  the file name, documented with `attachments/<file>`; each joined by a
+  `bpmn:dataInputAssociation` inside the task (source the reference, target a placeholder
+  property, as bpmn-js writes it). Palette in system order (the PDD's order of the systems): blue,
+  orange, green, purple, red, teal, pink, yellow, grey (light fills, dark strokes; bpmn-js writes
+  the task's name in its stroke colour, 6.9:1 or more on the fill); a tenth system and later keep
+  the default look and read "no colour" in the legend, `TextAnnotation_legend`, whose first line
+  is "Colour by system". Layout: a note
+  above its task level with its left side, the association rising into the bracket's hook; the data
+  objects under it; the events' names placed 3 px under them (an end event's circle reaches 2 px
+  past its box); the legend inside the map where there is room, else beside or under it,
+  whichever prints larger. The mined map keeps each branch name's fixed place unless something
+  drawn is there.
 - **The As-Is map in the viewer is interactive** (the illustrated map was dropped: the links
   replace it): the chosen As-Is copy renders with bpmn-js, not as a flat image, and a click on a
   task opens the step panel for the step it stands for (matched by the map's node rule on the

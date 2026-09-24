@@ -112,12 +112,14 @@ def flow_edges(transactions: Any) -> list[dict]:
     """The step map's edges (the rule in the module docstring) of
     `transactions`, a list of step lists in transaction order.
 
-    Each edge is {"from", "to", "label", "observed", "transactions"}: the
-    ends are nodes, START or END; label is the declared text (labels on one
-    edge joined with " or ") or None; observed is True when at least one
-    transaction took the edge; transactions is how many did. The observed
-    edges come first, in transaction order, then the declared ones in step
-    order."""
+    Each edge is {"from", "to", "label", "labels", "observed",
+    "transactions"}: the ends are nodes, START or END; label is the declared
+    text (labels on one edge joined with " or ") or None; labels is the same
+    texts one by one, in that order ([] when none: the step BPMN gives each
+    link to the end its own end event, contract C18); observed is True when
+    at least one transaction took the edge; transactions is how many did.
+    The observed edges come first, in transaction order, then the declared
+    ones in step order."""
     runs = [v for v in (_visits(steps) for steps in transactions or []) if v]
     node_by_id: dict[str, str] = {}
     conditions: dict[str, list[str]] = {}
@@ -158,7 +160,7 @@ def flow_edges(transactions: Any) -> list[dict]:
                     if target is not None:
                         add(node, target, when or None)
     return [{"from": e["from"], "to": e["to"],
-             "label": " or ".join(e["labels"]) or None,
+             "label": " or ".join(e["labels"]) or None, "labels": list(e["labels"]),
              "observed": bool(e["taken"]), "transactions": len(e["taken"])}
             for e in edges.values()]
 

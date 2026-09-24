@@ -19,8 +19,12 @@
   "session": "sess-2026-0514-0900",
   "step_bpmn": {
     "endEvent": 1,
+    "end_names": [
+      "End"
+    ],
+    "manualTask": 0,
     "startEvent": 1,
-    "task": 8,
+    "task": 0,
     "task_names": [
       "Excel - Order Tracking.xlsx: Save workbook",
       "Notepad - Internal mappings.txt",
@@ -30,7 +34,8 @@
       "Salesforce - Order: Save order",
       "va01: Check document",
       "va01: Create sales order"
-    ]
+    ],
+    "userTask": 8
   },
   "steps": {
     "count": 30,

@@ -324,7 +324,7 @@ prints each non-empty field in its place:
 | `title` | The document's title and Document control's "Process" |
 | `purpose`, `scope` | 2.1 Purpose, 2.2 Scope |
 | `trigger` | 2.3 Trigger: what starts the process. Its first line also names the step map's start event |
-| `result` | 2.4 Result: what the process has produced when it ends. Its first line also names the step map's end event |
+| `result` | 2.4 Result: what the process has produced when it ends. Its first line also names the step map's main end event ("End" while it is empty; C18) |
 | `contacts` | 2.5 Key contacts |
 | `business_rules` | 4.2 Business rules |
 | `exceptions` | 4.3 Exceptions, the application errors included |
@@ -370,11 +370,14 @@ analyst pins to a step or a moment:
 ```
 
 A note shows where its step or moment shows (the step pane, the timeline,
-the panel). Notes are context in the viewer: the PDD does not print them
-(the document's own Notes field, `document.notes`, is printed). The key is
-not `notes`: that one holds the product edition's Flow notes (see "Notes and
-marker edits"). Removing a note deletes its entry. The pipeline never writes
-this key and round-trips it untouched.
+the panel). Notes are context in the viewer: the PDD's text does not print
+them (the document's own Notes field, `document.notes`, is printed). The
+step map (`process_map_step.bpmn`, so also its As-Is copy and the PDD's
+picture of it) shows the notes on a step's task as one text annotation
+joined to the task (contract C18); a note on a moment is on no task. The key
+is not `notes`: that one holds the product edition's Flow notes (see "Notes
+and marker edits"). Removing a note deletes its entry. The pipeline never
+writes this key and round-trips it untouched.
 
 **`attachments`** *(array; contract C16, viewer-written)*: files the
 analyst attached to the session or to a step (an example email, an input
@@ -393,6 +396,9 @@ spreadsheet, an SOP, a form):
   "Attachments", and names a step's attachments by label under that step
   ("Attachments: Example order email."); an empty label prints the file
   name. Nothing is embedded.
+- The step map shows each attachment on a step as a data object joined to
+  the step's task (contract C18), named by its label (else its file name);
+  its id is `DataObjectReference_<attachment id>`.
 - Removing one deletes its entry and its copied file. The pipeline never
   writes this key and round-trips it untouched.
 
@@ -652,7 +658,7 @@ other change to a draft does.
   by hand, or to correct a recorded one). It wins over the system derived
   from the step's interactions (C14) in the PDD (the step's line, the
   systems of the process, the data table, Applications and time) and in the
-  step map's task documentation; the screen stays derived.
+  step map's task documentation and colour (C18); the screen stays derived.
 - **`pdd_screenshot`**: the one screenshot the PDD prints under the step: a
   recorder screenshot's session-relative path (one of `screenshot_refs`), or
   the `id` of an entry of `analyst_screenshots`. Absent (or naming a file
@@ -677,7 +683,8 @@ two viewer-written keys, both optional, in any state:
   step's map node in every transaction where it appears.
 - **`links`**: `[{ "to": <step_id> | "end", "when": <string> }]`. After the
   step, when `when` holds, the process goes to that step (an earlier one is
-  a loop back, a later one a skip ahead) or ends. A link never points at its
+  a loop back, a later one a skip ahead) or ends (on the step map at an end
+  event of its own, named by the `when`: C18). A link never points at its
   own step. A link whose target is hidden or removed is dropped by the
   viewer; the pipeline ignores one it finds.
 
@@ -1266,7 +1273,7 @@ range: they have no time to measure.
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
-| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. When the analyst has set the flow on steps (C17) it is drawn from the step flow edges instead: an exclusive gateway after a step with several ways out and before a step with several ways in, each condition the name of its flow (a long one cut after a whole word within 48 characters, and whole in the flow's documentation), loops and early ends included, the names placed clear of the boxes, lines and other names. Each task's documentation carries its description, system, screen, run count and average time; the start and end events take the first line of `document.trigger` and `document.result`; each branch without a declared name says "N of M transactions" (C15; not counted in the implicit run of a session without a recording). "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
+| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. When the analyst has set the flow on steps (C17) it is drawn from the step flow edges instead: an exclusive gateway after a step with several ways out and before a step with several ways in, each condition the name of its flow (a long one cut after a whole word within 48 characters, and whole in the flow's documentation), loops and early ends included, the names placed clear of the boxes, lines and other names. Each task's documentation carries its description, system, screen, run count and average time; the start event takes the first line of `document.trigger` (unnamed while it is empty) and the main end event the first line of `document.result`, else "End"; each branch without a declared name says "N of M transactions" (C15; not counted in the implicit run of a session without a recording). Contract C18: each link to the end ends at an end event of its own, named by its `when` (cut like a flow name, whole in its documentation; an end the transactions reached stays the main end); a task is a `manualTask` when every step it stands for was added by hand (manually authored, no recorded interaction), else a `userTask`; its system's colour is written as bpmn-js's `bioc:fill` and `bioc:stroke` (light fills, dark strokes, from a fixed palette of nine named colours, in the order the reference transaction, then the others, first used the systems), with one text annotation, `TextAnnotation_legend`, naming each system's colour ("SAP: orange"); the notes on its steps are one text annotation above it, joined by an association (cut at 90 characters after a whole word, whole in its documentation); the files attached to its steps are data objects under it (`DataObjectReference_<attachment id>`, named by the label, else the file name, documented with `attachments/<file>`), each joined by a data input association. Every element has its place on the diagram (the events' names too), clear of the boxes, lines and names. "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
