@@ -132,6 +132,16 @@ one deliberate deletion, one git mv rename) and C untouched. Both resumed with
 their inventories. RULE (refines BH9): classify status codes (M, D, R, ??) before
 parse-checking; a D or the old side of an R is not a broken file.
 
+### BH12: CI e2e went red for two merges and nobody looked until later (coordinator)
+From the V3-P merge, CI's e2e failed at one smoke's launch ("electronApplication.evaluate:
+Execution context was destroyed") while every smoke passed locally at both sizes; the
+coordinator pushed two more merges before checking `gh run list`. It could not be
+reproduced locally (three map-slim runs at 1024x720). Correction: the harness now logs
+the viewer process's exit and last output on a failed launch and retries once; the next
+CI run passed without needing the retry, so the failure is intermittent and the next one
+will name its cause. RULE (the restart point's CI lesson, again): check CI after every
+push to master before the next merge, not at the end of the night.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
