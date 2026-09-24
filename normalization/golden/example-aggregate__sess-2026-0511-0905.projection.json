@@ -24,7 +24,7 @@
     ],
     "manualTask": 0,
     "startEvent": 1,
-    "task": 0,
+    "task": 9,
     "task_names": [
       "Excel - Order Tracking.xlsx: Save workbook",
       "Outlook - Order confirmation: Send",
@@ -36,7 +36,7 @@
       "va01: Check document",
       "va01: Create sales order"
     ],
-    "userTask": 9
+    "userTask": 0
   },
   "steps": {
     "count": 30,

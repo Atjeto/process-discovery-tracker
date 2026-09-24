@@ -24,10 +24,13 @@ with several ways in, each declared label the name of its flow
 Contract C18 draws the map the way BPM tools do, from what the session
 already holds: the main end event is named by the outcome (the Result, else
 "End") and each link to the end ends at an end event of its own, named by
-its `when`; a step added by hand is a manual task and a recorded step a user
-task; the analyst's notes on a step are a text annotation joined to its
-task, and the files attached to it data objects joined to it; each task
-takes its system's colour, with a legend that names them (_map_extras).
+its `when`; a step done in a system (recorded, or added by hand with its
+system set) is a plain task and a step done outside every system a manual
+task, the hand marker (C18 as lane CL amended it: the same person marker on
+every box said nothing); the analyst's notes on a step are a text annotation
+joined to its task, and the files attached to it data objects joined to it;
+each task takes its system's colour, with a legend that names them and, where
+the map has a manual task, what the hand means (_map_extras).
 
 Contract C19 splits a process into sub-processes: every map of
 sub_process_maps.map_tree is a plane of the one file. A sub-process node is
@@ -515,6 +518,8 @@ _PALETTE = (("blue", "#bfdbfe", "#1e3a8a"), ("orange", "#fed7aa", "#7c2d12"),
             ("grey", "#e5e7eb", "#374151"))
 _LEGEND_TITLE = "Colour by system"
 _UNCOLOURED = "no colour"
+# The legend's last line where its map has a manual task (lane CL).
+_LEGEND_MANUAL = "Hand icon: done outside the systems"
 # The longest text a note shows on the map (about five lines of the note,
 # mining._NOTE_W wide); the whole notes are the annotation's documentation.
 _NOTE_MAX = 90
@@ -527,6 +532,17 @@ def _hand_added(step: dict[str, Any]) -> bool:
     evidence = step.get("evidence")
     ids = evidence.get("interaction_event_ids") if isinstance(evidence, dict) else None
     return step.get("state") == "manually_authored" and not ids
+
+
+def _outside_systems(step: dict[str, Any], context: Any) -> bool:
+    """True for a step done outside every system: added by hand, with no
+    recorded interaction and no system (none set by the analyst, none
+    derived). Its task is a manual task, BPMN's hand marker; a step done in a
+    system, recorded or added by hand with its system set, is a plain task
+    (C18 as lane CL amended it). A sub-process is never one: it is drawn as
+    a collapsed sub-process (C19)."""
+    return (_hand_added(step) and not isinstance(step.get("sub_steps"), list)
+            and not _system_of(step, context))
 
 
 def _system_of(step: dict[str, Any], context: Any) -> str:
@@ -618,12 +634,14 @@ def _map_extras(anno: dict[str, Any], model: Any, context: Any,
                 used: set | None = None) -> dict[str, Any]:
     """What contract C18 puts beside the map's tasks, as mining.export_bpmn
     takes it (keyed by a task's id()): its kind (a manual task when every
-    step it stands for was added by hand, else a user task); its system's
-    fill and stroke (_PALETTE, the systems in _systems_in_order; a system
-    past the palette's end keeps the default look); its steps' notes (one
-    text annotation, cut at _NOTE_MAX characters, whole in its
-    documentation when cut); the files attached to its steps (a data object
-    each, _data_objects); and the legend naming each system's colour. A
+    step it stands for was done outside every system, _outside_systems;
+    else a plain task); its system's fill and stroke (_PALETTE, the systems
+    in _systems_in_order; a system past the palette's end keeps the default
+    look); its steps' notes (one text annotation, cut at _NOTE_MAX
+    characters, whole in its documentation when cut); the files attached to
+    its steps (a data object each, _data_objects); and the legend naming
+    each system's colour, then what the hand marker means when the map has
+    a manual task. A
     task's system is the one its documentation names (its reference
     transaction's step first). When one label is on several tasks (a
     transaction that came back to a step), the first holds its notes and
@@ -657,7 +675,9 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
     """_map_extras for one map: `by_label` its steps by task label (the
     reference transaction's first), `node_system` each label's system,
     `systems` the systems its legend names, in order, and `palette` their
-    colours."""
+    colours. The legend's last line says what the hand marker means when
+    one of its tasks is a manual task (_LEGEND_MANUAL); a map with neither a
+    system nor a manual task has no legend."""
     from pm4py.objects.bpmn.obj import BPMN
     task_tags: dict[int, str] = {}
     colours: dict[int, tuple[str, str]] = {}
@@ -669,7 +689,8 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
         if label not in by_label:
             continue
         steps = by_label[label]
-        task_tags[id(node)] = "manualTask" if all(_hand_added(s) for s in steps) else "userTask"
+        task_tags[id(node)] = ("manualTask" if all(_outside_systems(s, context) for s in steps)
+                               else "task")
         if node_system[label] in palette:
             colours[id(node)] = palette[node_system[label]][1:]
         if label in done:
@@ -682,11 +703,14 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
         objects = _data_objects(anno, steps, used)
         if objects:
             data[id(node)] = objects
-    legend = None
+    lines = []
     if systems:
-        legend = "\n".join([_LEGEND_TITLE] + [
+        lines = [_LEGEND_TITLE] + [
             f"{system}: {palette[system][0] if system in palette else _UNCOLOURED}"
-            for system in systems])
+            for system in systems]
+    if "manualTask" in task_tags.values():
+        lines.append(_LEGEND_MANUAL)
+    legend = "\n".join(lines) or None
     return {"task_tags": task_tags, "colours": colours, "notes": notes, "data": data,
             "legend": legend}
 

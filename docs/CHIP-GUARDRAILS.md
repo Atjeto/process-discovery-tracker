@@ -64,12 +64,11 @@ every push.
 5. **Suggest, don't mutate.** The app proposes; the analyst accepts; the
    source stays intact. Drafts are replaced only while they are drafts; a
    marker change shows as pending until *Apply marker changes*; an edited
-   As-Is or To-Be map is a one-way copy the analysis never touches; the
-   comparison with a saved process is a visible line with *Stop comparing*.
+   As-Is or To-Be map is a one-way copy the analysis never touches.
    *Guards:* `e2e/session-smoke.js` ("a Start marker inserted ... shows at
    once as pending", "the step-level BPMN it was forked from is untouched
    (one-way leaf)"), `e2e/runs-smoke.js` (Re-analyze keeps the confirmed and
-   edited steps; Stop comparing), the pytest survival tests above.
+   edited steps), the pytest survival tests above.
 6. **One rule, two languages.** The value-free labels, the system names and
    the run differences are one rule set in `shared/`, read by Python and by
    the viewer; the step flow's edges (contract C17: the live map and the
@@ -125,7 +124,7 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
    ```
    - **Throwaway profile.** Each launch gets its own Electron user-data
      folder (`--user-data-dir`), so no run reads or overwrites the
-     developer's saved names, saved processes, recent list or layout; the
+     developer's remembered step names, recent list or layout; the
      launch fails if Electron is not on it.
    - **Window size.** The window's content is 1500x950, or what
      `PDT_E2E_WINDOW` names (`PDT_E2E_WINDOW=1366x768`); each launch logs
@@ -216,6 +215,12 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#btn-zoom-out`, `#btn-zoom-reset`, `#btn-zoom-in`.
 - The timeline `#timeline` inside `#timeline-scroll`; `#timeline-minimap`
   (only while zoomed); the legend `#timeline-legend` (`#legend-apps`).
+- The lanes' header column `#tl-lane-names` (hidden when nothing is drawn):
+  a cell per lane `.tl-lane-name[data-lane]` (its tooltip the lane's `title`;
+  inside it the key `.tl-lane-key` and the name `.tl-lane-label`, whose box
+  is centred on the lane's marks); the dividers `.tl-lane-sep`, in the
+  column and at the same heights in `#timeline`; while the pointer is on a
+  cell, its lane lit in `#timeline` as `.tl-lane-hover`.
 - Lanes: `.tl-case-band` (runs), `.tl-activity` (`.tl-act-app` names the
   system), `.tl-idle`, `.tl-marker.tl-marker-pending`, the transcript
   `.tl-tr-block[data-seg]` and its label `.tl-tr-label` (`.tl-tr-sync`,
@@ -258,8 +263,9 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#step-list .run-group.run-visit[data-case-id][data-visit]` (`data-visit`
   is `<case_id>#<n>`, n counting that transaction's visits from 0; titled
   "Transaction 2" or "Transaction 2, again"), the reference transaction's
-  first visit `.pattern` with its badge, status and
-  `[data-act="confirm-run"|"reopen-run"]`.
+  first visit `.pattern` with its badge, status and `[data-act="confirm-run"]`,
+  and once confirmed Undo confirm `.run-row [data-act="reopen-run"]` in its
+  head.
 - The divider between the list `#steps-list-pane` and the step pane:
   `#steps-splitter` (`role="separator"`, `pane-splitter.js`; drag it, or
   focus it for Left, Right, Home and End; a double-click or Enter resets it;
@@ -271,9 +277,11 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#run-ctx-menu`: "Use as reference transaction" on another transaction,
   the probe line `[data-act="copy-probe"]` on the confirmed reference
   transaction); `.run-pattern-badge` (Reference),
-  `.run-status`; `.run-actions [data-act="confirm-run"|"reopen-run"|"save-process"]`;
-  `.run-diffs li[data-kind]`; `.run-names-note`; `.run-show-hidden`. The
-  comparison with a saved process: `.runs-compare [data-act="stop-comparing"|"forget-process"]`.
+  `.run-status`; on the open, confirmed reference transaction Undo confirm
+  in the head, right after the status: `.run-row [data-act="reopen-run"]`
+  (`.run-undo-confirm`); `.run-actions [data-act="confirm-run"]`;
+  `.run-diffs li[data-kind]`; `.run-names-note` ("Remembered names: N of M
+  steps"); `.run-show-hidden`.
 - The step rows `.step-row[data-step-id]` (double-click renames the row its
   first click landed on; right-click opens `#step-ctx-menu`). A sub-process
   row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
@@ -369,7 +377,11 @@ drawer; the data posture and Copy for LLM; the Flow Notes tab; the
 shortcuts overlay. Replaced since: the As-Is picture `#map-asis-img` (now
 the linked `#map-asis-canvas`) and `dfg-viewer.js` `exportSvg` (Export's
 map image draws the step BPMN); *New from a video* and *New without a
-recording* in the Open menu are the New menu's two items.
+recording* in the Open menu are the New menu's two items. Gone since
+2026-09-24 (owner: a process is recorded once): the saved processes (C5),
+with *Save as this process*, the "Compared with saved process" line
+(`.runs-compare`, *Stop comparing*, *Forget this saved process*) and
+`processes-store.js`.
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

@@ -239,8 +239,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button id="btn-group-selected" hidden title="Move the ticked steps, one after the other, into a new sub-process, and the same steps in the other transactions too. Dissolve sub-process is the inverse.">Group into a sub-process...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
-            <button id="btn-ignored-apps" type="button" title="Leave apps out of the drafted steps, for example the recorder itself. Saving updates the steps and the map.">Leave apps out...</button>
-            <button id="btn-remembered-names" type="button" title="The names this computer saved for drafted steps: rename or forget one">Saved names...</button>
+            <!-- Two quiet tools beside the main work (the owner's review: say
+                 what they do). -->
+            <button id="btn-ignored-apps" class="tool-btn" type="button" title="Pick the apps that are not part of the process, for example Teams or Outlook used during the call, or the recorder itself. Their clicks and typing are left out of the steps and the map, and the project is analyzed again.">Apps outside the process...</button>
+            <button id="btn-remembered-names" class="tool-btn" type="button" title="When you rename a drafted step, the app remembers that name for the same screen and button and uses it in every project: rename or forget one here.">Remembered step names...</button>
             <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="editor-split">
@@ -415,7 +417,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Reference transaction.</strong> In Steps, check transaction 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm transaction</em>.</li>
             <li><strong>Other transactions.</strong> The other transactions arrive drafted and named like the reference transaction. Open each one in Steps: it lists how it differs from the reference transaction (extra, skipped or reordered steps). Fix a step where needed; the other transactions are not confirmed.</li>
             <li><strong>Document.</strong> On the Overview, you write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the transactions. <em>Save as this process</em>, on the confirmed reference transaction, keeps its steps on this computer: a later recording of the same process is compared with them.</li>
+            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the transactions.</li>
           </ol>
           <p>Every change you make saves itself to the project folder: the top bar says <em>Saved</em>, and pointing at it shows the folder. That folder holds the whole project, with its video, transcript, screenshots, attachments and edited maps. To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it.</p>
           <h3>What the Overview shows</h3>
@@ -444,7 +446,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Open the <strong>reference</strong> transaction: transaction 1, marked <em>Reference</em>, unless you choose another one (right-click a transaction, <em>Use as reference transaction</em>).</li>
             <li>Check its steps against the screenshots or the video. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (right-click a step, or use the step pane).</li>
             <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. In the step pane the name is saved when you press Enter or leave the field, the description when you leave it; there is no Save button, and Ctrl+Z undoes each change. A step's description is printed with it in the PDD.</li>
-            <li>Click <strong>Confirm transaction</strong>: the steps you did not change are accepted as they are. <em>Reopen transaction</em> takes the confirmation back.</li>
+            <li>Click <strong>Confirm transaction</strong>: the steps you did not change are accepted as they are. <em>Undo confirm</em>, beside the Confirmed badge, turns them back into drafts.</li>
           </ol>
           <h3>The step panel</h3>
           <p>Select a step in Steps, click a box on the Map or a step band on the Timeline: the step panel opens beside it. It shows every time the step happens in the transactions, each with its moment (&#9654; plays it in the panel's own video), its screenshots, what was said and its notes. <em>Watch</em> in the step pane plays the step there.</p>
@@ -456,10 +458,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>A step can hold steps of its own: a <strong>sub-process</strong>. <em>Open as a sub-process</em>, in the step pane, gives a step one step per action recorded in it (a field typed, a click); <em>Group into a sub-process</em>, in the Steps toolbar once two or more steps one after the other are ticked, moves them into a new one. Either is made in every transaction. The <em>&#9656; N sub-steps</em> button on its row opens it, one block per transaction that goes through it, and the line above the list goes back up. <em>Dissolve sub-process</em> undoes it, and Ctrl+Z undoes that. Confirm transaction confirms every level.</p>
           <h3>The flow of the steps</h3>
           <p>After a step the next one follows. Where the process branches or loops, say so in the step pane's Flow line: <em>Only when</em> gives the step a condition (the map draws a decision, with an "otherwise" path around it); <em>Go to</em> sends the process back to an earlier step, on to a later one or to its end, when a condition holds. Inside a sub-process the flow stays inside it: its end ends the sub-process.</p>
-          <h3>Saved names</h3>
-          <p>A name you give a drafted step goes at once to the same drafted steps in the other transactions, and this computer saves it: the next analysis of this project or a later one drafts those steps with it (each transaction says in one line how many of its names came from saved names). <em>Saved names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
-          <h3>Saved processes</h3>
-          <p>Once the reference transaction is confirmed, <em>Save as this process</em> keeps its steps on this computer. A later project of the same process is compared with the saved process until its own reference transaction is confirmed.</p>
+          <h3>Remembered step names</h3>
+          <p>A name you give a drafted step goes at once to the same drafted steps in the other transactions. The app remembers it for the same screen and button and uses it in every project: the next analysis of this project or of another one names those steps with it (each transaction says in one line how many of its names are remembered names). <em>Remembered step names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
           <h3>What the step labels mean</h3>
           <p>A step shows its label only where it differs from its transaction: the reference transaction's status (Draft or Confirmed) says it for the others, and a drafted step of another transaction shows none. Steps outside every transaction show theirs.</p>
           <ul class="help-list">
@@ -472,7 +472,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>Every analysis keeps confirmed, edited, added and hidden steps as they are.</p>
           <h3>Leaving things out</h3>
           <ul class="help-list">
-            <li><strong>Leave apps out</strong>, in the Steps toolbar: tick the apps that are not part of the process; the steps and the map are updated without them.</li>
+            <li><strong>Apps outside the process</strong>, in the Steps toolbar: tick the apps that are not part of the process, for example Teams or Outlook used during the call; the steps and the map are updated without them.</li>
             <li><strong>Hide step</strong>: takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
           <h3>Waste</h3>

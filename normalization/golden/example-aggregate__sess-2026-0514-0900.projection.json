@@ -24,7 +24,7 @@
     ],
     "manualTask": 0,
     "startEvent": 1,
-    "task": 0,
+    "task": 8,
     "task_names": [
       "Excel - Order Tracking.xlsx: Save workbook",
       "Notepad - Internal mappings.txt",
@@ -35,7 +35,7 @@
       "va01: Check document",
       "va01: Create sales order"
     ],
-    "userTask": 8
+    "userTask": 0
   },
   "steps": {
     "count": 30,

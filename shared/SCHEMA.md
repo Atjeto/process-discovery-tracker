@@ -295,7 +295,8 @@ instrument:
   step; it is computed, not stored, until the analyst makes a change that
   needs the record. The analyst can pick another run.
 - "Confirm transaction" turns that run's remaining `auto_suggested` steps
-  into `confirmed` and sets `confirmed_at`. "Reopen transaction" is the
+  into `confirmed` and sets `confirmed_at`. "Undo confirm" (a link beside
+  the Confirmed badge; it read "Reopen transaction" before lane CL) is the
   inverse: the run's `confirmed` steps become drafts again (edited and added
   steps keep their state), `confirmed_at` goes back to `null`, and
   `draft_fixes` is kept. A run reads as confirmed once every non-hidden step
@@ -736,8 +737,7 @@ to step N ...", "The process ends here when ...").
 **Sub-processes (contract C19).** One project holds one main map plus one map
 per sub-process, at any depth. `annotations.steps` stays the main level, so
 every reader that does not look for sub-steps (the statistics, the
-analysis, the PDD's sections 4 to 9, the saved processes) sees the main
-level only.
+analysis, the PDD's sections 4 to 9) sees the main level only.
 
 - **`sub_steps`**: an array, possibly empty; absent means a plain step. A
   step that carries it is a sub-process; each sub-step has the step's
@@ -819,8 +819,8 @@ drafted step carries:
   is `"<control_type>:<identity>"` of the commit interaction (identity:
   automation_id, else name, else class_name, else `"?"`, each passed through
   the shared value rules), or the literal `"(visit)"` when the step did not
-  end on a commit. The remembered names (C4) and saved processes (C5) match
-  on it. A key is used whole, never split (a screen label can contain `|`).
+  end on a commit. The remembered names (C4) match on it (so did the saved
+  processes of C5 until they left the app). A key is used whole, never split (a screen label can contain `|`).
 - **`name_source`**: `"remembered"` when the name is one the analyst gave
   before, else `"draft"`. A draft takes, in this order, the name of a step
   the analyst named in this session with the same key (typed names, in
@@ -907,7 +907,7 @@ Entries a reader skips are kept on disk as they are.
 
 - Written when the analyst renames a step that carries a `draft_key`; the
   rename also applies at once to every still-draft step in the session with
-  the same key. The Saved names dialog (Steps toolbar) renames an entry
+  the same key. The Remembered step names dialog (Steps toolbar) renames an entry
   (and the session's still-draft steps with that key) or forgets it (the
   entry is deleted). It does not rename the session's edited or confirmed
   steps of that key, and their name comes first at the next analysis (see
@@ -929,20 +929,17 @@ Entries a reader skips are kept on disk as they are.
   } ] }
 ```
 
-- "Save as this process" writes the confirmed pattern run's visible steps in
-  time order. Each step carries `draft_key` (a drafted step), or
-  `draft_keys` (merged drafts), or neither (a step added by hand), plus its
-  name, description and waste flag. Saving under a name that already exists
-  (case does not matter) replaces that entry and keeps its `id`; Undo
-  restores the previous entry. "Forget this saved process", on the Steps
-  level's "Compared with saved process" line, deletes the entry; the toast's
-  Undo brings it back.
-- When a session opens with no confirmed pattern run, the viewer compares it
-  with the saved process whose distinct draft keys overlap the session's
-  visible steps' the most (Jaccard, at least 0.5; ties go to the most
-  recently saved, then to the name), shows that line visibly, and offers
-  "Stop comparing".
-- The pipeline never reads this file.
+- **Removed from the app on 2026-09-24** (owner: a process is recorded once;
+  comparing recordings is the product line). Nothing writes or reads this
+  file any more: a `processes.json` already in a user's `pdt-library` is
+  left as it is, unused. The format above is kept so the feature can come
+  back.
+- It was written by "Save as this process" on the confirmed pattern run
+  (its visible steps in time order, each with `draft_key`, or `draft_keys`,
+  or neither, plus its name, description and waste flag), and a session
+  opened without a confirmed pattern run was compared with the saved
+  process whose distinct draft keys overlapped its steps' the most (Jaccard,
+  at least 0.5). The pipeline never read it.
 
 ## manifest.json
 
@@ -1396,8 +1393,12 @@ the boxes, the lines and the other names.
   step with several ways out and before a step with several ways in, loops
   and early ends included.
 - **Tasks.** Named by the step names; the system stays out of the name. A
-  task is a `manualTask` when every step it stands for was added by hand
-  (manually authored, no recorded interaction), else a `userTask` (C18).
+  task is a `manualTask` (BPMN's hand marker) when every step it stands for
+  was done outside every system: added by hand (manually authored, no
+  recorded interaction) with no system set; else a plain `task`, a step
+  done in a system (C18 as lane CL amended it: every recorded step was a
+  `userTask` before, the same person marker on every box). A collapsed
+  sub-process (C19) is neither.
   Its documentation holds its description, then its system, screen, the
   number of transactions it happened in and its average time.
 - **Events.** The start event takes the first line of `document.trigger`
@@ -1416,7 +1417,10 @@ the boxes, the lines and the other names.
   reference transaction, then the others, first use the systems. A tenth
   system and later keep the default look. One text annotation,
   `TextAnnotation_legend`, names the colours: "Colour by system", then one
-  line per system ("SAP: orange", or "no colour").
+  line per system ("SAP: orange", or "no colour"), and, when a task of its
+  map is a manual task, a last line "Hand icon: done outside the systems"
+  (lane CL). A map with neither a system nor a manual task has no legend;
+  a map of manual tasks only has that one line.
 - **Notes** (C18). The notes on a task's steps (`analyst_notes` with that
   `step_id`) are one text annotation above the task, joined by an
   association: one note per line, cut after a whole word within 90
@@ -1560,7 +1564,7 @@ Each step's `state` says how it got into `annotations.json`:
 | State | Set by | Survives re-normalization |
 |---|---|---|
 | `auto_suggested` | The drafting rule ([step_suggest.py](../normalization/step_suggest.py) `auto_suggest_steps`, contract C1): one drafted step per screen visit, ending at its commit action. | No: replaced by the next run's drafts. |
-| `confirmed` | "Confirm transaction" on the step's run, the draft left unchanged (C3). "Reopen transaction" turns it back into a draft. | Yes, exactly like `edited`. |
+| `confirmed` | "Confirm transaction" on the step's run, the draft left unchanged (C3). "Undo confirm" turns it back into a draft. | Yes, exactly like `edited`. |
 | `manually_authored` | The analyst added a step by hand. | Yes. |
 | `edited` | The analyst changed a draft (renamed, merged, split, set its flow, opened it as a sub-process, or otherwise). A draft that carries `only_when` or `links` (C17), or `sub_steps` (C19), is kept as `edited` by re-normalization too. | Yes. |
 | `hidden` | The analyst hid the step (its previous state is kept in `_prev_state`). | Yes: a re-analysis does not bring it back as a fresh draft. |

@@ -783,8 +783,8 @@ async function unreadableAnnotationsPin() {
   // --- V1 (step-back review 4.2): "More" dissolved; each item is where it is
   // used, with the ids its wiring and the tests use: Attach video on the
   // video band (#btn-link-recording) and the Overview's recording line
-  // (#btn-attach-video); Attach transcript on the recording line; Leave apps
-  // out and Saved names in the Steps toolbar; Sync video in the video pane's
+  // (#btn-attach-video); Attach transcript on the recording line; Apps outside
+  // the process and Remembered step names in the Steps toolbar; Sync video in the video pane's
   // header, only while a video is attached; + Step with a video only.
   const placed = () => page.evaluate(() => {
     const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && !el.hidden);
@@ -807,11 +807,11 @@ async function unreadableAnnotationsPin() {
     noVideo.linkRecording.text === "Attach video..." && noVideo.linkRecording.inBand &&
     noVideo.attachVideo.text === "Attach" && noVideo.attachVideo.inLine &&
     noVideo.attachTranscript.text === "Attach" && noVideo.attachTranscript.inLine &&
-    noVideo.ignoredApps.text === "Leave apps out..." && noVideo.ignoredApps.inSteps &&
-    noVideo.savedNames.text === "Saved names..." && noVideo.savedNames.inSteps &&
+    noVideo.ignoredApps.text === "Apps outside the process..." && noVideo.ignoredApps.inSteps &&
+    noVideo.savedNames.text === "Remembered step names..." && noVideo.savedNames.inSteps &&
     noVideo.syncVideo.inHeader && noVideo.syncVideo.shown === false && noVideo.addStep === false &&
     !(await page.$("#cb-mine")));
-  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Leave apps out and Saved names in the Steps toolbar, Sync video in the video header, hidden without a video), and the Timeline has no + Step without a video",
+  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Apps outside the process and Remembered step names in the Steps toolbar, Sync video in the video header, hidden without a video), and the Timeline has no + Step without a video",
     movedOk, JSON.stringify(noVideo));
 
   // --- P2.10: the Raw events drawer is Flow's only ---------------------------

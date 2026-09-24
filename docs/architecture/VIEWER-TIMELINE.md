@@ -58,6 +58,20 @@ lane of height 0 is skipped. From top to bottom:
 | Screenshots | A rail of the recorder's screenshots. | Click: open it in the image viewer. |
 | Steps | One band per visible step with a time, named as in Steps. | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here. |
 
+**The header column** (`#tl-lane-names`, `renderLaneNames`), drawn like a
+video editor's track headers (the owner's reviews): a column of its own
+beside the lanes, a cell per lane drawn from the middle of the gap above it
+to the middle of the gap under it, holding a key that looks like the
+lane's own marks (a transaction's band, the first systems' colours, a
+speech bubble, a note's pin, a screenshot's mark, a step's band) and the
+lane's name in the small section labels' type, centred on what the lane
+draws. The dividers between the cells run on across the timeline as the
+lanes' separators (`.tl-lane-sep`). A cell's tooltip says what the lane
+shows; pointing at it lights the lane up across the timeline
+(`.tl-lane-hover`). A video project's low activity row has no cell, and
+the ticks none. Inside a sub-process the Steps lane reads "Steps in
+<name>", and the column widens to show it (up to a limit).
+
 The playhead (`#tl-playhead`) lies over every lane; it follows the video,
 and without a video a seek moves it and scrolls it into view.
 

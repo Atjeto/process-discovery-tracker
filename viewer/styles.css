@@ -331,7 +331,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .timeline-pane { background: var(--bg-2); border-radius: var(--radius);
   padding: 10px 14px; display: flex; flex-direction: column;
   box-shadow: var(--shadow); flex: 0 0 auto;
-  --tl-names-w: 88px; }
+  /* The lanes' header column: a key and Transactions, the longest name, whole. */
+  --tl-names-w: 136px; }
 
 /* Lower workspace: video + annotations side-by-side */
 .lower-workspace { display: flex; gap: 0; align-items: stretch;
@@ -437,14 +438,51 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
    flex from collapsing that height. */
 .timeline-body { flex: 0 0 auto; display: flex; align-items: stretch;
   background: var(--bg-3); border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  min-height: var(--timeline-height, 160px); }
-/* The lanes' names at the left (the owner's review), each at its lane's
-   height, with a tooltip saying what the lane shows. They do not scroll. */
-.tl-lane-names { flex: 0 0 var(--tl-names-w); position: relative; background: var(--bg-2);
-  border-right: 1px solid var(--rule); border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  overflow: hidden; min-height: var(--timeline-height, 160px); }
+/* The lanes' header column (the owner's reviews), drawn like a video
+   editor's track headers (flow-view-timeline.js renderLaneNames): a column
+   of its own, quieter than the lanes' track, a cell per lane as tall as its
+   lane with a divider between two lanes that runs on across the timeline
+   (.tl-lane-sep), each cell a key that looks like the lane's marks and the
+   lane's name in the small section labels' type (.editor-pane-title:
+   Transactions · 4, Selected step), --fg-2 on --bg-1 in both themes. Under
+   the pointer a cell takes an accent edge and wash and its lane lights up
+   in the accent, and its tooltip says what the lane shows. The column does
+   not scroll. */
+.tl-lane-names { flex: 0 0 var(--tl-names-w); position: relative; background: var(--bg-1);
+  border-right: 1px solid var(--rule); }
 .tl-lane-names[hidden] { display: none; }
-.tl-lane-name { position: absolute; left: 8px; right: 4px; font-size: 11px; font-weight: 600; color: var(--fg-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.tl-lane-sep { position: absolute; left: 0; right: 0; height: 1px; background: var(--rule); pointer-events: none; }
+.tl-lane-name { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 8px;
+  padding-left: 10px; padding-right: 8px; color: var(--fg-2); cursor: help;
+  transition: background var(--transition), color var(--transition); }
+.tl-lane-name:hover { color: var(--fg); background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
+  box-shadow: inset 2px 0 0 var(--accent); }
+.tl-lane-label { flex: 1 1 auto; min-width: 0; line-height: 14px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A lane's key: a small copy of the lane's own marks, drawn in CSS (the
+   Transcript's a speech bubble). */
+.tl-lane-key { position: relative; flex: none; width: 14px; height: 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 1px; }
+.tl-lane-key-cases::before { content: ""; position: absolute; left: 0; top: 1px; width: 14px; height: 10px;
+  box-sizing: border-box; border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--accent-2) 50%, transparent); border-bottom: 1px solid var(--accent-2); }
+.tl-lane-key-cases::after { content: ""; position: absolute; left: 2px; top: 5px; width: 8px; height: 4px;
+  border-radius: 1px; background: var(--accent-2); }
+.tl-lane-key-activity i { width: 4px; height: 12px; border-radius: 1px; background: var(--fg-4); }
+.tl-lane-key-transcript svg { width: 14px; height: 14px; color: var(--fg-3); }
+.tl-lane-key-notes::before { content: "\270E"; width: 12px; height: 12px; line-height: 12px; text-align: center;
+  font-size: 8px; color: var(--bg); background: var(--accent); border-radius: 3px; }
+.tl-lane-key-screenshots svg { width: 12px; height: 12px; padding: 1.5px; box-sizing: border-box;
+  color: #fff; background: var(--accent-2); border-radius: var(--radius-x); }
+.tl-lane-key-steps::before { content: ""; width: 14px; height: 7px; border-radius: 2px; background: var(--accent-2); opacity: 0.55; }
+/* The lane a header cell stands for, lit across the timeline while the
+   pointer is on the cell (under the marks). */
+.tl-lane-hover { position: absolute; left: 0; right: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 11%, transparent); }
+/* The lanes' track: the timeline scrolls inside it. */
 .timeline-scroll { flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: auto; }
 /* Middle-button drag-to-pan feedback (flow-view.js wireTimelinePan). */
 .timeline-scroll.panning { cursor: grabbing; }
@@ -1040,6 +1078,12 @@ details.analysis-module { padding: 0; }
   padding: 0;
 }
 .editor-toolbar .hint { font-size: 11px; color: var(--fg-3); margin: 0; }
+/* The Steps level's two tools (the apps outside the process, the remembered
+   step names): quiet beside the main work, a smaller word in --fg-2 on no
+   fill inside the --rule border, the card's fill and the text colour under
+   the mouse. */
+.editor-toolbar .tool-btn { padding: 4px 10px; font-size: 11px; color: var(--fg-2); background: transparent; }
+.editor-toolbar .tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2); }
 .editor-toolbar .link-help {
   color: var(--accent-2); text-decoration: none; border-bottom: 1px dotted var(--accent-2);
 }
@@ -1226,6 +1270,8 @@ details.analysis-module { padding: 0; }
 .run-group.open { border-color: var(--rule); background: var(--bg-1); }
 .run-row {
   display: flex; align-items: center; gap: 8px; min-width: 0;
+  /* Where the head is too narrow for one line, the counts go under it. */
+  flex-wrap: wrap; row-gap: 2px;
   padding: 6px 8px; min-height: 30px; border-radius: var(--radius-sm);
   cursor: pointer; font-size: 12px; color: var(--fg);
 }
@@ -1234,9 +1280,15 @@ details.analysis-module { padding: 0; }
 .run-caret { flex: 0 0 10px; color: var(--fg-3); font-size: 10px; }
 .run-title { flex: none; font-weight: 600; white-space: nowrap; }
 .run-label {
-  flex: 1 1 auto; min-width: 0; color: var(--fg-3);
+  flex: 1 1 0; min-width: 0; color: var(--fg-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* A label keeps room for a short one (Order #10900): where the head is too
+   narrow for it, the badges and then the counts go under it. */
+.run-label:not(:empty) { min-width: 72px; }
+/* The reference transaction's Reference and status badges and its Undo
+   confirm: one unit, never split across two lines. */
+.run-badges { flex: none; display: inline-flex; align-items: center; gap: 8px; }
 .run-pattern-badge, .run-status {
   flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px;
   border-radius: 8px; border: 1px solid var(--rule); font-size: 10px; line-height: 1; white-space: nowrap;
@@ -1245,7 +1297,11 @@ details.analysis-module { padding: 0; }
 .run-status { color: var(--fg-3); }
 .run-status-confirmed { color: var(--fg); border-color: var(--va); background: color-mix(in srgb, var(--va) 14%, transparent); }
 .run-status-empty { border-style: dashed; }
-.run-meta { flex: none; font-size: 10px; font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
+/* Undo confirm, beside the Confirmed badge of the open reference transaction:
+   a quiet link in the muted text colour (the link colour's --fg under the
+   mouse). */
+.run-row .run-undo-confirm { flex: none; padding: 0 2px; font-size: 11px; line-height: 16px; color: var(--fg-3); white-space: nowrap; }
+.run-meta { flex: none; margin-left: auto; font-size: 10px; font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
 .run-body { padding: 2px 8px 8px 26px; }
 .run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 6px; }
 .run-actions:empty { display: none; }
@@ -1253,22 +1309,14 @@ details.analysis-module { padding: 0; }
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-3); cursor: pointer;
 }
 .run-steps-empty { margin: 4px 0; font-size: 11px; color: var(--fg-3); }
-/* One line per run: how many names came from saved names. */
+/* One line per run: how many of its names are remembered names. */
 .run-names-note { flex: 1 1 100%; margin: 0; font-size: 11px; color: var(--fg-3); }
 .run-guide p { margin: 0 0 10px; }
 
 /* L12b: the open run's differences from its reference (one plain line each),
-   the one line that says the runs are compared with a saved process, and the
-   Remembered names dialog. */
+   and the Remembered step names dialog. */
 .run-diffs { margin: 0 0 6px; padding: 0 0 0 16px; font-size: 11px; color: var(--fg-2); }
 .run-diffs li { margin: 1px 0; overflow-wrap: anywhere; }
-.runs-compare {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 4px 8px;
-  font-size: 11px; color: var(--fg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
-}
-.runs-compare-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.runs-compare-text strong { color: var(--fg); }
-.runs-compare button { flex: none; padding: 2px 10px; font-size: 11px; }
 .rn-intro { margin-top: 0; }
 .rn-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--rule); }
 .rn-text { flex: 1 1 auto; min-width: 0; }
@@ -1633,12 +1681,11 @@ button.danger:disabled {
    thumbnail preview). */
 /* Screenshot rail: a dedicated capture lane below the activity bands, a
    faint slate strip with clearly clickable camera markers (its name,
-   Screenshots, is at the left with the other lanes'). */
+   Screenshots, is in the header column with the other lanes'; the lanes'
+   separators frame it). */
 .tl-screenshot-rail {
   position: absolute; left: 0; width: 100%;
   background: color-mix(in srgb, var(--accent-2) 6%, transparent);
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
   pointer-events: none;
 }
 .tl-screenshot {
@@ -1871,11 +1918,11 @@ button.danger:disabled {
 /* Menu rows that exist only while a transcript is attached. */
 .project-menu-item[hidden], .lanes-popup label.cb[hidden] { display: none; }
 /* The Flow lane: a label row (Sync stays at the visible left edge), then
-   one row of sentence blocks in one neutral colour. */
+   one row of sentence blocks in one neutral colour (the lanes' separators
+   frame it). */
 .tl-tr-rail {
   position: absolute; left: 0; width: 100%; pointer-events: none;
   background: color-mix(in srgb, var(--fg-3) 5%, transparent);
-  border-top: 1px solid var(--rule-soft); border-bottom: 1px solid var(--rule-soft);
 }
 .tl-tr-block {
   position: absolute; border-radius: 2px; cursor: pointer;

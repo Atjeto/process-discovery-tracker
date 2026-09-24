@@ -367,13 +367,13 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       runSelect: !!(document.getElementById("case-scope") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Leave apps out... and Saved names... in the Steps toolbar, the Transaction select in the Timeline's header",
+  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Apps outside the process... and Remembered step names... in the Steps toolbar, the Transaction select in the Timeline's header",
     !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach", where: true }) &&
       same(moved.attachTranscript, { text: "Attach", where: true }) &&
       same(moved.linkRecording, { text: "Attach video...", where: true }) &&
       same(moved.syncVideo, { text: "Sync video...", where: true }) &&
-      same(moved.ignoredApps, { text: "Leave apps out...", where: true }) &&
-      same(moved.savedNames, { text: "Saved names...", where: true }) && moved.runSelect),
+      same(moved.ignoredApps, { text: "Apps outside the process...", where: true }) &&
+      same(moved.savedNames, { text: "Remembered step names...", where: true }) && moved.runSelect),
     JSON.stringify(moved));
 
   // (c3) "Apply N marker changes" (the one manual analysis act) and its
@@ -960,7 +960,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // (g2) No analysis discards analyst work: a confirmed reference run, an
   // edited, an added and a hidden step (made through the app's own write
-  // path) survive the analysis Leave apps out runs by itself.
+  // path) survive the analysis that Apps outside the process runs by itself.
   const work = {};
   try {
     work.ids = await page3.evaluate(async () => {
@@ -1011,8 +1011,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     };
   } catch (e) { logActionError("(g2) analyst work survives", e); work.err = String(e.message).split("\n")[0]; }
   const wa = work.after || {};
-  record("(g2) Leave apps out (Steps toolbar) saves and the analysis runs by itself with the status line; confirmed, edited, added and hidden steps all survive it",
-    !!(!work.err && work.dialog && work.dialog.title === "Leave apps out" && work.dialog.save === "Save" && work.statusSeen && work.ran &&
+  record("(g2) Apps outside the process (Steps toolbar) saves and the analysis runs by itself with the status line; confirmed, edited, added and hidden steps all survive it",
+    !!(!work.err && work.dialog && work.dialog.title === "Apps outside the process" && work.dialog.save === "Save" && work.statusSeen && work.ran &&
       wa.confirmed && wa.confirmed.length > 0 && wa.confirmed.every((st) => st === "confirmed") && wa.patternConfirmed &&
       same(wa.edited, ["edited", "E2E edited step"]) && same(wa.added, ["manually_authored", "E2E added step"]) &&
       wa.hidden === "hidden"),

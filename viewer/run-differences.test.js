@@ -107,12 +107,6 @@ test("fold: without the fold, the two drafts would read as extra steps and the m
 
 /* ---- the lines ----------------------------------------------------------------------- */
 
-test("differences: a saved process is named as the reference in a Skipped line", () => {
-  const ref = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" })];
-  const d = RD.differences(ref, [P("Find", { draft_key: "f" })], { reference: RD.SAVED_REFERENCE });
-  assert.deepEqual(d, [{ kind: "skipped", name: "Save", number: 2, text: "Skipped: Save (step 2 of the saved process)." }]);
-});
-
 test("differences: the Steps level's words (AD-29) name a run a transaction; the defaults stay the PDD's", () => {
   const ref = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" }), P("Send", { draft_key: "e" })];
   const run = [P("Log", { draft_key: "l" }), P("Save", { draft_key: "s" }), P("Find", { draft_key: "f" })];
@@ -136,43 +130,4 @@ test("differences: a step repeated within a run counts once; an empty run skips 
   assert.deepEqual(RD.differences(ref, []).map((d) => d.text),
     ["Skipped: Find (step 1 of the pattern run).", "Skipped: Save (step 2 of the pattern run)."]);
   assert.deepEqual(RD.differences([], [P("  ")]).map((d) => d.text), ["Extra step: (unnamed step) (at the start of the run)."]);
-});
-
-/* ---- saved processes (C5) ------------------------------------------------------------ */
-
-const S = (key, state) => ({ draft_key: key, state: state || "auto_suggested" });
-
-test("matchSavedProcess: the highest Jaccard overlap of distinct draft keys, at least 0.5", () => {
-  const session = [S("a"), S("b"), S("c"), S("d"), S("a")];   // {a, b, c, d}
-  const half = { name: "Half", saved_at: "2026-09-01", steps: [{ draft_key: "a" }, { draft_keys: ["b", "x"] }] };  // {a,b,x}: 2/5
-  const most = { name: "Most", saved_at: "2026-09-01", steps: [{ draft_key: "a" }, { draft_keys: ["b", "c"] }] }; // {a,b,c}: 3/4
-  assert.equal(RD.matchSavedProcess([half], session), null, "0.4 is below the minimum");
-  const m = RD.matchSavedProcess([half, most], session);
-  assert.equal(m.process.name, "Most");
-  assert.equal(m.score, 0.75);
-  const exactHalf = { name: "Exact", steps: [{ draft_key: "a" }, { draft_key: "b" }] };   // 2/4
-  assert.equal(RD.matchSavedProcess([exactHalf], session).score, 0.5, "0.5 is enough");
-});
-
-test("matchSavedProcess: ties go to the most recently saved; hidden steps and keyless steps do not count", () => {
-  const session = [S("a"), S("b"), S("z", "hidden"), { name: "Added", state: "manually_authored" }];
-  const older = { name: "Older", saved_at: "2026-09-01T10:00:00Z", steps: [{ draft_key: "a" }, { draft_key: "b" }] };
-  const newer = { name: "Newer", saved_at: "2026-09-02T10:00:00Z", steps: [{ draft_key: "b" }, { draft_key: "a" }] };
-  assert.equal(RD.matchSavedProcess([older, newer], session).process.name, "Newer");
-  assert.equal(RD.matchSavedProcess([older, newer], session).score, 1, "the hidden key is not the session's");
-  assert.equal(RD.matchSavedProcess([older], []), null, "a session with no drafted steps matches nothing");
-  assert.equal(RD.matchSavedProcess([{ name: "Bad" }, null], session), null);
-});
-
-test("processStepsFrom: the draft identity, the name, the description and the waste flag, in the given order", () => {
-  const steps = [
-    { draft_key: "a", name: " Find ", description: "Look it up.", flags: { waste: false }, state: "confirmed" },
-    { draft_keys: ["b", "c"], name: "Check and create", flags: { waste: true }, state: "edited" },
-    { name: "Call", state: "manually_authored" },
-  ];
-  assert.deepEqual(RD.processStepsFrom(steps), [
-    { draft_key: "a", name: "Find", description: "Look it up.", waste: false },
-    { draft_keys: ["b", "c"], name: "Check and create", description: "", waste: true },
-    { name: "Call", description: "", waste: false },
-  ]);
 });

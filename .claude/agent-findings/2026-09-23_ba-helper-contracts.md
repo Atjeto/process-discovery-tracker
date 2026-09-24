@@ -98,7 +98,8 @@ File: `<viewer userData>/pdt-library/remembered-names.json`, written atomically
   `name_source: "remembered"`. So the same session analyzed or exported on another
   machine drafts the same names, and a rename in run 2 still names runs 3 to N
   after re-analysis when run 1 was confirmed under the drafted name. Viewer note:
-  the Remembered names dialog's Rename renames the store and the session's drafts
+  the Rename of the Remembered step names dialog (Saved names... until lane CL)
+  renames the store and the session's drafts
   but not its edited or confirmed steps of that key, so the next analysis gives
   those drafts the session's name back (lane V to align).
 - **Groupings key on identity, not on names.** The repeats (motif and bounce
@@ -128,6 +129,7 @@ File: `<viewer userData>/pdt-library/processes.json`, written atomically by the 
   0.5) and uses it as the comparison pattern, with a visible, reversible line
   ("Compared with saved process X", with a way to stop comparing).
 - The pipeline never reads this file.
+- Removed from the app on 2026-09-24 (owner: a process is recorded once; comparing recordings is the product line). The store format above is kept here so it can come back.
 
 ## C6. Document sections (`annotations.document`, viewer-written; AD-2)
 
@@ -460,6 +462,18 @@ map editor. The default after a step is always the next step in its transaction.
   past its box); the legend inside the map where there is room, else beside or under it,
   whichever prints larger. The mined map keeps each branch name's fixed place unless something
   drawn is there.
+- Amended by lane CL (owner's review 2026-09-24: "Each one of these steps in the map have a little
+  person in the corner, but no context as to why"): a step done in a system (recorded, or added by
+  hand with its system set) is a plain `bpmn:task`; a task is a `bpmn:manualTask` (the hand
+  marker, BPMN's "done outside any system") when every step it stands for was added by hand with no
+  recorded interaction and no system (none set, none derived); a sub-process is neither (C19). No
+  task is a `bpmn:userTask` any more. The legend (`TextAnnotation_legend`) ends with the line
+  "Hand icon: done outside the systems" when its plane has a manual task; a plane with manual tasks
+  and no system has a legend of that one line. Sub-process planes follow the same rule. An As-Is
+  copy made earlier keeps its user tasks and still links (`asis-links.js` matches any task kind);
+  the viewer tells a copy made before C18 by the absence of a user or manual task, the legend and
+  a task's colour (`reference-maps.js` `predatesRichMap`). The session golden pins the new kinds
+  (every task of the demo a `task`; `userTask` and `manualTask` 0).
 - **The As-Is map in the viewer is interactive** (the illustrated map was dropped: the links
   replace it): the chosen As-Is copy renders with bpmn-js, not as a flat image, and a click on a
   task opens the step panel for the step it stands for (matched by the map's node rule on the
@@ -546,8 +560,8 @@ no separate image file per map (the owner's remark about images described today'
     session's drafted sub-steps with the same `action_key` and is remembered under
     `"action|" + action_key`; a rename of a draft reaches drafts of its key at every level (C4).
   - *Confirm transaction* confirms the reference transaction's drafts at every level, and the
-    transaction reads confirmed only when no level holds a draft; *Reopen transaction* reverses
-    every level. The draft-fix counter (the P1 probe) counts the main level only.
+    transaction reads confirmed only when no level holds a draft; *Undo confirm* (it read *Reopen
+    transaction* until lane CL) reverses every level. The draft-fix counter (the P1 probe) counts the main level only.
   - *Merge*, *Split* and adding a moment to a step are unavailable on a step that is a
     sub-process, with the reason in one line (dissolve it first, or work on its sub-steps
     inside). Hide hides the subtree with its step. Remove on a group removes its sub-steps too

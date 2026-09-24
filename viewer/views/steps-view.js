@@ -19,14 +19,13 @@
  *
  * Lane L12b: a merge made in the pattern run carries to the same consecutive
  * drafts of the other runs (one undo), and a draft hidden there can be hidden
- * in all runs (a toast offers it). Every run is compared with its reference,
- * the pattern run or, while no pattern run is confirmed, the saved process
- * matched on open (run-differences.js, the algorithm the PDD's section 6.1
- * uses): an open run lists its differences, a run's meta counts them. Reopen
- * run takes Confirm run back; a drafted step is hidden, never deleted (the
- * next Analyze would draft it again); Save as this process stores the
- * confirmed pattern run, and the comparison line can forget a saved process;
- * the Remembered names dialog renames or forgets a remembered name.
+ * in all runs (a toast offers it). Every other run is compared with the
+ * pattern run (run-differences.js, the algorithm the PDD's section 6.1
+ * uses): an open run lists its differences, a run's meta counts them. Undo
+ * confirm takes Confirm run back; a drafted step is hidden, never deleted (the
+ * next Analyze would draft it again); the Remembered step names dialog renames
+ * or forgets a remembered name. (Saved processes, contract C5, left the app on
+ * 2026-09-24: a process is recorded once.)
  *
  * Contract C19 (sub-processes): a step may carry sub_steps, at any depth. The
  * list shows one level at a time (State.mapPath, a path of map nodes; [] the
@@ -90,20 +89,13 @@ let _splitAfter = { stepId: null, index: null };
    the first render opens the pattern run) and `showHidden` also lists the
    hidden steps of the open group. It survives level switches and a
    re-analysis of the same session (case ids are stable, C9), so a return to
-   Steps finds the view as the analyst left it. `compare` is the saved process
-   matched when the session opened ({ process, score }, C5) and
-   `compareStopped` the analyst's Stop comparing. Inside a sub-process (C19)
+   Steps finds the view as the analyst left it. Inside a sub-process (C19)
    `levelOpen` is the open block (a visit's key, see _containers) and
    `levelKey` the level it belongs to; `open` keeps the main level's. */
 function _freshUi(folder) {
-  return { folder, open: undefined, showHidden: false, compare: null, compareStopped: false,
-    levelOpen: undefined, levelKey: "" };
+  return { folder, open: undefined, showHidden: false, levelOpen: undefined, levelKey: "" };
 }
 let _ui = _freshUi(null);
-
-/* Each session open starts one saved-process match; a later answer for a
-   session that is no longer open is dropped. */
-let _compareSeq = 0;
 
 /* The remembered names (C4) behind the name suggestions: read from the main
    process once, then updated in place after each name is remembered. */
@@ -332,49 +324,13 @@ function _fillNameList(step, interactionsById) {
 
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
-/* ===== Saved processes on open, and what the runs are compared with ===== */
+/* ===== What the runs are compared with ================================= */
 
-/* Match the session just opened with the saved processes (C5), when no
-   pattern run of it is confirmed. The store is read in the main process, so
-   this is asynchronous: the view renders again when a match arrives. A store
-   that cannot be read is shown as an error, and the session is then not
-   compared with a saved process. */
-function _startCompareMatch(session) {
-  const seq = ++_compareSeq;
-  const folder = session.sessionFolder;
-  const anno = session.annotations || {};
-  const p = RunsModel.patternRun(anno, RunsModel.buildRuns(session.stats, anno.steps || []).runs);
-  if (p.record && p.record.confirmed_at) return;
-  const fail = (why) => toast("The saved processes could not be read, so this project is not compared with one: " + why, "error");
-  Promise.resolve()
-    .then(() => Ipc.readProcesses())
-    .then((r) => {
-      const cur = State.getSession();
-      if (seq !== _compareSeq || !cur || cur.sessionFolder !== folder || _ui.folder !== folder) return;
-      if (!r || !r.ok) { fail((r && r.error) || "no reason was given"); return; }
-      const m = RunDiff.matchSavedProcess(r.processes || [], (cur.annotations && cur.annotations.steps) || []);
-      if (!m) return;
-      _ui.compare = m;
-      renderStepsLevel();
-    })
-    .catch((e) => fail((e && e.message) || String(e)));
-}
-
-/* What the runs are compared with: the saved process matched on open, while
-   no pattern run is confirmed and the analyst has not stopped comparing (then
-   every run is compared with it); else the pattern run (every other run is
-   compared with it). Null without a pattern run. */
+/* The reference every other run is compared with: the pattern run, or null
+   without one. */
 function _reference(pattern) {
-  const confirmed = !!(pattern.record && pattern.record.confirmed_at);
-  if (_ui.compare && !_ui.compareStopped && !confirmed) {
-    const pr = _ui.compare.process;
-    return { kind: "saved", name: String(pr.name || ""), steps: Array.isArray(pr.steps) ? pr.steps : [],
-      noun: RunDiff.SAVED_REFERENCE, caseId: null };
-  }
-  if (pattern.run) {
-    return { kind: "pattern", steps: pattern.run.visible, noun: RunDiff.REFERENCE_RUN, caseId: pattern.run.caseId };
-  }
-  return null;
+  if (!pattern.run) return null;
+  return { kind: "pattern", steps: pattern.run.visible, noun: RunDiff.REFERENCE_RUN, caseId: pattern.run.caseId };
 }
 
 /* A run's differences from the reference (item 3), or null for the pattern
@@ -384,23 +340,12 @@ function _runDiffs(ref, run) {
   return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT });
 }
 
-/* Stop comparing (the inverse of the comparison on open): the runs are
-   compared with this session's pattern run for as long as it stays open. */
-function stopComparingAction() {
-  _ui.compareStopped = true;
-  renderStepsLevel();
-  toast("Stopped comparing: the transactions are compared with the reference transaction.", "success");
-}
-
 /* ===== The Steps level ================================================== */
 
 function renderStepsLevel() {
   const session = State.getSession();
   if (!session || !PdtSteps) return;
-  if (_ui.folder !== session.sessionFolder) {
-    _ui = _freshUi(session.sessionFolder);
-    _startCompareMatch(session);
-  }
+  if (_ui.folder !== session.sessionFolder) _ui = _freshUi(session.sessionFolder);
   _ensureRememberedLoaded();
   const anno = session.annotations || {};
   const allSteps = anno.steps || [];
@@ -627,11 +572,13 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title + (c.index ? ", again" : "")) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
-    (isRef ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Reference</span>' : "") +
-    (status ? '<span class="run-status run-status-' + status + '">' + escapeHtml(RunsModel.STATUS_LABELS[status]) + "</span>" : "") +
+    _badges(isRef, status) +
     '<span class="run-meta">' + escapeHtml(meta) + "</span>", "");
   _wireHead(g, c.key);
   if (!isOpen) return g;
+  if (isRef && RunsModel.canReopen(run, rec, true)) {
+    _addUndoConfirm(g, UNDO_CONFIRM_LEVEL_TITLE, () => reopenRunAction(run.caseId));
+  }
   const hidden = c.members.length - n;
   const body = _groupBody(visible, hidden,
     hidden ? "Every step here is hidden." : "No steps yet: + Add step adds one here.",
@@ -642,11 +589,6 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
     buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
       "Accept the remaining drafted steps of this transaction, at every level (Ctrl+Enter). Ctrl+Z undoes it.",
       () => confirmRunAction(run.caseId)));
-  }
-  if (isRef && RunsModel.canReopen(run, rec, true)) {
-    buttons.push(_actionBtn("reopen-run", "Reopen transaction", "",
-      "Turn this transaction's confirmed steps back into drafts, at every level; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
-      () => reopenRunAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
   if (diffs && diffs.length) {
@@ -750,22 +692,11 @@ function _renderFlagSummary(allSteps) {
   sumEl.textContent = waste ? "Flagged: " + waste + " waste" : "";
 }
 
-/* The list pane: the saved-process comparison line (when the runs are
-   compared with a saved process), the runs (the open one with its steps),
-   then the steps outside runs. */
+/* The list pane: the runs (the open one with its steps), then the steps
+   outside runs. */
 function renderRunsList(host, model, pattern, visible, stats, ref) {
   if (!host) return;
   host.innerHTML = "";
-  if (ref && ref.kind === "saved") {
-    const line = document.createElement("div");
-    line.className = "runs-compare";
-    line.innerHTML = '<span class="runs-compare-text">Compared with saved process <strong>' + escapeHtml(ref.name) + "</strong></span>";
-    line.appendChild(_actionBtn("stop-comparing", "Stop comparing", "",
-      "Compare the transactions with this project's reference transaction instead", stopComparingAction));
-    line.appendChild(_actionBtn("forget-process", "Forget this saved process", "",
-      "Remove this saved process from this computer. The toast's Undo brings it back.", forgetProcessAction));
-    host.appendChild(line);
-  }
   if (!model.runs.length && !model.outside.length) {
     host.innerHTML =
       '<div class="empty-pane">' +
@@ -789,6 +720,42 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
 
 const PATTERN_TITLE = "The reference transaction: confirm it. Its step names carry over to the other transactions, which are compared with it.";
 const OTHER_RUN_TITLE = "Right-click to use this transaction as the reference transaction";
+// Undo confirm, the inverse of Confirm transaction (it read Reopen
+// transaction until the owner's review).
+const UNDO_CONFIRM_TITLE = "Turn this transaction's confirmed steps back into drafts, so you can change them and confirm again. " +
+  "The steps you edited or added stay as they are. Ctrl+Z confirms it again.";
+const UNDO_CONFIRM_LEVEL_TITLE = "Turn this transaction's confirmed steps back into drafts, at every level, so you can change them and confirm again. " +
+  "The steps you edited or added stay as they are. Ctrl+Z confirms it again.";
+
+/* The reference transaction's badges in its head, Reference and its status,
+   as one unit (`.run-badges`) that Undo confirm joins: where the head is too
+   narrow for one line, they go under the name together. "" when there is
+   neither. */
+function _badges(isRef, status) {
+  if (!isRef && !status) return "";
+  return '<span class="run-badges">' +
+    (isRef ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Reference</span>' : "") +
+    (status ? '<span class="run-status run-status-' + status + '">' + escapeHtml(RunsModel.STATUS_LABELS[status]) + "</span>" : "") +
+    "</span>";
+}
+
+/* Undo confirm on the open reference transaction: a quiet link beside its
+   Confirmed badge in the head (right after the status, in the badges' unit).
+   The head opens and closes the transaction, so the link keeps its click and
+   its keys to itself. */
+function _addUndoConfirm(group, title, onClick) {
+  const head = group.querySelector(".run-row .run-badges");
+  if (!head) return;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "link-btn run-undo-confirm";
+  b.dataset.act = "reopen-run";
+  b.title = title;
+  b.textContent = "Undo confirm";
+  b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
+  b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
+  head.appendChild(b);
+}
 
 function _groupHead(isOpen, innerHtml, titleAttr) {
   return '<div class="run-row" role="button" tabindex="0" aria-expanded="' + (isOpen ? "true" : "false") + '"' +
@@ -887,10 +854,12 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
-    (isPattern ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Reference</span>' : "") +
-    (status ? '<span class="run-status run-status-' + status + '">' + escapeHtml(RunsModel.STATUS_LABELS[status]) + "</span>" : "") +
+    _badges(isPattern, status) +
     '<span class="run-meta">' + escapeHtml(meta) + "</span>", canUsePattern ? OTHER_RUN_TITLE : "");
   _wireHead(g, run.caseId);
+  if (isOpen && isPattern && RunsModel.canReopen(run, rec, isPattern)) {
+    _addUndoConfirm(g, UNDO_CONFIRM_TITLE, () => reopenRunAction(run.caseId));
+  }
   if (canUsePattern || (isPattern && patternConfirmed)) {
     g.querySelector(".run-row").addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -913,33 +882,24 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
       "Accept this transaction's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
       () => confirmRunAction(run.caseId)));
   }
-  if (isPattern && RunsModel.canReopen(run, rec, isPattern)) {
-    buttons.push(_actionBtn("reopen-run", "Reopen transaction", "",
-      "Turn this transaction's confirmed steps back into drafts; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
-      () => reopenRunAction(run.caseId)));
-  }
-  if (isPattern && patternConfirmed) {
-    buttons.push(_actionBtn("save-process", "Save as this process", "",
-      "Store this transaction's steps, so that a later project of the same process is compared with them when you open it.",
-      () => saveAsProcessAction(run.caseId)));
-  }
+  // Its inverse, Undo confirm, is beside the Confirmed badge (_addUndoConfirm).
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  // One line per run says which names came from saved names (this computer's
-  // or this recording's own, C4), in place of a tag on every row.
+  // One line per run says how many names are remembered names (this
+  // computer's or this recording's own, C4), in place of a tag on every row.
   const saved = run.visible.filter((s) => s.name_source === "remembered" &&
     (RunsModel.DRAFT_STATES.has(s.state) || s.state === "confirmed")).length;
   if (saved) {
     const line = document.createElement("p");
     line.className = "run-names-note";
-    line.title = "These steps took the name you gave the same drafted step before, in this project or on this computer";
-    line.textContent = "Names from saved names: " + saved + " of " + _plural(n, "step", "steps");
+    line.title = "These steps took the name you gave the same drafted step before: the app remembers it for the same screen and button, in this project and in every other one.";
+    line.textContent = "Remembered names: " + saved + " of " + _plural(n, "step", "steps");
     acts.appendChild(line);
   }
   const after = acts;
   if (diffs && diffs.length) {
     const list = document.createElement("ul");
     list.className = "run-diffs";
-    list.title = "How this transaction differs from " + (ref.kind === "saved" ? "the saved process" : "the reference transaction");
+    list.title = "How this transaction differs from the reference transaction";
     for (const d of diffs) {
       const li = document.createElement("li");
       li.dataset.kind = d.kind;
@@ -1039,8 +999,7 @@ function renderRunGuide(host, model, pattern, ref) {
       : isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
     const diffs = run && !firstStep ? _runDiffs(ref, run) : null;
     if (diffs && !diffs.length) {
-      const noun = ref.kind === "saved" ? RunDiff.SAVED_REFERENCE : RunDiff.REFERENCE_RUN;
-      paras.unshift("It has no differences from " + noun + ".");
+      paras.unshift("It has no differences from " + RunDiff.REFERENCE_RUN + ".");
     }
   } else {
     paras = [model.runs.length ? "Pick a transaction on the left to see its steps." : "Pick a step on the left."];
@@ -1977,10 +1936,11 @@ async function confirmRunAction(caseId) {
     ". Ctrl+Z undoes it.", "success");
 }
 
-/* "Reopen run" (item 4), the inverse of Confirm run: the run's confirmed
-   steps are drafts again, edited and added ones stay; on the pattern run the
-   confirmation (and its probe line) goes until the run is confirmed again,
-   and the draft-fix counts are kept. One edit, so Ctrl+Z undoes it. */
+/* "Undo confirm" (item 4; it read Reopen transaction until the owner's
+   review), the inverse of Confirm run: the run's confirmed steps are drafts
+   again, edited and added ones stay; on the pattern run the confirmation
+   (and its probe line) goes until the run is confirmed again, and the
+   draft-fix counts are kept. One edit, so Ctrl+Z confirms it again. */
 async function reopenRunAction(caseId) {
   const session = State.getSession();
   if (!session) return;
@@ -1990,104 +1950,10 @@ async function reopenRunAction(caseId) {
   if (!run) return;
   const r = RunsModel.reopenRun(anno, model.runs, caseId);
   if (!r.reopened && !r.patternReopened) return;
-  try { await persistAnnotations(anno, "reopen transaction"); } catch (_) { return; }   // already shown
-  toast(run.title + " reopened" +
+  try { await persistAnnotations(anno, "undo confirm"); } catch (_) { return; }   // already shown
+  toast(run.title + " is no longer confirmed" +
     (r.reopened ? ": " + _plural(r.reopened, "step is a draft", "steps are drafts") + " again" : "") +
-    ". Ctrl+Z undoes it.", "success");
-}
-
-/* "Save as this process" (item 7, contract C5): the confirmed pattern run's
-   visible steps, in time order, are stored under a name in the saved
-   processes of this computer, so that a later session of the same process is
-   compared with them when it opens. A name already saved is replaced. The
-   toast's Undo takes the save back (the replaced process returns). */
-async function saveAsProcessAction(caseId) {
-  const session = State.getSession();
-  if (!session) return;
-  const anno = session.annotations || {};
-  const model = _model();
-  const p = RunsModel.patternRun(anno, model.runs);
-  if (!p.run || p.run.caseId !== caseId || !p.record || !p.record.confirmed_at) return;
-  const steps = RunDiff.processStepsFrom(p.run.visible);
-  if (!steps.length) { toast("This transaction has no steps to save.", "error"); return; }
-  const docTitle = anno.document && typeof anno.document.title === "string" ? anno.document.title.trim() : "";
-  const name = await promptModal({
-    title: "Save as this process",
-    message: "Name the process",
-    detail: "A later project of this process is compared with these " + _plural(steps.length, "step", "steps") +
-      " when you open it. Saving under a name already saved replaces that process.",
-    placeholder: "For example: Order entry",
-    defaultValue: docTitle,
-    okLabel: "Save",
-  });
-  if (!name || !name.trim()) return;
-  let r;
-  try {
-    r = await Ipc.saveProcess({
-      name: name.trim(),
-      sourceSessionId: (session.manifest && session.manifest.session_id) || "",
-      steps,
-    });
-  } catch (e) {
-    r = { ok: false, error: (e && e.message) || String(e) };
-  }
-  if (!r || !r.ok) {
-    toast("The process was not saved: " + ((r && r.error) || "no reason was given"), "error");
-    return;
-  }
-  toast((r.previous ? "Replaced" : "Saved") + ' the process "' + name.trim() + '".', "success",
-    { action: { label: "Undo", act: "undo-save-process", onClick: () => _undoSaveProcess(r) } });
-}
-
-async function _undoSaveProcess(saved) {
-  let r;
-  try {
-    r = await Ipc.undoSaveProcess({ id: saved.id, previous: saved.previous || null });
-  } catch (e) {
-    r = { ok: false, error: (e && e.message) || String(e) };
-  }
-  if (r && r.ok) toast(saved.previous ? "The saved process is back as it was." : "The process is no longer saved.", "success");
-  else toast("The save could not be taken back: " + ((r && r.error) || "no reason was given"), "error");
-}
-
-/* "Forget this saved process" (P3.11), the inverse of Save as this process
-   where the saved process shows (the comparison line): it leaves this
-   computer's saved processes, the runs are compared with the session's own
-   pattern run, and the toast's Undo brings it back, with the comparison. */
-async function forgetProcessAction() {
-  const match = _ui.compare;
-  const proc = match && match.process;
-  if (!proc || !proc.id) return;
-  let r;
-  try {
-    r = await Ipc.forgetProcess({ id: proc.id });
-  } catch (e) {
-    r = { ok: false, error: (e && e.message) || String(e) };
-  }
-  if (!r || !r.ok) {
-    toast("The saved process was not forgotten: " + ((r && r.error) || "no reason was given"), "error");
-    return;
-  }
-  const folder = _ui.folder;
-  _ui.compare = null;
-  renderStepsLevel();
-  toast('Forgot the saved process "' + proc.name + '".', "success",
-    { action: { label: "Undo", act: "undo-forget-process", onClick: () => _undoForgetProcess(r.removed, match, folder) } });
-}
-
-async function _undoForgetProcess(removed, match, folder) {
-  let r;
-  try {
-    r = removed ? await Ipc.undoSaveProcess({ id: removed.id, previous: removed }) : { ok: false, error: "nothing was forgotten" };
-  } catch (e) {
-    r = { ok: false, error: (e && e.message) || String(e) };
-  }
-  if (!r || !r.ok) {
-    toast("The saved process could not be brought back: " + ((r && r.error) || "no reason was given"), "error");
-    return;
-  }
-  if (_ui.folder === folder) { _ui.compare = match; _ui.compareStopped = false; renderStepsLevel(); }
-  toast("The saved process is back.", "success");
+    ". Ctrl+Z confirms it again.", "success");
 }
 
 async function usePatternAction(caseId) {
@@ -2314,7 +2180,8 @@ async function groupSelectedAction() {
     ". Ctrl+Z undoes it.", "success");
 }
 
-/* ===== Leave apps out (step-noise denylist) =====
+/* ===== Apps outside the process (step-noise denylist; the button read
+   Leave apps out... until the owner's review) =====
    Apps the analyst ticks here are written to annotations.json under
    step_filters.ignored_processes; step_suggest.py drops their
    interactions before step suggestion. Saving analyzes the recording again
@@ -2344,11 +2211,11 @@ function openIgnoredAppsDialog() {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML =
-    '<div class="modal modal-simple" role="dialog">' +
-      '<header class="modal-header"><h2>Leave apps out</h2>' +
+    '<div class="modal modal-simple" role="dialog" aria-label="Apps outside the process">' +
+      '<header class="modal-header"><h2>Apps outside the process</h2>' +
         '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
       '<div class="modal-body">' +
-        '<p class="meta" style="margin-top:0">The apps you tick are left out of the drafted steps: for example the recorder itself, or anything that is not part of the process you are mapping. Saving updates the steps and the map.</p>' +
+        '<p class="meta" style="margin-top:0">Tick the apps that are not part of the process you are mapping, for example Teams or Outlook used during the call, or the recorder itself. Their clicks and typing are left out of the steps and the map. Saving analyzes the project again.</p>' +
         '<div id="ia-list" style="margin-top:10px"></div>' +
       '</div>' +
       '<div class="modal-footer">' +
@@ -2397,7 +2264,8 @@ function openIgnoredAppsDialog() {
   });
 }
 
-/* ===== Saved names (item 8, C4; the button reads Saved names...) =====
+/* ===== Remembered step names (item 8, C4; the button read Saved names...
+   until the owner's review) =====
    The names this computer remembers for drafted steps, those whose draft key
    occurs in this session first. Rename changes the remembered name and the
    session's steps with that key that carry it (its drafts, and the steps
@@ -2412,11 +2280,11 @@ function openRememberedNamesDialog() {
   backdrop.className = "modal-backdrop";
   backdrop.id = "remembered-names-dialog";
   backdrop.innerHTML =
-    '<div class="modal modal-simple" role="dialog" aria-label="Saved names">' +
-      '<header class="modal-header"><h2>Saved names</h2>' +
+    '<div class="modal modal-simple" role="dialog" aria-label="Remembered step names">' +
+      '<header class="modal-header"><h2>Remembered step names</h2>' +
         '<button class="icon-btn modal-close" data-act="close" title="Close">✕</button></header>' +
       '<div class="modal-body">' +
-        '<p class="meta rn-intro">Names you gave drafted steps. Every analysis names the same drafted steps with them.</p>' +
+        '<p class="meta rn-intro">When you rename a drafted step, the app remembers that name for the same screen and button and uses it in every project. Rename or forget one here.</p>' +
         '<div class="rn-list"></div>' +
       "</div>" +
       '<div class="modal-footer"><button class="primary" data-act="close">Close</button></div>' +
@@ -2432,7 +2300,7 @@ function openRememberedNamesDialog() {
     try { r = await Ipc.readRememberedNames(); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
     if (!backdrop.isConnected) return;
     if (!r || !r.ok) {
-      list.innerHTML = '<p class="rn-error">' + escapeHtml("The saved names cannot be read: " +
+      list.innerHTML = '<p class="rn-error">' + escapeHtml("The remembered step names cannot be read: " +
         ((r && r.error) || "no reason was given")) + "</p>";
       return;
     }
@@ -2461,7 +2329,7 @@ function openRememberedNamesDialog() {
 
   async function renameRemembered(key) {
     const cur = (names[key] && names[key].name) || "";
-    const next = await promptModal({ title: "Rename a saved name", message: 'New name for "' + cur + '"',
+    const next = await promptModal({ title: "Rename a remembered name", message: 'New name for "' + cur + '"',
       defaultValue: cur, okLabel: "Rename" });
     const nm = typeof next === "string" ? next.trim() : "";
     if (!nm || nm === cur || !State.getSession()) return;
@@ -2474,7 +2342,7 @@ function openRememberedNamesDialog() {
     const anno = ensureAnnoShape(State.getSession().annotations);
     const n = RunsModel.renameSavedName(anno.steps, key, cur, nm);
     let saved = true;
-    if (n) { try { await persistAnnotations(anno, "rename a saved name"); } catch (_) { saved = false; } }   // already shown
+    if (n) { try { await persistAnnotations(anno, "rename a remembered name"); } catch (_) { saved = false; } }   // already shown
     if (saved) {
       toast("Renamed" + (n ? ": " + _plural(n, "step in this project took", "steps in this project took") +
         " the new name" : "") + ".", "success");
@@ -2499,7 +2367,7 @@ function openRememberedNamesDialog() {
     const n = RunsModel.forgetSavedName(anno.steps, key, cur,
       (s) => (s.action_key ? SPV.draftedAction(s, inter).name : StepFacts.draftedName(s, StepFacts.stepDatas(s, inter))));
     let saved = true;
-    if (n) { try { await persistAnnotations(anno, "forget a saved name"); } catch (_) { saved = false; } }   // already shown
+    if (n) { try { await persistAnnotations(anno, "forget a remembered name"); } catch (_) { saved = false; } }   // already shown
     if (saved) {
       toast('Forgot "' + cur + '".' + (n ? " " + _plural(n, "step in this project has its drafted name",
         "steps in this project have their drafted names") + " again." : ""), "success");

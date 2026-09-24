@@ -191,7 +191,7 @@ if ($("#btn-new-blank")) $("#btn-new-blank").addEventListener("click", () => new
 
 /* ============ Analysis: it runs by itself (AD-22) ===================
    The pipeline runs on open when the recording has no analysis or one from an
-   older version, after Leave apps out and after a range is left out, inside
+   older version, after Apps outside the process and after a range is left out, inside
    Edit as the As-Is map and inside the PDD export. The one manual act is
    Apply N marker changes (it redrafts the changed runs, so it asks first);
    Help, Troubleshooting has Re-analyze for a stuck state. While a run lasts
@@ -285,7 +285,7 @@ const CONFIRMS = {
    recording. Resolves true when it ran and the recording was reloaded.
    opts.confirm: "markers" (Apply N marker changes) or "reanalyze" (Help's
    Re-analyze) asks first when the recording has steps; the automatic runs
-   (on open, Leave apps out, a range left out, the Map's edit act) never ask. */
+   (on open, Apps outside the process, a range left out, the Map's edit act) never ask. */
 async function analyzeSession(opts) {
   const sess = State.getSession();
   if (!sess) return false;
@@ -899,7 +899,7 @@ async function queueCaseFromSelection() {
    statistics. Lets the analyst cut a lunch break or an unrelated detour out
    of a long passive recording without touching the raw event log. The steps
    depend on it, so the analysis runs by itself right after (AD-22), as it
-   does after Leave apps out. */
+   does after Apps outside the process. */
 async function queueExcludeRange() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;

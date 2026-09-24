@@ -22,7 +22,8 @@
  * data object and legend ids are read without it.
  * Pure: no DOM and no bpmn-js. An element is a bpmn-js diagram element (or a
  * business object), and its type is matched with is(), as bpmn-js matches it,
- * so a user task and a manual task are tasks.
+ * so a plain task, a manual task and the user task of a copy made before lane
+ * CL (every recorded step was one) are all tasks.
  */
 
 const { mapNodeLabel } = require("./process-map-levels.js");

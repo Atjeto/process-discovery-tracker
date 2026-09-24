@@ -297,14 +297,39 @@ def test_notes_and_files_on_sub_steps_are_drawn_on_their_plane():
     refs = [el for el in price if _tag(el) == "dataObjectReference"]
     assert [(r.get("id"), r.get("name"), _text(r, "documentation")) for r in refs] == [
         ("Sub2_DataObjectReference_att1", "Price list", "attachments/prices.xlsx")]
-    holder = _child(price, "Open the list", "userTask")
+    holder = _child(price, "Open the list", "task")
     assert [d.find(f"{_BPMN}sourceRef").text
             for d in holder.findall(f"{_BPMN}dataInputAssociation")] == [refs[0].get("id")]
     # The file on the main level stays as C18 names it.
     assert [el.get("id") for el in main if _tag(el) == "dataObjectReference"] == [
         "DataObjectReference_att2"]
-    # Drafted sub-steps are recorded work: user tasks.
-    assert {_tag(el) for el in check if _tag(el) in _TASKS} == {"userTask", "subProcess"}
+    # Drafted sub-steps are recorded work, done in a system: plain tasks.
+    assert {_tag(el) for el in check if _tag(el) in _TASKS} == {"task", "subProcess"}
+
+
+def test_a_sub_step_done_outside_the_systems_is_a_manual_task_on_its_plane():
+    """C18 as lane CL amended it, on every plane: a sub-step added by hand
+    with no system is a manual task, and its plane's legend ends saying what
+    the hand means; the main plane, which has none, does not."""
+    anno = _anno()
+    check_a = next(s for s in anno["steps"] if s["step_id"] == "A-c")
+    check_a["sub_steps"].append({"step_id": "A-hand", "case_id": "A", "name": "Phone the warehouse",
+                                 "state": "manually_authored", "time_range": None, "order": 1,
+                                 "evidence": {"interaction_event_ids": [], "screenshot_refs": []}})
+    root = _written(anno)
+    main = _main(root)
+    check = _child(main, "Check the order")
+    kinds = {el.get("name"): _tag(el) for el in check if _tag(el) in _TASKS}
+    assert kinds == {"Enter customer": "task", "Look up price": "subProcess", "Click Save": "task",
+                     "Phone the warehouse": "manualTask"}
+
+    def legend(container):
+        found = [el for el in container if _tag(el) == "textAnnotation"
+                 and el.get("id").endswith("TextAnnotation_legend")]
+        assert len(found) == 1
+        return _text(found[0])
+    assert legend(check) == "Colour by system\nCRM: orange\nPrice list: green\nHand icon: done outside the systems"
+    assert legend(main) == "Colour by system\nOutlook: blue\nCRM: orange"
 
 
 def test_a_sub_process_without_steps_is_a_start_joined_to_an_end():

@@ -101,18 +101,18 @@ test("fork prefers the on-disk source hash; drift fires when the source changes"
 const MAP = {
   nodes: [
     ["start", "startEvent", ""],
-    ["search", "userTask", "Account lookup: Search"],
+    ["search", "task", "Account lookup: Search"],
     ["fork", "parallelGateway", ""],
-    ["open", "userTask", "Open customer record"],
-    ["track", "userTask", "Order Tracking.xlsx: Save workbook"],
+    ["open", "task", "Open customer record"],
+    ["track", "task", "Order Tracking.xlsx: Save workbook"],
     ["meet", "parallelGateway", ""],
     ["x1", "exclusiveGateway", ""],
-    ["save", "userTask", "Order: Save order"],
+    ["save", "task", "Order: Save order"],
     ["call", "manualTask", "Call the customer"],
     ["x2", "exclusiveGateway", ""],
     ["x3", "exclusiveGateway", ""],
-    ["mail", "userTask", "Outlook: Send confirmation"],
-    ["print", "userTask", "Print the order"],
+    ["mail", "task", "Outlook: Send confirmation"],
+    ["print", "task", "Print the order"],
     ["x4", "exclusiveGateway", ""],
     ["end", "endEvent", "Order saved & confirmed"],
   ],
@@ -190,7 +190,7 @@ test("processSignature: a change to the process changes it", () => {
     "a renamed task": (m) => { m.nodes[7][2] = "Order: Save the order"; },
     "an added flow": (m) => { m.flows.push(["x3", "x4", ""]); },
     "a changed condition name": (m) => { flowOf(m, "x1", "call")[2] = "Customer not found"; },
-    "a task of another kind": (m) => { m.nodes[8][1] = "userTask"; },
+    "a task of another kind": (m) => { m.nodes[8][1] = "task"; },
     "a renamed end event": (m) => { m.nodes[14][2] = "Order saved"; },
     "a renamed data object": (m) => { m.data[0][1] = "Order form v2.pdf"; },
     "a data object held by another task": (m) => { m.data[0][2] = "call"; },
@@ -312,7 +312,7 @@ test("the stored shape of a map keeps its keys (the Export menu reads it) and ad
     ["edited_at", "file", "forked_at", "forked_from_hash", "forked_from_sig", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
 });
 
-test("C18: a copy made before the step map had its colours, notes and attachments is told apart (no user or manual task in it)", () => {
+test("C18: a copy made before the step map had its colours, notes and attachments is told apart (no user or manual task, no legend, no colour in it)", () => {
   const before = '<bpmn:process id="P"><bpmn:task id="t1" name="Save order" /><bpmn:startEvent id="s" /></bpmn:process>';
   const after = '<bpmn:process id="P"><bpmn:userTask id="t1" name="Save order">\n</bpmn:userTask></bpmn:process>';
   assert.equal(RM.predatesRichMap(before), true);
@@ -320,4 +320,15 @@ test("C18: a copy made before the step map had its colours, notes and attachment
   assert.equal(RM.predatesRichMap('<manualTask id="t2"/>'), false, "a manual task, any prefix");
   assert.equal(RM.predatesRichMap('<bpmn:userTaskish id="x"/>'), true, "only the element names count");
   assert.equal(RM.predatesRichMap(null), true);
+  // Lane CL: a task done in a system is a plain task now; the legend or a
+  // task's colour tells the map apart, on any plane.
+  const plain = '<bpmn:process id="P"><bpmn:task id="node_1_Save" name="Save order" />' +
+    '<bpmn:textAnnotation id="TextAnnotation_legend"><bpmn:text>Colour by system</bpmn:text></bpmn:textAnnotation></bpmn:process>';
+  assert.equal(RM.predatesRichMap(plain), false, "the legend");
+  assert.equal(RM.predatesRichMap(before.replace("</bpmn:process>",
+    '<bpmn:subProcess id="s1"><bpmn:textAnnotation id="Sub1_TextAnnotation_legend" /></bpmn:subProcess></bpmn:process>')), false,
+    "a sub-process's legend");
+  assert.equal(RM.predatesRichMap(before + '<bpmndi:BPMNShape id="Sh" bpmnElement="t1" bioc:fill="#bfdbfe" bioc:stroke="#1e3a8a" />'), false,
+    "a task's colour");
+  assert.equal(RM.predatesRichMap(before.replace("t1", "TextAnnotation_legendary")), true, "only the legend's id counts");
 });

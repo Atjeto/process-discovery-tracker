@@ -899,7 +899,7 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     drawn is there; then it moves the same way.
 
     Contract C18, each keyed by a task (its id()): `task_tags` its element
-    ("userTask", "manualTask"; else by its class); `colours` its (fill,
+    ("task", "manualTask"; else by its class); `colours` its (fill,
     stroke), written as bpmn-js's bioc:fill and bioc:stroke; `notes` its
     (text, whole text or None): a text annotation above it, joined by an
     association, the whole text its documentation when the shown one was

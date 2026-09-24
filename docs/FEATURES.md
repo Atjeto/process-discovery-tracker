@@ -75,10 +75,11 @@ The Python pipeline the viewer runs by itself; see
   the analyst set on steps (a decision for a step that happens only under a
   condition, a loop back, a skip, an early end), the start named after the
   trigger, the main end after the result and each early end after its
-  condition, user tasks for recorded steps and manual tasks for steps added
-  by hand, each step's notes beside it, its attachments as files under it,
-  and a colour per system with a legend. Task names stay the step names,
-  so a BPMN tool imports them clean.
+  condition, plain tasks for the steps done in a system and manual tasks
+  (the hand marker) for the steps done outside every system, each step's
+  notes beside it, its attachments as files under it, and a colour per
+  system with a legend that also says what the hand means. Task names stay
+  the step names, so a BPMN tool imports them clean.
 - **The PDD (.docx).** Tool-neutral, in the reader's order: document
   control; purpose, scope, trigger, result and contacts; the As-Is map and
   the reference transaction's steps (each with its system, screen, average
@@ -136,8 +137,9 @@ The viewer says *transaction* for one pass through the process and
 
 - **One timeline** of the recording: transactions, activity by system,
   idle, screenshots, the steps, the transcript and notes, on one clock (the
-  time since the recording started). A video project's timeline runs on
-  its video.
+  time since the recording started), each lane named in a header column at
+  its left (a key that looks like its marks, its name, a tooltip saying
+  what it shows). A video project's timeline runs on its video.
 - **The video beside it**, attached and synced with two clicks and copied
   into the folder so it travels with it; a small playback bar.
 - **Transaction repair**: *Start a transaction here* and *End the
@@ -150,8 +152,8 @@ The viewer says *transaction* for one pass through the process and
 
 - **The transactions and their steps**, under one line that says what a
   transaction is. Confirm the reference transaction after fixing its
-  boundaries (merge, split, add, hide) and names; *Reopen transaction*
-  takes it back. A merge carries to the same drafts of the other
+  boundaries (merge, split, add, hide) and names; *Undo confirm*, beside
+  the Confirmed badge, takes it back. A merge carries to the same drafts of the other
   transactions; a hidden draft can be hidden in every transaction.
 - **The other transactions are reviewed, not confirmed**: each lists its
   extra, skipped and reordered steps against the reference transaction.
@@ -180,10 +182,11 @@ The viewer says *transaction* for one pass through the process and
   shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
   Alt+Down), or *+ Step* at the video's playhead.
-- **Saved names and saved processes**: a name given once names the same
-  drafted step in every later recording; *Save as this process* lets a later
-  recording be compared with the confirmed reference transaction. *Leave
-  apps out* drops an application from the drafts.
+- **Remembered step names**: a name given once names the same drafted step
+  (the same screen and button) in every project; the Steps toolbar's
+  *Remembered step names...* renames or forgets one. *Apps outside the
+  process...* drops an application used during the call (Teams, Outlook)
+  from the drafts.
 
 **Map**
 

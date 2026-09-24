@@ -290,7 +290,9 @@ def _by_name(root, tag):
     return {el.get("name"): el for el in process if el.tag == f"{_BPMN}{tag}"}
 
 
-# Contract C18: a recorded step is a user task, a step added by hand a manual task.
+# Contract C18 as lane CL amended it: a step done in a system is a plain task,
+# a step done outside every system a manual task (a user task is the kind every
+# recorded step had before; the helpers read tasks of any kind).
 _TASK_TAGS = ("task", "userTask", "manualTask")
 
 
@@ -552,7 +554,7 @@ def _reach(start, adjacency):
 
 def _well_formed(root):
     """Assert the model a BPMN tool reads: one start event and one end event
-    per outcome (C18: the main end and one per early end), user or manual
+    per outcome (C18: the main end and one per early end), plain or manual
     tasks and exclusive gateways only, each task one flow in and one out,
     each end event one flow in, each gateway a real split or join, every
     node reachable from the start and able to reach an end, and each node
@@ -560,7 +562,7 @@ def _well_formed(root):
     elements, flows = _graph(root)
     tags = [_tag(el) for el in elements.values()]
     assert tags.count("startEvent") == 1 and tags.count("endEvent") >= 1, tags
-    assert set(tags) <= {"startEvent", "endEvent", "userTask", "manualTask",
+    assert set(tags) <= {"startEvent", "endEvent", "task", "manualTask",
                          "exclusiveGateway"}, tags
     out, inc = {}, {}
     for _fid, s, t, _name in flows:
@@ -928,14 +930,41 @@ def _text(el, child="text"):
     return found.text if found is not None else None
 
 
-def test_steps_added_by_hand_are_manual_tasks_and_recorded_steps_user_tasks():
-    root = _written(_rich_anno(), context=_plain_context())
+def test_steps_in_a_system_are_plain_tasks_and_steps_outside_every_system_manual_tasks():
+    """C18 as lane CL amended it: the same person marker on every box said
+    nothing. A step done in a system is a plain task, a step added by hand
+    with no system a manual task (BPMN's hand marker), and the legend says
+    what the hand means; a step added by hand with its system set is done in
+    that system."""
+    anno = _rich_anno()
+    anno["steps"].append({"step_id": "hand-2", "case_id": "A", "name": "Log the call in SAP",
+                          "state": "manually_authored", "time_range": None, "order": 2,
+                          "system": "SAP",
+                          "evidence": {"interaction_event_ids": [], "screenshot_refs": []}})
+    root = _written(anno, context=_plain_context())
     kinds = {name: _tag(el) for name, el in _tasks(root).items()}
-    assert kinds == {**{name: "userTask" for name in _FLOW_STEPS},
-                     "Phone the customer": "manualTask"}
+    assert kinds == {**{name: "task" for name in _FLOW_STEPS},
+                     "Phone the customer": "manualTask", "Log the call in SAP": "task"}
+    assert _text(_annotations(root)[1]).split("\n")[-1] == "Hand icon: done outside the systems"
 
 
-def test_a_task_recorded_in_one_transaction_is_a_user_task():
+def test_a_map_without_a_step_outside_the_systems_has_no_hand_in_its_legend():
+    anno = _rich_anno()
+    anno["steps"][-1]["system"] = "Phone"
+    root = _written(anno, context=_plain_context())
+    assert "manualTask" not in {_tag(el) for el in _tasks(root).values()}
+    assert "Hand" not in _text(_annotations(root)[1])
+
+
+def test_a_map_of_steps_outside_the_systems_has_a_legend_of_the_hand_alone():
+    anno = {"steps": [_untimed("A", "Receive the letter", 1), _untimed("A", "File it", 2)]}
+    root = _written(anno, context=_plain_context())
+    assert {_tag(el) for el in _tasks(root).values()} == {"manualTask"}
+    assert _text(_annotations(root)[1]) == "Hand icon: done outside the systems"
+    assert not any(k.startswith(_BIOC) for sh in _di_shapes(root).values() for k in sh.attrib)
+
+
+def test_a_task_recorded_in_one_transaction_is_a_plain_task():
     """One node for a step recorded in one transaction and added by hand in
     another is recorded work; a step added by hand over recorded
     interactions is recorded too."""
@@ -948,8 +977,8 @@ def test_a_task_recorded_in_one_transaction_is_a_user_task():
             s["evidence"] = {"interaction_event_ids": ["e1"]}
     anno["steps"].append(_untimed("B", "Call back", 1))
     kinds = {name: _tag(el) for name, el in _tasks(_written(anno)).items()}
-    assert kinds == {"Search": "userTask", "Open ticket": "userTask", "Escalate": "userTask",
-                     "Resolve": "userTask", "Call back": "manualTask"}
+    assert kinds == {"Search": "task", "Open ticket": "task", "Escalate": "task",
+                     "Resolve": "task", "Call back": "manualTask"}
 
 
 def test_each_link_to_end_ends_at_an_end_event_named_by_its_when():
@@ -1110,7 +1139,10 @@ def test_tasks_take_a_colour_per_system_and_a_legend_names_them():
                       "Check the customer": orange, "Book the order": green,
                       "Confirm the lines": green, "Phone the customer": (None, None)}
     _notes, legend = _annotations(root)
-    assert _text(legend) == "Colour by system\nOutlook: blue\nSalesforce: orange\nSAP: green"
+    # Phone the customer is done outside the systems: the legend says what
+    # its hand means.
+    assert _text(legend) == ("Colour by system\nOutlook: blue\nSalesforce: orange\nSAP: green\n"
+                             "Hand icon: done outside the systems")
     assert legend.get("id") in shapes
     # The reference transaction orders the systems when there are several.
     anno = _rich_anno()
@@ -1120,7 +1152,8 @@ def test_tasks_take_a_colour_per_system_and_a_legend_names_them():
         s["system"] = "Salesforce" if s["name"].startswith("Check") else "SAP"
     anno["pattern_run"] = {"case_id": "B"}
     _notes, legend = _annotations(_written(anno, context=_plain_context()))
-    assert _text(legend) == "Colour by system\nSalesforce: blue\nSAP: orange\nOutlook: green"
+    assert _text(legend) == ("Colour by system\nSalesforce: blue\nSAP: orange\nOutlook: green\n"
+                             "Hand icon: done outside the systems")
 
 
 def test_a_system_past_the_palette_keeps_the_default_look():

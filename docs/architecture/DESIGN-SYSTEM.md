@@ -157,11 +157,22 @@ byte-copies) by hand in the same commit.
   fill, `--accent-text` label, `--accent-hover` on hover (one primary
   button per surface: the next act). Danger: `--rec` fill, and the plain
   look again while disabled. Link buttons (`.link-btn`) carry the small
-  acts inside text (Attach, Replace, Remove).
+  acts inside text (Attach, Replace, Remove; *Undo confirm* beside a
+  transaction's Confirmed badge, in `--fg-3`). A quiet tool beside the main
+  work (the Steps toolbar's *Apps outside the process...* and *Remembered
+  step names...*) is `.tool-btn`: 11px `--fg-2` on no fill inside the
+  `--rule` border, the card's fill under the mouse.
 - **The top bar and the level buttons**: the top bar is white with a soft
   shadow; a level button is transparent until hovered (`--bg-3`); the
   active level is filled with `--accent`, and keeps its colours under the
   mouse.
+- **The Timeline's header column**: the lanes' names sit in a column of
+  their own, like a video editor's track headers (`--bg-1`, a `--rule`
+  divider from the lanes): a cell per lane as tall as the lane, a 14px key
+  drawn in CSS that copies the lane's own marks, and the name in the mono
+  label type (10px, uppercase, 1.2px spacing, `--fg-2`). The dividers
+  between the cells run on across the lanes; a cell under the pointer takes
+  a 2px accent edge and a 16% accent wash, and its lane an 11% one.
 - **Bottom playback bar**: a video transport pinned below the levels as a
   flex sibling of `<main>` (`--bg-2`, top hairline); the `.hidden` class
   collapses it while no video is loaded.
@@ -244,7 +255,9 @@ reads "Salesforce"), so two systems in one browser share a colour.
 The pipeline writes a colour per system into `process_map_step.bpmn`
 (`normalization/bpmn_observed.py` `_PALETTE`), as bpmn-js's `bioc:fill` and
 `bioc:stroke`: a light fill and a dark stroke, in the order the reference
-transaction, then the others, first use the systems. bpmn-js writes a
+transaction, then the others, first use the systems. A step done in a system
+is a plain task; a step done outside every system is a manual task, whose
+hand marker the legend explains in its last line. bpmn-js writes a
 task's name in its stroke colour, so every pair keeps its name at 6.9:1 or
 more on its fill, legible in the PDD's print. A legend text annotation
 names each system's colour; a tenth system and later keep bpmn-js's default

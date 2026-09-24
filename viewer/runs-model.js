@@ -368,11 +368,12 @@ function confirmRun(anno, runs, caseId, nowIso) {
   return { converted, patternConfirmed: isPattern };
 }
 
-/* "Reopen run", the inverse of Confirm run: the run's confirmed steps are
-   drafts again at every level (C19; a hidden step that was confirmed unhides
-   as a draft), while the steps the analyst edited or added keep their state;
-   on the pattern run, confirmed_at goes back to null and its draft-fix
-   counts are kept. Returns { reopened, patternReopened }. */
+/* "Reopen run" (the viewer's Undo confirm), the inverse of Confirm run: the
+   run's confirmed steps are drafts again at every level (C19; a hidden step
+   that was confirmed unhides as a draft), while the steps the analyst edited
+   or added keep their state; on the pattern run, confirmed_at goes back to
+   null and its draft-fix counts are kept. Returns { reopened,
+   patternReopened }. */
 function reopenRun(anno, runs, caseId) {
   const p = patternRun(anno, runs);
   const isPattern = !!(p.run && p.run.caseId === caseId);
@@ -638,21 +639,22 @@ function dropDraftIdentity(step) {
   return step;
 }
 
-/* The session's visible steps with `draftKey` that the Saved names dialog
-   renames or forgets with a saved name: every draft of the key, and the steps
-   the analyst confirmed, edited or added that carry the old name, at every
-   level; a key "action|..." is a drafted sub-step's (C19, rememberKey). The
-   next analysis names a draft with this session's own names first (C4), so a
-   saved name changed in the store only would come back from them. */
+/* The session's visible steps with `draftKey` that the Remembered step names
+   dialog renames or forgets with a remembered name: every draft of the key,
+   and the steps the analyst confirmed, edited or added that carry the old
+   name, at every level; a key "action|..." is a drafted sub-step's (C19,
+   rememberKey). The next analysis names a draft with this session's own
+   names first (C4), so a remembered name changed in the store only would come
+   back from them. */
 function _carriers(steps, draftKey, oldName) {
   const old = typeof oldName === "string" ? oldName.trim() : "";
   return visibleTree(steps).filter((s) => rememberKey(s) === draftKey &&
     (DRAFT_STATES.has(s.state) || (old && String(s.name || "").trim() === old)));
 }
 
-/* A saved name renamed in the Saved names dialog (item 8): the carriers take
-   the new name (a draft as a propagated name lands: state kept, name_source
-   "remembered"). Returns how many took it. */
+/* A remembered name renamed in the Remembered step names dialog (item 8): the
+   carriers take the new name (a draft as a propagated name lands: state kept,
+   name_source "remembered"). Returns how many took it. */
 function renameSavedName(steps, draftKey, oldName, name) {
   const nm = typeof name === "string" ? name.trim() : "";
   if (typeof draftKey !== "string" || !draftKey || !nm) return 0;
@@ -665,9 +667,10 @@ function renameSavedName(steps, draftKey, oldName, name) {
   return hit.length;
 }
 
-/* A saved name forgotten in the Saved names dialog: the carriers that hold
-   it take their drafted name back (`draftedName(step)`, "" when it cannot be
-   told, and then the step keeps its name). Returns how many changed. */
+/* A remembered name forgotten in the Remembered step names dialog: the
+   carriers that hold it take their drafted name back (`draftedName(step)`, ""
+   when it cannot be told, and then the step keeps its name). Returns how many
+   changed. */
 function forgetSavedName(steps, draftKey, oldName, draftedName) {
   const old = typeof oldName === "string" ? oldName.trim() : "";
   if (typeof draftKey !== "string" || !draftKey || !old) return 0;

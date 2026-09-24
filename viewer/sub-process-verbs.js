@@ -246,7 +246,7 @@ function draftSubSteps(parent, interactionsById, opts) {
 
 /* The name and the description the drafting gives a drafted sub-step, from
    its own events: { name, description }, "" each when they cannot be told.
-   The Saved names dialog's Forget gives the name back; Dissolve tells a
+   The Remembered step names dialog's Forget gives the name back; Dissolve tells a
    description the analyst wrote from the drafted one. */
 function draftedAction(step, interactionsById) {
   const events = _events(step, interactionsById);

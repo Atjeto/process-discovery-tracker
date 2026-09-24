@@ -121,20 +121,23 @@ container. The Overview is the default on load.
   per step and per system, with its Average time and in how many
   transactions it Happened). Until the project is analyzed it shows one
   note that says where the analysis is.
-- **Timeline**: the timeline with its lanes, the video pane, the side panel
-  (Screenshots, Markers) and the Raw events drawer, which shows on this
-  level only. Detail: [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md).
+- **Timeline**: the timeline with its lanes and their header column (a key
+  and a name per lane, like a video editor's track headers), the video pane,
+  the side panel (Screenshots, Markers) and the Raw events drawer, which
+  shows on this level only. Detail: [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md).
 - **Steps**: the transactions in time order, one open at a time, under one
   line that says what a transaction is (the reference transaction with
-  Confirm transaction or Reopen transaction and Save as this process; each
-  other transaction with its differences; "Outside the transactions"), and
+  Confirm transaction, and *Undo confirm* beside its Confirmed badge once it
+  is confirmed; each other transaction with its differences; "Outside the
+  transactions"), and
   the step pane beside them. The divider between the two moves with a drag
   or, focused, with Left, Right, Home and End; a double-click or Enter gives
   the usual widths back (`pane-splitter.js`; at 1100px wide or less the two
   stack, without it). The toolbar has *+ Add step*, the bulk Hide, Merge
   and *Group into a sub-process...* buttons (shown when two or more rows
-  are ticked), *Leave apps out...* and *Saved names...*. The list shows one
-  level at a time (contract C19, below).
+  are ticked), and two quiet tools, *Apps outside the process...* and
+  *Remembered step names...*. The list shows one level at a time (contract
+  C19, below).
 - **Map**: the process map drawn from the transactions' steps between a
   Start and an End circle, each box naming its system under its name; a
   condition set in Steps labels its line, and a path set in Steps that no
@@ -213,7 +216,7 @@ drops its sub-steps, whose screenshots, notes and attachments move to it;
 one confirm names the descriptions and flow that go). A sub-process's name
 reaches every occurrence of its node at its level; a drafted sub-step's
 name reaches the drafts of its action and is saved under `action|` and its
-key. Confirm transaction and Reopen transaction reach every level, and the
+key. Confirm transaction and Undo confirm reach every level, and the
 reference transaction reads Draft while a level below holds a draft. Merge,
 Split and a moment added to a step are refused on a sub-process with one
 line; Hide hides it with everything under it; Delete on a group deletes its
@@ -266,8 +269,7 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `annotations-store.js` | Reading `annotations.json` (an unreadable file is reported, never treated as absent), the backups `.2` to `.5`, the temp-file-then-rename write. |
-| `names-store.js` | The saved names, `<userData>/pdt-library/remembered-names.json` (contract C4). |
-| `processes-store.js` | The saved processes, `<userData>/pdt-library/processes.json` (C5): save, undo, forget. |
+| `names-store.js` | The remembered step names, `<userData>/pdt-library/remembered-names.json` (contract C4). |
 | `transcript-store.js` | `transcript.json`: read, save the sync offset, remove (C8). |
 | `analyst-files.js` | The files the analyst adds (C16): screenshots in `screenshots/analyst/`, attachments in `attachments/` (a free name when one is taken), the move of removed files and back, which attachment opens. |
 | `new-project.js` | A session without a recording (C16): `manifest.json` (`session_id`, `source`, `started_at`, `label`), an empty `events.jsonl`, `annotations.json`, and for a video project the video copied into `video/` at offset 0. |
@@ -288,7 +290,7 @@ their module as `<name>.test.js`.
 | `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
 | `flow-view-transcript.js` | The Transcript lane, the transcript's Sync, Attach, Replace and Remove. |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
-| `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Reopen transaction, Use as reference transaction, Save as this process, the comparison with a saved process, the Leave apps out and Saved names dialogs. C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
+| `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process and Remembered step names dialogs. C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
 | `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), and the panel for an As-Is task no step stands for (`openForMissing`). |
 | `analyst-ui.js` | What the analyst adds, on screen (C16): the System field, the screenshots (Add screenshot, Use in PDD, Remove, Ctrl+V), notes on a step or a moment, attachments on a step and on the Overview. |
 
@@ -296,7 +298,7 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, saved-name propagation. C19: Confirm and Reopen reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`, `rememberKey`). |
+| `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, remembered-name propagation. C19: Confirm and Undo confirm (`reopenRun`) reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`, `rememberKey`). |
 | `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`, `mainMapName`. |
 | `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
 | `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
@@ -377,8 +379,7 @@ which the renderer shows.
 | Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`; `--names` when the store exists); streams its log. |
 | | `viewer:cancelNormalize` | Stops the run in progress. |
 | Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back. |
-| Saved names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName` | Save, read, forget a name. |
-| Saved processes (C5) | `viewer:readProcesses`, `viewer:saveProcess`, `viewer:undoSaveProcess`, `viewer:forgetProcess` | Read, save, undo a save, forget. |
+| Remembered step names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName` | Save, read, forget a name. |
 | Export and shell | `viewer:exportFile` | A save dialog, then a copy of the given file. |
 | | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
 | | `viewer:exportProjectZip` | Zips an open project next to its folder (`project-zip.js`); refused while that project's analysis runs, one zip of a project at a time. Answers the zip's path, size and entry count. |
@@ -503,8 +504,8 @@ itself:
   `normalization/pipeline_stages.py` writes, 2 now). Once per folder in a
   window, never from an analysis's own reload, and not while
   `annotations.json` cannot be read.
-- **After a change the drafts depend on**: *Leave apps out* and a range
-  excluded from the analysis.
+- **After a change the drafts depend on**: *Apps outside the process* and a
+  range excluded from the analysis.
 - **Inside the acts that need a current map file**: *Edit as the As-Is map*,
   the PDD export and the two map exports, when `process_map_step.bpmn` is
   missing or older than the steps.
@@ -512,7 +513,7 @@ itself:
 Two runs are deliberate and ask first when the session has steps: *Apply N
 marker changes* (the status line) and *Re-analyze* (Help, Troubleshooting).
 Every analysis passes `--mine` (the PDD export's own run does not); every
-run passes `--names` when the saved names store exists.
+run passes `--names` when the remembered names store exists.
 
 Runs go one at a time (`runPipeline` queues them). While one lasts the
 status line says "Updating steps and map..." with Cancel, the page stays as
@@ -530,7 +531,7 @@ Every annotation write in the renderer goes through `session.js`:
 - `persistAnnotations(annotations, label, topics)` saves with undo and emits
   the topics (default `steps` and `timeline`).
 - `saveAnnotationsDirect` writes without an undo entry: opening a run
-  (`opened_runs`) and *Leave apps out* (an analysis follows at once).
+  (`opened_runs`) and *Apps outside the process* (an analysis follows at once).
 - A failed write shows one error toast and rejects, so the caller's success
   message never follows an unsaved edit; the edit stays in memory and the
   next successful save writes it.
@@ -551,8 +552,9 @@ screenshots, notes and attachments; the Overview `document` and the
 attachments; the Map `reference_maps` and the copies' files in
 `derived_maps/`. Written by the main process directly, not through the undo
 stack: `external_video` (Attach and Sync video), the transcript's sync, and
-the two stores on the analyst's machine (saved names, saved processes,
-whose Undo is a toast action).
+the store of remembered step names on the analyst's machine. (The saved
+processes of contract C5 left the app on 2026-09-24: a process is recorded
+once; a `processes.json` left in `pdt-library` is not read.)
 
 **The save state** ([`save-state.js`](../../viewer/save-state.js),
 `#save-state` in the top bar) says whether the analyst's work reached the

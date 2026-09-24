@@ -46,9 +46,9 @@ packaged build; the shared rule files in `../shared/` or
   `derived_maps/`. Every change saves itself there (the top bar says
   *Saved*), and Export, *Whole project (.zip)* makes one zip of the folder,
   next to it, to hand the project to someone.
-- On the analyst's computer (the app's user data folder): the saved names
-  and the saved processes in `pdt-library/`, and the recent list, the theme
-  and the layout in the app's local storage.
+- On the analyst's computer (the app's user data folder): the remembered
+  step names in `pdt-library/`, and the recent list, the theme and the
+  layout in the app's local storage.
 
 ## Tests
 

@@ -77,9 +77,10 @@ _BPMN_NS = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
 
 # The step BPMN elements whose count the golden pins. Only what the recorded
 # steps decide is pinned: the tasks (one per distinct step label, their names
-# pinned too), counted by kind (contract C18: a recorded step is a user task, a
-# step added by hand a manual task, so a plain task pins that none is left
-# untyped), and the one start and one end event, with the end's name (C18: the
+# pinned too), counted by kind (contract C18 as lane CL amended it: a step done
+# in a system is a plain task, a step done outside every system a manual task,
+# so a user task pins that none is left of the kind every recorded step had
+# before), and the one start and one end event, with the end's name (C18: the
 # Result's first line, else "End"). Gateway and sequence-flow counts are left
 # out on purpose: they come from pm4py's inductive miner, which CI installs
 # unpinned (2.7.11 or newer) while the app bundles 2.7.22.2, so they may move

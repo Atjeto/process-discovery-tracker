@@ -72,7 +72,7 @@
      A row: the multi-select tick (shown on hover or once ticked), the name
      (double-click to rename, with the shared name suggestions), the waste
      tag, the state chip and the duration (the run says in one line which
-     names came from saved names). P1.9: a row carries a chip only
+     names are remembered names). P1.9: a row carries a chip only
      where it differs from its run: `opts.baseline` is the chip class the run's
      status stands for ("draft" or "confirmed"), and a row whose chip is that
      class shows none (the run's own status says it). Without a baseline (the

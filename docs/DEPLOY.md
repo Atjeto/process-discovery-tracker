@@ -150,7 +150,7 @@ The install is a folder. Upgrading is replacing that folder.
 | Recordings | `%APPDATA%\process-discovery-tracker-capture\sessions\` | Outside the install folder. |
 | Capture settings | `%APPDATA%\process-discovery-tracker-capture\` (`user-config.json`, `quick-config.yaml`, `recording-bar.json`) | Settings, Profile, Recording setup, the bar's place. |
 | Capture logs | `%APPDATA%\process-discovery-tracker-capture\` (`boot.log`, `app.log`) | Append-only. |
-| The analyst's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` (`remembered-names.json`, `processes.json`) | The saved names and saved processes. |
+| The analyst's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` (`remembered-names.json`) | The remembered step names. A `processes.json` there (the saved processes, removed on 2026-09-24) is not read. |
 | A project YAML | Wherever `PDT_CONFIG` points | Owned by the analyst, not the install. |
 
 **What does not survive:** anything inside the unzipped folder: the bundled

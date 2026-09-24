@@ -13,7 +13,7 @@ process map, and renders the PDD. The viewer runs it through
 [`viewer/python-runner.js`](../../viewer/python-runner.js) with the bundled
 Python; it also runs from a shell. There is no Analyze button: the viewer
 runs the pipeline by itself when a session opens without a current analysis
-(none, or one from an older pipeline), after Leave apps out and after a time
+(none, or one from an older pipeline), after Apps outside the process and after a time
 range is left out, inside Edit as the As-Is map, and before a PDD export
 that prints the map from the runs when that map is missing or older than
 the steps. Apply marker changes runs it on request; Help, Troubleshooting
@@ -210,9 +210,12 @@ the boxes, and every element and name placed clear of the boxes, the lines
 and the other names. What a BPMN tool receives besides the shapes:
 
 - **Tasks** named by the step names (the system stays out of the name, so
-  an import into a BPMN tool stays clean). A task is a `manualTask` when
-  every step it stands for was added by hand (manually authored, no
-  recorded interaction), else a `userTask` (C18).
+  an import into a BPMN tool stays clean). A task is a `manualTask` (BPMN's
+  hand marker) when every step it stands for was done outside every system:
+  added by hand (manually authored, no recorded interaction) with no system
+  set; else a plain `task`, a step done in a system (C18 as lane CL amended
+  it: a `userTask` on every recorded step put the same person marker on
+  every box).
 - Each task's `<bpmn:documentation>`: the step's analyst description (the
   pattern run's first), then one line "System, screen. In N of M
   transactions, T on average." (no run count for the implicit run, no time
@@ -233,8 +236,9 @@ and the other names. What a BPMN tool receives besides the shapes:
   (the reference transaction first: the PDD's order). A tenth system and
   later keep the default look. One text annotation, `TextAnnotation_legend`,
   lists them: "Colour by system", then one line per system ("SAP: orange",
-  "no colour" past the palette). It sits inside the map where there is
-  room, else beside or under it.
+  "no colour" past the palette), then "Hand icon: done outside the
+  systems" when a task of the map is a manual task. It sits inside the map
+  where there is room, else beside or under it.
 - **Notes** (C18): the analyst's notes on a task's steps (`analyst_notes`
   with a `step_id`) are one text annotation above the task, joined by an
   association: one note per line, the text cut after a whole word within 90
@@ -457,7 +461,7 @@ Deleted with their features ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
 `signature_pick.py`, `pii_masking.py`, `analysis_roi.py`, `step_csv.py`,
 `bpmn_step.py` and `bpmn_phase.py`.
 
-## Vocabularies, remembered names and saved processes
+## Vocabularies and remembered names
 
 **App vocabularies** (`normalization/app_vocabularies/*.yaml`, rationale in
 [ADR-0002](../adr/0002-app-vocabularies.md)) still load and match as before:
@@ -465,16 +469,15 @@ they give interactions a `meaningful_name`, a `screen_id` and default flags.
 Nothing in the app edits or discovers vocabulary entries anymore
 ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md) is superseded).
 
-Two lighter mechanisms replace the workbenches, both owned by the viewer
-(contracts C4 and C5):
+A lighter mechanism replaces the workbenches, owned by the viewer
+(contract C4):
 
 - **Remembered names**: a store keyed by `draft_key`. The pipeline reads it
   through `--names` at draft time, after the session's own names, so a step
   named once arrives named in every later session.
-- **Saved processes**: confirmed pattern runs the viewer compares a new
-  session with, by `draft_key` overlap. `normalize.py` never reads this store.
 
-Both shapes are in [SCHEMA.md](../../shared/SCHEMA.md).
+Its shape is in [SCHEMA.md](../../shared/SCHEMA.md). (The saved processes of
+contract C5 left the app on 2026-09-24: a process is recorded once.)
 
 ## Recognition layer
 

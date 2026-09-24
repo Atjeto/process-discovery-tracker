@@ -453,7 +453,15 @@ function setLaneToggle(key, on) {
 
 /* The lanes' names at the left of the timeline (the owner's review: "the
    lanes also don't have a description"): each drawn lane shows its name,
-   and its tooltip says what the lane shows. The ticks have none. */
+   and its tooltip says what the lane shows. The ticks have none. The
+   screenshot mark's icon is the Screenshots lane's key too; a speech bubble
+   is the Transcript lane's. */
+const TRANSCRIPT_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+  'stroke-linejoin="round"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg>';
+const SCREENSHOT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="3" y="3" width="18" height="18" rx="2"/>' +
+  '<circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L6 21"/></svg>';
 const LANE_NAMES = {
   cases: { name: "Transactions", title: "Transactions: each pass through the process, from its start to its end; click one to go to its start." },
   activity: { name: "Systems", title: "Systems: the system on screen at each moment, one band per window; click a band to go there, right-click to start or end a transaction or to add a note." },
@@ -463,32 +471,100 @@ const LANE_NAMES = {
   steps: { name: "Steps", title: "Steps: each step of each transaction; click one to see all its moments." },
 };
 
-/* Write the names of the lanes drawn (`lanes` as the stack got them,
-   `layout` as it returned) into the column left of the timeline; null hides
-   the column (nothing is drawn). A name sits in the top 20 px of its lane. */
-function renderLaneNames(lanes, layout) {
+/* A lane's key in its header: a small copy of the lane's own marks (a
+   transaction's band with its label, the systems' colours, a note's pin, a
+   screenshot's mark, a step's band) drawn in CSS, and for the Transcript a
+   speech bubble; the Systems key takes the colours of the first systems
+   drawn (`keyColours`). No text: the header's text is the lane's name. */
+function _laneKey(lane) {
+  const key = document.createElement("span");
+  key.className = "tl-lane-key tl-lane-key-" + lane.key;
+  key.setAttribute("aria-hidden", "true");
+  if (lane.key === "activity") {
+    const colours = (typeof lane.keyColours === "function" ? lane.keyColours() : []).slice(0, 3);
+    for (const colour of colours.length ? colours : [null]) {
+      const bar = document.createElement("i");
+      if (colour) bar.style.background = colour;
+      key.appendChild(bar);
+    }
+  }
+  if (lane.key === "transcript") key.innerHTML = TRANSCRIPT_ICON;
+  if (lane.key === "screenshots") key.innerHTML = SCREENSHOT_ICON;
+  return key;
+}
+
+/* The lanes' header column (the owner's reviews: "the lanes also don't
+   have a description", then "just text labels standing there on the
+   side"), drawn like a video editor's track headers: one cell per lane,
+   from the middle of the gap above it to the middle of the gap under it,
+   holding the lane's key and its name; a divider between two lanes, which
+   runs on across the timeline as the lanes' separator (and one under the
+   last lane). Pointing at a cell lights the lane up across the timeline and
+   shows what it shows (its tooltip). The name is centred on the part of its
+   lane the lane draws on (`nameH` px from its top, where its marks leave a
+   gap under them), else on the whole lane. `lanes` as the stack got them,
+   `layout` as it returned, `host` the timeline; null hides the column
+   (nothing is drawn). */
+function renderLaneNames(lanes, layout, host) {
   const col = document.getElementById("tl-lane-names");
   if (!col) return;
   col.innerHTML = "";
   col.hidden = !layout;
   if (!layout) return;
-  for (const lane of lanes) {
+  const drawn = lanes.filter((l) => l.height > 0 && layout.slots.get(l.key));
+  const slotOf = (l) => layout.slots.get(l.key);
+  // Under each lane drawn: the middle of the gap to the next one, or 3 px
+  // under the last.
+  const edges = drawn.map((l, i) => {
+    const s = slotOf(l), next = drawn[i + 1];
+    return Math.round(next ? (s.top + s.height + slotOf(next).top) / 2 : s.top + s.height + 3);
+  });
+  const line = (parent, y, before) => {
+    const sep = document.createElement("div");
+    sep.className = "tl-lane-sep";
+    sep.style.top = y + "px";
+    if (before) parent.insertBefore(sep, parent.firstChild); else parent.appendChild(sep);
+  };
+  // Across the timeline, under the marks.
+  if (host) for (const y of edges) line(host, y, true);
+  drawn.forEach((lane, i) => {
     const n = LANE_NAMES[lane.key];
-    const slot = layout.slots.get(lane.key);
-    if (!n || !slot || !(lane.height > 0) || lane.unnamed) continue;
-    const h = Math.min(slot.height, 20);
+    if (!n || lane.unnamed) return;
+    const s = slotOf(lane);
+    const top = i ? edges[i - 1] : 0, bottom = edges[i];
+    const mid = s.top + Math.min(s.height, lane.nameH > 0 ? lane.nameH : s.height) / 2;
+    // Padding that puts the middle of the cell's content on `mid`.
+    const lift = 2 * mid - top - bottom;
     const el = document.createElement("div");
     el.className = "tl-lane-name";
     el.dataset.lane = lane.key;
-    el.style.top = slot.top + "px";
-    el.style.height = h + "px";
-    el.style.lineHeight = h + "px";
-    // A lane may say more than its kind (C19: "Steps in Save order").
-    el.textContent = lane.name || n.name;
+    el.style.top = top + "px";
+    el.style.height = (bottom - top) + "px";
+    el.style.paddingTop = Math.max(0, lift) + "px";
+    el.style.paddingBottom = Math.max(0, -lift) + "px";
     el.title = lane.title || n.title;
+    el.appendChild(_laneKey(lane));
+    const label = document.createElement("span");
+    label.className = "tl-lane-label";
+    // A lane may say more than its kind (C19: "Steps in Save order").
+    label.textContent = lane.name || n.name;
+    el.appendChild(label);
     if (lane.name) el.classList.add("tl-lane-level");
+    // The lane itself, lit across the timeline while the pointer is here.
+    if (host) {
+      el.addEventListener("mouseenter", () => {
+        const lit = document.createElement("div");
+        lit.className = "tl-lane-hover";
+        lit.style.top = top + "px";
+        lit.style.height = (bottom - top) + "px";
+        host.insertBefore(lit, host.firstChild);
+        el._lit = lit;
+      });
+      el.addEventListener("mouseleave", () => { if (el._lit) el._lit.remove(); el._lit = null; });
+    }
     col.appendChild(el);
-  }
+  });
+  for (const y of edges) line(col, y, false);
   // C19: a lane that names its level widens the column to show the name,
   // up to a limit (its tooltip holds the whole of a longer one); without one
   // the column keeps its width.
@@ -499,8 +575,11 @@ function renderLaneNames(lanes, layout) {
   if (!named.length) return;
   const usual = parseFloat(getComputedStyle(pane).getPropertyValue("--tl-names-w")) || 0;
   let want = 0;
-  for (const el of named) want = Math.max(want, el.scrollWidth + 14);
-  if (want > usual) pane.style.setProperty("--tl-names-w", Math.min(want, 220) + "px");
+  for (const el of named) {
+    const label = el.querySelector(".tl-lane-label");
+    want = Math.max(want, label.scrollWidth + (el.clientWidth - label.clientWidth) + 2);
+  }
+  if (want > usual) pane.style.setProperty("--tl-names-w", Math.min(want, 240) + "px");
 }
 
 /* The steps the steps lane shows (C19): the level the Steps list shows
@@ -650,6 +729,8 @@ function renderTimeline() {
     key: "cases",
     height: casesH,
     gapBefore: 4,
+    // Each row's band leaves 4 px under it: its name centres on the bands.
+    nameH: casesH - 4,
     render(host, ctx) {
       const casesTop = ctx.slot.top;
       // host.style.width is already the zoomed width when this runs
@@ -712,6 +793,8 @@ function renderTimeline() {
     gapBefore: casesH ? 6 : 4,
     // A video project's low lane shows no system: it has no name.
     unnamed: !evs.length,
+    // Its key in the header: the colours of the first systems drawn.
+    keyColours: () => [...observedApps.values()].map((app) => appColor(app)),
     render(host, ctx) {
       const activityTop = ctx.slot.top;
       const activityH = ctx.slot.height;
@@ -857,10 +940,6 @@ function renderTimeline() {
       host.appendChild(rail);
       // (Its name, Screenshots, is at the left with the other lanes'.)
       const markY = screenshotsTop + (screenshotsH - 16) / 2;
-      const camSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        + 'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
-        + '<rect x="3" y="3" width="18" height="18" rx="2"/>'
-        + '<circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L6 21"/></svg>';
       for (const ev of evs) {
         if (ev.type !== "system") continue;
         if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
@@ -870,7 +949,7 @@ function renderTimeline() {
         dot.className = "tl-screenshot";
         dot.style.left = "calc(" + x + "% - 8px)";
         dot.style.top = markY + "px";
-        dot.innerHTML = camSvg;
+        dot.innerHTML = SCREENSHOT_ICON;
         dot.title = "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "");
         dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
         host.appendChild(dot);
@@ -885,6 +964,8 @@ function renderTimeline() {
     key: "steps",
     height: stepsLaneH,
     gapBefore: 6,
+    // Its bands are 14 px high at the top of the lane (.tl-step-band).
+    nameH: 14,
     name: _level.name ? "Steps in " + _level.name : "",
     title: _level.name ? "Steps in " + _level.name + ": the steps of this sub-process, each time a transaction goes through it; click one to see all its moments." : "",
     render(host, ctx) {
@@ -976,7 +1057,7 @@ function renderTimeline() {
     tailPx: 14,
     minHeightFloor: 120,
   });
-  renderLaneNames(stack, layout);
+  renderLaneNames(stack, layout, host);
 
   // Legend mirrors the apps observed while the activity lane rendered, and
   // explains only the marks the timeline draws: an entry whose lane is off is

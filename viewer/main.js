@@ -32,7 +32,6 @@ const { runTranscriptImport, transcriptImportResult } = require("./python-runner
 const AnnoStore = require("./annotations-store.js");
 const TranscriptStore = require("./transcript-store.js");
 const NamesStore = require("./names-store.js");
-const ProcessesStore = require("./processes-store.js");
 const VideoPath = require("./video-path.js");
 const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
@@ -43,11 +42,6 @@ const { resultFromRunnerError } = require("./normalize-result.js");
    viewer's userData folder (an e2e run's throwaway profile gets its own). */
 function namesStorePath() {
   return NamesStore.namesStorePath(app.getPath("userData"));
-}
-
-/* Contract C5: the saved processes, next to the remembered names. */
-function processesStorePath() {
-  return ProcessesStore.processesStorePath(app.getPath("userData"));
 }
 
 let mainWindow = null;
@@ -75,7 +69,7 @@ const initialSessionArg = parseInitialSessionArg();
 // so viewer:cancelNormalize can kill the one in flight.
 let _normalizeHandle = null;
 // The session folder that run is analyzing (resolved), or null. The analysis
-// starts by itself (on open, after Leave apps out, inside the As-Is act and
+// starts by itself (on open, after Apps outside the process, inside the As-Is act and
 // the PDD export), so a run can be under way while the analyst works: the
 // pipeline reads annotations.json when it starts and replaces it when it
 // drafts, so a save in between would be lost (or would overwrite the new
@@ -807,69 +801,6 @@ ipcMain.handle("viewer:forgetStepName", (_e, payload) => {
     return { ok: true, path: r.path, removed: r.removed };
   } catch (e) {
     console.error("[viewer:forgetStepName] not forgotten:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
-  }
-});
-
-/* --- Saved processes (C5) ---------------------------------------- */
-
-/* The saved processes, for the comparison on open. Result
-   { ok: true, path, status: "absent" | "ok", processes } or
-   { ok: false, path, error } (the store exists but cannot be read). */
-ipcMain.handle("viewer:readProcesses", () => {
-  let p = null;
-  try {
-    p = processesStorePath();
-    const r = ProcessesStore.readProcessesFile(p);
-    if (r.status === "unreadable") return { ok: false, path: p, error: r.error };
-    return { ok: true, path: p, status: r.status, processes: r.processes };
-  } catch (e) {
-    return { ok: false, path: p, error: (e && e.message) || String(e) };
-  }
-});
-
-/* "Save as this process". Payload { name, sourceSessionId, steps }. Result
-   { ok: true, path, id, previous } (previous: the process this save replaced,
-   for Undo, or null) or { ok: false, code, error, path }. The write is atomic
-   and never replaces an unreadable store (processes-store.js). */
-ipcMain.handle("viewer:saveProcess", (_e, payload) => {
-  let p = null;
-  try {
-    p = processesStorePath();
-    const r = ProcessesStore.saveProcess(p, payload || {});
-    return { ok: true, path: r.path, id: r.id, previous: r.previous };
-  } catch (e) {
-    console.error("[viewer:saveProcess] not saved:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
-  }
-});
-
-/* Undo "Save as this process". Payload { id, previous }. Result
-   { ok: true, path, changed } or { ok: false, code, error, path }. */
-ipcMain.handle("viewer:undoSaveProcess", (_e, payload) => {
-  let p = null;
-  try {
-    p = processesStorePath();
-    const r = ProcessesStore.undoSaveProcess(p, payload || {});
-    return { ok: true, path: r.path, changed: r.changed };
-  } catch (e) {
-    console.error("[viewer:undoSaveProcess] not undone:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
-  }
-});
-
-/* Forget a saved process (P3.11). Payload { id }. Result
-   { ok: true, path, removed } (removed: the entry as it was stored, which
-   undoSaveProcess with { id, previous: removed } puts back) or
-   { ok: false, code, error, path }. */
-ipcMain.handle("viewer:forgetProcess", (_e, payload) => {
-  let p = null;
-  try {
-    p = processesStorePath();
-    const r = ProcessesStore.forgetProcess(p, payload || {});
-    return { ok: true, path: r.path, removed: r.removed };
-  } catch (e) {
-    console.error("[viewer:forgetProcess] not forgotten:", e && e.message);
     return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
   }
 });

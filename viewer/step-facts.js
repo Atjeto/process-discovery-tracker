@@ -7,8 +7,8 @@
  *   typedFields the fields typed in the step, (field, value) as the PDD lists them
  *   draftedNarration / isDraftedDescription  the drafting's own description,
  *              which the step pane shows as a hint, not as the description
- *   draftedName the name the drafting gives a step (the Saved names dialog's
- *              Forget gives it back)
+ *   draftedName the name the drafting gives a step (the Remembered step
+ *              names dialog's Forget gives it back)
  *   occurrenceLine / occurrencesLine  the step panel's rows and the line
  *              above them ("Transaction 2, again · 2:14 into the recording ·
  *              took 9s"; "This step happened 5 times: ...")

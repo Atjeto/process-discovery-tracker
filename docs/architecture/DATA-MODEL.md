@@ -171,15 +171,18 @@ live map and the step map draw the same edges from them
 
 ## The analyst's library
 
-Two small stores live on the analyst's machine, outside any session folder,
+A small store lives on the analyst's machine, outside any session folder,
 in `<viewer userData>/pdt-library/`:
 
 | File | Holds | Read by |
 |---|---|---|
-| `remembered-names.json` | A name per `draft_key`, written on every rename of a drafted step and by the Saved names dialog in the Steps toolbar (rename, forget) | the pipeline (`--names`, on every analysis the viewer runs, after the session's own names) and the viewer |
-| `processes.json` | Saved processes: a confirmed pattern run's steps (`draft_key` or `draft_keys`, name, description, waste), written by "Save as this process" and removed by "Forget this saved process" | the viewer only, to compare a session that has no confirmed pattern run with the closest saved process |
+| `remembered-names.json` | A name per `draft_key`, written on every rename of a drafted step and by the Remembered step names dialog in the Steps toolbar (rename, forget) | the pipeline (`--names`, on every analysis the viewer runs, after the session's own names) and the viewer |
 
-Both follow the annotation rules: a file that cannot be read is never
+The saved processes (`processes.json`, contract C5) left the app on
+2026-09-24 (owner: a process is recorded once); a file left there is not
+read.
+
+It follows the annotation rules: a file that cannot be read is never
 replaced, and writes go through a temp file and a rename.
 
 ## In-memory model (viewer)
@@ -222,8 +225,8 @@ edit -> persistAnnotations(annotations, label, topics)          (session.js)
 - Undo and redo are in memory only: annotation snapshots, at most 50, pinned
   to the session folder and cleared when another session opens.
 - Only an analysis (the pipeline) re-reads the folder; edits never reload it.
-- Renames, "Save as this process" and "Forget this saved process" also
-  write the library stores above, through their own IPC calls.
+- Renames, and the Remembered step names dialog's Rename and Forget, also
+  write the library store above, through their own IPC calls.
 
 ## Conventions
 

@@ -219,7 +219,8 @@ def _restore_root_logging():
 
 # ---- reading the outputs back --------------------------------------------------
 
-# Contract C18: a recorded step is a user task, a step added by hand a manual task.
+# Contract C18 as lane CL amended it: a step done in a system is a plain task, a
+# step done outside every system a manual task (tasks of any kind are read).
 _TASKS = tuple(f"{_BPMN}{kind}" for kind in ("task", "userTask", "manualTask"))
 
 
@@ -449,8 +450,12 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
     bpmn = session / "process_map_step.bpmn"
     assert _chain(bpmn) == order
     tasks = _bpmn_tasks(bpmn)
-    # C18: every step of a blank project was added by hand.
-    assert {el.tag for el in tasks.values()} == {f"{_BPMN}manualTask"}
+    # Every step of a blank project was added by hand: the one with its
+    # system set is done in SAP, a plain task; the others are done outside
+    # every system, manual tasks (C18 as lane CL amended it).
+    assert {name: el.tag for name, el in tasks.items()} == {
+        "Receive the request": f"{_BPMN}manualTask", "Log it in SAP": f"{_BPMN}task",
+        "Check the stock": f"{_BPMN}manualTask", "Reply to the customer": f"{_BPMN}manualTask"}
     assert tasks["Log it in SAP"].find(f"{_BPMN}documentation").text == "SAP."
     assert tasks["Receive the request"].find(f"{_BPMN}documentation") is None
 

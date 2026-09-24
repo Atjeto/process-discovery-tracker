@@ -1,6 +1,6 @@
 /*
- * run-differences.js: how a run differs from its reference (the pattern run,
- * or a saved process), in the Steps level's differences review. It is the
+ * run-differences.js: how a run differs from its reference (the pattern run),
+ * in the Steps level's differences review. It is the
  * viewer half of ONE algorithm: normalization/pdd_export.py implements the
  * same rules for the PDD's section 6.1, and shared/run-differences-golden.json
  * pins both (run-differences.test.js here, test_run_differences_golden.py
@@ -39,7 +39,6 @@
 const { processLabel } = require("./process-map-levels.js");
 
 const PATTERN_REFERENCE = "the pattern run";
-const SAVED_REFERENCE = "the saved process";
 /* The Steps level's words (AD-29): the run the others are compared with, and
    what a run is called in a line ("at the start of the transaction", "in
    this transaction after ..."). The shared golden and the PDD still print
@@ -173,8 +172,8 @@ function commonOrder(a, b) {
    in the PDD's order: the run's extra and reordered steps in run order, then
    the reference steps the run skipped. `text` is the line pdd_export writes;
    opts.reference names the reference in a Skipped line ("the pattern run" by
-   default, "the saved process" for a saved process) and opts.unit what a run
-   is called in the other lines ("run" by default; the Steps level passes
+   default; the Steps level passes REFERENCE_RUN) and opts.unit what a run is
+   called in the other lines ("run" by default; the Steps level passes
    RUN_UNIT). Both lists are the visible steps in time order. */
 function differences(refSteps, runSteps, opts) {
   const reference = (opts && opts.reference) || PATTERN_REFERENCE;
@@ -207,71 +206,7 @@ function differences(refSteps, runSteps, opts) {
   return out;
 }
 
-/* ---- Saved processes (contract C5) ------------------------------------------ */
-
-/* The distinct draft keys of a list of steps (a merge's keys flattened; a
-   step with no draft identity adds none). */
-function draftKeySet(steps) {
-  const set = new Set();
-  for (const s of steps || []) {
-    const keys = stepKeys(s);
-    if (keys) for (const k of keys) set.add(k);
-  }
-  return set;
-}
-
-function jaccard(a, b) {
-  let inter = 0;
-  for (const k of a) if (b.has(k)) inter++;
-  const union = a.size + b.size - inter;
-  return union ? inter / union : 0;
-}
-
-const MATCH_MIN = 0.5;
-
-/* The saved process to compare a session with: the one whose distinct draft
-   keys overlap the session's steps' the most (Jaccard), at least `min` (0.5
-   by default). Ties go to the most recently saved, then to the name. Returns
-   { process, score } or null. */
-function matchSavedProcess(processes, sessionSteps, min) {
-  const floor = Number.isFinite(min) ? min : MATCH_MIN;
-  const mine = draftKeySet((sessionSteps || []).filter((s) => s && s.state !== "hidden"));
-  if (!mine.size) return null;
-  let best = null;
-  for (const p of processes || []) {
-    if (!p || typeof p !== "object" || !Array.isArray(p.steps)) continue;
-    const score = jaccard(mine, draftKeySet(p.steps));
-    if (score < floor) continue;
-    const better = !best || score > best.score ||
-      (score === best.score && (String(p.saved_at || "") > String(best.process.saved_at || "") ||
-        (String(p.saved_at || "") === String(best.process.saved_at || "") &&
-          String(p.name || "") < String(best.process.name || ""))));
-    if (better) best = { process: p, score };
-  }
-  return best;
-}
-
-/* The steps "Save as this process" stores (C5), from the pattern run's
-   visible steps in time order: the draft identity (draft_key, or draft_keys
-   for a merge; none for a step added by hand), the name, the description and
-   the waste flag. */
-function processStepsFrom(steps) {
-  return (steps || []).filter((s) => s && typeof s === "object").map((s) => {
-    const out = {};
-    if (typeof s.draft_key === "string" && s.draft_key) out.draft_key = s.draft_key;
-    else {
-      const keys = _keyList(s.draft_keys);
-      if (keys) out.draft_keys = keys.slice();
-    }
-    out.name = typeof s.name === "string" ? s.name.trim() : "";
-    out.description = typeof s.description === "string" ? s.description : "";
-    out.waste = !!(s.flags && s.flags.waste === true);
-    return out;
-  });
-}
-
 module.exports = {
-  PATTERN_REFERENCE, SAVED_REFERENCE, REFERENCE_RUN, RUN_UNIT, MATCH_MIN,
+  PATTERN_REFERENCE, REFERENCE_RUN, RUN_UNIT,
   stepKeys, mergeKey, alignKey, stepName, collapseToReference, firstOccurrences, commonOrder, differences,
-  draftKeySet, jaccard, matchSavedProcess, processStepsFrom,
 };

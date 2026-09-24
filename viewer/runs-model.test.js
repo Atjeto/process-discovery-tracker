@@ -524,7 +524,7 @@ test("C19 confirmRun and reopenRun cascade to every level of the transaction", (
   assert.deepEqual([st2.a3, st2.s1, st2.s2, st2.q1, st2.h1], ["auto_suggested", "auto_suggested", "edited", "auto_suggested", "auto_suggested"]);
 });
 
-test("C19 names: the Saved names dialog counts, renames and forgets a drafted sub-step's name (action| and its key) at every level", () => {
+test("C19 names: the Remembered step names dialog counts, renames and forgets a drafted sub-step's name (action| and its key) at every level", () => {
   const list = nested();
   const key = "action|chrome|Order|enter:qty";
   const rows = RM.rememberedNameRows({ [key]: { name: "Type the quantity", updated_at: "t" } }, list);

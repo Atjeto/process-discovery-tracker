@@ -1,8 +1,9 @@
 "use strict";
 // What a click on the As-Is map does (asis-links.js, contract C18): the
 // element dispatch on a step BPMN shaped like the pipeline's
-// (mining.export_bpmn: user and manual tasks, a data object per attachment,
-// the notes and the legend as text annotations), read by bpmn-moddle, the
+// (mining.export_bpmn: plain and manual tasks, and the user tasks of a copy
+// made before lane CL; a data object per attachment, the notes and the legend
+// as text annotations), read by bpmn-moddle, the
 // model bpmn-js itself reads, so a type is matched as bpmn-js matches it; and
 // the task-to-step matching by the live map's node rule.
 
@@ -31,6 +32,7 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
       </bpmn:dataInputAssociation>
     </bpmn:userTask>
     <bpmn:manualTask id="node_2_Call" name="Call the  customer&#10;back" />
+    <bpmn:task id="node_5_Check" name="Check the stock" />
     <bpmn:task id="Activity_0abc" name="Added in the editor" />
     <bpmn:exclusiveGateway id="node_3" />
     <bpmn:endEvent id="node_4_End" name="End" />
@@ -83,12 +85,13 @@ async function elements() {
   return out;
 }
 
-test("a task of any kind opens the step panel: user tasks, manual tasks and the plain tasks drawn in the editor", async () => {
+test("a task of any kind opens the step panel: plain and manual tasks, the user tasks of a copy made before lane CL, and the plain tasks drawn in the editor", async () => {
   const el = await elements();
   // On the main map: the level [] (C19).
   assert.deepStrictEqual(L.elementAction(el.node_1_Save), { kind: "task", name: "Salesforce" + SEP + "Order: Save order", path: [] });
   // A name on two lines, or with doubled spaces, reads as one line.
   assert.deepStrictEqual(L.elementAction(el.node_2_Call), { kind: "task", name: "Call the customer back", path: [] });
+  assert.deepStrictEqual(L.elementAction(el.node_5_Check), { kind: "task", name: "Check the stock", path: [] });
   assert.deepStrictEqual(L.elementAction(el.Activity_0abc), { kind: "task", name: "Added in the editor", path: [] });
   // Matched by type through the model (a user task is a task), never by a type string.
   assert.strictEqual(L.is(el.node_2_Call, "bpmn:Task"), true);

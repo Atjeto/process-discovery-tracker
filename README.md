@@ -34,8 +34,7 @@ the tool.
   and boundaries against the video or the screenshots. Names given once are
   remembered for later sessions.
 - **Compares.** The other transactions show only their differences from the reference
-  transaction. "Save as this process" keeps it for the next project of the
-  same process.
+  transaction.
 - **Maps.** A process map built from the transactions, with the conditions and loops set on steps, and an editable As-Is (and
   To-Be) copy for the PDD.
 - **Documents.** A PDD (.docx) built around the confirmed run, with the

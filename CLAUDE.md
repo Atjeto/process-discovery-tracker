@@ -64,9 +64,9 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 1. **Open** a recording folder (*Open project...*, Open menu), or start a
    project with *New project from a video...* or *New empty project...*
    (New menu). The analysis runs by itself (on open when it is missing or
-   older, after Leave apps out, inside Edit as the As-Is map, before a PDD
-   export), with one status line and Cancel. *Apply N marker changes*
-   stays deliberate; Help, Troubleshooting has Re-analyze.
+   older, after Apps outside the process, inside Edit as the As-Is map,
+   before a PDD export), with one status line and Cancel. *Apply N marker
+   changes* stays deliberate; Help, Troubleshooting has Re-analyze.
 2. **Attach** a video (copied into the folder, synced with two clicks) and a
    transcript, if any.
 3. **Confirm the reference run** (run 1 unless another is picked): fix and
@@ -135,19 +135,15 @@ the folder.
   are hidden, not deleted, so an analysis cannot bring them back.
 - **The reference run** (`annotations.pattern_run`, C3): default the first
   run with a step; *Use as reference transaction* picks another. Confirm
-  transaction turns its drafts into `confirmed`; Reopen transaction is the
-  inverse. The other runs are reviewed, never confirmed (AD-28;
-  `annotations.opened_runs`).
+  transaction turns its drafts into `confirmed`; *Undo confirm*, a link beside
+  the Confirmed badge, is the inverse. The other runs are reviewed, never
+  confirmed (AD-28; `annotations.opened_runs`).
   `draft_fixes` counts its merges, splits, adds and drops: the P1 probe.
-- **Saved names** (C4, `<viewer userData>/pdt-library/remembered-names.json`,
-  keyed by `draft_key`): a rename is saved and names the session's other
+- **Remembered step names** (C4,
+  `<viewer userData>/pdt-library/remembered-names.json`, keyed by `draft_key`): a rename is remembered and names the session's other
   drafts of that key at once. The pipeline reads it through `--names`, after
-  the session's own names, which travel with the folder. The Saved names
-  dialog renames or forgets one.
-- **Saved processes** (C5, `<viewer userData>/pdt-library/processes.json`):
-  *Save as this process* stores the confirmed reference run; a session
-  without one is compared with the closest saved process (`draft_key`
-  overlap). Viewer only.
+  the session's own names, which travel with the folder. The Remembered step
+  names dialog (Steps toolbar) renames or forgets one.
 - **Runs.** Markers only, never nested: a Start while a run is open ends
   that run first. Case ids are deterministic (C9), so analyst steps stay
   attached across re-analysis. A recording without run markers has no runs.
@@ -194,12 +190,14 @@ the folder.
   bpmn-js and linked (`asis-view.js`): a task opens the step panel, a file
   its attachment, a note its text.
 - **The richer step map** (C18, AD-32). `process_map_step.bpmn` names its
-  main end after the Result and each early end after its `when`; recorded
-  steps are user tasks and steps added by hand manual tasks; a step's notes
-  are a text annotation and its attachments data objects; each system has a
-  colour (`bioc:fill`, `bioc:stroke`) listed in a legend. Without a chosen
-  As-Is copy, Export's map image and the PDD's map picture are this file
-  drawn by bpmn-js.
+  main end after the Result and each early end after its `when`; a step done
+  in a system is a plain task and a step done outside every system (added by
+  hand, no system set) a manual task, the hand marker (lane CL: the person
+  marker on every box said nothing); a step's notes are a text annotation and
+  its attachments data objects; each system has a colour (`bioc:fill`,
+  `bioc:stroke`) listed in a legend, which also says what the hand means.
+  Without a chosen As-Is copy, Export's map image and the PDD's map picture
+  are this file drawn by bpmn-js.
 - **Sub-processes** (C19, AD-33).
   - **Storage.** A step's `sub_steps` array holds its sub-steps, nested and
     the same shape as steps. `annotations.steps` stays the main level, so a

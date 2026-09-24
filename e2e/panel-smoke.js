@@ -344,24 +344,49 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     !!(!fromBand.err && fromBand.laneOn && fromBand.ok && fromBand.cue.ok && fromBand.st.rows.some((r) => r.focus && r.id === OPEN.step_id)),
     JSON.stringify(fromBand));
 
-  // (L) The owner's review: each lane shows its name at the left, in the
-  // lane's row, with a tooltip saying what it shows; the minimap says what
-  // it is. The default lanes, then Screenshots turned on (and off again).
+  // (L) The owner's reviews: the lanes have a header column, like a video
+  // editor's track headers (the second review: "just text labels standing
+  // there on the side"): a cell per lane with a key and the lane's name,
+  // centred on what the lane draws, in the type of the small section labels
+  // (uppercase), with a tooltip saying what it shows; the dividers between
+  // the cells run on across the timeline as the lanes' separators; pointing
+  // at a cell lights its lane up. The minimap says what it is. The default
+  // lanes, then Screenshots turned on (and off again).
   const lanes = {};
   const laneNames = () => page.evaluate(() => {
     const mid = (el) => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; };
     const within = (y, sel) => [...document.querySelectorAll(sel)].some((b) => { const r = b.getBoundingClientRect(); return r.height > 0 && y >= r.top && y <= r.bottom; });
+    // How far a name's middle is from the middle of its lane's first mark.
+    const offset = (n, sel) => { const b = [...document.querySelectorAll(sel)].find((m) => m.getBoundingClientRect().height > 0); return b ? Math.round(Math.abs(mid(n) - mid(b)) * 10) / 10 : null; };
     const MARK = { cases: "#timeline .tl-case-band", activity: "#timeline .tl-activity", screenshots: "#timeline .tl-screenshot", steps: "#timeline .tl-step-band" };
     const col = document.getElementById("tl-lane-names");
     const tl = document.getElementById("timeline-scroll").getBoundingClientRect();
+    // The separators' heights on the page, in the column and across the timeline.
+    const ys = (sel) => [...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().top)).sort((a, b) => a - b).join();
     return {
       leftOfTimeline: !!col && !col.hidden && col.getBoundingClientRect().right <= tl.left + 1,
-      names: [...document.querySelectorAll("#tl-lane-names .tl-lane-name")].map((n) => ({ lane: n.dataset.lane, text: (n.textContent || "").trim(),
-        title: n.title, inLane: MARK[n.dataset.lane] ? within(mid(n), MARK[n.dataset.lane]) : null, whole: n.scrollWidth <= n.clientWidth })),
+      seps: { column: ys("#tl-lane-names .tl-lane-sep"), timeline: ys("#timeline .tl-lane-sep") },
+      names: [...document.querySelectorAll("#tl-lane-names .tl-lane-name")].map((n) => {
+        const lbl = n.querySelector(".tl-lane-label") || n;
+        return { lane: n.dataset.lane, text: (n.textContent || "").trim(), key: !!n.querySelector(".tl-lane-key"),
+          title: n.title, inLane: MARK[n.dataset.lane] ? within(mid(lbl), MARK[n.dataset.lane]) : null, whole: lbl.scrollWidth <= lbl.clientWidth,
+          off: MARK[n.dataset.lane] ? offset(lbl, MARK[n.dataset.lane]) : null, upper: getComputedStyle(lbl).textTransform === "uppercase" };
+      }),
     };
   });
   try {
     lanes.def = await laneNames();
+    // The pointer on the Systems header lights the Systems lane up across the
+    // timeline, as tall as the cell; off it, nothing is lit.
+    const cell = page.locator('#tl-lane-names .tl-lane-name[data-lane="activity"]');
+    await cell.hover({ timeout: T });
+    lanes.lit = await page.evaluate(() => {
+      const c = document.querySelector('#tl-lane-names .tl-lane-name[data-lane="activity"]').getBoundingClientRect();
+      const l = [...document.querySelectorAll("#timeline .tl-lane-hover")].map((e) => e.getBoundingClientRect());
+      return l.length === 1 && Math.abs(l[0].top - c.top) <= 1 && Math.abs(l[0].height - c.height) <= 1;
+    });
+    await page.mouse.move(2, 2);
+    lanes.unlit = await page.evaluate(() => document.querySelectorAll("#timeline .tl-lane-hover").length === 0);
     await page.locator("#btn-lanes").click({ timeout: T });
     await page.locator('#lanes-popup input[data-lane="screenshots"]').check({ timeout: T });
     await page.waitForSelector("#tl-lane-names .tl-lane-name[data-lane=\"screenshots\"]", { timeout: T });
@@ -373,9 +398,12 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.locator("#btn-zoom-reset").click({ timeout: T });
   } catch (e) { lanes.err = errText(e); }
   const said = (list) => (list || []).map((n) => n.text);
-  const eachOk = (list) => (list || []).every((n) => n.title.startsWith(n.text + ": ") && n.inLane === true && n.whole);
-  record("(L) the owner's review: the Timeline's lanes show their names at the left (Transactions, Systems, Steps; Screenshots once turned on), each in its lane's row with a tooltip saying what it shows; the minimap's tooltip says it is the whole recording",
+  const eachOk = (list) => (list || []).every((n) => n.title.startsWith(n.text + ": ") && n.inLane === true && n.whole &&
+    n.off !== null && n.off <= 1.5 && n.upper && n.key);
+  const sepsOk = (x) => !!(x && x.seps.column && x.seps.column === x.seps.timeline);
+  record("(L) the owner's reviews: the Timeline's lanes have a header column (Transactions, Systems, Steps; Screenshots once turned on): a cell per lane with its key and its name centred on the lane's marks, in uppercase like the section labels, with a tooltip saying what it shows; the dividers run on across the timeline; pointing at a cell lights its lane; the minimap's tooltip says it is the whole recording",
     !!(!lanes.err && lanes.def.leftOfTimeline && JSON.stringify(said(lanes.def.names)) === '["Transactions","Systems","Steps"]' && eachOk(lanes.def.names) &&
+      sepsOk(lanes.def) && sepsOk(lanes.shots) && lanes.lit === true && lanes.unlit === true &&
       JSON.stringify(said(lanes.shots.names)) === '["Transactions","Systems","Screenshots","Steps"]' && eachOk(lanes.shots.names) &&
       lanes.def.names.find((n) => n.lane === "steps").title === "Steps: each step of each transaction; click one to see all its moments." &&
       lanes.minimap.shown && /^The whole recording/.test(lanes.minimap.title)),

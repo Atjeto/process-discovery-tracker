@@ -15,8 +15,8 @@
  *     right-click menu) and its Ctrl+Z;
  *   - names (C4): a rename of a run-1 draft in the step pane (Enter saves it,
  *     no Save button) names the same-key drafts of the other runs at once
- *     (still drafts, name_source "remembered"; the run says in one line that
- *     names came from saved names) and lands in the profile's
+ *     (still drafts, name_source "remembered"; the run says in one line how
+ *     many of its names are remembered names) and lands in the profile's
  *     remembered-names store; a broken store shows an error and still saves
  *     the session rename; the name box suggests the name;
  *   - the draft-fix count (C3, pattern_run.draft_fixes in annotations.json;
@@ -44,17 +44,15 @@
  *     which hides the same drafts elsewhere (not counted; one Ctrl+Z);
  *   - the differences review against the confirmed pattern run (the demo's
  *     own extra step in run 2 and skipped step in run 3, run 4 identical);
- *   - Reopen run and its Ctrl+Z; Save as this process (the profile's
- *     processes.json) and the toast's Undo;
+ *   - Undo confirm (beside the Confirmed badge) and its Ctrl+Z;
  *   - a drafted step is hidden, never deleted (no Delete for it, the bulk
  *     button hides), and the hidden drafts survive the analysis;
- *   - the Saved names dialog (opened from the Steps toolbar): its order,
- *     Rename and Forget;
+ *   - the Remembered step names dialog (opened from the Steps toolbar): its
+ *     order, Rename and Forget;
  *   - a SECOND temp copy of the demo, SEEDED with an extra step and a skipped
- *     step in run 4, opened in the same viewer: it is compared with the saved
- *     process (the line, every run's differences), and Stop comparing
- *     compares it with its own pattern run; Forget this saved process (P3.11)
- *     takes it out of processes.json and the toast's Undo brings it back.
+ *     step in run 4, opened in the same viewer: its transactions are compared
+ *     with its own reference transaction only (saved processes, contract C5,
+ *     left the app on 2026-09-24: a process is recorded once).
  * The divider between the transactions and the selected step: a mouse drag
  * moves it and is remembered, a double-click or Enter gives the usual widths
  * back, the keys and the step panel keep each pane at its minimum; where the
@@ -159,7 +157,6 @@ const SEARCH_DRAFTED = "Salesforce" + TITLE_SEP + "Account lookup: Search";
 const NAME_EXCEL = "Update the order tracker";
 const NAME_NOTEPAD = "Look up the plant code";
 const MERGED = "va01: Check document + va01: Create sales order";
-const PROCESS_NAME = "Order entry";
 const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERGED &&
   JSON.stringify(s.draft_keys) === JSON.stringify([KEY_CHECK, KEY_CREATE]);
 
@@ -203,7 +200,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     namesNote: ((g.querySelector(".run-names-note") || {}).textContent || "").trim(),
     meta: ((g.querySelector(".run-meta") || {}).textContent || "").trim(),
     diffs: [...g.querySelectorAll(".run-diffs li")].map((li) => li.textContent.trim()),
-    acts: [...g.querySelectorAll(".run-actions > button")].map((b) => b.dataset.act),
+    // The open transaction's acts: its buttons, and Undo confirm in its head.
+    acts: [...g.querySelectorAll(".run-actions > button, .run-row button[data-act]")].map((b) => b.dataset.act),
     showHidden: (() => { const cb = g.querySelector('[data-act="show-hidden"]'); return cb ? { checked: cb.checked, label: (cb.parentElement.textContent || "").trim() } : null; })(),
     rows: [...g.querySelectorAll(".step-row")].map((r) => ({
       id: r.dataset.stepId, state: r.dataset.state,
@@ -376,8 +374,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const g2 = await group(R2);
     const row2 = g2.rows.find((r) => r.id === searchIds[R2]) || {};
     const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && g2.rows.every((r) => r.tags === 0) &&
-      g2.namesNote === "Names from saved names: 1 of 10 steps";
-    record("C4: run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says names came from saved names), without a re-analysis",
+      g2.namesNote === "Remembered names: 1 of 10 steps";
+    record("C4: run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says how many names are remembered names), without a re-analysis",
       ok2, JSON.stringify({ row2, namesNote: g2.namesNote }));
     if (!(ok && ok2)) await shot(page, "fail-runs-rename.png");
 
@@ -685,12 +683,19 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     await shot(page, "runs-smoke-differences.png");
   }
 
-  // ---- 7c. L12b item 4: Reopen run, the inverse of Confirm run ------------------
+  // ---- 7c. L12b item 4: Undo confirm, the inverse of Confirm run ------------------
+  // (It read Reopen transaction until the owner's review: a quiet link now,
+  // in the head beside the Confirmed badge.)
   {
-    let err = null, g = null, disk = null, back = null, gBack = null, probeGone = null, probeBack = null, reopenLabel = null;
+    let err = null, g = null, disk = null, back = null, gBack = null, probeGone = null, probeBack = null, reopenLabel = null, beside = null;
     try {
       await openRun(R1);
       reopenLabel = ((await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').textContent({ timeout: T })) || "").trim();
+      beside = await page.evaluate((sel) => {
+        const b = document.querySelector(sel + ' > .run-row [data-act="reopen-run"]');
+        const prev = b && b.previousElementSibling;
+        return !!(prev && prev.classList.contains("run-status") && prev.textContent.trim() === "Confirmed") && !!b.title;
+      }, groupSel(R1));
       await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').click({ timeout: T });
       disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.confirmed_at === null);
       await page.waitForFunction((sel) => ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Draft",
@@ -705,55 +710,17 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       probeBack = await probeOf(R1);
     } catch (e) { err = errText(e); }
     const states = (a) => stepsOf(a || { steps: [] }, R1).filter((s) => s.state !== "hidden").map((s) => s.state).sort().join(",");
-    const ok = !err && reopenLabel === "Reopen transaction" &&
+    const ok = !err && reopenLabel === "Undo confirm" && beside &&
       states(disk) === "auto_suggested,auto_suggested,auto_suggested,auto_suggested,edited,edited" &&
       JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
       g && g.status === "Draft" && probeGone === "" && g.fixes === "" &&
       g.acts.includes("confirm-run") && !g.acts.includes("reopen-run") && !g.acts.includes("save-process") &&
       states(back) === "confirmed,confirmed,confirmed,confirmed,edited,edited" &&
       gBack && gBack.status === "Confirmed" && probeBack === PROBE && gBack.acts.includes("reopen-run");
-    record("L12b item 4: Reopen transaction turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, takes the probe line out of its menu and keeps the count; Ctrl+Z confirms it again",
-      ok, JSON.stringify({ err, reopenLabel, reopened: states(disk), fixes: g && g.fixes, status: g && g.status, acts: g && g.acts,
+    record("L12b item 4: Undo confirm, a link beside the Confirmed badge, turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, takes the probe line out of its menu and keeps the count; Ctrl+Z confirms it again",
+      ok, JSON.stringify({ err, reopenLabel, beside, reopened: states(disk), fixes: g && g.fixes, status: g && g.status, acts: g && g.acts,
         probeGone, back: states(back), probeBack }));
     if (!ok) await shot(page, "fail-runs-reopen.png");
-  }
-
-  // ---- 7d. L12b item 7: Save as this process, and the toast's Undo --------------
-  const PROCESSES = path.join(profileDir, "pdt-library", "processes.json");
-  {
-    const save = async () => {
-      await page.locator(groupSel(R1) + ' [data-act="save-process"]').click({ timeout: T });
-      await page.locator(".modal-prompt .modal-input").fill(PROCESS_NAME, { timeout: T });
-      await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
-      await waitToast(/Saved the process/);
-    };
-    let err = null, first = null, undone = null, second = null, toast1 = null;
-    try {
-      await save();
-      toast1 = (await toastText()).text;
-      first = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 1);
-      await page.locator('#toast [data-act="undo-save-process"]').click({ timeout: T });
-      await waitToast(/no longer saved/);
-      undone = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 0);
-      await save();
-      second = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 1);
-    } catch (e) { err = errText(e); }
-    const p = second && second.processes && second.processes[0];
-    const want = [
-      { draft_key: KEY_SEARCH, name: NAME_SEARCH }, { draft_key: KEY_OPEN, name: "Salesforce - Account lookup: Open customer record" },
-      { draft_key: KEY_SAVE_ORDER, name: "Salesforce - Order: Save order" }, { draft_keys: [KEY_CHECK, KEY_CREATE], name: MERGED },
-      { draft_key: KEY_EXCEL, name: "Excel - Order Tracking.xlsx: Save workbook" }, { draft_key: KEY_OUTLOOK, name: "Outlook - Order confirmation: Send" },
-    ];
-    const got = p ? p.steps.map((s) => (s.draft_keys ? { draft_keys: s.draft_keys, name: s.name } : { draft_key: s.draft_key, name: s.name })) : null;
-    const manifest = readJson(path.join(SESSION, "manifest.json"));
-    const ok = !err && first && first.version === 1 && toast1 === 'Saved the process "' + PROCESS_NAME + '".Undo' &&
-      undone && undone.processes.length === 0 &&
-      p && p.name === PROCESS_NAME && /^proc-/.test(p.id) && p.source_session_id === manifest.session_id &&
-      !isNaN(Date.parse(p.saved_at)) && JSON.stringify(got) === JSON.stringify(want) &&
-      p.steps.every((s) => typeof s.description === "string" && s.waste === false);
-    record("L12b item 7: Save as this process writes the confirmed pattern run's 6 steps (draft_key, or draft_keys for the merge) to the profile's processes.json; the toast's Undo takes the save back",
-      ok, JSON.stringify({ err, toast: toast1, undoneCount: undone && undone.processes.length, saved: p && { name: p.name, id: p.id, steps: got } }));
-    if (!ok) await shot(page, "fail-runs-save-process.png");
   }
 
   // ---- 8. a rename in run 2 after confirming: the confirmed step keeps its name --
@@ -885,7 +852,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       carriedAfter === "1,2,1,1" && redraftedPair === 0, JSON.stringify({ carriedAfter, redraftedPair }));
   }
 
-  // ---- 9b. L12b item 8: the Saved names dialog (Steps toolbar) --------------
+  // ---- 9b. L12b item 8: the Remembered step names dialog (Steps toolbar) ----
   {
     const OTHER_KEY = "excel|Excel - Other book.xlsx|Button:save-workbook";
     const RENAMED = "Update the tracker";
@@ -924,14 +891,14 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const excelOf = (a, r) => stepsOf(a || { steps: [] }, r).find((s) => s.draft_key === KEY_EXCEL) || {};
     const okOrder = !err && JSON.stringify((rowsBefore || []).map((r) => [r.name, r.where])) === JSON.stringify([
       [NAME_SEARCH, "4 steps in this project"], [NAME_EXCEL, "4 steps in this project"], ["Save the other book", "Not in this project"]]);
-    record("L12b item 8: the Saved names dialog lists the names whose key is in this project first, then the others",
+    record("L12b item 8: the Remembered step names dialog lists the names whose key is in this project first, then the others",
       okOrder, JSON.stringify({ err, rows: rowsBefore }));
     const okRename = !err && storeRename && storeRename.names[KEY_EXCEL].name === RENAMED &&
       [R3, R4].every((r) => excelOf(afterRename, r).state === "auto_suggested" && excelOf(afterRename, r).name === RENAMED &&
         excelOf(afterRename, r).name_source === "remembered") &&
       excelOf(afterRename, R2).state === "edited" && excelOf(afterRename, R2).name === RENAMED &&
       excelOf(afterRename, R1).state === "confirmed" && excelOf(afterRename, R1).name === "Excel - Order Tracking.xlsx: Save workbook";
-    record("L12b item 8 + V2 item 9: Rename changes the saved name and every step of this session that carries it for that key (the drafts of runs 3 and 4, run 2's edited step); run 1's confirmed step with another name keeps it",
+    record("L12b item 8 + V2 item 9: Rename changes the remembered name and every step of this session that carries it for that key (the drafts of runs 3 and 4, run 2's edited step); run 1's confirmed step with another name keeps it",
       okRename, JSON.stringify({ err, store: storeRename && storeRename.names[KEY_EXCEL], steps: RUNS.map((r) => [excelOf(afterRename, r).state, excelOf(afterRename, r).name]) }));
     const okForget = !err && storeForget && !storeForget.names[KEY_SEARCH] && storeForget.names[OTHER_KEY] &&
       JSON.stringify((rowsAfter || []).map((r) => r.name)) === JSON.stringify([RENAMED, "Save the other book"]) &&
@@ -1007,14 +974,16 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       ok2, "rows=" + (rows || []).length + " mismatched=" + JSON.stringify(bad.slice(0, 3)));
   }
 
-  // ---- 11. L12b items 3 and 7: a second session of the same process ---------
+  // ---- 11. L12b item 3: a second session of the same process ---------------
   // A second temp copy of the demo, analyzed afresh (all drafts, no pattern run
   // confirmed) and SEEDED in run 4 with a step added by hand where the
   // "Save order" draft was (removed): an extra step and a skipped step the demo
-  // does not have. Opened in the same viewer (the same profile, so the process
-  // saved in 7d is there), it is compared with the saved process.
+  // does not have. Opened in the same viewer, its transactions are compared
+  // with its own reference transaction, never with another project: saved
+  // processes (contract C5) left the app on 2026-09-24 (a process is recorded
+  // once), and nothing names one. Opening it changes no file.
   {
-    let err = null, S2 = null, before = null, line = null, st = null, seen = {}, after = {}, stopped = null;
+    let err = null, S2 = null, before = null, st = null, seen = {}, shown = null;
     try {
       S2 = freshSession();
       if (!S2) throw new Error("the second copy could not be analyzed");
@@ -1032,91 +1001,28 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       before = fs.readFileSync(A2, "utf-8");
       await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), S2);
       await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-      await page.waitForSelector("#step-list .runs-compare", { timeout: T });
-      line = await page.$eval("#step-list .runs-compare-text", (el) => el.textContent.trim());
+      await page.waitForFunction((n) => document.querySelectorAll("#step-list .run-group").length === n, RUNS.length, { timeout: T });
+      for (const r of [R2, R3, R4]) { await openRun(r); seen[r] = (await group(r)).diffs; }
       st = await runsState();
-      for (const r of RUNS) { await openRun(r); seen[r] = (await group(r)).diffs; }
-      await shot(page, "runs-smoke-saved-process.png");
-      await page.locator('#step-list .runs-compare [data-act="stop-comparing"]').click({ timeout: T });
-      await page.waitForFunction(() => !document.querySelector("#step-list .runs-compare"), null, { timeout: T });
-      for (const r of [R2, R3, R4]) { await openRun(r); after[r] = (await group(r)).diffs; }
-      stopped = await runsState();
+      shown = await page.evaluate(() => ({
+        text: (document.getElementById("step-list").textContent || "").includes("saved process"),
+        acts: document.querySelectorAll('[data-act="save-process"], [data-act="stop-comparing"], [data-act="forget-process"]').length,
+      }));
     } catch (e) { err = errText(e); }
-    const metas = (s) => RUNS.map((r) => metaDiffs(((s || []).find((g) => g.caseId === r) || {}).meta));
+    const metas = (x) => RUNS.map((r) => metaDiffs(((x || []).find((g) => g.caseId === r) || {}).meta));
     const WANT = {
-      [R1]: [],
-      [R2]: ["Extra step: Notepad - Internal mappings.txt (after " + MERGED + ")."],
-      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the saved process)."],
-      [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
-        "Skipped: Salesforce - Order: Save order (step 3 of the saved process)."],
-    };
-    const ok = !err && line === "Compared with saved process " + PROCESS_NAME &&
-      RUNS.every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
-      metas(st).join() === "no differences,1 difference,1 difference,2 differences" &&
-      fs.readFileSync(path.join(S2, "annotations.json"), "utf-8") === before;
-    record("L12b items 3 + 7: a second copy of the demo (seeded with an extra and a skipped step) opens compared with the saved process: the line, and every run's differences from it (the file is not changed)",
-      ok, JSON.stringify({ err, line, seen: RUNS.map((r) => seen[r]), metas: metas(st) }));
-    const WANT_STOP = {
       [R2]: ["Extra step: Notepad - Internal mappings.txt (after va01: Create sales order)."],
       [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the reference transaction)."],
       [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
         "Skipped: Salesforce - Order: Save order (step 3 of the reference transaction)."],
     };
-    const okStop = !err && [R2, R3, R4].every((r) => JSON.stringify(after[r]) === JSON.stringify(WANT_STOP[r])) &&
-      metas(stopped)[0] === null;
-    record("L12b item 7: Stop comparing removes the line and compares the transactions with the project's own reference transaction",
-      okStop, JSON.stringify({ err, after: [R2, R3, R4].map((r) => after[r]), metas: metas(stopped) }));
-    if (!(ok && okStop)) await shot(page, "fail-runs-saved-process.png");
-
-    // C5's gate: the first session, whose pattern run is confirmed, is NOT
-    // compared when it opens again, although the saved process matches its
-    // steps (the control: the same match the viewer runs, on its steps).
-    let err2 = null, control = null, lineBack = null, confirmedBack = null;
-    try {
-      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
-      await page.waitForFunction((n) => {
-        const g = document.querySelector("#step-list .run-group.pattern .run-status");
-        return !!(g && g.textContent.trim() === "Confirmed") && document.querySelectorAll("#step-list .run-group").length === n;
-      }, RUNS.length, { timeout: T });
-      control = await page.evaluate(async (name) => {
-        const saved = await require("./ipc.js").readProcesses();
-        const s = require("./state.js").getSession();
-        const m = require("./run-differences.js").matchSavedProcess(saved.processes, s.annotations.steps);
-        return m && { name: m.process.name, score: Math.round(m.score * 100) / 100, want: name };
-      }, PROCESS_NAME);
-      await wait(1500);   // the match on open is asynchronous: give it time to (wrongly) arrive
-      lineBack = await page.$("#step-list .runs-compare");
-      confirmedBack = (await group(R1) || {}).status;
-    } catch (e) { err2 = errText(e); }
-    record("L12b item 7 (C5 gate): a session whose pattern run is confirmed opens without the comparison, although the saved process matches it",
-      !err2 && control && control.name === PROCESS_NAME && control.score >= 0.5 && lineBack === null && confirmedBack === "Confirmed",
-      JSON.stringify({ err: err2, control, lineShown: lineBack !== null, status: confirmedBack }));
-
-    // P3.11: "Forget this saved process", the inverse of Save as this process
-    // where the saved process shows: the second copy opens compared with it
-    // again; Forget takes it out of the profile's processes.json and the line
-    // goes; the toast's Undo brings both back.
-    let err3 = null, forgot = null, lineGone = null, restored = null, lineBackAgain = null;
-    try {
-      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), S2);
-      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-      await page.waitForSelector('#step-list .runs-compare [data-act="forget-process"]', { timeout: T });
-      await page.locator('#step-list .runs-compare [data-act="forget-process"]').click({ timeout: T });
-      await waitToast(/^Forgot the saved process/);
-      forgot = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 0);
-      lineGone = await page.waitForFunction(() => !document.querySelector("#step-list .runs-compare"), null, { timeout: T })
-        .then(() => true, () => false);
-      await page.locator('#toast [data-act="undo-forget-process"]').click({ timeout: T });
-      await waitToast(/saved process is back/);
-      restored = await waitDisk(PROCESSES, (d) => d && d.processes && d.processes.length === 1);
-      lineBackAgain = await page.waitForSelector("#step-list .runs-compare", { timeout: T }).then(() => true, () => false);
-    } catch (e) { err3 = errText(e); }
-    const back1 = restored && restored.processes && restored.processes[0];
-    record("P3.11: Forget this saved process takes it out of processes.json and the comparison line goes; the toast's Undo brings both back",
-      !!(!err3 && forgot && forgot.processes.length === 0 && lineGone && back1 && back1.name === PROCESS_NAME &&
-        back1.steps.length === 6 && lineBackAgain),
-      JSON.stringify({ err: err3, forgot: forgot && forgot.processes.length, lineGone,
-        restored: back1 && { name: back1.name, steps: back1.steps.length }, lineBackAgain }));
+    const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
+      metas(st).join() === ",1 difference,1 difference,2 differences" &&
+      shown && !shown.text && shown.acts === 0 &&
+      fs.readFileSync(path.join(S2, "annotations.json"), "utf-8") === before;
+    record("L12b item 3 (C5 removed): a second copy of the demo (seeded with an extra and a skipped step) compares its transactions with its own reference transaction, names no saved process and offers no act for one; opening it changes no file",
+      ok, JSON.stringify({ err, seen: [R2, R3, R4].map((r) => seen[r]), metas: metas(st), shown }));
+    if (!ok) await shot(page, "fail-runs-second-session.png");
   }
 
   // ---- 12. the divider between the transactions and the selected step -------

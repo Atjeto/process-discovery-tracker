@@ -66,9 +66,9 @@ video adds the SME's narration and what happened away from the keyboard.
   decision lives in `annotations.json`, and re-analysis keeps it: steps the
   analyst confirmed, edited, added or hid survive; only the drafts are
   replaced. See [DATA-MODEL.md](./DATA-MODEL.md).
-- **The recorder drafts, the analyst decides.** Drafted steps, remembered
-  names and the comparison with a saved process are suggestions the analyst
-  can see and undo; nothing is applied silently.
+- **The recorder drafts, the analyst decides.** Drafted steps and
+  remembered names are suggestions the analyst can see and undo; nothing is
+  applied silently.
 - **Measured facts render as measured.** A stage that could not run says so
   instead of showing zeros (`stage_errors`); a failed export exits non-zero
   and the viewer never opens a stale file.
@@ -116,8 +116,7 @@ process-discovery-tracker/
    `process_map_step.bpmn` into an editable As-Is or To-Be map under
    `derived_maps/`.
 7. **Export.** The viewer runs the pipeline again with `--pdd-out` and the map
-   images; the PDD `.docx` is offered for saving. "Save as this process"
-   stores the confirmed pattern for later sessions of the same process.
+   images; the PDD `.docx` is offered for saving.
 8. **Transcript (optional).** Attach transcript runs `transcript_import.py`,
    which parses a Teams `.vtt` or `.docx` file into `transcript.json`. The
    viewer places each sentence on the session clock (through the video's
