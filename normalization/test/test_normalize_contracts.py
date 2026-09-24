@@ -463,3 +463,37 @@ def test_the_draft_summary_in_stats_is_numbers_only(tmp_path):
         else:
             yield x
     assert all(type(v) is int for v in leaves(summary))
+
+
+# ---- C17: the flow the analyst sets on steps -----------------------------------
+
+def test_the_flow_set_on_steps_round_trips_and_reaches_the_step_map(tmp_path):
+    """A draft whose flow was set is kept as edited, a confirmed and an
+    edited step keep theirs, a second analysis changes none of them, and
+    the step map draws every label."""
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    anno = _read(session, "annotations.json")
+    run_a = sorted((s for s in anno["steps"]
+                    if s["evidence"]["interaction_event_ids"][0].startswith("a-")),
+                   key=lambda s: s["time_range"]["start"])
+    draft, confirmed, edited = run_a
+    confirmed["state"], edited["state"] = "confirmed", "edited"
+    draft["only_when"] = "the customer is new"
+    confirmed["links"] = [{"to": "end", "when": "the order is on hold"}]
+    edited["links"] = [{"to": draft["step_id"], "when": "a note is missing"}]
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    keys = ("state", "name", "only_when", "links")
+    for _ in range(2):
+        normalize_mod.normalize(session, mine=True)
+        after = {s["step_id"]: s for s in _read(session, "annotations.json")["steps"]}
+        assert {k: after[draft["step_id"]].get(k) for k in keys} == {
+            "state": "edited", "name": draft["name"],
+            "only_when": "the customer is new", "links": None}
+        for step in (confirmed, edited):
+            assert {k: after[step["step_id"]].get(k) for k in keys} == {
+                k: step.get(k) for k in keys}
+    bpmn = (session / "process_map_step.bpmn").read_text(encoding="utf-8")
+    for label in ("the customer is new", "otherwise", "the order is on hold",
+                  "a note is missing"):
+        assert f'name="{label}"' in bpmn, label

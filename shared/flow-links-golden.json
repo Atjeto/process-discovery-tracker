@@ -1,5 +1,5 @@
 {
-  "about": "Contract C17 (step flow): the edges the process map draws from the transactions' step order plus the conditions and links the analyst sets on steps. Pinned for both renderers: the viewer's live map (viewer/process-map-levels.js) and the pipeline's step BPMN (normalization). A step is named here by its map node name; real data links by step_id. observed: the edge follows from the step order of at least one transaction. label: the analyst's condition text (only_when on the step the edge enters, or a link's when), 'otherwise' on the path around a conditional step, or null.",
+  "about": "Contract C17 (step flow): the edges the process map draws from the transactions' step order plus the conditions and links the analyst sets on steps. Pinned for both renderers: the viewer's live map (viewer/process-map-levels.js) and the pipeline's step BPMN (normalization). A step is named here by its map node name; real data links by step_id. observed: the edge follows from the step order of at least one transaction. label: the analyst's condition text (only_when on the step the edge enters, or a link's when), 'otherwise' on the path around a conditional step, or null. Consecutive steps with one node are one visit, as on the map, so the previous step and the step after are the neighbouring visits; a path around a step between two visits of one node would join them into one visit and is not drawn. A condition set on a step holds for its node in every transaction. A hidden step is not on the map, and a link to it, to its own step or to no step draws nothing; a link without a when is an edge with no label.",
   "cases": [
     {
       "name": "one transaction: a conditional step and a loop back",
@@ -132,6 +132,100 @@
         {"from": "A", "to": "B", "label": null, "observed": true},
         {"from": "B", "to": "A", "label": "missing data", "observed": false},
         {"from": "B", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "different labels on one edge are joined with or, in step order",
+      "transactions": [
+        [
+          {"name": "A", "links": [{"to": "C", "when": "known customer"}]},
+          {"name": "B", "only_when": "a new customer"},
+          {"name": "C"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": "a new customer", "observed": true},
+        {"from": "A", "to": "C", "label": "known customer or otherwise", "observed": false},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "C", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "consecutive steps with one node are one visit",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B"},
+          {"name": "B", "only_when": "X"},
+          {"name": "C"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": "X", "observed": true},
+        {"from": "A", "to": "C", "label": "otherwise", "observed": false},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "C", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "a condition holds in every transaction where its step appears",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "only_when": "X"},
+          {"name": "C"}
+        ],
+        [
+          {"name": "D"},
+          {"name": "B"},
+          {"name": "C"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "start", "to": "D", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": "X", "observed": true},
+        {"from": "D", "to": "B", "label": "X", "observed": true},
+        {"from": "A", "to": "C", "label": "otherwise", "observed": false},
+        {"from": "D", "to": "C", "label": "otherwise", "observed": false},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "C", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "no path around a step between two visits of one step",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "only_when": "X"},
+          {"name": "A"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": "X", "observed": true},
+        {"from": "B", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "a hidden step is not drawn, a link to it draws nothing, a link without a when has no label",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B"},
+          {"name": "C", "state": "hidden"},
+          {"name": "D", "links": [{"to": "C", "when": "never drawn"}, {"to": "A", "when": ""}]}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "B", "to": "D", "label": null, "observed": true},
+        {"from": "D", "to": "A", "label": null, "observed": false},
+        {"from": "D", "to": "end", "label": null, "observed": true}
       ]
     }
   ]

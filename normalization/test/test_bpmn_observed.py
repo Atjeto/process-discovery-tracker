@@ -5,6 +5,7 @@ Run with: pytest normalization/test/test_bpmn_observed.py
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import tempfile
@@ -473,3 +474,270 @@ def test_the_documentation_says_no_time_for_steps_without_one():
     assert tasks["Log it"].find(f"{_BPMN}documentation").text == "SAP. In 1 of 1 transaction."
     assert tasks["Check"].find(f"{_BPMN}documentation").text == (
         "In 1 of 1 transaction, 30s on average.")
+
+
+# ---- contract C17: the flow the analyst sets on steps ------------------------------
+
+_FLOW_STEPS = ("Receive the order", "Check the customer", "Book the order",
+               "Confirm the lines", "Send the confirmation")
+
+
+def _flow_anno():
+    """One transaction of five steps. Check the customer happens only when the
+    customer is new; Book the order ends the process when the credit check
+    fails; Confirm the lines goes back to Check the customer when a line is
+    missing."""
+    steps = [_step("A", name, f"2026-05-18T09:00:{10 * i:02d}Z")
+             for i, name in enumerate(_FLOW_STEPS)]
+    steps[1]["only_when"] = "the customer is new"
+    steps[2]["links"] = [{"to": "end", "when": "the credit check fails"}]
+    steps[3]["links"] = [{"to": steps[1]["step_id"], "when": "a line is missing"}]
+    return {"steps": steps}
+
+
+def _tag(el):
+    return el.tag.split("}", 1)[-1]
+
+
+def _graph(root):
+    """(elements by id, flows as (id, source, target, name)) of the process."""
+    process = root.find(f"{_BPMN}process")
+    elements = {el.get("id"): el for el in process if el.tag != f"{_BPMN}sequenceFlow"}
+    flows = [(f.get("id"), f.get("sourceRef"), f.get("targetRef"), f.get("name"))
+             for f in process.findall(f"{_BPMN}sequenceFlow")]
+    return elements, flows
+
+
+def _reach(start, adjacency):
+    seen, todo = {start}, [start]
+    while todo:
+        for nxt in adjacency.get(todo.pop(), []):
+            if nxt not in seen:
+                seen.add(nxt)
+                todo.append(nxt)
+    return seen
+
+
+def _well_formed(root):
+    """Assert the model a BPMN tool reads: one start and one end event, only
+    exclusive gateways, each task one flow in and one out, each gateway a
+    real split or join, every node reachable from the start and able to
+    reach the end, and each node listing its flows. Returns _graph(root)."""
+    elements, flows = _graph(root)
+    tags = [_tag(el) for el in elements.values()]
+    assert tags.count("startEvent") == 1 and tags.count("endEvent") == 1, tags
+    assert set(tags) <= {"startEvent", "endEvent", "task", "exclusiveGateway"}, tags
+    out, inc = {}, {}
+    for _fid, s, t, _name in flows:
+        out.setdefault(s, []).append(t)
+        inc.setdefault(t, []).append(s)
+    start = next(i for i, el in elements.items() if _tag(el) == "startEvent")
+    end = next(i for i, el in elements.items() if _tag(el) == "endEvent")
+    assert _reach(start, out) == set(elements)
+    assert _reach(end, inc) == set(elements)
+    for i, el in elements.items():
+        if _tag(el) == "task":
+            assert len(out.get(i, [])) == 1 and len(inc.get(i, [])) == 1, el.get("name")
+        elif _tag(el) == "exclusiveGateway":
+            assert len(out.get(i, [])) > 1 or len(inc.get(i, [])) > 1, i
+        assert sorted(x.text for x in el.findall(f"{_BPMN}incoming")) == sorted(
+            f for f, _s, t, _n in flows if t == i)
+        assert sorted(x.text for x in el.findall(f"{_BPMN}outgoing")) == sorted(
+            f for f, s, _t, _n in flows if s == i)
+    return elements, flows
+
+
+def _ends(root):
+    """{flow name: [(what it comes from, what it leads to)]}: past the
+    gateways, each end named by its task, or "start" and "end"."""
+    elements, flows = _graph(root)
+    out = {s: t for _f, s, t, _n in flows}
+    inc = {t: s for _f, s, t, _n in flows}
+
+    def name(i, step):
+        while _tag(elements[i]) == "exclusiveGateway":
+            i = step[i]
+        return {"startEvent": "start", "endEvent": "end"}.get(_tag(elements[i]),
+                                                             elements[i].get("name"))
+    named = {}
+    for _f, s, t, n in flows:
+        if n:
+            named.setdefault(n, []).append((name(s, inc), name(t, out)))
+    return {n: sorted(pairs) for n, pairs in named.items()}
+
+
+def test_the_flow_set_on_steps_draws_a_condition_a_skip_a_loop_and_an_early_end():
+    root = _written(_flow_anno())
+    elements, _flows = _well_formed(root)
+    assert sorted(el.get("name") for el in elements.values() if _tag(el) == "task") == sorted(
+        _FLOW_STEPS)
+    assert _ends(root) == {
+        "the customer is new": [("Receive the order", "Check the customer")],
+        "otherwise": [("Receive the order", "Book the order")],
+        "the credit check fails": [("Book the order", "end")],
+        "a line is missing": [("Confirm the lines", "Check the customer")],
+        # The branches the transaction took, where no label was declared.
+        "1 of 1 transaction": [("Book the order", "Confirm the lines"),
+                               ("Confirm the lines", "Send the confirmation")],
+    }
+
+
+def _label_boxes(root):
+    """{flow id: (x, y, w, h)} of every named flow's label."""
+    out = {}
+    for edge in root.iter(f"{_BPMNDI}BPMNEdge"):
+        b = edge.find(f"{_BPMNDI}BPMNLabel/{_DC}Bounds")
+        if b is not None:
+            out[edge.get("bpmnElement")] = tuple(float(b.get(k))
+                                                 for k in ("x", "y", "width", "height"))
+    return out
+
+
+def _overlaps(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
+def _event_names(root, shapes):
+    """{event id: box} of each named event's name, where bpmn-js draws it
+    when the file places none: under the event, centred in 90 px, a line of
+    13.2 px for every 90 px of text at a generous 7 px a character."""
+    out = {}
+    for el in root.find(f"{_BPMN}process"):
+        if _tag(el) in ("startEvent", "endEvent") and el.get("name"):
+            x, y, w, h = shapes[el.get("id")]
+            lines = max(1, math.ceil(len(el.get("name")) * 7 / 90))
+            out[el.get("id")] = (x + w / 2 - 45, y + h, 90, lines * 13.2)
+    return out
+
+
+def _assert_readable(root):
+    """No line crosses a box it does not join; every named flow has a label
+    box at least as wide as bpmn-js wraps its text (90 px) that covers no
+    box, no line, no other label and no event's name."""
+    shapes, segments = _boxes_and_segments(root)
+    _elements, flows = _graph(root)
+    named = {f for f, _s, _t, n in flows if n}
+    for (a, b, src, tgt) in segments:
+        for nid, box in shapes.items():
+            if nid not in (src, tgt):
+                assert not _crosses((a, b), box), (src, tgt, nid)
+    labels = _label_boxes(root)
+    assert set(labels) == named
+    events = _event_names(root, shapes)
+    for fid, box in labels.items():
+        assert box[2] >= 90 and box[3] >= 11 * 1.2, (fid, box)
+        for nid, shape in shapes.items():
+            assert not _overlaps(box, shape), (fid, nid)
+        for (a, b, src, tgt) in segments:
+            assert not _crosses((a, b), box), (fid, a, b, src, tgt)
+        for other, obox in list(labels.items()) + list(events.items()):
+            assert other == fid or not _overlaps(box, obox), (fid, other)
+
+
+def test_the_flow_labels_sit_clear_of_every_box_line_and_other_label():
+    anno = _flow_anno()
+    anno["document"] = {"trigger": "An order arrives by email",
+                        "result": "The customer has the confirmation"}
+    root = _written(anno)
+    assert len(_label_boxes(root)) == 6
+    assert len(_event_names(root, _boxes_and_segments(root)[0])) == 2
+    _assert_readable(root)
+
+
+def test_a_declared_condition_names_its_branch_and_the_observed_ones_count():
+    """Three transactions: one escalates, only when the ticket is urgent.
+    The declared label names its branch; the branch no label was declared
+    for keeps its "N of M transactions"."""
+    anno = _two_case_anno()
+    anno["steps"] += [_step("C", "Search", "2026-05-18T09:20:00Z"),
+                      _step("C", "Open ticket", "2026-05-18T09:20:10Z"),
+                      _step("C", "Resolve", "2026-05-18T09:20:20Z")]
+    next(s for s in anno["steps"] if s["name"] == "Escalate")["only_when"] = "the ticket is urgent"
+    root = _written(anno)
+    _well_formed(root)
+    assert _ends(root) == {
+        "2 of 3 transactions": [("Search", "Open ticket")],
+        "the ticket is urgent": [("Search", "Escalate")],
+        "otherwise": [("Search", "Resolve")],
+    }
+    _assert_readable(root)
+
+
+def test_the_implicit_run_counts_no_transactions_on_its_branches():
+    """C16: a session without a recording has one implicit run, not a marked
+    transaction, so its observed branches carry no count; the declared
+    labels stay."""
+    root = _written(_flow_anno(), implicit_runs=["A"])
+    assert set(_ends(root)) == {"the customer is new", "otherwise",
+                                "the credit check fails", "a line is missing"}
+
+
+def test_a_declaration_that_changes_nothing_keeps_the_recorded_map():
+    """A link to a hidden step draws nothing, so the one transaction is
+    still drawn as its plain sequence."""
+    anno = _flow_anno()
+    for s in anno["steps"]:
+        s.pop("only_when", None)
+        s.pop("links", None)
+    anno["steps"][1]["state"] = "hidden"
+    anno["steps"][3]["links"] = [{"to": anno["steps"][1]["step_id"], "when": "never drawn"}]
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "step.bpmn")
+        assert write_observed_bpmn(anno, out) is True
+        xml = Path(out).read_text(encoding="utf-8")
+    assert "Gateway" not in xml and "never drawn" not in xml
+
+
+def test_a_long_condition_is_cut_on_the_map_and_kept_whole_in_its_flow():
+    """The map names a flow with the words of a long condition that fit in
+    48 characters, so its label stays about three lines tall and finds a
+    clear place; the whole condition is the flow's documentation (the PDD
+    prints it whole too)."""
+    anno = _flow_anno()
+    long = ("the customer is new and the order value is above the credit limit "
+            "that was set for the customer's region last year")
+    anno["steps"][1]["only_when"] = long
+    root = _written(anno)
+    flows = [f for f in root.find(f"{_BPMN}process").findall(f"{_BPMN}sequenceFlow")
+             if (f.get("name") or "").startswith("the customer")]
+    assert [f.get("name") for f in flows] == ["the customer is new and the order value is…"]
+    assert flows[0].find(f"{_BPMN}documentation").text == long
+    # A label that fits whole is not repeated as documentation.
+    assert all(f.find(f"{_BPMN}documentation") is None
+               for f in root.find(f"{_BPMN}process").findall(f"{_BPMN}sequenceFlow")
+               if f not in flows)
+    _assert_readable(root)
+
+
+def test_the_flow_map_is_written_the_same_way_every_time():
+    with tempfile.TemporaryDirectory() as d:
+        paths = [os.path.join(d, f"step{i}.bpmn") for i in range(2)]
+        for p in paths:
+            assert write_observed_bpmn(_flow_anno(), p) is True
+        first, second = (Path(p).read_text(encoding="utf-8") for p in paths)
+    assert first == second
+
+
+def test_a_long_flow_with_declarations_wraps_and_stays_readable():
+    """Twelve steps of one transaction with a condition, a skip, a loop and
+    an early end, long enough to wrap into rows: still well formed, every
+    label clear, and printed legibly on a landscape page."""
+    names = [f"Step number {i}" for i in range(12)]
+    steps = [_step("A", n, f"2026-05-18T09:{i:02d}:00Z") for i, n in enumerate(names)]
+    steps[2]["only_when"] = "the amount is over the limit"
+    steps[3]["links"] = [{"to": steps[7]["step_id"], "when": "the customer is known"}]
+    steps[9]["links"] = [{"to": steps[4]["step_id"], "when": "a check fails"},
+                         {"to": "end", "when": "the order is cancelled"}]
+    root = _written({"steps": steps})
+    _well_formed(root)
+    assert {"the amount is over the limit", "otherwise", "the customer is known",
+            "a check fails", "the order is cancelled"} <= set(_ends(root))
+    _assert_readable(root)
+    shapes, _segments = _boxes_and_segments(root)
+    boxes = list(shapes.values()) + list(_label_boxes(root).values())
+    xs = [x for (x, _y, _w, _h) in boxes] + [x + w for (x, _y, w, _h) in boxes]
+    ys = [y for (_x, y, _w, _h) in boxes] + [y + h for (_x, y, _w, h) in boxes]
+    width, height = max(xs) - min(xs), max(ys) - min(ys)
+    assert 12 * min(684 / width, 425 / height) >= 7.0

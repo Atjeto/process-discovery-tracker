@@ -15,7 +15,9 @@ in the reader's order:
      pattern run, contract C3). Each step says its system and screen, its
      average time, in how many transactions it happened and where it is in
      the recording ("Transaction 1 at 0:19", and the video time when the
-     video's start is known); its description (C7) is its text.
+     video's start is known); its description (C7) is its text. The flow
+     the analyst set on it (C17) prints under it: "Only when" its condition,
+     and where the process goes after it besides the next step.
   4. Variations, rules and exceptions: how each other transaction differed
      from the reference transaction (aligned by draft key; the rule is
      pinned with the viewer by shared/run-differences-golden.json), steps
@@ -86,6 +88,7 @@ from memo_export import run_rows
 from session_io import has_recording, session_source
 from step_context import (StepContext, clock, has_video, step_duration_ms, step_start,
                           step_system, untimed_key, video_start)
+from step_flow import condition_of, links_of, node_of
 from step_suggest import is_drafted_description, step_identity
 
 logger = logging.getLogger(__name__)
@@ -284,6 +287,11 @@ class _Session:
             cid = st.get("case_id")
             self.steps_by_run.setdefault(cid if isinstance(cid, str) else None,
                                          []).append(st)
+        # C17: a link names its target by step_id; the map node of every
+        # visible step, so a link to another transaction's copy of a printed
+        # step finds it.
+        self.node_by_id = {st["step_id"]: node_of(st) for st in self.steps
+                           if isinstance(st.get("step_id"), str)}
         self.run_index = {run["case_id"]: i for i, run in enumerate(self.runs)}
         self.pattern_index = self._pick_pattern()
 
@@ -939,14 +947,61 @@ def _write_steps(doc, s):
                               else "No steps have been recorded for this project yet.")
         return
     for number, step in enumerate(steps, start=1):
-        _write_step(doc, s, step, number)
+        _write_step(doc, s, step, number, steps)
 
 
-def _write_step(doc, s, step, number):
+def _sentence(text: str) -> str:
+    """An analyst's condition closing a sentence: one final full stop, none
+    added after a question or exclamation mark."""
+    text = text.rstrip().rstrip(".").rstrip()
+    return text if text.endswith(("?", "!", "…")) else text + "."
+
+
+def _link_lines(s, step, number, steps) -> list[str]:
+    """One line per link on the step (contract C17), in their order: "Then
+    goes back to step N, <name>, when <when>." for an earlier step (or the
+    step itself), "Then goes on to step N ..." for the next one, "Then skips
+    to step N ..." for a later one, "The process ends here when <when>."
+    for the end; without a `when`, the line ends at the step's name. A
+    target takes the number the document prints it with (`steps`, the
+    printed steps): its own, else that of the first printed step with its
+    map node (another transaction's copy of a printed step). A link to its
+    own step, to a hidden or removed step, or to a step with no printed copy
+    is left out."""
+    numbers = {st.get("step_id"): i for i, st in enumerate(steps, start=1)
+               if isinstance(st.get("step_id"), str)}
+    by_node: dict[str, int] = {}
+    for i, st in enumerate(steps, start=1):
+        by_node.setdefault(node_of(st), i)
+    lines = []
+    for to, when in links_of(step):
+        if to == "end":
+            lines.append(f"The process ends here when {_sentence(when)}" if when
+                         else "The process ends here.")
+            continue
+        if to == step.get("step_id"):
+            continue
+        n = numbers.get(to)
+        if n is None and to in s.node_by_id:
+            n = by_node.get(s.node_by_id[to])
+        if n is None:
+            continue
+        verb = ("goes back to" if n <= number
+                else "goes on to" if n == number + 1 else "skips to")
+        target = f"Then {verb} step {n}, {_step_name(steps[n - 1])}"
+        lines.append(f"{target}, when {_sentence(when)}" if when else f"{target}.")
+    return lines
+
+
+def _write_step(doc, s, step, number, steps):
     doc.add_heading(f"{number}. {_step_name(step)}", level=3)
     context = s.context_line(step)
     if context:
         _small(doc, context)
+    condition = condition_of(step)
+    if condition:
+        # C17: the step happens only under this condition.
+        doc.add_paragraph(f"Only when {_sentence(condition)}")
     desc = s.analyst_description(step)
     if desc:
         _text(doc, desc)
@@ -962,6 +1017,9 @@ def _write_step(doc, s, step, number):
         p = doc.add_paragraph("Flagged as waste.")
         for run in p.runs:
             run.italic = True
+    # C17: where the process goes after the step, besides the next step.
+    for line in _link_lines(s, step, number, steps):
+        doc.add_paragraph(line)
 
 
 def _safe_path(folder, ref):

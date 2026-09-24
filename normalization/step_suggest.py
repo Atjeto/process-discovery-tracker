@@ -931,10 +931,18 @@ def _merge_steps(existing: list, fresh: list,
     evidence, so the view-time grain roll-up has the containment keys even on
     manual steps. Optional: absent it, only
     steps that already carry `grain_keys` (the drafts, stamped in _draft_step)
-    keep them, and the viewer resolves the rest at view time."""
+    keep them, and the viewer resolves the rest at view time.
+
+    Contract C17: a draft the analyst set the flow on (`only_when`, `links`)
+    is theirs; the viewer marks it `edited`, and so does this merge when it
+    finds one still `auto_suggested`, so a re-analysis never drafts the flow
+    away. Every preserved step keeps both keys as they are."""
+    from step_flow import declares_flow   # step_flow reads step_context, which imports this module
     by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
         st = s.get("state")
+        if st not in by_state and declares_flow(s):
+            s["state"] = st = "edited"
         if st in by_state:
             by_state[st].append(s)
     preserved = [s for st in PRESERVED_STATES for s in by_state[st]]

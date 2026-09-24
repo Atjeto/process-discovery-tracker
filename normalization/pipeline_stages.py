@@ -526,12 +526,17 @@ def _run_mining_exports(
                      and isinstance(e.get("data"), dict)},
                     ((summary or {}).get("meta") or {}).get("app_names"))
                 # The implicit run of a session without a recording (C16).
-                implicit = [r.get("case_id") for r in (summary or {}).get("case_stats") or []
-                            if isinstance(r, dict) and r.get("implicit")]
+                rows = [r for r in (summary or {}).get("case_stats") or [] if isinstance(r, dict)]
+                implicit = [r.get("case_id") for r in rows if r.get("implicit")]
+                # C17: the transactions in the viewer's order (start, then
+                # case id), the order the labels of one flow are joined in.
+                run_order = [r.get("case_id") for r in sorted(
+                    (r for r in rows if r.get("case_id") and not r.get("parent_case_id")),
+                    key=lambda r: (str(r.get("start_ts") or ""), str(r.get("case_id"))))]
                 if bpmn_observed.write_observed_bpmn(
                         existing_anno,
                         str(session_folder / "process_map_step.bpmn"),
-                        context=context, implicit_runs=implicit):
+                        context=context, implicit_runs=implicit, run_order=run_order):
                     print(f"[normalize] wrote {session_folder / 'process_map_step.bpmn'}")
         except Exception as e:
             print(f"[normalize] WARNING: step BPMN failed: {e}")

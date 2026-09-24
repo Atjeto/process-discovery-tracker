@@ -7,6 +7,7 @@ step-level observed-flow BPMN (bpmn_observed.py) is the only caller.
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -68,6 +69,31 @@ _V_GAP = 30        # between two nodes of one column
 _MARGIN = 30
 _CHANNEL = 24      # the band above and below each row of nodes, for edges
 _LANE = 10         # extra channel height per edge routed through it
+
+# With room for labels (export_bpmn label_room: the flow the analyst sets on
+# steps, contract C17, names flows with sentences): the gap after a branching
+# column holds a 90 px label at its left, and the lines that run through the
+# gap keep to its right part (_ROUTE_ZONE wide).
+_LABEL_GAP = 156
+_ROUTE_ZONE = 36
+# bpmn-js draws a flow's name in 11 px Arial at a line height of 1.2, wrapped
+# at 90 px, from the top left of a box at least 90 px wide around the label
+# bounds' centre: a 90 px wide label box is where the text is drawn.
+_LABEL_WRAP = 90
+_LABEL_LINE = 13.2
+_LABEL_CLEAR = 3   # the least room between a label and a box, a line or a label
+# Arial's advance widths, in thousandths of an em, of the printable ASCII
+# characters from space (32) to tilde (126); another character counts as
+# 1000, wider than any of them, so a label's height is never underestimated.
+_ARIAL = (278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+          556, 556, 556, 556, 556, 556, 556, 556, 556, 556,
+          278, 278, 584, 584, 584, 556, 1015,
+          667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833,
+          722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611,
+          278, 278, 278, 469, 556, 333,
+          556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833,
+          556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500,
+          334, 260, 334, 584)
 
 # The layout wraps a long flow into rows so the map prints legibly on a page:
 # a landscape page's printable area below a heading (9.5 by 5.9 inches, in
@@ -232,6 +258,8 @@ class _Layout:
         self.gap_before: dict[int, int] = {}       # rank -> the gap left of its column
         self.top_channel: dict[int, int] = {}      # row -> y of its top channel's first lane
         self.bottom_channel: dict[int, int] = {}   # row -> y of its bottom channel's first lane
+        self.label_after: set[int] = set()         # ranks whose right gap holds labels
+        self.label_before: set[int] = set()        # ranks whose left gap holds labels
 
     def row(self, nid: str) -> int:
         return self.row_of_rank[self.rank[nid]]
@@ -249,28 +277,39 @@ def _row_heights(by_rank: dict[int, list[str]], sizes, rows) -> list[int]:
 
 
 def _pick_rows(widths: list[int], gaps: list[int], by_rank, sizes,
-               crossings: list[int]) -> list[list[int]]:
+               crossings: list[int], trade: bool = False) -> list[list[int]]:
     """The row split that prints the diagram legibly on the target page:
     one row when that already prints the labels at _LEGIBLE_PT, else the
     number of rows that prints them largest. A row ends only where the
     fewest edges cross from one row to the next (usually one: the flow goes
     on in the next row), so no branch or loop is cut in two when it can be
-    kept whole; a split that cannot keep them allows the next fewest."""
+    kept whole; a split that cannot keep them allows the next fewest. With
+    `trade` (the flow the analyst sets: loops and skips that span most of
+    the flow leave few such places) a split that lets more edges cross is
+    taken when keeping them whole would print the diagram more than a tenth
+    smaller."""
     levels = sorted(set(crossings))
+
+    def scale_of(rows):
+        w = (max(_row_width([widths[c] for c in cols], [gaps[c] for c in cols]) for cols in rows)
+             + 2 * _MARGIN + _H_GAP)
+        h = sum(_row_heights(by_rank, sizes, rows)) + len(rows) * 2 * _CHANNEL + 2 * _MARGIN
+        return min(_PAGE_W_PT / w, _PAGE_H_PT / h)     # printed points per unit
+
     best, best_scale = None, -1.0
     for n in range(1, min(len(widths), _MAX_ROWS) + 1):
-        rows = None
+        options = []
         for limit in (levels if n > 1 else [None]):
             allowed = None if limit is None else {c for c, k in enumerate(crossings) if k <= limit}
             rows = _split_rows(widths, gaps, n, allowed)
             if rows:
-                break
-        if not rows:
+                options.append((rows, scale_of(rows)))
+                if not trade:
+                    break
+        if not options:
             continue
-        w = (max(_row_width([widths[c] for c in cols], [gaps[c] for c in cols]) for cols in rows)
-             + 2 * _MARGIN + _H_GAP)
-        h = sum(_row_heights(by_rank, sizes, rows)) + len(rows) * 2 * _CHANNEL + 2 * _MARGIN
-        scale = min(_PAGE_W_PT / w, _PAGE_H_PT / h)     # printed points per unit
+        top = max(s for _r, s in options)
+        rows, scale = next((r, s) for r, s in options if s >= 0.9 * top)
         if n == 1 and scale * _LABEL_PX >= _LEGIBLE_PT:
             return rows
         if scale > best_scale * 1.02:      # a clearly larger print wins; ties keep fewer rows
@@ -301,7 +340,8 @@ def _lanes(layout: "_Layout", edges: list[tuple[str, str, str]]) -> dict[str, tu
 def _layout_full(node_ids: list[str], edges: list[tuple[str, str]],
                  sizes: dict[str, tuple[int, int]],
                  lanes_hint: dict[tuple[str, int], int] | None = None,
-                 splits: set[str] | None = None) -> _Layout:
+                 splits: set[str] | None = None,
+                 label_room: bool = False) -> _Layout:
     """Hierarchical left-to-right layout, wrapped into rows.
 
     1. Rank nodes into columns by longest path over the acyclic forward
@@ -316,7 +356,9 @@ def _layout_full(node_ids: list[str], edges: list[tuple[str, str]],
     `lanes_hint` is how many edges each (channel, row) carries, so every
     channel is tall enough for its lanes. `splits` are the nodes whose
     outgoing flows are named (the branching gateways): the gap after their
-    column is wide enough for the names."""
+    column is wide enough for the names. With `label_room` that gap holds a
+    90 px label beside the lines through it (_LABEL_GAP, and _waypoints
+    keeps those lines to its right part)."""
     lay = _Layout()
     lay.rank = _ranks(node_ids, edges)
     by_rank: dict[int, list[str]] = {}
@@ -327,15 +369,34 @@ def _layout_full(node_ids: list[str], edges: list[tuple[str, str]],
     index = {r: i for i, r in enumerate(ranks)}
     widths = [max(sizes[n][0] for n in by_rank[r]) for r in ranks]
     splits = splits or set()
-    gaps = [_SPLIT_GAP if any(n in splits for n in by_rank[r]) else _H_GAP for r in ranks]
+    named = [any(n in splits for n in by_rank[r]) for r in ranks]
+    split_gap = _LABEL_GAP if label_room else _SPLIT_GAP
+    gaps = [split_gap if is_named else _H_GAP for is_named in named]
+    if label_room:
+        lay.label_after = {r for r, is_named in zip(ranks, named) if is_named}
     crossings = [0] * max(0, len(ranks) - 1)
     for src, tgt in edges:
         if src in lay.rank and tgt in lay.rank:
             a, b = index[lay.rank[src]], index[lay.rank[tgt]]
             for c in range(min(a, b), max(a, b)):
                 crossings[c] += 1
+    if label_room:
+        # A join belongs with the step after it and a split with the step
+        # before it: a row does not end between them when it can end
+        # elsewhere (such a place counts one crossing more).
+        ins = {n: 0 for n in node_ids}
+        outs = {n: 0 for n in node_ids}
+        for src, tgt in edges:
+            if src in outs and tgt in ins:
+                outs[src] += 1
+                ins[tgt] += 1
+
+        def all_gateways(r: int, degree: dict[str, int]) -> bool:
+            return all(sizes[n] == (_GW_SIZE, _GW_SIZE) and degree[n] > 1 for n in by_rank[r])
+        for c in range(len(crossings)):
+            crossings[c] += int(all_gateways(ranks[c], ins) or all_gateways(ranks[c + 1], outs))
     by_col = {i: by_rank[r] for r, i in index.items()}
-    rows = _pick_rows(widths, gaps, by_col, sizes, crossings)
+    rows = _pick_rows(widths, gaps, by_col, sizes, crossings, trade=label_room)
     heights = _row_heights(by_col, sizes, rows)
     lanes_hint = lanes_hint or {}
 
@@ -347,6 +408,7 @@ def _layout_full(node_ids: list[str], edges: list[tuple[str, str]],
         y += top_h
         x = _MARGIN + _H_GAP // 2
         before = _H_GAP
+        before_named = False
         for c in cols:
             r = ranks[c]
             lay.row_of_rank[r] = row_no
@@ -354,6 +416,9 @@ def _layout_full(node_ids: list[str], edges: list[tuple[str, str]],
             lay.col_left[r], lay.col_right[r] = x, x + col_w
             lay.gap_before[r], lay.gap_after[r] = before, gaps[c]
             before = gaps[c]
+            if before_named:
+                lay.label_before.add(r)
+            before_named = r in lay.label_after
             nodes = by_rank[r]
             col_h = sum(sizes[n][1] for n in nodes) + _V_GAP * (len(nodes) - 1)
             ny = y + (row_h - col_h) // 2
@@ -401,8 +466,69 @@ def _waypoints(lay: _Layout, lane: tuple[str, int, int] | None,
     offset = (1 if channel == "bottom" else -1) * (3 + 6 * min(n, 4))
     ox = lay.col_right[rs] + lay.gap_after[rs] // 2 + offset
     ix = lay.col_left[rt] - lay.gap_before[rt] // 2 + offset
+    # In a gap that holds labels the lines keep to its right part, a top
+    # channel's lines 3 px left of a bottom channel's, 6 px between lanes.
+    zone = (0 if channel == "top" else 3) + 6 * min(n, 4) - _ROUTE_ZONE
+    if rs in lay.label_after:
+        ox = lay.col_right[rs] + lay.gap_after[rs] + zone
+    if rt in lay.label_before:
+        ix = lay.col_left[rt] + zone
     cy = (lay.bottom_channel if channel == "bottom" else lay.top_channel)[row] + n * _LANE
     return [(sx + sw, scy), (ox, scy), (ox, cy), (ix, cy), (ix, tcy), (tx, tcy)]
+
+
+def _crosses_a_box(points: list[tuple[int, int]], lay: "_Layout", ends: tuple[str, str]) -> bool:
+    """True when a stretch of the line runs through a box other than its ends."""
+    boxes = [box for nid, box in lay.pos.items() if nid not in ends]
+    return any(_hits(box, a, b) for a, b in zip(points, points[1:]) for box in boxes)
+
+
+def _vertex_route(lay: "_Layout", lane: tuple[str, int, int] | None, s: str, t: str,
+                  gateways: set[str], used: set[tuple[str, str]]) -> list[tuple[int, int]] | None:
+    """With room for labels: the route of a flow that turns up or down,
+    leaving a gateway from its top or bottom corner and entering a gateway
+    at its top or bottom corner, so the flows of a gateway part at the
+    gateway rather than running bundled beside it, and a name can sit by
+    its own line. A corner takes one flow (`used`); an end that cannot use
+    one keeps its side (_waypoints). Both corners are tried first, then the
+    source's, then the target's; a route that would run through a box is
+    not taken. None for a level flow or when no route is left."""
+    sx, sy, sw, sh = lay.pos[s]
+    tx, ty, tw, th = lay.pos[t]
+    scx, scy, tcx, tcy = sx + sw // 2, sy + sh // 2, tx + tw // 2, ty + th // 2
+    options: list[tuple[list[tuple[int, int]], list[tuple[str, str]]]] = []
+    if lane is None:
+        if scy == tcy:
+            return None
+        side = "top" if tcy < scy else "bottom"
+        back = "bottom" if side == "top" else "top"
+        if s in gateways and (s, side) not in used:
+            options.append(([(scx, sy if side == "top" else sy + sh), (scx, tcy), (tx, tcy)],
+                            [(s, side)]))
+        if t in gateways and (t, back) not in used:
+            options.append(([(sx + sw, scy), (tcx, scy), (tcx, ty if back == "top" else ty + th)],
+                            [(t, back)]))
+    else:
+        full = _waypoints(lay, lane, s, t)
+        cy = full[2][1]
+        s_side = "bottom" if cy > scy else "top"
+        t_side = "bottom" if cy > tcy else "top"
+        leave = ([(scx, sy + sh if s_side == "bottom" else sy), (scx, cy)]
+                 if s in gateways and (s, s_side) not in used else None)
+        enter = ([(tcx, cy), (tcx, ty + th if t_side == "bottom" else ty)]
+                 if t in gateways and (t, t_side) not in used else None)
+        if leave and enter:
+            options.append((leave + enter, [(s, s_side), (t, t_side)]))
+        if leave:
+            options.append((leave + full[3:], [(s, s_side)]))
+        if enter:
+            options.append((full[:3] + enter, [(t, t_side)]))
+    for pts, corners in options:
+        pts = [p for i, p in enumerate(pts) if i == 0 or p != pts[i - 1]]
+        if not _crosses_a_box(pts, lay, (s, t)):
+            used.update(corners)
+            return pts
+    return None
 
 
 def _label_bounds(points: list[tuple[int, int]],
@@ -424,9 +550,123 @@ def _label_bounds(points: list[tuple[int, int]],
     return x, y, _BRANCH_LABEL_W, _BRANCH_LABEL_H
 
 
+def _text_px(text: str) -> float:
+    """The width of `text` in bpmn-js's 11 px Arial, a tenth wider for the
+    rounding of small type, so a label is never taken for narrower than it
+    prints."""
+    return sum(_ARIAL[ord(c) - 32] if 32 <= ord(c) <= 126 else 1000 for c in text) * 0.0121
+
+
+def _label_height(text: str) -> int:
+    """The height of a flow's name in bpmn-js: its words wrapped at 90 px (a
+    word wider than a line takes the lines it needs), 13.2 px a line."""
+    lines, width = 0, 0.0
+    space = _text_px(" ")
+    for word in text.split():
+        w = _text_px(word)
+        if width and width + space + w <= _LABEL_WRAP:
+            width += space + w
+            continue
+        if width:
+            lines += 1
+        while w > _LABEL_WRAP:
+            lines += 1
+            w -= _LABEL_WRAP
+        width = w
+    if width or not lines:
+        lines += 1
+    return math.ceil(lines * _LABEL_LINE + 1.6)
+
+
+def _hits(box: tuple[float, float, float, float],
+          a: tuple[float, float], b: tuple[float, float]) -> bool:
+    """True when the straight stretch a to b runs through `box` (x, y, w, h)."""
+    bx, by, bw, bh = box
+    return (min(a[0], b[0]) < bx + bw and max(a[0], b[0]) > bx
+            and min(a[1], b[1]) < by + bh and max(a[1], b[1]) > by)
+
+
+def _overlap(p: tuple[float, float, float, float], q: tuple[float, float, float, float]) -> bool:
+    return p[0] < q[0] + q[2] and q[0] < p[0] + p[2] and p[1] < q[1] + q[3] and q[1] < p[1] + p[3]
+
+
+def _spots(points: list[tuple[int, int]], w: int, h: int,
+           below_first: bool) -> list[tuple[int, int]]:
+    """Where a flow's name may sit (top left corners), in the order tried:
+    beside each stretch of its line, from the stretch that leaves its source
+    on, so a branch's name stays by the gateway it leaves. Beside a level
+    stretch: above it before below it (below first for a line in a bottom
+    channel, the channel's open side), from the end the line leaves by on,
+    every 24 px. Beside an upright stretch: right of it before left of it,
+    from the end the line leaves by on, every 24 px."""
+    out: list[tuple[int, int]] = []
+    for (x1, y1), (x2, y2) in zip(points, points[1:]):
+        if y1 == y2:
+            n = abs(x2 - x1)
+            if x2 >= x1:
+                xs = [x1 + 6, x1 + 20] + [x1 + 6 + k for k in range(24, n, 24)] + [x2 - w - 6]
+            else:
+                xs = [x1 - w - 6, x1 - w - 20] + [x1 - w - 6 - k for k in range(24, n, 24)] + [x2 + 6]
+            ys = (y1 + 4, y1 - h - 4) if below_first else (y1 - h - 4, y1 + 4)
+            out += [(x, y) for y in ys for x in dict.fromkeys(xs + [(x1 + x2 - w) // 2])]
+        else:
+            n = abs(y2 - y1)
+            if y2 >= y1:
+                ys = [y1 + 6] + [y1 + 6 + k for k in range(24, n, 24)] + [y2 - h - 6]
+            else:
+                ys = [y1 - h - 6] + [y1 - h - 6 - k for k in range(24, n, 24)] + [y2 + 6]
+            ys = list(dict.fromkeys(ys + [(y1 + y2 - h) // 2]))
+            out += [(x, y) for x in (x1 + 6, x1 - w - 6) for y in ys]
+    return out
+
+
+def _event_label(box: tuple[int, int, int, int], name: str) -> tuple[int, int, int, int]:
+    """Where bpmn-js draws an event's name when the file places none: under
+    the event, centred in a 90 px box, as tall as its wrapped lines."""
+    x, y, w, h = box
+    return x + w // 2 - _LABEL_WRAP // 2, y + h, _LABEL_WRAP, _label_height(name)
+
+
+def _place_labels(lay: _Layout, records: list[tuple[str, str, str, str]],
+                  routes: dict[str, list[tuple[int, int]]],
+                  lanes: dict[str, tuple[str, int, int]],
+                  taken: list[tuple[int, int, int, int]] | None = None,
+                  ) -> dict[str, tuple[int, int, int, int]]:
+    """{flow id: label bounds} for every named flow, in flow order: the first
+    of its spots (_spots) that keeps _LABEL_CLEAR px from every box, every
+    line (its own included), every label placed before it and every box in
+    `taken` (the events' names); when no spot is clear, the one that covers
+    the fewest boxes, then the fewest labels, then crosses the fewest lines.
+    A label is 90 px wide (bpmn-js draws the text from its left, wrapped at
+    90 px) and as tall as its wrapped lines (_label_height)."""
+    boxes = list(lay.pos.values())
+    stretches = [s for pts in routes.values() for s in zip(pts, pts[1:])]
+    placed: dict[str, tuple[int, int, int, int]] = {}
+    others = list(taken or [])
+    for fid, _sid, _tid, name in records:
+        if not name:
+            continue
+        w, h = _LABEL_WRAP, _label_height(name)
+        lane = lanes.get(fid)
+        best, fewest = None, None
+        for x, y in _spots(routes[fid], w, h, lane is not None and lane[0] == "bottom"):
+            c = _LABEL_CLEAR
+            grown = (x - c, y - c, w + 2 * c, h + 2 * c)
+            touched = (10000 * sum(_overlap(grown, b) for b in boxes)
+                       + 100 * sum(_overlap(grown, p) for p in list(placed.values()) + others)
+                       + sum(_hits(grown, a, b) for a, b in stretches))
+            if fewest is None or touched < fewest:
+                best, fewest = (x, y, w, h), touched
+                if touched == 0:
+                    break
+        placed[fid] = best
+    return placed
+
+
 def export_bpmn(bpmn_obj, out_path: str, *,
                 documentation: dict | None = None,
-                flow_names: dict | None = None) -> None:
+                flow_names: dict | None = None,
+                label_room: bool = False) -> None:
     """Serialize a BPMN 2.0 file with a computed BPMNDI layout.
 
     PM4Py's built-in `write_bpmn` invokes Graphviz `dot` to compute
@@ -437,9 +677,14 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     computed in pure Python: enough for bpmn-js to render and a BPMN tool
     to import without re-layout.
 
-    `documentation` maps a node (the pm4py object's id()) to the text of its
-    <bpmn:documentation>; `flow_names` maps a flow (its id()) to the name
-    its <bpmn:sequenceFlow> carries.
+    `documentation` maps a node or a flow (the object's id()) to the text of
+    its <bpmn:documentation>; `flow_names` maps a flow (its id()) to the name
+    its <bpmn:sequenceFlow> carries. `label_room` is for names that are
+    sentences (the flow the analyst sets on steps, contract C17): the gap
+    after a branching column is wide enough for a 90 px label beside the
+    lines through it, and each name sits where it keeps clear of every box,
+    line and other name (_place_labels). Without it a name sits in its
+    fixed place (_label_bounds), sized for "N of M transactions".
     """
     documentation = documentation or {}
     flow_names = flow_names or {}
@@ -479,6 +724,7 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     # and leave it -- bpmn-js emits a parse warning per missing pair
     # if these references are absent.
     flow_records: list[tuple[str, str, str, str]] = []
+    flow_docs: dict[str, str] = {}
     incoming: dict[str, list[str]] = {nid: [] for nid in node_id.values()}
     outgoing: dict[str, list[str]] = {nid: [] for nid in node_id.values()}
     for i, f in enumerate(flows):
@@ -489,6 +735,9 @@ def export_bpmn(bpmn_obj, out_path: str, *,
         fid = f"flow_{i}"
         name = flow_names.get(id(f))
         flow_records.append((fid, sid, tid, name if isinstance(name, str) else ""))
+        text = documentation.get(id(f))
+        if isinstance(text, str) and text.strip():
+            flow_docs[fid] = text.strip()
         outgoing[sid].append(fid)
         incoming[tid].append(fid)
 
@@ -520,7 +769,9 @@ def export_bpmn(bpmn_obj, out_path: str, *,
         attrs = {"id": fid, "sourceRef": sid, "targetRef": tid}
         if name:
             attrs["name"] = name
-        ET.SubElement(proc, f"{{{_BPMN_NS}}}sequenceFlow", attrs)
+        flow_el = ET.SubElement(proc, f"{{{_BPMN_NS}}}sequenceFlow", attrs)
+        if fid in flow_docs:
+            ET.SubElement(flow_el, f"{{{_BPMN_NS}}}documentation").text = flow_docs[fid]
 
     # ---- BPMNDI layout ----
     sizes = {nid: _shape_size(node_cls[nid]) for nid in node_id.values()}
@@ -529,12 +780,24 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     splits = {sid for (_f, sid, _t, name) in flow_records if name}
     # Route once to count each channel's lanes, then lay out with channels
     # tall enough for them and route for real.
-    draft = _layout_full(ids, edge_list, sizes, splits=splits)
+    draft = _layout_full(ids, edge_list, sizes, splits=splits, label_room=label_room)
     lanes = _lanes(draft, [(fid, s, t) for (fid, s, t, _n) in flow_records])
     counts: dict[tuple[str, int], int] = {}
     for channel, row, _lane in lanes.values():
         counts[(channel, row)] = counts.get((channel, row), 0) + 1
-    lay = _layout_full(ids, edge_list, sizes, lanes_hint=counts, splits=splits)
+    lay = _layout_full(ids, edge_list, sizes, lanes_hint=counts, splits=splits,
+                       label_room=label_room)
+    routes = {fid: _waypoints(lay, lanes.get(fid), sid, tid, named=bool(name))
+              for (fid, sid, tid, name) in flow_records}
+    placed: dict[str, tuple[int, int, int, int]] = {}
+    if label_room:
+        gateways = {nid for nid, cls in node_cls.items() if "Gateway" in cls}
+        corners: set[tuple[str, str]] = set()
+        for fid, sid, tid, _name in flow_records:
+            routes[fid] = _vertex_route(lay, lanes.get(fid), sid, tid, gateways, corners) or routes[fid]
+        events = [_event_label(lay.pos[node_id[id(n)]], n.get_name()) for n in nodes
+                  if "Event" in node_cls[node_id[id(n)]] and hasattr(n, "get_name") and n.get_name()]
+        placed = _place_labels(lay, flow_records, routes, lanes, taken=events)
 
     diagram = ET.SubElement(
         defs, f"{{{_BPMNDI_NS}}}BPMNDiagram", {"id": "BPMNDiagram_1"})
@@ -554,11 +817,11 @@ def export_bpmn(bpmn_obj, out_path: str, *,
         edge = ET.SubElement(
             plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
             {"id": f"Edge_{fid}", "bpmnElement": fid})
-        points = _waypoints(lay, lanes.get(fid), sid, tid, named=bool(name))
+        points = routes[fid]
         for px, py in points:
             ET.SubElement(edge, f"{{{_DI_NS}}}waypoint", {"x": str(px), "y": str(py)})
         if name:
-            lx, ly, lw, lh = _label_bounds(points, lanes.get(fid))
+            lx, ly, lw, lh = placed.get(fid) or _label_bounds(points, lanes.get(fid))
             label = ET.SubElement(edge, f"{{{_BPMNDI_NS}}}BPMNLabel")
             ET.SubElement(label, f"{{{_DC_NS}}}Bounds",
                           {"x": str(lx), "y": str(ly), "width": str(lw), "height": str(lh)})

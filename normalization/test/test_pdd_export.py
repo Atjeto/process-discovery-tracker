@@ -591,6 +591,55 @@ def test_hidden_steps_never_appear():
     assert "Mail - Compose: Send" in text
 
 
+def _with_flow(a):
+    """The flow set on the reference run's steps (contract C17): step 1 skips
+    to step 3; step 2 happens only when the order is new and goes on to step
+    3 or back to step 1; step 3 goes back to step 1 or ends the process, and
+    its links to a hidden step, to no step and to itself print nothing. One
+    link names run 2's copy of step 1, which the document numbers as step 1."""
+    steps = {s["step_id"]: s for s in a["steps"]}
+    steps["a1"]["links"] = [{"to": "a3", "when": "the order is a repeat"}]
+    steps["a2"]["only_when"] = "the order is new."
+    steps["a2"]["links"] = [{"to": "a3", "when": "the mail is ready"}, {"to": "a1"}]
+    steps["a3"]["links"] = [{"to": "b1", "when": "the customer changes the order"},
+                            {"to": "end", "when": "the customer cancels"},
+                            {"to": "hid", "when": "never printed"},
+                            {"to": "gone", "when": "never printed"},
+                            {"to": "a3", "when": "never printed"},
+                            {"to": "end"}]
+
+
+def test_a_step_prints_the_flow_set_on_it():
+    """Under a step: "Only when" its condition, right under its context line;
+    after the step's content, one line per link, the target numbered as
+    the document numbers the steps."""
+    if not _HAVE_DOCX:
+        return
+    _blocks_, steps = _steps_section(_with_flow)
+    one, two, three = (steps.index(h) for h in (
+        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"))
+    assert steps[one + 2:two] == [
+        "Search the order by its number.", "Fields: Order number.",
+        "Then skips to step 3, Mail - Compose: Send, when the order is a repeat."]
+    assert steps[two + 2:three] == [
+        "Only when the order is new.",
+        "Then goes on to step 3, Mail - Compose: Send, when the mail is ready.",
+        "Then goes back to step 1, Look up the order."]
+    assert steps[three + 2:] == [
+        "Fields: To, Subject, Password.", "Flagged as waste.",
+        "Then goes back to step 1, Look up the order, when the customer changes the order.",
+        "The process ends here when the customer cancels.",
+        "The process ends here."]
+    assert not any("never printed" in t for t in steps)
+
+
+def test_a_step_without_flow_prints_no_flow_line():
+    if not _HAVE_DOCX:
+        return
+    _blocks_, steps = _steps_section()
+    assert not any(t.startswith(("Only when", "Then ", "The process ends")) for t in steps)
+
+
 # ---- 4. Variations -------------------------------------------------------------------
 
 def test_the_differences_carry_the_system_the_runs_and_what_was_done():

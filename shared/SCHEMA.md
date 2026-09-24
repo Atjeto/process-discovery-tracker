@@ -613,6 +613,8 @@ delete.
   "system": "string, optional: the system the analyst set (C16)",
   "pdd_screenshot": "string, optional: the screenshot the PDD prints (C16)",
   "hidden_screenshots": ["screenshots/file.jpg"],
+  "only_when": "string, optional: the step happens only under this condition (C17)",
+  "links": [{ "to": "a step_id, or \"end\"", "when": "string: when the process goes there (C17)" }],
   "evidence": {
     "interaction_event_ids": ["uuid"],
     "screenshot_refs": ["screenshots/file.jpg"],
@@ -662,6 +664,34 @@ other change to a draft does.
   `screenshot_refs`) taken off the step. They are never printed, and the raw
   files are never deleted; removing a screenshot the analyst added deletes
   it instead (`analyst_screenshots`).
+
+**The flow the analyst sets on a step (contract C17).** The analyst sets
+the process flow while adding or reviewing steps. After a step the process
+goes on to the next step of its transaction; on top of that a step may carry
+two viewer-written keys, both optional, in any state:
+
+- **`only_when`**: the step happens only under this condition. On the map
+  the flow into the step carries the condition, and a flow around it, named
+  "otherwise", goes from the step before it to the step after it (the start
+  or the end at either end of the transaction). The condition holds for the
+  step's map node in every transaction where it appears.
+- **`links`**: `[{ "to": <step_id> | "end", "when": <string> }]`. After the
+  step, when `when` holds, the process goes to that step (an earlier one is
+  a loop back, a later one a skip ahead) or ends. A link never points at its
+  own step. A link whose target is hidden or removed is dropped by the
+  viewer; the pipeline ignores one it finds.
+
+A draft the analyst sets either key on becomes `edited` (the viewer does
+it, and re-normalization keeps a draft that still carries one as `edited`),
+so the flow survives every analysis; every preserved step keeps both keys
+as they are. The edges they make are one rule for the viewer's live map and
+the step BPMN (`normalization/step_flow.py` `flow_edges`, pinned for both by
+`shared/flow-links-golden.json`): consecutive steps of each transaction
+(consecutive steps with one map node are one visit), the conditions and the
+links, one edge per pair of map nodes, different labels on one edge joined
+with " or ". The PDD prints them under the step ("Only when ...", "Then goes
+back to step N, <name>, when ...", "Then goes on to step N ...", "Then skips
+to step N ...", "The process ends here when ...").
 
 `flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)).
 Older files may still carry `conditional`, `exception_path`,
@@ -1236,7 +1266,7 @@ range: they have no time to measure.
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
-| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. Each task's documentation carries its description, system, screen, run count and average time; the start and end events take the first line of `document.trigger` and `document.result`; each branch says "N of M transactions" (C15). "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
+| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. When the analyst has set the flow on steps (C17) it is drawn from the step flow edges instead: an exclusive gateway after a step with several ways out and before a step with several ways in, each condition the name of its flow (a long one cut after a whole word within 48 characters, and whole in the flow's documentation), loops and early ends included, the names placed clear of the boxes, lines and other names. Each task's documentation carries its description, system, screen, run count and average time; the start and end events take the first line of `document.trigger` and `document.result`; each branch without a declared name says "N of M transactions" (C15; not counted in the implicit run of a session without a recording). "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
@@ -1358,7 +1388,7 @@ Each step's `state` says how it got into `annotations.json`:
 | `auto_suggested` | The drafting rule ([step_suggest.py](../normalization/step_suggest.py) `auto_suggest_steps`, contract C1): one drafted step per screen visit, ending at its commit action. | No: replaced by the next run's drafts. |
 | `confirmed` | "Confirm transaction" on the step's run, the draft left unchanged (C3). "Reopen transaction" turns it back into a draft. | Yes, exactly like `edited`. |
 | `manually_authored` | The analyst added a step by hand. | Yes. |
-| `edited` | The analyst changed a draft (renamed, merged, split, or otherwise). | Yes. |
+| `edited` | The analyst changed a draft (renamed, merged, split, set its flow, or otherwise). A draft that carries `only_when` or `links` (C17) is kept as `edited` by re-normalization too. | Yes. |
 | `hidden` | The analyst hid the step (its previous state is kept in `_prev_state`). | Yes: a re-analysis does not bring it back as a fresh draft. |
 
 `auto_matched` (the canonical step matcher) is gone with canonical matching

@@ -543,3 +543,48 @@ def test_a_step_with_nothing_to_narrate_says_actions_and_the_old_wording_still_r
     assert is_drafted_description("2 interactions with no recorded detail.", focus)
     assert is_drafted_description("1 interaction with no recorded detail.", focus)
     assert not is_drafted_description("Checked the order by phone.", focus)
+
+
+# --- contract C17: the flow the analyst sets on steps survives re-analysis ----
+
+def test_the_flow_set_on_a_step_survives_re_analysis_in_every_state():
+    """`only_when` and `links` round-trip on every analyst state, and a draft
+    the flow was set on (left auto_suggested) is kept as `edited`, so the
+    flow is never drafted away; a draft with a blank flow stays a draft."""
+    events = [
+        _ev("e1", 1, "value_changed", aid="a", name="A", value="1"),
+        _ev("e2", 2, "invoked", ct="Button", aid="find", name="Find"),
+        _ev("e3", 3, "invoked", ct="Button", aid="save", name="Save"),
+        _ev("e4", 4, "invoked", ct="Button", aid="send", name="Send"),
+        _ev("e5", 5, "invoked", ct="Button", aid="close", name="Close"),
+        _ev("e6", 6, "invoked", ct="Button", aid="print", name="Print"),
+    ]
+    first = _merge_steps([], auto_suggest_steps(events))
+    assert len(first) == 5
+    states = ["auto_suggested", "confirmed", "edited", "hidden"]
+    for step, state in zip(first, states):
+        step["state"] = state
+        step["only_when"] = f"condition {state}"
+        step["links"] = [{"to": "end", "when": f"link {state}"}]
+    blank = first[4]
+    blank["only_when"], blank["links"] = "  ", []
+    manual = {"step_id": "m1", "case_id": "run-1", "state": "manually_authored",
+              "name": "Phone the customer", "time_range": None, "order": 1,
+              "evidence": {"interaction_event_ids": [], "screenshot_refs": []},
+              "only_when": "the customer is new",
+              "links": [{"to": first[0]["step_id"], "when": "nobody answers"}]}
+    again = _merge_steps(first + [manual], auto_suggest_steps(events))
+    by_id = {s["step_id"]: s for s in again}
+    for step, state in zip(first, states):
+        kept = by_id[step["step_id"]]
+        assert kept["only_when"] == f"condition {state}"
+        assert kept["links"] == [{"to": "end", "when": f"link {state}"}]
+        assert kept["state"] == ("edited" if state == "auto_suggested" else state)
+    assert by_id["m1"]["only_when"] == "the customer is new"
+    assert by_id["m1"]["links"] == [{"to": first[0]["step_id"], "when": "nobody answers"}]
+    # The draft kept as edited is not drafted again beside itself; the
+    # draft with a blank flow is drafted again, as every draft is.
+    assert [s["state"] for s in again if "e1" in _ids(s)] == ["edited"]
+    redrafted = [s for s in again if _ids(s) == ["e6"]]
+    assert len(redrafted) == 1 and redrafted[0]["state"] == "auto_suggested"
+    assert "only_when" not in redrafted[0] and "links" not in redrafted[0]

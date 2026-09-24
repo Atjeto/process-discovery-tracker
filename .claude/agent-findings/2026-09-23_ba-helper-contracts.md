@@ -399,11 +399,22 @@ map editor. The default after a step is always the next step in its transaction.
      edge that coincides with an observed one is one edge, observed, carrying the declared
      label. The same declaration from several transactions is one edge. Different labels on
      one edge are joined with " or " in step order.
+  Settled by F-P (five golden cases added, the " or " order among them): consecutive steps
+  with one node are one visit, so "previous step" and "the step after" are the neighbouring
+  visits; a path around a step that sits between two visits of one node is not drawn (it
+  would join them into one visit); a condition holds for its step's node in every
+  transaction where that node appears; a hidden step draws nothing, and a link to it, to
+  its own step or to no step is ignored; a link without a `when` is an edge with no label.
+  The pipeline's function is
+  `normalization/step_flow.py` `flow_edges`; the step BPMN is drawn from its edges only
+  when they differ from the observed ones (`changes_map`), else it stays the chain or the
+  mined model. Re-normalization keeps a draft that carries either key as `edited`.
 - **Where it shows**: the step pane (a Flow line: "Always · then the next step", "Only
   when…", "Go to…" with a dropdown of the transaction's steps in order plus End), the
   live map (labels on the lines), the step BPMN and its image (exclusive gateways, the
   labels as flow names), and the PDD under the step ("Only when …", "Then goes back to
   step N, <name>, when …", "Then skips to step N … when …", "The process ends here when
-  …").
+  …"; F-P: a link to the very next step reads "Then goes on to step N …", since nothing is
+  skipped, and a link without a `when` ends at the step's name).
 - **Removal**: a link whose target step is hidden or removed is dropped (the viewer says so
   once); Undo restores both.

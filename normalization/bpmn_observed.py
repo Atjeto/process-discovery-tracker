@@ -13,6 +13,13 @@ step's description and context as documentation, the start and end events
 take the document's Trigger and Result, and each branch says in how many
 transactions it was taken (write_observed_bpmn). The names and the
 documentation a person reads say "transaction" for a run (AD-29).
+
+When the analyst has set the flow on steps (contract C17: a condition, a
+loop back, a skip ahead, an early end), the map is drawn from the step flow
+edges instead (step_flow.flow_edges, the rule the viewer's live map shares):
+an exclusive gateway after a step with several ways out and before a step
+with several ways in, each declared label the name of its flow
+(_flow_bpmn).
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ from typing import Any
 
 from pm4py.objects.log.obj import Event, EventLog, Trace
 
+import step_flow
 from _dt import parse_ts as _parse_ts  # public re-export
 from step_context import step_duration_ms, step_sort_key
 
@@ -36,8 +44,8 @@ def _start_key(step: dict[str, Any]) -> tuple[int, float]:
 def _step_label(s: dict[str, Any]) -> str:
     """The node label for a step. Value-FREE (so repeated work collapses to one
     node, not one per case) -- falls back to name for steps from a
-    pre-process_label analyze."""
-    return s.get("process_label") or s.get("name") or "(unnamed)"
+    pre-process_label analyze. The step flow's node rule (step_flow.node_of)."""
+    return step_flow.node_of(s)
 
 
 def _run_steps(anno: dict[str, Any]) -> list[dict[str, Any]]:
@@ -53,6 +61,20 @@ def real_case_count(anno: dict[str, Any]) -> int:
     """How many runs the visible steps belong to. Steps outside every run are
     not counted, so they can never tip a one-run session into the miner."""
     return len({s.get("case_id") for s in _run_steps(anno)})
+
+
+def _transactions(anno: dict[str, Any], run_order: Any = None) -> list[list[dict[str, Any]]]:
+    """Each run's visible steps, the runs in `run_order` (case ids, the
+    order the viewer lists the transactions in: by start, then case id),
+    any other run after them by its first step (step_sort_key), then its
+    case id. The step flow edges read them (step_flow.flow_edges)."""
+    by_case: dict[str, list[dict[str, Any]]] = {}
+    for s in _run_steps(anno):
+        by_case.setdefault(s["case_id"], []).append(s)
+    first = [c for c in dict.fromkeys(run_order or []) if c in by_case]
+    rest = sorted((c for c in by_case if c not in first),
+                  key=lambda c: (min(step_sort_key(s) for s in by_case[c]), str(c)))
+    return [by_case[c] for c in first + rest]
 
 
 def _collapse(labels):
@@ -279,9 +301,111 @@ def branch_names(bpmn, traces: list[list[str]]) -> dict[int, str]:
         if isinstance(node, BPMN.Gateway) and len(arcs) >= 2:
             for flow in arcs:
                 if used[id(flow)]:
-                    names[id(flow)] = (f"{used[id(flow)]} of {runs} "
-                                       f"transaction{'' if runs == 1 else 's'}")
+                    names[id(flow)] = _taken(used[id(flow)], runs)
     return names
+
+
+def _taken(n: int, runs: int) -> str:
+    """How many transactions took a branch: "2 of 3 transactions"."""
+    return f"{n} of {runs} transaction{'' if runs == 1 else 's'}"
+
+
+# The longest flow name the map shows: bpmn-js wraps a name at 90 px, about
+# 16 characters, so this keeps a label about three lines tall.
+_FLOW_NAME_MAX = 48
+
+
+def _flow_name(label: str) -> str:
+    """A declared label as the map names its flow: one line, cut after the
+    last whole word that fits in _FLOW_NAME_MAX characters, with an ellipsis.
+    The whole label is the flow's documentation and the PDD prints it."""
+    line = " ".join(label.split())
+    if len(line) <= _FLOW_NAME_MAX:
+        return line
+    cut = line[:_FLOW_NAME_MAX - 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:.") + "…"
+
+
+class _OrderedModel:
+    """The step flow map as mining.export_bpmn reads it: its nodes and flows
+    in the order they were added. pm4py's BPMN keeps them in sets, whose
+    order changes from run to run; this model is written the same way every
+    time."""
+
+    def __init__(self):
+        self._nodes: list = []
+        self._flows: list = []
+
+    def add_node(self, node):
+        self._nodes.append(node)
+        return node
+
+    def add_flow(self, flow):
+        self._flows.append(flow)
+        return flow
+
+    def get_nodes(self):
+        return list(self._nodes)
+
+    def get_flows(self):
+        return list(self._flows)
+
+
+def _flow_bpmn(edges: list[dict], runs: int, count_runs: bool = True):
+    """(model, {id(flow): name}, {id(flow): documentation}) of the step flow
+    edges (contract C17, step_flow.flow_edges): a start event, one task per
+    node, one end event; an exclusive gateway after a node with several ways
+    out (a split) and before a node with several ways in (a join); each edge
+    one sequence flow from its source's split (else the source) to its
+    target's join (else the target). A flow is named by the edge's declared
+    label (_flow_name; a label cut for the map is whole in the flow's
+    documentation); an observed branch leaving a split without one says how
+    many of the `runs` transactions took it, unless `count_runs` is off (the
+    implicit run of a session without a recording is not a marked
+    transaction, C16)."""
+    from pm4py.objects.bpmn.obj import BPMN
+    model = _OrderedModel()
+    outs: dict[str, list[dict]] = {}
+    ins: dict[str, list[dict]] = {}
+    for e in edges:
+        outs.setdefault(e["from"], []).append(e)
+        ins.setdefault(e["to"], []).append(e)
+    nodes: dict[str, Any] = {}
+    for key in [step_flow.START] + [k for e in edges for k in (e["from"], e["to"])]:
+        if key not in nodes:
+            if key == step_flow.START:
+                node = BPMN.StartEvent(name="start")
+            elif key == step_flow.END:
+                node = BPMN.EndEvent(name="end")
+            else:
+                node = BPMN.Task(name=key)
+            nodes[key] = model.add_node(node)
+    entry, exit_ = dict(nodes), dict(nodes)
+    for key, node in nodes.items():
+        if len(ins.get(key, [])) > 1:
+            join = model.add_node(BPMN.ExclusiveGateway(
+                gateway_direction=BPMN.Gateway.Direction.CONVERGING))
+            model.add_flow(BPMN.Flow(join, node))
+            entry[key] = join
+        if len(outs.get(key, [])) > 1:
+            split = model.add_node(BPMN.ExclusiveGateway(
+                gateway_direction=BPMN.Gateway.Direction.DIVERGING))
+            model.add_flow(BPMN.Flow(node, split))
+            exit_[key] = split
+    names: dict[int, str] = {}
+    docs: dict[int, str] = {}
+    for e in edges:
+        flow = model.add_flow(BPMN.Flow(exit_[e["from"]], entry[e["to"]]))
+        name = _flow_name(e["label"]) if e["label"] else ""
+        if name and name != e["label"]:
+            docs[id(flow)] = e["label"]
+        if not name and e["observed"] and count_runs and len(outs[e["from"]]) > 1:
+            name = _taken(e["transactions"], runs)
+        if name:
+            names[id(flow)] = name
+    return model, names, docs
 
 
 def write_observed_bpmn(
@@ -291,6 +415,7 @@ def write_observed_bpmn(
     *,
     context: Any = None,
     implicit_runs: Any = (),
+    run_order: Any = None,
 ) -> bool:
     """Mine the observed step flow into BPMN and write it (with layout).
 
@@ -321,6 +446,14 @@ def write_observed_bpmn(
 
     A run's steps are in time order, then the steps without a time by
     their `order` (C16), both here and in the viewer's map.
+
+    When the analyst has set the flow on steps (contract C17) and it changes
+    the map (step_flow.changes_map), the map is drawn from the step flow
+    edges instead of the chain or the miner (_flow_bpmn): the same edges the
+    viewer's live map draws, with the declared labels as flow names and room
+    for them (mining.export_bpmn label_room). `run_order` lists the case
+    ids in the viewer's transaction order, the order the labels of one flow
+    are joined in.
     """
     import mining  # local import: PM4Py is only needed when --mine is on
     from pm4py.objects.bpmn.obj import BPMN
@@ -328,7 +461,17 @@ def write_observed_bpmn(
     log = build_annotation_log(anno)
     if len(log) == 0:
         return False
-    if real_case_count(anno) <= 1:
+    transactions = _transactions(anno, run_order)
+    edges = step_flow.flow_edges(transactions)
+    declared = step_flow.changes_map(edges)
+    flow_names = None
+    documentation: dict[int, str] = {}
+    if declared:
+        implicit = set(implicit_runs or ())
+        marked = not {s.get("case_id") for t in transactions for s in t} <= implicit
+        bpmn, flow_names, documentation = _flow_bpmn(edges, len(transactions),
+                                                     count_runs=marked)
+    elif real_case_count(anno) <= 1:
         # One run: one observed path. Linearise its steps in time order
         # instead of mining.
         bpmn = _linear_bpmn(session_sequence(anno))
@@ -337,7 +480,6 @@ def write_observed_bpmn(
     trigger = _first_line(_document_field(anno, "trigger"))
     result = _first_line(_document_field(anno, "result"))
     docs_by_label = task_documentation(anno, context, implicit_runs)
-    documentation: dict[int, str] = {}
     for node in bpmn.get_nodes():
         if isinstance(node, BPMN.StartEvent):
             node.set_name(trigger)
@@ -345,7 +487,9 @@ def write_observed_bpmn(
             node.set_name(result)
         elif isinstance(node, BPMN.Activity) and node.get_name() in docs_by_label:
             documentation[id(node)] = docs_by_label[node.get_name()]
-    traces = [[e["concept:name"] for e in trace] for trace in log]
+    if flow_names is None:
+        traces = [[e["concept:name"] for e in trace] for trace in log]
+        flow_names = branch_names(bpmn, traces)
     mining.export_bpmn(bpmn, out_path, documentation=documentation,
-                       flow_names=branch_names(bpmn, traces))
+                       flow_names=flow_names, label_room=declared)
     return True
