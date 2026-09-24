@@ -1,0 +1,274 @@
+{
+  "about": "Contract C19 (sub-processes): the maps a project holds and what each one is drawn from. Pinned for both sides: the viewer (viewer/sub-process-maps.js mapTree, which feeds the Steps breadcrumb, the Map picker and the live map at each level) and the pipeline (normalization/sub_process_maps.py map_tree, which feeds the step BPMN planes and the PDD chapters). A fixture step is named by its map node, as in shared/flow-links-golden.json; a link names a step of the same sub_steps list (or of the same transaction at the main level), or end. A step is a sub-process when it carries sub_steps, even an empty list. The main map (path []) is drawn from one trace per transaction: its visible steps in order. A level below is reached through visits: consecutive visible steps with one node are one visit, and a visit of a sub-process node gives one trace, the visible sub_steps of its steps in order (a visit whose steps carry no sub_steps gives none, and an empty trace is left out, so a sub-process with no visible sub-steps has a map with no traces). The map of a sub-process node at path P is drawn from the traces of every visit of that node at level P, in transaction order; its path is P plus the node. Its edges follow contract C17 on those traces, so an end inside a sub-process ends the sub-process only. A hidden step is left out with everything under it. number: the position of the node's first visit among the visible steps of the reference transaction's first trace at that level (steps are counted, not visits), after the parent's number and a dot; null when the node is not in that trace, and a map without a number gets no PDD chapter. Maps are listed depth first; at each level the sub-process nodes come in the order they first appear, the reference transaction's traces first, then the others in transaction order. reference is the index of the reference transaction (default 0).",
+  "cases": [
+    {
+      "name": "no step is a sub-process: one map",
+      "transactions": [
+        [{"name": "A"}, {"name": "B"}, {"name": "C"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a step opened in two transactions: its map is drawn from both",
+      "transactions": [
+        [{"name": "A"}, {"name": "B", "sub_steps": [{"name": "b1"}, {"name": "b2"}, {"name": "b3"}]}, {"name": "C"}],
+        [{"name": "A"}, {"name": "B", "sub_steps": [{"name": "b1"}, {"name": "b3"}]}, {"name": "C"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "C"], ["A", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [["b1", "b2", "b3"], ["b1", "b3"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "b2", "label": null, "observed": true},
+          {"from": "b2", "to": "b3", "label": null, "observed": true},
+          {"from": "b1", "to": "b3", "label": null, "observed": true},
+          {"from": "b3", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a sub-process only in another transaction has no number",
+      "transactions": [
+        [{"name": "A"}, {"name": "C"}],
+        [{"name": "A"}, {"name": "B", "sub_steps": [{"name": "x"}]}, {"name": "C"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "C"], ["A", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "C", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": null, "traces": [["x"]], "edges": [
+          {"from": "start", "to": "x", "label": null, "observed": true},
+          {"from": "x", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "sub-processes nest and are numbered through the reference transaction",
+      "transactions": [
+        [{"name": "A", "sub_steps": [{"name": "a1", "sub_steps": [{"name": "q1"}, {"name": "q2"}]}, {"name": "a2"}]}, {"name": "B"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["A"], "number": "1", "traces": [["a1", "a2"]], "edges": [
+          {"from": "start", "to": "a1", "label": null, "observed": true},
+          {"from": "a1", "to": "a2", "label": null, "observed": true},
+          {"from": "a2", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["A", "a1"], "number": "1.1", "traces": [["q1", "q2"]], "edges": [
+          {"from": "start", "to": "q1", "label": null, "observed": true},
+          {"from": "q1", "to": "q2", "label": null, "observed": true},
+          {"from": "q2", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a hidden sub-process has no map, a hidden sub-step is not drawn, numbers count visible steps",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "state": "hidden", "sub_steps": [{"name": "b1"}]},
+          {"name": "C", "sub_steps": [{"name": "c1"}, {"name": "c2", "state": "hidden"}, {"name": "c3"}]}
+        ]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["C"], "number": "2", "traces": [["c1", "c3"]], "edges": [
+          {"from": "start", "to": "c1", "label": null, "observed": true},
+          {"from": "c1", "to": "c3", "label": null, "observed": true},
+          {"from": "c3", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "two visits of one sub-process in a transaction are two traces, and the first visit numbers it",
+      "transactions": [
+        [{"name": "A"}, {"name": "B", "sub_steps": [{"name": "b1"}]}, {"name": "C"}, {"name": "B", "sub_steps": [{"name": "b2"}]}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "C", "B"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [["b1"], ["b2"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "end", "label": null, "observed": true},
+          {"from": "start", "to": "b2", "label": null, "observed": true},
+          {"from": "b2", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "consecutive steps with one node are one visit, so their sub-steps are one trace",
+      "transactions": [
+        [{"name": "A"}, {"name": "B", "sub_steps": [{"name": "b1"}]}, {"name": "B", "sub_steps": [{"name": "b2"}]}, {"name": "C"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [["b1", "b2"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "b2", "label": null, "observed": true},
+          {"from": "b2", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a visit without sub-steps adds no trace",
+      "transactions": [
+        [{"name": "A"}, {"name": "B", "sub_steps": [{"name": "b1"}, {"name": "b2"}]}, {"name": "C"}],
+        [{"name": "A"}, {"name": "B"}, {"name": "C"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "C"], ["A", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [["b1", "b2"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "b2", "label": null, "observed": true},
+          {"from": "b2", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "the flow inside a sub-process stays in its level: an end there ends the sub-process only",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "sub_steps": [
+            {"name": "b1", "links": [{"to": "end", "when": "cancelled"}]},
+            {"name": "b2", "only_when": "new product"},
+            {"name": "b3", "links": [{"to": "b1", "when": "missing price"}]},
+            {"name": "b4"}
+          ]},
+          {"name": "C"}
+        ]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [["b1", "b2", "b3", "b4"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "b2", "label": "new product", "observed": true},
+          {"from": "b1", "to": "b3", "label": "otherwise", "observed": false},
+          {"from": "b1", "to": "end", "label": "cancelled", "observed": false},
+          {"from": "b2", "to": "b3", "label": null, "observed": true},
+          {"from": "b3", "to": "b4", "label": null, "observed": true},
+          {"from": "b3", "to": "b1", "label": "missing price", "observed": false},
+          {"from": "b4", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "an empty sub-process has a map with no traces",
+      "transactions": [
+        [{"name": "A"}, {"name": "B", "sub_steps": []}, {"name": "C"}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "C"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [], "edges": []}
+      ]
+    },
+    {
+      "name": "maps are listed depth first, the reference transaction's steps first, and the reference need not be the first transaction",
+      "reference": 1,
+      "transactions": [
+        [{"name": "C", "sub_steps": [{"name": "c1"}]}, {"name": "A", "sub_steps": [{"name": "a1"}]}],
+        [{"name": "A", "sub_steps": [{"name": "a2"}]}, {"name": "B", "sub_steps": [{"name": "b1", "sub_steps": [{"name": "z"}]}]}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["C", "A"], ["A", "B"]], "edges": [
+          {"from": "start", "to": "C", "label": null, "observed": true},
+          {"from": "C", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "end", "label": null, "observed": true},
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["A"], "number": "1", "traces": [["a1"], ["a2"]], "edges": [
+          {"from": "start", "to": "a1", "label": null, "observed": true},
+          {"from": "a1", "to": "end", "label": null, "observed": true},
+          {"from": "start", "to": "a2", "label": null, "observed": true},
+          {"from": "a2", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "2", "traces": [["b1"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B", "b1"], "number": "2.1", "traces": [["z"]], "edges": [
+          {"from": "start", "to": "z", "label": null, "observed": true},
+          {"from": "z", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["C"], "number": null, "traces": [["c1"]], "edges": [
+          {"from": "start", "to": "c1", "label": null, "observed": true},
+          {"from": "c1", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a nested sub-process only in a later visit of its parent has no number",
+      "transactions": [
+        [{"name": "A", "sub_steps": [{"name": "a1"}]}, {"name": "B"}, {"name": "A", "sub_steps": [{"name": "a2", "sub_steps": [{"name": "z"}]}]}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["A", "B", "A"]], "edges": [
+          {"from": "start", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["A"], "number": "1", "traces": [["a1"], ["a2"]], "edges": [
+          {"from": "start", "to": "a1", "label": null, "observed": true},
+          {"from": "a1", "to": "end", "label": null, "observed": true},
+          {"from": "start", "to": "a2", "label": null, "observed": true},
+          {"from": "a2", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["A", "a2"], "number": null, "traces": [["z"]], "edges": [
+          {"from": "start", "to": "z", "label": null, "observed": true},
+          {"from": "z", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    }
+  ]
+}

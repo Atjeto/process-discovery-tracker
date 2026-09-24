@@ -465,3 +465,144 @@ map editor. The default after a step is always the next step in its transaction.
   task opens the step panel for the step it stands for (matched by the map's node rule on the
   task name, as the live map does); a data object opens its attachment; a text annotation shows
   its note. Editing stays in the editor.
+
+## C19. Sub-processes (AD-33; lanes SUB-P and SUB-V)
+
+One project holds one main map plus one map per sub-process, at any depth: the coordinator's
+design, approved by the owner on 2026-09-24 ("I like your suggestion on how to do it. Do that.").
+The team splits a process into several maps today (sub-processes, parts of a process). There is
+no separate image file per map (the owner's remark about images described today's practice).
+
+- **Data.** `step.sub_steps` (an array, possibly empty; absent means a plain step): the step's
+  sub-steps, each the same shape as a step, recursively. A step is a sub-process when it carries
+  the key. `annotations.steps` stays the main level, so every reader that does not look for
+  `sub_steps` sees the main level only, as the 2.0.0 build does (the grounding pass counted about
+  20 such readers). A sub-step's `case_id` is its parent's. Links (C17) stay inside one level:
+  a sub-step's `to` is a step of its own `sub_steps` list or `"end"`, which ends the sub-process
+  only.
+  - **A step opened as a sub-process** keeps everything it had and gets `sub_steps`; a draft
+    becomes `edited` (the viewer does it, and the pipeline promotes any `auto_suggested` step
+    carrying `sub_steps` to `edited`, next to the `declares_flow` rule, so a re-analysis never
+    replaces it).
+  - **A group** (made by Group into a sub-process): `{step_id (new), name, group: true, state:
+    "manually_authored", case_id, time_range (from the first member's start to the last member's
+    end, null when no member has a time), order (only when time_range is null: the first
+    member's), evidence (the members' interaction_event_ids and screenshot_refs, in order),
+    system (the members' one system when they share one), description (empty), sub_steps (the
+    members, moved unchanged, hidden ones included)}`. A group carries no `draft_key` or
+    `draft_keys` (session names would spread its name to ungrouped drafts); its map node follows
+    the main rule (process_label, else the label of its name). Its span and evidence make the next
+    analysis drop fresh drafts of the grouped interactions (`drop_overlapping_auto_steps`).
+  - **A drafted sub-step** (one per recorded action, see the verbs): the step shape plus
+    `action_key` (`"<app>|<screen>|enter:<field>"` or `"<app>|<screen>|click:<control>"`; app and
+    screen from the parent's `draft_key` when it has one, else from the action's event) and
+    `name_source: "action"` (or `"remembered"`), state `auto_suggested`, no `draft_key` (the
+    click on the commit would repeat the parent's key and cross C4 and `--names`). Its name is
+    value free (C1): "Enter <field>" for a value typed or chosen, else the Interactions list's
+    phrase for the event without any value ("Click Save order"). Its `description` is the phrase
+    with the value (Entered "SKU-4471" into Product code.). `time_range` runs from the action's
+    first event to the next action's first event (the last action ends at its own last event);
+    `evidence` holds the action's event ids and the parent's screenshots taken in that span.
+- **Maps** (pinned by `shared/sub-process-maps-golden.json`: `viewer/sub-process-maps.js`
+  `mapTree` and `normalization/sub_process_maps.py` `map_tree`, both tested against it). The
+  golden's `about` is the rule: the main map has one trace per transaction; below it, consecutive
+  visible steps with one node are one visit, and each visit of a sub-process node gives one trace
+  (the visible `sub_steps` of its steps); a sub-process map is drawn from the traces of every
+  visit of its node at its level, in transaction order, by the C17 edge rule; a hidden step drops
+  with its subtree; a map's `path` is the list of nodes from the main map down; its `number` is
+  the hierarchical step number through the reference transaction's first trace at each level
+  ("2", "2.4"), null when the node is not there (then it gets no PDD chapter); maps are listed
+  depth first, the reference transaction first. The map node rule is the main one at every level,
+  with `action_key` counting like `draft_key` (the node of a drafted sub-step is its name), on both
+  sides with a unit test each.
+- **The verbs (viewer).** Every verb applies at the level shown and saves at once; Undo restores
+  the whole snapshot, as today.
+  - *Open as a sub-process* (the step pane, on a step without `sub_steps`): every visible
+    occurrence of the step's node at this level, in every transaction, that has no `sub_steps`
+    gets them: one drafted sub-step per recorded action in its `evidence.interaction_event_ids`
+    (consecutive events on one field are one action; the kinds the step's Interactions list and
+    FIELDS TYPED skip are skipped: focus changes, unnamed controls, empty values), or `[]` when it
+    has no recorded action (a step added by hand, a video or empty project). Remembered names win
+    (C4 file, key `"action|" + action_key`). Then the Steps level opens the new level. Running it
+    again drafts only the occurrences still without `sub_steps`.
+  - *Group into a sub-process...* (Steps, when the ticked steps are consecutive visible steps of
+    one transaction at this level, two or more; asks for a name): the ticked steps, with any hidden
+    steps between them, move into a new group in their place. In every transaction, each other
+    stretch of consecutive visible steps whose nodes are all among the ticked steps' nodes becomes
+    an occurrence of the same group, so every step of those kinds sits inside the group everywhere.
+    Links: a link from outside to a grouped step points at its group; a grouped step's link that
+    leaves the group (to a step outside it, or to End) moves to the group; links among members stay.
+  - *Add step* inside a sub-process adds a sub-step to the open visit, as at the main level.
+  - *Dissolve sub-process* (the step pane of a sub-process, and beside the breadcrumb inside one),
+    in every transaction, every occurrence of the node at that level: a group is replaced by its
+    sub-steps in place (a link to the group points at its first sub-step; a sub-step's link to End
+    points at the step that followed the group, End when it was last; the group's own links move to
+    its last sub-step and its Only when to its first; content on the group moves to its first
+    sub-step); an opened step loses its `sub_steps`, and the analyst's screenshots, notes and
+    attachments on them move to the step. One confirm names what goes (sub-step descriptions and
+    flow) when there is any.
+  - *Rename*: renaming a sub-process renames every occurrence of its node at that level, whatever
+    their state, so the node and its map stay one. Renaming a drafted sub-step renames the
+    session's drafted sub-steps with the same `action_key` and is remembered under
+    `"action|" + action_key`; a rename of a draft reaches drafts of its key at every level (C4).
+  - *Confirm transaction* confirms the reference transaction's drafts at every level, and the
+    transaction reads confirmed only when no level holds a draft; *Reopen transaction* reverses
+    every level. The draft-fix counter (the P1 probe) counts the main level only.
+  - *Merge*, *Split* and adding a moment to a step are unavailable on a step that is a
+    sub-process, with the reason in one line (dissolve it first, or work on its sub-steps
+    inside). Hide hides the subtree with its step. Remove on a group removes its sub-steps too
+    (the confirm names how many, and points at Dissolve to keep them).
+  - The C17 repairs (a link to a hidden or removed step) run per level.
+- **Where it shows (viewer).** Steps and Map share one current level (`State.mapPath`, a path of
+  nodes, `[]` the main map).
+  - *Steps*: inside a sub-process a breadcrumb names the way down (the main map by the process
+    name the document gives, else "Main process"; each crumb goes up). A sub-process row reads
+    "▸ N sub-steps" and opens on double-click or Open. Inside, the list has one block per visit
+    ("Transaction 2", "Transaction 2, again"), the reference transaction's block marked as at the
+    main level, with the same row facts (steps, time, differences against the reference visit).
+    The step pane is the same at every level; Go to lists the visit's steps plus End.
+  - *Map*: when the project has a sub-process, a picker ("Map: <name>") lists every map depth
+    first, indented, each with its number. The live map draws the chosen level from its traces; a
+    sub-process box carries a "+" mark, a click opens the panel (with *Open sub-process*), a
+    double-click opens its map. The As-Is canvas shows the chosen level's plane
+    (`canvas.setRootElement` on the sub-process's plane, matched by the path of names) when the
+    copy has it, else the live map of that level with one line saying the As-Is copy has no map
+    for it; bpmn-js's own drill down keeps the picker in step.
+  - *Panel*: the occurrences of a node at its level across all visits; a sub-process's panel has
+    *Open sub-process*.
+  - *Timeline*: the steps lane shows the current level (inside a sub-process, its sub-steps in
+    each visit) and its name says which ("Steps in <name>").
+  - *As-Is links*: a click on a collapsed sub-process opens its panel; a task in a sub-plane links
+    to that level's node.
+  - *Help*: one short paragraph on sub-processes and the flow verbs.
+- **The step BPMN (pipeline).** Every map of `map_tree` is a plane of the one
+  `process_map_step.bpmn`: a sub-process node is a `bpmn:subProcess`, collapsed (its shape in the
+  parent plane `isExpanded="false"`, task sized), named by its node and documented like a task,
+  holding that map's model, drawn in its own `bpmndi:BPMNDiagram` whose plane's `bpmnElement` is
+  the sub-process. A plane's model is chosen as the main one is (the flow model when
+  `changes_map`, a chain for one trace, else the miner) from its own traces. Ids inside a
+  sub-plane carry a prefix unique in the file; the main plane keeps today's ids. A sub-process's
+  start and end are unnamed, except its early ends (named from their `when`, C18). Notes,
+  attachments and colours as C18 on every plane; each plane has its own legend of the systems
+  drawn in it, a system keeps one colour across the file. Counts on a sub-plane are over the
+  transactions that ran the sub-process. A sub-process with no steps is a plane holding a start
+  joined to an end. The session golden does not change (the demo has no sub-process).
+- **The PDD.** 3.2 prints the main steps as today; a step that is a sub-process adds "Sub-process:
+  see 3.<k>." After 3.2, one section per map with a number, depth first: "3.<k> Sub-process
+  <number>: <name>", its map on a page of its own (its image, else the flow table 3.1 falls back
+  to), then the steps of the reference transaction's first visit, numbered "<number>.<i>" and
+  printed like 3.2's (with their own pointers to deeper chapters). A group's block has its name,
+  its description when written, its time, its flow lines and the pointer, no screenshot (its
+  chapter has them). Sections 4 to 9 keep their numbers and read the main level only. Analyst
+  content by `step_id` resolves at every level. New input `--pdd-map-images <manifest.json>`:
+  `{"maps": [{"path": [<node>, ...], "png": "<file>"}]}`; `--pdd-map-image` stays for the main
+  map, and a manifest entry with path `[]` wins over it. The viewer renders one PNG per numbered
+  map for the PDD (the chosen As-Is copy's plane when it has one, else the step BPMN's plane;
+  `saveSVG` serializes the active root) and passes the manifest.
+- **Exports.** *Process map (image)* saves the map the Map level shows (the main map unless another
+  is chosen); *Process map (BPMN)* saves the one file with every plane. Exports analyze first when
+  annotations.json is newer than `process_map_step.bpmn`, as *Edit as the As-Is map* does.
+- **Out.** Lanes; one sub-process reused across projects; a separate image file per map;
+  differences, data and times below the main level in the PDD; sub-steps in saved processes (C5
+  stays flat); merge, split and adding a moment on a sub-process; the draft-fix counter below the
+  main level; sub-steps drafted from events outside the step's evidence.
