@@ -76,6 +76,25 @@ test("a failed write of another kind left nothing waiting: the next successful s
   }
 });
 
+test("a failed map save (the editor's delayed write, a new copy) says the map was not saved, and stays until a map save succeeds", () => {
+  const raw = "ENOSPC: no space left on device, write";
+  const failed = after([start("map"), fail("map", raw, "ENOSPC")]);
+  const v = S.view(failed, fmt);
+  assert.strictEqual(v.text, "Not saved");
+  assert.strictEqual(v.title, "The map was not saved: the disk is full (" + raw + ").");
+  // The edit waits in the editor: a save of another kind does not write it.
+  for (const other of ["annotations", "transcript", "video", "screenshot", "attachment"]) {
+    assert.strictEqual(S.view(after([start(other), ok(other)], failed), fmt).text, "Not saved", "a " + other + " save");
+  }
+  const saved = after([start("annotations"), ok("annotations"), start("map"), ok("map")], failed);
+  assert.strictEqual(S.view(saved, fmt).text, "Saved");
+  assert.deepStrictEqual(saved.failures, []);
+  // And a map save does not write a change of annotations waiting on screen.
+  const both = after([fail("annotations", "EBUSY: resource busy or locked", "EBUSY"), start("map"), ok("map")]);
+  assert.strictEqual(S.view(both, fmt).text, "Not saved");
+  assert.deepStrictEqual(both.failures.map((f) => f.channel), ["annotations"]);
+});
+
 test("while failures stand, the change waiting on screen is said first, then the others, latest first; a new failure of one kind replaces the old", () => {
   const s = after([
     fail("screenshot", "first screenshot problem"),
@@ -243,6 +262,20 @@ test("mounted: Not saved in the failed state until the next annotations save; an
   m.report(start("annotations"));
   m.report(ok("annotations"));
   assert.strictEqual(m.el.textContent, "Saved");
+});
+
+test("mounted: a map edit shows Saving... while it waits for its delayed write, then Saved", () => {
+  const m = mounted();
+  S.projectOpened({ sessionFolder: FOLDER });
+  m.report(start("map"));
+  m.runTimers();
+  assert.strictEqual(m.el.textContent, "Saving...");
+  m.report(ok("map"));
+  assert.strictEqual(m.el.textContent, "Saved");
+  m.report(start("map"));
+  m.report(fail("map", "EPERM: operation not permitted, open", "EPERM"));
+  assert.strictEqual(m.el.textContent, "Not saved");
+  assert.match(m.el.title, /^The map was not saved: a file in the project folder is read-only/);
 });
 
 test("mounted: a project whose annotations.json cannot be read opens as Not saved", () => {

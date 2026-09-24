@@ -82,8 +82,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="project-menu-popup" id="session-export-popup" style="display:none">
         <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is your edited As-Is map when there is one, else the map from the transactions.">PDD (.docx)</button>
         <!-- P2.12: both map items save the As-Is map chosen for the PDD
-             when there is one, else the process map on the Map level. -->
-        <button class="project-menu-item" id="btn-session-map-svg" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
+             when there is one, else the map from the transactions
+             (process_map_step.bpmn; the image drawn as the PDD draws it). -->
+        <button class="project-menu-item" id="btn-session-map-svg" title="Save the As-Is map chosen for the PDD (else the map from the transactions, as the PDD prints it) as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
         <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
         <!-- One zip of the whole project folder, next to it (project-zip.js). -->
         <button class="project-menu-item" id="btn-session-zip" title="Make one zip of the whole project folder, next to it: the recording, your work, the video, the transcript, screenshots, attachments and edited maps. The way to hand the project to someone.">Whole project (.zip)</button>
@@ -271,7 +272,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
             </div>
             <!-- V2 item 7: the As-Is map chosen for the PDD shows first, read
-                 only, with Edit beside it (refmap-ui.js syncMapView). -->
+                 only, with Edit beside it (refmap-ui.js syncMapView). C18: it
+                 is drawn by bpmn-js and linked like the map from the
+                 transactions (asis-view.js): a task opens the step panel, a
+                 file its attachment, a note its whole text. -->
             <div class="map-asis" id="session-map-asis" hidden>
               <div class="map-asis-bar">
                 <span class="map-asis-title" id="map-asis-title">As-Is map</span>
@@ -279,7 +283,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button type="button" id="btn-map-asis-edit" title="Open this map in the editor">Edit</button>
                 <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the process map drawn from the transactions' steps">Show the map from the transactions</button>
               </div>
-              <div class="map-asis-img" id="map-asis-img"></div>
+              <div class="map-asis-canvas" id="map-asis-canvas" title="Drag to pan, Ctrl and scroll to zoom. Click a task for its step, a file to open it, a note for its whole text."></div>
             </div>
             <div class="map-host" title="Scroll to zoom · drag to pan · hover an arrow for its times and its condition; a dashed arrow is a path set in Steps">
               <div class="map-pane active" id="session-map-dfg-host"></div>

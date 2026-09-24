@@ -17,7 +17,10 @@
  * one (main.js _projectWrite, on viewer:projectWrite): { folder, channel,
  * phase: "start" } as it starts, then { folder, channel, phase: "end", ok,
  * error, code }. channel: "annotations", "video", "transcript", "screenshot"
- * or "attachment". The analysis and the exports are not saves of the
+ * or "attachment". The edited maps are written in the renderer and report
+ * the same way through noteWrite, channel "map" (refmap-ui.js: a new copy or
+ * a duplicate; bpmn-viewer.js: the editor's delayed write, from the moment an
+ * edit waits for it). The analysis and the exports are not saves of the
  * analyst's work and report nothing.
  *
  * Rules:
@@ -27,9 +30,11 @@
  *      motion).
  *   2. A failed annotations save leaves the change on screen, and only a
  *      later annotations save writes it: that failure stays until an
- *      annotations save succeeds. A failed write of another kind left nothing
- *      waiting on screen (the file was not added, the sync was not kept): the
- *      next successful save of any kind ends it.
+ *      annotations save succeeds. A failed map save is the same: the edit
+ *      stays in the editor and only a later map save writes it. A failed
+ *      write of another kind left nothing waiting on screen (the file was not
+ *      added, the sync was not kept): the next successful save of any kind
+ *      ends it.
  *   3. An annotations.json that cannot be read (the banner at the top of the
  *      page) is "Not saved" from the moment the project opens: no change is
  *      saved until it is fixed.
@@ -51,7 +56,12 @@ const WHAT = {
   transcript: "The transcript change",
   screenshot: "The screenshot",
   attachment: "The attachment",
+  map: "The map",
 };
+
+/* The kinds whose failed write leaves a change waiting on screen, written
+   only by a later save of the same kind (rule 2). */
+const WAITS = new Set(["annotations", "map"]);
 
 /* Plain words for the reasons a write fails most often (a file-system error
    code, or NO_PROJECT from main.js when the folder is no project any more). */
@@ -103,9 +113,9 @@ function applyWrite(state, evt, at) {
   let failures;
   if (evt.ok) {
     // What this write saved is on disk, and a failure that left nothing
-    // waiting is over; a failed annotations save waits for an annotations
-    // save, the only one that writes the change it left on screen.
-    failures = state.failures.filter((f) => f.channel === "annotations" && channel !== "annotations");
+    // waiting is over; a failed annotations (or map) save waits for a save
+    // of its kind, the only one that writes the change it left on screen.
+    failures = state.failures.filter((f) => WAITS.has(f.channel) && f.channel !== channel);
   } else {
     // The latest failure of each kind is the one to say.
     failures = state.failures.filter((f) => f.channel !== channel)

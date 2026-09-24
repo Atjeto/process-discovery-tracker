@@ -453,99 +453,9 @@
     return true;
   }
 
-  /* Export the current DFG as a standalone SVG. cytoscape has no
-     native SVG export (that needs the cytoscape-svg extension, which
-     isn't bundled), so we serialize the graph by hand: a rect + label
-     per node, a line + arrowhead per edge along the route drawn, and the
-     label a line carries (C17), with the start and end as circles.
-     Coordinates come straight from the laid-out graph via node.position()
-     / .width() / .height() and each edge's endpoints and bend points.
-     Good enough for Figma / Lucidchart import. The palette below is
-     intentionally the light theme regardless of the viewer's current
-     theme -- an exported diagram goes into a document, which expects a
-     light background. */
-  function exportSvg() {
-    if (!cy) return null;
-    const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const PAD = 30;
-    const bb = cy.elements().boundingBox();
-    const W = Math.ceil(bb.w + PAD * 2);
-    const H = Math.ceil(bb.h + PAD * 2);
-    const ox = PAD - bb.x1;
-    const oy = PAD - bb.y1;
-    const pt = (p) => (p.x + ox).toFixed(1) + "," + (p.y + oy).toFixed(1);
-    const parts = [];
-    parts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + W +
-      '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">');
-    parts.push('<desc>Process Discovery Tracker: process map</desc>');
-    parts.push('<rect width="' + W + '" height="' + H + '" fill="#faf8f4"/>');
-    parts.push('<defs><marker id="arr" markerWidth="8" markerHeight="8" ' +
-      'refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9a8e7e"/></marker></defs>');
-    // Edges first so nodes sit on top: a polyline through the route's bend
-    // points (a loop: a curve through its control points).
-    const labels = [];
-    cy.edges().forEach((ed) => {
-      const w = ed.data("width") || 1.5;
-      let d;
-      try {
-        const s = ed.sourceEndpoint(), t = ed.targetEndpoint();
-        if (ed.data("loop")) {
-          const cps = ed.controlPoints() || [];
-          d = "M" + pt(s) + (cps.length >= 2 ? " C" + pt(cps[0]) + " " + pt(cps[1]) + " " + pt(t) : " L" + pt(t));
-        } else {
-          const bends = ed.hasClass("routed") ? (ed.segmentPoints() || []) : (ed.controlPoints() || []);
-          d = "M" + pt(s) + bends.map((b) => " L" + pt(b)).join("") + " L" + pt(t);
-        }
-      } catch (_) {
-        d = "M" + pt(ed.source().position()) + " L" + pt(ed.target().position());
-      }
-      parts.push('<path d="' + d + '" fill="none" stroke="#9a8e7e" stroke-width="' + w.toFixed(1) + '"' +
-        (ed.data("observed") ? "" : ' stroke-dasharray="6 4"') + ' marker-end="url(#arr)"/>');
-      if (ed.data("label")) labels.push({ at: ed.midpoint(), text: ed.data("label") });
-    });
-    // The labels over the lines, boxed as on screen.
-    for (const l of labels) {
-      const wText = Math.max(12, l.text.length * 5.6);
-      parts.push('<rect x="' + (l.at.x + ox - wText / 2 - 3).toFixed(1) + '" y="' + (l.at.y + oy - 8).toFixed(1) +
-        '" width="' + (wText + 6).toFixed(1) + '" height="16" rx="3" fill="#faf8f4" stroke="#e5ddd0"/>');
-      parts.push('<text x="' + (l.at.x + ox).toFixed(1) + '" y="' + (l.at.y + oy + 3.5).toFixed(1) +
-        '" font-family="sans-serif" font-size="10" fill="#2c2418" text-anchor="middle">' + esc(l.text) + "</text>");
-    }
-    // Nodes.
-    cy.nodes().forEach((n) => {
-      const p = n.position();
-      if (n.data("kind") === "event") {
-        const end = n.data("role") === "end-event";
-        parts.push('<circle cx="' + (p.x + ox).toFixed(1) + '" cy="' + (p.y + oy).toFixed(1) + '" r="9" fill="#ffffff" stroke="' +
-          (end ? "#635848" : "#c07830") + '" stroke-width="' + (end ? 4 : 2) + '"/>');
-        parts.push('<text x="' + (p.x + ox + (end ? 15 : -15)).toFixed(1) + '" y="' + (p.y + oy + 4).toFixed(1) +
-          '" font-family="sans-serif" font-size="11" fill="#635848" text-anchor="' + (end ? "start" : "end") + '">' +
-          esc(n.data("label")) + "</text>");
-        return;
-      }
-      const w = n.width(), h = n.height();
-      const x = p.x + ox - w / 2, y = p.y + oy - h / 2;
-      const role = n.data("role");
-      const border = role === "start" ? "#c07830" : role === "end" ? "#a05a3a" : "#e5ddd0";
-      parts.push('<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
-        '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) +
-        '" rx="6" fill="#ffffff" stroke="' + border + '" stroke-width="1.5"/>');
-      // One line per label line (the step name, then its system).
-      const lines = String(n.data("label") || "").split("\n");
-      const top = p.y + oy + 4 - (lines.length - 1) * 6.5;
-      parts.push('<text x="' + (p.x + ox).toFixed(1) + '" y="' + top.toFixed(1) +
-        '" font-family="sans-serif" font-size="11" fill="#2c2418" text-anchor="middle">' +
-        lines.map((l, i) => '<tspan x="' + (p.x + ox).toFixed(1) + '"' + (i ? ' dy="13"' : "") + ">" + esc(l) + "</tspan>").join("") +
-        '</text>');
-    });
-    parts.push('</svg>');
-    return parts.join("\n");
-  }
-
-  /* Rasterise the current Flow diagram to a PNG data URL for embedding in the
-     PDD. Light background to match exportSvg (a document expects light).
-     Returns null when no graph is rendered. */
+  /* Rasterise the current Flow diagram to a PNG data URL, on a light
+     background (a document expects light). Returns null when no graph is
+     rendered. */
   function exportPng() {
     if (!cy) return null;
     try {
@@ -555,5 +465,5 @@
     }
   }
 
-  module.exports = { render, clear, fit, resize, selectNode, exportSvg, exportPng };
+  module.exports = { render, clear, fit, resize, selectNode, exportPng };
 })();

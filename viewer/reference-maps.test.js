@@ -151,3 +151,13 @@ test("the stored shape of a map is unchanged (the Export menu reads it)", () => 
   assert.deepEqual(Object.keys(e).sort(),
     ["edited_at", "file", "forked_at", "forked_from_hash", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
 });
+
+test("C18: a copy made before the step map had its colours, notes and attachments is told apart (no user or manual task in it)", () => {
+  const before = '<bpmn:process id="P"><bpmn:task id="t1" name="Save order" /><bpmn:startEvent id="s" /></bpmn:process>';
+  const after = '<bpmn:process id="P"><bpmn:userTask id="t1" name="Save order">\n</bpmn:userTask></bpmn:process>';
+  assert.equal(RM.predatesRichMap(before), true);
+  assert.equal(RM.predatesRichMap(after), false);
+  assert.equal(RM.predatesRichMap('<manualTask id="t2"/>'), false, "a manual task, any prefix");
+  assert.equal(RM.predatesRichMap('<bpmn:userTaskish id="x"/>'), true, "only the element names count");
+  assert.equal(RM.predatesRichMap(null), true);
+});

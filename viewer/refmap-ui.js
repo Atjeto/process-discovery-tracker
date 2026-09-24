@@ -7,6 +7,8 @@
  * thin renderer glue: it wires DOM by id, persists through the annotations
  * undo layer (Session.saveAnnotationsWithUndo, so every verb is Ctrl+Z-able),
  * and reuses the singleton bpmn-viewer in `editable` mode for the editor.
+ * The map files it writes (a new copy, a duplicate, the editor's saves) are
+ * reported to the save state in the top bar (save-state.js, channel "map").
  *
  * One act (AD-19): the Map's primary button copies the process map into the
  * editor, after an analysis when the steps changed since the map's BPMN file
@@ -22,6 +24,8 @@ const State = require("./state.js");
 const Session = require("./session.js");
 const RefStore = require("./reference-maps.js");
 const PdtBpmn = require("./bpmn-viewer.js");
+const AsIsView = require("./asis-view.js");
+const SaveState = require("./save-state.js");
 const { toast, escapeHtml } = require("./dom.js");
 
 let _deps = {};
@@ -39,6 +43,27 @@ async function persist(label) {
   const s = session();
   if (!s) return;
   await Session.saveAnnotationsWithUndo(s.annotations, label);
+}
+
+/* A write of a map file of the project at `folder`, reported to the save
+   state like every write of the project: { phase: "start" }, then
+   { phase: "end", ok, error, code }. */
+function _mapReport(folder) {
+  return (evt) => SaveState.noteWrite(Object.assign({ folder, channel: "map" }, evt));
+}
+/* Run `write` (a new copy, a duplicate) with its report; a failure is
+   reported and thrown on to the act, which says it. */
+function _writeMap(folder, write) {
+  const report = _mapReport(folder);
+  report({ phase: "start" });
+  try {
+    const out = write();
+    report({ phase: "end", ok: true, error: null, code: null });
+    return out;
+  } catch (e) {
+    report({ phase: "end", ok: false, error: (e && e.message) || String(e), code: (e && e.code) || null });
+    throw e;
+  }
 }
 
 /* The copy chosen as the PDD's As-Is map, when its file is on disk (the
@@ -87,12 +112,14 @@ function _setForkBusy() {
   btn.title = "Analyzing the project first, so the copy carries your latest step names";
 }
 
-/* ---- the Map level's first view (V2 item 7) ------------------------------ */
+/* ---- the Map level's first view (V2 item 7, C18) --------------------------- */
 /* When an As-Is copy is chosen for the PDD, the Map level shows it first,
-   read only (a picture drawn by bpmn-js), with Edit beside it; the map from
-   the runs is one click away, and back. Per recording, for this window. */
+   drawn by bpmn-js read only and as linked as the map from the runs (a task
+   opens the step panel, a file its attachment, a note its text:
+   asis-view.js), with Edit beside it; the map from the runs is one click
+   away, and back. Per recording, for this window. */
 let _mapView = { folder: null, which: "asis" };
-let _drawn = null;   // { id, mtime }: the As-Is picture on screen
+let _drawn = null;   // { id, mtime }: the As-Is map on screen
 
 function _fileMtime(s, e) {
   try { return require("node:fs").statSync(RefStore.absPath(s.sessionFolder, e)).mtimeMs; } catch (_) { return null; }
@@ -101,29 +128,29 @@ function _fileMtime(s, e) {
 function syncMapView() {
   const s = session();
   const folder = s ? s.sessionFolder : null;
-  if (_mapView.folder !== folder) { _mapView = { folder, which: "asis" }; _drawn = null; }
+  if (_mapView.folder !== folder) { _mapView = { folder, which: "asis" }; _drawn = null; AsIsView.clear(); }
   const asIs = _asIsMap(s);
+  if (!asIs && _drawn) { _drawn = null; AsIsView.clear(); }
   const showAsIs = !!asIs && _mapView.which === "asis";
   const box = $("session-map-asis");
   const host = document.querySelector("#session-layout-map .map-host");
   if (box) box.hidden = !showAsIs;
   if (host) host.style.display = showAsIs ? "none" : "";
+  // The Map's fit fits the As-Is map while it shows (initRefmapUI).
   const zoom = $("session-map-zoom");
-  if (zoom && showAsIs) zoom.style.display = "none";
+  if (zoom && showAsIs) zoom.style.display = "";
   const back = $("btn-map-show-asis");
   if (back) back.hidden = !(asIs && !showAsIs);
-  if (!showAsIs) return;
+  if (!showAsIs) { AsIsView.hideNote(); return; }
   const title = $("map-asis-title");
   if (title) title.textContent = asIs.name || "As-Is map";
+  // Drawn where it shows: a Map level not on screen draws it when it shows.
+  const canvas = $("map-asis-canvas");
+  if (!canvas || !canvas.clientWidth) return;
   const mtime = _fileMtime(s, asIs);
-  if (_drawn && _drawn.id === asIs.map_id && _drawn.mtime === mtime) return;
+  if (_drawn && _drawn.id === asIs.map_id && _drawn.mtime === mtime && AsIsView.drawnIn(canvas)) return;
   _drawn = { id: asIs.map_id, mtime };
-  const img = $("map-asis-img");
-  if (!img) return;
-  xmlToSvg(RefStore.readBpmn(s.sessionFolder, asIs)).then((svg) => {
-    if (!svg || session() !== s) { img.textContent = svg ? "" : "The As-Is map could not be drawn."; return; }
-    img.innerHTML = '<img alt="As-Is process map" src="data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '">';
-  });
+  AsIsView.draw(canvas, RefStore.readBpmn(s.sessionFolder, asIs));
 }
 
 function _showMapView(which) {
@@ -160,8 +187,17 @@ function refresh() {
   });
 }
 
+/* What Copy again gives a copy the process map changed after (C18): a copy
+   made before the map had its colours, notes and attachments gets them. */
+function copyAgainLine(m, s) {
+  return RefStore.predatesRichMap(RefStore.readBpmn(s.sessionFolder, m))
+    ? "Copy again to get the colours, notes and attachments on the map; your edits to this copy are not carried over."
+    : "Copy again to get the map as it is now; your edits to this copy are not carried over.";
+}
+
 /* One row, one line (P2.5): the name, the date it was made, the one role
-   control ("Use in PDD as"), and the verbs. */
+   control ("Use in PDD as"), and the verbs; under a copy the process map
+   changed after, what Copy again gives. */
 function rowHtml(m, s) {
   const missing = !RefStore.fileExists(s.sessionFolder, m);
   const stale = !missing && driftFor(m);
@@ -190,6 +226,7 @@ function rowHtml(m, s) {
         (missing ? '<span class="refmap-missing-chip" title="This map\'s file is gone: remove the entry, or make a new copy.">⚠ file missing</span>' : "") +
       "</div>" +
       '<div class="refmap-row-actions">' + actions + "</div>" +
+      (stale ? '<p class="refmap-row-note">' + esc(copyAgainLine(m, s)) + "</p>" : "") +
     "</li>"
   );
 }
@@ -201,7 +238,13 @@ async function onRowAction(act, id) {
   if (act === "dup") {
     const src = RefStore.find(s.annotations, id);
     if (!src) return;
-    RefStore.duplicate({ sessionFolder: s.sessionFolder, anno: s.annotations, srcEntry: src, nowIso: new Date().toISOString() });
+    try {
+      _writeMap(s.sessionFolder, () =>
+        RefStore.duplicate({ sessionFolder: s.sessionFolder, anno: s.annotations, srcEntry: src, nowIso: new Date().toISOString() }));
+    } catch (e) {
+      toast("The map was not duplicated: " + ((e && e.message) || e), "error");
+      return;
+    }
     await persist("Duplicate map");
     refresh();
     return;
@@ -289,13 +332,19 @@ async function onFork(like) {
   // what the next map usually is, the To-Be map, and waits for the analyst
   // to choose its role (the As-Is map already chosen stays).
   const asIs = !like && !_asIsMap(cur);
-  const entry = RefStore.fork({
-    sessionFolder: cur.sessionFolder, anno: cur.annotations, xml,
-    source: { notation: "bpmn", level: "step", scope: null }, sourceBpmnPath: srcPath,
-    name: like ? like.name : (asIs ? "As-Is map" : "To-Be map"),
-    kind: like ? like.kind : (asIs ? "as_is" : "to_be"),
-    nowIso: new Date().toISOString(),
-  });
+  let entry;
+  try {
+    entry = _writeMap(cur.sessionFolder, () => RefStore.fork({
+      sessionFolder: cur.sessionFolder, anno: cur.annotations, xml,
+      source: { notation: "bpmn", level: "step", scope: null }, sourceBpmnPath: srcPath,
+      name: like ? like.name : (asIs ? "As-Is map" : "To-Be map"),
+      kind: like ? like.kind : (asIs ? "as_is" : "to_be"),
+      nowIso: new Date().toISOString(),
+    }));
+  } catch (e) {
+    toast("The map was not copied: " + ((e && e.message) || e), "error");
+    return;
+  }
   if (asIs) RefStore.setRole(cur.annotations, entry.map_id, "as_is");
   await persist(asIs ? "Make the As-Is map" : "Copy the process map");
   _showGallery(true);
@@ -323,16 +372,20 @@ async function openEditor(id) {
   const host = $("refmap-editor-host");
   if (!host) return;
   try {
-    await PdtBpmn.render(host, full, { editable: true });
+    // Its saves report to the save state in the top bar.
+    await PdtBpmn.render(host, full, { editable: true, report: _mapReport(s.sessionFolder) });
     setTimeout(() => { try { PdtBpmn.fit && PdtBpmn.fit(); } catch (_) {} }, 60);
   } catch (err) {
     toast("Could not open the map: " + ((err && err.message) || err), "error");
   }
 }
-function closeEditor() {
+async function closeEditor() {
   const overlay = $("refmap-editor-overlay");
   if (overlay) overlay.style.display = "none";
   _editingId = null;
+  // An edit still waiting for its delayed write is written first, so the
+  // As-Is map drawn from the file shows it.
+  await PdtBpmn.flush();
   // Redraw the process map the overlay covered, so it is laid out at its size.
   try { _deps.renderLiveMap && _deps.renderLiveMap(); } catch (_) {}
   refresh();
@@ -372,7 +425,9 @@ async function renderEntryToPng(sessionFolder, entry) {
 /* A BPMN diagram drawn by an off-screen bpmn-js and saved as a PNG data URL,
    or null. The one renderer of the PDD's map images: the As-Is and To-Be
    copies above, and (AD-28) the map from the runs, process_map_step.bpmn,
-   when no As-Is copy exists (renderer.js exportArtifact). */
+   when no As-Is copy exists (renderer.js exportArtifact). Export, Process
+   map (image) saves the SVG it draws (xmlToSvg, renderer.js exportMapSvg),
+   so the picture saved is the PDD's. */
 async function renderBpmnToPng(xml) {
   if (!xml) return null;
   const svg = await xmlToSvg(xml);
@@ -389,7 +444,7 @@ function xmlToSvg(xml) {
     v.importXML(xml)
       .then(() => v.saveSVG())
       .then(({ svg }) => resolve(svg || null))
-      .catch(() => resolve(null))
+      .catch((e) => { console.error("[refmap-ui] a map could not be drawn:", e); resolve(null); })
       .finally(() => { try { v.destroy(); } catch (_) {} host.remove(); });
   });
 }
@@ -457,6 +512,10 @@ function initRefmapUI(deps) {
   if (showRuns) showRuns.addEventListener("click", () => _showMapView("runs"));
   const showAsIs = $("btn-map-show-asis");
   if (showAsIs) showAsIs.addEventListener("click", () => _showMapView("asis"));
+  // The Map's fit fits the As-Is map while it shows (map-controller.js fits
+  // the map from the runs).
+  const fitBtn = $("btn-session-map-zoom-fit");
+  if (fitBtn) fitBtn.addEventListener("click", () => { const box = $("session-map-asis"); if (box && !box.hidden) AsIsView.fit(); });
   const nameInput = $("refmap-editor-name");
   if (nameInput) nameInput.addEventListener("change", () => onEditorField("name"));
   const pddSel = $("refmap-editor-pdd");
@@ -470,6 +529,7 @@ function initRefmapUI(deps) {
 module.exports = {
   initRefmapUI, refresh, renderPddMaps, showGallery: _showGallery,
   // The PDD export's map from the runs (renderer.js): the same renderer, and
-  // the rule for when process_map_step.bpmn is older than the steps.
-  renderBpmnToPng, needsAnalyze: _needsAnalyze,
+  // the rule for when process_map_step.bpmn is older than the steps. Export,
+  // Process map (image) saves the same drawing as SVG.
+  renderBpmnToPng, renderBpmnToSvg: xmlToSvg, needsAnalyze: _needsAnalyze,
 };

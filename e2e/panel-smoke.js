@@ -12,6 +12,13 @@
  *       step band, a Steps row with Watch) plays the right occurrence in its
  *       own video, beside the content;
  *   (d) closed on Steps, it stays closed while rows are selected;
+ *   (f) the As-Is map (C18, AD-32), with a note and a file on a step: Export,
+ *       Process map (image), with no As-Is copy saves the step BPMN drawn by
+ *       bpmn-js; the chosen copy shows drawn by bpmn-js, where a task opens
+ *       the panel on its step (and plays it), a file opens its attachment, a
+ *       note shows its whole text and the legend takes no click; an edit in
+ *       the map editor says Saving... then Saved in the top bar, and a task
+ *       renamed there says in the panel that no step has its name;
  *   (e) the folder moved and opened on a fresh profile still has its video,
  *       and an absolute path from another computer falls back to the file of
  *       that name in the folder;
@@ -234,6 +241,183 @@ const panelState = (page) => page.evaluate(() => {
   record("(d) the panel's close is its inverse: closed on Steps it stays closed while rows are selected, and Watch opens it again",
     !closed.err && closed.afterRow === false && closed.afterWatch === true, JSON.stringify(closed));
   await page.screenshot({ path: path.join(__dirname, "panel-smoke-steps.png") }).catch(() => {});
+
+  // (f) C18 + AD-32: the As-Is map is as linked as the map from the
+  // transactions. A note (longer than the map shows) and a file on Save
+  // order, as the step pane stores them.
+  const NOTE = "Saved only after the credit check passes; a blocked customer goes to the credit team first, never straight to SAP.";
+  const ATT = { id: "att-e2e-spec", file: "order-spec.txt", label: "Order spec" };
+  const FIRST_NAME = "Check the order in SAP";
+  const RENAMED_TASK = "Check the sales order in SAP";
+  const asis = {};
+  // Each part says its own failure; a part the next ones need stops them.
+  const failed = {};
+  let blocked = null;
+  const part = async (key, needed, fn) => {
+    if (blocked) { failed[key] = "not run: " + blocked + " failed"; return; }
+    try { await fn(); } catch (e) { failed[key] = errText(e); if (needed) blocked = key; }
+  };
+  let ids = {};
+  await part("f1", false, async () => {
+    fs.mkdirSync(path.join(S, "attachments"), { recursive: true });
+    fs.writeFileSync(path.join(S, "attachments", ATT.file), "Order spec\n");
+    await page.evaluate(async ({ stepId, note, att }) => {
+      const s = require("./state.js").getSession();
+      const a = s.annotations;
+      const now = new Date().toISOString();
+      a.analyst_notes = (a.analyst_notes || []).concat([{ id: "note-e2e", text: note, step_id: stepId, at: null, added_at: now }]);
+      a.attachments = (a.attachments || []).concat([Object.assign({ step_id: stepId, added_at: now }, att)]);
+      await require("./session.js").saveAnnotationsWithUndo(a, "e2e: a note and a file");
+    }, { stepId: SAVE.step_id, note: NOTE, att: ATT });
+
+    // (f1) Export, Process map (image), with no As-Is copy: the step BPMN
+    // drawn off screen by bpmn-js, the PDD's picture (analyzed first: the
+    // note and the file are on it), and the level stays Steps.
+    const svgOut = path.join(os.tmpdir(), "pdt-panel-map-" + Date.now() + ".svg");
+    await v.app.evaluate(({ dialog, shell }, p) => {
+      global.__pdtSaveDefault = null;
+      global.__pdtRevealed = null;
+      dialog.showSaveDialog = async (_w, opts) => { global.__pdtSaveDefault = (opts && opts.defaultPath) || null; return { canceled: false, filePath: p }; };
+      shell.showItemInFolder = (f) => { global.__pdtRevealed = f; };
+    }, svgOut);
+    await page.locator("#btn-session-export-menu").click({ timeout: T });
+    await page.locator("#btn-session-map-svg").click({ timeout: T });
+    const by = Date.now() + 120000;
+    while (Date.now() < by && !(fs.existsSync(svgOut) && fs.statSync(svgOut).size > 0)) await wait(250);
+    await wait(300);
+    const svg = fs.existsSync(svgOut) ? fs.readFileSync(svgOut, "utf-8") : "";
+    try { fs.unlinkSync(svgOut); } catch (_) { /* not written */ }
+    asis.image = {
+      bpmnJs: /created with bpmn-js/.test(svg) && /djs-/.test(svg), liveMap: /Process Discovery Tracker: process map/.test(svg),
+      note: svg.includes('data-element-id="TextAnnotation_1"'), file: svg.includes('data-element-id="DataObjectReference_' + ATT.id + '"'),
+      legend: svg.includes('data-element-id="TextAnnotation_legend"'),
+      suggested: path.basename((await v.app.evaluate(() => global.__pdtSaveDefault)) || ""),
+      revealed: path.resolve((await v.app.evaluate(() => global.__pdtRevealed)) || ".").toLowerCase() === path.resolve(svgOut).toLowerCase(),
+      level: await page.evaluate(() => require("./state.js").getLevel()),
+    };
+  });
+
+  await part("f2", true, async () => {
+    // The Map's act makes the As-Is copy; the Map then shows it.
+    await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
+    await page.locator("#btn-fork-refmap").click({ timeout: T });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await wait(800);
+    await page.locator("#btn-refmap-editor-close").click({ timeout: T });
+    await page.waitForSelector("#map-asis-canvas .djs-container svg", { timeout: T });
+    await wait(500);
+    asis.view = await page.evaluate(() => {
+      const box = document.getElementById("session-map-asis");
+      const host = document.getElementById("map-asis-canvas");
+      return { shown: !box.hidden, img: !!box.querySelector("img"), viewer: !!(host && host.__bpmnViewer),
+        live: getComputedStyle(document.querySelector("#session-layout-map .map-host")).display };
+    });
+    ids = await page.evaluate((name) => {
+      const all = document.getElementById("map-asis-canvas").__bpmnViewer.get("elementRegistry").filter((e) => e.type !== "label");
+      const is = (e, t) => !!(e.businessObject && e.businessObject.$instanceOf(t));
+      const find = (f) => { const e = all.find(f); return e ? e.id : null; };
+      return {
+        task: find((e) => is(e, "bpmn:Task") && e.businessObject.name === name),
+        other: find((e) => is(e, "bpmn:Task") && /^va01: Check/.test(e.businessObject.name || "")),
+        note: find((e) => is(e, "bpmn:TextAnnotation") && e.id !== "TextAnnotation_legend"),
+        noteShown: (all.find((e) => is(e, "bpmn:TextAnnotation") && e.id !== "TextAnnotation_legend") || { businessObject: {} }).businessObject.text || "",
+        file: find((e) => is(e, "bpmn:DataObjectReference")),
+        legend: find((e) => e.id === "TextAnnotation_legend"),
+      };
+    }, SAVE.name);
+
+    // (f2) A task opens the panel on its step, with the play buttons.
+    await page.click('#map-asis-canvas .djs-element[data-element-id="' + ids.task + '"]', { timeout: T });
+    await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, SAVE.name, { timeout: T });
+    asis.task = { st: await panelState(page), plays: await page.locator("#sp-body .sp-occ .sp-play").count() };
+    await page.locator("#sp-body .sp-occ.focus .sp-play").click({ timeout: T });
+    Object.assign(asis.task, await played(SAVE));
+  });
+
+  await part("f3", false, async () => {
+    // (f3) A file opens its attachment (the open stubbed in main).
+    await v.app.evaluate(({ shell }) => { global.__pdtOpened = null; shell.openPath = async (p) => { global.__pdtOpened = p; return ""; }; });
+    await page.click('#map-asis-canvas .djs-element[data-element-id="' + ids.file + '"]', { timeout: T });
+    const openBy = Date.now() + 5000;
+    while (Date.now() < openBy && !(asis.opened = await v.app.evaluate(() => global.__pdtOpened))) await wait(100);
+  });
+
+  await part("f4", false, async () => {
+    // (f4) A note shows its whole text; the legend takes no click.
+    await page.click('#map-asis-canvas .djs-element[data-element-id="' + ids.note + '"]', { timeout: T });
+    asis.note = await page.evaluate(() => ((document.querySelector("#map-asis-note .map-asis-pop-text") || {}).textContent || ""));
+    await page.screenshot({ path: path.join(__dirname, "panel-smoke-asis.png") }).catch(() => {});
+    const legendAt = await page.evaluate((id) => {
+      const r = document.querySelector('#map-asis-canvas .djs-element[data-element-id="' + id + '"]').getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, through: !(hit && hit.closest('[data-element-id="' + id + '"]')) };
+    }, ids.legend);
+    await page.mouse.click(legendAt.x, legendAt.y);
+    await wait(300);
+    asis.legend = Object.assign(legendAt, await page.evaluate(() => ({
+      pop: !!document.getElementById("map-asis-note"), name: (document.getElementById("sp-name") || {}).textContent })));
+  });
+
+  await part("f5", false, async () => {
+    // (f5) An edit in the editor says Saving... then Saved in the top bar;
+    // another edit with the editor closed at once is written before the Map
+    // draws the copy again (it shows it); a task renamed there matches no
+    // step: the panel says so.
+    await page.locator("#btn-map-asis-edit").click({ timeout: T });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: T });
+    await wait(800);
+    asis.save = await page.evaluate(async ({ id, name }) => {
+      const el = document.getElementById("save-state");
+      const seen = [el.dataset.state];
+      const mo = new MutationObserver(() => seen.push(el.dataset.state));
+      mo.observe(el, { attributes: true, attributeFilter: ["data-state"] });
+      const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+      ed.get("modeling").updateLabel(ed.get("elementRegistry").get(id), name);
+      await new Promise((r) => setTimeout(r, 1600));
+      mo.disconnect();
+      return { seen, title: el.title };
+    }, { id: ids.other, name: FIRST_NAME });
+    const entry = (readJson(path.join(S, "annotations.json")).reference_maps || []).find((m) => m && m.pdd_role === "as_is");
+    asis.save.onDisk = !!(entry && fs.readFileSync(path.join(S, entry.file), "utf-8").includes(FIRST_NAME));
+    await page.evaluate(({ id, name }) => {
+      const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
+      ed.get("modeling").updateLabel(ed.get("elementRegistry").get(id), name);
+    }, { id: ids.other, name: RENAMED_TASK });
+    await page.locator("#btn-refmap-editor-close").click({ timeout: T });
+    await page.waitForFunction((n) => {
+      const v2 = (document.getElementById("map-asis-canvas") || {}).__bpmnViewer;
+      return !!(v2 && v2.get("elementRegistry").filter((e) => e.businessObject && e.businessObject.name === n).length);
+    }, RENAMED_TASK, { timeout: T });
+    await page.click('#map-asis-canvas .djs-element[data-element-id="' + ids.other + '"]', { timeout: T });
+    await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, RENAMED_TASK, { timeout: T });
+    asis.missing = await page.evaluate(() => ({
+      about: ((document.getElementById("sp-about") || {}).textContent || "").trim(),
+      rows: document.querySelectorAll("#sp-body .sp-occ").length, video: !document.getElementById("sp-video").hidden }));
+  });
+  const im = asis.image || {};
+  record("(f1) C18 + AD-32: Export, Process map (image), with no As-Is copy, saves the step BPMN drawn by bpmn-js (the PDD's picture, its note, file and legend on it), not the live map, and the level stays",
+    !failed.f1 && im.bpmnJs && !im.liveMap && im.note && im.file && im.legend && im.suggested === "process-map.svg" && im.revealed && im.level === "steps",
+    JSON.stringify(failed.f1 || im));
+  const tk = asis.task || {};
+  record("(f2) C18: with an As-Is copy chosen, the Map shows it drawn by bpmn-js (no picture), and a task opens the panel on its step (Transaction 1 in focus) with its play buttons, which play it",
+    !!(!failed.f2 && asis.view && asis.view.shown && !asis.view.img && asis.view.viewer && asis.view.live === "none" &&
+      tk.st && tk.st.shown && tk.st.name === SAVE.name && tk.st.rows.some((r) => r.focus && r.id === SAVE.step_id) &&
+      tk.plays === tk.st.rows.length && tk.ok),
+    JSON.stringify(failed.f2 || { view: asis.view, task: tk }));
+  record("(f3) C18: a file on the As-Is map opens its attachment through the safe open path (attachments/ of the project)",
+    !failed.f3 && !!asis.opened && path.resolve(asis.opened).toLowerCase() === path.resolve(S, "attachments", ATT.file).toLowerCase(),
+    JSON.stringify(failed.f3 || { opened: asis.opened }));
+  record("(f4) C18: a note on the As-Is map shows its whole text in a popover (the map shows it cut); the legend takes no click",
+    !failed.f4 && asis.note === NOTE && /…$/.test(ids.noteShown || "") &&
+      !!asis.legend && asis.legend.through && !asis.legend.pop && asis.legend.name === SAVE.name,
+    JSON.stringify(failed.f4 || { note: asis.note, shown: ids.noteShown, legend: asis.legend }));
+  const sv = asis.save || {};
+  record("(f5) C18: an edit in the map editor says Saving... then Saved in the top bar and is on disk; an edit closed at once shows on the As-Is map; a task renamed there opens the panel on its name, saying no step has it",
+    !!(!failed.f5 && Array.isArray(sv.seen) && sv.seen.includes("saving") && sv.seen[sv.seen.length - 1] === "saved" &&
+      /^Saved at /.test(sv.title || "") && sv.onDisk && asis.missing &&
+      asis.missing.about === "No step of the transactions has this name." && asis.missing.rows === 0 && !asis.missing.video),
+    JSON.stringify(failed.f5 || { save: sv, missing: asis.missing }));
   await v.close();
 
   // (e) The folder moved, opened on a fresh profile.

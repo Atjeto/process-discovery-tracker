@@ -85,8 +85,13 @@ function createMapController(config) {
 
   /* ============ Control wiring ===================================== */
 
+  // The fit fits this map while it shows; while the As-Is map shows instead,
+  // the fit is that map's (refmap-ui.js).
   if (zoomControls && zoomControls.fit) {
-    zoomControls.fit.addEventListener("click", () => { if (PdtDfg && PdtDfg.fit) PdtDfg.fit(); });
+    zoomControls.fit.addEventListener("click", () => {
+      if (hostDfg && !hostDfg.getClientRects().length) return;
+      if (PdtDfg && PdtDfg.fit) PdtDfg.fit();
+    });
   }
 
   return { render };

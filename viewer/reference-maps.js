@@ -130,6 +130,14 @@ function isStale(entry, currentSourceHash) {
             entry.forked_from_hash !== currentSourceHash);
 }
 
+/* A copy made before the step map had its colours, notes and attachments
+   (contract C18): none of its tasks is a user or a manual task, the two kinds
+   every task of process_map_step.bpmn has had since. Such a copy offers Copy
+   again in those words once the process map changes (refmap-ui.js). */
+function predatesRichMap(xml) {
+  return !/<(?:[\w.-]+:)?(?:userTask|manualTask)[\s/>]/.test(String(xml || ""));
+}
+
 /* ---- fs-backed ops -------------------------------------------------------- */
 
 function derivedDir(sessionFolder) { return path.join(sessionFolder, DERIVED_DIR); }
@@ -209,7 +217,7 @@ function destroy({ sessionFolder, anno, id }) {
 module.exports = {
   KINDS, PDD_ROLES, DERIVED_DIR,
   hashContent, fileHash, genId,
-  ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale,
+  ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale, predatesRichMap,
   derivedDir, absPath, fileExists, writeBpmn, readBpmn, deleteBpmn,
   fork, duplicate, destroy,
 };

@@ -829,17 +829,33 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .session-layout-map .map-host {
   flex: 1; min-height: 360px; height: auto;
 }
-/* V2 item 7: the As-Is map chosen for the PDD, first, read only. */
+/* V2 item 7: the As-Is map chosen for the PDD, first, read only. C18: drawn
+   by bpmn-js (asis-view.js) on a white page in both themes, the document
+   colours the PDD prints; a task, a file and a note take a click. */
 .map-asis { flex: 1; display: flex; flex-direction: column; min-height: 360px; }
 .map-asis[hidden] { display: none; }
 .map-asis-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; font-size: 12px; }
 .map-asis-title { font-weight: 600; color: var(--fg); }
 .map-asis-note { color: var(--fg-3); }
-.map-asis-img {
-  flex: 1; min-height: 320px; overflow: auto; padding: 8px;
+.map-asis-canvas {
+  position: relative; flex: 1; min-height: 320px; overflow: hidden;
   background: #fff; border: 1px solid var(--rule); border-radius: var(--radius-sm);
 }
-.map-asis-img img { display: block; max-width: 100%; height: auto; }
+.map-asis-mount { position: absolute; inset: 0; }
+/* A map that could not be drawn says why, on the white page in both themes. */
+.map-asis-canvas .map-empty-inline { color: #635848; }
+.map-asis-canvas .pdt-link > .djs-hit { cursor: pointer; }
+/* The legend is part of the picture: a click goes through it to the canvas. */
+.map-asis-canvas .pdt-inert > .djs-hit { pointer-events: none; }
+/* A note's whole text, beside the click. */
+.map-asis-pop {
+  position: absolute; z-index: 5; display: flex; align-items: flex-start; gap: 6px;
+  max-width: min(360px, calc(100% - 16px)); padding: 8px 8px 8px 12px;
+  background: var(--bg-2); border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg); color: var(--fg); font-family: var(--font-ui); font-size: 12px; line-height: 1.45;
+}
+.map-asis-pop-text { flex: 1 1 auto; min-width: 0; margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.map-asis-pop-close { flex: none; }
 
 /* ===== Overview view (lab-phase §A5 — the honesty redesign's landing) ===== */
 .session-layout-overview {
@@ -1978,6 +1994,8 @@ button.danger:disabled {
 .refmap-row-name { font-weight: 600; font-size: 13px; color: var(--fg); }
 .refmap-row-date { color: var(--fg-3); font-size: 11px; }
 .refmap-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* C18: under a copy the process map changed after, what Copy again gives. */
+.refmap-row-note { flex: 1 0 100%; margin: 0; font-size: 11px; color: var(--fg-2); }
 .refmap-drift-chip, .refmap-missing-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .refmap-bar-lbl { font-size: 11px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; }
 /* F3: a destructive text button is outlined in the error colour, so its label

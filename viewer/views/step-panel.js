@@ -3,7 +3,9 @@
  * AD-23). One component with three doors, shown beside the content so the
  * map, the timeline or the Steps list stays visible:
  *   a click on a map box, a click on a timeline step band, a selected Steps
- *   row (and Watch in the step pane, which plays its step here).
+ *   row (and Watch in the step pane, which plays its step here). A task of
+ *   the As-Is map is a map box too (asis-view.js, C18); a task no step
+ *   stands for opens the panel on its name and one line saying so.
  * It names the step, its system and description, its flow in one short
  * line when set (C17: "Only when ... · Goes back to step 2 when ..."), says
  * "In N of M transactions, about Xs each", and lists one row per occurrence:
@@ -104,11 +106,26 @@ function _rowHtml(o, origin, placed, hasVideo, focusId) {
     "</li>";
 }
 
+/* A task of the As-Is map that no step stands for (C18): its name and one
+   line, no video and no occurrences. */
+function _renderMissing() {
+  $("sp-name").textContent = _state.missing || "(unnamed task)";
+  $("sp-about").innerHTML = '<p class="sp-missing">No step of the transactions has this name.</p>';
+  const video = $("sp-video");
+  if (video) {
+    if (!video.paused) video.pause();
+    video.removeAttribute("src");
+    video.hidden = true;
+  }
+  $("sp-body").innerHTML = "";
+}
+
 /* Draw the panel for the current state (the video element stays as it is). */
 function render() {
   const panel = $("step-panel");
   const s = _session();
   if (!panel || !s || !_state) return;
+  if (_state.missing != null) { _renderMissing(); return; }
   const runs = RunsModel.buildRuns(s.stats, _steps()).runs;
   const focus = _steps().find((st) => st.step_id === _state.focusId) || null;
   const occ = occurrences(_state.label, runs, focus);
@@ -189,6 +206,18 @@ function openForNode(label) {
   const lead = (ref && occ.find((o) => o.run && o.run.caseId === ref.caseId)) || occ[0];
   _dismissed = false;
   openForStep(lead.step);
+}
+
+/* A task of the As-Is map that no step of the transactions stands for (a
+   task added or renamed in the map, or a step renamed or hidden since the
+   copy was made): the panel names the task and says so in one line. */
+function openForMissing(name) {
+  _reset();
+  if (!_session() || State.getLevel() === "overview") return;
+  _dismissed = false;
+  _state = { label: null, focusId: null, missing: String(name == null ? "" : name).trim() };
+  _show(true);
+  render();
 }
 
 /* The Steps level's selection: the panel follows it unless it was closed. */
@@ -281,4 +310,4 @@ function refresh() {
   }
 })();
 
-module.exports = { openForStep, openForNode, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine };
+module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine };

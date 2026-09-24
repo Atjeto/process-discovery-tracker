@@ -14,8 +14,8 @@
  *     level, its modules moved into the Overview; the BA-helper cut removed
  *     Phases and the top tab row),
  *   - the Session Export menu's "Process map (image)" and "Process map
- *     (BPMN)" items each write their file (no As-Is copy chosen yet: the map
- *     on the Map level),
+ *     (BPMN)" items each write their file (no As-Is copy chosen yet: the step
+ *     BPMN, the image drawn by bpmn-js as the PDD draws it),
  *   - the chrome: one top bar (New, Open, the four levels, the status line,
  *     Export, Help, theme; no actions bar, no Analyze button, no More menu),
  *     New and Open two menus, the Transaction select on the Timeline only
@@ -972,22 +972,28 @@ async function unreadableAnnotationsPin() {
     return { bytes: text.length, head: text.slice(0, 200), text, suggested,
       revealed: !!revealed && path.resolve(revealed).toLowerCase() === path.resolve(outPath).toLowerCase() };
   }
-  // Start from Overview: the verb opens the Map level (button state included)
-  // before it reads the diagram.
+  // Start from Overview: the image is drawn off screen from the step BPMN, as
+  // the PDD draws its map (AD-32), so the analyst stays where they are. It
+  // may analyze first (the steps newer than the BPMN file), so FRESH only.
   await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
   await wait(600);
-  const svgOut = path.join(os.tmpdir(), "pdt-e2e-map-" + Date.now() + ".svg");
-  const svgRes = await exportViaMenu("btn-session-map-svg", svgOut);
-  const svgLanded = await page.evaluate(() => {
-    const layout = document.getElementById("session-layout-map");
-    const btn = document.querySelector('.view-mode-btn[data-level="map"]');
-    return !!(layout && getComputedStyle(layout).display !== "none" && btn && btn.classList.contains("active"));
-  }).catch(() => false);
-  const svgOk = svgRes.bytes > 0 && /<svg[\s>]/.test(svgRes.text) && /\.svg$/.test(svgRes.suggested || "") && svgLanded && svgRes.revealed;
-  record("AD-11 + AD-29: Export > Process map (image), with no As-Is copy chosen, opens the Map from the Overview, writes the shown map as an SVG file and opens its folder at the file",
-    svgOk, "bytes=" + svgRes.bytes + " suggested=" + svgRes.suggested + " onMap=" + svgLanded + " revealed=" + svgRes.revealed +
-      " head=" + JSON.stringify(svgRes.head.slice(0, 80)));
-  if (!svgOk) await shot(page, "fail-export-map-svg.png");
+  if (!FRESH) {
+    record("AD-11: Export > Process map (image) (skipped: session not re-normalized)", true,
+      "the export may analyze into the committed demo folder");
+  } else {
+    const svgOut = path.join(os.tmpdir(), "pdt-e2e-map-" + Date.now() + ".svg");
+    const svgRes = await exportViaMenu("btn-session-map-svg", svgOut);
+    const svgStayed = await page.evaluate(() => {
+      const layout = document.getElementById("session-layout-overview");
+      return !!(layout && getComputedStyle(layout).display !== "none" && require("./state.js").getLevel() === "overview");
+    }).catch(() => false);
+    const svgOk = svgRes.bytes > 0 && /<svg[\s>]/.test(svgRes.text) && /created with bpmn-js/.test(svgRes.text) &&
+      /\.svg$/.test(svgRes.suggested || "") && svgStayed && svgRes.revealed;
+    record("AD-11 + AD-29 + AD-32: Export > Process map (image), with no As-Is copy chosen, saves the step BPMN drawn by bpmn-js (the PDD's map) as an SVG file from the Overview, which stays, and opens its folder at the file",
+      svgOk, "bytes=" + svgRes.bytes + " suggested=" + svgRes.suggested + " stayed=" + svgStayed + " revealed=" + svgRes.revealed +
+        " head=" + JSON.stringify(svgRes.head.slice(0, 80)));
+    if (!svgOk) await shot(page, "fail-export-map-svg.png");
+  }
   if (!FRESH) {
     record("AD-11: Export > Process map (BPMN) (skipped: session not re-normalized)", true,
       "the export would analyze into the committed demo folder");

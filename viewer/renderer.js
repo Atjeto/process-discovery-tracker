@@ -18,7 +18,6 @@ const fs = require("node:fs");
 const TimelineCore = require("./timeline/timeline-core.js");
 const State = require("./state.js");
 const PdtTheme = require("./theme.js");
-const PdtDfg = require("./dfg-viewer.js");
 const PdtSteps = require("./step-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
@@ -478,8 +477,9 @@ async function exportArtifact(kind) {
 }
 
 /* AD-11: the Session Export menu carries the two map exports. "Process map
-   (BPMN)" copies a BPMN file; "Process map (image)" is exportMapSvg below.
-   P2.12: both save the As-Is copy chosen for the PDD when there is one. */
+   (BPMN)" copies a BPMN file; "Process map (image)" is exportMapSvg below,
+   the same map drawn as the PDD draws it. P2.12: both save the As-Is copy
+   chosen for the PDD when there is one. */
 if ($("#btn-session-step-bpmn")) $("#btn-session-step-bpmn").addEventListener("click", () => exportArtifact("step-bpmn"));
 if ($("#btn-session-map-svg"))   $("#btn-session-map-svg").addEventListener("click", () => exportMapSvg());
 
@@ -505,22 +505,6 @@ function _chosenAsIsMap() {
   return { entry, path: RefStore.absPath(sess.sessionFolder, entry) };
 }
 
-/* A BPMN file drawn off screen and saved as SVG (bpmn-js saveSVG), or null. */
-function _bpmnXmlToSvg(xml) {
-  return new Promise((resolve) => {
-    if (typeof BpmnJS === "undefined" || !xml) { resolve(null); return; }
-    const host = document.createElement("div");
-    host.style.cssText = "position:absolute;left:-99999px;top:-99999px;width:1600px;height:1200px;";
-    document.body.appendChild(host);
-    const v = new BpmnJS({ container: host });
-    v.importXML(xml)
-      .then(() => v.saveSVG())
-      .then(({ svg }) => resolve(svg || null))
-      .catch((e) => { console.error("[renderer] As-Is map image failed:", e); resolve(null); })
-      .finally(() => { try { v.destroy(); } catch (_) {} host.remove(); });
-  });
-}
-
 /* A saved image, like every export (AD-29): its folder opens with the file
    selected, and the toast names it. */
 async function _svgSaved(r) {
@@ -533,36 +517,41 @@ async function _svgSaved(r) {
 }
 
 /* AD-11: "Process map (image)" saves the process map as an SVG image, the
-   format Figma / Lucidchart / browsers all import. P2.12: the As-Is copy
-   chosen for the PDD when there is one, drawn off screen. Else the map the
-   Map level shows: from another level it opens the Map first and lets the
-   diagram draw (the same settle the PDD export uses). A Map that shows a
-   message instead of a diagram (locked, no steps) exports nothing and says so. */
+   format Figma, Lucidchart and browsers import, drawn off screen by the
+   PDD's map renderer (RefmapUI.renderBpmnToSvg), so the picture saved is the
+   one the PDD prints: the As-Is copy chosen for the PDD when there is one
+   (P2.12), else (AD-32) process_map_step.bpmn, analyzed first when the
+   steps are newer than it or it is missing, as for the PDD (exportArtifact).
+   The analyst stays on the level they are on. While the Map says why it
+   draws no map (no transactions marked, a failed check), there is none to
+   save, and the export says so. */
 async function exportMapSvg() {
-  if (!State.getSession()) { toast("Open a project first.", "error"); return; }
+  const sess = State.getSession();
+  if (!sess) { toast("Open a project first.", "error"); return; }
   const asIs = _chosenAsIsMap();
   if (asIs) {
     let xml = null;
     try { xml = fs.readFileSync(asIs.path, "utf-8"); }
     catch (e) { console.error("[renderer] could not read the As-Is map:", e); }
-    const asIsSvg = await _bpmnXmlToSvg(xml);
+    const asIsSvg = xml ? await RefmapUI.renderBpmnToSvg(xml) : null;
     if (!asIsSvg) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
     await _svgSaved(await Ipc.saveSvgFile({ content: asIsSvg, suggestedName: "as-is-map.svg" }));
     return;
   }
-  if (State.getLevel() !== "map") {
-    // Click the level button (not applyLevel alone) so the View bar shows Map.
-    const mapBtn = document.querySelector('.view-mode-btn[data-level="map"]');
-    if (mapBtn) mapBtn.click(); else applyLevel("map");
-    await new Promise((r) => setTimeout(r, 900));
-  }
-  _ensureSessionMapCtrl();
-  const host = document.getElementById("session-map-dfg-host");
-  const svg = (host && host.querySelector("canvas")) ? PdtDfg.exportSvg() : null;
-  if (!svg) {
-    toast("No process map is drawn on the Map level to export: the Map says why.", "error");
+  if (mapLockHtml(sess.analysis)) {
+    toast("No process map to export: the Map says why.", "error");
     return;
   }
+  const src = _stepBpmnPath();
+  if (RefmapUI.needsAnalyze(sess, src)) {
+    if (!(await analyzeSession())) return;   // the analysis said why
+  }
+  let xml = null;
+  try { xml = fs.readFileSync(src, "utf-8"); }
+  catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the process map:", e); }
+  if (!xml) { toast("No process map to export: the transactions have no steps yet.", "error"); return; }
+  const svg = await RefmapUI.renderBpmnToSvg(xml);
+  if (!svg) { toast("The process map could not be drawn as an image.", "error"); return; }
   await _svgSaved(await Ipc.saveSvgFile({ content: svg, suggestedName: "process-map.svg" }));
 }
 
