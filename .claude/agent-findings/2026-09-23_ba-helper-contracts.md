@@ -433,8 +433,8 @@ map editor. The default after a step is always the next step in its transaction.
   with one legend `textAnnotation` listing the systems. Steps added by hand are
   `bpmn:manualTask`, recorded steps `bpmn:userTask`. Task names stay the step names. Diagram
   interchange covers every new element and the layout keeps them clear of boxes and lines.
-- **Illustrated map**: rendered by the viewer from the same data (the flow edges of C17, each
-  step's name, system, the screenshot the PDD prints, its description or first note), one PNG.
-  Export ▾ "Illustrated map (image)" saves it and opens Explorer; the PDD export passes it with
-  `--pdd-illustrated-image <png>`, printed as the last appendix ("Appendix: illustrated map"),
-  on its own landscape page, scaled to fit.
+- **The As-Is map in the viewer is interactive** (the illustrated map was dropped: the links
+  replace it): the chosen As-Is copy renders with bpmn-js, not as a flat image, and a click on a
+  task opens the step panel for the step it stands for (matched by the map's node rule on the
+  task name, as the live map does); a data object opens its attachment; a text annotation shows
+  its note. Editing stays in the editor.
