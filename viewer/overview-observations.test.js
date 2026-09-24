@@ -7,10 +7,11 @@
  *     events name the fields ("Product code in Salesforce typed again as
  *     Material number in SAP", each place named by its system, C14); a failed
  *     findings stage is said (C12), never read as "none".
- *   Where the time goes: per step (the map's grouping) its average time per
- *     run and "in N of M runs"; per system the same (where the automation
- *     candidates fold in); no dot strip, no total over the runs,
- *     no business-required editor.
+ *   Where the time goes: per step (the map's grouping) its "Average time"
+ *     ("10 s") and where it "Happened in" ("N of M transactions", AD-29); per
+ *     system the same (where the automation candidates fold in); no dot
+ *     strip, no total over the runs, no business-required editor.
+ * The block's title says who fills it: "Measured from the recording".
  * The viewer no longer reads analysis.json pdd_findings or
  * annotations.memo_selection.
  */
@@ -18,7 +19,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { overviewHtml } = require("./views/overview-view.js");
-const { observationsHtml, retypedLines, timePerStep } = require("./views/analysis-view.js");
+const { observationsHtml, retypedLines, timePerStep, averageTime, happenedIn } = require("./views/analysis-view.js");
 
 const t = (sec) => new Date(Date.UTC(2026, 4, 14, 9, 0, sec)).toISOString();
 // A window title's separator, built so this file holds no dash punctuation.
@@ -169,24 +170,38 @@ test("the Observations block holds exactly its two items, with no dot strip, tot
   const html = observationsHtml(session());
   assert.equal((html.match(/data-module="/g) || []).length, 2);
   assert.ok(html.includes('data-module="retyped"') && html.includes('data-module="time"'));
-  assert.ok(html.includes(">Observations<"));
+  assert.ok(html.includes('<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
+    '<div class="ov-block-who">Measured from the recording</div></div>'), "the title says who fills the block");
   assert.ok(html.includes(">Data typed twice<") && html.includes(">Where the time goes<"));
-  assert.ok(html.includes("in 2 of 2 runs") && html.includes("in 1 of 2 runs"));
-  assert.ok(html.includes("Most in Create the sales order: 8.0s per run"));
+  assert.equal((html.match(/<thead><tr><th>(Step|System)<\/th><th class="num">Average time<\/th><th>Happened in<\/th><\/tr><\/thead>/g) || []).length, 2,
+    "both tables: Step or System, Average time, Happened in");
+  assert.ok(html.includes('<td class="num">8 s</td><td>2 of 2 transactions</td>') &&
+    html.includes('<td class="num">2 s</td><td>1 of 2 transactions</td>'));
+  assert.ok(!/Per run|\bruns?\b/.test(html.slice(html.indexOf('data-module="time"'))), "no run wording in the table");
+  assert.ok(html.includes("Most time in Create the sales order (8 s on average)"));
   for (const gone of ["ts-dot", "ts-strip", "waste-row", "business-required", "include in PDD", "data-act=\"memo\"", "Automation candidates"]) {
     assert.ok(!html.includes(gone), gone);
   }
 });
 
-test("with no runs marked, where the time goes says so", () => {
+test("with no transactions marked, where the time goes says so", () => {
   const html = observationsHtml(session({ stats: { meta: { app_names: APP_NAMES }, case_stats: [] },
     annotations: { steps: [] } }));
-  assert.ok(html.includes("No runs are marked yet"));
+  assert.ok(html.includes("No transactions are marked yet"));
+  assert.ok(html.includes("mark the transactions first"));
+});
+
+test("an average time reads in whole units (10 s, 1 min 5 s, 1 h 4 min), and a count as N of M transactions", () => {
+  assert.deepEqual([400, 500, 10000, 10400, 59600, 65000, 120000, 3840000, 7200000].map(averageTime),
+    ["under 1 s", "1 s", "10 s", "10 s", "1 min", "1 min 5 s", "2 min", "1 h 4 min", "2 h"]);
+  assert.equal(averageTime(NaN), "");
+  assert.equal(happenedIn(4, 4), "4 of 4 transactions");
+  assert.equal(happenedIn(1, 1), "1 of 1 transaction");
 });
 
 /* ---- The home -------------------------------------------------------------- */
 
-test("the home is the What is left line, the recording line, the document, then the Observations; no findings, evidence or ticks", () => {
+test("the home is the Checklist, the project line, the document, then the Observations; no findings, evidence or ticks", () => {
   const html = overviewHtml(session({ analysis: Object.assign(session().analysis, {
     pdd_findings: { eligible: ["rekey-1"], default: ["rekey-1"] } }) }));
   const at = (x) => html.indexOf(x);
@@ -199,7 +214,7 @@ test("the home is the What is left line, the recording line, the document, then 
   }
 });
 
-test("the coverage finding is a warning on the recording line, not an observation", () => {
+test("the coverage finding is a warning on the project line, not an observation", () => {
   const cov = { id: "cov-1", detector: "coverage_caveat", claim: "The recorder saw less detail in 1 of 3 apps: Citrix (a remote window).", evidence: {} };
   const html = overviewHtml(session({ analysis: Object.assign({}, session().analysis, { findings: [REKEY, cov] }) }));
   const summary = html.slice(html.indexOf('id="ov-summary"'), html.indexOf('id="ov-doc"'));

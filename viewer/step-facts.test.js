@@ -2,7 +2,7 @@
 /*
  * step-facts.js: the step pane's fact line from the step's structured fields,
  * the fields typed, the drafting's own description (a hint in the pane), the
- * drafted name and the pointer "Run 1 at 0:19". The narration and the
+ * drafted name and the pointer "Transaction 1 at 0:19". The narration and the
  * drafted name below were printed by normalization/step_suggest.py on the
  * same interactions, so the pane and the PDD agree on which descriptions are
  * the drafting's.
@@ -75,7 +75,7 @@ test("where a draft ends and its drafted name come from end_reason and its inter
   const datas = [{ window_title: "Salesforce" + SEP + "Order #10900" }, { meaningful_name: "Save order", name: "btn" }];
   assert.equal(SF.endsAt({ end_reason: "commit" }, datas), "ends at Save order");
   assert.equal(SF.endsAt({ end_reason: "screen_change" }, datas), "ends at a screen change");
-  assert.equal(SF.endsAt({ end_reason: "run_end", case_id: "c1" }, datas), "ends with the run");
+  assert.equal(SF.endsAt({ end_reason: "run_end", case_id: "c1" }, datas), "ends with the transaction");
   assert.equal(SF.endsAt({ end_reason: "run_end", case_id: null }, datas), "");
   assert.equal(SF.endsAt({ state: "edited" }, datas), "", "a split or merged step is no longer one draft");
   assert.equal(SF.draftedName({ end_reason: "commit" }, datas), "Salesforce" + SEP + "Order: Save order");
@@ -104,12 +104,12 @@ test("one clock: the time since the recording started, as the PDD prints it", ()
 
 test("the pointer and the fact line: the system first, then the screen, the time, where it ends and where it is", () => {
   const origin = Date.parse("2026-05-14T09:00:00Z");
-  const runs = [{ caseId: "c1", title: "Run 1" }];
+  const runs = [{ caseId: "c1", title: "Transaction 1" }];
   const step = { case_id: "c1", time_range: { start: "2026-05-14T09:00:19Z", end: "2026-05-14T09:00:25Z" } };
-  assert.equal(SF.pointer(step, runs, origin), "Run 1 at 0:19");
+  assert.equal(SF.pointer(step, runs, origin), "Transaction 1 at 0:19");
   assert.equal(SF.pointer(Object.assign({}, step, { case_id: null }), runs, origin), "0:19 into the recording");
   assert.equal(SF.duration(step.time_range), "6s");
   assert.equal(SF.factLine({ system: "Salesforce", screen: "Account lookup", duration: "6s", ends: "ends at Search",
-    pointer: "Run 1 at 0:19" }), "Salesforce · Account lookup · 6s · ends at Search · Run 1 at 0:19");
+    pointer: "Transaction 1 at 0:19" }), "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19");
   assert.equal(SF.factLine({ system: "", screen: "", duration: "6s" }), "6s");
 });

@@ -22,33 +22,43 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 <body>
 
 <div class="app">
-  <!-- The one bar (step-back review 4.2): Open, the four levels, the status
-       line, Export, Help and the theme. The levels, the status line and
-       Export show once a recording is open (.app.has-session, set by
+  <!-- The one bar (step-back review 4.2): New, Open, the four levels, the
+       status line, Export, Help and the theme. The levels, the status line
+       and Export show once a project is open (.app.has-session, set by
        flow-view.js loadSessionIntoView). -->
   <header class="topbar">
-    <!-- One Open menu: the folder picker, then the recent recordings. -->
+    <!-- New and Open are two menus (owner review 2026-09-24, AD-29): New
+         makes a project from a video or from nothing; Open opens a project
+         folder (the folder a recorder saved, or one made here) or a recent one. -->
+    <div class="project-menu" id="new-menu">
+      <button class="project-btn" id="btn-new-menu" title="Start a new project from a video of the process, or an empty one">
+        <span>New</span>
+        <span class="project-menu-caret">▾</span>
+      </button>
+      <div class="project-menu-popup" id="new-menu-popup" style="display:none; min-width: 240px;">
+        <button class="project-menu-item" id="btn-new-from-video" type="button" title="Start a project from a video of the process: the video is copied into a new folder, and the Timeline follows it.">New project from a video...</button>
+        <button class="project-menu-item" id="btn-new-blank" type="button" title="Start an empty project: you add its steps by hand in Steps.">New empty project...</button>
+      </div>
+    </div>
     <div class="project-menu" id="recent-menu">
-      <button class="project-btn" id="btn-recent-menu" title="Open a recording folder or a recent recording">
+      <button class="project-btn" id="btn-recent-menu" title="Open a project folder or a recent project">
         <span>Open</span>
         <span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="recent-menu-popup" style="display:none; min-width: 280px;">
-        <button class="project-menu-item" id="btn-open-session" type="button">Open recording...</button>
-        <button class="project-menu-item" id="btn-new-from-video" type="button" title="Start a project from a video of the process: the video is copied into a new folder, and the Timeline follows it.">New from a video...</button>
-        <button class="project-menu-item" id="btn-new-blank" type="button" title="Start an empty project: you add its steps by hand in Steps.">New without a recording...</button>
+        <button class="project-menu-item" id="btn-open-session" type="button" title="Open a project folder: the folder the SME's capture app saved, or a project made with New">Open project...</button>
         <div class="recent-menu-section" id="recent-menu-content"></div>
       </div>
     </div>
     <!-- The four levels. -->
     <nav class="view-mode-bar session-only" aria-label="Levels">
-      <button class="view-mode-btn active" data-level="overview" title="What is left, the recording and the document">
+      <button class="view-mode-btn active" data-level="overview" title="The checklist, the project and the document">
         <span class="view-mode-icon">◈</span> Overview
       </button>
-      <button class="view-mode-btn" data-level="flow" title="The recording: video, screenshots, runs and what was said">
+      <button class="view-mode-btn" data-level="flow" title="The recording: video, screenshots, transactions and what was said">
         <span class="view-mode-icon">≡</span> Timeline
       </button>
-      <button class="view-mode-btn" data-level="steps" title="Each run's steps: confirm run 1, then review the others">
+      <button class="view-mode-btn" data-level="steps" title="Each transaction's steps: confirm transaction 1, then review the others">
         <span class="view-mode-icon">▣</span> Steps
       </button>
       <button class="view-mode-btn" data-level="map" title="The process map, and your As-Is and To-Be maps">
@@ -61,11 +71,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     <div class="session-pills session-only" id="session-pills" role="status" aria-live="polite"></div>
     <span class="flex-spacer"></span>
     <div class="project-menu session-only" id="session-export-menu">
-      <button class="project-btn" id="btn-session-export-menu" title="Export this recording">
+      <button class="project-btn" id="btn-session-export-menu" title="Export this project: each export opens its folder with the file selected">
         <span>Export</span><span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="session-export-popup" style="display:none">
-        <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is your edited As-Is map when there is one, else the map from the runs.">PDD (.docx)</button>
+        <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is your edited As-Is map when there is one, else the map from the transactions.">PDD (.docx)</button>
         <!-- P2.12: both map items save the As-Is map chosen for the PDD
              when there is one, else the process map on the Map level. -->
         <button class="project-menu-item" id="btn-session-map-svg" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as an SVG image. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
@@ -83,13 +93,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
       <div class="empty-state" id="session-empty">
         <div class="empty-icon">⌬</div>
-        <h2>No recording open</h2>
-        <p>Open the recording folder the SME's capture app saved, to begin.</p>
-        <button class="primary" id="btn-open-session-hero">Open recording...</button>
+        <h2>No project open</h2>
+        <p>Open the folder the SME's capture app saved, or a project you made. New, in the top bar, starts a project from a video or an empty one.</p>
+        <button class="primary" id="btn-open-session-hero">Open project...</button>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
         <div class="recent-sessions">
           <div class="recent-header">
-            <h3>Recent recordings</h3>
+            <h3>Recent projects</h3>
             <button id="recent-clear-all" class="recent-clear-btn" type="button" style="display:none" title="Remove all entries from Recents">Clear all</button>
           </div>
           <ul id="recent-list-session"></ul>
@@ -108,7 +118,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <pre id="normalize-log"></pre>
         </details>
 
-        <!-- ========= OVERVIEW view (the home: what is left, the recording line, the document, the observations) ========= -->
+        <!-- ========= OVERVIEW view (the home: the checklist, the project line, the document, the observations) ========= -->
         <div class="session-layout-overview" id="session-layout-overview">
           <div id="overview-content"></div>
         </div>
@@ -119,11 +129,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="timeline-header">
               <span id="timeline-summary" class="meta"></span>
               <div class="timeline-controls">
-                <!-- It dims the other runs on the timeline and changes nothing
-                     on the other levels (P1.2). -->
-                <label class="case-scope" id="case-scope" title="Show one run on the timeline: the other runs are dimmed. Pick All runs to see the whole recording.">
-                  <span class="case-scope-label">Run:</span>
-                  <select id="case-scope-select"><option value="">All runs</option></select>
+                <!-- It dims the other transactions on the timeline and changes
+                     nothing on the other levels (P1.2). -->
+                <label class="case-scope" id="case-scope" title="Show one transaction on the timeline: the other transactions are dimmed. Pick All transactions to see the whole recording.">
+                  <span class="case-scope-label">Transaction:</span>
+                  <select id="case-scope-select"><option value="">All transactions</option></select>
                 </label>
                 <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
                 <button class="icon-btn" id="btn-add-step" type="button" hidden title="Add a step at the video playhead (S)">+ Step</button>
@@ -133,7 +143,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                     <div class="lanes-popup-title">Show lanes</div>
                     <label class="cb"><input type="checkbox" data-lane="idle" /> Idle</label>
                     <label class="cb"><input type="checkbox" data-lane="screenshots" /> Screenshots</label>
-                    <label class="cb"><input type="checkbox" data-lane="cases" /> Runs</label>
+                    <label class="cb"><input type="checkbox" data-lane="cases" /> Transactions</label>
                     <label class="cb"><input type="checkbox" data-lane="steps" /> Steps</label>
                     <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
                     <label class="cb" id="lane-notes-row" hidden><input type="checkbox" data-lane="notes" /> Notes</label>
@@ -196,7 +206,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <div id="screenshots-grid" class="screens-grid"></div>
               </div>
               <div class="anno-panel" data-panel="markers" style="display:none">
-                <div id="markers-list" class="markers-list" title="Double-click a Start to rename its run. The row buttons move a marker or delete it. A change shows here at once, marked pending, and applies to the runs when you click Apply marker changes."></div>
+                <div id="markers-list" class="markers-list" title="A transaction starts at a Start marker. Double-click a Start to rename its transaction. The row buttons move a marker or delete it. A change shows here at once, marked pending, and applies to the transactions when you click Apply marker changes."></div>
               </div>
             </aside>
           </div>
@@ -205,7 +215,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
-            <button id="btn-add-manual-step" title="Add a step by hand, without a time: after the selected step of the open run, or at its end. Alt+Up and Alt+Down move it. The Timeline's + Step adds one at the video playhead.">+ Add step</button>
+            <button id="btn-add-manual-step" title="Add a step by hand, without a time: after the selected step of the open transaction, or at its end. Alt+Up and Alt+Down move it. The Timeline's + Step adds one at the video playhead.">+ Add step</button>
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
             <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
@@ -218,7 +228,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
           <div class="editor-split">
             <div class="editor-list-pane">
-              <div class="editor-pane-title">Runs · <span id="runs-pane-count">0</span></div>
+              <div class="editor-pane-title">Transactions · <span id="runs-pane-count">0</span></div>
+              <!-- What a transaction is, in one line (steps-view.js renderStepsLevel):
+                   the SME's key in a recording, one transaction in a project
+                   without one until the Timeline marks more. -->
+              <p class="editor-pane-note" id="runs-pane-note"></p>
               <div id="step-list"></div>
             </div>
             <div class="editor-detail-pane">
@@ -230,8 +244,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         </div>
 
         <!-- ========= MAP view: the one process map, a Flow diagram built from
-             the runs' steps (viewer/map-controller.js), and the reference maps
-             forked from it (ADR-0019) ========= -->
+             the transactions' steps (viewer/map-controller.js), and the
+             reference maps forked from it (ADR-0019) ========= -->
         <div class="session-layout-map" id="session-layout-map" style="display:none">
           <div class="panel panel-wide map-panel">
             <div class="panel-header">
@@ -243,9 +257,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <!-- The Map's one act (refmap-ui.js syncForkButton sets its
                      label and style): a copy of the process map in the editor,
                      chosen as the PDD's As-Is map when none is chosen yet. -->
-                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the session again never changes it.">Edit as the As-Is map</button>
-                <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the session again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
-                <!-- V2 item 7: back to the As-Is map, while the map from the runs shows. -->
+                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it.">Edit as the As-Is map</button>
+                <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the project again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
+                <!-- V2 item 7: back to the As-Is map, while the map from the transactions shows. -->
                 <button class="link-btn" id="btn-map-show-asis" type="button" hidden title="Show the As-Is map chosen for the PDD">Show the As-Is map</button>
               </div>
             </div>
@@ -256,7 +270,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <span class="map-asis-title" id="map-asis-title">As-Is map</span>
                 <span class="map-asis-note">Read only; the PDD prints this map.</span>
                 <button type="button" id="btn-map-asis-edit" title="Open this map in the editor">Edit</button>
-                <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the process map drawn from the runs' steps">Show the map from the runs</button>
+                <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the process map drawn from the transactions' steps">Show the map from the transactions</button>
               </div>
               <div class="map-asis-img" id="map-asis-img"></div>
             </div>
@@ -348,54 +362,63 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="help-body">
 
         <section class="help-section active" data-section="start">
+          <h3>What is a transaction?</h3>
+          <p>A <strong>transaction</strong> is one pass through the process: one order entered, one request handled. The SME records the process a few times and presses the transaction key (or the recording bar's button) at the start of each transaction. A project made from a video, or an empty one, is one transaction until you mark where each one starts on the Timeline.</p>
           <h3>From a recording to the PDD</h3>
-          <p>The SME records the process a few times, one run each time, and sends you the recording folder. You confirm the first run's drafted steps, review how the other runs differ, write the document and export the PDD. The Overview's <em>What is left</em> line shows where you are, with one button for the next act.</p>
+          <p>The SME sends you the recording folder: open it with <em>Open project</em>. You confirm the first transaction's drafted steps, review how the other transactions differ, write the document and export the PDD. The Overview's <em>Checklist</em> ticks what is done, with one button for the next act.</p>
           <ol class="help-steps">
-            <li><strong>Runs.</strong> Open the recording: the app analyzes it by itself and drafts each run's steps and the map (the bar at the top says so while it works). Each run starts at a start marker; if one is missing, add it on the Timeline (right-click the timeline at that moment) and click <em>Apply marker changes</em>.</li>
-            <li><strong>Reference run.</strong> In Steps, check run 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm run</em>.</li>
-            <li><strong>Other runs.</strong> The other runs arrive drafted and named like the reference run. Open each one in Steps: it lists how it differs from the reference run (extra, skipped or reordered steps). Fix a step where needed; the other runs are not confirmed.</li>
-            <li><strong>Document.</strong> On the Overview, write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx). Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the runs. <em>Save as this process</em>, on the confirmed reference run, keeps its steps on this computer: a later recording of the same process is compared with them.</li>
+            <li><strong>Transactions.</strong> Open the project: the app analyzes the recording by itself and drafts each transaction's steps and the map (the bar at the top says so while it works). Each transaction starts at a start marker; if one is missing, right-click the Timeline at that moment, choose <em>Start a transaction here</em> and click <em>Apply marker changes</em>.</li>
+            <li><strong>Reference transaction.</strong> In Steps, check transaction 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm transaction</em>.</li>
+            <li><strong>Other transactions.</strong> The other transactions arrive drafted and named like the reference transaction. Open each one in Steps: it lists how it differs from the reference transaction (extra, skipped or reordered steps). Fix a step where needed; the other transactions are not confirmed.</li>
+            <li><strong>Document.</strong> On the Overview, you write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
+            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the transactions. <em>Save as this process</em>, on the confirmed reference transaction, keeps its steps on this computer: a later recording of the same process is compared with them.</li>
           </ol>
+          <h3>What the Overview shows</h3>
+          <ul class="help-list">
+            <li><strong>Checklist</strong>: the five acts above, each ticked once it is done. The export is never ticked: the app keeps no record of it.</li>
+            <li><strong>Document</strong>: you write these fields; the PDD prints them. Its line names the fields still empty.</li>
+            <li><strong>From the transcript</strong>: what was said outside the transactions, from the meeting transcript you attached; the app places each sentence by its time.</li>
+            <li><strong>Observations</strong>: the app measures these from the recording: the data typed twice, and where the time goes (the average time of each step and system, and in how many transactions it happened).</li>
+          </ul>
           <h3>Optional inputs</h3>
           <ul class="help-list">
-            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview's recording line or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. It is copied into the recording folder, so the folder carries it.</li>
-            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview's recording line. Its sentences show beside the document fields, and with each step once the transcript is placed in time: a synced video places it, or use <em>Sync</em> on the Timeline's Transcript lane (pick a sentence, then click where it was said). A sentence you add to a step's description or a field is printed in the PDD.</li>
+            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview (the line under the Checklist) or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. It is copied into the project folder, so the folder carries it.</li>
+            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview (the line under the Checklist). Its sentences show beside the document fields, and with each step once the transcript is placed in time: a synced video places it, or use <em>Sync</em> on the Timeline's Transcript lane (pick a sentence, then click where it was said). A sentence said before the recording started shows how long before (for example <em>0:28 before</em>). A sentence you add to a step's description or a field is printed in the PDD.</li>
           </ul>
           <h3>Starting without a recording</h3>
-          <p>In the Open menu, <em>New from a video</em> makes a project from a video of the process (a Teams recording, a screen video): the video is copied into the new folder and the Timeline follows it. <em>New without a recording</em> makes an empty project. Either has one run until you mark runs on the Timeline. Add its steps in Steps with <em>+ Add step</em> (Alt+Up and Alt+Down move a step without a time), or on the Timeline with <em>+ Step</em> at the video's playhead. The step pane's <em>System</em> field says which system a step happens in.</p>
+          <p>In the New menu, <em>New project from a video</em> makes a project from a video of the process (a Teams recording, a screen video): the video is copied into the new folder and the Timeline follows it. <em>New empty project</em> makes a project with nothing in it. Either is one transaction until you mark where each one starts on the Timeline. Add its steps in Steps with <em>+ Add step</em> (Alt+Up and Alt+Down move a step without a time), or on the Timeline with <em>+ Step</em> at the video's playhead. The step pane's <em>System</em> field says which system a step happens in.</p>
           <h3>Screenshots, notes and attachments</h3>
-          <p>In the step pane, <em>Add screenshot</em> takes a frame of the video, a pasted image (Ctrl+V in the pane) or an image file. <em>Use in PDD</em> picks the one the PDD prints under the step; <em>Remove</em> takes one off (a recorded screenshot stays in the recording). A note belongs to a step (the step pane) or to a moment (right-click the Timeline, <em>Add note here</em>); notes stay in the app, the PDD does not print them. <em>Attach file</em> in the step pane and <em>Add file</em> under the Overview's document fields copy a file (an example email, a spreadsheet, an SOP) into the session folder, and the PDD lists them. Ctrl+Z undoes each of these.</p>
+          <p>In the step pane, <em>Add screenshot</em> takes a frame of the video, a pasted image (Ctrl+V in the pane) or an image file. <em>Use in PDD</em> picks the one the PDD prints under the step; <em>Remove</em> takes one off (a recorded screenshot stays in the recording). A note belongs to a step (the step pane) or to a moment (right-click the Timeline, <em>Add note here</em>); notes stay in the app, the PDD does not print them. <em>Attach file</em> in the step pane and <em>Add file</em> under the Overview's document fields copy a file (an example email, a spreadsheet, an SOP) into the project folder, and the PDD lists them. Ctrl+Z undoes each of these.</p>
         </section>
 
         <section class="help-section" data-section="stepsphases">
-          <h3>Runs and drafted steps</h3>
-          <p>A <strong>run</strong> is one pass through the process, from a start marker to its end marker. The app drafts every run's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the work moves to another screen. Steps lists the runs in time order; open a run to see its steps. Steps outside every run are listed under <em>Outside runs</em>.</p>
-          <h3>Confirm the reference run</h3>
+          <h3>Transactions and drafted steps</h3>
+          <p>A <strong>transaction</strong> is one pass through the process, from a start marker to its end marker. The app drafts every transaction's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the work moves to another screen. Steps lists the transactions in time order; open one to see its steps. Steps outside every transaction are listed under <em>Outside the transactions</em>.</p>
+          <h3>Confirm the reference transaction</h3>
           <ol class="help-steps">
-            <li>Open the <strong>reference</strong> run: run 1, marked <em>Reference</em>, unless you choose another one (right-click a run, <em>Use as reference run</em>).</li>
+            <li>Open the <strong>reference</strong> transaction: transaction 1, marked <em>Reference</em>, unless you choose another one (right-click a transaction, <em>Use as reference transaction</em>).</li>
             <li>Check its steps against the screenshots or the video. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (right-click a step, or use the step pane).</li>
             <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. In the step pane the name is saved when you press Enter or leave the field, the description when you leave it; there is no Save button, and Ctrl+Z undoes each change. A step's description is printed with it in the PDD.</li>
-            <li>Click <strong>Confirm run</strong>: the steps you did not change are accepted as they are. <em>Reopen run</em> takes the confirmation back.</li>
+            <li>Click <strong>Confirm transaction</strong>: the steps you did not change are accepted as they are. <em>Reopen transaction</em> takes the confirmation back.</li>
           </ol>
           <h3>The step panel</h3>
-          <p>Select a step in Steps, click a box on the Map or a step band on the Timeline: the step panel opens beside it. It shows every time the step happens in the runs, each with its moment (&#9654; plays it in the panel's own video), its screenshots, what was said and its notes. <em>Watch</em> in the step pane plays the step there.</p>
-          <h3>Fixes that carry to the other runs</h3>
-          <p>A merge in the reference run is also made in the other runs wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every run. Splits and added steps are made in each run that needs them.</p>
-          <h3>Differences between runs</h3>
-          <p>Every other run is compared with the reference run step by step, the way the PDD compares them: an open run lists its extra steps (and where they happen), its skipped steps and the steps done in a different order. The other runs are not confirmed: once each has been opened, the Overview counts them as reviewed.</p>
+          <p>Select a step in Steps, click a box on the Map or a step band on the Timeline: the step panel opens beside it. It shows every time the step happens in the transactions, each with its moment (&#9654; plays it in the panel's own video), its screenshots, what was said and its notes. <em>Watch</em> in the step pane plays the step there.</p>
+          <h3>Fixes that carry to the other transactions</h3>
+          <p>A merge in the reference transaction is also made in the other transactions wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every transaction. Splits and added steps are made in each transaction that needs them.</p>
+          <h3>Differences between transactions</h3>
+          <p>Every other transaction is compared with the reference transaction step by step, the way the PDD compares them: an open transaction lists its extra steps (and where they happen), its skipped steps and the steps done in a different order. The other transactions are not confirmed: once each has been opened, the Overview's Checklist ticks <em>Review the other transactions</em>.</p>
           <h3>Saved names</h3>
-          <p>A name you give a drafted step goes at once to the same drafted steps in the other runs, and this computer saves it: the next analysis of this recording or a later one drafts those steps with it (each run says in one line how many of its names came from saved names). <em>Saved names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
+          <p>A name you give a drafted step goes at once to the same drafted steps in the other transactions, and this computer saves it: the next analysis of this project or a later one drafts those steps with it (each transaction says in one line how many of its names came from saved names). <em>Saved names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
           <h3>Saved processes</h3>
-          <p>Once the reference run is confirmed, <em>Save as this process</em> keeps its steps on this computer. A later session of the same process is compared with the saved process until its own reference run is confirmed.</p>
+          <p>Once the reference transaction is confirmed, <em>Save as this process</em> keeps its steps on this computer. A later project of the same process is compared with the saved process until its own reference transaction is confirmed.</p>
           <h3>What the step labels mean</h3>
-          <p>A step shows its label only where it differs from its run: the reference run's status (Draft or Confirmed) says it for the others, and a drafted step of another run shows none. Steps outside every run show theirs.</p>
+          <p>A step shows its label only where it differs from its transaction: the reference transaction's status (Draft or Confirmed) says it for the others, and a drafted step of another transaction shows none. Steps outside every transaction show theirs.</p>
           <ul class="help-list">
             <li><span class="step-chip step-chip-draft">Draft</span> drafted by the app and not checked yet; every analysis drafts it again.</li>
             <li><span class="step-chip step-chip-confirmed">Confirmed</span> you accepted the draft as it is.</li>
             <li><span class="step-chip step-chip-edited">Edited</span> you changed its name, its boundaries or its flags.</li>
             <li><span class="step-chip step-chip-added">Added</span> you added it by hand.</li>
-            <li><span class="step-chip step-chip-hidden">Hidden</span> you took it out; <em>Show hidden steps</em> on its run lists it again.</li>
+            <li><span class="step-chip step-chip-hidden">Hidden</span> you took it out; <em>Show hidden steps</em> on its transaction lists it again.</li>
           </ul>
           <p>Every analysis keeps confirmed, edited, added and hidden steps as they are.</p>
           <h3>Leaving things out</h3>
@@ -404,29 +427,29 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Hide step</strong>: takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
           <h3>Waste</h3>
-          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step. Branches and exceptions are not flags: the map and the differences between the runs show them.</p>
+          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step. Branches and exceptions are not flags: the map and the differences between the transactions show them.</p>
         </section>
 
         <section class="help-section" data-section="markers">
           <h3>Working with markers</h3>
-          <p>A run starts at a start marker and ends at its end marker; the SME places them with the recording bar or the recording keys. An edited marker changes the runs once you apply it; the recording itself never changes.</p>
+          <p>A transaction starts at a start marker and ends at its end marker; the SME places them with the recording bar or the recording keys. An edited marker changes the transactions once you apply it; the recording itself never changes.</p>
           <ul class="help-list">
-            <li><strong>Add</strong>: right-click the timeline at that moment and insert a Start or End marker.</li>
+            <li><strong>Add</strong>: right-click the timeline at that moment and choose <em>Start a transaction here</em> or <em>End the transaction here</em>.</li>
             <li><strong>Rename, move or delete</strong>: in the Timeline's Markers panel. Double-click a Start marker to rename it.</li>
-            <li><strong>Apply</strong>: a changed marker shows at once as pending. <em>Apply marker changes</em>, in the bar at the top, updates the runs, the steps and the map.</li>
+            <li><strong>Apply</strong>: a changed marker shows at once as pending. <em>Apply marker changes</em>, in the bar at the top, updates the transactions, the steps and the map.</li>
           </ul>
-          <p class="help-hint">To join two runs, delete the End of the first and the Start of the second. To split a run, insert a Start where its second part begins: a Start ends the run before it.</p>
+          <p class="help-hint">To join two transactions, delete the End of the first and the Start of the second. To split a transaction, start a transaction where its second part begins: a Start ends the transaction before it.</p>
         </section>
 
         <section class="help-section" data-section="capture">
           <h3>What to tell the SME</h3>
-          <p>The SME records with the capture app on their own computer. These keys mark the runs while recording:</p>
+          <p>The SME records with the capture app on their own computer. These keys mark the transactions while recording:</p>
           <table class="help-table">
-            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Start the next run (Run 1, Run 2, and so on). Ends the previous run first, and starts the recording if none is running.</td></tr>
-            <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>End the current run.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>The transaction key: start the next transaction (Transaction 1, Transaction 2, and so on). Ends the previous transaction first, and starts the recording if none is running.</td></tr>
+            <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>End the current transaction.</td></tr>
             <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Take a screenshot by hand.</td></tr>
           </table>
-          <p class="help-hint">The recording bar on the SME's screen does the same without the keys: <em>Start recording</em>, then <em>Next run</em> for each run, <em>Pause</em> and <em>Stop</em>. <em>End run</em> is in the capture app's tray menu.</p>
+          <p class="help-hint">The recording bar on the SME's screen does the same without the keys: <em>Start recording</em>, then <em>Next transaction</em> for each transaction, <em>Pause</em> and <em>Stop</em>. <em>End transaction</em> is in the capture app's tray menu.</p>
         </section>
 
         <section class="help-section" data-section="shortcuts">
@@ -437,23 +460,23 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Zoom the timeline in, out, or back to the whole recording</td></tr>
             <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last edit</td></tr>
             <tr><td><span class="kbd">Ctrl+Y</span> / <span class="kbd">Ctrl+Shift+Z</span></td><td>Redo</td></tr>
-            <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous or next step of the open run</td></tr>
+            <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span> (Steps)</td><td>Previous or next step of the open transaction</td></tr>
             <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
-            <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step, or merge it with the next step of its run</td></tr>
+            <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step, or merge it with the next step of its transaction</td></tr>
             <tr><td><span class="kbd">N</span> (Steps)</td><td>Add a step by hand, without a time</td></tr>
             <tr><td><span class="kbd">S</span> (Timeline, with a video)</td><td>Add a step at the video's playhead</td></tr>
-            <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the reference run, when it is open</td></tr>
-            <tr><td><span class="kbd">Alt+↑</span> <span class="kbd">Alt+↓</span> (Steps)</td><td>Move a step without a time up or down in its run</td></tr>
+            <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the reference transaction, when it is open</td></tr>
+            <tr><td><span class="kbd">Alt+↑</span> <span class="kbd">Alt+↓</span> (Steps)</td><td>Move a step without a time up or down in its transaction</td></tr>
             <tr><td><span class="kbd">Ctrl+V</span> (step pane)</td><td>Add the image on the clipboard as a screenshot of the step</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
-          <p class="help-hint">Undo covers every edit (steps, markers, document fields, maps), up to 50, until you open another recording.</p>
+          <p class="help-hint">Undo covers every edit (steps, markers, document fields, maps), up to 50, until you open another project.</p>
           <h3>Clicks</h3>
           <ul class="help-list">
             <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>
             <li>Click a step band on the timeline to open the step panel beside it.</li>
-            <li>Right-click the timeline to insert a Start or End marker there, or to add a note at that moment.</li>
+            <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment.</li>
             <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>.</li>
           </ul>
         </section>
@@ -462,13 +485,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Common issues</h3>
           <dl class="help-dl">
             <dt>A recording key did nothing</dt>
-            <dd>Another program on the SME's computer may hold the same key. The capture app says so when it starts: <em>Keys changed</em> names the key it uses instead, <em>Keys not available</em> means there is none. Use the recording bar (<em>Start recording</em>, then <em>Next run</em>) or the tray menu (<em>Next run</em>, <em>End run</em>), or close that program and start the capture app again.</dd>
+            <dd>Another program on the SME's computer may hold the same key. The capture app says so when it starts: <em>Keys changed</em> names the key it uses instead, <em>Keys not available</em> means there is none. Use the recording bar (<em>Start recording</em>, then <em>Next transaction</em>) or the tray menu (<em>Next transaction</em>, <em>End transaction</em>), or close that program and start the capture app again.</dd>
 
             <dt>A Citrix or remote desktop window shows as one app</dt>
-            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the run markers and a video for that part and add its steps by hand in Steps.</dd>
+            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the transaction markers and a video for that part and add its steps by hand in Steps.</dd>
 
             <dt>The steps or the map are missing or out of date</dt>
-            <dd>The app analyzes a recording by itself when it opens. If that stopped (it was cancelled, or it failed and the log at the top says why), analyze it again. Your confirmed, edited, added and hidden steps are kept.
+            <dd>The app analyzes a project by itself when it opens. If that stopped (it was cancelled, or it failed and the log at the top says why), analyze it again. Your confirmed, edited, added and hidden steps are kept.
               <div class="help-action"><button type="button" id="btn-help-reanalyze">Re-analyze</button></div></dd>
           </dl>
         </section>

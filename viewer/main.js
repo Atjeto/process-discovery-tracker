@@ -169,7 +169,7 @@ function createMainWindow() {
 
 ipcMain.handle("viewer:openSessionFolder", async () => {
   const r = await dialog.showOpenDialog(mainWindow, {
-    title: "Open session folder",
+    title: "Open project",
     properties: ["openDirectory"],
   });
   if (r.canceled || !r.filePaths.length) return null;
@@ -228,7 +228,7 @@ function loadSessionData(sessionFolder) {
      accesses are anchored to a known root. */
   const root = path.resolve(sessionFolder);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
-    throw new Error(`Session folder not found: ${root}`);
+    throw new Error(`Project folder not found: ${root}`);
   }
   sessionFolder = root;
   // Track this resolved root so viewer:openExternal can confine
@@ -236,7 +236,7 @@ function loadSessionData(sessionFolder) {
   _knownSessionRoots.add(root);
   const manifestPath = path.join(sessionFolder, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
-    throw new Error(`Not a session folder (no manifest.json): ${sessionFolder}`);
+    throw new Error(`Not a project folder (no manifest.json): ${sessionFolder}`);
   }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
@@ -332,9 +332,9 @@ function loadOptionalJson(p) {
    the translation so an engineer can still read it. */
 const PIPELINE_ERROR_TRANSLATIONS = [
   [/KeyError: ['"]timestamp['"]/, "Some events are missing timestamps: the capture may have been interrupted."],
-  [/KeyError: ['"]case_ids['"]/, "Case assignment failed: check that Start/End markers are present in the session."],
+  [/KeyError: ['"]case_ids['"]/, "The transactions could not be found: check that the recording has its Start and End markers."],
   [/InductiveMiner|inductive_miner/, "Process-map mining ran into trouble: try adding noisy apps to the ignored list to cut complexity."],
-  [/FileNotFoundError.*events\.jsonl/, "The events file is missing: was the session folder copied completely?"],
+  [/FileNotFoundError.*events\.jsonl/, "The events file is missing: was the project folder copied completely?"],
   [/yaml\.scanner\.ScannerError|yaml\.parser\.ParserError/, "A YAML file has a syntax error: check its indentation."],
   [/ModuleNotFoundError|ImportError/, "A Python package the pipeline needs is missing from the bundled runtime."],
 ];
@@ -360,7 +360,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
   try {
     root = path.resolve(opts.sessionFolder);
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
-      return { ok: false, code: null, error: "Analysis could not start: this is not a session folder (no manifest.json)." };
+      return { ok: false, code: null, error: "Analysis could not start: this is not a project folder (no manifest.json)." };
     }
     // RP-04: normalize.py rewrites annotations.json. Never launch it over an
     // unreadable one (the pipeline's own check is C13 exit code 2; this guard
@@ -438,7 +438,7 @@ ipcMain.handle("viewer:saveExternalVideoSync", async (_e, { sessionFolder, video
   try {
     const root = path.resolve(sessionFolder);
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
-      return { ok: false, error: "Not a session folder" };
+      return { ok: false, error: "Not a project folder" };
     }
     let busy = _refuseWhileAnalyzing(root);
     if (busy) return busy;
@@ -489,7 +489,7 @@ function _sessionRoot(sessionFolder) {
    reason; exit 2 and 3 leave the previous transcript in place). */
 ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => {
   const root = _sessionRoot(sessionFolder);
-  if (!root) return { ok: false, code: null, error: "this is not a session folder." };
+  if (!root) return { ok: false, code: null, error: "this is not a project folder." };
   const r = await dialog.showOpenDialog(mainWindow, {
     title: "Attach transcript",
     properties: ["openFile"],
@@ -508,7 +508,7 @@ ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => 
 ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a session folder." };
+    if (!root) return { ok: false, error: "this is not a project folder." };
     return { ok: true, removed: TranscriptStore.removeTranscript(root).removed };
   } catch (e) {
     return { ok: false, error: (e && e.message) || String(e) };
@@ -520,7 +520,7 @@ ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
 ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {}) => {
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a session folder." };
+    if (!root) return { ok: false, error: "this is not a project folder." };
     TranscriptStore.saveTranscriptOffset(root, offsetMs);
     return { ok: true };
   } catch (e) {
@@ -542,7 +542,7 @@ function _holdDir(root) {
 /* The project chosen by the last chooseNewProject, made by createProject. */
 let _newProjectPlan = null;
 
-/* New from a video / New without a recording: the video (for a video
+/* New project from a video / New empty project: the video (for a video
    project), then one save dialog for the project's name and where its folder
    goes (default: a folder named after the video next to it, or in the
    user's Documents). Result null (cancelled), { ok: true, name, folder } or
@@ -552,7 +552,7 @@ ipcMain.handle("viewer:chooseNewProject", async (_e, { kind } = {}) => {
   const video = kind === "video";
   let videoPath = null;
   if (video) {
-    const r = await dialog.showOpenDialog(mainWindow, { title: "New from a video: choose the video", properties: ["openFile"], filters: VIDEO_FILTER });
+    const r = await dialog.showOpenDialog(mainWindow, { title: "New project from a video: choose the video", properties: ["openFile"], filters: VIDEO_FILTER });
     if (r.canceled || !r.filePaths.length) return null;
     videoPath = r.filePaths[0];
   }
@@ -592,7 +592,7 @@ ipcMain.handle("viewer:createProject", async () => {
 ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data } = {}) => {
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a session folder." };
+    if (!root) return { ok: false, error: "this is not a project folder." };
     let buf;
     if (source === "file") {
       const r = await dialog.showOpenDialog(mainWindow, { title: "Add a screenshot", properties: ["openFile"],
@@ -618,7 +618,7 @@ ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data 
 ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
   try {
     const root = _sessionRoot(sessionFolder);
-    if (!root) return { ok: false, error: "this is not a session folder." };
+    if (!root) return { ok: false, error: "this is not a project folder." };
     const r = await dialog.showOpenDialog(mainWindow, { title: "Attach a file", properties: ["openFile"] });
     if (r.canceled || !r.filePaths.length) return null;
     const c = AnalystFiles.copyAttachment(root, r.filePaths[0]);
@@ -633,7 +633,7 @@ ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
    or { ok: false, error }. */
 ipcMain.handle("viewer:openAttachment", async (_e, { sessionFolder, file } = {}) => {
   const root = _sessionRoot(sessionFolder);
-  if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "this is not an open session." };
+  if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "this is not an open project." };
   const t = AnalystFiles.attachmentTarget(root, file, fs.existsSync);
   if (!t.ok) return t;
   if (!t.open) { shell.showItemInFolder(t.path); return { ok: true, shown: true }; }
@@ -661,7 +661,7 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
   try {
     const root = path.resolve(String(sessionFolder || ""));
     if (!sessionFolder || !fs.existsSync(path.join(root, "manifest.json"))) {
-      return { ok: false, code: null, error: "Refusing to write annotations: not a session folder." };
+      return { ok: false, code: null, error: "Refusing to write annotations: not a project folder." };
     }
     const busy = _refuseWhileAnalyzing(root);
     if (busy) return busy;

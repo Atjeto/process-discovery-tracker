@@ -4,8 +4,9 @@
  * map, the timeline or the Steps list stays visible:
  *   a click on a map box, a click on a timeline step band, a selected Steps
  *   row (and Watch in the step pane, which plays its step here).
- * It names the step, its system and description, says "In N of M runs,
- * about Xs each", and lists one row per occurrence: "Run 1 at 0:39" (the
+ * It names the step, its system and description, says "In N of M
+ * transactions, about Xs each", and lists one row per occurrence:
+ * "Transaction 1 at 0:39" (the
  * time since the recording started, the PDD's pointer) with a play button
  * that plays that occurrence in the panel's small video (when the recording
  * has one), its screenshots (a click opens one full size) and what was said
@@ -59,13 +60,14 @@ function occurrences(label, runs, focus) {
   return out;
 }
 
-/* "In 4 of 4 runs, about 8s each". */
+/* "In 4 of 4 transactions, about 8s each" (a run is a transaction to the
+   reader, AD-29). */
 function countLine(occ, runCount) {
   const inRuns = new Set(occ.filter((o) => o.run).map((o) => o.run.caseId)).size;
   const ms = occ.map((o) => Date.parse(o.step.time_range && o.step.time_range.end) - Date.parse(o.step.time_range && o.step.time_range.start))
     .filter((x) => isFinite(x) && x >= 0);
   const avg = ms.length ? StepFacts.formatMs(ms.reduce((a, b) => a + b, 0) / ms.length) : "";
-  return (runCount ? "In " + inRuns + " of " + runCount + " run" + (runCount === 1 ? "" : "s") : "Outside the runs") +
+  return (runCount ? "In " + inRuns + " of " + runCount + " transaction" + (runCount === 1 ? "" : "s") : "Outside the transactions") +
     (avg ? ", about " + avg + " each" : "");
 }
 
@@ -137,7 +139,7 @@ function render() {
     '<div class="sp-foot">' + (onSteps
       ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
         (lead.time_range && lead.time_range.start ? "" : " disabled") + '>Show on timeline</button>'
-      : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its run">Open in Steps</button>') + "</div>";
+      : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>') + "</div>";
 }
 
 function _show(open) {
@@ -195,11 +197,11 @@ function play(stepId) {
   const step = _steps().find((st) => st.step_id === stepId);
   const video = $("sp-video");
   if (!s || !step || !video || !s.recordingAvailable || !s.recordingPath) {
-    toast("No video is linked to this recording.", "error");
+    toast("No video is linked to this project.", "error");
     return;
   }
   const startTs = Video.videoStartTs();
-  if (!startTs) { toast("Cannot line the video up with the recording: it has no start time.", "error"); return; }
+  if (!startTs) { toast("Cannot line the video up with the project: it has no start time.", "error"); return; }
   const base = Date.parse(startTs);
   const from = (Date.parse(step.time_range && step.time_range.start) - base) / 1000;
   const to = (Date.parse(step.time_range && step.time_range.end) - base) / 1000;

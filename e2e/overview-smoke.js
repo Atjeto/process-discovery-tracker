@@ -7,14 +7,15 @@
  *   (a) the DEFAULT level is Overview (#session-layout-overview visible,
  *       its level button active, the Timeline layout hidden), laid out at its
  *       full height (the Session view scrolls; L5b small-screen fix);
- *   (b) the home leads with the "What is left" line (five stages, one
- *       button), the recording line (the reference run's steps, not every
- *       run's; the video and the transcript with their Attach), the document,
- *       then the Observations; the findings feed, its evidence and the
- *       "include in PDD" ticks are gone, and no "More" menu or "Analyze
- *       session" button exists anywhere;
- *   (c) the Observations: Data typed twice (per field) and Where the time
- *       goes (per step and per system, in N of 4 runs);
+ *   (b) the home leads with the Checklist (five acts worded as acts, each
+ *       with its tooltip, one button; AD-29), the project line (the
+ *       reference transaction's steps, not every one's; the video and the
+ *       transcript with their Attach), the document, then the Observations;
+ *       the findings feed, its evidence and the "include in PDD" ticks are
+ *       gone, and no "More" menu or "Analyze session" button exists anywhere;
+ *   (c) the Observations, "Measured from the recording": Data typed twice
+ *       (per field) and Where the time goes (per step and per system,
+ *       Average time and Happened in "N of 4 transactions");
  *   (c2) the moved controls are where they are used (ids kept);
  *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
  *   (d) the analyst path, walked on the demo: every next act lands where it
@@ -28,8 +29,9 @@
  *       the As-Is copy (P2.12);
  *   (h) Attach video syncs with two clicks (click-to-sync), no typed offset;
  *       Cancel leaves the recording as it was;
- *   (e) on a marker-STRIPPED copy the line says no runs are marked, and its
- *       button opens the Timeline with the Markers panel showing;
+ *   (e) on a marker-STRIPPED copy the Checklist says no transactions are
+ *       marked, and its button opens the Timeline with the Markers panel
+ *       showing;
  *   (g) on a copy never analyzed, the analysis runs by itself on open with
  *       one status line (Updating steps and map... with Cancel) and no log;
  *       an analysis keeps confirmed, edited, added and hidden steps (Leave
@@ -232,8 +234,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(fullHeight && !fullHeight.err && fullHeight.contentH > 200 && fullHeight.contentH <= fullHeight.boxH + 1),
     JSON.stringify(fullHeight));
 
-  // (b) The home: the what-is-left line first (five stages, one button), the
-  // recording line next, then the document and the Observations.
+  // (b) The home: the Checklist first (five acts, one button), the project
+  // line next, then the document and the Observations.
   const home = await page.evaluate(() => {
     const host = document.getElementById("overview-content");
     const kids = [...host.children].map((c) => c.id || c.className);
@@ -249,26 +251,31 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
       stages,
       labels: line ? [...line.querySelectorAll(".ov-next-stage")].map((li) => (li.textContent || "").replace("✓", "").trim()) : [],
+      tips: line ? [...line.querySelectorAll(".ov-next-stage")].map((li) => (li.title || "").length) : [],
+      lineLabel: line ? ((line.querySelector(".ov-next-label") || {}).textContent || "").trim() : null,
       summary: sum ? (sum.textContent || "").replace(/\s+/g, " ").trim() : null,
       summaryH: sum ? Math.round(sum.getBoundingClientRect().height) : null,
       removed: document.querySelectorAll(".ov-tile, .ov-facts, .ov-badge, #ov-mark-runs, .ov-export-bar, " +
         "#btn-ov-export-pdd, #session-summary, .ov-tier2").length,
-      // "in N of 4 runs" in Where the time goes is a time's frequency, not the run count.
-      runsSaid: (text.match(/(?<!of )\b4 runs\b/g) || []).length,
+      // "N of 4 transactions" in Where the time goes is a time's frequency, not the count.
+      runsSaid: (text.match(/(?<!of )\b4 transactions\b/g) || []).length,
+      oldWords: (text.match(/\bruns?\b|What is left/gi) || []).length,
       casesSaid: (text.match(/\b4 cases\b/g) || []).length,
       everyRunCount: /\b30 steps\b|steps confirmed/.test(text),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(b) the home leads with the What is left line (Runs, Reference run, Other runs, Document, PDD; runs done, next the reference run, one button), then the recording line, the document and the Observations",
+  record("(b) AD-29: the home leads with the Checklist (Mark the transactions, Confirm the reference transaction, Review the other transactions, Write the document, Export the PDD, each with its tooltip; the first ticked, next the reference transaction, one button), then the project line, the document and the Observations",
     !!(home && !home.err && same(home.kids, ["ov-next", "ov-summary", "ov-doc", "ov-observations"]) &&
-      home.next === "pattern" && home.buttons === 1 && home.button === "Confirm Run 1 in Steps" &&
+      home.lineLabel === "Checklist" &&
+      home.next === "pattern" && home.buttons === 1 && home.button === "Confirm transaction 1 in Steps" &&
       home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,export:-" &&
-      same(home.labels, ["Runs", "Reference run", "Other runs", "Document", "PDD"])),
+      same(home.labels, ["Mark the transactions", "Confirm the reference transaction", "Review the other transactions",
+        "Write the document", "Export the PDD"]) && home.tips.length === 5 && home.tips.every((n) => n > 40)),
     JSON.stringify(home));
-  record("(b2) the recording line: the name, who recorded it, the runs said once and the reference run's 7 steps (not 30 over every run), then the video and the transcript with Attach; the removed surfaces stay gone",
+  record("(b2) the project line: the name, who recorded it, the transactions said once and the reference transaction's 7 steps (not 30 over every one), then the video and the transcript with Attach; the removed surfaces stay gone; no run or What is left wording on the home",
     !!(home && !home.err && home.removed === 0 && home.summaryH > 0 && home.summaryH < 40 &&
-      home.summary === "demo-order-processing · recorded by demo-worker · 4 runs · 7 steps in run 1 · No video Attach · No transcript Attach" &&
-      home.runsSaid === 1 && home.casesSaid === 0 && !home.everyRunCount),
+      home.summary === "demo-order-processing · recorded by demo-worker · 4 transactions · 7 steps in transaction 1 · No video Attach · No transcript Attach" &&
+      home.runsSaid === 1 && home.casesSaid === 0 && !home.everyRunCount && home.oldWords === 0),
     JSON.stringify(home && { removed: home.removed, summary: home.summary, summaryH: home.summaryH,
       runsSaid: home.runsSaid, everyRunCount: home.everyRunCount }));
 
@@ -316,6 +323,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     try { for (const k of ["retyped", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
     return {
       present: true, title: ((host.querySelector(".ov-section-title") || {}).textContent || "").trim(),
+      who: ((host.querySelector(".ov-section-head .ov-block-who") || {}).textContent || "").trim(),
       modules: items.map((m) => m.dataset.module),
       titles: items.map((m) => ((m.querySelector(".analysis-module-title") || {}).textContent || "").trim()),
       closed, takeaways, retyped, tables,
@@ -323,23 +331,27 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   }).catch((e) => ({ err: e.message }));
   const stepsTable = obs && obs.tables && obs.tables[0];
   const appsTable = obs && obs.tables && obs.tables[1];
-  record("(c) Observations: two items, Data typed twice and Where the time goes, closed by default with their takeaways",
-    !!(obs && !obs.err && obs.present && obs.title === "Observations" && same(obs.modules, ["retyped", "time"]) &&
+  record("(c) Observations (\"Measured from the recording\"): two items, Data typed twice and Where the time goes, closed by default with their takeaways",
+    !!(obs && !obs.err && obs.present && obs.title === "Observations" && obs.who === "Measured from the recording" &&
+      same(obs.modules, ["retyped", "time"]) &&
       same(obs.titles, ["Data typed twice", "Where the time goes"]) && obs.closed === 2 &&
       obs.takeaways.every((t) => t.length > 0)),
-    JSON.stringify(obs && { title: obs.title, modules: obs.modules, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
+    JSON.stringify(obs && { title: obs.title, who: obs.who, modules: obs.modules, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
   record("(c) Data typed twice says the field pair, each place named by its system: Product code in Salesforce typed again as Material number in SAP (V2 item 3)",
     !!(obs && Array.isArray(obs.retyped) &&
       obs.retyped[0] === "Product code in Salesforce typed again as Material number in SAP"),
     JSON.stringify(obs && obs.retyped));
-  record("(c) Where the time goes: per step and per system (V2 item 3: Salesforce, never the browser), each with its time per run and in N of 4 runs (the Notepad lookup in 1 of 4)",
-    !!(stepsTable && appsTable && same(stepsTable.head, ["Step", "Per run", "Runs"]) &&
-      same(appsTable.head, ["System", "Per run", "Runs"]) && stepsTable.rows.length >= 5 &&
-      stepsTable.rows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
-      appsTable.rows.some((r) => r[0] === "SAP" && r[2] === "in 4 of 4 runs") &&
-      appsTable.rows.some((r) => r[0] === "Salesforce" && r[2] === "in 4 of 4 runs") &&
+  // AD-29: "Step | Average time | Happened in", values like "10 s" and "4 of 4 transactions".
+  const AVG_TIME = /^(under 1 s|\d+ s|\d+ min( \d+ s)?|\d+ h( \d+ min)?)$/;
+  record("(c) Where the time goes: per step and per system (V2 item 3: Salesforce, never the browser), each with its Average time and where it Happened in, N of 4 transactions (the Notepad lookup in 1 of 4)",
+    !!(stepsTable && appsTable && same(stepsTable.head, ["Step", "Average time", "Happened in"]) &&
+      same(appsTable.head, ["System", "Average time", "Happened in"]) && stepsTable.rows.length >= 5 &&
+      stepsTable.rows.every((r) => AVG_TIME.test(r[1]) && /^[1-4] of 4 transactions$/.test(r[2])) &&
+      appsTable.rows.every((r) => AVG_TIME.test(r[1])) &&
+      appsTable.rows.some((r) => r[0] === "SAP" && r[2] === "4 of 4 transactions") &&
+      appsTable.rows.some((r) => r[0] === "Salesforce" && r[2] === "4 of 4 transactions") &&
       !appsTable.rows.some((r) => /Chrome/.test(r[0])) &&
-      appsTable.rows.some((r) => r[0] === "Notepad" && r[2] === "in 1 of 4 runs")),
+      appsTable.rows.some((r) => r[0] === "Notepad" && r[2] === "1 of 4 transactions")),
     JSON.stringify(obs && obs.tables));
 
   // (c2) The moved controls, where they are used, with their ids.
@@ -355,7 +367,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       runSelect: !!(document.getElementById("case-scope") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the recording line, Attach video... on the video band, Sync video... in the video header, Leave apps out... and Saved names... in the Steps toolbar, the Run select in the Timeline's header",
+  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Leave apps out... and Saved names... in the Steps toolbar, the Transaction select in the Timeline's header",
     !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach", where: true }) &&
       same(moved.attachTranscript, { text: "Attach", where: true }) &&
       same(moved.linkRecording, { text: "Attach video...", where: true }) &&
@@ -378,7 +390,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true,
         clientX: r.left + r.width * 0.27, clientY: r.top + 4 }));
     });
-    await page.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+    await page.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
     await page.locator(".modal-prompt .modal-input").fill("E2E apply check", { timeout: T });
     await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
     await page.waitForSelector("#btn-apply-marker-edits", { state: "visible", timeout: T });
@@ -394,9 +406,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits"), null, { timeout: T });
     apply.after = readAnno().marker_edits || [];
   } catch (e) { logActionError("(c3) Apply marker changes", e); apply.err = String(e.message).split("\n")[0]; }
-  record("(c3) a marker change shows 'Apply 1 marker change' in the top bar; it asks 'Update the drafts of the changed runs?'; Cancel runs nothing and Ctrl+Z takes the marker back",
+  record("(c3) a marker change shows 'Apply 1 marker change' in the top bar; it asks 'Update the drafts of the changed transactions?'; Cancel runs nothing and Ctrl+Z takes the marker back",
     !!(!apply.err && apply.cta === "Apply 1 marker change" && apply.inBar &&
-      /^Apply 1 marker change.*Update the drafts of the changed runs\?.*Your confirmed, edited, added and hidden steps are kept\./.test(apply.confirm) &&
+      /^Apply 1 marker change.*Update the drafts of the changed transactions\?.*Your confirmed, edited, added and hidden steps are kept\./.test(apply.confirm) &&
       apply.runAfterCancel === "Apply 1 marker change" && same(apply.after, apply.before)),
     JSON.stringify(apply));
   await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: T }).catch(() => {});
@@ -410,6 +422,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     return line ? {
       next: line.dataset.next,
       ready: line.classList.contains("ov-next-ready"),
+      label: ((line.querySelector(".ov-next-label") || {}).textContent || "").trim(),
+      readyText: ((line.querySelector(".ov-next-ready-text") || {}).textContent || "").trim(),
       button: ((document.getElementById("btn-ov-next") || {}).textContent || "").trim(),
       say: ((line.querySelector(".ov-next-say") || {}).textContent || "").trim(),
       done: [...line.querySelectorAll(".ov-next-stage.done")].map((li) => li.dataset.stage),
@@ -438,7 +452,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   });
   const walk = { landings: {} };
   try {
-    // 1. The reference run: the button opens Steps on Run 1.
+    // 1. The reference transaction: the button opens Steps on transaction 1.
     await page.locator("#btn-ov-next").click({ timeout: T });
     await page.waitForSelector("#step-list .run-group.open", { state: "visible", timeout: T });
     walk.landings.pattern = await stepsLanding();
@@ -481,19 +495,19 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     walk.err = String(e.message).split("\n")[0];
   }
   const L = walk.landings;
-  record("(d1) 'Confirm Run 1 in Steps' lands on Steps with the reference run open and its first step selected",
-    !!(L.pattern && L.pattern.onSteps && L.pattern.openRuns === 1 && L.pattern.openTitle === "Run 1" &&
+  record("(d1) 'Confirm transaction 1 in Steps' lands on Steps with the reference transaction open and its first step selected",
+    !!(L.pattern && L.pattern.onSteps && L.pattern.openRuns === 1 && L.pattern.openTitle === "Transaction 1" &&
       L.pattern.openIsPattern && L.pattern.selectedInOpenRun),
     JSON.stringify({ landing: L.pattern, err: walk.err }));
-  record("(d2) a confirmed reference run shows done; the next act is the first run still drafted",
+  record("(d2) a confirmed reference transaction is ticked; the next act is the first transaction still drafted",
     !!(walk.afterPattern && walk.afterPattern.next === "review" && walk.afterPattern.done.includes("pattern") &&
-      walk.afterPattern.button === "Review Run 2 in Steps"),
+      walk.afterPattern.button === "Review transaction 2 in Steps"),
     JSON.stringify(walk.afterPattern));
   const reviewOk = Array.isArray(L.review) && L.review.length === 3 && L.review.every((l, i) =>
-    l.onSteps && l.openRuns === 1 && l.openTitle === "Run " + (i + 2) && !l.openIsPattern &&
-    l.selectedInOpenRun && l.button === "Review Run " + (i + 2) + " in Steps" && l.confirm === 0) &&
-    L.review[0].say === "2 runs differ from the reference run.";
-  record("(d3) AD-28: 'Review Run N in Steps' lands on Steps with that run open (no Confirm run there), for runs 2 to 4; the line says how many runs differ; once each was opened the review shows done (annotations.opened_runs)",
+    l.onSteps && l.openRuns === 1 && l.openTitle === "Transaction " + (i + 2) && !l.openIsPattern &&
+    l.selectedInOpenRun && l.button === "Review transaction " + (i + 2) + " in Steps" && l.confirm === 0) &&
+    L.review[0].say === "2 transactions differ from the reference transaction.";
+  record("(d3) AD-28: 'Review transaction N in Steps' lands on Steps with that transaction open (no Confirm transaction there), for transactions 2 to 4; the line says how many differ; once each was opened the review is ticked (annotations.opened_runs)",
     !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review") &&
       walk.opened.length === 3),
     JSON.stringify({ review: L.review, after: walk.afterReview, opened: walk.opened }));
@@ -516,8 +530,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const purpose = page.locator('#ov-doc [data-doc="purpose"]');
     await purpose.fill(PURPOSE, { timeout: T });
     await purpose.press("Tab");                          // change fires on leaving the field
-    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "1 of 9 written",
-      null, { timeout: T });
+    // AD-29: the count names the fields still to write.
+    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent ===
+      "1 of 9 written. To write: Title, Scope, Trigger, Result, Key contacts, Business rules, Exceptions, " +
+      "Improvement and automation scope", null, { timeout: T });
     docProbe.saved = (readAnno().document || {}).purpose;
     // Undo: Ctrl+Z outside a field is the app's undo.
     await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
@@ -559,13 +575,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       docProbe.onDisk.notes === "" && docProbe.onDisk.trigger === values.trigger &&
       docProbe.onDisk.result === values.result && docProbe.onDisk.improvement === values.improvement),
     JSON.stringify({ onDisk: docProbe.onDisk }));
-  record("(d6) with the document written, the What is left line shrinks to one short line: no stage list, the next act Export PDD (AD-28: no As-Is stage)",
+  record("(d6) with the document written, the Checklist shrinks to one short line: no act list, the next act Export PDD (AD-28: no As-Is stage)",
     !!(docProbe.line && docProbe.line.next === "export" && docProbe.line.ready && docProbe.line.stages === 0 &&
+      docProbe.line.label === "Checklist" && docProbe.line.readyText === "Everything before the export is done: the PDD is ready to export." &&
       docProbe.line.button === "Export PDD" && docProbe.line.height > 0 && docProbe.line.height < 60),
     JSON.stringify({ line: docProbe.line }));
-  record("(P3.9) once written, the document title names the recording on the recording line and in Recent recordings",
+  record("(P3.9) once written, the document title names the project on the project line and in Recent projects",
     docProbe.summaryName === "E2E order intake" && !!docProbe.recent &&
-      docProbe.recent.heading === "Recent recordings" && docProbe.recent.first === "E2E order intake",
+      docProbe.recent.heading === "Recent projects" && docProbe.recent.first === "E2E order intake",
     JSON.stringify({ summaryName: docProbe.summaryName, recent: docProbe.recent }));
 
   // The export renders the maps chosen for the PDD off screen and hands the
@@ -602,8 +619,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     };
   }).catch((e) => console.log("spy", e.message));
 
-  /* Export PDD from the What is left line: the Session menu's PDD path. The
-     save dialog is stubbed to a temp path, the shell reveal to a no-op. */
+  /* Export PDD from the Checklist: the Session menu's PDD path. The save
+     dialog is stubbed to a temp path, the shell reveal to a no-op. */
   const exportPdd = async (tag) => {
     const out = path.join(os.tmpdir(), "pdt-ov-e2e-" + tag + "-" + Date.now() + ".docx");
     await app.evaluate(({ dialog, shell }, p) => {
@@ -715,11 +732,13 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const exportVia = async (itemId, outPath) => {
     await app.evaluate(({ dialog, shell }, p) => {
       global.__pdtSaveDefault = null;
+      global.__pdtRevealed = null;
       dialog.showSaveDialog = async (_w, opts) => {
         global.__pdtSaveDefault = (opts && opts.defaultPath) || null;
         return { canceled: false, filePath: p };
       };
-      shell.showItemInFolder = () => {};
+      // AD-29: every export opens its folder at the file; record where.
+      shell.showItemInFolder = (f) => { global.__pdtRevealed = f; };
     }, outPath);
     await page.locator("#btn-session-export-menu").click({ timeout: T });
     await page.locator("#" + itemId).click({ timeout: T });
@@ -731,8 +750,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await wait(300);
     const text = fs.existsSync(outPath) ? fs.readFileSync(outPath, "utf-8") : "";
     const suggested = await app.evaluate(() => global.__pdtSaveDefault).catch(() => null);
+    const revealed = await app.evaluate(() => global.__pdtRevealed).catch(() => null);
     try { fs.unlinkSync(outPath); } catch (_) {}
-    return { text, suggested: suggested ? path.basename(suggested) : null };
+    return { text, suggested: suggested ? path.basename(suggested) : null,
+      revealed: !!revealed && path.resolve(revealed).toLowerCase() === path.resolve(outPath).toLowerCase() };
   };
   const mapExport = {};
   try {
@@ -742,8 +763,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const bpmn = await exportVia("btn-session-step-bpmn", path.join(os.tmpdir(), "pdt-ov-e2e-asis-" + Date.now() + ".bpmn"));
     mapExport.bpmnIsTheCopy = !!(asIsXml && bpmn.text === asIsXml);
     mapExport.bpmnSuggested = bpmn.suggested;
+    mapExport.bpmnRevealed = bpmn.revealed;
     const svg = await exportVia("btn-session-map-svg", path.join(os.tmpdir(), "pdt-ov-e2e-asis-" + Date.now() + ".svg"));
     mapExport.svgSuggested = svg.suggested;
+    mapExport.svgRevealed = svg.revealed;
     mapExport.svgIsBpmnDrawing = /<svg[\s>]/.test(svg.text) && /djs-/.test(svg.text) && !/Flow diagram \(DFG\)/.test(svg.text);
     mapExport.labels = await page.evaluate(() => ["btn-session-map-svg", "btn-session-step-bpmn"]
       .map((id) => ((document.getElementById(id) || {}).textContent || "").trim()));
@@ -751,9 +774,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     logActionError("P2.12 map exports", e);
     mapExport.err = String(e.message).split("\n")[0];
   }
-  record("P2.12: with an As-Is copy chosen, Export > Process map (BPMN) saves that copy and Process map (image) draws it",
+  record("P2.12 + AD-29: with an As-Is copy chosen, Export > Process map (BPMN) saves that copy and Process map (image) draws it; each opens its folder at the file",
     !!(!mapExport.err && mapExport.asIsFile && mapExport.bpmnIsTheCopy && mapExport.bpmnSuggested === "as-is-map.bpmn" &&
       mapExport.svgIsBpmnDrawing && mapExport.svgSuggested === "as-is-map.svg" &&
+      mapExport.bpmnRevealed && mapExport.svgRevealed &&
       JSON.stringify(mapExport.labels) === '["Process map (image)","Process map (BPMN)"]'),
     JSON.stringify(mapExport));
 
@@ -838,8 +862,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     process.exit(2);
   }
 
-  // (e) AD-14: with no runs the line's next act is marking runs, with the
-  // one-line instruction and the button.
+  // (e) AD-14: with no transactions the Checklist's next act is marking
+  // them, with the one-line instruction and the button.
   const markRuns = await page2.evaluate(() => {
     const line = document.getElementById("ov-next");
     return {
@@ -849,10 +873,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       badges: document.querySelectorAll("#overview-content .ov-badge, #ov-mark-runs").length,
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e) marker-stripped session: the What is left line says no runs are marked, with the instruction and 'Mark runs on the Timeline'",
-    !!(markRuns && !markRuns.err && markRuns.next === "runs" && /no runs marked/i.test(markRuns.lineText || "") &&
-      /start marker/i.test(markRuns.lineText || "") && /Apply marker changes/.test(markRuns.lineText || "") &&
-      markRuns.button === "Mark runs on the Timeline" && markRuns.badges === 0),
+  record("(e) marker-stripped session: the Checklist says no transactions are marked, with the instruction and 'Mark the transactions on the Timeline'",
+    !!(markRuns && !markRuns.err && markRuns.next === "runs" && /no transactions marked/i.test(markRuns.lineText || "") &&
+      /Start a transaction here/.test(markRuns.lineText || "") && /Apply marker changes/.test(markRuns.lineText || "") &&
+      markRuns.button === "Mark the transactions on the Timeline" && markRuns.badges === 0),
     JSON.stringify(markRuns));
   if (!(markRuns && markRuns.next === "runs")) await shot(page2, "fail-overview-mark-runs.png");
 
@@ -877,7 +901,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       panelOnScreen: !!(r && r.height > 0 && r.top < window.innerHeight && r.bottom > 0),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e2) 'Mark runs on the Timeline' lands on the Timeline with the Markers panel showing on screen",
+  record("(e2) 'Mark the transactions on the Timeline' lands on the Timeline with the Markers panel showing on screen",
     !!(landed && !landed.err && markersTabBefore === false && landed.flowVisible &&
       landed.markersTabActive && landed.markersPanelVisible && landed.panelOnScreen),
     JSON.stringify({ markersTabBefore, landed }));

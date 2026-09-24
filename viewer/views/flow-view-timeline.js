@@ -28,6 +28,7 @@ const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp, timelineSpan, attachVideo } = require("./flow-view-video.js");
 const AC = require("../analyst-content.js");
 const MarkerEdits = require("../marker-edits.js");
+const { numberOnlyLabel } = require("../runs-model.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 
@@ -467,7 +468,7 @@ function renderTimeline() {
     if (!evs.length && !State.getSession().recordingAvailable) {
       host.style.width = "";
       host.style.minHeight = "";
-      host.innerHTML = '<div class="tl-empty" id="tl-empty">No recording and no video in this session. ' +
+      host.innerHTML = '<div class="tl-empty" id="tl-empty">No recording and no video in this project. ' +
         '<button type="button" class="link-btn" id="btn-tl-attach-video" title="Attach a video of the process: the Timeline then follows it.">Attach video...</button></div>';
       host.querySelector("#btn-tl-attach-video").addEventListener("click", () => attachVideo());
     }
@@ -592,7 +593,7 @@ function renderTimeline() {
         band.style.width = w + "%";
         band.style.top = top + "px";
         band.style.height = (caseRowH - 4) + "px";
-        band.title = c.title + (c.label ? ": " + c.label : "") +
+        band.title = c.title + (c.label ? " · " + c.label : "") +
           (c.dangling ? " (no end marker)" : "\n" + formatDuration(c.endMs - c.startMs));
         // Click anywhere on a case band -- closed OR dangling -- seeks
         // the video to the case start. Right-click opens the scope/jump
@@ -749,7 +750,7 @@ function renderTimeline() {
         bar.style.top = activityTop + "px";
         bar.title = m.markerType + ": " + (m.label || "") + (m.reason ? " (" + m.reason + ")" : "") +
           (m.pending ? "\nPending: " + (m.deleted ? "deleted" : m.inserted ? "added" : "changed") +
-            ", not applied yet. Click Apply marker changes to update the runs." : "");
+            ", not applied yet. Click Apply marker changes to update the transactions." : "");
         host.appendChild(bar);
         if (m.markerType === "start" && m.label && !m.deleted) {
           const lbl = document.createElement("div");
@@ -964,8 +965,8 @@ function renderTimeline() {
    left open at the end of the recording extends to `last` (dangling). Runs
    never overlap, so the lane packing puts them on one lane. Returns
    { cases: [...], lanesNeeded }; each run is
-   { id, startMs, endMs, label, title ("Run N", the Steps level's name for
-   it), dangling, lane }. */
+   { id, startMs, endMs, label, title ("Transaction N", the Steps level's
+   name for it, AD-29), dangling, lane }. */
 function layoutCaseLanes(evs, first, last) {
   const runs = [];
   let open = null;
@@ -984,7 +985,13 @@ function layoutCaseLanes(evs, first, last) {
   }
   if (open) { open.endMs = last; open.dangling = true; runs.push(open); }
   runs.sort((a, b) => a.startMs - b.startMs);
-  runs.forEach((r, i) => { r.id = i; r.title = "Run " + (i + 1); });
+  // A label that only numbers the run ("Run 2" from the capture app) is not
+  // shown: the band says its title (AD-29).
+  runs.forEach((r, i) => {
+    r.id = i;
+    r.title = "Transaction " + (i + 1);
+    if (numberOnlyLabel(r.label)) r.label = null;
+  });
   // Lane assignment is delegated to the shared timeline core. maxLanes is
   // set high enough that runs are never capped.
   const packed = TimelineCore.packLanes(

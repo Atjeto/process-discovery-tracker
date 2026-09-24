@@ -141,7 +141,7 @@ function startTranscriptSync(e) {
   const sess = State.getSession();
   if (!sess || !sess.transcript) return;
   if (!sess.manifest || !Number.isFinite(Date.parse(sess.manifest.started_at))) {
-    toast("This session has no start time, so the transcript cannot be placed.", "error");
+    toast("This project has no start time, so the transcript cannot be placed.", "error");
     return;
   }
   const sentences = TM.segmentsOf(sess.transcript);
@@ -279,7 +279,7 @@ async function removeTranscript() {
     return;
   }
   await loadSessionIntoView(sess.sessionFolder);
-  toast("Transcript removed. The original file stays in the session's transcript folder.", "success");
+  toast("Transcript removed. The original file stays in the project's transcript folder.", "success");
 }
 
 /* After every session load (flow-view.js): a sync in progress belongs to the
@@ -293,7 +293,7 @@ function onSessionLoaded() {
   const err = sess && sess.transcriptError;
   const key = err ? sess.sessionFolder + "\n" + err : null;
   if (key && key !== _errorShown) {
-    toast("The transcript could not be read: " + err + ". Replace it on the Overview's recording line.", "error");
+    toast("The transcript could not be read: " + err + ". Replace it on the Overview, on the line under the Checklist.", "error");
   }
   _errorShown = key;
 }

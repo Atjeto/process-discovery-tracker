@@ -36,7 +36,7 @@ function renderScreenshots() {
   // Stash for the gallery (P2.7).
   _allScreenshots = shots;
   if (!shots.length) {
-    host.innerHTML = '<p class="hint">No screenshots captured in this session.</p>';
+    host.innerHTML = '<p class="hint">No screenshots captured in this project.</p>';
     return;
   }
   const origin = recordingStartMs(State.getSession());
@@ -132,7 +132,7 @@ function _galleryView() {
   return view;
 }
 function openScreenshotGallery() {
-  if (!_allScreenshots.length) { toast("No screenshots in this session.", ""); return; }
+  if (!_allScreenshots.length) { toast("No screenshots in this project.", ""); return; }
   let overlay = document.getElementById("screenshot-gallery");
   if (!overlay) {
     overlay = document.createElement("div");

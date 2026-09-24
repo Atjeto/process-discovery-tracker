@@ -62,7 +62,7 @@ function saveTranscriptOffset(root, offsetMs, fs = nodeFs) {
     throw new Error("The sync offset is not a number of milliseconds.");
   }
   const read = readTranscriptFile(root, fs);
-  if (read.status === "absent") throw new Error("This session has no transcript to sync.");
+  if (read.status === "absent") throw new Error("This project has no transcript to sync.");
   if (read.status === "unreadable") throw new Error("The transcript could not be read: " + read.error + ".");
   const doc = read.transcript;
   doc.offset_ms = offsetMs === null ? null : Math.round(offsetMs);

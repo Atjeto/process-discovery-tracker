@@ -76,7 +76,7 @@ function syncForkButton() {
   btn.classList.toggle("primary", !done);
   btn.title = done
     ? "Copy the process map into the editor again, for example to start over. The As-Is map chosen for the PDD stays as it is."
-    : "Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the session again never changes it.";
+    : "Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it.";
 }
 function _setForkBusy() {
   const btn = $("btn-fork-refmap");
@@ -84,7 +84,7 @@ function _setForkBusy() {
   btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
   btn.textContent = "Updating the map...";
-  btn.title = "Analyzing the session first, so the copy carries your latest step names";
+  btn.title = "Analyzing the project first, so the copy carries your latest step names";
 }
 
 /* ---- the Map level's first view (V2 item 7) ------------------------------ */
@@ -209,7 +209,7 @@ async function onRowAction(act, id) {
   if (act === "del") {
     const e = RefStore.find(s.annotations, id);
     if (!e) return;
-    if (!window.confirm('Delete the map "' + (e.name || "") + '" from this session? Ctrl+Z restores it.')) return;
+    if (!window.confirm('Delete the map "' + (e.name || "") + '" from this project? Ctrl+Z restores it.')) return;
     RefStore.destroy({ sessionFolder: s.sessionFolder, anno: s.annotations, id });
     await persist("Delete map");
     if (_editingId === id) closeEditor();
@@ -255,12 +255,12 @@ function _needsAnalyze(s, srcPath) {
    ready). */
 async function onFork(like) {
   const s = session();
-  if (!s || !s.sessionFolder) { toast("Open a session first.", "error"); return; }
+  if (!s || !s.sessionFolder) { toast("Open a project first.", "error"); return; }
   if (_forking) return;
   // The Map's lock (overview-view.mapLockHtml, required lazily: the Overview
   // requires this module): no runs marked, not analyzed, or a failed check.
   if (require("./views/overview-view.js").mapLockHtml(s.analysis)) {
-    toast("No map to edit yet: the process map is not shown for this session, and the Map says why.", "error");
+    toast("No map to edit yet: the process map is not shown for this project, and the Map says why.", "error");
     return;
   }
   const fs = require("node:fs");
@@ -277,7 +277,7 @@ async function onFork(like) {
   }
   const cur = session();
   if (!cur || !srcPath || !fs.existsSync(srcPath)) {
-    toast("No map to edit yet: the analysis drew no process map for these runs.", "error");
+    toast("No map to edit yet: the analysis drew no process map for these transactions.", "error");
     return;
   }
   let xml = null;

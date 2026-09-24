@@ -5,7 +5,7 @@
  * of the demo, analyzed with the current pipeline, and a synthetic 32 s
  * video recorded in the viewer's own window (a canvas and MediaRecorder,
  * kept in the OS temp folder for the next run). Checks:
- *   (a) Attach video copies the video into the recording folder (video/) and
+ *   (a) Attach video copies the video into the project folder (video/) and
  *       stores its path relative to the folder;
  *   (b) the map boxes name their system under the step name;
  *   (c) the step panel from each of its three doors (a map box, a timeline
@@ -178,10 +178,10 @@ const panelState = (page) => page.evaluate(() => {
     !map.err && map.all.length > 0 && map.all.every((n) => n.system && n.label === n.id + "\n" + n.system) &&
       map.save.system === "Salesforce" && !map.all.some((n) => /Chrome/.test(n.system)),
     JSON.stringify(map.err || map.all.map((n) => n.system)));
-  record("(c1) V2 item 4: a map box opens the step panel beside the map (its name, system, runs, one row per occurrence, Open in Steps) and plays the Run 1 occurrence in its video",
+  record("(c1) V2 item 4 + AD-29: a map box opens the step panel beside the map (its name, system, transactions, one row per occurrence, Open in Steps) and plays the Transaction 1 occurrence in its video",
     !!(fromMap && fromMap.ok && fromMap.st.shown && fromMap.st.name === SAVE.name && /^Salesforce/.test(fromMap.st.system) &&
-      /^In \d of 4 runs, about \d+s each$/.test(fromMap.st.count) && fromMap.st.rows.length >= 3 &&
-      /^Run 1 at \d+:\d{2}$/.test(fromMap.st.rows[0].at) && JSON.stringify(fromMap.st.foot) === '["Open in Steps"]' &&
+      /^In \d of 4 transactions, about \d+s each$/.test(fromMap.st.count) && fromMap.st.rows.length >= 3 &&
+      /^Transaction 1 at \d+:\d{2}$/.test(fromMap.st.rows[0].at) && JSON.stringify(fromMap.st.foot) === '["Open in Steps"]' &&
       await page.evaluate(() => document.getElementById("session-map-dfg-host").getBoundingClientRect().width > 300)),
     JSON.stringify(map.err || fromMap));
 

@@ -10,8 +10,10 @@
  *     one vocabulary, C14). Read from the
  *     pipeline's re-typed values finding and the events it names; when the
  *     events do not name the fields, the finding's own sentence stands.
- *   Where the time goes: per step, its average time per run and in how many
- *     runs it happened; then the same per system (C14), where the automation
+ *   Where the time goes: per step, its average time in the runs that have
+ *     it ("Average time") and in how many of them it happened ("Happened in",
+ *     "4 of 4 transactions": a run is a transaction to the reader, AD-29);
+ *     then the same per system (C14), where the automation
  *     candidates fold in (the time each system takes in a run). Computed from
  *     the runs' visible steps as they are now, grouped the way the map groups
  *     them (process-map-levels.mapNodeLabel), so a rename shows at once.
@@ -24,7 +26,7 @@
 
 "use strict";
 
-const { escapeHtml, escapeAttr, formatDuration } = require("../dom.js");
+const { escapeHtml, escapeAttr } = require("../dom.js");
 const RunsModel = require("../runs-model.js");
 const { mapNodeLabel } = require("../process-map-levels.js");
 const SystemNames = require("../system-names.js");
@@ -125,7 +127,7 @@ function _retypedItem(sess) {
   }
   if (r.status === "nothing") {
     return { title: "Data typed twice", takeaway: "Nothing recorded",
-      body: '<p class="analysis-note">Nothing was recorded in this session, so there is no typed data to compare.</p>' };
+      body: '<p class="analysis-note">Nothing was recorded in this project, so there is no typed data to compare.</p>' };
   }
   if (r.status === "none") {
     return { title: "Data typed twice", takeaway: "None seen in this recording",
@@ -187,13 +189,31 @@ function timePerStep(stats, steps, appNames, interactionsById) {
   };
 }
 
+/* An average time as the tables say it (AD-29): "10 s", "1 min 5 s",
+   "1 h 4 min"; "under 1 s" below half a second. "" when unknown. */
+function averageTime(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "";
+  if (ms < 500) return "under 1 s";
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return secs + " s";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return mins + " min" + (secs % 60 ? " " + (secs % 60) + " s" : "");
+  const hours = Math.floor(mins / 60);
+  return hours + " h" + (mins % 60 ? " " + (mins % 60) + " min" : "");
+}
+
+/* "4 of 4 transactions": in how many transactions a row happened. */
+function happenedIn(n, runCount) {
+  return n + " of " + runCount + " transaction" + (runCount === 1 ? "" : "s");
+}
+
 function _timeTable(caption, rows, runCount) {
   return '<table class="ov-time">' +
-    "<thead><tr><th>" + escapeHtml(caption) + '</th><th class="num">Per run</th><th>Runs</th></tr></thead><tbody>' +
+    "<thead><tr><th>" + escapeHtml(caption) + '</th><th class="num">Average time</th><th>Happened in</th></tr></thead><tbody>' +
     rows.map((row) => "<tr>" +
       '<td class="ov-time-name" title="' + escapeAttr(row.label) + '">' + escapeHtml(row.label) + "</td>" +
-      '<td class="num">' + escapeHtml(formatDuration(row.avgMs)) + "</td>" +
-      "<td>in " + row.runs + " of " + runCount + " run" + (runCount === 1 ? "" : "s") + "</td></tr>").join("") +
+      '<td class="num">' + escapeHtml(averageTime(row.avgMs)) + "</td>" +
+      "<td>" + escapeHtml(happenedIn(row.runs, runCount)) + "</td></tr>").join("") +
     "</tbody></table>";
 }
 
@@ -203,17 +223,18 @@ function _timeItem(sess) {
   for (const ev of sess.events || []) if (ev && ev.type === "interaction" && ev.event_id) inter[ev.event_id] = ev;
   const t = timePerStep(sess.stats, (sess.annotations || {}).steps || [], appNames, inter);
   if (!t.runCount) {
-    return { title: "Where the time goes", takeaway: "No runs are marked yet",
-      body: '<p class="analysis-note">The time per step is measured in the runs; mark the runs first.</p>' };
+    return { title: "Where the time goes", takeaway: "No transactions are marked yet",
+      body: '<p class="analysis-note">The time per step is measured in the transactions; mark the transactions first.</p>' };
   }
   if (!t.steps.length) {
     return { title: "Where the time goes", takeaway: "No step has a measured time yet",
-      body: '<p class="analysis-note">The runs have no steps with a measured time.</p>' };
+      body: '<p class="analysis-note">The transactions have no steps with a measured time.</p>' };
   }
   const top = t.steps[0];
   return {
     title: "Where the time goes",
-    takeaway: "Most in " + top.label + ": " + formatDuration(top.avgMs) + " per run",
+    // A step's name can hold a colon, so the time goes in parentheses.
+    takeaway: "Most time in " + top.label + " (" + averageTime(top.avgMs) + " on average)",
     body: _timeTable("Step", t.steps, t.runCount) +
       (t.apps.length ? _timeTable("System", t.apps, t.runCount) : ""),
   };
@@ -221,12 +242,16 @@ function _timeItem(sess) {
 
 /* ---- The block ------------------------------------------------------------- */
 
+/* Who fills the Observations, beside their title (AD-29): nobody types them. */
+const OBSERVATIONS_WHO = "Measured from the recording";
+
 /* The Observations block of the Overview for one session. Pure (no DOM, no
    State): the unit tests render fixture sessions through it. */
 function observationsHtml(sess) {
   if (!sess) return "";
   return '<section class="ov-section ov-observations" id="ov-observations">' +
-    '<div class="ov-section-title">Observations</div>' +
+    '<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
+      '<div class="ov-block-who">' + escapeHtml(OBSERVATIONS_WHO) + "</div></div>" +
     _moduleShell("retyped", _retypedItem(sess)) +
     _moduleShell("time", _timeItem(sess)) +
     "</section>";
@@ -240,4 +265,4 @@ function wireObservations(host) {
   });
 }
 
-module.exports = { observationsHtml, wireObservations, retypedLines, timePerStep };
+module.exports = { observationsHtml, wireObservations, retypedLines, timePerStep, averageTime, happenedIn };

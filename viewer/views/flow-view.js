@@ -21,6 +21,7 @@ const { $, $$, escapeHtml, formatDuration, toast, placeMenu } = require("../dom.
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const MarkerEdits = require("../marker-edits.js");
+const RunsModel = require("../runs-model.js");
 const { caseScopeOptionsHtml } = require("../case-scope.js");
 const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
@@ -126,8 +127,15 @@ function populateCaseScope() {
   const sess = State.getSession();
   const cases = sess ? deriveCases(sess) : [];
   const evs = (sess && sess.events) || [];
-  // P2.8 duplicate-label suffixes + RP-34 escaping: case-scope.js (pure).
-  sel.innerHTML = caseScopeOptionsHtml(cases, State.getCaseScope(),
+  // AD-29: each option carries the Steps level's title for its run
+  // ("Transaction 1 · Order #10900"). P2.8 duplicate-label suffixes + RP-34
+  // escaping: case-scope.js (pure).
+  const runs = sess ? RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs : [];
+  const titled = cases.map((c) => {
+    const run = runs.find((r) => r.caseId === c.id);
+    return run ? Object.assign({}, c, { title: run.title }) : c;
+  });
+  sel.innerHTML = caseScopeOptionsHtml(titled, State.getCaseScope(),
     evs.length ? new Date(evs[0].timestamp).getTime() : NaN);
   // Wrapper picks up the visual cue that scoping is active.
   const wrap = sel.closest(".case-scope");
@@ -161,10 +169,11 @@ async function openSessionFlow() {
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
 
-/* New from a video / New without a recording (C16): the main process asks
-   for the video, then the project's name and folder, makes the folder and
-   copies the video in; the project opens and is analyzed by itself (one
-   implicit run until runs are marked). */
+/* New project from a video / New empty project (C16; the New menu, AD-29):
+   the main process asks for the video, then the project's name and folder,
+   makes the folder and copies the video in; the project opens and is
+   analyzed by itself (one implicit run, one transaction to the reader, until
+   runs are marked). */
 async function newProject(kind) {
   let r = await Ipc.chooseNewProject({ kind });
   if (!r) return;
@@ -257,7 +266,7 @@ function runPipeline(opts, label) {
 const CONFIRMS = {
   markers: (n) => ({
     title: "Apply " + n + " marker change" + (n === 1 ? "" : "s"),
-    message: "Update the drafts of the changed runs?",
+    message: "Update the drafts of the changed transactions?",
     detail: "Your confirmed, edited, added and hidden steps are kept.",
     okLabel: "Apply",
   }),
@@ -450,7 +459,7 @@ function syncVideoControls() {
    restore. Saves and Analyze are refused in main while it lasts. */
 function annotationsErrorBannerHtml(err) {
   if (!err || !err.message) return "";
-  return '<strong>The annotations for this session cannot be read.</strong> ' + escapeHtml(err.message);
+  return '<strong>The annotations for this project cannot be read.</strong> ' + escapeHtml(err.message);
 }
 function renderAnnotationsErrorBanner() {
   const el = document.getElementById("annotations-error-banner");
@@ -502,7 +511,7 @@ function renderSessionPills() {
   host.innerHTML = pending > 0
     ? '<button type="button" class="pending-cta" id="btn-apply-marker-edits" title="' +
       escapeHtml("Your marker changes already show on the timeline and in the Markers list. " +
-        "The runs, the steps and the map use them once you apply them.") + '">' +
+        "The transactions, the steps and the map use them once you apply them.") + '">' +
       escapeHtml("Apply " + pending + " marker change" + (pending === 1 ? "" : "s")) +
       "</button>"
     : "";
@@ -527,7 +536,7 @@ async function queueMarkerDelete(eventId) {
   } catch (_) {
     return false;
   }
-  toast("Marker deleted. Click Apply marker changes to update the runs.", "success");
+  toast("Marker deleted. Click Apply marker changes to update the transactions.", "success");
   return true;
 }
 
@@ -687,7 +696,7 @@ function renderSelectionStats() {
     '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
-    '<button class="summary-fix" id="tl-selection-case">Insert run from selection</button>' +
+    '<button class="summary-fix" id="tl-selection-case">Insert transaction from selection</button>' +
     '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without the events in this range.">Exclude from analysis</button>' +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
@@ -730,8 +739,9 @@ function showMarkerInsertMenu(x, y, ts) {
     menu.appendChild(item);
   }
 
-  addItem("Insert Start marker here…", () => queueSyntheticMarker(ts, "start"));
-  addItem("Insert End marker here",    () => queueSyntheticMarker(ts, "end"));
+  // AD-29: a Start marker starts a transaction, an End marker ends it.
+  addItem("Start a transaction here…", () => queueSyntheticMarker(ts, "start"));
+  addItem("End the transaction here",  () => queueSyntheticMarker(ts, "end"));
   // C16: a note pinned to this moment (the Notes lane; never printed).
   addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
   addItem("Jump to step here",         () => {
@@ -748,7 +758,7 @@ function showMarkerInsertMenu(x, y, ts) {
   placeMenu(menu, x, y);   // at (x, y), kept inside the window
   /* Dismiss on outside click / escape. A press ON the menu is a choice, not a
      dismissal: removing the menu on its own item's mousedown swallowed the
-     click, so "Insert Start marker here" never ran for a real mouse (item 6;
+     click, so "Start a transaction here" never ran for a real mouse (item 6;
      only synthetic click events, which have no mousedown, got through). */
   function close() {
     menu.remove();
@@ -799,10 +809,10 @@ async function queueSyntheticMarker(ts, markerType) {
   let label = null;
   if (markerType === "start") {
     label = await promptModal({
-      title: "Insert Start marker",
-      message: "Label for the new Start marker",
-      detail: "It shows at once as pending, and applies to the runs when you click Apply marker changes.",
-      placeholder: "For example: Send email",
+      title: "Start a transaction here",
+      message: "Label for the new transaction (its Start marker)",
+      detail: "It shows at once as pending, and applies to the transactions when you click Apply marker changes.",
+      placeholder: "For example: Order #10900",
       okLabel: "Insert",
     });
     if (label === null) return false;     // cancelled
@@ -825,7 +835,7 @@ async function queueSyntheticMarker(ts, markerType) {
     return false;
   }
   activateAnnoTab("markers");
-  toast(`${markerType === "start" ? "Start" : "End"} marker added. Click Apply marker changes to update the runs.`, "success");
+  toast(`${markerType === "start" ? "Start" : "End"} marker added. Click Apply marker changes to update the transactions.`, "success");
   return true;
 }
 
@@ -838,11 +848,11 @@ async function queueCaseFromSelection() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;
   let label = await promptModal({
-    title: "Insert run from selection",
-    message: "Label for the new run",
-    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the runs when you click Apply marker changes.",
-    placeholder: "For example: Order entry",
-    okLabel: "Insert run",
+    title: "Insert transaction from selection",
+    message: "Label for the new transaction",
+    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the transactions when you click Apply marker changes.",
+    placeholder: "For example: Order #10900",
+    okLabel: "Insert transaction",
   });
   if (label === null) return;     // cancelled
   label = (label || "").trim() || null;
@@ -869,12 +879,12 @@ async function queueCaseFromSelection() {
     ts: editedAt,
   });
   try {
-    await persistAnnotations(a, "insert run from selection", ["markers", "timeline"]);
+    await persistAnnotations(a, "insert transaction from selection", ["markers", "timeline"]);
   } catch (_) {
     return;   // already shown to the analyst by session.js
   }
   activateAnnoTab("markers");
-  toast("Run markers added. Click Apply marker changes to update the runs.", "success");
+  toast("Transaction markers added. Click Apply marker changes to update the transactions.", "success");
 }
 
 /* H6: mark the current timeline range as excluded from analysis. The

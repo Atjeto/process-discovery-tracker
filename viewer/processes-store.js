@@ -135,7 +135,7 @@ function saveProcess(p, payload, opts) {
   const name = payload && typeof payload.name === "string" ? payload.name.trim() : "";
   const steps = (payload && Array.isArray(payload.steps) ? payload.steps : []).map(_cleanStep).filter(Boolean);
   if (!name) throw new Error("Nothing to save: the process has no name.");
-  if (!steps.length) throw new Error("Nothing to save: the run has no steps.");
+  if (!steps.length) throw new Error("Nothing to save: the transaction has no steps.");
   const doc = _docForWrite(p, fs);
   const at = doc.processes.findIndex((x) => _isProcess(x) && _sameName(x.name, name));
   const previous = at >= 0 ? JSON.parse(JSON.stringify(doc.processes[at])) : null;

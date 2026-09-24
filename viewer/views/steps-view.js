@@ -1,6 +1,9 @@
 /*
  * steps-view.js -- the Steps level of the Session view: the runs and their
- * steps (BA helper cycle, contracts C1 to C4).
+ * steps (BA helper cycle, contracts C1 to C4). A person reads a run as a
+ * "transaction" (AD-29): every word on this level says transaction, and the
+ * list's header says in one line what a transaction is; code and data keep
+ * the word run.
  *
  * The list pane shows the runs in time order (the cases from the markers).
  * One group is open at a time: a run, which lists its steps in time order,
@@ -174,7 +177,7 @@ function _markOpened(caseId) {
   const run = State.getAnalysisRun();
   if (run && run.folder === s.sessionFolder && run.status === "running") return;
   anno.opened_runs = opened.concat([caseId]);
-  Session.saveAnnotationsDirect(anno, "open a run").catch(() => { /* already shown */ });
+  Session.saveAnnotationsDirect(anno, "open a transaction").catch(() => { /* already shown */ });
 }
 
 /* Select a step and make sure it is on screen: its group opens, and hidden
@@ -233,7 +236,7 @@ function _startCompareMatch(session) {
   const anno = session.annotations || {};
   const p = RunsModel.patternRun(anno, RunsModel.buildRuns(session.stats, anno.steps || []).runs);
   if (p.record && p.record.confirmed_at) return;
-  const fail = (why) => toast("The saved processes could not be read, so this session is not compared with one: " + why, "error");
+  const fail = (why) => toast("The saved processes could not be read, so this project is not compared with one: " + why, "error");
   Promise.resolve()
     .then(() => Ipc.readProcesses())
     .then((r) => {
@@ -269,7 +272,7 @@ function _reference(pattern) {
    run itself and without a reference. */
 function _runDiffs(ref, run) {
   if (!ref || (ref.kind === "pattern" && run.caseId === ref.caseId)) return null;
-  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun });
+  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT });
 }
 
 /* Stop comparing (the inverse of the comparison on open): the runs are
@@ -277,7 +280,7 @@ function _runDiffs(ref, run) {
 function stopComparingAction() {
   _ui.compareStopped = true;
   renderStepsLevel();
-  toast("Stopped comparing: the runs are compared with the reference run.", "success");
+  toast("Stopped comparing: the transactions are compared with the reference transaction.", "success");
 }
 
 /* ===== The Steps level ================================================== */
@@ -349,6 +352,8 @@ function renderStepsLevel() {
 
   const pc = $("#runs-pane-count");
   if (pc) pc.textContent = String(model.runs.length);
+  const pn = $("#runs-pane-note");
+  if (pn) pn.textContent = transactionNote(session);
   _renderFlagSummary(allSteps);
 
   renderRunsList($("#step-list"), model, pattern, visible, session.stats, ref);
@@ -390,6 +395,21 @@ function renderStepsLevel() {
   }
 }
 
+/* What a transaction is, in the one line under the list's title (AD-29):
+   in a recording the SME marks each one with the transaction key; a project
+   without a recording (C16, manifest.source video or blank) is one
+   transaction until the Timeline marks where each one starts. Pure. */
+const NOTE_RECORDED = "One pass through the process: the SME presses the transaction key at the start of each.";
+const NOTE_UNRECORDED = "The whole project is one transaction until you mark where each one starts on the Timeline.";
+const NOTE_UNRECORDED_MARKED = "One pass through the process: each starts where you marked it on the Timeline.";
+function transactionNote(session) {
+  const m = (session && session.manifest) || {};
+  const recorded = ((session && session.events) || []).length > 0 || !["video", "blank"].includes(m.source);
+  if (recorded) return NOTE_RECORDED;
+  return AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats
+    ? NOTE_UNRECORDED : NOTE_UNRECORDED_MARKED;
+}
+
 /* A3: the waste-flagged step count on the toolbar. Waste is the only per-step
    flag (ADR-0027); the retired flags an older annotations.json may still
    carry are ignored here like everywhere else (C10). */
@@ -411,7 +431,7 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
     line.className = "runs-compare";
     line.innerHTML = '<span class="runs-compare-text">Compared with saved process <strong>' + escapeHtml(ref.name) + "</strong></span>";
     line.appendChild(_actionBtn("stop-comparing", "Stop comparing", "",
-      "Compare the runs with this recording's reference run instead", stopComparingAction));
+      "Compare the transactions with this project's reference transaction instead", stopComparingAction));
     line.appendChild(_actionBtn("forget-process", "Forget this saved process", "",
       "Remove this saved process from this computer. The toast's Undo brings it back.", forgetProcessAction));
     host.appendChild(line);
@@ -420,7 +440,7 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
     host.innerHTML =
       '<div class="empty-pane">' +
         "<p><strong>No steps yet.</strong></p>" +
-        "<p>Steps appear once the recording is analyzed: the app drafts each run's steps from it.</p>" +
+        "<p>Steps appear once the recording is analyzed: the app drafts each transaction's steps from it.</p>" +
       "</div>";
     return;
   }
@@ -437,8 +457,8 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
   if (model.outside.length) host.appendChild(_outsideGroupEl(model, visible));
 }
 
-const PATTERN_TITLE = "The reference run: confirm it. Its step names carry over to the other runs, which are compared with it.";
-const OTHER_RUN_TITLE = "Right-click to use this run as the reference run";
+const PATTERN_TITLE = "The reference transaction: confirm it. Its step names carry over to the other transactions, which are compared with it.";
+const OTHER_RUN_TITLE = "Right-click to use this transaction as the reference transaction";
 
 function _groupHead(isOpen, innerHtml, titleAttr) {
   return '<div class="run-row" role="button" tabindex="0" aria-expanded="' + (isOpen ? "true" : "false") + '"' +
@@ -548,24 +568,24 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
 
   const recorded = ((State.getSession() || {}).events || []).length > 0;
   const body = _groupBody(visible, run.hiddenCount,
-    run.hiddenCount ? "Every step of this run is hidden." : recorded ? "No steps in this run."
+    run.hiddenCount ? "Every step of this transaction is hidden." : recorded ? "No steps in this transaction."
       : "No steps yet: + Add step adds one after the selected step.", status || run.status);
   const acts = body.querySelector(".run-actions");
   const canConfirm = isPattern && !patternConfirmed && run.visible.length > 0;
   const buttons = [];
   if (canConfirm) {
-    buttons.push(_actionBtn("confirm-run", "Confirm run", "primary",
-      "Accept this run's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
+    buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
+      "Accept this transaction's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
       () => confirmRunAction(run.caseId)));
   }
   if (isPattern && RunsModel.canReopen(run, rec, isPattern)) {
-    buttons.push(_actionBtn("reopen-run", "Reopen run", "",
-      "Turn this run's confirmed steps back into drafts; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
+    buttons.push(_actionBtn("reopen-run", "Reopen transaction", "",
+      "Turn this transaction's confirmed steps back into drafts; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
       () => reopenRunAction(run.caseId)));
   }
   if (isPattern && patternConfirmed) {
     buttons.push(_actionBtn("save-process", "Save as this process", "",
-      "Store this run's steps, so that a later session of the same process is compared with them when you open it.",
+      "Store this transaction's steps, so that a later project of the same process is compared with them when you open it.",
       () => saveAsProcessAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
@@ -576,7 +596,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   if (saved) {
     const line = document.createElement("p");
     line.className = "run-names-note";
-    line.title = "These steps took the name you gave the same drafted step before, in this recording or on this computer";
+    line.title = "These steps took the name you gave the same drafted step before, in this project or on this computer";
     line.textContent = "Names from saved names: " + saved + " of " + _plural(n, "step", "steps");
     acts.appendChild(line);
   }
@@ -584,7 +604,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   if (diffs && diffs.length) {
     const list = document.createElement("ul");
     list.className = "run-diffs";
-    list.title = "How this run differs from " + (ref.kind === "saved" ? "the saved process" : "the reference run");
+    list.title = "How this transaction differs from " + (ref.kind === "saved" ? "the saved process" : "the reference transaction");
     for (const d of diffs) {
       const li = document.createElement("li");
       li.dataset.kind = d.kind;
@@ -605,11 +625,11 @@ function _outsideGroupEl(model, visible) {
   g.className = "run-group run-group-outside" + (isOpen ? " open" : "");
   g.dataset.group = "outside";
   g.innerHTML = _groupHead(isOpen,
-    '<span class="run-title">Outside runs</span><span class="run-label"></span>' +
+    '<span class="run-title">Outside the transactions</span><span class="run-label"></span>' +
     '<span class="run-meta">' + escapeHtml(_plural(vis.length, "step", "steps")) + "</span>",
-    "Steps that fall outside every marked run");
+    "Steps that fall outside every marked transaction");
   _wireHead(g, OUTSIDE);
-  if (isOpen) g.appendChild(_groupBody(visible, hidden, "Every step outside the runs is hidden.", null));
+  if (isOpen) g.appendChild(_groupBody(visible, hidden, "Every step outside the transactions is hidden.", null));
   return g;
 }
 
@@ -628,12 +648,12 @@ function _actionBtn(act, label, cls, title, onClick) {
    run's right-click menu: the line itself, which a click copies. */
 function _showProbeMenu(p, x, y) {
   const why = p.source === "analysis"
-    ? "Drafted steps: how many steps the analysis drafted for this run."
+    ? "Drafted steps: how many steps the analysis drafted for this transaction."
     : p.source === "designation"
-      ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the run had when it became the reference run."
+      ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the transaction had when it became the reference transaction."
       : "The drafted step count is not recorded; Re-analyze in Help, Troubleshooting records it.";
   _runMenu([{ act: "copy-probe", label: "Copy: " + p.text, title: why + " Boundary fixes: the merges, splits, " +
-    "added steps and hidden drafts made to the run from when it became the reference run until you confirmed it.",
+    "added steps and hidden drafts made to the transaction from when it became the reference transaction until you confirmed it.",
   run: () => { if (_copyText(p.text)) toast("Copied: " + p.text, "success"); else toast("Could not copy the line.", "error"); } }], x, y);
 }
 
@@ -650,15 +670,15 @@ function _copyText(text) {
 
 /* The detail pane when no step is selected: what to do with the open group. */
 const GUIDE_PATTERN =
-  "This is the reference run. Check its steps against the video or the screenshots, fix the boundaries " +
-  "(merge, split, add, hide) and name the steps, then click Confirm run.";
+  "This is the reference transaction. Check its steps against the video or the screenshots, fix the boundaries " +
+  "(merge, split, add, hide) and name the steps, then click Confirm transaction.";
 const GUIDE_CARRY =
-  "A merge carries to the same drafted steps in the other runs, and every name you give is saved.";
-const GUIDE_PATTERN_DONE = "This run is confirmed: the other runs are compared with it.";
-const GUIDE_OTHER = "Check how this run differs from the reference run, and fix a step where needed. It is not confirmed: the reference run is.";
+  "A merge carries to the same drafted steps in the other transactions, and every name you give is saved.";
+const GUIDE_PATTERN_DONE = "This transaction is confirmed: the other transactions are compared with it.";
+const GUIDE_OTHER = "Check how this transaction differs from the reference transaction, and fix a step where needed. It is not confirmed: the reference transaction is.";
 const GUIDE_OUTSIDE =
-  "These steps fall outside every marked run. To bring them into a run, add a start marker on the Timeline " +
-  "and click Apply marker changes.";
+  "These steps fall outside every marked transaction. To bring them into a transaction, right-click the " +
+  "Timeline where it starts, choose Start a transaction here, and click Apply marker changes.";
 
 function renderRunGuide(host, model, pattern, ref) {
   if (!host) return;
@@ -666,13 +686,13 @@ function renderRunGuide(host, model, pattern, ref) {
   const title = $("#step-detail-title");
   let head = "", paras = [];
   if (key === OUTSIDE) {
-    head = "Outside runs";
+    head = "Outside the transactions";
     paras = [GUIDE_OUTSIDE];
   } else if (key) {
     const run = model.runs.find((r) => r.caseId === key);
     const isPattern = !!(run && pattern.run && pattern.run.caseId === key);
     const done = isPattern && pattern.record && pattern.record.confirmed_at;
-    head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Run";
+    head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Transaction";
     paras = isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
     const diffs = run ? _runDiffs(ref, run) : null;
     if (diffs && !diffs.length) {
@@ -680,7 +700,7 @@ function renderRunGuide(host, model, pattern, ref) {
       paras.unshift("It has no differences from " + noun + ".");
     }
   } else {
-    paras = [model.runs.length ? "Pick a run on the left to see its steps." : "Pick a step on the left."];
+    paras = [model.runs.length ? "Pick a transaction on the left to see its steps." : "Pick a step on the left."];
   }
   if (title) title.textContent = head || "Steps";
   host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
@@ -811,7 +831,7 @@ async function _rememberName(key, name) {
     _remembered[key] = { name, updated_at: new Date().toISOString() };
     return true;
   }
-  toast("The new name is saved in this session, but it could not be remembered for later analyses: " +
+  toast("The new name is saved in this project, but it could not be remembered for later analyses: " +
     ((r && r.error) || "no reason was given"), "error");
   return false;
 }
@@ -944,11 +964,11 @@ async function toggleStepHidden(stepId) {
     const others = p.run && step.case_id === p.run.caseId
       ? RunsModel.sameKeyDraftsElsewhere(_model(), p.run.caseId, step.draft_key) : [];
     if (others.length) {
-      toast("Step hidden. " + _plural(RunsModel.runCount(others), "other run has", "other runs have") +
+      toast("Step hidden. " + _plural(RunsModel.runCount(others), "other transaction has", "other transactions have") +
         " the same drafted step.", "success",
-        { action: { label: "Hide in all runs", act: "hide-all-runs", onClick: () => hideInAllRuns(stepId) } });
+        { action: { label: "Hide in all transactions", act: "hide-all-runs", onClick: () => hideInAllRuns(stepId) } });
     } else {
-      toast('Step hidden. "Show hidden steps" on its run lists it again.', "success");
+      toast('Step hidden. "Show hidden steps" on its transaction lists it again.', "success");
     }
   }
 }
@@ -968,8 +988,8 @@ async function hideInAllRuns(stepId) {
   const others = RunsModel.sameKeyDraftsElsewhere(model, p.run.caseId, step.draft_key);
   if (!others.length) return;
   RunsModel.hideSteps(others);
-  await persistAnnotations(anno, "hide in all runs");
-  toast("Hidden here and in " + _plural(RunsModel.runCount(others), "other run", "other runs") + ". Ctrl+Z undoes it.", "success");
+  await persistAnnotations(anno, "hide in all transactions");
+  toast("Hidden here and in " + _plural(RunsModel.runCount(others), "other transaction", "other transactions") + ". Ctrl+Z undoes it.", "success");
 }
 
 async function splitStep(stepId) {
@@ -1208,7 +1228,7 @@ async function commitMerge(anno, toMerge, undoLabel) {
 
 /* The one-line toast of a merge that carried to other runs (item 2). */
 function _carriedToast(carriedRuns) {
-  return "Merged here and in " + _plural(carriedRuns, "other run", "other runs") + ". Ctrl+Z undoes it.";
+  return "Merged here and in " + _plural(carriedRuns, "other transaction", "other transactions") + ". Ctrl+Z undoes it.";
 }
 
 /* P0.1: merge the clicked step with the NEXT step of the same run, the row
@@ -1223,7 +1243,7 @@ async function mergeStepWithNext(stepId) {
   const step = anno.steps.find(s => s.step_id === stepId);
   if (!step) { toast("Step not found", "error"); return; }
   const next = RunsModel.nextInGroup(_model(), stepId, _ui.showHidden);
-  if (!next) { toast("This is the last step of its run: there is no next step to merge with.", "error"); return; }
+  if (!next) { toast("This is the last step of its transaction: there is no next step to merge with.", "error"); return; }
   const toMerge = [step, next];
   const r = await commitMerge(anno, toMerge, 'merge step with next');
   toast(r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"', "success");
@@ -1240,7 +1260,7 @@ async function mergeSelectedSteps() {
   const toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(RunsModel.byStart);
   if (toMerge.length < 2) { toast("Select at least two steps to merge", "error"); return; }
   if (new Set(toMerge.map((s) => s.case_id || null)).size > 1) {
-    toast("Select steps from one run to merge them.", "error");
+    toast("Select steps from one transaction to merge them.", "error");
     return;
   }
   const r = await commitMerge(anno, toMerge, 'merge selected steps');
@@ -1385,7 +1405,7 @@ async function confirmRunAction(caseId) {
   const run = model.runs.find((r) => r.caseId === caseId);
   if (!run) return;
   const r = RunsModel.confirmRun(anno, model.runs, caseId, new Date().toISOString());
-  try { await persistAnnotations(anno, "confirm run"); } catch (_) { return; }   // already shown
+  try { await persistAnnotations(anno, "confirm transaction"); } catch (_) { return; }   // already shown
   toast(run.title + " confirmed" +
     (r.converted ? ": " + _plural(r.converted, "drafted step", "drafted steps") + " accepted" : "") +
     ". Ctrl+Z undoes it.", "success");
@@ -1404,7 +1424,7 @@ async function reopenRunAction(caseId) {
   if (!run) return;
   const r = RunsModel.reopenRun(anno, model.runs, caseId);
   if (!r.reopened && !r.patternReopened) return;
-  try { await persistAnnotations(anno, "reopen run"); } catch (_) { return; }   // already shown
+  try { await persistAnnotations(anno, "reopen transaction"); } catch (_) { return; }   // already shown
   toast(run.title + " reopened" +
     (r.reopened ? ": " + _plural(r.reopened, "step is a draft", "steps are drafts") + " again" : "") +
     ". Ctrl+Z undoes it.", "success");
@@ -1423,12 +1443,12 @@ async function saveAsProcessAction(caseId) {
   const p = RunsModel.patternRun(anno, model.runs);
   if (!p.run || p.run.caseId !== caseId || !p.record || !p.record.confirmed_at) return;
   const steps = RunDiff.processStepsFrom(p.run.visible);
-  if (!steps.length) { toast("This run has no steps to save.", "error"); return; }
+  if (!steps.length) { toast("This transaction has no steps to save.", "error"); return; }
   const docTitle = anno.document && typeof anno.document.title === "string" ? anno.document.title.trim() : "";
   const name = await promptModal({
     title: "Save as this process",
     message: "Name the process",
-    detail: "A later session of this process is compared with these " + _plural(steps.length, "step", "steps") +
+    detail: "A later project of this process is compared with these " + _plural(steps.length, "step", "steps") +
       " when you open it. Saving under a name already saved replaces that process.",
     placeholder: "For example: Order entry",
     defaultValue: docTitle,
@@ -1517,17 +1537,17 @@ async function usePatternAction(caseId) {
   const f = cur.record ? RunsModel.probeLine(session.stats, model.runs, cur.run, cur.record) : null;
   if (cur.record && cur.run && (cur.record.confirmed_at || (f && f.total > 0))) {
     const ok = await confirmModal({
-      title: "Use " + run.title + " as the reference run?",
-      message: cur.run.title + " is the reference run now. Its boundary fix count" +
+      title: "Use " + run.title.toLowerCase() + " as the reference transaction?",
+      message: cur.run.title + " is the reference transaction now. Its boundary fix count" +
         (cur.record.confirmed_at ? " and its confirmation are" : " is") + " replaced.",
       detail: "Ctrl+Z undoes it.",
-      okLabel: "Use as reference run",
+      okLabel: "Use as reference transaction",
     });
     if (!ok) return;
   }
   RunsModel.usePattern(anno, model.runs, caseId);
-  try { await persistAnnotations(anno, "use run as reference run"); } catch (_) { return; }   // already shown
-  toast(run.title + " is now the reference run. The boundary fix count starts at zero.", "success");
+  try { await persistAnnotations(anno, "use as reference transaction"); } catch (_) { return; }   // already shown
+  toast(run.title + " is now the reference transaction. The boundary fix count starts at zero.", "success");
 }
 
 /* ===== Keyboard (renderer.js) ========================================= */
@@ -1593,10 +1613,10 @@ function distinctSessionApps() {
 }
 
 function openIgnoredAppsDialog() {
-  if (!State.getSession()) { toast("Open a session first.", ""); return; }
+  if (!State.getSession()) { toast("Open a project first.", ""); return; }
   const apps = distinctSessionApps();
   if (!apps.length) {
-    toast("No interaction data in this session: nothing to filter.", "");
+    toast("No interaction data in this project: nothing to filter.", "");
     return;
   }
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -1666,7 +1686,7 @@ function openIgnoredAppsDialog() {
    their drafted names back. Both are one undoable edit of the session: the
    next analysis names drafts with the session's own names first (C4). */
 function openRememberedNamesDialog() {
-  if (!State.getSession()) { toast("Open a session first.", ""); return; }
+  if (!State.getSession()) { toast("Open a project first.", ""); return; }
   const prior = document.getElementById("remembered-names-dialog");
   if (prior) prior.remove();
   const backdrop = document.createElement("div");
@@ -1709,7 +1729,7 @@ function openRememberedNamesDialog() {
       '<div class="rn-row" data-key="' + escapeAttr(row.key) + '" title="' + escapeAttr(row.key) + '">' +
         '<div class="rn-text"><span class="rn-name">' + escapeHtml(row.name) + "</span>" +
         '<span class="rn-where">' + escapeHtml(row.inSession
-          ? _plural(row.inSession, "step in this session", "steps in this session") : "Not in this session") + "</span></div>" +
+          ? _plural(row.inSession, "step in this project", "steps in this project") : "Not in this project") + "</span></div>" +
         '<button type="button" data-act="rename-name">Rename</button>' +
         '<button type="button" data-act="forget-name">Forget</button>' +
       "</div>").join("");
@@ -1737,7 +1757,7 @@ function openRememberedNamesDialog() {
     let saved = true;
     if (n) { try { await persistAnnotations(anno, "rename a saved name"); } catch (_) { saved = false; } }   // already shown
     if (saved) {
-      toast("Renamed" + (n ? ": " + _plural(n, "step in this session took", "steps in this session took") +
+      toast("Renamed" + (n ? ": " + _plural(n, "step in this project took", "steps in this project took") +
         " the new name" : "") + ".", "success");
     }
     await render();
@@ -1746,7 +1766,7 @@ function openRememberedNamesDialog() {
   async function forgetRemembered(key) {
     const cur = (names[key] && names[key].name) || "";
     const ok = await confirmModal({ title: "Forget this name?", message: 'Forget "' + cur + '"?',
-      detail: "The steps of this recording with this name get their drafted names back, and later analyses no longer use it. Ctrl+Z gives this recording its names back.",
+      detail: "The steps of this project with this name get their drafted names back, and later analyses no longer use it. Ctrl+Z gives this project its names back.",
       okLabel: "Forget" });
     if (!ok || !State.getSession()) return;
     let r;
@@ -1762,8 +1782,8 @@ function openRememberedNamesDialog() {
     let saved = true;
     if (n) { try { await persistAnnotations(anno, "forget a saved name"); } catch (_) { saved = false; } }   // already shown
     if (saved) {
-      toast('Forgot "' + cur + '".' + (n ? " " + _plural(n, "step in this session has its drafted name",
-        "steps in this session have their drafted names") + " again." : ""), "success");
+      toast('Forgot "' + cur + '".' + (n ? " " + _plural(n, "step in this project has its drafted name",
+        "steps in this project have their drafted names") + " again." : ""), "success");
     }
     await render();
   }
@@ -1846,8 +1866,8 @@ function _runMenu(items, x, y) {
 }
 
 function showRunContextMenu(caseId, x, y) {
-  _runMenu([{ act: "use-pattern", label: "Use as reference run",
-    title: "Make this the run you confirm, the one the other runs are compared with. The boundary fix count starts again at zero.",
+  _runMenu([{ act: "use-pattern", label: "Use as reference transaction",
+    title: "Make this the transaction you confirm, the one the other transactions are compared with. The boundary fix count starts again at zero.",
     run: () => usePatternAction(caseId) }], x, y);
 }
 

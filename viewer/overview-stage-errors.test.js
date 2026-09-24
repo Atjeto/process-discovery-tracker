@@ -59,39 +59,39 @@ test("control: findings that ran and found no re-typed data say 'None seen in th
 test("a failed run check is said on the Overview, not read as 'not analyzed'", () => {
   const out = html({ case_quality: null, facts: FACTS, findings: [FINDING],
     stage_errors: [{ stage: "case_quality", error: "TypeError: bad marker" }] });
-  assert.ok(out.includes("The run check could not run on this recording"));
+  assert.ok(out.includes("The transaction check could not run on this recording, so the transactions are not compared"));
   assert.ok(out.includes("Technical detail: TypeError: bad marker"));
   assert.ok(!out.includes("not analyzed yet"));
   assert.ok(out.includes("Help, Troubleshooting has Re-analyze"), "where to run it again");
   assert.ok(!out.includes("Analyze session"), "no global Analyze button to point at");
   const never = overviewHtml({ analysis: { meta: {} }, annotations: {} });
-  assert.ok(never.includes("This recording is not analyzed yet."), "control: an analysis without the blocks is 'not analyzed yet'");
+  assert.ok(never.includes("This project is not analyzed yet."), "control: an analysis without the blocks is 'not analyzed yet'");
 });
 
-test("before an analysis the Overview says where it is: running, failed, cancelled or not run; and keeps the recording line", () => {
+test("before an analysis the Overview says where it is: running, failed, cancelled or not run; and keeps the project line", () => {
   const sess = { analysis: null, annotations: {}, manifest: { engagement_id: "eng-1",
     config: { worker: { id: "w1" } } }, sessionFolder: "S" };
   const running = overviewHtml(sess, { folder: "S", status: "running" });
   assert.ok(running.includes("The steps and the map are being drafted from the recording."));
   assert.ok(running.includes('id="ov-summary"') && running.includes('id="btn-attach-video"') &&
-    running.includes('id="btn-attach-transcript"'), "the recording line and its acts are there before the analysis");
+    running.includes('id="btn-attach-transcript"'), "the project line and its acts are there before the analysis");
   assert.ok(!running.includes('id="ov-next"'), "no path before the runs are known");
   assert.ok(overviewHtml(sess, { folder: "S", status: "failed" }).includes("The analysis failed, so the steps and the map are not drafted. The log at the top says why"));
   assert.ok(overviewHtml(sess, { folder: "S", status: "cancelled" }).includes("The analysis was cancelled"));
-  assert.ok(overviewHtml(sess, null).includes("This recording is not analyzed yet. Help, Troubleshooting has Re-analyze."));
-  assert.ok(waitingSentence(null, true).startsWith("This recording was analyzed by an older version"));
+  assert.ok(overviewHtml(sess, null).includes("This project is not analyzed yet. Help, Troubleshooting has Re-analyze."));
+  assert.ok(waitingSentence(null, true).startsWith("This project was analyzed by an older version"));
 });
 
 /* ---- The Map level's lock message (item 2 fix) --------------------------- */
 
 test("the map lock says what actually happened: being analyzed, not analyzed, older analysis, or a failed run check", () => {
-  const lead = "The process map is not shown because it draws how the runs flow.";
+  const lead = "The process map is not shown because it draws how the transactions flow.";
   const none = mapLockHtml(null);
   assert.ok(none.startsWith(lead) && none.includes("not analyzed yet"), none);
   assert.ok(mapLockHtml(null, { status: "running" }).includes("being drafted from the recording"));
   assert.ok(mapLockHtml(null, { status: "failed" }).includes("The analysis failed"));
   const failed = mapLockHtml({ case_quality: null, stage_errors: [{ stage: "case_quality", error: "TypeError: x" }] });
-  assert.ok(failed.includes("The run check could not run on this recording"), failed);
+  assert.ok(failed.includes("The transaction check could not run on this recording, so the transactions are not known"), failed);
   assert.ok(!failed.includes("not analyzed yet"), "a failed check is not 'not analyzed yet'");
   assert.ok(failed.includes("Technical detail: TypeError: x"));
   const older = mapLockHtml({ meta: {} });

@@ -3,7 +3,7 @@
  * built from the step's structured fields and its recorded interactions,
  * never by reading the pipeline's reason sentence (companion critique,
  * section 3):
- *   factLine   "Salesforce · Account lookup · 6s · ends at Search · Run 1 at 0:19"
+ *   factLine   "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"
  *   typedFields the fields typed in the step, (field, value) as the PDD lists them
  *   draftedNarration / isDraftedDescription  the drafting's own description,
  *              which the step pane shows as a hint, not as the description
@@ -151,8 +151,9 @@ function commitName(d) {
   return valueFree(d && d.meaningful_name) || valueFree(d && d.name) || _text(d && d.control_type) || "?";
 }
 
-/* "ends at Search", "ends at a screen change", "ends with the run": where a
-   step that is still one draft ends (a split or a merge drops end_reason). */
+/* "ends at Search", "ends at a screen change", "ends with the transaction":
+   where a step that is still one draft ends (a split or a merge drops
+   end_reason). */
 function endsAt(step, datas) {
   const why = step && step.end_reason;
   if (why === "commit") {
@@ -160,7 +161,7 @@ function endsAt(step, datas) {
     return last ? "ends at " + commitName(last) : "";
   }
   if (why === "screen_change") return "ends at a screen change";
-  if (why === "run_end") return step.case_id ? "ends with the run" : "";
+  if (why === "run_end") return step.case_id ? "ends with the transaction" : "";
   return "";
 }
 
@@ -176,8 +177,9 @@ function draftedName(step, datas) {
 
 /* ---- where a step is in the recording ------------------------------------- */
 
-/* "Run 1 at 0:19" (the PDD's pointer), or "0:19 into the recording" for a step
-   outside every run; `runs` as runs-model.buildRuns returns them. */
+/* "Transaction 1 at 0:19" (the PDD's pointer; the run's title, AD-29), or
+   "0:19 into the recording" for a step outside every run; `runs` as
+   runs-model.buildRuns returns them. */
 function pointer(step, runs, originMs) {
   const at = sinceStart(step && step.time_range && step.time_range.start, originMs);
   if (!at) return "";

@@ -20,7 +20,7 @@
 
   /* What each step chip means, on hover. */
   const CHIP_TITLES = {
-    draft: "Draft: the recorder drafted this step and it has not been checked yet. On the reference run, Confirm run accepts it as it is.",
+    draft: "Draft: the recorder drafted this step and it has not been checked yet. On the reference transaction, Confirm transaction accepts it as it is.",
     confirmed: "Confirmed: you accepted the drafted step as it is.",
     edited: "Edited: you changed this step (its name, its boundaries or its flags).",
     added: "Added: you added this step by hand.",
@@ -237,7 +237,7 @@
       </div>
       <div class="actions">
         ${watchBtn}
-        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its run lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
+        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
       </div>
       ${callbacks.extrasHtml || ""}
       <details class="step-detail-more">
@@ -250,7 +250,7 @@
           <div class="actions">
             <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
             <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
-            <button id="btn-step-merge" title="Merge this step with the next step of its run (the inverse of Split)">Merge with next</button>
+            <button id="btn-step-merge" title="Merge this step with the next step of its transaction (the inverse of Split)">Merge with next</button>
             ${mergeSelectedBtn}
             ${isAdded ? '<button id="btn-step-delete" class="danger" title="Delete this step you added">Delete</button>' : ""}
           </div>
@@ -491,7 +491,7 @@
     const missing = total - events.length;
     if (missing > 0) {
       rows.push(`<li class="step-interaction">` +
-        `<span class="si-text meta">${missing} interaction(s) not found in this session</span>` +
+        `<span class="si-text meta">${missing} interaction(s) not found in this project</span>` +
         `</li>`);
     }
     return `<details class="step-interactions"${total <= 15 ? " open" : ""}>` +

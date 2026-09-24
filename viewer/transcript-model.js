@@ -38,7 +38,7 @@ const ATTACH_TITLE = "Attach the meeting transcript Teams saved (.vtt or .docx).
   "timeline, next to each step and beside the document fields.";
 const REPLACE_TITLE = "Replace the transcript with another Teams file (.vtt or .docx). Sync the new one again " +
   "unless a video is attached.";
-const REMOVE_TITLE = "Take the transcript out of this recording. The original file stays in the recording's " +
+const REMOVE_TITLE = "Take the transcript out of this project. The original file stays in the project's " +
   "transcript folder.";
 
 /* Why a parsed transcript.json cannot be used, in one line, or null when it
@@ -231,14 +231,24 @@ function _esc(s) {
 
 /* When a placed sentence starts, as the time since the recording started
    (the one clock, AD-26); an unplaced one (or no `originMs`) keeps the time
-   from the transcript's own start. */
+   from the transcript's own start. A sentence said before the recording
+   started says how long before ("0:28 before"), never a negative time
+   (AD-29); within a second of the start it reads "0:00". */
 function sentenceClock(s, originMs) {
-  return Number.isFinite(s.startMs) && Number.isFinite(originMs) ? clock(s.startMs - originMs) : formatClock(s.startS);
+  if (!(Number.isFinite(s.startMs) && Number.isFinite(originMs))) return formatClock(s.startS);
+  const since = s.startMs - originMs;
+  return since <= -1000 ? clock(-since) + " before" : clock(Math.max(0, since));
+}
+
+/* The time cell's tooltip: what a time before the recording means. */
+function _clockTitle(s, originMs) {
+  return Number.isFinite(s.startMs) && Number.isFinite(originMs) && s.startMs - originMs <= -1000
+    ? ' title="' + _esc("Said " + clock(originMs - s.startMs) + " before the recording started") + '"' : "";
 }
 
 /* One sentence as every list shows it (HTML): time, speaker, text. */
 function sentenceRowHtml(s, originMs) {
-  return '<span class="tr-time">' + _esc(sentenceClock(s, originMs)) + "</span>" +
+  return '<span class="tr-time"' + _clockTitle(s, originMs) + ">" + _esc(sentenceClock(s, originMs)) + "</span>" +
     (s.speaker ? '<span class="tr-speaker">' + _esc(s.speaker) + "</span>" : "") +
     '<span class="tr-text">' + _esc(s.text) + "</span>";
 }

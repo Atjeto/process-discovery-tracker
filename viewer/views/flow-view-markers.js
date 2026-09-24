@@ -35,14 +35,14 @@ function effectiveLabel(markerEvent) {
 
 /* ============ Markers list + per-marker edits ===================== */
 
-const APPLY_NOTE = "it applies to the runs when you click Apply marker changes";
+const APPLY_NOTE = "it applies to the transactions when you click Apply marker changes";
 
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
   const all = MarkerEdits.sessionMarkerView(State.getSession());
   if (!all.length) {
-    host.innerHTML = '<p class="hint">No markers yet. To mark a run, right-click the timeline at its first moment and choose Insert Start marker here.</p>';
+    host.innerHTML = '<p class="hint">No markers yet. To mark a transaction, right-click the timeline where it starts and choose Start a transaction here.</p>';
     return;
   }
   // Story order: by the time shown (moves applied), the time since the
@@ -135,7 +135,7 @@ async function adjustMarkerToVideoTime(m) {
   if (m.inserted) {
     // An inserted marker IS its insert edit: move the edit itself.
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the session's changes.", "error"); return; }
+    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
     e.timestamp = newTs;
     e.ts = now;
   } else {
@@ -155,7 +155,7 @@ async function deleteMarker(m) {
     message: m.inserted
       ? `Remove this added ${m.markerType} marker?`
       : `Delete this ${m.markerType} marker from the analysis?`,
-    detail: "The recording itself is not changed; the change is saved with the session and " +
+    detail: "The recording itself is not changed; the change is saved with the project and " +
       APPLY_NOTE + ". Ctrl+Z restores it.",
     okLabel: "Delete",
     danger: true,
@@ -165,7 +165,7 @@ async function deleteMarker(m) {
   const now = new Date().toISOString();
   if (m.inserted) {
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the session's changes.", "error"); return; }
+    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
     anno.marker_edits = anno.marker_edits.filter((x) => x !== e);
     // An insert the last analysis already applied needs one more Analyze to
     // take it out again: a delete of its marker id keeps that change pending
@@ -186,7 +186,7 @@ async function renameMarker(m, newLabel) {
   const now = new Date().toISOString();
   if (m.inserted) {
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the session's changes.", "error"); return; }
+    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
     e.label = newLabel;
     e.ts = now;
   } else {

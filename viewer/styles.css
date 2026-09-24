@@ -840,8 +840,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   display: flex; flex-direction: column; gap: 14px;
   max-width: 980px; width: 100%; margin: 0 auto;
 }
-/* The "What is left" line, first on the home: the path's stages, done or not,
-   and one button for the next act. */
+/* The Checklist, first on the home: the path's acts, ticked or not, and one
+   button for the next act. */
 .ov-next {
   display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap;
   background: var(--accent-muted); border: 1px solid var(--accent);
@@ -882,6 +882,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px;
 }
+/* A block's title with the one line that says who fills it (AD-29):
+   "Measured from the recording", "You write these. The PDD prints them." */
+.ov-section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
+.ov-section-head .ov-section-title { margin-bottom: 0; }
+.ov-block-who { font-size: 11px; color: var(--fg-3); }
 .analysis-note.ov-stage-not-run { border-left: 3px solid var(--warn); padding: 4px 0 4px 8px;
   margin-top: 6px; font-style: normal; color: var(--fg-2); }
 .ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);
@@ -898,6 +903,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .ov-time td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule-soft); color: var(--fg-2); white-space: nowrap; }
 .ov-time td.ov-time-name { color: var(--fg); white-space: normal; width: 60%; }
 .ov-time .num { text-align: right; font-family: var(--font-mono); font-size: 11px; }
+/* "Happened in" keeps its distance from the right-aligned average time. */
+.ov-time th:last-child, .ov-time td:last-child { padding-left: 16px; }
 
 /* The document (contract C6): the Observations' disclosure
    (.analysis-module) around a grid of the PDD's document fields. */
@@ -907,6 +914,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .ov-doc-optional { font-size: 11px; font-weight: 400; color: var(--fg-3); }
 .ov-doc-input { width: 100%; box-sizing: border-box; font-family: var(--font-ui); font-size: 13px; }
 textarea.ov-doc-input { min-height: 64px; }
+/* AD-29: an empty field looks empty: its question is light and italic, well
+   apart from written text (about 3:1 on the field in both themes). */
+.ov-doc-input::placeholder { color: color-mix(in srgb, var(--fg-3) 60%, var(--fg-4)); font-style: italic; opacity: 1; }
 
 /* ===== Analysis states and modules (the Overview) ===== */
 .analysis-empty {
@@ -1031,6 +1041,9 @@ details.analysis-module { padding: 0; }
   margin: 0 0 6px; padding: 2px 4px;
 }
 .editor-pane-title span { color: var(--fg-2); }
+/* Under the Transactions title: what a transaction is, in one line. */
+.editor-pane-note { margin: -2px 0 8px; padding: 0 4px; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
+.editor-pane-note:empty { display: none; }
 .empty-pane {
   padding: 6px 4px; color: var(--fg-2); font-size: 12px; line-height: 1.6;
 }
@@ -1615,9 +1628,9 @@ button.danger:disabled {
 .project-menu-item.danger { color: var(--rec); }
 .project-menu-item.danger:hover { background: var(--rec); color: #fff; }
 
-/* Recent dropdown (top-bar) -- sessions + projects reachable any time */
+/* The New and Open dropdowns (top bar): they open under their button. */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }
-#recent-menu-popup { right: auto; left: 0; }
+#recent-menu-popup, #new-menu-popup { right: auto; left: 0; }
 .recent-menu-heading {
   font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
   color: var(--fg-4); font-family: var(--font-mono);
@@ -1796,6 +1809,8 @@ button.danger:disabled {
 .tr-more-head:hover { color: var(--fg-2); }
 .tr-more[open] > .tr-more-head { color: var(--accent); }
 .tr-more-title { text-transform: uppercase; letter-spacing: 0.6px; }
+/* What the Overview's list holds ("What was said outside the transactions"). */
+.tr-more-what { color: var(--fg-3); }
 .tr-more-chevron { font-size: 10px; color: var(--fg-4); }
 .tr-more-chevron::before { content: "▸"; }
 .tr-more[open] > .tr-more-head .tr-more-chevron::before { content: "▾"; }

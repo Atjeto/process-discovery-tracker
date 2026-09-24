@@ -113,6 +113,22 @@ test("differences: a saved process is named as the reference in a Skipped line",
   assert.deepEqual(d, [{ kind: "skipped", name: "Save", number: 2, text: "Skipped: Save (step 2 of the saved process)." }]);
 });
 
+test("differences: the Steps level's words (AD-29) name a run a transaction; the defaults stay the PDD's", () => {
+  const ref = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" }), P("Send", { draft_key: "e" })];
+  const run = [P("Log", { draft_key: "l" }), P("Save", { draft_key: "s" }), P("Find", { draft_key: "f" })];
+  const words = { reference: RD.REFERENCE_RUN, unit: RD.RUN_UNIT };
+  assert.deepEqual(RD.differences(ref, run, words).map((x) => x.text), [
+    "Extra step: Log (at the start of the transaction).",
+    "Different order: Find (in this transaction after Save).",
+    "Skipped: Send (step 3 of the reference transaction).",
+  ]);
+  assert.deepEqual(RD.differences(ref, run).map((x) => x.text), [
+    "Extra step: Log (at the start of the run).",
+    "Different order: Find (in this run after Save).",
+    "Skipped: Send (step 3 of the pattern run).",
+  ], "without the words: the shared golden's and the PDD's lines");
+});
+
 test("differences: a step repeated within a run counts once; an empty run skips every step", () => {
   const ref = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" })];
   const run = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" }), P("Find again", { draft_key: "f" })];

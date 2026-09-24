@@ -120,7 +120,7 @@ test("load path: an unreadable annotations.json is reported, not treated as abse
   assert.ok(s.annotationsError, "the session carries the load error");
   assert.equal(s.annotationsError.file, path.join(dir, "annotations.json"));
   assert.deepEqual(s.annotationsError.backups, ["annotations.json.2", "annotations.json.4"]);
-  assert.match(s.annotationsError.message, /annotations\.json in this session folder cannot be read/);
+  assert.match(s.annotationsError.message, /annotations\.json in this project folder cannot be read/);
   assert.match(s.annotationsError.message, /annotations\.json\.2, annotations\.json\.4/);
 });
 

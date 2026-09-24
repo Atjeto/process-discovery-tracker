@@ -13,7 +13,7 @@
  * the recording. The main-process open dialog is replaced (as overview-smoke
  * replaces the save dialog). Checks:
  *   (a) before an import the only transcript UI is Attach on the Overview's
- *       recording line (the "More" menu is gone, lane V1);
+ *       project line (the "More" menu is gone, lane V1);
  *   (b) Attach transcript writes transcript.json and the copied original;
  *   (c) the not-synced state of the Timeline lane (its label carries Sync,
  *       Replace and Remove), the step editor and the Overview;
@@ -23,9 +23,12 @@
  *       Description (empty, the draft's narration only its hint) and saves it
  *       in annotations.json, and the button then reads Added; a step with no
  *       talk says so;
- *   (f) the Overview lists the talk outside the runs by default; the speaker
- *       filter, the search and "Include talk during the runs" narrow and widen
- *       it; Add to Business rules lands in document.business_rules;
+ *   (f) the Overview lists the talk outside the transactions by default and
+ *       says so in its title line ("What was said outside the transactions",
+ *       AD-29); a sentence said before the recording reads "m:ss before",
+ *       never a negative time; the speaker filter, the search and "Include
+ *       talk during the transactions" narrow and widen it; Add to Business
+ *       rules lands in document.business_rules;
  *   (g) an unsupported file fails with the import's message and the previous
  *       transcript stays;
  *   (i) the pulled sentences reach the exported PDD (word/document.xml);
@@ -224,9 +227,12 @@ const WANT_OFFSET = -30000;
       } : null,
       overview: ov ? {
         count: ((q("#ov-tr-count") || {}).textContent || "").trim(),
+        what: ((q("#ov-tr-what") || {}).textContent || "").trim(),
         note: ((ov.querySelector(".tr-note") || {}).textContent || "").trim(),
         during: !!ov.querySelector(".ov-tr-during-cb"),
+        duringLabel: ((ov.querySelector(".ov-tr-during") || {}).textContent || "").trim(),
         rows: [...ov.querySelectorAll(".tr-row .tr-text")].map((e) => e.textContent),
+        times: [...ov.querySelectorAll(".tr-row .tr-time")].map((e) => ({ text: e.textContent, title: e.title || "" })),
         // P1.10: the disclosure sits in the document sections, which sit
         // directly under the summary line.
         inDocUnderSummary: !!(ov.closest("#ov-doc") && q("#ov-summary") &&
@@ -263,7 +269,7 @@ const WANT_OFFSET = -30000;
     const ok = !err && st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden &&
       st.label === null && st.blocks.length === 0 && st.said === null && st.overview === null &&
       !(await page.$("#btn-session-more-menu, #session-more-popup"));
-    record("(a) before an import the only transcript UI is Attach on the Overview's recording line (No transcript)", ok, JSON.stringify({ err, st }));
+    record("(a) before an import the only transcript UI is Attach on the Overview's project line (No transcript)", ok, JSON.stringify({ err, st }));
     if (!ok) await shot(page, "fail-transcript-before.png");
   }
 
@@ -283,7 +289,7 @@ const WANT_OFFSET = -30000;
       (doc.segments || []).length === 10 && doc.segments.every((s) => S[s.id] === s.text) && copied &&
       toast.text === "Transcript attached: 10 sentences, 2 speakers. Sync it on the Timeline to place it." &&
       st.attach === "Replace" && st.lineState === "Transcript" && !st.removeHidden && !st.laneRowHidden;
-    record("(b) Attach transcript writes transcript.json (10 sentences, not synced) and the copied original; the recording line offers Replace and Remove",
+    record("(b) Attach transcript writes transcript.json (10 sentences, not synced) and the copied original; the project line offers Replace and Remove",
       ok, JSON.stringify({ err, toast, copied, segments: doc && doc.segments.length, offset: doc && doc.offset_ms, menu: st && [st.attach, st.removeHidden] }));
     if (!ok) await shot(page, "fail-transcript-import.png");
   }
@@ -302,9 +308,10 @@ const WANT_OFFSET = -30000;
     const ok = !err && /Transcript/.test(flow.label) && /Not synced/.test(flow.label) && flow.syncAction &&
       JSON.stringify(flow.laneActs) === JSON.stringify(["Sync...", "Replace...", "Remove"]) &&
       flow.blocks.length === 0 && step && step.note === NOT_SYNCED && step.rows.length === 0 && step.buttons.length === 0 &&
-      ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during && ov.inDocUnderSummary;
-    record("(c) not synced: the lane says Not synced with Sync..., Replace... and Remove, the step editor shows one line, the Overview lists all 10 with the line and no runs filter, in the document under the recording line",
-      ok, JSON.stringify({ err, label: flow && flow.label, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
+      ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during && ov.inDocUnderSummary &&
+      ov.what === "Everything that was said";
+    record("(c) not synced: the lane says Not synced with Sync..., Replace... and Remove, the step editor shows one line, the Overview lists all 10 (\"Everything that was said\") with the line and no transactions filter, in the document under the project line",
+      ok, JSON.stringify({ err, label: flow && flow.label, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, what: ov.what, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
     if (!ok) await shot(page, "fail-transcript-not-synced.png");
   }
 
@@ -410,6 +417,20 @@ const WANT_OFFSET = -30000;
     } catch (e) { err = errText(e); }
     const outside = [S.t0001, S.t0002, S.t0003, S.t0006, S.t0007, S.t0009, S.t0010];
     const br = menu && menu.find((m) => m.key === "business_rules");
+    // AD-29: the title line says what the list holds; the two sentences said
+    // before the recording read "m:ss before", and no time is negative.
+    const before = def ? def.times.filter((x) => / before$/.test(x.text)) : [];
+    const noMinus = [def, during].every((v) => v && v.times.every((x) => !/^-/.test(x.text)));
+    const okWords = !err && def && def.what === "What was said outside the transactions" &&
+      during && during.what === "What was said, during the transactions too" &&
+      def.duringLabel === "Include talk during the transactions" &&
+      before.length === 2 && before.every((x) => /^\d+:\d{2} before$/.test(x.text) &&
+        x.title === "Said " + x.text.replace(/ before$/, "") + " before the recording started") &&
+      JSON.stringify(def.rows.slice(0, 2)) === JSON.stringify([S.t0001, S.t0002]) &&
+      def.times.slice(0, 2).every((x) => / before$/.test(x.text)) && noMinus;
+    record("(f) AD-29: the Overview's list says what it holds (outside the transactions, or during them too), its checkbox reads Include talk during the transactions, and the sentences said before the recording read m:ss before (never a negative time)",
+      okWords, JSON.stringify({ err, what: def && def.what, duringWhat: during && during.what, duringLabel: def && def.duringLabel,
+        times: def && def.times.slice(0, 3), noMinus }));
     const ok = !err && def && def.count === "(7)" && JSON.stringify(def.rows) === JSON.stringify(outside) && def.note === "" && def.during &&
       JSON.stringify(analyst.rows) === JSON.stringify([S.t0001, S.t0006, S.t0009]) &&
       JSON.stringify(search.rows) === JSON.stringify([S.t0007]) && search.count === "(1)" &&
@@ -417,7 +438,7 @@ const WANT_OFFSET = -30000;
       field === S.t0007 && disk && disk.document.business_rules === S.t0007 &&
       JSON.stringify(menu.map((m) => m.key)) === JSON.stringify(["purpose", "scope", "trigger", "result", "business_rules", "exceptions", "improvement", "notes"]) &&
       br && br.disabled && br.text === "Business rules (added)" && menu.filter((m) => m.disabled).length === 1;
-    record("(f) the Overview lists the talk outside the runs (7); the speaker filter, the search and the runs checkbox narrow and widen it; Add to offers every field but the title and contacts (trigger, result and improvement included) and Business rules saves document.business_rules",
+    record("(f) the Overview lists the talk outside the transactions (7); the speaker filter, the search and the transactions checkbox narrow and widen it; Add to offers every field but the title and contacts (trigger, result and improvement included) and Business rules saves document.business_rules",
       ok, JSON.stringify({ err, def: def && { count: def.count, n: def.rows.length }, analyst: analyst && analyst.rows.length, search: search && search.rows, during: during && during.rows.length, field, menu }));
     if (!ok) await shot(page, "fail-transcript-overview.png");
   }
@@ -509,7 +530,7 @@ const WANT_OFFSET = -30000;
       await waitToast(/Transcript removed/);
       after = await surfaces();
     } catch (e) { err = errText(e); }
-    const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it on the Overview's recording line\.$/.test(toast.text) &&
+    const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it on the Overview, on the line under the Checklist\.$/.test(toast.text) &&
       st.attach === "Replace" && st.lineState === "Transcript cannot be read" && !st.removeHidden && st.laneRowHidden && st.label === null &&
       st.said === null && st.overview === null && again === false &&
       !fs.existsSync(TRANSCRIPT) && after.attach === "Attach" && after.removeHidden;

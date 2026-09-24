@@ -1,28 +1,32 @@
 /*
  * overview-view.js: the Overview level of the Session view, the home of a
- * loaded recording (BA-helper cycle, plan section 5; step-back review 4.4;
- * companion critique section 2). The default level on load. One column, top
- * to bottom:
- *   1. "What is left" line: the analyst path's stages (mark runs, confirm the
- *      reference run, review the other runs, write the document, export the
- *      PDD), each shown done or not from the session data alone, and ONE
- *      button for the next act. Once every stage before the export is done it
- *      shrinks to one short line, so the home leads with the document. The
- *      As-Is map is not a stage (AD-28): the PDD embeds the edited As-Is copy
- *      when there is one, else the map from the runs.
- *   2. the recording line: the recording (or, once written, the document
- *      title), who recorded it, its runs, the reference run's steps, and the
- *      video and the transcript, each with its Attach; plus a warning line
- *      only when a marker problem, a missing file, a check that could not run
- *      or an app recorded with less detail needs one.
+ * loaded project (BA-helper cycle, plan section 5; step-back review 4.4;
+ * companion critique section 2). The default level on load. The words are
+ * the owner's (AD-29): a run is a "transaction" and what the analyst opens is
+ * a "project" wherever a person reads them; code and data keep run and
+ * session. One column, top to bottom:
+ *   1. the Checklist: the analyst path's acts (mark the transactions, confirm
+ *      the reference transaction, review the other transactions, write the
+ *      document, export the PDD), each ticked or not from the session data
+ *      alone, each with a tooltip that says what it means, and ONE button for
+ *      the next act. Once every act before the export is done it shrinks to
+ *      one short line, so the home leads with the document. The As-Is map is
+ *      not an act (AD-28): the PDD embeds the edited As-Is copy when there is
+ *      one, else the map from the transactions.
+ *   2. the project line: the project (or, once written, the document title),
+ *      who recorded it, its transactions, the reference transaction's steps,
+ *      and the video and the transcript, each with its Attach; plus a warning
+ *      line only when a marker problem, a missing file, a check that could
+ *      not run or an app recorded with less detail needs one.
  *   3. the document: annotations.document (contract C6), the PDD's
- *      document-level fields, and the sentences of an attached transcript;
- *      collapsed, with a one-line status (open by default once every stage is
- *      done).
- *   4. Observations: data typed twice and where the time goes
- *      (analysis-view.js).
- * Until the recording is analyzed (the analysis runs by itself, AD-22) the
- * home is one note that says where the analysis is, and the recording line.
+ *      document-level fields, which the analyst writes and the PDD prints,
+ *      and the sentences of an attached transcript; collapsed, with a
+ *      one-line status that names the empty fields (open by default once
+ *      every act is done).
+ *   4. Observations, measured from the recording: data typed twice and
+ *      where the time goes (analysis-view.js).
+ * Until the project is analyzed (the analysis runs by itself, AD-22) the
+ * home is one note that says where the analysis is, and the project line.
  */
 
 "use strict";
@@ -57,16 +61,17 @@ function _technicalDetail(err) {
 /* Where a stuck analysis is run again (no global Analyze button, AD-22). */
 const REANALYZE_WHERE = "Help, Troubleshooting has Re-analyze";
 
-/* ---- The mark-runs sentence and verb ------------------------------------- */
+/* ---- The mark-transactions sentence and verb ------------------------------ */
 
-/* AD-14: with no run markers there are no runs. One plain instruction and
-   one button that opens the Timeline with the Markers panel showing. The Map
-   level's lock message (mapLockHtml below) and the Steps level use the same
-   sentence and the same verb, so the surfaces cannot drift apart. */
-const NO_RUNS_MARKED = "This recording has no runs marked.";
-const MARK_RUNS_INSTRUCTION = "On the Timeline, add a start marker at the beginning of " +
-  "each run (right-click the timeline at that moment), then click Apply marker changes.";
-const MARK_RUNS_BUTTON = "Mark runs on the Timeline";
+/* AD-14: with no run markers there are no runs (transactions, AD-29). One
+   plain instruction and one button that opens the Timeline with the Markers
+   panel showing. The Map level's lock message (mapLockHtml below) and the
+   Steps level use the same sentence and the same verb, so the surfaces
+   cannot drift apart. */
+const NO_RUNS_MARKED = "This recording has no transactions marked.";
+const MARK_RUNS_INSTRUCTION = "On the Timeline, right-click where each transaction starts and " +
+  "choose Start a transaction here, then click Apply marker changes.";
+const MARK_RUNS_BUTTON = "Mark the transactions on the Timeline";
 
 /* Switch to the Timeline level and show its Markers panel, scrolled on screen
    (an arrival the analyst asked for). Lazy require: flow-view requires this
@@ -91,8 +96,8 @@ function waitingSentence(run, stale) {
     REANALYZE_WHERE + ".";
   if (status === "cancelled") return "The analysis was cancelled, so the steps and the map are not drafted. " +
     REANALYZE_WHERE + ".";
-  return (stale ? "This recording was analyzed by an older version, so the steps and the map are not up to date. "
-    : "This recording is not analyzed yet. ") + REANALYZE_WHERE + ".";
+  return (stale ? "This project was analyzed by an older version, so the steps and the map are not up to date. "
+    : "This project is not analyzed yet. ") + REANALYZE_WHERE + ".";
 }
 
 /* The run state of `sess` (null when the last run was for another recording). */
@@ -111,14 +116,14 @@ function _runOf(sess) {
    an older version, the run check failed, or no runs marked. `run` is the
    recording's analysis run state (waitingSentence). */
 function mapLockHtml(analysis, run) {
-  const lead = "The process map is not shown because it draws how the runs flow. ";
+  const lead = "The process map is not shown because it draws how the transactions flow. ";
   if (!analysis) return escapeHtml(lead + waitingSentence(run, false));
   const cq = analysis.case_quality;
   if (!cq) {
     const err = _stageError(analysis, "case_quality");
     if (err) {
-      return escapeHtml(lead + "The run check could not run on this recording, so the runs " +
-        "are not known. " + REANALYZE_WHERE + "; if it fails again, the analysis log names " +
+      return escapeHtml(lead + "The transaction check could not run on this recording, so the " +
+        "transactions are not known. " + REANALYZE_WHERE + "; if it fails again, the analysis log names " +
         "the problem.") + _technicalDetail(err);
     }
     return escapeHtml(lead + waitingSentence(run, true));
@@ -129,23 +134,25 @@ function mapLockHtml(analysis, run) {
     escapeHtml(MARK_RUNS_BUTTON) + "</button>";
 }
 
-/* ---- 1. What is left ------------------------------------------------------ */
+/* ---- 1. The Checklist ------------------------------------------------------ */
 
 /* The document fields (contract C6, with trigger, result and improvement as
    the pipeline lane defines them) in the order the PDD reads them, each with
-   where it appears. `optional`: an empty field leaves no gap in the PDD (its
-   section is simply left out), so it does not count as left to do. */
+   where it appears (the field's tooltip) and the short question an empty
+   field asks (its placeholder). `optional`: an empty field leaves no gap in
+   the PDD (its section is simply left out), so it does not count as left to
+   do. */
 const DOC_FIELDS = [
-  { key: "title", label: "Title", where: "the title and Document control", line: true },
-  { key: "purpose", label: "Purpose", where: "Purpose" },
-  { key: "scope", label: "Scope", where: "Scope" },
-  { key: "trigger", label: "Trigger", where: "Trigger: what starts the process" },
-  { key: "result", label: "Result", where: "Result: what the process ends with" },
-  { key: "contacts", label: "Key contacts", where: "Key contacts" },
-  { key: "business_rules", label: "Business rules", where: "Business rules and exceptions" },
-  { key: "exceptions", label: "Exceptions", where: "Business rules and exceptions" },
-  { key: "improvement", label: "Improvement and automation scope", where: "Improvement and automation scope" },
-  { key: "notes", label: "Notes", where: "the last section, printed only when written", optional: true },
+  { key: "title", label: "Title", where: "the title and Document control", ask: "What is the process called?", line: true },
+  { key: "purpose", label: "Purpose", where: "Purpose", ask: "Why is the process done, and for whom?" },
+  { key: "scope", label: "Scope", where: "Scope", ask: "Where does it start and end, and what is left out?" },
+  { key: "trigger", label: "Trigger", where: "Trigger: what starts the process", ask: "What starts the process?" },
+  { key: "result", label: "Result", where: "Result: what the process ends with", ask: "What does the process end with?" },
+  { key: "contacts", label: "Key contacts", where: "Key contacts", ask: "Who owns the process, and who can answer questions?" },
+  { key: "business_rules", label: "Business rules", where: "Business rules and exceptions", ask: "Which rules decide what happens?" },
+  { key: "exceptions", label: "Exceptions", where: "Business rules and exceptions", ask: "What goes differently, and how is it handled?" },
+  { key: "improvement", label: "Improvement and automation scope", where: "Improvement and automation scope", ask: "What could be improved or automated?" },
+  { key: "notes", label: "Notes", where: "the last section, printed only when written", ask: "Anything else the PDD should say?", optional: true },
 ];
 
 function _docValue(doc, key) {
@@ -153,20 +160,35 @@ function _docValue(doc, key) {
   return typeof v === "string" ? v : "";
 }
 
-/* How many of the document fields that fill a PDD placeholder are written. */
+/* How many of the document fields that fill a PDD placeholder are written,
+   and which are still empty (`missing`: their labels, in the PDD's order). */
 function documentStatus(doc) {
   const counted = DOC_FIELDS.filter((f) => !f.optional);
   const filled = counted.filter((f) => _docValue(doc, f.key).trim()).length;
+  const missing = counted.filter((f) => !_docValue(doc, f.key).trim()).map((f) => f.label);
   const firstEmpty = DOC_FIELDS.find((f) => !_docValue(doc, f.key).trim()) || null;
-  return { filled, total: counted.length, firstEmpty: firstEmpty ? firstEmpty.key : null };
+  return { filled, total: counted.length, missing, firstEmpty: firstEmpty ? firstEmpty.key : null };
 }
 
+/* The Checklist's acts, in the analyst path's order: each item names the act
+   and its tooltip says what it means and when it is ticked (AD-29). */
 const PATH_STAGES = [
-  { key: "runs", label: "Runs" },
-  { key: "pattern", label: "Reference run" },
-  { key: "review", label: "Other runs" },
-  { key: "document", label: "Document" },
-  { key: "export", label: "PDD" },
+  { key: "runs", label: "Mark the transactions",
+    title: "A transaction is one pass through the process. Each starts at a start marker: the SME's transaction key " +
+      "sets one, or you add one on the Timeline. A project without a recording is one transaction from the start. " +
+      "Ticked once there is at least one transaction." },
+  { key: "pattern", label: "Confirm the reference transaction",
+    title: "In Steps, check the reference transaction's drafted steps (transaction 1 unless you pick another), fix " +
+      "their boundaries and names, then click Confirm transaction. Ticked once it is confirmed." },
+  { key: "review", label: "Review the other transactions",
+    title: "Open each other transaction in Steps: it lists how it differs from the reference transaction. The other " +
+      "transactions are not confirmed. Ticked once each has been opened." },
+  { key: "document", label: "Write the document",
+    title: "Write the document fields on this page: you write them, and the PDD prints them. Ticked once every " +
+      "field but Notes is written." },
+  { key: "export", label: "Export the PDD",
+    title: "Export the Process Definition Document (.docx) with the button or the Export menu. The app keeps no " +
+      "record of an export, so this item is never ticked." },
 ];
 
 /* The analyst path's state, derived from the session data alone (pure: the
@@ -206,26 +228,27 @@ function pathState(sess) {
 }
 
 /* The one button for the next act: its text and, where the text alone does
-   not say enough, the sentence shown before it. */
+   not say enough, the sentence shown before it. A transaction's title reads
+   lower case inside a sentence ("Review transaction 2 in Steps"). */
 function _nextAct(state) {
   switch (state.next) {
     case "runs":
       return { button: MARK_RUNS_BUTTON, say: NO_RUNS_MARKED + " " + MARK_RUNS_INSTRUCTION };
     case "pattern":
-      return { button: state.pattern ? "Confirm " + state.pattern.title + " in Steps" : "Open the runs in Steps",
-        title: "Check the reference run's drafted steps, fix their boundaries and names, then click Confirm run." };
+      return { button: state.pattern ? "Confirm " + state.pattern.title.toLowerCase() + " in Steps" : "Open the transactions in Steps",
+        title: "Check the reference transaction's drafted steps, fix their boundaries and names, then click Confirm transaction." };
     case "review":
-      return { button: "Review " + state.nextOther.title + " in Steps",
-        title: "Open the run to see how it differs from the reference run. The other runs are not confirmed.",
+      return { button: "Review " + state.nextOther.title.toLowerCase() + " in Steps",
+        title: "Open the transaction to see how it differs from the reference transaction. The other transactions are not confirmed.",
         say: state.differing
-          ? _plural(state.differing, "run differs", "runs differ") + " from the reference run."
-          : "No other run differs from the reference run." };
+          ? _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction."
+          : "No other transaction differs from the reference transaction." };
     case "document":
       return { button: "Write the document",
-        title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: the PDD prints them in place of its placeholders." };
+        title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: you write them, and the PDD prints them in place of its placeholders." };
     default:
       return { button: "Export PDD",
-        title: "Write the Process Definition Document (.docx) with the process map (your edited As-Is map when there is one), the steps and the document fields." };
+        title: "Write the Process Definition Document (.docx) with the process map (your edited As-Is map when there is one), the steps and the document fields. Its folder opens with the file selected." };
   }
 }
 
@@ -234,20 +257,21 @@ function _nextLineHtml(state) {
   const button = '<button type="button" class="primary" id="btn-ov-next" data-next-act="' + state.next + '"' +
     (act.title ? ' title="' + escapeAttr(act.title) + '"' : "") + ">" + escapeHtml(act.button) + "</button>";
   if (state.ready) {
-    // Every stage before the export is done: one short line.
+    // Every act before the export is done: one short line.
     return '<div class="ov-next ov-next-ready" id="ov-next" data-next="export">' +
-      '<span class="ov-next-label">What is left</span>' +
-      '<span class="ov-next-ready-text">Every stage is done: the PDD is ready to export.</span>' +
+      '<span class="ov-next-label">Checklist</span>' +
+      '<span class="ov-next-ready-text">Everything before the export is done: the PDD is ready to export.</span>' +
       button + "</div>";
   }
   const stages = PATH_STAGES.map((st) => {
     const cls = state.done[st.key] ? "done" : (st.key === state.next ? "next" : "");
-    return '<li class="ov-next-stage' + (cls ? " " + cls : "") + '" data-stage="' + st.key + '">' +
+    return '<li class="ov-next-stage' + (cls ? " " + cls : "") + '" data-stage="' + st.key + '" title="' +
+      escapeAttr(st.title) + '">' +
       (state.done[st.key] ? '<span class="ov-next-mark" aria-hidden="true">✓</span>' : "") +
       escapeHtml(st.label) + "</li>";
   }).join("");
   return '<div class="ov-next" id="ov-next" data-next="' + state.next + '">' +
-    '<span class="ov-next-label">What is left</span>' +
+    '<span class="ov-next-label">Checklist</span>' +
     '<ol class="ov-next-stages">' + stages + "</ol>" + button +
     (act.say ? '<div class="ov-next-say">' + escapeHtml(act.say) + "</div>" : "") +
     "</div>";
@@ -292,7 +316,7 @@ function _wireNextLine(host) {
   if (btn) btn.addEventListener("click", () => _goNext(btn.dataset.nextAct));
 }
 
-/* ---- 2. The recording line --------------------------------------------------- */
+/* ---- 2. The project line ----------------------------------------------------- */
 
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
@@ -315,18 +339,19 @@ function _mediaParts(sess) {
   return [video, transcript];
 }
 
-/* The recording in one line: its name (the document title once written,
+/* The project in one line: its name (the document title once written,
    P3.9), who recorded it (the SME's name when the capture app's Profile set
-   one, else the Windows login), its runs, the reference run's steps (not
-   every run's: the process has that many steps), and the video and the
-   transcript with their acts. `state` is pathState, or null before the
-   recording is analyzed (the parts that need the runs are left out). */
+   one, else the Windows login), its transactions, the reference
+   transaction's steps (not every transaction's: the process has that many
+   steps), and the video and the transcript with their acts. `state` is
+   pathState, or null before the project is analyzed (the parts that need the
+   runs are left out). */
 function _summaryLine(sess, state) {
   const s = SessionSummary.computeSummary(sess);
   const m = (sess && sess.manifest) || {};
   const docTitle = _docValue(((sess && sess.annotations) || {}).document, "title").trim();
   const project = s ? (s.engagementName || s.engagement)
-    : (m.engagement_name || (m.config && m.config.engagement_name) || m.engagement_id || "This recording");
+    : (m.engagement_name || (m.config && m.config.engagement_name) || m.engagement_id || "This project");
   const login = s ? s.worker : ((m.config && m.config.worker && m.config.worker.id) || "");
   const sme = SessionSummary.smeName(m) || login;
   // The analyst-given name (manifest.label: a project made in the viewer, C16) before the project.
@@ -336,7 +361,7 @@ function _summaryLine(sess, state) {
   if (sme && !["video", "blank"].includes(m.source)) parts.push("recorded by " + escapeHtml(sme));
   if (state) {
     const runs = state.runs.length;
-    parts.push('<span data-summary="runs">' + (runs ? _plural(runs, "run", "runs") : "No runs") + "</span>");
+    parts.push('<span data-summary="runs">' + (runs ? _plural(runs, "transaction", "transactions") : "No transactions") + "</span>");
     if (state.pattern) {
       parts.push('<span data-summary="steps">' + _plural(state.pattern.visible.length, "step", "steps") +
         " in " + escapeHtml(state.pattern.title.toLowerCase()) + "</span>");
@@ -364,7 +389,7 @@ function _summaryWarnings(sess) {
     let text = "", fix = "";
     if (p.kind === "dangling_start") {
       text = "Start " + label + " at " + time + " has no matching End.";
-      fix = '<button class="summary-fix" data-fix="close-start">Close at session end</button>';
+      fix = '<button class="summary-fix" data-fix="close-start">End it where the recording ends</button>';
     } else if (p.kind === "orphan_end") {
       text = "End marker at " + time + " has no open Start to close.";
       if (p.eventId) {
@@ -372,7 +397,7 @@ function _summaryWarnings(sess) {
           escapeAttr(p.eventId) + '">Remove this marker</button>';
       }
     } else if (p.kind === "short_case") {
-      text = "Run " + label + " at " + time + " is only " + Math.round((p.durationMs || 0) / 1000) +
+      text = "Transaction " + label + " at " + time + " is only " + Math.round((p.durationMs || 0) / 1000) +
         "s long (accidental?)";
     }
     out.push('<div class="summary-problem"><span class="p-text">⚠ ' + text + "</span>" + fix + "</div>");
@@ -382,15 +407,15 @@ function _summaryWarnings(sess) {
     const n = integ.missing.length;
     const names = integ.missing.slice(0, 6).map(escapeHtml).join(", ");
     out.push('<div class="summary-problem"><span class="p-text">⚠ ' + n + " file" + (n === 1 ? "" : "s") +
-      " recorded in this session " + (n === 1 ? "is" : "are") + " missing (the session may have been " +
+      " recorded in this project " + (n === 1 ? "is" : "are") + " missing (the folder may have been " +
       "copied incompletely): " + names + (n > 6 ? ", …" : "") + ".</span></div>");
   }
   const analysis = (sess && sess.analysis) || {};
   if (!analysis.case_quality) {
     const err = _stageError(analysis, "case_quality");
     if (err) {
-      out.push('<div class="analysis-note ov-stage-not-run">' + escapeHtml("The run check could not run " +
-        "on this recording, so the runs are not compared and the Map is not shown. " + REANALYZE_WHERE +
+      out.push('<div class="analysis-note ov-stage-not-run">' + escapeHtml("The transaction check could not run " +
+        "on this recording, so the transactions are not compared and the Map is not shown. " + REANALYZE_WHERE +
         "; if it fails again, the analysis log names the problem.") + "</div>" + _technicalDetail(err));
     }
   }
@@ -439,9 +464,17 @@ function _wireSummary(host) {
 let _docOpen = null;
 let _docFolder = null;
 
+/* "6 of 9 written. To write: Trigger, Result, Improvement and automation
+   scope": the count, and the empty fields by name while some are written
+   (with none written, every field is still to write). Commas only: a label
+   can hold "and". */
 function _documentStatusText(st) {
-  return st.filled + " of " + st.total + " written";
+  const count = st.filled + " of " + st.total + " written";
+  return st.filled > 0 && st.missing.length ? count + ". To write: " + st.missing.join(", ") : count;
 }
+
+/* Who fills the document, in the summary beside its title (AD-29). */
+const DOC_WHO = "You write these. The PDD prints them.";
 
 /* ---- 3b. From the transcript (contract C8) -------------------------------- */
 
@@ -449,8 +482,15 @@ function _documentStatusText(st) {
    transcript is attached. By default it lists the talk outside the runs
    (where purpose, scope, rules and exceptions are discussed); a speaker
    filter and a search narrow it; "Add to" appends a sentence to a document
-   field. Kept across re-renders for the session on screen, like _docOpen. */
+   field. Kept across re-renders for the session on screen, like _docOpen.
+   Its summary says in one line what the list holds (AD-29). */
 let _tr = { open: false, speaker: "", query: "", during: false };
+
+/* What the list holds, beside the disclosure's title. */
+function _transcriptWhat(view) {
+  if (!view.synced) return "Everything that was said";
+  return _tr.during ? "What was said, during the transactions too" : "What was said outside the transactions";
+}
 
 /* The document fields a sentence can be added to: C6's, less title and contacts. */
 const TR_TARGETS = DOC_FIELDS.filter((f) => f.key !== "title" && f.key !== "contacts");
@@ -490,6 +530,7 @@ function _transcriptHtml(sess) {
   return '<details class="tr-more ov-tr" id="ov-tr"' + (_tr.open ? " open" : "") + ">" +
     '<summary class="tr-more-head"><span class="tr-more-title">From the transcript ' +
       '<span id="ov-tr-count">(' + view.list.length + ")</span></span>" +
+      '<span class="tr-more-what" id="ov-tr-what">' + escapeHtml(_transcriptWhat(view)) + "</span>" +
       '<span class="tr-more-chevron" aria-hidden="true"></span></summary>' +
     '<div class="tr-more-body">' +
       (view.synced ? "" : '<p class="tr-note">' + escapeHtml(TM.NOT_SYNCED_LINE) + "</p>") +
@@ -498,7 +539,7 @@ function _transcriptHtml(sess) {
         '<input type="search" class="ov-tr-search" placeholder="Search the transcript" aria-label="Search the transcript" value="' +
           escapeAttr(_tr.query) + '" />' +
         (view.synced ? '<label class="cb ov-tr-during"><input type="checkbox" class="ov-tr-during-cb"' +
-          (_tr.during ? " checked" : "") + " /> Include talk during the runs</label>" : "") +
+          (_tr.during ? " checked" : "") + " /> Include talk during the transactions</label>" : "") +
       "</div>" +
       '<div id="ov-tr-list">' + _transcriptListHtml(view) + "</div>" +
     "</div></details>";
@@ -568,6 +609,7 @@ function _wireTranscript(host) {
     if (!view) return;
     panel.querySelector("#ov-tr-list").innerHTML = _transcriptListHtml(view);
     panel.querySelector("#ov-tr-count").textContent = "(" + view.list.length + ")";
+    panel.querySelector("#ov-tr-what").textContent = _transcriptWhat(view);
   };
   const speaker = panel.querySelector(".ov-tr-speaker");
   speaker.addEventListener("change", () => { _tr.speaker = speaker.value; refresh(); });
@@ -586,9 +628,11 @@ function _documentHtml(anno, sess, open) {
   const st = documentStatus(doc);
   const fields = DOC_FIELDS.map((f) => {
     const value = _docValue(doc, f.key);
-    // P3.6: where the field lands is its placeholder and tooltip, not a line.
+    // P3.6: where the field lands is its tooltip, not a line. AD-29: an
+    // empty field asks its short question (a light italic placeholder), so
+    // it looks empty.
     const where = "In the PDD: " + f.where;
-    const attrs = ' data-doc="' + f.key + '" placeholder="' + escapeAttr(where) + '" title="' + escapeAttr(where) + '"';
+    const attrs = ' data-doc="' + f.key + '" placeholder="' + escapeAttr(f.ask) + '" title="' + escapeAttr(where) + '"';
     const input = f.line
       ? '<input type="text" class="ov-doc-input"' + attrs + ' value="' + escapeAttr(value) + '" />'
       : '<textarea class="ov-doc-input"' + attrs + ' rows="3">' + escapeHtml(value) + "</textarea>";
@@ -596,12 +640,13 @@ function _documentHtml(anno, sess, open) {
       '<span class="ov-doc-label">' + escapeHtml(f.label) + (f.optional ? ' <span class="ov-doc-optional">optional</span>' : "") + "</span>" +
       input + "</label>";
   }).join("");
-  // The same disclosure as the Observations (.analysis-module): a title, a
-  // one-line status that shows while it is closed, and a chevron.
+  // The same disclosure as the Observations (.analysis-module): a title, who
+  // fills it, a one-line status that shows while it is closed, and a chevron.
   return '<details class="analysis-section analysis-module ov-doc" id="ov-doc"' + (open ? " open" : "") + ">" +
     '<summary class="analysis-module-head" title="The PDD prints each field you write in place of its ' +
       'placeholder; the fields are kept for every later export.">' +
       '<span class="analysis-module-title">Document</span>' +
+      '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(DOC_WHO) + "</span>" +
       '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +

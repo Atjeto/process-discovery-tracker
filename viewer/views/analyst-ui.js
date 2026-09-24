@@ -143,7 +143,7 @@ function stepExtrasHtml(step) {
     "</div>" +
     '<div class="step-sect" id="step-atts-sect">' +
       _sectHead("Attachments", "btn-step-attach", "Attach file...",
-        "Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the session folder and listed in the PDD.") +
+        "Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the project folder and listed in the PDD.") +
       (atts ? '<ul class="att-list">' + atts + "</ul>" : "") +
     "</div>";
 }
@@ -459,7 +459,7 @@ function overviewAttachmentsHtml(anno) {
   }).join("");
   return '<div class="ov-attach" id="ov-attach">' +
     '<div class="step-sect-head"><span class="ov-doc-label">Attachments</span>' +
-      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this session (an example email, an input spreadsheet, an SOP). It is copied into the session folder and listed in the PDD.">Add file...</button></div>' +
+      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project (an example email, an input spreadsheet, an SOP). It is copied into the project folder and listed in the PDD.">Add file...</button></div>' +
     (rows ? '<ul class="att-list">' + rows + "</ul>" : '<p class="ov-attach-empty">No files attached. The PDD lists the files you attach here.</p>') +
     "</div>";
 }

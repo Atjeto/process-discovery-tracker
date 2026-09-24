@@ -253,7 +253,7 @@ async function attachVideo() {
   const session = State.getSession();
   if (!session) return;
   if (!session.manifest || !session.manifest.started_at) {
-    toast("This recording has no start time, so a video cannot be placed on it.", "error");
+    toast("This project has no start time, so a video cannot be placed on it.", "error");
     return;
   }
   const r = await Ipc.attachExternalVideo({ sessionFolder: session.sessionFolder });
@@ -291,11 +291,11 @@ function startVideoSync(opts) {
   const video = $("#video");
   const pendingPath = (opts && typeof opts.pendingPath === "string") ? opts.pendingPath : null;
   if (!session || (!pendingPath && !session.recordingAvailable) || !video || !video.src) {
-    toast("No video is linked to this session.", "error");
+    toast("No video is linked to this project.", "error");
     return;
   }
   if (!session.manifest || !session.manifest.started_at) {
-    toast("Session has no start time: cannot compute a video offset.", "error");
+    toast("This project has no start time, so the video cannot be synced.", "error");
     return;
   }
   if (!pendingPath) cancelVideoSync();
@@ -364,13 +364,13 @@ async function applyVideoSync(offsetMs, pendingPath, relink) {
     return;
   }
   if (r.copyError) {
-    toast("The video is attached, but it could not be copied into the recording folder (" + r.copyError +
+    toast("The video is attached, but it could not be copied into the project folder (" + r.copyError +
       "), so a copy of the folder will not carry it.", "error");
   } else {
     const plain = !(session.events || []).length;
     toast((relink ? "Video found: it keeps its sync (Sync video changes it)." : plain && pendingPath ? "Video attached."
       : pendingPath ? "Video attached and synced." : "Video synced.") +
-      (r.copied ? " It is copied into the recording folder." : ""), "success");
+      (r.copied ? " It is copied into the project folder." : ""), "success");
   }
   await loadSessionIntoView(session.sessionFolder);
 }

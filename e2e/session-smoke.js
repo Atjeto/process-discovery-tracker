@@ -16,13 +16,17 @@
  *   - the Session Export menu's "Process map (image)" and "Process map
  *     (BPMN)" items each write their file (no As-Is copy chosen yet: the map
  *     on the Map level),
- *   - the chrome: one top bar (Open, the four levels, the status line,
+ *   - the chrome: one top bar (New, Open, the four levels, the status line,
  *     Export, Help, theme; no actions bar, no Analyze button, no More menu),
- *     the Run select on the Timeline only, the version in Help, the active
- *     level legible under the mouse,
- *   - the Overview's Where the time goes: every step of the runs with its time
- *     per run and in how many runs, and every application (the automation
- *     candidates fold in there); no dot strip, no total, no editor,
+ *     New and Open two menus, the Transaction select on the Timeline only
+ *     ("Transaction 1 · <label>"), the version in Help, the active level
+ *     legible under the mouse,
+ *   - the Overview's Where the time goes: every step of the runs with its
+ *     average time and in how many transactions it happened, and every
+ *     application (the automation candidates fold in there); no dot strip, no
+ *     total, no editor,
+ *   - every map export opens its folder at the file (the reveal is stubbed
+ *     and its path checked),
  *   - the Timeline's side panel opens on Screenshots (no Notes), its
  *     thumbnails show local time, the moved controls are where they are used
  *     (with and without a video), and the Raw events drawer shows on the
@@ -152,7 +156,7 @@ async function unreadableAnnotationsPin() {
     .then(() => p.$eval("#annotations-error-banner", (el) => (el.textContent || "").trim()))
     .catch((e) => { logActionError("RP-04 banner", e); return "NO BANNER: " + String(e.message).split("\n")[0]; });
   record("RP-04: an unreadable annotations.json loads as an error banner naming the file and its backups",
-    /annotations\.json in this session folder cannot be read/.test(banner) && /annotations\.json\.2/.test(banner),
+    /annotations\.json in this project folder cannot be read/.test(banner) && /annotations\.json\.2/.test(banner),
     banner.slice(0, 260));
 
   // The real verb: insert a Start marker from the Flow timeline's menu. The
@@ -170,7 +174,7 @@ async function unreadableAnnotationsPin() {
       tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true,
         clientX: r.left + r.width * 0.3, clientY: r.top + 4 }));
     });
-    await p.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+    await p.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
     await p.locator(".modal-prompt .modal-input").fill("RP-04 probe run", { timeout: T });
     await p.locator(".modal-prompt .modal-ok").click({ timeout: T });
     await p.waitForFunction(() => /was not saved/.test((document.getElementById("toast") || {}).textContent || ""),
@@ -207,7 +211,7 @@ async function unreadableAnnotationsPin() {
   } catch (e) { logActionError("RP-04 re-analyze", e); analyzeMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
   const afterAnalyze = untouched();
   record("RP-04: Re-analyze (Help, Troubleshooting) on that session is refused with the reason, the log shows with the failure sentence first; annotations.json is untouched",
-    /Analysis stopped, nothing was changed: .*annotations\.json in this session folder cannot be read/.test(analyzeMsg) &&
+    /Analysis stopped, nothing was changed: .*annotations\.json in this project folder cannot be read/.test(analyzeMsg) &&
       /^Analysis stopped, nothing was changed: /.test(failureFirst) && afterAnalyze,
     "first=" + JSON.stringify(failureFirst.slice(0, 120)) + " filesUntouched=" + afterAnalyze);
 
@@ -297,7 +301,7 @@ async function unreadableAnnotationsPin() {
   }).catch((e) => ({ err: e.message }));
   record("the session summary is one line on the Overview only (no panel above the levels)",
     !!(summaryHome && !summaryHome.err && summaryHome.oldPanel === 0 && summaryHome.inOverview &&
-      summaryHome.outsideOverview === 0 && /\b4 runs\b/.test(summaryHome.text || "")),
+      summaryHome.outsideOverview === 0 && /\b4 transactions\b/.test(summaryHome.text || "")),
     JSON.stringify(summaryHome));
 
   // BA-helper cut (L1b): the app IS the Session view. No top tab row, no
@@ -337,20 +341,26 @@ async function unreadableAnnotationsPin() {
   }
   const runSelectText = await page.evaluate(() => ({
     label: ((document.querySelector("#case-scope .case-scope-label") || {}).textContent || "").trim(),
-    first: ((document.querySelector("#case-scope-select option") || {}).textContent || "").trim(),
+    options: [...document.querySelectorAll("#case-scope-select option")].map((o) => (o.textContent || "").trim()),
     playhead: document.querySelectorAll("#btn-scope-to-playhead").length,
   })).catch((e) => ({ err: e.message }));
-  record("P1.2: the Run select shows on the Timeline only (All runs), in its header; Scope to playhead is gone",
+  const opts = runSelectText.options || [];
+  // AD-29: each transaction reads the way Steps names it, then its marker
+  // label (the demo's "Order #...").
+  record("P1.2 + AD-29: the Transaction select shows on the Timeline only (All transactions, then Transaction N · its label), in its header; Scope to playhead is gone",
     runSelect.flow === true && runSelect.overview === false && runSelect.steps === false && runSelect.map === false &&
-      runSelectText.label === "Run:" && runSelectText.first === "All runs" && runSelectText.playhead === 0,
+      runSelectText.label === "Transaction:" && opts[0] === "All transactions" && opts.length === 5 &&
+      opts.slice(1).every((o, i) => new RegExp("^Transaction " + (i + 1) + "( · \\S.*)?$").test(o)) &&
+      opts.some((o) => / · Order #\d+$/.test(o)) && runSelectText.playhead === 0,
     JSON.stringify({ runSelect, runSelectText }));
 
   // P1.2 / P3.1 / P3.2 / P2.2: the chrome says each thing once. No VIEW label,
   // per-level hint, hidden level descriptions or top-bar date; the version is
-  // in Help; one Open menu holds the folder picker and the recent recordings.
-  // V1 (step-back review 4.2): ONE bar holds Open, the four levels, the status
-  // line, Export, Help and the theme, in that order; the actions bar, the
-  // level bar under it, "Analyze session" and "More" are gone, and the
+  // in Help. AD-29: New and Open are two menus, New with its two projects,
+  // Open with the folder picker and the recent projects.
+  // V1 (step-back review 4.2): ONE bar holds New, Open, the four levels, the
+  // status line, Export, Help and the theme, in that order; the actions bar,
+  // the level bar under it, "Analyze session" and "More" are gone, and the
   // Overview's one orange button is its next act.
   await page.click('.view-mode-btn[data-level="overview"]').catch(() => {});
   await wait(400);
@@ -359,7 +369,7 @@ async function unreadableAnnotationsPin() {
     const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0);
     const bar = document.querySelector("header.topbar");
     const inBar = (sel) => [...document.querySelectorAll(sel)].every((el) => bar && bar.contains(el));
-    const order = ["#btn-recent-menu", '.view-mode-btn[data-level="overview"]', '.view-mode-btn[data-level="flow"]',
+    const order = ["#btn-new-menu", "#btn-recent-menu", '.view-mode-btn[data-level="overview"]', '.view-mode-btn[data-level="flow"]',
       '.view-mode-btn[data-level="steps"]', '.view-mode-btn[data-level="map"]', "#session-pills",
       "#btn-session-export-menu", "#btn-help", "#btn-theme-toggle"]
       .map((sel) => { const el = document.querySelector(sel); return el && bar && bar.contains(el) ? el.getBoundingClientRect().left : null; });
@@ -367,7 +377,11 @@ async function unreadableAnnotationsPin() {
     return {
       gone: n(".view-mode-label") + n("#view-mode-help") + n(".view-mode-desc") + n("#topbar-meta") + n("#onboarding-card"),
       version: ((document.getElementById("help-version") || {}).textContent || "").trim(),
+      newMenu: ((document.querySelector("#btn-new-menu span") || {}).textContent || "").trim(),
+      newItems: [...document.querySelectorAll("#new-menu-popup .project-menu-item")].map((b) => (b.textContent || "").trim()),
+      newItemIds: [...document.querySelectorAll("#new-menu-popup .project-menu-item")].map((b) => b.id),
       openMenu: ((document.querySelector("#btn-recent-menu span") || {}).textContent || "").trim(),
+      openItems: [...document.querySelectorAll("#recent-menu-popup > .project-menu-item")].map((b) => (b.textContent || "").trim()),
       openFolderInMenu: !!document.querySelector("#recent-menu-popup #btn-open-session"),
       openFolderLabel: ((document.getElementById("btn-open-session") || {}).textContent || "").trim(),
       analyzeButton: n("#btn-normalize") + [...document.querySelectorAll("button")].filter((b) => /Analyze session/.test(b.textContent || "")).length,
@@ -376,7 +390,7 @@ async function unreadableAnnotationsPin() {
       actionsBar: n(".actions-bar"),
       bars: [...document.querySelectorAll(".view-mode-bar")].map((el) => !!(bar && bar.contains(el))),
       allInBar: inBar(".view-mode-btn") && inBar("#session-pills") && inBar("#btn-session-export-menu") &&
-        inBar("#btn-recent-menu") && inBar("#btn-help") && inBar("#btn-theme-toggle"),
+        inBar("#btn-new-menu") && inBar("#btn-recent-menu") && inBar("#btn-help") && inBar("#btn-theme-toggle"),
       inOrder: order.every((x) => x != null) && order.every((x, i) => i === 0 || x >= order[i - 1]),
       levels: levelBtns.map((b) => (b.textContent || "").replace(/\s+/g, " ").trim()),
       titles: levelBtns.map((b) => b.title),
@@ -385,19 +399,42 @@ async function unreadableAnnotationsPin() {
         .map((b) => (b.textContent || "").trim()),
     };
   }).catch((e) => ({ err: e.message }));
-  record("V1: one top bar holds Open, the four levels (Overview, Timeline, Steps, Map), the status line, Export, Help and the theme; no actions bar, no Analyze session, no More menu; one orange button on the Overview; the version is in Help",
+  record("V1 + AD-29: one top bar holds New, Open, the four levels (Overview, Timeline, Steps, Map), the status line, Export, Help and the theme; New and Open are separate menus; no actions bar, no Analyze session, no More menu; one orange button on the Overview; the version is in Help",
     !!(chrome && !chrome.err && chrome.gone === 0 && /^Version \d+\.\d+\.\d+/.test(chrome.version) &&
-      chrome.openMenu === "Open" && chrome.openFolderInMenu && chrome.openFolderLabel === "Open recording..." &&
+      chrome.newMenu === "New" && JSON.stringify(chrome.newItems) === JSON.stringify(["New project from a video...", "New empty project..."]) &&
+      JSON.stringify(chrome.newItemIds) === JSON.stringify(["btn-new-from-video", "btn-new-blank"]) &&
+      chrome.openMenu === "Open" && JSON.stringify(chrome.openItems) === JSON.stringify(["Open project..."]) &&
+      chrome.openFolderInMenu && chrome.openFolderLabel === "Open project..." &&
       chrome.analyzeButton === 0 && chrome.moreMenu === 0 && chrome.actionsBar === 0 &&
       JSON.stringify(chrome.bars) === "[true]" && chrome.allInBar && chrome.inOrder &&
       JSON.stringify(chrome.levels) === JSON.stringify(["◈ Overview", "≡ Timeline", "▣ Steps", "◯ Map"]) &&
-      JSON.stringify(chrome.titles) === JSON.stringify(["What is left, the recording and the document",
-        "The recording: video, screenshots, runs and what was said",
-        "Each run's steps: confirm run 1, then review the others",
+      JSON.stringify(chrome.titles) === JSON.stringify(["The checklist, the project and the document",
+        "The recording: video, screenshots, transactions and what was said",
+        "Each transaction's steps: confirm transaction 1, then review the others",
         "The process map, and your As-Is and To-Be maps"]) &&
       chrome.barHeight > 0 && chrome.barHeight < 60 &&
-      chrome.orangeOnOverview.length === 1 && chrome.orangeOnOverview[0] === "Confirm Run 1 in Steps"),
+      chrome.orangeOnOverview.length === 1 && chrome.orangeOnOverview[0] === "Confirm transaction 1 in Steps"),
     JSON.stringify(chrome));
+
+  // AD-29: New and Open are two menus side by side; opening one closes the
+  // other (control interaction), and a click outside closes both.
+  const menus = {};
+  try {
+    const shownPopups = () => page.evaluate(() => ["new-menu-popup", "recent-menu-popup", "session-export-popup"]
+      .filter((id) => { const el = document.getElementById(id); return !!el && getComputedStyle(el).display !== "none"; }));
+    await page.locator("#btn-new-menu").click({ timeout: 15000 });
+    menus.afterNew = await shownPopups();
+    await page.locator("#btn-recent-menu").click({ timeout: 15000 });
+    menus.afterOpen = await shownPopups();
+    await page.locator("#btn-session-export-menu").click({ timeout: 15000 });
+    menus.afterExport = await shownPopups();
+    await page.mouse.click(5, 400);
+    menus.afterOutside = await shownPopups();
+  } catch (e) { logActionError("AD-29 New and Open menus", e); menus.err = String(e.message).split("\n")[0]; }
+  record("AD-29: New, Open and Export each open alone (opening one closes the other), and a click outside closes them",
+    !menus.err && JSON.stringify(menus.afterNew) === '["new-menu-popup"]' && JSON.stringify(menus.afterOpen) === '["recent-menu-popup"]' &&
+      JSON.stringify(menus.afterExport) === '["session-export-popup"]' && JSON.stringify(menus.afterOutside) === "[]",
+    JSON.stringify(menus));
 
   // F3: the active level button stays legible under the mouse (the global
   // button hover used to give it a light background under near-white text).
@@ -596,6 +633,8 @@ async function unreadableAnnotationsPin() {
   const STATE_TIMEOUT = 15000;
   await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }).catch(() => {});
   await page.waitForSelector('#ov-observations .analysis-module[data-module="time"]', { timeout: STATE_TIMEOUT }).catch(() => {});
+  // AD-29: an average time reads in whole units ("10 s", "1 min 5 s").
+  const AVG_TIME = /^(under 1 s|\d+ s|\d+ min( \d+ s)?|\d+ h( \d+ min)?)$/;
   const timeGoes = await page.evaluate(() => {
     const s = require("./state.js").getSession();
     const runs = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
@@ -624,14 +663,14 @@ async function unreadableAnnotationsPin() {
     };
   }).catch((e) => ({ err: e.message }));
   const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.runs === 4 &&
-    JSON.stringify(timeGoes.heads) === JSON.stringify([["Step", "Per run", "Runs"], ["System", "Per run", "Runs"]]) &&
+    JSON.stringify(timeGoes.heads) === JSON.stringify([["Step", "Average time", "Happened in"], ["System", "Average time", "Happened in"]]) &&
     JSON.stringify(timeGoes.stepRows.map((r) => r[0]).sort()) === JSON.stringify(timeGoes.timedSteps) &&
-    timeGoes.stepRows.every((r) => /^\d/.test(r[1]) && /^in [1-4] of 4 runs$/.test(r[2])) &&
-    timeGoes.appRows.length >= timeGoes.candidateApps && timeGoes.appRows.every((r) => /^in [1-4] of 4 runs$/.test(r[2])) &&
+    timeGoes.stepRows.every((r) => AVG_TIME.test(r[1]) && /^[1-4] of 4 transactions$/.test(r[2])) &&
+    timeGoes.appRows.length >= timeGoes.candidateApps && timeGoes.appRows.every((r) => /^[1-4] of 4 transactions$/.test(r[2])) &&
     timeGoes.appRows.some((r) => r[0] === "Salesforce") && !timeGoes.appRows.some((r) => /Chrome/.test(r[0])) &&
-    timeGoes.gone === 0 && /^Most in .+: .+ per run$/.test(timeGoes.takeaway) &&
+    timeGoes.gone === 0 && /^Most time in .+ \(.+ on average\)$/.test(timeGoes.takeaway) &&
     JSON.stringify(timeGoes.items) === JSON.stringify(["retyped", "time"]));
-  record("V1 + V2 item 3: the Observations' Where the time goes lists every timed step of the runs (time per run, in N of 4 runs) and every system; no dot strip, total, editor or candidate cards",
+  record("V1 + V2 item 3 + AD-29: the Observations' Where the time goes lists every timed step of the runs (Average time \"10 s\", Happened in \"N of 4 transactions\") and every system; no dot strip, total, editor or candidate cards",
     tgOk, JSON.stringify(timeGoes));
   if (!tgOk) await shot(page, "fail-where-the-time-goes.png");
 
@@ -891,15 +930,17 @@ async function unreadableAnnotationsPin() {
 
   // --- AD-11: the map exports live in the Session Export menu -----------------
   // Pin the VERB: open the menu, click the item, and assert the written file
-  // (the OS save dialog is stubbed to a temp path, the shell reveal to a no-op).
+  // (the OS save dialog is stubbed to a temp path, the shell reveal to a
+  // recorder: AD-29, every export opens its folder at the file).
   async function exportViaMenu(itemId, outPath) {
     await app.evaluate(({ dialog, shell }, p) => {
       global.__pdtSaveDefault = null;
+      global.__pdtRevealed = null;
       dialog.showSaveDialog = async (_w, opts) => {
         global.__pdtSaveDefault = (opts && opts.defaultPath) || null;
         return { canceled: false, filePath: p };
       };
-      shell.showItemInFolder = () => {};
+      shell.showItemInFolder = (f) => { global.__pdtRevealed = f; };
     }, outPath);
     await page.click("#btn-session-export-menu");
     await page.click("#" + itemId);
@@ -909,9 +950,14 @@ async function unreadableAnnotationsPin() {
       await wait(250);
     }
     const suggested = await app.evaluate(() => global.__pdtSaveDefault).catch(() => null);
+    // The reveal follows the write: give it a moment to land.
+    const revealBy = Date.now() + 5000;
+    let revealed = null;
+    while (Date.now() < revealBy && !(revealed = await app.evaluate(() => global.__pdtRevealed).catch(() => null))) await wait(100);
     const text = fs.existsSync(outPath) ? fs.readFileSync(outPath, "utf-8") : "";
     try { fs.unlinkSync(outPath); } catch (_) {}
-    return { bytes: text.length, head: text.slice(0, 200), text, suggested };
+    return { bytes: text.length, head: text.slice(0, 200), text, suggested,
+      revealed: !!revealed && path.resolve(revealed).toLowerCase() === path.resolve(outPath).toLowerCase() };
   }
   // Start from Overview: the verb opens the Map level (button state included)
   // before it reads the diagram.
@@ -924,9 +970,10 @@ async function unreadableAnnotationsPin() {
     const btn = document.querySelector('.view-mode-btn[data-level="map"]');
     return !!(layout && getComputedStyle(layout).display !== "none" && btn && btn.classList.contains("active"));
   }).catch(() => false);
-  const svgOk = svgRes.bytes > 0 && /<svg[\s>]/.test(svgRes.text) && /\.svg$/.test(svgRes.suggested || "") && svgLanded;
-  record("AD-11: Export > Process map (image), with no As-Is copy chosen, opens the Map from the Overview and writes the shown map as an SVG file",
-    svgOk, "bytes=" + svgRes.bytes + " suggested=" + svgRes.suggested + " onMap=" + svgLanded + " head=" + JSON.stringify(svgRes.head.slice(0, 80)));
+  const svgOk = svgRes.bytes > 0 && /<svg[\s>]/.test(svgRes.text) && /\.svg$/.test(svgRes.suggested || "") && svgLanded && svgRes.revealed;
+  record("AD-11 + AD-29: Export > Process map (image), with no As-Is copy chosen, opens the Map from the Overview, writes the shown map as an SVG file and opens its folder at the file",
+    svgOk, "bytes=" + svgRes.bytes + " suggested=" + svgRes.suggested + " onMap=" + svgLanded + " revealed=" + svgRes.revealed +
+      " head=" + JSON.stringify(svgRes.head.slice(0, 80)));
   if (!svgOk) await shot(page, "fail-export-map-svg.png");
   if (!FRESH) {
     record("AD-11: Export > Process map (BPMN) (skipped: session not re-normalized)", true,
@@ -935,9 +982,10 @@ async function unreadableAnnotationsPin() {
     const bpmnOut = path.join(os.tmpdir(), "pdt-e2e-step-" + Date.now() + ".bpmn");
     const bpmnRes = await exportViaMenu("btn-session-step-bpmn", bpmnOut);
     const bpmnOk = bpmnRes.bytes > 0 && /<(?:[\w-]+:)?definitions[\s>]/.test(bpmnRes.text) &&
-      /<(?:[\w-]+:)?(?:task|userTask)[\s>]/.test(bpmnRes.text) && /\.bpmn$/.test(bpmnRes.suggested || "");
-    record("AD-11: Export > Process map (BPMN), with no As-Is copy chosen, writes the step-level BPMN file",
-      bpmnOk, "bytes=" + bpmnRes.bytes + " suggested=" + bpmnRes.suggested + " head=" + JSON.stringify(bpmnRes.head.slice(0, 80)));
+      /<(?:[\w-]+:)?(?:task|userTask)[\s>]/.test(bpmnRes.text) && /\.bpmn$/.test(bpmnRes.suggested || "") && bpmnRes.revealed;
+    record("AD-11 + AD-29: Export > Process map (BPMN), with no As-Is copy chosen, writes the step-level BPMN file and opens its folder at the file",
+      bpmnOk, "bytes=" + bpmnRes.bytes + " suggested=" + bpmnRes.suggested + " revealed=" + bpmnRes.revealed +
+        " head=" + JSON.stringify(bpmnRes.head.slice(0, 80)));
     if (!bpmnOk) await shot(page, "fail-export-step-bpmn.png");
   }
 
@@ -1008,18 +1056,18 @@ async function unreadableAnnotationsPin() {
           wantWhere: (() => {
             const runs = ((s.stats && s.stats.case_stats) || []).filter((c) => !c.parent_case_id)
               .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
-            return "Run " + (runs.findIndex((c) => c.case_id === step.case_id) + 1) + " at " + local(step.time_range.start);
+            return "Transaction " + (runs.findIndex((c) => c.case_id === step.case_id) + 1) + " at " + local(step.time_range.start);
           })(),
         };
       }, detail.stepId));
     } catch (e) { logActionError("P1.7 + P2.16 step detail", e); detail.err = String(e.message).split("\n")[0]; }
-    const detailOk = !!(!detail.err && /^(Salesforce|SAP|Excel|Outlook|Notepad) · \S.* · \d+(s|:\d{2}) · ends at .+ · Run [1-4] at \d+:\d{2}$/.test(detail.fact || "") &&
+    const detailOk = !!(!detail.err && /^(Salesforce|SAP|Excel|Outlook|Notepad) · \S.* · \d+(s|:\d{2}) · ends at .+ · Transaction [1-4] at \d+:\d{2}$/.test(detail.fact || "") &&
       detail.tiles === 0 && detail.descResident && !detail.saveButton &&
       detail.wantEnds && (detail.fact || "").includes(" · " + detail.wantEnds + " · ") &&
       (detail.fact || "").endsWith(" · " + detail.wantWhere) && !detail.saveButton &&
       detail.shots && detail.shots.length === detail.refs && detail.refs > 0 && detail.shots.every((x) => x.loaded) &&
       JSON.stringify(detail.shots.map((x) => x.stamp)) === JSON.stringify(detail.wantStamps));
-    record("P1.7 + P2.16 + V2 item 1: the step detail shows one fact line led by the system (system · screen · time · ends at its commit · Run N at m:ss), no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
+    record("P1.7 + P2.16 + V2 item 1: the step detail shows one fact line led by the system (system · screen · time · ends at its commit · Transaction N at m:ss), no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
       detailOk, JSON.stringify(detail));
     if (!detailOk) await shot(page, "fail-step-detail.png");
 
@@ -1399,7 +1447,7 @@ async function unreadableAnnotationsPin() {
         return { onScreen, x: Math.round(x), y: Math.round(y), window: innerWidth + "x" + innerHeight };
       }, INSERT_AT);
       if (!at.onScreen) throw new Error("the timeline point to right-click is off screen: " + JSON.stringify(at));
-      await page.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+      await page.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
       await page.locator(".modal-prompt .modal-input").fill(LABEL, { timeout: T });
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
       await page.waitForFunction((label) => [...document.querySelectorAll("#markers-list .marker-row.pending")]
@@ -1458,10 +1506,10 @@ async function unreadableAnnotationsPin() {
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
       // The Overview names the runs the Steps level lists; both follow the new
       // analysis.
-      applied.cases.runsLine === applied.cases.stepsRuns + " runs" &&
-      before.runsLine === before.stepsRuns + " runs");
-    record("item 6: Apply 1 marker change asks \"Update the drafts of the changed runs?\", the top bar says Updating steps and map... with Cancel (no log), and the marker becomes a real one: the case count goes up by one",
-      appliedOk && /Update the drafts of the changed runs\?/.test(confirmText || "") && !!statusLine &&
+      applied.cases.runsLine === applied.cases.stepsRuns + " transactions" &&
+      before.runsLine === before.stepsRuns + " transactions");
+    record("item 6: Apply 1 marker change asks \"Update the drafts of the changed transactions?\", the top bar says Updating steps and map... with Cancel (no log), and the marker becomes a real one: the case count goes up by one",
+      appliedOk && /Update the drafts of the changed transactions\?/.test(confirmText || "") && !!statusLine &&
         statusLine.text === "Updating steps and map... | Cancel" && statusLine.logShown === false,
       JSON.stringify({ before: before && before.analyzed, applied, confirmText, statusLine, err }));
     const rb = applied && applied.runBand;

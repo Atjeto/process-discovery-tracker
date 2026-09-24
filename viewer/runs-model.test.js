@@ -50,8 +50,9 @@ function steps() {
 
 test("buildRuns: top-level cases only, in start order, numbered, with their steps in time order", () => {
   const m = RM.buildRuns(STATS, steps());
+  // AD-29: a run's title is what a person reads, "Transaction N".
   assert.deepEqual(m.runs.map((r) => [r.caseId, r.ordinal, r.title]),
-    [["c1", 1, "Run 1"], ["c2", 2, "Run 2"], ["c3", 3, "Run 3"]]);
+    [["c1", 1, "Transaction 1"], ["c2", 2, "Transaction 2"], ["c3", 3, "Transaction 3"]]);
   assert.deepEqual(m.runs[0].members.map((s) => s.step_id), ["a1", "a2", "a3"]);
   assert.deepEqual(m.runs[0].visible.map((s) => s.step_id), ["a1", "a3"]);
   assert.equal(m.runs[0].hiddenCount, 1);
@@ -59,10 +60,17 @@ test("buildRuns: top-level cases only, in start order, numbered, with their step
   assert.equal(m.runs[2].endMs, null, "a run left open has no end");
 });
 
-test("buildRuns: a marker label that only repeats the run number is not shown twice", () => {
+test("buildRuns: a marker label that only numbers the run (Run N from the capture app, or Transaction N) is not shown", () => {
   const m = RM.buildRuns(STATS, steps());
-  assert.equal(m.runs[0].label, "", "\"Run 1\" is the title already");
+  assert.equal(m.runs[0].label, "", "\"Run 1\" only numbers transaction 1");
   assert.equal(m.runs[1].label, "Order 2");
+  const relabel = (c1, c2) => ({ case_stats: STATS.case_stats.map((c) =>
+    c.case_id === "c1" ? Object.assign({}, c, { label: c1 }) : c.case_id === "c2" ? Object.assign({}, c, { label: c2 }) : c) });
+  const n = RM.buildRuns(relabel("Transaction 1", "Run 5"), steps());
+  assert.deepEqual([n.runs[0].label, n.runs[1].label], ["", ""], "the title's own words, or another run number, say nothing more");
+  assert.equal(RM.buildRuns(relabel("Order 1", "Run 2 retry"), steps()).runs[1].label, "Run 2 retry", "a label with words of its own stays");
+  assert.deepEqual(["Run 1", "transaction 12", "Transaction #3", "Order #10900", "Runway 5", "", null].map(RM.numberOnlyLabel),
+    [true, true, true, false, false, false, false]);
 });
 
 test("buildRuns: a step with no case, or a case that is not a run, is outside runs (two of them)", () => {
@@ -217,11 +225,11 @@ test("probeLine: N from the analysis, the four counts, the run named by its numb
   const { runs } = RM.buildRuns(STATS, anno.steps);
   RM.recordFix(anno, runs, "c1", "merge");
   const p = RM.probeLine(STATS, runs, runs[0], anno.pattern_run);
-  assert.equal(p.text, "Run 1: 3 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)");
+  assert.equal(p.text, "Transaction 1: 3 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)");
   assert.equal(p.source, "analysis");
   RM.recordFix(anno, runs, "c1", "drop");
   assert.equal(RM.probeLine(STATS, runs, runs[0], anno.pattern_run).text,
-    "Run 1: 3 drafted steps, 2 boundary fixes (merge 1, split 0, add 0, hide 1)");
+    "Transaction 1: 3 drafted steps, 2 boundary fixes (merge 1, split 0, add 0, hide 1)");
 });
 
 test("probeLine: without draft_summary it falls back to the count stored when the run became the pattern", () => {
@@ -231,9 +239,9 @@ test("probeLine: without draft_summary it falls back to the count stored when th
   RM.usePattern(anno, runs, "c2");
   const p = RM.probeLine(noSummary, runs, runs[1], anno.pattern_run);
   assert.equal(p.source, "designation");
-  assert.equal(p.text, "Run 2: 2 drafted steps, 0 boundary fixes (merge 0, split 0, add 0, hide 0)");
+  assert.equal(p.text, "Transaction 2: 2 drafted steps, 0 boundary fixes (merge 0, split 0, add 0, hide 0)");
   const none = RM.probeLine(noSummary, runs, runs[1], { draft_fixes: {} });
-  assert.equal(none.text, "Run 2: drafted steps not recorded, 0 boundary fixes (merge 0, split 0, add 0, hide 0)");
+  assert.equal(none.text, "Transaction 2: drafted steps not recorded, 0 boundary fixes (merge 0, split 0, add 0, hide 0)");
 });
 
 test("probeLine: a draft_summary for a different set of runs is not trusted", () => {

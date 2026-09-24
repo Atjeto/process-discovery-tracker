@@ -89,12 +89,12 @@ function listAnnotationBackups(root, fs = nodeFs) {
    wrong, what it means, and how to recover (the backups that exist). */
 function unreadableMessage(root, reason, backups) {
   const names = (backups || []).map((b) => b.name);
-  return "The file " + FILE + " in this session folder cannot be read (" + reason + "). " +
-    "Your steps, marker changes and notes for this session are not shown, and nothing " +
+  return "The file " + FILE + " in this project folder cannot be read (" + reason + "). " +
+    "Your steps, marker changes and notes for this project are not shown, and nothing " +
     "will be saved until the file is fixed. " +
     (names.length
       ? "To recover, close the viewer, copy the newest good backup over " + FILE +
-        " (backups found, newest first: " + names.join(", ") + "), then open the session again."
+        " (backups found, newest first: " + names.join(", ") + "), then open the project again."
       : "No backups (" + FILE + ".2 to " + FILE + "." + BACKUP_DEPTH + ") were found in the folder.") +
     " Folder: " + root;
 }

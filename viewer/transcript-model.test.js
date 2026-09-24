@@ -177,3 +177,20 @@ test("sentenceRowHtml escapes what the transcript says", () => {
   assert.equal(html, '<span class="tr-time">1:01</span><span class="tr-speaker">A&lt;b&gt;</span>' +
     '<span class="tr-text">x &amp; y</span>');
 });
+
+test("AD-29: a sentence said before the recording started says how long before, never a negative time", () => {
+  const origin = Date.parse("2026-05-14T09:00:00Z");
+  const at = (ms) => ({ startS: 0, startMs: origin + ms, text: "x" });
+  assert.equal(TM.sentenceClock(at(-28000), origin), "0:28 before");
+  assert.equal(TM.sentenceClock(at(-3725000), origin), "1:02:05 before");
+  assert.equal(TM.sentenceClock(at(-1000), origin), "0:01 before");
+  assert.equal(TM.sentenceClock(at(-999), origin), "0:00", "within a second of the start reads as the start");
+  assert.equal(TM.sentenceClock(at(19000), origin), "0:19");
+  assert.equal(TM.sentenceRowHtml(at(-28000), origin),
+    '<span class="tr-time" title="Said 0:28 before the recording started">0:28 before</span><span class="tr-text">x</span>');
+  assert.equal(TM.sentenceRowHtml(at(19000), origin), '<span class="tr-time">0:19</span><span class="tr-text">x</span>');
+  for (const ms of [-28000, -3725000, -1000, -999, -1]) {
+    assert.ok(!TM.sentenceClock(at(ms), origin).startsWith("-"), "no minus sign at " + ms);
+  }
+  assert.equal(TM.sentenceClock({ startS: 12, startMs: null }, origin), "0:12", "unplaced: the transcript's own time");
+});

@@ -132,10 +132,16 @@ test("layoutCaseLanes: a Start while a run is open ends it at that Start; runs n
   const r = layoutCaseLanes([mk(1, "start", "A"), mk(3, "start", "B"), mk(5, "end"), mk(6, "start", "C")], T0, T1);
   assert.equal(r.lanesNeeded, 1, "runs never overlap, so one row holds them");
   assert.deepEqual(r.cases.map((c) => [c.title, c.label, (c.startMs - T0) / 60000, (c.endMs - T0) / 60000, c.dangling]), [
-    ["Run 1", "A", 1, 3, false],   // ended by B's Start, not nested around B
-    ["Run 2", "B", 3, 5, false],
-    ["Run 3", "C", 6, 10, true],   // open at the end: it reaches the recording's end
+    ["Transaction 1", "A", 1, 3, false],   // ended by B's Start, not nested around B
+    ["Transaction 2", "B", 3, 5, false],
+    ["Transaction 3", "C", 6, 10, true],   // open at the end: it reaches the recording's end
   ]);
+});
+
+test("layoutCaseLanes: a label that only numbers the run (the capture app's Run N) is not shown on its band (AD-29)", () => {
+  const r = layoutCaseLanes([mk(1, "start", "Run 1"), mk(3, "end"), mk(4, "start", "Order #10900"), mk(6, "start", "Transaction 3")], T0, T1);
+  assert.deepEqual(r.cases.map((c) => [c.title, c.label]),
+    [["Transaction 1", null], ["Transaction 2", "Order #10900"], ["Transaction 3", null]]);
 });
 
 test("layoutCaseLanes: an End with no open run starts nothing and closes nothing", () => {

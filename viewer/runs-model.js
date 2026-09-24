@@ -11,7 +11,9 @@
  * A run is a top-level case from the markers: a stats.json `case_stats` entry
  * with no parent_case_id, in start order (the order the pipeline's
  * meta.draft_summary.steps_per_run uses). A step belongs to the run whose
- * case_id it carries; every other step is "outside runs".
+ * case_id it carries; every other step is "outside runs". A person reads a
+ * run as a "transaction" (AD-29): its title is "Transaction N"; code and
+ * data keep the word run.
  *
  * The pattern run (C3, annotations.pattern_run) is the run the analyst
  * confirms first. Until the analyst makes a change that needs the record,
@@ -55,6 +57,13 @@ const CHIPS = {
   manually_authored: { label: "Added", cls: "added" },
   hidden: { label: "Hidden", cls: "hidden" },
 };
+
+/* A marker label that only numbers its run ("Run 2", as the capture app
+   names an unnamed run, or "Transaction 2"): it says nothing the title does
+   not, so it is not shown, whatever word the recorder wrote (AD-29). */
+function numberOnlyLabel(label) {
+  return /^(run|transaction)\s*#?\s*\d+$/i.test(String(label == null ? "" : label).trim());
+}
 
 function _ms(iso) {
   const t = typeof iso === "string" ? Date.parse(iso) : NaN;
@@ -160,10 +169,10 @@ function buildRuns(stats, steps) {
   }
   runs.forEach((r, i) => {
     r.ordinal = i + 1;
-    r.title = "Run " + r.ordinal;
-    // The marker label shows next to the title unless it only repeats it
-    // (the capture app labels runs "Run 1", "Run 2", ...).
-    if (r.label && r.label.toLowerCase() === r.title.toLowerCase()) r.label = "";
+    r.title = "Transaction " + r.ordinal;
+    // The marker label shows next to the title unless it only repeats it or
+    // only numbers the run (the capture app labels runs "Run 1", "Run 2", ...).
+    if (r.label && (r.label.toLowerCase() === r.title.toLowerCase() || numberOnlyLabel(r.label))) r.label = "";
     r.members.sort(byStart);
     r.visible = r.members.filter((s) => s.state !== "hidden");
     r.hiddenCount = r.members.length - r.visible.length;
@@ -431,7 +440,7 @@ function runCount(items) {
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
 /* The P1 probe line for the pattern run:
-     "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)"
+     "Transaction 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)"
    "hide" is the stored `drop` count: the button that takes a draft out says
    Hide, so the line says it too (P2.9).
    N is the run's entry in stats.json meta.draft_summary.steps_per_run (the
@@ -451,7 +460,7 @@ function probeLine(stats, runs, run, record) {
   }
   const f = _fixes(record && record.draft_fixes);
   const total = f.merge + f.split + f.add + f.drop;
-  const text = (run ? run.title : "Run") + ": " +
+  const text = (run ? run.title : "Transaction") + ": " +
     (drafted == null ? "drafted steps not recorded" : _plural(drafted, "drafted step", "drafted steps")) +
     ", " + _plural(total, "boundary fix", "boundary fixes") +
     " (merge " + f.merge + ", split " + f.split + ", add " + f.add + ", hide " + f.drop + ")";
@@ -626,7 +635,7 @@ function rememberedNameRows(names, steps) {
 
 module.exports = {
   ANALYST_STATES, DRAFT_STATES, FIX_KINDS, OUTSIDE, STATUS_LABELS,
-  byStart, runStatus, stepChip, buildRuns, runForRange, groupKeyOf, groupSteps, nextInGroup,
+  byStart, runStatus, stepChip, buildRuns, numberOnlyLabel, runForRange, groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
   reopenRun, canReopen,
   probeLine, propagateName, stepApp, readableApp, nameSuggestions, dropDraftIdentity, renameSavedName, forgetSavedName,

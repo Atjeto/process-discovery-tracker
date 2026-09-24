@@ -140,9 +140,9 @@ const OPENS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".xlsm", ".csv"
    (open: false means show it in its folder), or { ok: false, error }. */
 function attachmentTarget(root, file, exists) {
   const name = fileName(file);
-  if (!name || name !== String(file || "").trim()) return { ok: false, error: "not an attachment of this session" };
+  if (!name || name !== String(file || "").trim()) return { ok: false, error: "not an attachment of this project" };
   const full = path.join(root, ATTACH_DIR, name);
-  if (!exists(full)) return { ok: false, error: "the file is not in the session's attachments folder" };
+  if (!exists(full)) return { ok: false, error: "the file is not in the project's attachments folder" };
   return { ok: true, path: full, open: OPENS.has(path.extname(name).toLowerCase()) };
 }
 

@@ -169,7 +169,7 @@ function _stepBpmnPath() {
    builds them. */
 function _sessionMapData() {
   const sess = State.getSession();
-  if (!sess) return { emptyMessage: escapeHtml("Open a session to see its process map.") };
+  if (!sess) return { emptyMessage: escapeHtml("Open a project to see its process map.") };
   const run = State.getAnalysisRun();
   const lock = mapLockHtml(sess.analysis, run && run.folder === sess.sessionFolder ? run : null);
   if (lock) return { emptyMessage: lock };
@@ -181,7 +181,7 @@ function _sessionMapData() {
     // §B2: the map is TIME-weighted: edge thickness carries the time that
     // flowed along each path; the times and the count are in the tooltip.
     edgeWeight: "time",
-    emptyMessage: escapeHtml("No steps to draw yet: the runs have no visible steps. Add or unhide steps in the Steps view."),
+    emptyMessage: escapeHtml("No steps to draw yet: the transactions have no visible steps. Add or unhide steps in the Steps view."),
   };
 }
 
@@ -371,7 +371,7 @@ async function exportArtifact(kind) {
       if (!r.ok) { toast(r.error || "Export failed: the analysis did not answer.", "error"); return; }
     }
     if (!fs.existsSync(sourcePath)) {
-      toast("No process map to export: the runs have no steps yet.", "error");
+      toast("No process map to export: the transactions have no steps yet.", "error");
       return;
     }
     const out = await Ipc.exportFile({ sourcePath, suggestedName: "process-map.bpmn" });
@@ -519,6 +519,17 @@ function _bpmnXmlToSvg(xml) {
   });
 }
 
+/* A saved image, like every export (AD-29): its folder opens with the file
+   selected, and the toast names it. */
+async function _svgSaved(r) {
+  if (r && r.ok) {
+    await Ipc.revealFile(r.path);
+    toast("Exported: " + path.basename(r.path), "success");
+  } else if (r && r.error) {
+    toast("Export failed: " + r.error, "error");
+  }
+}
+
 /* AD-11: "Process map (image)" saves the process map as an SVG image, the
    format Figma / Lucidchart / browsers all import. P2.12: the As-Is copy
    chosen for the PDD when there is one, drawn off screen. Else the map the
@@ -526,7 +537,7 @@ function _bpmnXmlToSvg(xml) {
    diagram draw (the same settle the PDD export uses). A Map that shows a
    message instead of a diagram (locked, no steps) exports nothing and says so. */
 async function exportMapSvg() {
-  if (!State.getSession()) { toast("Open a session first.", "error"); return; }
+  if (!State.getSession()) { toast("Open a project first.", "error"); return; }
   const asIs = _chosenAsIsMap();
   if (asIs) {
     let xml = null;
@@ -534,9 +545,7 @@ async function exportMapSvg() {
     catch (e) { console.error("[renderer] could not read the As-Is map:", e); }
     const asIsSvg = await _bpmnXmlToSvg(xml);
     if (!asIsSvg) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
-    const saved = await Ipc.saveSvgFile({ content: asIsSvg, suggestedName: "as-is-map.svg" });
-    if (saved && saved.ok) toast("As-Is map exported to " + saved.path, "success");
-    else if (saved && saved.error) toast("Export failed: " + saved.error, "error");
+    await _svgSaved(await Ipc.saveSvgFile({ content: asIsSvg, suggestedName: "as-is-map.svg" }));
     return;
   }
   if (State.getLevel() !== "map") {
@@ -552,9 +561,7 @@ async function exportMapSvg() {
     toast("No process map is drawn on the Map level to export: the Map says why.", "error");
     return;
   }
-  const r = await Ipc.saveSvgFile({ content: svg, suggestedName: "process-map.svg" });
-  if (r && r.ok) toast("Process map exported to " + r.path, "success");
-  else if (r && r.error) toast("Export failed: " + r.error, "error");
+  await _svgSaved(await Ipc.saveSvgFile({ content: svg, suggestedName: "process-map.svg" }));
 }
 
 /* PDD export (the Export menu, and the Overview's last act). Its maps are
@@ -562,7 +569,7 @@ async function exportMapSvg() {
    are on. */
 if ($("#btn-session-pdd")) {
   $("#btn-session-pdd").addEventListener("click", async () => {
-    if (!State.getSession()) { toast("Open a recording first.", "error"); return; }
+    if (!State.getSession()) { toast("Open a project first.", "error"); return; }
     toast("Preparing the PDD...", "info");
     await exportArtifact("pdd");
   });
@@ -716,7 +723,7 @@ $("#btn-help-close").addEventListener("click", closeHelp);
    steps, like Apply marker changes. */
 if ($("#btn-help-reanalyze")) {
   $("#btn-help-reanalyze").addEventListener("click", () => {
-    if (!State.getSession()) { toast("Open a recording first.", "error"); return; }
+    if (!State.getSession()) { toast("Open a project first.", "error"); return; }
     closeHelp();
     analyzeSession({ confirm: "reanalyze" });
   });
@@ -819,18 +826,27 @@ if ($("#btn-link-recording")) {
   $("#btn-link-recording").addEventListener("click", () => Video.attachVideo());
 }
 
-/* ===== Open menu (top bar) =====
-   One menu for opening a recording (P2.2): "Open recording..." (its click is
-   flow-view's openSessionFlow), "New from a video..." and "New without a
-   recording..." (C16, flow-view's newProject), then the recent recordings,
-   reachable from every level. */
+/* Close the top bar's other menus when one opens: a button's own click
+   stops at the button, so the others' outside-click never sees it. */
+function _closeOtherTopMenus(keep) {
+  document.querySelectorAll("header.topbar .project-menu-popup").forEach((p) => {
+    if (p !== keep) p.style.display = "none";
+  });
+}
+
+/* ===== New and Open menus (top bar) =====
+   Two menus (owner review 2026-09-24, AD-29). New: "New project from a
+   video..." and "New empty project..." (C16, flow-view's newProject). Open:
+   "Open project..." (its click is flow-view's openSessionFlow; a recorder's
+   folder opens here too), then the recent projects, reachable from every
+   level. */
 function renderRecentMenu() {
   const host = document.getElementById("recent-menu-content");
   if (!host) return;
   let html = "";
   const sessions = getRecent();
   if (sessions.length) {
-    html += '<div class="recent-menu-heading">Recent recordings</div>';
+    html += '<div class="recent-menu-heading">Recent projects</div>';
     html += sessions.map((r) => {
       let missing = false;
       try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
@@ -843,7 +859,7 @@ function renderRecentMenu() {
     }).join("");
   }
   if (!html) {
-    html = '<div class="recent-menu-empty">No recent recordings yet.</div>';
+    html = '<div class="recent-menu-empty">No recent projects yet.</div>';
   }
   host.innerHTML = html;
   host.querySelectorAll(".recent-menu-item").forEach((item) => {
@@ -857,7 +873,7 @@ function toggleRecentMenu(force) {
   const popup = document.getElementById("recent-menu-popup");
   if (!popup) return;
   const open = force === undefined ? popup.style.display === "none" : !!force;
-  if (open) renderRecentMenu();
+  if (open) { _closeOtherTopMenus(popup); renderRecentMenu(); }
   popup.style.display = open ? "" : "none";
 }
 (function wireRecentMenu() {
@@ -868,25 +884,24 @@ function toggleRecentMenu(force) {
     e.stopPropagation();
     toggleRecentMenu();
   });
-  for (const id of ["btn-open-session", "btn-new-from-video", "btn-new-blank"]) {
-    const item = document.getElementById(id);
-    if (item) item.addEventListener("click", () => toggleRecentMenu(false));
-  }
+  const item = document.getElementById("btn-open-session");
+  if (item) item.addEventListener("click", () => toggleRecentMenu(false));
   document.addEventListener("click", (e) => {
-    if (!popup.contains(e.target) && e.target !== btn) toggleRecentMenu(false);
+    if (!popup.contains(e.target) && !btn.contains(e.target)) toggleRecentMenu(false);
   });
 })();
 
-/* Generic dropdown menu (button + popup), used by the Export menu. Mirrors
-   wireRecentMenu: the button toggles the popup,
-   an outside click closes it, and clicking any enabled menu item closes
-   it after the item's own handler runs. */
+/* Generic dropdown menu (button + popup), used by the New and Export menus.
+   Mirrors wireRecentMenu: the button toggles the popup (closing the bar's
+   other menus), an outside click closes it, and clicking any enabled menu
+   item closes it after the item's own handler runs. */
 function wireDropdownMenu(btnId, popupId) {
   const btn = document.getElementById(btnId);
   const popup = document.getElementById(popupId);
   if (!btn || !popup) return;
   function toggle(force) {
     const open = force === undefined ? popup.style.display === "none" : !!force;
+    if (open) _closeOtherTopMenus(popup);
     popup.style.display = open ? "" : "none";
   }
   btn.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
@@ -894,7 +909,8 @@ function wireDropdownMenu(btnId, popupId) {
     if (e.target.closest(".project-menu-item")) toggle(false);
   });
   document.addEventListener("click", (e) => {
-    if (!popup.contains(e.target) && e.target !== btn) toggle(false);
+    if (!popup.contains(e.target) && !btn.contains(e.target)) toggle(false);
   });
 }
+wireDropdownMenu("btn-new-menu", "new-menu-popup");
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");

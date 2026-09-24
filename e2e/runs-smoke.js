@@ -5,7 +5,10 @@
  * Launches the REAL viewer on a throwaway profile (launchViewer) against a
  * TEMP copy of the committed demo session sess-2026-0514-0900, re-analyzed
  * with the current pipeline (4 marked runs, 30 drafted steps), and pins the
- * verbs of the Steps level the way an analyst uses them:
+ * verbs of the Steps level the way an analyst uses them. A person reads a
+ * run as a transaction (AD-29): the Steps level's words are checked as it
+ * shows them ("Transaction 1", "Confirm transaction", the list's one line
+ * that says what a transaction is):
  *   - the runs list: 4 runs in time order, run 1 the reference run (the only
  *     run with a status), open with its drafted steps (a row carries a chip
  *     only where it differs from its run); "Use as reference run" (the run's
@@ -263,13 +266,24 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const st = await runsState();
     const r1 = st[0] || {};
     const badge = await page.$eval(groupSel(RUNS[0]) + " .run-pattern-badge", (b) => (b.textContent || "").trim()).catch(() => null);
+    // AD-29: the list's title and the one line under it say what a transaction is.
+    const pane = await page.evaluate(() => ({
+      title: ((document.querySelector("#session-layout-steps .editor-list-pane .editor-pane-title") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+      note: ((document.getElementById("runs-pane-note") || {}).textContent || "").trim(),
+      confirm: ((document.querySelector('#step-list .run-group.open [data-act="confirm-run"]') || {}).textContent || "").trim(),
+    }));
+    const okPane = pane.title === "Transactions · 4" &&
+      pane.note === "One pass through the process: the SME presses the transaction key at the start of each." &&
+      pane.confirm === "Confirm transaction";
+    record("AD-29: the Steps list is headed Transactions · 4, with one line saying what a transaction is in a recording; the reference transaction's button reads Confirm transaction",
+      okPane, JSON.stringify(pane));
     const ok = st.length === 4 && st.map((g) => g.caseId).join() === RUNS.join() &&
-      st.map((g) => g.title).join() === "Run 1,Run 2,Run 3,Run 4" &&
+      st.map((g) => g.title).join() === "Transaction 1,Transaction 2,Transaction 3,Transaction 4" &&
       r1.pattern && st.filter((g) => g.pattern).length === 1 && r1.open && st.filter((g) => g.open).length === 1 &&
       r1.rows.length === 7 && r1.rows.every((r) => r.chip === "") && r1.status === "Draft" &&
       st.slice(1).every((g) => g.status === "") && badge === "Reference" &&
       r1.fixes === "" && !r1.acts.includes("use-pattern");
-    record("Steps shows the 4 runs in time order; run 1 is the reference run (its badge reads Reference, the only run with a status), open with its 7 drafted steps (no chip on a row that matches its Draft run, no live fix counter)", ok,
+    record("Steps shows the 4 transactions in time order; transaction 1 is the reference transaction (its badge reads Reference, the only one with a status), open with its 7 drafted steps (no chip on a row that matches its Draft transaction, no live fix counter)", ok,
       JSON.stringify({ badge, runs: st.map((g) => ({ t: g.title, pattern: g.pattern, open: g.open, status: g.status, rows: g.rows.length, fixes: g.fixes })) }));
     if (!ok) await shot(page, "fail-runs-list.png");
   }
@@ -309,6 +323,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await openRun(R3);
       moved = { buttonOnRun: (await group(R3)).acts.includes("use-pattern") };
       await page.locator(groupSel(R3) + " > .run-row").click({ button: "right", timeout: T });
+      moved.label = ((await page.locator('#run-ctx-menu [data-act="use-pattern"]').textContent({ timeout: T })) || "").trim();
       await page.locator('#run-ctx-menu [data-act="use-pattern"]').click({ timeout: T });
       await page.waitForFunction((sel) => document.querySelector(sel).classList.contains("pattern"), groupSel(R3), { timeout: T });
       moved.pattern = (await runsState()).filter((g) => g.pattern).map((g) => g.caseId);
@@ -318,12 +333,13 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       back = (await runsState()).filter((g) => g.pattern).map((g) => g.caseId);
       diskBack = (await waitDisk(ANNO, (a) => !a.pattern_run)).pattern_run;
     } catch (e) { err = errText(e); }
-    const ok = !err && moved && moved.buttonOnRun === false && JSON.stringify(moved.pattern) === JSON.stringify([R3]) &&
+    const ok = !err && moved && moved.buttonOnRun === false && moved.label === "Use as reference transaction" &&
+      JSON.stringify(moved.pattern) === JSON.stringify([R3]) &&
       diskMoved && diskMoved.case_id === R3 &&
       diskMoved.confirmed_at === null && diskMoved.drafted_steps === 6 &&
       JSON.stringify(diskMoved.draft_fixes) === JSON.stringify({ merge: 0, split: 0, add: 0, drop: 0 }) &&
       JSON.stringify(back) === JSON.stringify([R1]) && diskBack === undefined;
-    record("C3 + P3.8: Use as reference run (the run's right-click menu, no button on the open run) makes run 3 the reference run (pattern_run written); Ctrl+Z makes run 1 the reference run again",
+    record("C3 + P3.8: Use as reference transaction (the transaction's right-click menu, no button on the open one) makes transaction 3 the reference (pattern_run written); Ctrl+Z makes transaction 1 the reference again",
       ok, JSON.stringify({ err, moved, diskMoved, back, diskBack }));
     if (!ok) await shot(page, "fail-runs-use-pattern.png");
   }
@@ -421,8 +437,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       carried.map((l) => l.filter(isCarried).length).join() === "1,2,1,1" &&
       carried.map((l) => l.length).join() === "6,8,5,6" && leftover.length === 0 &&
       [R2, R3, R4].map(metaOf).map((m) => m.split(" · ")[0]).join() === "8 steps,5 steps,6 steps" &&
-      mergeToast === "Merged here and in 3 other runs. Ctrl+Z undoes it.";
-    record("L12b items 1-2: the pattern merge keeps draft_keys and carries to the same drafts of runs 2 to 4 (run 2 twice), named like the pattern step, not counted; the toast says \"Merged here and in 3 other runs\"",
+      mergeToast === "Merged here and in 3 other transactions. Ctrl+Z undoes it.";
+    record("L12b items 1-2: the pattern merge keeps draft_keys and carries to the same drafts of runs 2 to 4 (run 2 twice), named like the pattern step, not counted; the toast says \"Merged here and in 3 other transactions\"",
       okCarry, JSON.stringify({ err, toast: mergeToast, carriedPerRun: carried.map((l) => l.filter(isCarried).length),
         stepsPerRun: carried.map((l) => l.length), leftover: leftover.length, metas: [R2, R3, R4].map(metaOf) }));
     if (!okCarry) await shot(page, "fail-runs-carry.png");
@@ -472,10 +488,10 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await page.locator("#btn-step-hide", { hasText: /^Hide step$/ }).click({ timeout: T });
       await waitRows(R1, 5);
       await waitFixes(fx(1, 0, 0, 1));
-      // L12b item 2: the toast offers Hide in all runs (runs 2 and 4 have this
-      // draft, run 3 does not); it hides them in one edit, not counted, and
-      // one Ctrl+Z shows them again (the pattern hide stays).
-      await waitToast(/Hide in all runs/);
+      // L12b item 2: the toast offers Hide in all transactions (runs 2 and 4
+      // have this draft, run 3 does not); it hides them in one edit, not
+      // counted, and one Ctrl+Z shows them again (the pattern hide stays).
+      await waitToast(/Hide in all transactions/);
       hideAll.offer = (await toastText()).text;
       await page.locator('#toast [data-act="hide-all-runs"]').click({ timeout: T });
       await waitToast(/Hidden here and in/);
@@ -500,15 +516,15 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     record("C3: hiding a draft counts a drop; Show hidden steps lists it with a Hidden chip; Unhide takes the drop back",
       ok4, err4 || JSON.stringify(hiddenRow));
     const outlookOf = (a, r) => stepsOf(a || { steps: [] }, r).filter((s) => s.draft_key === KEY_OUTLOOK);
-    const okAll = !err4 && hideAll.offer === "Step hidden. 2 other runs have the same drafted step.Hide in all runs" &&
-      hideAll.done === "Hidden here and in 2 other runs. Ctrl+Z undoes it." &&
+    const okAll = !err4 && hideAll.offer === "Step hidden. 2 other transactions have the same drafted step.Hide in all transactions" &&
+      hideAll.done === "Hidden here and in 2 other transactions. Ctrl+Z undoes it." &&
       [R2, R4].every((r) => outlookOf(hideAll.disk, r).length === 1 && outlookOf(hideAll.disk, r)[0].state === "hidden" &&
         outlookOf(hideAll.disk, r)[0]._prev_state === "auto_suggested") &&
       outlookOf(hideAll.disk, R3).length === 0 && outlookOf(hideAll.disk, R1)[0].state === "hidden" &&
       hideAll.fixes === fx(1, 0, 0, 1) &&
       [R2, R4].every((r) => outlookOf(hideAll.undone, r)[0].state === "auto_suggested") &&
       outlookOf(hideAll.undone, R1)[0].state === "hidden";
-    record("L12b item 2: hiding a pattern draft offers Hide in all runs in its toast; it hides runs 2 and 4's same draft (not counted), and one Ctrl+Z shows them again while the pattern hide stays",
+    record("L12b item 2: hiding a pattern draft offers Hide in all transactions in its toast; it hides runs 2 and 4's same draft (not counted), and one Ctrl+Z shows them again while the pattern hide stays",
       okAll, JSON.stringify({ err: err4, offer: hideAll.offer, done: hideAll.done, fixes: hideAll.fixes,
         hidden: [R2, R4].map((r) => (outlookOf(hideAll.disk, r)[0] || {}).state), undone: [R2, R4].map((r) => (outlookOf(hideAll.undone, r)[0] || {}).state) }));
     if (!okAll) await shot(page, "fail-runs-hide-all.png");
@@ -587,7 +603,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   }
 
   // ---- 7. Confirm run and the probe line --------------------------------------
-  const PROBE = "Run 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)";
+  const PROBE = "Transaction 1: 7 drafted steps, 1 boundary fix (merge 1, split 0, add 0, hide 0)";
   {
     let err = null, probe = null;
     try {
@@ -605,7 +621,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       typeof disk.pattern_run.confirmed_at === "string" && !isNaN(Date.parse(disk.pattern_run.confirmed_at)) &&
       JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
       !(await group(R2)).rows.some((r) => r.state === "confirmed");
-    record("C2/C3: Confirm run turns run 1's remaining drafts into confirmed, reads Confirmed, and its right-click menu holds the probe line \"" + PROBE + "\"",
+    record("C2/C3: Confirm transaction turns run 1's remaining drafts into confirmed, reads Confirmed, and its right-click menu holds the probe line \"" + PROBE + "\"",
       ok, JSON.stringify({ err, states, status: g.status, probe, pattern_run: disk.pattern_run }));
     if (!ok) await shot(page, "fail-runs-confirm.png");
     // P1.9: a row carries a chip only where it differs from its run. In the
@@ -633,7 +649,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   {
     const WANT = {
       [R2]: ["Extra step: " + NAME_NOTEPAD + " (after " + MERGED + ")."],
-      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the reference run)."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the reference transaction)."],
       [R4]: [],
     };
     let err = null;
@@ -650,7 +666,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const metas = RUNS.map((r) => metaDiffs((st.find((g) => g.caseId === r) || {}).meta));
     const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
       metas.join() === ",1 difference,1 difference,no differences";
-    record("L12b item 3: each other run lists its differences from the confirmed reference run (run 2: an extra step, run 3: a skipped step, run 4: none) and its line counts them",
+    record("L12b item 3: each other transaction lists its differences from the confirmed reference transaction (2: an extra step, 3: a skipped step, 4: none) and its line counts them",
       ok, JSON.stringify({ err, seen: [R2, R3, R4].map((r) => seen[r]), metas }));
     if (!ok) await shot(page, "fail-runs-differences.png");
     // AD-28: only the reference run is confirmed; opening another run is its
@@ -659,7 +675,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const okNoConfirm = !err && [R2, R3, R4].every((r) => Array.isArray(acts[r]) &&
       !acts[r].includes("confirm-run") && !acts[r].includes("reopen-run")) &&
       [R2, R3, R4].every((r) => (opened.opened_runs || []).includes(r)) && !(opened.opened_runs || []).includes(R1);
-    record("AD-28: runs 2 to 4 offer no Confirm run (nor Reopen); opening each is recorded in annotations.opened_runs, never the reference run",
+    record("AD-28: transactions 2 to 4 offer no Confirm transaction (nor Reopen); opening each is recorded in annotations.opened_runs, never the reference one",
       okNoConfirm, JSON.stringify({ acts: [R2, R3, R4].map((r) => acts[r]), opened: opened && opened.opened_runs }));
     await openRun(R2);
     await shot(page, "runs-smoke-differences.png");
@@ -667,9 +683,10 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
 
   // ---- 7c. L12b item 4: Reopen run, the inverse of Confirm run ------------------
   {
-    let err = null, g = null, disk = null, back = null, gBack = null, probeGone = null, probeBack = null;
+    let err = null, g = null, disk = null, back = null, gBack = null, probeGone = null, probeBack = null, reopenLabel = null;
     try {
       await openRun(R1);
+      reopenLabel = ((await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').textContent({ timeout: T })) || "").trim();
       await page.locator(groupSel(R1) + ' [data-act="reopen-run"]').click({ timeout: T });
       disk = await waitDisk(ANNO, (a) => a.pattern_run && a.pattern_run.confirmed_at === null);
       await page.waitForFunction((sel) => ((document.querySelector(sel + " .run-status") || {}).textContent || "").trim() === "Draft",
@@ -684,14 +701,15 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       probeBack = await probeOf(R1);
     } catch (e) { err = errText(e); }
     const states = (a) => stepsOf(a || { steps: [] }, R1).filter((s) => s.state !== "hidden").map((s) => s.state).sort().join(",");
-    const ok = !err && states(disk) === "auto_suggested,auto_suggested,auto_suggested,auto_suggested,edited,edited" &&
+    const ok = !err && reopenLabel === "Reopen transaction" &&
+      states(disk) === "auto_suggested,auto_suggested,auto_suggested,auto_suggested,edited,edited" &&
       JSON.stringify(disk.pattern_run.draft_fixes) === JSON.stringify({ merge: 1, split: 0, add: 0, drop: 0 }) &&
       g && g.status === "Draft" && probeGone === "" && g.fixes === "" &&
       g.acts.includes("confirm-run") && !g.acts.includes("reopen-run") && !g.acts.includes("save-process") &&
       states(back) === "confirmed,confirmed,confirmed,confirmed,edited,edited" &&
       gBack && gBack.status === "Confirmed" && probeBack === PROBE && gBack.acts.includes("reopen-run");
-    record("L12b item 4: Reopen run turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, takes the probe line out of its menu and keeps the count; Ctrl+Z confirms it again",
-      ok, JSON.stringify({ err, reopened: states(disk), fixes: g && g.fixes, status: g && g.status, acts: g && g.acts,
+    record("L12b item 4: Reopen transaction turns run 1's confirmed steps back into drafts (the edited ones stay), clears confirmed_at, takes the probe line out of its menu and keeps the count; Ctrl+Z confirms it again",
+      ok, JSON.stringify({ err, reopenLabel, reopened: states(disk), fixes: g && g.fixes, status: g && g.status, acts: g && g.acts,
         probeGone, back: states(back), probeBack }));
     if (!ok) await shot(page, "fail-runs-reopen.png");
   }
@@ -901,8 +919,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     } catch (e) { err = errText(e); }
     const excelOf = (a, r) => stepsOf(a || { steps: [] }, r).find((s) => s.draft_key === KEY_EXCEL) || {};
     const okOrder = !err && JSON.stringify((rowsBefore || []).map((r) => [r.name, r.where])) === JSON.stringify([
-      [NAME_SEARCH, "4 steps in this session"], [NAME_EXCEL, "4 steps in this session"], ["Save the other book", "Not in this session"]]);
-    record("L12b item 8: the Saved names dialog lists the names whose key is in this session first, then the others",
+      [NAME_SEARCH, "4 steps in this project"], [NAME_EXCEL, "4 steps in this project"], ["Save the other book", "Not in this project"]]);
+    record("L12b item 8: the Saved names dialog lists the names whose key is in this project first, then the others",
       okOrder, JSON.stringify({ err, rows: rowsBefore }));
     const okRename = !err && storeRename && storeRename.names[KEY_EXCEL].name === RENAMED &&
       [R3, R4].every((r) => excelOf(afterRename, r).state === "auto_suggested" && excelOf(afterRename, r).name === RENAMED &&
@@ -949,7 +967,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       });
       if (!info.frac) throw new Error("no point inside the band where the band is on top");
       await page.mouse.click(info.x, info.y, { button: "right" });
-      await page.locator("#tl-ctx-menu div", { hasText: "Insert Start marker here" }).click({ timeout: T });
+      await page.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
       await page.locator(".modal-prompt .modal-input").fill(LABEL, { timeout: T });
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
       const a = await waitDisk(ANNO, (x) => (x.marker_edits || []).some((e) => e && e.op === "insert" && e.label === LABEL));
@@ -959,7 +977,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const at = edit ? Date.parse(edit.timestamp) : NaN;
     const ok = !err && info && info.bands === info.events && info.dur >= 8000 &&
       Math.abs(at - expected) <= 1500 && at - Date.parse(info.t0) >= 3000;
-    record("item 8: Insert Start marker from an activity band's menu lands at the clicked moment (well inside the band), not at the band start",
+    record("item 8: Start a transaction here, from an activity band's menu, lands its Start marker at the clicked moment (well inside the band), not at the band start",
       ok, JSON.stringify({ err, band: info && { t0: info.t0, dur: info.dur, frac: info.frac, w: Math.round(info.w || 0) }, inserted: edit && edit.timestamp,
         expected: isFinite(expected) ? new Date(expected).toISOString() : null }));
     if (!ok) await shot(page, "fail-runs-marker-at-click.png");
@@ -1036,13 +1054,13 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       ok, JSON.stringify({ err, line, seen: RUNS.map((r) => seen[r]), metas: metas(st) }));
     const WANT_STOP = {
       [R2]: ["Extra step: Notepad - Internal mappings.txt (after va01: Create sales order)."],
-      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the reference run)."],
+      [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the reference transaction)."],
       [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
-        "Skipped: Salesforce - Order: Save order (step 3 of the reference run)."],
+        "Skipped: Salesforce - Order: Save order (step 3 of the reference transaction)."],
     };
     const okStop = !err && [R2, R3, R4].every((r) => JSON.stringify(after[r]) === JSON.stringify(WANT_STOP[r])) &&
       metas(stopped)[0] === null;
-    record("L12b item 7: Stop comparing removes the line and compares the runs with the session's own reference run",
+    record("L12b item 7: Stop comparing removes the line and compares the transactions with the project's own reference transaction",
       okStop, JSON.stringify({ err, after: [R2, R3, R4].map((r) => after[r]), metas: metas(stopped) }));
     if (!(ok && okStop)) await shot(page, "fail-runs-saved-process.png");
 

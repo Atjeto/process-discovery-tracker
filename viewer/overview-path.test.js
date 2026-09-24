@@ -1,10 +1,12 @@
 "use strict";
 /*
- * The Overview as the home (BA-helper cycle, item 4; lane V1): the "What is
- * left" line derived from the session data alone (five stages: the As-Is map
- * is not one, AD-28; one short line once every stage before the export is
- * done), the recording line, and the document (contract C6, with trigger,
- * result and improvement). Fixture sessions go through the same pure builders
+ * The Overview as the home (BA-helper cycle, item 4; lane V1): the Checklist
+ * derived from the session data alone (five acts, each with its tooltip: the
+ * As-Is map is not one, AD-28; one short line once every act before the
+ * export is done), the project line, and the document (contract C6, with
+ * trigger, result and improvement; its status names the empty fields). The
+ * words are the owner's (AD-29): transaction for a run, project for what is
+ * opened. Fixture sessions go through the same pure builders
  * renderOverviewLevel uses (pathState, documentStatus, overviewHtml).
  */
 
@@ -113,9 +115,14 @@ test("the line says how many other runs differ from the reference run", () => {
   const st = pathState(sess);
   assert.equal(st.differing, 2, "runs 2 and 3 have other steps than run 1");
   const html = overviewHtml(sess);
-  assert.ok(html.includes(">Review Run 2 in Steps</button>"));
-  assert.ok(html.includes('<div class="ov-next-say">2 runs differ from the reference run.</div>'));
-  assert.ok(!/click Confirm run/.test(html.slice(0, html.indexOf("</div>"))), "the review act asks for no Confirm");
+  assert.ok(html.includes(">Review transaction 2 in Steps</button>"));
+  assert.ok(html.includes('<div class="ov-next-say">2 transactions differ from the reference transaction.</div>'));
+  // The review act (its button, its tooltip and its sentence) asks for no
+  // Confirm; the Checklist's own item tooltips may name Confirm transaction.
+  const act = (html.match(/<button[^>]*id="btn-ov-next"[^>]*>[^<]*<\/button>/) || [""])[0] +
+    (html.match(/<div class="ov-next-say">[^<]*<\/div>/) || [""])[0];
+  assert.ok(act.includes("Review transaction 2") && act.includes("differ from the reference transaction"), act);
+  assert.ok(!/Confirm/.test(act), "the review act asks for no Confirm");
 });
 
 test("the reference run follows 'Use as reference run': run 1 is then one of the other runs", () => {
@@ -147,7 +154,7 @@ test("the document stage is done when every field that fills a PDD placeholder i
   assert.equal(st.done.export, false, "an export leaves no record, so it is never shown done");
 });
 
-test("AD-28: the stages are Runs, Reference run, Other runs, Document and PDD; an edited As-Is copy changes no stage", () => {
+test("AD-28: the acts are the transactions, the reference transaction, the other transactions, the document and the PDD; an edited As-Is copy changes no act", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-path-"));
   try {
     const sess = session({ sessionFolder: dir });
@@ -178,10 +185,13 @@ test("each stage is shown done on its own, whatever the order it was done in", (
   assert.equal(st.next, "runs");
 });
 
-test("documentStatus counts the nine fields that fill a placeholder; notes are optional", () => {
-  assert.deepEqual(documentStatus(null), { filled: 0, total: 9, firstEmpty: "title" });
-  assert.deepEqual(documentStatus({ title: "T", purpose: "  " }), { filled: 1, total: 9, firstEmpty: "purpose" });
+test("documentStatus counts the nine fields that fill a placeholder and names the empty ones; notes are optional", () => {
+  const ALL = ["Title", "Purpose", "Scope", "Trigger", "Result", "Key contacts", "Business rules", "Exceptions",
+    "Improvement and automation scope"];
+  assert.deepEqual(documentStatus(null), { filled: 0, total: 9, missing: ALL, firstEmpty: "title" });
+  assert.deepEqual(documentStatus({ title: "T", purpose: "  " }), { filled: 1, total: 9, missing: ALL.slice(1), firstEmpty: "purpose" });
   assert.equal(documentStatus(FULL_DOC).filled, 9);
+  assert.deepEqual(documentStatus(FULL_DOC).missing, [], "notes are never missing");
   assert.deepEqual(DOC_FIELDS.map((f) => f.key),
     ["title", "purpose", "scope", "trigger", "result", "contacts", "business_rules", "exceptions", "improvement", "notes"],
     "contract C6 fields, with trigger, result and improvement");
@@ -189,14 +199,23 @@ test("documentStatus counts the nine fields that fill a placeholder; notes are o
 
 /* ---- overviewHtml: the home's structure ------------------------------------ */
 
-test("the Overview leads with the what-is-left line and its one button", () => {
+test("the Overview leads with the Checklist and its one button; each act is worded as an act, with a tooltip", () => {
   const html = overviewHtml(session());
   assert.ok(html.startsWith('<div class="ov-next" id="ov-next" data-next="pattern">'), html.slice(0, 80));
+  assert.ok(html.includes('<span class="ov-next-label">Checklist</span>'));
+  assert.ok(!html.includes("What is left"));
   assert.equal((html.match(/id="btn-ov-next"/g) || []).length, 1, "one button for the next act");
-  assert.ok(/<li class="ov-next-stage done" data-stage="runs">/.test(html), "a done stage shows as done");
-  assert.ok(/<li class="ov-next-stage next" data-stage="pattern">/.test(html));
-  assert.ok(html.includes(">Confirm Run 1 in Steps</button>"));
-  assert.ok(html.includes('data-stage="pattern">Reference run</li>'), "the pattern run is the reference run here");
+  assert.ok(/<li class="ov-next-stage done" data-stage="runs" title="[^"]+"><span class="ov-next-mark" aria-hidden="true">✓<\/span>Mark the transactions<\/li>/.test(html),
+    "a done act is ticked");
+  assert.ok(/<li class="ov-next-stage next" data-stage="pattern" title="[^"]+">Confirm the reference transaction<\/li>/.test(html));
+  assert.ok(html.includes(">Confirm transaction 1 in Steps</button>"));
+  const items = [...html.matchAll(/<li class="ov-next-stage[^"]*" data-stage="(\w+)" title="([^"]+)">(?:<span[^>]*>✓<\/span>)?([^<]+)<\/li>/g)]
+    .map((m) => [m[1], m[3], m[2].length > 40]);
+  assert.deepEqual(items, [
+    ["runs", "Mark the transactions", true], ["pattern", "Confirm the reference transaction", true],
+    ["review", "Review the other transactions", true], ["document", "Write the document", true],
+    ["export", "Export the PDD", true]], "five acts, each with a tooltip that says what it means");
+  assert.ok(/data-stage="export" title="[^"]*never ticked/.test(html), "the export's tooltip says why it is never ticked");
 });
 
 test("once every stage before the export is done, the line shrinks to one short line with Export PDD, and the document opens", () => {
@@ -207,38 +226,39 @@ test("once every stage before the export is done, the line shrinks to one short 
   sess.annotations.document = Object.assign({}, FULL_DOC);
   const html = overviewHtml(sess);
   assert.ok(html.startsWith('<div class="ov-next ov-next-ready" id="ov-next" data-next="export">'), html.slice(0, 90));
+  assert.ok(html.includes('<span class="ov-next-label">Checklist</span><span class="ov-next-ready-text">Everything before the export is done: the PDD is ready to export.</span>'));
   assert.ok(!html.includes("ov-next-stage"), "no stage list");
   assert.ok(html.includes(">Export PDD</button>"));
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc" open>'), "the home leads with the document");
   assert.ok(overviewHtml(sess, null, false).includes('id="ov-doc">'), "a document the analyst closed stays closed");
 });
 
-test("with no runs, the line carries the mark-runs instruction and button", () => {
+test("with no transactions, the Checklist carries the mark-transactions instruction and button", () => {
   const sess = session({ stats: { meta: { worker_id: "w1" }, case_stats: [] } });
   for (const s of sess.annotations.steps) s.case_id = null;
   const html = overviewHtml(sess);
   assert.ok(html.includes('data-next="runs"'));
-  assert.ok(html.includes("This recording has no runs marked."));
-  assert.ok(html.includes(">Mark runs on the Timeline</button>"));
-  assert.ok(html.includes("then click Apply marker changes."));
+  assert.ok(html.includes("This recording has no transactions marked."));
+  assert.ok(html.includes("choose Start a transaction here, then click Apply marker changes."));
+  assert.ok(html.includes(">Mark the transactions on the Timeline</button>"));
 });
 
-test("the recording line: name, who recorded it, the runs and the reference run's visible steps (not every run's)", () => {
+test("the project line: name, who recorded it, the transactions and the reference transaction's visible steps (not every one's)", () => {
   const sess = session({});
   confirmRun(sess, "c1");
   sess.annotations.steps.find((s) => s.step_id === "b").state = "hidden";
   const html = overviewHtml(sess);
   assert.ok(html.includes('<strong class="ov-summary-name">Order intake</strong>'));
   assert.ok(html.includes("recorded by w1"));
-  assert.ok(html.includes('<span data-summary="runs">3 runs</span>'));
-  assert.ok(html.includes('<span data-summary="steps">1 step in run 1</span>'), "hidden steps are left out");
-  assert.ok(!/steps confirmed|of \d+ steps/.test(html), "no count summed over every run");
+  assert.ok(html.includes('<span data-summary="runs">3 transactions</span>'));
+  assert.ok(html.includes('<span data-summary="steps">1 step in transaction 1</span>'), "hidden steps are left out");
+  assert.ok(!/steps confirmed|of \d+ steps/.test(html), "no count summed over every transaction");
   assert.ok(!html.includes("0s ·") && !/ · \d+m\d+s · /.test(html), "no recording length");
   sess.annotations.pattern_run = { case_id: "c2", confirmed_at: null };
-  assert.ok(overviewHtml(sess).includes('<span data-summary="steps">2 steps in run 2</span>'), "the reference run, whichever it is");
+  assert.ok(overviewHtml(sess).includes('<span data-summary="steps">2 steps in transaction 2</span>'), "the reference transaction, whichever it is");
 });
 
-test("the recording line names the SME when the capture app's Profile recorded a name, else the Windows login", () => {
+test("the project line names the SME when the capture app's Profile recorded a name, else the Windows login", () => {
   const sess = session({ manifest: { engagement_id: "eng-1", engagement_name: "Order intake",
     config: { worker: { id: "w1", name: "Ana Novak" } } } });
   assert.ok(overviewHtml(sess).includes("recorded by Ana Novak"));
@@ -246,7 +266,7 @@ test("the recording line names the SME when the capture app's Profile recorded a
   assert.ok(overviewHtml(sess).includes("recorded by w1"), "a name that only repeats the login is the login");
 });
 
-test("the recording line carries the video and the transcript, each with its act", () => {
+test("the project line carries the video and the transcript, each with its act", () => {
   const none = overviewHtml(session({}));
   assert.ok(/<span data-summary="video">No video<\/span> <button[^>]*id="btn-attach-video"[^>]*>Attach<\/button>/.test(none));
   assert.ok(/<span data-summary="transcript">No transcript<\/span> <button[^>]*id="btn-attach-transcript"[^>]*>Attach<\/button>/.test(none));
@@ -266,23 +286,34 @@ test("the fact tiles, the badge, the separate mark-runs line and the export bar 
   }
 });
 
-test("the document is collapsed while stages are left, says how many fields are written, and names where each lands", () => {
+test("the document is collapsed while acts are left, says who writes it, how many fields are written and which are empty, and names where each lands", () => {
   const sess = session({});
   sess.annotations.document = { title: "Order intake", purpose: "Why", trigger: "An order e-mail" };
   const html = overviewHtml(sess);
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc">'), "closed by default");
-  assert.ok(html.includes('<span class="analysis-module-title">Document</span>'));
-  assert.ok(html.includes('<span class="analysis-module-takeaway" id="ov-doc-status">3 of 9 written</span>'));
-  // P3.6: where a field lands is its placeholder and tooltip, not a resident line.
-  assert.equal((html.match(/placeholder="In the PDD: /g) || []).length, 10);
+  assert.ok(html.includes('<span class="analysis-module-title">Document</span>' +
+    '<span class="ov-block-who" id="ov-doc-who">You write these. The PDD prints them.</span>'));
+  assert.ok(html.includes('<span class="analysis-module-takeaway" id="ov-doc-status">3 of 9 written. To write: ' +
+    "Scope, Result, Key contacts, Business rules, Exceptions, Improvement and automation scope</span>"));
+  // AD-29: an empty field asks its short question; where it lands is its
+  // tooltip only (P3.6: never a resident line), never "In the PDD" inside it.
+  assert.equal((html.match(/placeholder="In the PDD/g) || []).length, 0);
+  assert.equal((html.match(/title="In the PDD: /g) || []).length, 10);
   assert.ok(!html.includes("ov-doc-where"));
-  assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" placeholder="In the PDD: Purpose" ' +
+  assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" placeholder="Why is the process done, and for whom?" ' +
     'title="In the PDD: Purpose" rows="3">Why</textarea>'));
   assert.ok(/data-doc="title"[^>]*value="Order intake"/.test(html));
   for (const [key, label] of [["trigger", "Trigger"], ["result", "Result"], ["improvement", "Improvement and automation scope"]]) {
     assert.ok(html.includes('<span class="ov-doc-label">' + label + "</span>"), label);
     assert.ok(html.includes('data-doc="' + key + '"'), key);
   }
-  assert.ok(html.includes('data-doc="trigger" placeholder="In the PDD: Trigger: what starts the process"'));
+  assert.ok(html.includes('data-doc="trigger" placeholder="What starts the process?" title="In the PDD: Trigger: what starts the process"'));
+  assert.ok(html.includes('data-doc="result" placeholder="What does the process end with?"'));
+  assert.ok(html.includes('data-doc="improvement" placeholder="What could be improved or automated?"'));
   assert.ok(/data-doc="trigger"[^>]*>An order e-mail<\/textarea>/.test(html));
+  const none = overviewHtml(session({}));
+  assert.ok(none.includes('id="ov-doc-status">0 of 9 written</span>'), "with nothing written, the count alone");
+  const all = session({});
+  all.annotations.document = Object.assign({}, FULL_DOC);
+  assert.ok(overviewHtml(all).includes('id="ov-doc-status">9 of 9 written</span>'));
 });

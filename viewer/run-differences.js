@@ -40,9 +40,12 @@ const { processLabel } = require("./process-map-levels.js");
 
 const PATTERN_REFERENCE = "the pattern run";
 const SAVED_REFERENCE = "the saved process";
-/* The Steps level's word for the run the others are compared with (the
-   glossary's); the shared golden and the PDD still print PATTERN_REFERENCE. */
-const REFERENCE_RUN = "the reference run";
+/* The Steps level's words (AD-29): the run the others are compared with, and
+   what a run is called in a line ("at the start of the transaction", "in
+   this transaction after ..."). The shared golden and the PDD still print
+   PATTERN_REFERENCE and "run" (the defaults below). */
+const REFERENCE_RUN = "the reference transaction";
+const RUN_UNIT = "transaction";
 
 /* A list of draft keys: a non-empty array of non-empty strings, else null. */
 function _keyList(v) {
@@ -170,10 +173,12 @@ function commonOrder(a, b) {
    in the PDD's order: the run's extra and reordered steps in run order, then
    the reference steps the run skipped. `text` is the line pdd_export writes;
    opts.reference names the reference in a Skipped line ("the pattern run" by
-   default, "the saved process" for a saved process). Both lists are the
-   visible steps in time order. */
+   default, "the saved process" for a saved process) and opts.unit what a run
+   is called in the other lines ("run" by default; the Steps level passes
+   RUN_UNIT). Both lists are the visible steps in time order. */
 function differences(refSteps, runSteps, opts) {
   const reference = (opts && opts.reference) || PATTERN_REFERENCE;
+  const unit = (opts && opts.unit) || "run";
   const ref = Array.isArray(refSteps) ? refSteps : [];
   const units = collapseToReference(ref, runSteps);
   const pat = firstOccurrences(ref);
@@ -185,12 +190,12 @@ function differences(refSteps, runSteps, opts) {
   const inOrder = commonOrder(patKeys, runKeys);
   const out = [];
   for (const { key, step, index } of run) {
-    const where = index ? "after " + stepName(units[index - 1]) : "at the start of the run";
+    const where = index ? "after " + stepName(units[index - 1]) : "at the start of the " + unit;
     const name = stepName(step);
     if (!patSet.has(key)) {
       out.push({ kind: "extra", name, where, text: "Extra step: " + name + " (" + where + ")." });
     } else if (!inOrder.has(key)) {
-      out.push({ kind: "order", name, where, text: "Different order: " + name + " (in this run " + where + ")." });
+      out.push({ kind: "order", name, where, text: "Different order: " + name + " (in this " + unit + " " + where + ")." });
     }
   }
   for (const { key, step, index } of pat) {
@@ -266,7 +271,7 @@ function processStepsFrom(steps) {
 }
 
 module.exports = {
-  PATTERN_REFERENCE, SAVED_REFERENCE, REFERENCE_RUN, MATCH_MIN,
+  PATTERN_REFERENCE, SAVED_REFERENCE, REFERENCE_RUN, RUN_UNIT, MATCH_MIN,
   stepKeys, mergeKey, alignKey, stepName, collapseToReference, firstOccurrences, commonOrder, differences,
   draftKeySet, jaccard, matchSavedProcess, processStepsFrom,
 };

@@ -3,11 +3,12 @@
  * Companion basics e2e smoke (lane V3-V, contract C16). Launches the REAL
  * viewer on a throwaway profile, with the main process's file dialogs
  * replaced (as overview-smoke does). Everything is made in a temp folder.
- *   A blank project ("New without a recording..."):
+ *   A blank project (the New menu's "New empty project...", AD-29):
  *     (a) the folder has manifest.json (session_id, source, started_at,
  *         label), an empty events.jsonl and annotations.json; the analysis
  *         gives it one implicit run; the Timeline says in one line that there
- *         is no recording or video, with Attach video;
+ *         is no recording or video, with Attach video; the Steps list says
+ *         the whole project is one transaction until the Timeline marks more;
  *     (b) four steps added by hand (no time, order 1 to 4, the implicit run),
  *         two with a system, one moved down with Alt+Down;
  *     (c) a screenshot from a file and one pasted with Ctrl+V; the pasted one
@@ -20,10 +21,13 @@
  *     (g) the PDD (word/document.xml): the steps in their order, the systems,
  *         the Attachments section, only the chosen screenshot, no note;
  *     (n) Attach video on its Timeline: offset 0, and the Timeline follows it.
- *   A video project ("New from a video...", a synthetic video):
+ *   A video project (the New menu's "New project from a video...", a
+ *   synthetic video):
  *     (h) the video is copied into video/ (relative path, offset 0) and the
  *         Timeline runs on its length, with no activity bands;
- *     (i) two runs marked by right-click, applied; (j) two steps added at the
+ *     (i) two transactions marked by right-click (Start a transaction here),
+ *         applied, and the Steps list then says where each starts; (j) two
+ *         steps added at the
  *         playhead; (k) a frame of the video captured as a screenshot; (l) a
  *         note at a moment, in the Notes lane; (m) the PDD carries the steps
  *         and the frame.
@@ -114,8 +118,9 @@ function zipFiles(buf) {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: f });
     shell.showItemInFolder = () => {};
   }, p);
+  // AD-29: New is its own menu, beside Open.
   const newProject = async (item) => {
-    await page.click("#btn-recent-menu");
+    await page.click("#btn-new-menu");
     await page.click(item);
   };
   const selectStep = async (id) => {
@@ -195,11 +200,17 @@ function zipFiles(buf) {
     await level("flow");
     a.timeline = await page.evaluate(() => ({ text: ((document.getElementById("tl-empty") || {}).textContent || "").trim(),
       attach: !!document.getElementById("btn-tl-attach-video") }));
+    await level("steps");
+    a.steps = await page.evaluate(() => ({
+      title: ((document.querySelector("#session-layout-steps .editor-list-pane .editor-pane-title") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+      note: ((document.getElementById("runs-pane-note") || {}).textContent || "").trim() }));
   } catch (e) { a.err = errText(e); }
-  record("(a) New without a recording: manifest (session_id, source blank, started_at, label), an empty events.jsonl and annotations.json; one implicit run after the analysis; the Timeline says in one line there is no recording or video, with Attach video",
+  record("(a) New empty project: manifest (session_id, source blank, started_at, label), an empty events.jsonl and annotations.json; one implicit run after the analysis; the Timeline says in one line there is no recording or video, with Attach video; the Steps list says the whole project is one transaction (AD-29)",
     !a.err && JSON.stringify(Object.keys(a.manifest)) === '["session_id","source","started_at","label"]' &&
       a.manifest.source === "blank" && a.manifest.label === "Order intake" && a.events === "" && a.annoExists &&
-      a.runs.length === 1 && a.runs[0].implicit === true && /^No recording and no video/.test(a.timeline.text) && a.timeline.attach,
+      a.runs.length === 1 && a.runs[0].implicit === true && /^No recording and no video in this project\. /.test(a.timeline.text) && a.timeline.attach &&
+      a.steps.title === "Transactions · 1" &&
+      a.steps.note === "The whole project is one transaction until you mark where each one starts on the Timeline.",
     JSON.stringify(a));
   const implicitId = a.runs && a.runs[0] && a.runs[0].id;
 
@@ -410,13 +421,13 @@ function zipFiles(buf) {
       summary: document.getElementById("timeline-summary").textContent, sync: document.getElementById("btn-sync-video").hidden,
       step: !document.getElementById("btn-add-step").hidden }));
   } catch (x) { h.err = errText(x); }
-  record("(h) New from a video: the video is copied into video/ and stored relative with offset 0 (manifest source video); the Timeline runs on the video's length with no activity bands, and no Sync video",
+  record("(h) New project from a video: the video is copied into video/ and stored relative with offset 0 (manifest source video); the Timeline runs on the video's length with no activity bands, and no Sync video",
     !h.err && h.manifest.source === "video" && h.video.path === "video/" + path.basename(VIDEO) && h.video.offset_ms === 0 && h.copied &&
       h.span && Math.abs((h.span.endMs - h.span.startMs) - 31900) < 2500 && h.tl.bands === 0 && h.tl.ticks > 2 && h.tl.sync && h.tl.step,
     JSON.stringify(h));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-video.png") }).catch(() => {});
 
-  // (i) Two runs marked by right-click, applied.
+  // (i) Two transactions marked by right-click, applied.
   // A point on the Timeline's background at `frac` of its width: in the low
   // lane under the run bands (a run band has a menu of its own).
   const at = async (frac) => page.evaluate((f) => {
@@ -432,16 +443,21 @@ function zipFiles(buf) {
   let i = {};
   try {
     for (const [f, label] of [[0.1, "Order A"], [0.55, "Order B"]]) {
-      await rightClickItem(f, "Insert Start marker here");
+      await rightClickItem(f, "Start a transaction here");
       await prompt(label);
     }
     await page.locator("#btn-apply-marker-edits").click({ timeout: T });
     await page.waitForFunction(() => { const s = require("./state.js").getSession();
       return ((s.stats && s.stats.case_stats) || []).length === 2 && !document.getElementById("run-status"); }, null, { timeout: 120000 });
     i.runs = ((await session()).stats.case_stats || []).map((r) => ({ label: r.label, implicit: !!r.implicit }));
+    await level("steps");
+    i.note = await page.evaluate(() => ((document.getElementById("runs-pane-note") || {}).textContent || "").trim());
+    i.titles = await page.$$eval("#step-list .run-group .run-title", (els) => els.map((e) => (e.textContent || "").trim()));
   } catch (x) { i.err = errText(x); }
-  record("(i) two runs marked by right-click on the video's Timeline (Insert Start marker here) and applied: the implicit run gives way to two runs",
-    !i.err && JSON.stringify(i.runs) === '[{"label":"Order A","implicit":false},{"label":"Order B","implicit":false}]', JSON.stringify(i));
+  record("(i) two transactions marked by right-click on the video's Timeline (Start a transaction here) and applied: the implicit run gives way to two, listed as Transaction 1 and 2, and the Steps list says each starts where it was marked",
+    !i.err && JSON.stringify(i.runs) === '[{"label":"Order A","implicit":false},{"label":"Order B","implicit":false}]' &&
+      JSON.stringify(i.titles) === '["Transaction 1","Transaction 2"]' &&
+      i.note === "One pass through the process: each starts where you marked it on the Timeline.", JSON.stringify(i));
 
   // (j) Two steps added at the playhead.
   let j = {};

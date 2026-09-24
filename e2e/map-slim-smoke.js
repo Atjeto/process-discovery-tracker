@@ -338,11 +338,11 @@ const lockProbe = () => {
   }
   await openMapLevel(page2);
   const locked = await page2.evaluate(lockProbe).catch((e) => ({ err: e.message }));
-  record("(f) no runs marked: the map is withheld with the lock message (why + the mark-runs instruction + its button)",
+  record("(f) no transactions marked: the map is withheld with the lock message (why + the mark-transactions instruction + its button)",
     !!(locked && !locked.err && !locked.drawn && locked.zoomHidden &&
-      /^The process map is not shown because it draws how the runs flow\./.test(locked.text || "") &&
-      /This recording has no runs marked\./.test(locked.text || "") &&
-      /start marker at the beginning of each run/i.test(locked.text || "") && locked.cta),
+      /^The process map is not shown because it draws how the transactions flow\./.test(locked.text || "") &&
+      /This recording has no transactions marked\./.test(locked.text || "") &&
+      /right-click where each transaction starts and choose Start a transaction here/i.test(locked.text || "") && locked.cta),
     JSON.stringify(locked));
   if (!(locked && locked.cta)) await shot(page2, "fail-map-slim-locked.png");
   await shot(page2, "map-slim-locked.png");
@@ -389,10 +389,10 @@ const lockProbe = () => {
   const failed = await page3.evaluate(lockProbe).catch((e) => ({ err: e.message }));
   record("(g) a failed run check: the Map says the check could not run (never 'not analyzed yet'), and so does the Overview",
     !!(failed && !failed.err && !failed.drawn &&
-      /The run check could not run on this recording/.test(failed.text || "") &&
+      /The transaction check could not run on this recording/.test(failed.text || "") &&
       /Technical detail: TypeError: seeded by the e2e/.test(failed.text || "") &&
       !/not been analyzed/i.test(failed.text || "") &&
-      /The run check could not run on this recording/.test(overviewSays)),
+      /The transaction check could not run on this recording/.test(overviewSays)),
     JSON.stringify({ map: failed, overview: overviewSays.slice(0, 200) }));
   await close3();
 
