@@ -28,6 +28,12 @@ its `when`; a step added by hand is a manual task and a recorded step a user
 task; the analyst's notes on a step are a text annotation joined to its
 task, and the files attached to it data objects joined to it; each task
 takes its system's colour, with a legend that names them (_map_extras).
+
+Contract C19 splits a process into sub-processes: every map of
+sub_process_maps.map_tree is a plane of the one file. A sub-process node is
+a collapsed bpmn:subProcess in its parent's map, holding its own map, chosen,
+documented and dressed as the main one from the visits that ran it
+(_sub_process_planes).
 """
 
 from __future__ import annotations
@@ -240,22 +246,33 @@ def task_documentation(anno: dict[str, Any], context: Any = None,
     no screen, no time and no description gets no documentation."""
     steps = sorted(_run_steps(anno), key=_start_key)
     runs = len({s.get("case_id") for s in steps})
-    implicit = set(implicit_runs or ())
-    pattern = _pattern_case(anno)
-    groups: dict[str, list[dict[str, Any]]] = {}
+    groups: dict[str, list[tuple[Any, dict[str, Any]]]] = {}
     for s in steps:
-        groups.setdefault(_step_label(s), []).append(s)
+        groups.setdefault(_step_label(s), []).append((s.get("case_id"), s))
+    return _documented(groups, runs, _pattern_case(anno), set(implicit_runs or ()), context)
+
+
+def _documented(groups: dict[str, list[tuple[Any, dict[str, Any]]]], runs: int,
+                pattern: Any, implicit: set, context: Any) -> dict[str, str]:
+    """{task label: documentation} of `groups` ({label: [(case id, step)]},
+    each in order) over `runs` transactions, in task_documentation's words:
+    the analyst's description (the `pattern` transaction's step first), the
+    system and screen, in how many transactions (not said when each is in
+    `implicit`) and the average time. A sub-process's map (contract C19)
+    passes its own steps and the transactions that ran it."""
     out: dict[str, str] = {}
-    for label, group in groups.items():
-        ordered = ([s for s in group if s.get("case_id") == pattern]
-                   + [s for s in group if s.get("case_id") != pattern])
+    for label, pairs in groups.items():
+        group = [s for _c, s in pairs]
+        ordered = ([s for c, s in pairs if c == pattern]
+                   + [s for c, s in pairs if c != pattern])
         desc = next((d for d in (_analyst_description(s, context) for s in ordered) if d), "")
         system, screen = context.where(ordered[0]) if context is not None else ("", "")
-        n = len({s.get("case_id") for s in group})
+        cases = {c for c, _s in pairs}
+        n = len(cases)
         timed = [ms for ms in (step_duration_ms(s) for s in group) if ms is not None]
         where = ", ".join(x for x in (system, screen) if x)
         facts = []
-        if not ({s.get("case_id") for s in group} <= implicit):
+        if not (cases <= implicit):
             facts.append(f"in {n} of {runs} transaction{'' if runs == 1 else 's'}")
         if timed:
             facts.append(f"{_duration(sum(timed) / len(timed))} on average")
@@ -305,31 +322,34 @@ def _replay(start_nodes, out_arcs, trace: list[str]):
     return None
 
 
-def branch_names(bpmn, traces: list[list[str]]) -> dict[int, str]:
+def branch_names(bpmn, traces: list[list[str]], groups: list | None = None) -> dict[int, str]:
     """{id(flow): "N of M transactions"} for every branch of the model: each flow
     leaving a gateway that splits (two or more outgoing flows), with N the
     runs whose steps take it (_replay) and M the runs. A branch no run took
-    stays unnamed."""
-    from collections import Counter
+    stays unnamed. `groups` names the transaction of each trace when one
+    transaction can have several (contract C19: a sub-process's map has a
+    trace per visit, and its counts are over the transactions that ran it);
+    by default each trace is a transaction of its own."""
     from pm4py.objects.bpmn.obj import BPMN
     nodes = list(bpmn.get_nodes())
     out_arcs: dict[int, list] = {}
     for flow in bpmn.get_flows():
         out_arcs.setdefault(id(flow.get_source()), []).append(flow)
     starts = [n for n in nodes if isinstance(n, BPMN.StartEvent)]
-    used: Counter = Counter()
-    for trace in traces:
+    groups = list(range(len(traces))) if groups is None else list(groups)
+    used: dict[int, set] = {}
+    for trace, group in zip(traces, groups):
         path = _replay(starts, out_arcs, trace)
         for flow in set(path or []):
-            used[id(flow)] += 1
-    runs = len(traces)
+            used.setdefault(id(flow), set()).add(group)
+    runs = len(set(groups))
     names: dict[int, str] = {}
     for node in nodes:
         arcs = out_arcs.get(id(node), [])
         if isinstance(node, BPMN.Gateway) and len(arcs) >= 2:
             for flow in arcs:
-                if used[id(flow)]:
-                    names[id(flow)] = _taken(used[id(flow)], runs)
+                if used.get(id(flow)):
+                    names[id(flow)] = _taken(len(used[id(flow)]), runs)
     return names
 
 
@@ -594,7 +614,8 @@ def _data_objects(anno: dict[str, Any], steps: list[dict[str, Any]],
 
 
 def _map_extras(anno: dict[str, Any], model: Any, context: Any,
-                run_order: Any) -> dict[str, Any]:
+                run_order: Any, *, palette: dict | None = None,
+                used: set | None = None) -> dict[str, Any]:
     """What contract C18 puts beside the map's tasks, as mining.export_bpmn
     takes it (keyed by a task's id()): its kind (a manual task when every
     step it stands for was added by hand, else a user task); its system's
@@ -606,18 +627,43 @@ def _map_extras(anno: dict[str, Any], model: Any, context: Any,
     task's system is the one its documentation names (its reference
     transaction's step first). When one label is on several tasks (a
     transaction that came back to a step), the first holds its notes and
-    files."""
-    from pm4py.objects.bpmn.obj import BPMN
+    files.
+
+    `palette` ({system: (colour, fill, stroke)}) and `used` (the data
+    objects' keys) are shared with the sub-processes' maps of the file
+    (contract C19, _sub_process_planes): the main map's systems take the
+    first colours, and a system keeps its colour on every map."""
     by_label = _node_steps(anno)
     node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
     systems = _systems_in_order(anno, run_order, node_system)
-    palette = dict(zip(systems, _PALETTE))
+    palette = {} if palette is None else palette
+    _colour(palette, systems)
+    return _extras_of(anno, model, by_label, node_system, systems, palette, context,
+                      set() if used is None else used)
+
+
+def _colour(palette: dict, systems: list[str]) -> None:
+    """Give each of `systems` that has no colour yet the next colour of
+    _PALETTE, while one is left (C18; C19: a system keeps one colour across
+    the file)."""
+    for system in systems:
+        if system not in palette and len(palette) < len(_PALETTE):
+            palette[system] = _PALETTE[len(palette)]
+
+
+def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[str, Any]]],
+               node_system: dict[str, str], systems: list[str], palette: dict,
+               context: Any, used: set) -> dict[str, Any]:
+    """_map_extras for one map: `by_label` its steps by task label (the
+    reference transaction's first), `node_system` each label's system,
+    `systems` the systems its legend names, in order, and `palette` their
+    colours."""
+    from pm4py.objects.bpmn.obj import BPMN
     task_tags: dict[int, str] = {}
     colours: dict[int, tuple[str, str]] = {}
     notes: dict[int, tuple[str, str | None]] = {}
     data: dict[int, list[tuple[str, str, str]]] = {}
     done: set[str] = set()
-    used: set[str] = set()
     for node in model.get_nodes():
         label = node.get_name() if isinstance(node, BPMN.Activity) else None
         if label not in by_label:
@@ -643,6 +689,176 @@ def _map_extras(anno: dict[str, Any], model: Any, context: Any,
             for system in systems])
     return {"task_tags": task_tags, "colours": colours, "notes": notes, "data": data,
             "legend": legend}
+
+
+# ---- contract C19: a map per sub-process, each a plane of the one file ----------
+
+def _plane_log(traces: list[list[dict[str, Any]]]) -> EventLog:
+    """The event log of a sub-process's map: one trace per trace of the map
+    (a visit of the sub-process), labelled by map node, consecutive
+    duplicates collapsed, with the steps' start times (build_annotation_log's
+    rule)."""
+    log = EventLog()
+    for i, steps in enumerate(traces):
+        trace = Trace()
+        trace.attributes["concept:name"] = f"trace-{i}"
+        trace.attributes["case:id"] = f"trace-{i}"
+        prev_label: str | None = None
+        for s in steps:
+            label = _step_label(s)
+            if label == prev_label:
+                continue
+            prev_label = label
+            e = Event()
+            e["concept:name"] = label
+            ts = (s.get("time_range") or {}).get("start")
+            if ts:
+                try:
+                    e["time:timestamp"] = _parse_ts(ts)
+                except (ValueError, TypeError):
+                    pass
+            trace.append(e)
+        if len(trace) > 0:
+            log.append(trace)
+    return log
+
+
+def _per_transaction(edges: list[dict], traces: list[list[dict[str, Any]]],
+                     tx: list[int]) -> list[dict]:
+    """The step flow edges of a sub-process's map, each counting the
+    transactions that took it in place of its traces: one transaction can
+    visit a sub-process twice, and the map's counts are over the
+    transactions that ran it (contract C19). `tx` names each trace's
+    transaction."""
+    import sub_process_maps
+    taken: dict[tuple[str, str], set] = {}
+    for t, trace in zip(tx, traces):
+        path = ([step_flow.START] + [node for node, _s in sub_process_maps.visits(trace)]
+                + [step_flow.END])
+        for a, b in zip(path, path[1:]):
+            taken.setdefault((a, b), set()).add(t)
+    return [dict(e, transactions=len(taken.get((e["from"], e["to"]), ()))) for e in edges]
+
+
+def _plane_model(traces: list[list[dict[str, Any]]], tx: list[int], marked: bool,
+                 noise_threshold: float):
+    """(model, {id(flow): name}, {id(flow or end event): documentation},
+    {id(early end)}, label room) of a sub-process's map, chosen as the main
+    map's is (contract C19): the step flow edges when the flow set on its
+    steps changes the map (_flow_bpmn), a chain for one trace, else the
+    miner; a sub-process with no steps is a start joined to an end. Its
+    counts are over the transactions `tx` of its traces, and none is said
+    unless one of them is `marked` (not the implicit run of a session
+    without a recording, C16)."""
+    import mining
+    from pm4py.objects.bpmn.obj import BPMN
+    if not traces:
+        model = _OrderedModel()
+        start = model.add_node(BPMN.StartEvent(name=""))
+        end = model.add_node(BPMN.EndEvent(name=""))
+        model.add_flow(BPMN.Flow(start, end))
+        return model, {}, {}, set(), False
+    edges = step_flow.flow_edges(traces)
+    if step_flow.changes_map(edges):
+        model, names, docs, early = _flow_bpmn(_per_transaction(edges, traces, tx),
+                                               len(set(tx)), count_runs=marked)
+        return model, names, docs, early, True
+    labels = [_collapse(_step_label(s) for s in trace) for trace in traces]
+    if len(traces) == 1:
+        model = _linear_bpmn(labels[0])
+    else:
+        model = mining.discover_inductive(_plane_log(traces), noise_threshold=noise_threshold)
+    names = branch_names(model, labels, groups=tx) if marked else {}
+    return model, names, {}, set(), False
+
+
+def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: Any,
+                        transactions: list[list[dict[str, Any]]], *, context: Any = None,
+                        implicit_runs: Any = (), noise_threshold: float = 0.2,
+                        palette: dict | None = None, used: set | None = None) -> dict[int, dict]:
+    """Contract C19: every map of sub_process_maps.map_tree below the main
+    one, as mining.export_bpmn takes it (its `sub_planes`): {id(task): the
+    sub-process's map}. Each task of a sub-process node is tagged
+    "subProcess" in `task_tags` (a collapsed sub-process, in place of the
+    task); the first of them holds the map (as the first holds a label's
+    notes and files, C18), which holds its own sub-processes' maps the same
+    way, at any depth.
+
+    A map is chosen, documented and dressed as the main one is
+    (_plane_model, _documented, _extras_of) from its own traces: its start
+    and main end are unnamed and its early ends keep their `when`; its
+    counts ("In N of M transactions", the branch names) are over the
+    transactions that ran the sub-process; its legend names the systems
+    drawn in it, each keeping its colour from `palette` across the file;
+    its data objects' keys stay unique (`used`). Its ids start with
+    "Sub<n>_", n its place in map_tree's list, unique in the file. {} when
+    no step is a sub-process."""
+    import sub_process_maps
+    from pm4py.objects.bpmn.obj import BPMN
+    pattern = _pattern_case(anno)
+    case_of = [steps[0].get("case_id") if steps else None for steps in transactions]
+    reference = next((i for i, c in enumerate(case_of) if c == pattern), 0)
+    children: dict[tuple, list[tuple[int, dict]]] = {}
+    for index, m in enumerate(sub_process_maps.map_tree(transactions, reference)):
+        if m["path"]:
+            children.setdefault(tuple(m["path"][:-1]), []).append((index, m))
+    implicit = set(implicit_runs or ())
+    palette = {} if palette is None else palette
+    used = set() if used is None else used
+
+    def attach(model, tags, path) -> dict[int, dict]:
+        planes: dict[int, dict] = {}
+        for index, m in children.get(path, []):
+            tasks = [n for n in model.get_nodes()
+                     if isinstance(n, BPMN.Activity) and n.get_name() == m["path"][-1]]
+            if not tasks:
+                continue        # the miner left the node out: no task holds its map
+            for task in tasks:
+                tags[id(task)] = "subProcess"
+            planes[id(tasks[0])] = plane(index, m)
+        return planes
+
+    def plane(index, m) -> dict:
+        traces, tx = m["traces"], m["transactions"]
+        cases = [case_of[t] for t in tx]
+        model, flow_names, documentation, early, label_room = _plane_model(
+            traces, tx, not set(cases) <= implicit, noise_threshold)
+        groups: dict[str, list[tuple[Any, dict[str, Any]]]] = {}
+        for c, trace in zip(cases, traces):
+            for s in trace:
+                groups.setdefault(_step_label(s), []).append((c, s))
+        docs = _documented(groups, len(set(tx)), pattern, implicit, context)
+        for node in model.get_nodes():
+            if isinstance(node, BPMN.StartEvent):
+                node.set_name("")
+            elif isinstance(node, BPMN.EndEvent):
+                if id(node) not in early:
+                    node.set_name("")
+            elif isinstance(node, BPMN.Activity) and node.get_name() in docs:
+                documentation[id(node)] = docs[node.get_name()]
+        by_label = {label: ([s for c, s in pairs if c == pattern]
+                            + [s for c, s in pairs if c != pattern])
+                    for label, pairs in groups.items()}
+        node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
+        seen: dict[str, None] = {}
+        # The systems in the order the reference transaction, then the
+        # others, first used them (_systems_in_order's order).
+        for _c, trace in sorted(zip(cases, traces), key=lambda ct: ct[0] != pattern):
+            for s in trace:
+                system = node_system.get(_step_label(s))
+                if system:
+                    seen.setdefault(system, None)
+        systems = list(seen)
+        _colour(palette, systems)
+        extras = _extras_of(anno, model, by_label, node_system, systems, palette, context, used)
+        spec = {"model": model, "prefix": f"Sub{index}_", "documentation": documentation,
+                "flow_names": flow_names, "label_room": label_room, **extras}
+        nested = attach(model, extras["task_tags"], tuple(m["path"]))
+        if nested:
+            spec["sub_planes"] = nested
+        return spec
+
+    return attach(model, task_tags, ())
 
 
 def write_observed_bpmn(
@@ -695,6 +911,11 @@ def write_observed_bpmn(
     ids in the viewer's transaction order, the order the labels of one flow
     are joined in. Each link to the end ends at an end event of its own,
     named by its `when` (C18, _arcs).
+
+    Contract C19: a step that carries `sub_steps` is a sub-process. Its node
+    is a collapsed bpmn:subProcess in place of its task, holding its own map
+    (sub_process_maps.map_tree), drawn in a plane of its own, at any depth
+    (_sub_process_planes). Without a sub-process the file is what it was.
     """
     import mining  # local import: PM4Py is only needed when --mine is on
     from pm4py.objects.bpmn.obj import BPMN
@@ -733,7 +954,14 @@ def write_observed_bpmn(
     if flow_names is None:
         traces = [[e["concept:name"] for e in trace] for trace in log]
         flow_names = branch_names(bpmn, traces)
+    # One palette and one set of data object keys for every map of the file.
+    palette: dict = {}
+    used: set = set()
+    extras = _map_extras(anno, bpmn, context, run_order, palette=palette, used=used)
+    planes = _sub_process_planes(anno, extras["task_tags"], bpmn, transactions,
+                                 context=context, implicit_runs=implicit_runs,
+                                 noise_threshold=noise_threshold, palette=palette, used=used)
     mining.export_bpmn(bpmn, out_path, documentation=documentation,
                        flow_names=flow_names, label_room=declared,
-                       **_map_extras(anno, bpmn, context, run_order))
+                       sub_planes=planes or None, **extras)
     return True

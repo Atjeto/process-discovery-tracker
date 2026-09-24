@@ -3,7 +3,7 @@
 > Overview level. Field-level formats are in
 > [`shared/SCHEMA.md`](../../shared/SCHEMA.md); the decisions behind the
 > light version are in [ADR-0029](../adr/0029-ba-helper-refocus.md) and the
-> data contracts (C1 to C18) it points to.
+> data contracts (C1 to C19) it points to.
 
 ## Purpose and entry points
 
@@ -23,8 +23,8 @@ has Re-analyze for a stuck state.
 
 ```
 python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
-    [--pdd-out <path.docx>] [--pdd-map-image <path.png>] [--pdd-tobe-image <path.png>]
-    [--names <remembered-names.json>]
+    [--pdd-out <path.docx>] [--pdd-map-image <path.png>] [--pdd-map-images <maps.json>]
+    [--pdd-tobe-image <path.png>] [--names <remembered-names.json>]
 ```
 
 | Flag | Effect |
@@ -33,6 +33,7 @@ python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
 | `--mine` | Also write `process_map_step.bpmn`, the step-level map. Every analysis the viewer runs passes it; its PDD export does not (it analyzes first when the map file is missing or older than the steps). |
 | `--pdd-out` | Render the PDD to this `.docx` path. |
 | `--pdd-map-image` | A picture of the As-Is map, printed as section 3.1. The viewer passes the edited As-Is copy when one is chosen, else the step map (`process_map_step.bpmn`) drawn off screen by bpmn-js. |
+| `--pdd-map-images` | Contract C19: a manifest of the maps' pictures, `{"maps": [{"path": [<node>, ...], "png": "<file>"}]}` (a relative file is read from the manifest's folder). Path `[]` is the main map's picture and wins over `--pdd-map-image`; any other path is a sub-process's map, printed in its chapter. An entry whose file is missing is left out, and that map prints as a table; an unreadable manifest gives a warning and no pictures. The viewer renders one picture per numbered map. |
 | `--pdd-tobe-image` | A picture of the To-Be map, printed as section 7.1. The viewer passes the copy chosen as To-Be. |
 | `--names` | The remembered-names store (contract C4). A draft whose `draft_key` the session's own analyst steps do not name takes the store's name. A missing or unreadable file prints one warning and drafting goes on without it. The viewer passes it on every run when the store exists. |
 
@@ -130,10 +131,19 @@ helpers in `pipeline_stages.py`, in this order:
    a fresh draft inherit the `step_id` of the step it re-covers, and restamps
    `process_label` and `grain_keys` on every step. A draft that still
    carries a step flow key (`only_when` or `links`, contract C17) is the
-   analyst's: it is kept as `edited`, so no analysis drafts the flow away.
+   analyst's: it is kept as `edited`, so no analysis drafts the flow away;
+   so is a draft that carries `sub_steps` (contract C19, a sub-process).
+   A preserved step keeps its sub-steps as they are; each sub-step, at
+   every depth, gets its `process_label` by the main level's rule (a
+   drafted sub-step's `action_key` counts like a `draft_key`).
    `restamp_preserved_case_ids` (C9) moves a preserved step whose run no
-   longer exists to the run that contains it in time. The merged steps are
-   written to `annotations.json` here.
+   longer exists to the run that contains it in time, then gives every
+   sub-step its parent's `case_id`. A group of steps (C19) is a preserved
+   step whose span and evidence are its members', so the fresh drafts of
+   the grouped interactions are dropped. The merged steps are written to
+   `annotations.json` here. The statistics and the analysis read the main
+   level only; the step map and the PDD read the sub-processes too
+   (below).
 5. **Classification** (`_run_classification`). Taxonomy rules
    (`classification.py`) plus any `classification_overrides` an older file
    carries, then two collapses: adjacent identical activity events, and one
@@ -170,7 +180,7 @@ canonical matching and drift markers; phases; PII masking; the EUR-ROI stage;
 the PDD's findings section. Older session folders may still hold the removed
 files; nothing reads them.
 
-## The step map (`process_map_step.bpmn`, contracts C15, C17, C18)
+## The step map (`process_map_step.bpmn`, contracts C15, C17, C18, C19)
 
 `bpmn_observed.write_observed_bpmn` builds one trace per run from the run's
 visible steps, labelled by `process_label`, in the run's step order (time,
@@ -237,6 +247,37 @@ and the other names. What a BPMN tool receives besides the shapes:
 - A step name on several tasks (a transaction that comes back to a step)
   shows its notes and files on the first.
 
+**Sub-processes (C19).** `sub_process_maps.map_tree` lists the project's
+maps, the rule `shared/sub-process-maps-golden.json` pins for this module
+and the viewer: the main map from one trace per transaction; below it,
+consecutive visible steps with one map node are one visit, a visit of a
+sub-process node (a step that carries `sub_steps`) gives one trace, its
+visible sub-steps, and a sub-process's map is drawn from every visit of its
+node at its level; each map has a path of nodes and a number (the step
+number through the reference transaction, "2", "2.4", or none). Every map
+is a plane of the one file (`bpmn_observed._sub_process_planes`, written by
+`mining.export_bpmn`, one `_Plane` per map, recursively):
+
+- A sub-process node is a collapsed `bpmn:subProcess` in its parent's map,
+  in place of the task: task sized, its shape `isExpanded="false"`, named
+  by its node, documented, coloured and joined to its notes and files like
+  a task. It holds its map's model, drawn in a `bpmndi:BPMNDiagram` of its
+  own whose plane's `bpmnElement` is the sub-process. A node on several
+  tasks is a sub-process on each; the first holds the map.
+- The map is chosen as the main one from its own traces (the flow edges
+  when the flow set on its steps changes the map, a chain for one trace,
+  else the miner); a sub-process with no steps is a start joined to an end.
+  Its start and main end are unnamed, its early ends named from their
+  `when`. Its counts ("In N of M transactions", the branch names) are over
+  the transactions that ran the sub-process, not its visits.
+- Notes, attachments and colours as above on every plane. Each plane has
+  its own legend of the systems drawn in it; a system keeps one colour
+  across the file (the main map's systems take the first colours).
+- The main plane keeps its ids, so a file without a sub-process is written
+  byte for byte as before. Every id inside a sub-plane starts with
+  `Sub<n>_`, n the map's place in `map_tree`'s list, so the ids are unique
+  in the file.
+
 It is the file Edit as the As-Is map copies (a reference map, ADR-0019),
 the map the PDD prints when no As-Is copy is chosen, and the picture
 Export's Process map (image) saves then; the viewer draws each with bpmn-js.
@@ -270,8 +311,21 @@ gaps. The sections, in the reader's order:
    left out), the fields it entered, its attachments, its screenshots, the
    waste flag, and one line per link: "Then goes back to step N, <name>,
    when ...", "Then goes on to step N ...", "Then skips to step N ..." or
-   "The process ends here when ...".
-4. **Variations, rules and exceptions.** 4.1 how each other run differed
+   "The process ends here when ...". A step whose map node is a
+   sub-process (C19) ends with "Sub-process: see 3.<k>.". After 3.2, one
+   section per sub-process map with a number, depth first: "3.<k>
+   Sub-process <number>: <name>", its map on a page of its own (its picture
+   from `--pdd-map-images`, alternative text "As-Is process map,
+   sub-process <number>", else the table 3.1 falls back to, counted over
+   the transactions that ran it), then the steps of the reference
+   transaction's first visit, numbered "<number>.<i>" and printed like
+   3.2's, a link numbered as the chapter numbers it and an end reading
+   "The sub-process ends here ...". A group of steps (C19) prints its name,
+   its line, its condition, its description when written, its attachments,
+   its flow and the pointer, but not the fields or the screenshots its
+   chapter prints.
+4. **Variations, rules and exceptions** (sections 4 to 9 read the main
+   level only). 4.1 how each other run differed
    from the reference run (extra steps with their system, where and in how
    many runs; skipped steps; a different order; steps repeated within a
    run), aligned by draft key, merge key, else label: the rule the viewer's
@@ -387,9 +441,10 @@ SCHEMA.md.
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
 | `case_quality.py`, `motifs.py`, `facts.py`, `findings.py` | The measured blocks of `analysis.json`: run coverage, repeated sequences, direct measurements, and the findings detectors with their evidence. |
 | `analysis*.py` | The step-based estimates: waste, time study, segments, automation candidates (ranked by `instance_count x mean_elapsed_ms x 0.7`), efficiency. |
-| `mining.py` | pm4py's inductive miner and the pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest); only the step map uses it. |
-| `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, and what C18 adds beside the tasks (`_map_extras`). |
-| `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of`. |
+| `mining.py` | pm4py's inductive miner and the pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
+| `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
+| `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
+| `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
 | `pdd_export.py` | The PDD (above). |
 | `memo_export.py` | What is left of the findings memo: `run_rows` (the runs the PDD's tables read), the "could not run" wording, and `pdd_findings` (still written to `analysis.json`; nothing reads it). No memo document is written. |
 | `transcript_import.py` | The transcript parser and its CLI (above). |

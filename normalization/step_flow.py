@@ -61,8 +61,16 @@ def _line(value: Any) -> str:
 
 
 def node_of(step: dict) -> str:
-    """The map node a step is drawn as: its value-free process_label, else
-    its name (the step map's rule since ADR-0013)."""
+    """The map node a step is drawn as: a drafted step is its own name,
+    whatever its state (it carries a draft_key, or a drafted sub-step's
+    action_key, contract C19: the viewer's mapNodeLabel draws it so, and
+    step_suggest stamps that name as its process_label); any other step its
+    value-free process_label, else its name (the step map's rule since
+    ADR-0013)."""
+    name = step.get("name")
+    if ((step.get("draft_key") or step.get("action_key"))
+            and isinstance(name, str) and name.strip()):
+        return name.strip()
     return step.get("process_label") or step.get("name") or "(unnamed)"
 
 

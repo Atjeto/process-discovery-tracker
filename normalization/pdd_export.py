@@ -17,7 +17,12 @@ in the reader's order:
      the recording ("Transaction 1 at 0:19", and the video time when the
      video's start is known); its description (C7) is its text. The flow
      the analyst set on it (C17) prints under it: "Only when" its condition,
-     and where the process goes after it besides the next step.
+     and where the process goes after it besides the next step. Contract
+     C19: a step that is a sub-process points at its chapter ("Sub-process:
+     see 3.3."), and after 3.2 each sub-process with a number has one
+     (3.3 on, depth first): its map on a page of its own, then the steps of
+     the reference transaction's first visit, numbered "2.1", "2.2" and
+     pointing at deeper chapters in turn.
   4. Variations, rules and exceptions: how each other transaction differed
      from the reference transaction (aligned by draft key; the rule is
      pinned with the viewer by shared/run-differences-golden.json), steps
@@ -56,10 +61,15 @@ without a time (`time_range: null`) orders by its `order` and prints no
 time, never a zero. The notes pinned to steps and moments
 (annotations.analyst_notes) are not printed.
 
+Sub-processes (contract C19): sections 4 to 9 read the main level only;
+what the analyst adds by step_id (screenshots, the one for the PDD,
+attachments) resolves at every level.
+
 Uses python-docx.
 """
 
 from __future__ import annotations
+import json
 import logging
 import math
 import re
@@ -88,8 +98,9 @@ from memo_export import run_rows
 from session_io import has_recording, session_source
 from step_context import (StepContext, clock, has_video, step_duration_ms, step_start,
                           step_system, untimed_key, video_start)
-from step_flow import condition_of, links_of, node_of
+from step_flow import END, START, condition_of, links_of, node_of
 from step_suggest import is_drafted_description, step_identity
+from sub_process_maps import map_tree
 
 logger = logging.getLogger(__name__)
 
@@ -120,18 +131,24 @@ def write_pdd(
     process_map_image: str | Path | None = None,
     tobe_map_image: str | Path | None = None,
     events: list[dict] | None = None,
+    map_images: str | Path | None = None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
     steps' systems, screens and entered fields are read from; without it the
     data section says the field entries were not available. `analysis` is
     accepted for the pipeline's call and not printed: the document holds no
-    analysis findings (section 1 of the earlier document is cut)."""
+    analysis findings (section 1 of the earlier document is cut).
+
+    `map_images` (contract C19, the `--pdd-map-images` manifest) names a
+    picture per map, {"maps": [{"path": [<node>, ...], "png": "<file>"}]}:
+    the main map's (path []) wins over `process_map_image`, and each
+    sub-process's chapter prints its own (_read_map_images)."""
     if Document is None:
         raise RuntimeError(
             "python-docx is not installed. Add `python-docx>=1.1.0` to "
             "normalization/requirements.txt and reinstall."
         )
-    s = _Session(session_folder, annotations, stats, manifest, events)
+    s = _Session(session_folder, annotations, stats, manifest, events, map_images)
     doc = Document()
     s.portrait = _page_of(doc.sections[0])
     notes = bool(s.field("notes"))
@@ -244,12 +261,76 @@ def _text_of(v) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
+def _read_map_images(manifest) -> dict[tuple[str, ...], Path]:
+    """The pictures of the maps (contract C19, `--pdd-map-images`): {path of
+    nodes: PNG file} from a manifest {"maps": [{"path": [<node>, ...],
+    "png": "<file>"}]}, a relative file read from the manifest's folder, the
+    first entry for a path winning. An entry whose file is missing, or not
+    of that shape, is left out (its map prints as the table 3.1 falls back
+    to); an unreadable manifest gives none, with a warning."""
+    if not manifest:
+        return {}
+    path = Path(manifest)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("pdd_export: the map pictures %s cannot be read (%s: %s); "
+                       "the maps print as tables", path, type(exc).__name__, exc)
+        return {}
+    maps = doc.get("maps") if isinstance(doc, dict) else None
+    out: dict[tuple[str, ...], Path] = {}
+    for entry in maps if isinstance(maps, list) else []:
+        nodes = entry.get("path") if isinstance(entry, dict) else None
+        png = entry.get("png") if isinstance(entry, dict) else None
+        if not (isinstance(nodes, list) and all(isinstance(n, str) for n in nodes)
+                and isinstance(png, str) and png.strip()):
+            continue
+        file = Path(png.strip())
+        if not file.is_absolute():
+            file = path.parent / file
+        if file.is_file():
+            out.setdefault(tuple(nodes), file)
+    return out
+
+
+class _Level:
+    """One map of the project as the document reads it (contract C19, a
+    map of sub_process_maps.map_tree): its path of nodes, its number ("2",
+    "2.1"; None for the main map and for a map with no chapter), its traces
+    with the transaction of each, per map node the transactions that ran it
+    and the times of its steps, and `first`, the reference transaction's
+    first trace: the steps its chapter prints."""
+
+    def __init__(self, m, reference):
+        self.path = list(m["path"])
+        self.number = m["number"]
+        self.traces = m["traces"]
+        self.tx = m["transactions"]
+        self.reference = reference
+        self.runs = len(set(self.tx))
+        self.node_runs: dict[str, set] = {}
+        self.node_ms: dict[str, list[float]] = {}
+        self.node_by_id: dict[str, str] = {}
+        for t, trace in zip(self.tx, self.traces):
+            for st in trace:
+                node = node_of(st)
+                self.node_runs.setdefault(node, set()).add(t)
+                ms = step_duration_ms(st)
+                if ms is not None:
+                    self.node_ms.setdefault(node, []).append(ms)
+                sid = st.get("step_id")
+                if isinstance(sid, str) and sid:
+                    self.node_by_id.setdefault(sid, node)
+        self.first = next((trace for t, trace in zip(self.tx, self.traces) if t == reference), [])
+
+
 class _Session:
     """What every section reads, computed once: the visible steps, the runs,
     the reference run (C3), each run's steps aligned to it, the document
-    fields (C6), the recorded interactions and where each step happened."""
+    fields (C6), the recorded interactions and where each step happened,
+    and (C19) the maps of the sub-processes with their chapters."""
 
-    def __init__(self, folder, annotations, stats, manifest, events):
+    def __init__(self, folder, annotations, stats, manifest, events, map_images=None):
         self.folder = Path(folder)
         self.annotations = annotations if isinstance(annotations, dict) else {}
         self.stats = stats if isinstance(stats, dict) else {}
@@ -325,6 +406,24 @@ class _Session:
                 if ms is not None:
                     self.key_ms.setdefault(_align_key(u), []).append(ms)
 
+        # C19: the maps of the project (sub_process_maps.map_tree) over the
+        # transactions 3.2 prints from, the reference one numbering them;
+        # without a reference transaction, the steps 3.2 lists are the one
+        # trace. Each map with a number is a chapter, 3.3 on, depth first.
+        if self.pattern_index is not None:
+            transactions = [self.run_steps(i) for i in range(len(self.runs))]
+            reference = self.pattern_index
+            self.reference_case = self.runs[reference]["case_id"]
+        else:
+            transactions, reference, self.reference_case = [self.steps], 0, None
+        self.levels = [_Level(m, reference) for m in map_tree(transactions, reference)]
+        self.level_at = {tuple(lv.path): lv for lv in self.levels}
+        self.chapters: dict[tuple[str, ...], int] = {}
+        for lv in self.levels[1:]:
+            if lv.number is not None:
+                self.chapters[tuple(lv.path)] = 3 + len(self.chapters)
+        self.map_images = _read_map_images(map_images)
+
     def _pick_pattern(self):
         """C3: the run the analyst chose, when it names a recorded run; else
         the first run (by start time) that has steps; else none."""
@@ -390,7 +489,7 @@ class _Session:
     def system_of(self, step) -> str:
         return self.ctx.where(_members(step)[0])[0]
 
-    def position(self, step) -> str:
+    def position(self, step, case_id=None) -> str:
         """Where a step is in the recording: its transaction and its time
         from the start of the recording ("Transaction 1 at 0:19": the same
         on every machine, whatever its time zone), and the video time when
@@ -399,11 +498,12 @@ class _Session:
         without a time has no place (C16). In a video session the session's
         clock is the video's, so the place is the video time ("Transaction
         1, video 0:19", "video 0:19" in the implicit run, which is not a
-        marked transaction)."""
+        marked transaction). `case_id`, when given, is the step's
+        transaction (a sub-step's, contract C19: its parent's)."""
         start = step_start(_members(step)[0])
         if start is None:
             return ""
-        cid = step.get("case_id")
+        cid = step.get("case_id") if case_id is None else case_id
         index = self.run_index.get(cid) if isinstance(cid, str) and not self.implicit else None
         if (self.source == "video" and self.video_start is not None
                 and start >= self.video_start):
@@ -421,19 +521,33 @@ class _Session:
             out = f"{out} ({video})" if out else video
         return out
 
-    def context_line(self, step) -> str:
+    def context_line(self, step, level=None) -> str:
         """The line under a step's heading: system and screen, its average
         time, in how many transactions it happened ("in 3 of 4
         transactions"), where it is in the recording. Contract C16: the time
         leaves out the steps without a time range and is not said when none
         of them has one; the implicit run (transactions not marked) is not
-        counted."""
+        counted. Contract C19: a sub-step of a chapter (`level`, its map) is
+        timed and counted over its map's traces, out of the transactions
+        that ran its sub-process, and placed in the reference transaction."""
         parts = []
         where = self.where(step)
         if where:
             parts.append(where)
         own = _unit_ms(step)
-        if self.runs:
+        sub = level is not None and bool(level.path)
+        if sub and self.pattern_index is not None:
+            node = node_of(step)
+            durations = level.node_ms.get(node) or ([own] if own is not None else [])
+            if durations:
+                parts.append(_duration(sum(durations) / len(durations)) + " on average")
+            if not self.implicit:
+                parts.append(f"in {len(level.node_runs.get(node) or ()) or 1} of "
+                             f"{_plural(level.runs, 'transaction')}")
+        elif sub:
+            if own is not None:
+                parts.append(_duration(own))
+        elif self.runs:
             key = _align_key(step)
             durations = self.key_ms.get(key) or ([own] if own is not None else [])
             if durations:
@@ -443,7 +557,7 @@ class _Session:
                              f"{_plural(len(self.runs), 'transaction')}")
         elif own is not None:
             parts.append(_duration(own))
-        position = self.position(step)
+        position = self.position(step, self.reference_case if sub else None)
         if position:
             parts.append(position)
         return _SEP.join(parts)
@@ -883,8 +997,11 @@ def _write_as_is(doc, s, process_map_image):
     """3: the As-Is map on a page of its own (the section's heading on the
     same page), then the steps. Without a picture of the map (the viewer
     passes one), the map from the runs as a table, so the section is never
-    empty."""
-    if not _map_page(doc, s, process_map_image, "3.1 As-Is process map",
+    empty. Contract C19: the main map's picture in the map pictures'
+    manifest wins over `process_map_image`, and the chapters of the
+    sub-processes follow the steps (_write_sub_processes)."""
+    image = s.map_images.get(()) or process_map_image
+    if not _map_page(doc, s, image, "3.1 As-Is process map",
                      "As-Is process map", "", then_portrait=True,
                      section_heading="3. As-Is process"):
         doc.add_heading("3. As-Is process", level=1)
@@ -899,6 +1016,7 @@ def _write_as_is(doc, s, process_map_image):
         if (s.folder / "process_map_step.bpmn").exists():
             doc.add_paragraph("The map file is process_map_step.bpmn in the project folder.")
     _write_steps(doc, s)
+    _write_sub_processes(doc, s)
 
 
 def _no_map_reason(s) -> str:
@@ -933,11 +1051,7 @@ def _write_steps(doc, s):
         else:
             doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
                               "the reference transaction.")
-        drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
-        if drafts:
-            doc.add_paragraph(f"{drafts} of these {_plural(len(steps), 'step')} "
-                              f"{'is a draft' if drafts == 1 else 'are drafts'} "
-                              "not confirmed yet.")
+        _drafts_line(doc, steps)
     if not steps:
         if not s.recorded:
             doc.add_paragraph("No steps have been added to this project yet.")
@@ -947,7 +1061,92 @@ def _write_steps(doc, s):
                               else "No steps have been recorded for this project yet.")
         return
     for number, step in enumerate(steps, start=1):
-        _write_step(doc, s, step, number, steps)
+        _write_step(doc, s, step, number, steps, s.levels[0])
+
+
+def _drafts_line(doc, steps) -> None:
+    """How many of the printed steps are drafts, when any is."""
+    drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
+    if drafts:
+        doc.add_paragraph(f"{drafts} of these {_plural(len(steps), 'step')} "
+                          f"{'is a draft' if drafts == 1 else 'are drafts'} "
+                          "not confirmed yet.")
+
+
+def _level_rows(s, level) -> list[tuple[str, str]]:
+    """3.1's table for a sub-process's map (contract C19): each step of its
+    traces, in the order the reference transaction (then the others) first
+    did it, and the steps that came next, each with the number of the
+    transactions that ran the sub-process in which it did ("Save (1 of 2
+    transactions)"). A step repeated back to back counts once, as on the
+    map; nothing is counted in the implicit run (C16) or without a
+    reference transaction."""
+    counted = s.pattern_index is not None and not s.implicit
+    names: dict[str, str] = {START: "Start", END: "End"}
+    order: dict[str, None] = {START: None}
+    follows: dict[str, dict[str, set]] = {}
+    for t, trace in sorted(zip(level.tx, level.traces), key=lambda p: p[0] != level.reference):
+        nodes: list[str] = []
+        for st in trace:
+            node = node_of(st)
+            names.setdefault(node, _step_name(st))
+            if not nodes or nodes[-1] != node:
+                nodes.append(node)
+        path = [START] + nodes + [END]
+        for a, b in zip(path, path[1:]):
+            order.setdefault(a, None)
+            follows.setdefault(a, {}).setdefault(b, set()).add(t)
+    rows = []
+    for key in order:
+        nexts = follows.get(key)
+        if not nexts:
+            continue
+        parts = sorted(nexts.items(), key=lambda kv: -len(kv[1]))
+        rows.append((names[key], "; ".join(
+            f"{names[b]} ({len(r)} of {_plural(level.runs, 'transaction')})" if counted
+            else names[b] for b, r in parts)))
+    return rows
+
+
+def _write_sub_processes(doc, s):
+    """Contract C19: after 3.2, one section per sub-process map with a
+    number, depth first: "3.<k> Sub-process <number>: <name>", the name the
+    step it is numbered by has. Its map sits on a page of its own (its
+    picture from the map pictures' manifest, else its steps and the steps
+    that followed them as a table, as 3.1 falls back to), then the steps of
+    the reference transaction's first visit, numbered "<number>.<i>" and
+    printed like 3.2's (_write_step), each pointing at a deeper chapter in
+    turn."""
+    for lv in s.levels[1:]:
+        k = s.chapters.get(tuple(lv.path))
+        if k is None:
+            continue
+        parent = s.level_at.get(tuple(lv.path[:-1]))
+        numbered_by = next((st for st in (parent.first if parent else [])
+                            if node_of(st) == lv.path[-1]), None)
+        name = _step_name(numbered_by) if numbered_by is not None else lv.path[-1]
+        heading = f"3.{k} Sub-process {lv.number}: {name}"
+        if not _map_page(doc, s, s.map_images.get(tuple(lv.path)), heading,
+                         f"As-Is process map, sub-process {lv.number}", "", then_portrait=True):
+            doc.add_heading(heading, level=2)
+            rows = _level_rows(s, lv)
+            if not rows:
+                doc.add_paragraph("No steps have been added to this sub-process yet, "
+                                  "so there is no map.")
+                continue
+            counted = s.pattern_index is not None and not s.implicit
+            doc.add_paragraph("Each step and the steps that followed it in the transactions:"
+                              if counted else "Each step and the step that followed it:")
+            _table(doc, ("Step", "Followed by"), rows, widths=(2.4, 3.6))
+        steps = lv.first
+        if not steps:
+            doc.add_paragraph("No steps have been added to this sub-process yet."
+                              if not lv.traces
+                              else "The reference transaction has no steps in this sub-process.")
+            continue
+        _drafts_line(doc, steps)
+        for number, step in enumerate(steps, start=1):
+            _write_step(doc, s, step, number, steps, lv)
 
 
 def _sentence(text: str) -> str:
@@ -957,7 +1156,7 @@ def _sentence(text: str) -> str:
     return text if text.endswith(("?", "!", "…")) else text + "."
 
 
-def _link_lines(s, step, number, steps) -> list[str]:
+def _link_lines(s, step, number, steps, level=None) -> list[str]:
     """One line per link on the step (contract C17), in their order: "Then
     goes back to step N, <name>, when <when>." for an earlier step (or the
     step itself), "Then goes on to step N ..." for the next one, "Then skips
@@ -967,35 +1166,50 @@ def _link_lines(s, step, number, steps) -> list[str]:
     printed steps): its own, else that of the first printed step with its
     map node (another transaction's copy of a printed step). A link to its
     own step, to a hidden or removed step, or to a step with no printed copy
-    is left out."""
+    is left out. Contract C19: in a sub-process's chapter (`level`, its map)
+    a target is numbered as the chapter numbers it ("step 2.1"), and an end
+    ends the sub-process only ("The sub-process ends here ...")."""
+    sub = level is not None and bool(level.path)
     numbers = {st.get("step_id"): i for i, st in enumerate(steps, start=1)
                if isinstance(st.get("step_id"), str)}
     by_node: dict[str, int] = {}
     for i, st in enumerate(steps, start=1):
         by_node.setdefault(node_of(st), i)
+    node_by_id = level.node_by_id if sub else s.node_by_id
+    ends = "The sub-process ends here" if sub else "The process ends here"
     lines = []
     for to, when in links_of(step):
         if to == "end":
-            lines.append(f"The process ends here when {_sentence(when)}" if when
-                         else "The process ends here.")
+            lines.append(f"{ends} when {_sentence(when)}" if when else f"{ends}.")
             continue
         if to == step.get("step_id"):
             continue
         n = numbers.get(to)
-        if n is None and to in s.node_by_id:
-            n = by_node.get(s.node_by_id[to])
+        if n is None and to in node_by_id:
+            n = by_node.get(node_by_id[to])
         if n is None:
             continue
         verb = ("goes back to" if n <= number
                 else "goes on to" if n == number + 1 else "skips to")
-        target = f"Then {verb} step {n}, {_step_name(steps[n - 1])}"
+        shown = f"{level.number}.{n}" if sub else str(n)
+        target = f"Then {verb} step {shown}, {_step_name(steps[n - 1])}"
         lines.append(f"{target}, when {_sentence(when)}" if when else f"{target}.")
     return lines
 
 
-def _write_step(doc, s, step, number, steps):
-    doc.add_heading(f"{number}. {_step_name(step)}", level=3)
-    context = s.context_line(step)
+def _write_step(doc, s, step, number, steps, level=None):
+    """One printed step: its heading, its context line, "Only when" its
+    condition, its description when the analyst wrote it, the fields it
+    entered, its attachments, its screenshots, the waste flag and its flow
+    (C17). Contract C19: `level` is the map it is drawn in; in a
+    sub-process's chapter it is numbered "<chapter number>.<number>". A
+    group of steps (`group: true`) prints no fields and no screenshot: its
+    chapter prints its steps with theirs. A step whose map node has a
+    chapter ends with the line that points at it."""
+    sub = level is not None and bool(level.path)
+    label = f"{level.number}.{number}" if sub else f"{number}."
+    doc.add_heading(f"{label} {_step_name(step)}", level=3)
+    context = s.context_line(step, level)
     if context:
         _small(doc, context)
     condition = condition_of(step)
@@ -1005,21 +1219,26 @@ def _write_step(doc, s, step, number, steps):
     desc = s.analyst_description(step)
     if desc:
         _text(doc, desc)
-    fields = s.field_names(step)
+    group = step.get("group") is True
+    fields = [] if group else s.field_names(step)
     if fields:
         doc.add_paragraph("Fields: " + ", ".join(fields) + ".")
     attached = s.step_attachments(step)
     if attached:
         doc.add_paragraph("Attachments: " + ", ".join(attached) + ".")
-    for ref in s.screenshots(step):
+    for ref in [] if group else s.screenshots(step):
         _embed_screenshot(doc, s.folder, ref, step)
     if (step.get("flags") or {}).get("waste") is True:
         p = doc.add_paragraph("Flagged as waste.")
         for run in p.runs:
             run.italic = True
     # C17: where the process goes after the step, besides the next step.
-    for line in _link_lines(s, step, number, steps):
+    for line in _link_lines(s, step, number, steps, level):
         doc.add_paragraph(line)
+    # C19: the chapter of the sub-process the step stands for.
+    chapter = s.chapters.get(tuple((level.path if level is not None else []) + [node_of(step)]))
+    if chapter is not None:
+        doc.add_paragraph(f"Sub-process: see 3.{chapter}.")
 
 
 def _safe_path(folder, ref):

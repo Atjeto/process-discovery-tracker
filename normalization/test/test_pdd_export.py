@@ -17,6 +17,7 @@ Run with pytest:
 """
 
 from __future__ import annotations
+import json
 import re
 import struct
 import sys
@@ -1216,6 +1217,330 @@ def test_attachments_are_listed_in_a_last_section_and_under_their_step():
     assert _section(blocks, "8. Attachments") == [
         "The files are in the project folder's attachments folder.",
         "Attachment | File", "Order desk SOP | sop.pdf", "form.docx | form.docx"]
+
+
+# ---- sub-processes (contract C19) ------------------------------------------------------
+
+def _sub_step(sid, case_id, name, start, end, eids, **extra):
+    """A drafted sub-step: its action_key, name_source "action", a draft."""
+    step = {"step_id": sid, "case_id": case_id, "name": name, "state": "auto_suggested",
+            "action_key": f"crm|CRM - Orders|{name}", "name_source": "action",
+            "description": "", "flags": {"waste": False},
+            "time_range": {"start": _ts(start), "end": _ts(end)},
+            "evidence": {"interaction_event_ids": eids, "screenshot_refs": []}}
+    step.update(extra)
+    return step
+
+
+def _hand_step(sid, case_id, name, order, **extra):
+    step = {"step_id": sid, "case_id": case_id, "name": name, "state": "manually_authored",
+            "time_range": None, "order": order,
+            "evidence": {"interaction_event_ids": [], "screenshot_refs": []}}
+    step.update(extra)
+    return step
+
+
+def _sub_session(open_run_1=True):
+    """_session with sub-processes. Run 2's Save (b3) is opened as a
+    sub-process: Enter the order number and Click Save, drafted from its
+    recorded actions. With `open_run_1`, so is run 1's (a2), with Check
+    stock between them (a sub-process added by hand, with Open the stock
+    list and Read the stock), and its Click Save ends the sub-process when
+    the order is on hold. Run 1's Send (a3) is grouped into Tell the
+    customer."""
+    manifest, annotations, stats, analysis, events = _session()
+    events += [
+        _inter("e10", 4.5, "crm.exe", CRM_TITLE, "value_changed", "Order number", value="ORD-1"),
+        _inter("f10", 69.5, "crm.exe", CRM_TITLE, "value_changed", "Order number", value="ORD-2")]
+    steps = {s["step_id"]: s for s in annotations["steps"]}
+    if open_run_1:
+        steps["a2"]["state"] = "edited"
+        check = _hand_step("s2", R1, "Check stock", None,
+                           time_range={"start": _ts(4.9), "end": _ts(5)},
+                           sub_steps=[_hand_step("n1", R1, "Open the stock list", 1),
+                                      _hand_step("n2", R1, "Read the stock", 2)])
+        del check["order"]
+        steps["a2"]["sub_steps"] = [
+            _sub_step("s1", R1, "Enter the order number", 4.5, 4.8, ["e10"]), check,
+            _sub_step("s3", R1, "Click Save", 5, 5.5, ["e3"],
+                      links=[{"to": "end", "when": "the order is on hold"}])]
+    steps["b3"]["state"] = "edited"
+    steps["b3"]["sub_steps"] = [
+        _sub_step("t1", R2, "Enter the order number", 69.5, 69.8, ["f10"]),
+        _sub_step("t3", R2, "Click Save", 70, 70.5, ["f5"])]
+    send = steps["a3"]
+    group = {"step_id": "g1", "case_id": R1, "name": "Tell the customer", "group": True,
+             "state": "manually_authored", "description": "Tell the customer the order is booked.",
+             "flags": {"waste": False}, "time_range": dict(send["time_range"]),
+             "evidence": {"interaction_event_ids": list(send["evidence"]["interaction_event_ids"]),
+                          "screenshot_refs": []},
+             "sub_steps": [send]}
+    annotations["steps"] = [s for s in annotations["steps"] if s is not send] + [group]
+    return manifest, annotations, stats, analysis, events
+
+
+_CHAPTERS = ["3.3 Sub-process 2: CRM - Orders: Save", "3.4 Sub-process 2.2: Check stock",
+             "3.5 Sub-process 3: Tell the customer"]
+_CHAPTERS_AT = OUTLINE.index("3.2 Process steps") + 1
+
+
+def test_each_numbered_sub_process_has_a_chapter_after_the_steps_depth_first():
+    if not _HAVE_DOCX:
+        return
+    blocks = _blocks_of(*_sub_session())
+    assert _numbered(blocks) == OUTLINE[:_CHAPTERS_AT] + _CHAPTERS + OUTLINE[_CHAPTERS_AT:]
+    assert [t for k, t in blocks if k == "Heading 3"] == [
+        "1. Look up the order", "2. CRM - Orders: Save", "3. Tell the customer",
+        "2.1 Enter the order number", "2.2 Check stock", "2.3 Click Save",
+        "2.2.1 Open the stock list", "2.2.2 Read the stock",
+        "3.1 Mail - Compose: Send"]
+
+
+def test_a_step_that_is_a_sub_process_points_at_its_chapter():
+    if not _HAVE_DOCX:
+        return
+    blocks = _blocks_of(*_sub_session())
+    steps = _section(blocks, "3.2 Process steps")
+    two, three = steps.index("2. CRM - Orders: Save"), steps.index("3. Tell the customer")
+    assert steps[three - 1] == "Sub-process: see 3.3."
+    assert steps[-1] == "Sub-process: see 3.5."
+    assert sum(t.startswith("Sub-process:") for t in steps) == 2
+    # The rest of step 2's block is as before: its context line.
+    assert steps[two + 1].startswith("Contoso CRM, Orders")
+    chapter = _section(blocks, _CHAPTERS[0])
+    check, save = chapter.index("2.2 Check stock"), chapter.index("2.3 Click Save")
+    assert chapter[check + 1:save] == [
+        "under 1s on average · in 1 of 2 transactions · Transaction 1 at 0:04",
+        "Sub-process: see 3.4."]
+    assert not any(t.startswith("Sub-process:") for t in _section(blocks, _CHAPTERS[1]))
+
+
+def test_a_chapter_prints_its_map_then_the_reference_transactions_first_visit():
+    """Without a picture the map is the table 3.1 falls back to, counted
+    over the transactions that ran the sub-process; then the reference
+    transaction's steps, printed like 3.2's (their context line, fields,
+    flow), numbered in the chapter."""
+    if not _HAVE_DOCX:
+        return
+    blocks = _blocks_of(*_sub_session())
+    chapter = _section(blocks, _CHAPTERS[0])
+    assert chapter[:7] == [
+        "Each step and the steps that followed it in the transactions:",
+        "Step | Followed by",
+        "Start | Enter the order number (2 of 2 transactions)",
+        "Enter the order number | Check stock (1 of 2 transactions); "
+        "Click Save (1 of 2 transactions)",
+        "Check stock | Click Save (1 of 2 transactions)",
+        "Click Save | End (2 of 2 transactions)",
+        "2 of these 3 steps are drafts not confirmed yet."]
+    one = chapter.index("2.1 Enter the order number")
+    assert chapter[one + 1:one + 3] == [
+        "Contoso CRM, Orders · under 1s on average · in 2 of 2 transactions "
+        "· Transaction 1 at 0:04",
+        "Fields: Order number."]
+    save = chapter.index("2.3 Click Save")
+    assert chapter[save + 1].startswith("Contoso CRM, Orders · ")
+    assert chapter[save + 2:] == ["The sub-process ends here when the order is on hold."]
+    deeper = _section(blocks, _CHAPTERS[1])
+    assert deeper[:5] == ["Each step and the steps that followed it in the transactions:",
+                          "Step | Followed by",
+                          "Start | Open the stock list (1 of 1 transaction)",
+                          "Open the stock list | Read the stock (1 of 1 transaction)",
+                          "Read the stock | End (1 of 1 transaction)"]
+    # A step added by hand without a time prints no time and no place.
+    first = deeper.index("2.2.1 Open the stock list")
+    assert deeper[first + 1] == "in 1 of 1 transaction"
+
+
+def test_a_link_inside_a_chapter_is_numbered_as_the_chapter_numbers_it():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _sub_session()
+    a2 = next(s for s in annotations["steps"] if s["step_id"] == "a2")
+    a2["sub_steps"][2]["links"] = [{"to": "s1", "when": "the number is wrong"},
+                                   {"to": "end"}]
+    a2["sub_steps"][0]["links"] = [{"to": "s3", "when": "nothing to check"}]
+    chapter = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                       _CHAPTERS[0])
+    check = chapter.index("2.2 Check stock")
+    assert chapter[check - 1] == "Then skips to step 2.3, Click Save, when nothing to check."
+    assert chapter[-2:] == ["Then goes back to step 2.1, Enter the order number, "
+                            "when the number is wrong.", "The sub-process ends here."]
+
+
+def test_a_group_prints_its_name_line_description_flow_and_pointer_not_its_members_detail():
+    """A group's block in 3.2: no fields and no screenshot (its chapter
+    prints its steps with theirs), its description when written, its flow."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _sub_session()
+    group = next(s for s in annotations["steps"] if s["step_id"] == "g1")
+    group["only_when"] = "the customer asked for a mail"
+    group["links"] = [{"to": "a1", "when": "the order changes"}]
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "shots").mkdir()
+        (Path(tmp) / "shots" / "send.png").write_bytes(_make_png(3, 2))
+        group["evidence"]["screenshot_refs"] = ["shots/send.png"]
+        group["sub_steps"][0]["evidence"]["screenshot_refs"] = ["shots/send.png"]
+        doc = _render(tmp, manifest, annotations, stats, analysis, events)
+        blocks = _blocks(doc)
+        pictures = len(doc.inline_shapes)
+    steps = _section(blocks, "3.2 Process steps")
+    at = steps.index("3. Tell the customer")
+    assert steps[at + 1:] == [
+        "Outlook, Order confirmation · 2s on average · in 1 of 2 transactions "
+        "· Transaction 1 at 0:10",
+        "Only when the customer asked for a mail.",
+        "Tell the customer the order is booked.",
+        "Then goes back to step 1, Look up the order, when the order changes.",
+        "Sub-process: see 3.5."]
+    # Its member prints in its chapter, the screenshot with it: one picture.
+    chapter = _section(blocks, _CHAPTERS[2])
+    send = chapter.index("3.1 Mail - Compose: Send")
+    assert chapter[send + 1:] == [
+        "Outlook, Order confirmation · 2s on average · in 1 of 1 transaction "
+        "· Transaction 1 at 0:10",
+        "Fields: To, Subject, Password.", "Flagged as waste."]
+    assert pictures == 1
+
+
+def test_a_sub_process_the_reference_did_not_open_points_at_a_chapter_without_its_steps():
+    """Run 2 opened Save, run 1 (the reference) did not: the node is a
+    sub-process, numbered by run 1's step, so that step points at the
+    chapter, which draws run 2's steps and says the reference has none."""
+    if not _HAVE_DOCX:
+        return
+    blocks = _blocks_of(*_sub_session(open_run_1=False))
+    steps = _section(blocks, "3.2 Process steps")
+    assert steps[steps.index("3. Tell the customer") - 1] == "Sub-process: see 3.3."
+    assert _section(blocks, "3.3 Sub-process 2: CRM - Orders: Save") == [
+        "Each step and the steps that followed it in the transactions:",
+        "Step | Followed by",
+        "Start | Enter the order number (1 of 1 transaction)",
+        "Enter the order number | Click Save (1 of 1 transaction)",
+        "Click Save | End (1 of 1 transaction)",
+        "The reference transaction has no steps in this sub-process."]
+    assert _numbered(blocks)[_CHAPTERS_AT:_CHAPTERS_AT + 2] == [
+        "3.3 Sub-process 2: CRM - Orders: Save", "3.4 Sub-process 3: Tell the customer"]
+
+
+def test_what_the_analyst_adds_by_step_id_prints_at_every_level():
+    """C16's screenshots and attachments keyed by step_id resolve for a
+    sub-step as for a step: its analyst screenshot, the one chosen for the
+    PDD, and its attachments print under it in its chapter."""
+    if not _HAVE_DOCX:
+        return
+    import hashlib
+    manifest, annotations, stats, analysis, events = _sub_session()
+    annotations["attachments"] = [
+        {"id": "x1", "file": "stock.xlsx", "label": "Stock sheet", "step_id": "n1"}]
+    annotations["analyst_screenshots"] = [
+        {"id": "sh1", "file": "sh1.png", "step_id": "s1"},
+        {"id": "sh2", "file": "sh2.png", "step_id": "s1"}]
+    a2 = next(s for s in annotations["steps"] if s["step_id"] == "a2")
+    a2["sub_steps"][0]["pdd_screenshot"] = "sh2"
+    with tempfile.TemporaryDirectory() as tmp:
+        shots = Path(tmp) / "screenshots" / "analyst"
+        shots.mkdir(parents=True)
+        one, two = _make_png(3, 2), _make_png(4, 2)
+        (shots / "sh1.png").write_bytes(one)
+        (shots / "sh2.png").write_bytes(two)
+        doc = _render(tmp, manifest, annotations, stats, analysis, events)
+        blocks = _blocks(doc)
+        shas = _pictures(doc)
+    assert shas == [hashlib.sha1(two).hexdigest()]
+    deeper = _section(blocks, _CHAPTERS[1])
+    first = deeper.index("2.2.1 Open the stock list")
+    assert deeper[first + 2] == "Attachments: Stock sheet."
+    assert _section(blocks, "8. Attachments")[-1] == "Stock sheet | stock.xlsx"
+
+
+def test_an_empty_sub_process_says_it_has_no_steps():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    for s in annotations["steps"]:
+        if s["step_id"] == "a2":
+            s["sub_steps"] = []
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert _section(blocks, "3.3 Sub-process 2: CRM - Orders: Save") == [
+        "No steps have been added to this sub-process yet, so there is no map."]
+
+
+def test_the_sections_after_the_steps_read_the_main_level_only():
+    if not _HAVE_DOCX:
+        return
+    blocks = _blocks_of(*_sub_session())
+    start = next(i for i, (_k, t) in enumerate(blocks)
+                 if t == "4. Variations, rules and exceptions")
+    after = _all_text(blocks[start:])
+    for name in ("Enter the order number", "Check stock", "Open the stock list",
+                 "Read the stock", "Click Save"):
+        assert name not in after, name
+    assert any("Tell the customer" in row for row in _section(blocks, "6.2 Time in each application"))
+
+
+def test_the_map_pictures_manifest_gives_each_map_its_picture():
+    """--pdd-map-images: the main map's entry wins over --pdd-map-image; a
+    chapter prints its own picture on a page of its own, its number in the
+    alternative text; an entry whose file is missing is left out, so that
+    map prints as a table; a relative file is read beside the manifest."""
+    if not _HAVE_DOCX:
+        return
+    import hashlib
+    from docx.enum.section import WD_ORIENT
+    manifest, annotations, stats, analysis, events = _sub_session()
+    with tempfile.TemporaryDirectory() as tmp:
+        pics = Path(tmp) / "pics"
+        pics.mkdir()
+        main, save, other = _make_png(40, 20), _make_png(30, 20), _make_png(20, 40)
+        (pics / "main.png").write_bytes(main)
+        (pics / "save.png").write_bytes(save)
+        (Path(tmp) / "other.png").write_bytes(other)
+        index = pics / "maps.json"
+        index.write_text(json.dumps({"maps": [
+            {"path": [], "png": str(pics / "main.png")},
+            {"path": ["CRM - Orders: Save"], "png": "save.png"},
+            {"path": ["CRM - Orders: Save", "Check stock"], "png": "gone.png"},
+            {"path": "not a path", "png": "save.png"}]}), encoding="utf-8")
+        doc = _render(tmp, manifest, annotations, stats, analysis, events,
+                      process_map_image=str(Path(tmp) / "other.png"), map_images=str(index))
+        blocks = _blocks(doc)
+        shas = _pictures(doc)
+        alt = _descr(doc)
+        orientation = [s.orientation for s in doc.sections]
+    assert alt == ["As-Is process map", "As-Is process map, sub-process 2"]
+    assert shas == [hashlib.sha1(main).hexdigest(), hashlib.sha1(save).hexdigest()]
+    assert orientation.count(WD_ORIENT.LANDSCAPE) == 2
+    assert _numbered(blocks) == OUTLINE[:_CHAPTERS_AT] + _CHAPTERS + OUTLINE[_CHAPTERS_AT:]
+    # The chapter's picture takes its map's place; its steps follow.
+    assert _section(blocks, _CHAPTERS[0])[0] == "2 of these 3 steps are drafts not confirmed yet."
+    assert _section(blocks, _CHAPTERS[1])[:2] == [
+        "Each step and the steps that followed it in the transactions:", "Step | Followed by"]
+
+
+def test_an_unreadable_manifest_prints_the_tables():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _sub_session()
+    with tempfile.TemporaryDirectory() as tmp:
+        index = Path(tmp) / "maps.json"
+        index.write_text("{not json", encoding="utf-8")
+        doc = _render(tmp, manifest, annotations, stats, analysis, events, map_images=str(index))
+        assert len(doc.inline_shapes) == 0
+        blocks = _blocks(doc)
+    assert _section(blocks, "3.1 As-Is process map")[0] == (
+        "Each step and the steps that followed it in the transactions:")
+    assert _numbered(blocks)[_CHAPTERS_AT:_CHAPTERS_AT + 3] == _CHAPTERS
+
+
+def test_sub_processes_keep_the_document_free_of_old_words_and_dashes():
+    if not _HAVE_DOCX:
+        return
+    text = _all_text(_blocks_of(*_sub_session()))
+    left = _OLD_WORDS.findall(text.replace("runs through", ""))
+    assert not left, left
+    assert chr(0x2013) not in text and chr(0x2014) not in text
 
 
 if __name__ == "__main__":

@@ -859,7 +859,10 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
 
     The implicit run of a session without a recording (contract C16,
     case_assignment.add_implicit_run) covers the whole session, so it
-    contains every step, one without a time included."""
+    contains every step, one without a time included.
+
+    Contract C19: then every sub-step takes its parent's case_id, at every
+    depth, whatever the parent's state (the count leaves sub-steps out)."""
     cases = cases or {}
     implicit = next((cid for cid, c in cases.items()
                      if isinstance(c, dict) and c.get("implicit")), None)
@@ -891,6 +894,7 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
         if new_cid != cid_now:
             restamped += 1
         s["case_id"] = new_cid
+    _follow_parent_case(steps)
     return restamped
 
 
@@ -903,12 +907,37 @@ def _step_process_label(step: dict) -> str:
     values; its value-tail rule would cut a window-derived screen label such as
     "Salesforce - Order: Save order" down to "Salesforce", so an edited draft
     that kept its drafted name split from its identical drafts in the step map
-    and the repeat counts. A step without a draft_key (hand-authored, pre-draft
-    legacy) keeps the rule-based strip."""
+    and the repeat counts. A drafted sub-step's action_key (contract C19)
+    counts like a draft_key: its name is value-free by construction too. A
+    step without either (hand-authored, a group, pre-draft legacy) keeps the
+    rule-based strip."""
     name = step.get("name")
-    if step.get("draft_key") and isinstance(name, str):
+    if (step.get("draft_key") or step.get("action_key")) and isinstance(name, str):
         return name.strip()
     return process_label(step.get("name") or "")
+
+
+def _stamp_sub_steps(step: dict) -> None:
+    """Contract C19: stamp process_label on every sub-step of `step`, at
+    every depth, by the rule of the main level (_step_process_label), so a
+    sub-process's map groups its steps as the main map does."""
+    subs = step.get("sub_steps")
+    for sub in subs if isinstance(subs, list) else []:
+        if isinstance(sub, dict):
+            sub["process_label"] = _step_process_label(sub)
+            _stamp_sub_steps(sub)
+
+
+def _follow_parent_case(steps: list) -> None:
+    """Contract C19: every sub-step takes its parent's case_id, at every
+    depth (a sub-step belongs to its parent's transaction)."""
+    for step in steps or []:
+        subs = step.get("sub_steps") if isinstance(step, dict) else None
+        if isinstance(subs, list):
+            for sub in subs:
+                if isinstance(sub, dict):
+                    sub["case_id"] = step.get("case_id")
+            _follow_parent_case(subs)
 
 
 def _merge_steps(existing: list, fresh: list,
@@ -936,12 +965,20 @@ def _merge_steps(existing: list, fresh: list,
     Contract C17: a draft the analyst set the flow on (`only_when`, `links`)
     is theirs; the viewer marks it `edited`, and so does this merge when it
     finds one still `auto_suggested`, so a re-analysis never drafts the flow
-    away. Every preserved step keeps both keys as they are."""
+    away. Every preserved step keeps both keys as they are.
+
+    Contract C19: a draft opened as a sub-process (it carries `sub_steps`,
+    even an empty list) is the analyst's too, kept as `edited` by the same
+    rule. A preserved step keeps its sub-steps as they are; each sub-step,
+    at every depth, gets its process_label here (the main level's rule) and
+    its parent's case_id in restamp_preserved_case_ids. The merge reads no
+    sub-step otherwise: the main level stays what the statistics and the
+    analysis see."""
     from step_flow import declares_flow   # step_flow reads step_context, which imports this module
     by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
         st = s.get("state")
-        if st not in by_state and declares_flow(s):
+        if st not in by_state and (declares_flow(s) or isinstance(s.get("sub_steps"), list)):
             s["state"] = st = "edited"
         if st in by_state:
             by_state[st].append(s)
@@ -956,6 +993,7 @@ def _merge_steps(existing: list, fresh: list,
     # every analyze, so it tracks analyst renames).
     for s in result:
         s["process_label"] = _step_process_label(s)
+        _stamp_sub_steps(s)
         # ADR-0024: (re)resolve the grain-roll-up containment keys. Drafts
         # already carry them (_draft_step); preserved steps get them here when
         # the interaction map is supplied. Recomputed every

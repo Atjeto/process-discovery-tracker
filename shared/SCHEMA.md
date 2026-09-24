@@ -630,7 +630,8 @@ delete.
   "process_label": "string: the value-free grouping key (ADR-0013)",
   "draft_key": "string, drafted steps only: \"<app>|<screen>|<commit>\" (C1)",
   "draft_keys": ["string", "merged drafts only: the members' draft keys, in order"],
-  "name_source": "remembered|draft, drafted steps only",
+  "action_key": "string, drafted sub-steps only: \"<app>|<screen>|enter:<field>\" or \"<app>|<screen>|click:<control>\" (C19)",
+  "name_source": "remembered|draft, drafted steps only; action|remembered, drafted sub-steps only",
   "end_reason": "commit|screen_change|run_end, drafted steps only",
   "grain_keys": {
     "element": "string: the control the step acted on (automation_id or name)",
@@ -645,6 +646,8 @@ delete.
   "hidden_screenshots": ["screenshots/file.jpg"],
   "only_when": "string, optional: the step happens only under this condition (C17)",
   "links": [{ "to": "a step_id, or \"end\"", "when": "string: when the process goes there (C17)" }],
+  "sub_steps": ["step entities, the same shape, recursively: the step is a sub-process (C19)"],
+  "group": "true on a group of steps made into a sub-process (C19), else absent",
   "evidence": {
     "interaction_event_ids": ["uuid"],
     "screenshot_refs": ["screenshots/file.jpg"],
@@ -730,6 +733,57 @@ with " or ". The PDD prints them under the step ("Only when ...", "Then goes
 back to step N, <name>, when ...", "Then goes on to step N ...", "Then skips
 to step N ...", "The process ends here when ...").
 
+**Sub-processes (contract C19).** One project holds one main map plus one map
+per sub-process, at any depth. `annotations.steps` stays the main level, so
+every reader that does not look for sub-steps (the statistics, the
+analysis, the PDD's sections 4 to 9, the saved processes) sees the main
+level only.
+
+- **`sub_steps`**: an array, possibly empty; absent means a plain step. A
+  step that carries it is a sub-process; each sub-step has the step's
+  shape, recursively. A sub-step's `case_id` is its parent's. Links (C17)
+  stay inside one level: a sub-step's `to` is a step of its own `sub_steps`
+  list, or `"end"`, which ends the sub-process only.
+- **A step opened as a sub-process** keeps everything it had and gets
+  `sub_steps`. A draft becomes `edited`: the viewer does it, and
+  re-normalization keeps a draft that still carries `sub_steps` as
+  `edited`, as it does for the C17 keys.
+- **A group** (Group into a sub-process): `{ step_id, name, group: true,
+  state: "manually_authored", case_id, time_range, order, evidence, system,
+  description, sub_steps }`. `time_range` runs from the first member's
+  start to the last member's end (null when no member has a time, and then
+  `order` is the first member's); `evidence` holds the members'
+  `interaction_event_ids` and `screenshot_refs` in order; `system` is the
+  members' one system when they share one; `sub_steps` are the members,
+  moved unchanged, hidden ones included. A group carries no `draft_key` or
+  `draft_keys`. Its span and evidence make the next analysis drop fresh
+  drafts of the grouped interactions.
+- **A drafted sub-step** (one per recorded action of its parent) has the
+  step's shape plus **`action_key`** (`"<app>|<screen>|enter:<field>"` or
+  `"<app>|<screen>|click:<control>"`, the app and screen from the parent's
+  `draft_key` when it has one) and `name_source: "action"` (or
+  `"remembered"`), state `auto_suggested`, and no `draft_key`. Its name is
+  free of values ("Enter Product code", "Click Save order"); its
+  description is the phrase with the value; its `time_range` runs from the
+  action's first event to the next action's first event; its `evidence`
+  holds the action's event ids and the parent's screenshots of that span.
+  A remembered name for it is keyed `"action|" + action_key`.
+- **Re-analysis** keeps every subtree as it is. It stamps each sub-step,
+  at every depth, with a `process_label` by the main level's rule (an
+  `action_key` counts like a `draft_key`: a drafted sub-step's label is its
+  name) and with its parent's `case_id`. Besides, only the step map (below)
+  and the PDD's chapters read sub-steps.
+- **Maps.** `shared/sub-process-maps-golden.json` pins which maps a project
+  holds and what each is drawn from (`normalization/sub_process_maps.py`
+  `map_tree` and `viewer/sub-process-maps.js` `mapTree`): below the main
+  map, consecutive visible steps with one map node are one visit, a visit
+  of a sub-process node gives one trace (the visible sub-steps of its
+  steps), and a sub-process's map is drawn from every visit of its node at
+  its level, by the C17 edge rule. A map's number ("2", "2.4") is the step
+  number through the reference transaction's first trace at each level; a
+  map without one gets no PDD chapter. The map node is the main rule at
+  every level.
+
 `flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)).
 Older files may still carry `conditional`, `exception_path`,
 `automation_candidate` or `condition_text`; they are ignored.
@@ -798,7 +852,9 @@ carries none of these fields.
 
 **`process_label`** is recomputed on every run. A step with a `draft_key` is
 its own label (its name, whatever its state); any other step's name passes
-through the shared rules in `shared/process-label-patterns.json`.
+through the shared rules in `shared/process-label-patterns.json`. Sub-steps
+get theirs by the same rule, at every depth, a drafted sub-step's
+`action_key` counting like a `draft_key` (C19).
 
 **`grain_keys`** are the UI-containment keys stamped on every step
 (`element` inside `screen` inside `app`;
@@ -1304,7 +1360,7 @@ range: they have no time to measure.
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
-| `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
+| `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below), one plane per sub-process (C19). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
@@ -1372,14 +1428,41 @@ the boxes, the lines and the other names.
   documented with `attachments/<file>`), joined by a data input
   association. A step name on several tasks shows its notes and files on
   the first.
+- **Sub-processes** (C19). Every map of `map_tree` (the step entity's
+  "Sub-processes", above) is a plane of this one file. A sub-process node
+  is a collapsed `bpmn:subProcess` in place of its task (its shape
+  `isExpanded="false"`, task sized), named by its node, documented and
+  coloured like a task, holding its own map, drawn in a
+  `bpmndi:BPMNDiagram` of its own whose plane's `bpmnElement` is the
+  sub-process. That map is chosen as the main
+  one (the flow edges when its steps' flow changes the map, a chain for one
+  trace, else the miner) from its own traces; a sub-process with no steps
+  is a start joined to an end. Its start and main end are unnamed, its
+  early ends named from their `when`. Its counts ("In N of M
+  transactions", the branch names) are over the transactions that ran the
+  sub-process. Notes, attachments and colours as above on every plane;
+  each plane has its own legend of the systems drawn in it, and a system
+  keeps one colour across the file. The main plane keeps its ids; every id
+  inside a sub-plane starts with `Sub<n>_`, n the map's place in
+  `map_tree`'s list (`Sub1_TextAnnotation_legend`,
+  `Sub2_DataObjectReference_<attachment id>`). A node on several tasks
+  (a chain that comes back to it) is a sub-process on each, and the first
+  holds its map. A file without a sub-process is written as before.
 
 ## `normalize.py` exit codes (contract C13)
 
 ```
 python normalize.py <session_folder> [--taxonomy path/to/taxonomy.yaml] [--mine]
-    [--pdd-out path.docx] [--pdd-map-image path.png] [--pdd-tobe-image path.png]
-    [--names remembered-names.json]
+    [--pdd-out path.docx] [--pdd-map-image path.png] [--pdd-map-images maps.json]
+    [--pdd-tobe-image path.png] [--names remembered-names.json]
 ```
+
+`--pdd-map-images` (contract C19) is a manifest of the maps' pictures,
+`{"maps": [{"path": [<node>, ...], "png": "<file>"}]}`, a relative `png`
+read from the manifest's folder: the entry with path `[]` is the main map's
+picture (it wins over `--pdd-map-image`), any other path a sub-process's,
+printed in its PDD chapter. An entry whose file is missing is left out, and
+that map prints as a table.
 
 | Code | Meaning |
 |---|---|
@@ -1479,7 +1562,7 @@ Each step's `state` says how it got into `annotations.json`:
 | `auto_suggested` | The drafting rule ([step_suggest.py](../normalization/step_suggest.py) `auto_suggest_steps`, contract C1): one drafted step per screen visit, ending at its commit action. | No: replaced by the next run's drafts. |
 | `confirmed` | "Confirm transaction" on the step's run, the draft left unchanged (C3). "Reopen transaction" turns it back into a draft. | Yes, exactly like `edited`. |
 | `manually_authored` | The analyst added a step by hand. | Yes. |
-| `edited` | The analyst changed a draft (renamed, merged, split, set its flow, or otherwise). A draft that carries `only_when` or `links` (C17) is kept as `edited` by re-normalization too. | Yes. |
+| `edited` | The analyst changed a draft (renamed, merged, split, set its flow, opened it as a sub-process, or otherwise). A draft that carries `only_when` or `links` (C17), or `sub_steps` (C19), is kept as `edited` by re-normalization too. | Yes. |
 | `hidden` | The analyst hid the step (its previous state is kept in `_prev_state`). | Yes: a re-analysis does not bring it back as a fresh draft. |
 
 `auto_matched` (the canonical step matcher) is gone with canonical matching

@@ -1,5 +1,5 @@
 {
-  "about": "Contract C19 (sub-processes): the maps a project holds and what each one is drawn from. Pinned for both sides: the viewer (viewer/sub-process-maps.js mapTree, which feeds the Steps breadcrumb, the Map picker and the live map at each level) and the pipeline (normalization/sub_process_maps.py map_tree, which feeds the step BPMN planes and the PDD chapters). A fixture step is named by its map node, as in shared/flow-links-golden.json; a link names a step of the same sub_steps list (or of the same transaction at the main level), or end. A step is a sub-process when it carries sub_steps, even an empty list. The main map (path []) is drawn from one trace per transaction: its visible steps in order. A level below is reached through visits: consecutive visible steps with one node are one visit, and a visit of a sub-process node gives one trace, the visible sub_steps of its steps in order (a visit whose steps carry no sub_steps gives none, and an empty trace is left out, so a sub-process with no visible sub-steps has a map with no traces). The map of a sub-process node at path P is drawn from the traces of every visit of that node at level P, in transaction order; its path is P plus the node. Its edges follow contract C17 on those traces, so an end inside a sub-process ends the sub-process only. A hidden step is left out with everything under it. number: the position of the node's first visit among the visible steps of the reference transaction's first trace at that level (steps are counted, not visits), after the parent's number and a dot; null when the node is not in that trace, and a map without a number gets no PDD chapter. Maps are listed depth first; at each level the sub-process nodes come in the order they first appear, the reference transaction's traces first, then the others in transaction order. reference is the index of the reference transaction (default 0).",
+  "about": "Contract C19 (sub-processes): the maps a project holds and what each one is drawn from. Pinned for both sides: the viewer (viewer/sub-process-maps.js mapTree, which feeds the Steps breadcrumb, the Map picker and the live map at each level) and the pipeline (normalization/sub_process_maps.py map_tree, which feeds the step BPMN planes and the PDD chapters). A fixture step is named by its map node, as in shared/flow-links-golden.json; a link names a step of the same sub_steps list (or of the same transaction at the main level), or end. A step is a sub-process when it carries sub_steps, even an empty list. The main map (path []) is drawn from one trace per transaction: its visible steps in order. A level below is reached through visits: consecutive visible steps with one node are one visit, and a visit of a sub-process node gives one trace, the visible sub_steps of its steps in order (a visit whose steps carry no sub_steps gives none, and an empty trace is left out, so a sub-process with no visible sub-steps has a map with no traces). The map of a sub-process node at path P is drawn from the traces of every visit of that node at level P, in transaction order; its path is P plus the node. Its edges follow contract C17 on those traces, so an end inside a sub-process ends the sub-process only. A hidden step is left out with everything under it. number: the position of the node's first visit among the visible steps of the reference transaction's first trace at that level (steps are counted, not visits), after the parent's number and a dot; null when the node is not in that trace, and a map without a number gets no PDD chapter. Maps are listed depth first; at each level the sub-process nodes come in the order their node first appears at that level (at any visit, with or without sub_steps, so chapters follow their numbers), the reference transaction's traces first, then the others in transaction order. reference is the index of the reference transaction (default 0).",
   "cases": [
     {
       "name": "no step is a sub-process: one map",
@@ -267,6 +267,28 @@
         {"path": ["A", "a2"], "number": null, "traces": [["z"]], "edges": [
           {"from": "start", "to": "z", "label": null, "observed": true},
           {"from": "z", "to": "end", "label": null, "observed": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a sub-process is ordered and numbered by its node's first visit, even one without sub-steps",
+      "transactions": [
+        [{"name": "B"}, {"name": "A", "sub_steps": [{"name": "a1"}]}, {"name": "B", "sub_steps": [{"name": "b1"}]}]
+      ],
+      "expected_maps": [
+        {"path": [], "number": null, "traces": [["B", "A", "B"]], "edges": [
+          {"from": "start", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "A", "label": null, "observed": true},
+          {"from": "A", "to": "B", "label": null, "observed": true},
+          {"from": "B", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["B"], "number": "1", "traces": [["b1"]], "edges": [
+          {"from": "start", "to": "b1", "label": null, "observed": true},
+          {"from": "b1", "to": "end", "label": null, "observed": true}
+        ]},
+        {"path": ["A"], "number": "2", "traces": [["a1"]], "edges": [
+          {"from": "start", "to": "a1", "label": null, "observed": true},
+          {"from": "a1", "to": "end", "label": null, "observed": true}
         ]}
       ]
     }

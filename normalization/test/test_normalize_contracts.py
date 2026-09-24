@@ -341,12 +341,13 @@ def test_a_missing_folder_is_a_usage_error_the_viewer_can_show(tmp_path):
 
 
 def test_help_lists_exactly_the_c11_options():
+    """C11's options, plus C19's manifest of the maps' pictures."""
     proc = _run_cli("--help")
     assert proc.returncode == 0
     import re
     options = set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", proc.stdout))
     assert options == {"--help", "--taxonomy", "--mine", "--pdd-out",
-                       "--pdd-map-image", "--pdd-tobe-image", "--names"}
+                       "--pdd-map-image", "--pdd-map-images", "--pdd-tobe-image", "--names"}
     assert "session_folder" in proc.stdout
 
 

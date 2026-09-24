@@ -95,11 +95,14 @@ def normalize(
     pdd_map_image: str | None = None,
     pdd_tobe_image: str | None = None,
     names_path: str | None = None,
+    pdd_map_images: str | None = None,
 ) -> dict[str, Any]:
     """Run the pipeline on one session folder. `names_path` is the optional
     remembered-names store (contract C4): drafted steps whose draft_key it
     lists take the remembered name, after the names the analyst gave in this
-    session (the session's own names come first, so they travel with it)."""
+    session (the session's own names come first, so they travel with it).
+    `pdd_map_images` is the manifest of the maps' pictures for the PDD
+    (contract C19): the main map's, and one per sub-process."""
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
@@ -177,7 +180,7 @@ def normalize(
     _run_mining_exports(
         session_folder, existing_anno, mine, summary, manifest,
         analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
-        events=classified)
+        events=classified, pdd_map_images=pdd_map_images)
 
     return {
         "session_folder": str(session_folder),
@@ -221,6 +224,12 @@ def main():
                         help="Write PDD .docx to this path.")
     parser.add_argument("--pdd-map-image", type=str, default=None,
                         help="PNG of the process map to embed in the PDD's As-Is map section.")
+    parser.add_argument("--pdd-map-images", type=str, default=None,
+                        help="A JSON manifest of the maps' pictures for the PDD, "
+                             '{"maps": [{"path": [<node>, ...], "png": "<file>"}]}: path [] is '
+                             "the main map (printed in place of the single map picture), any "
+                             "other path a sub-process's map, printed in its chapter. An entry "
+                             "whose file is missing is left out: that map prints as a table.")
     parser.add_argument("--pdd-tobe-image", type=str, default=None,
                         help="PNG of the To-Be map the analyst drew (ADR-0019), embedded "
                              "in the PDD's improvement and automation scope section.")
@@ -246,6 +255,7 @@ def main():
             pdd_map_image=args.pdd_map_image,
             pdd_tobe_image=args.pdd_tobe_image,
             names_path=args.names,
+            pdd_map_images=args.pdd_map_images,
         )
     except AnnotationsUnreadable as exc:
         _fail(2, str(exc))

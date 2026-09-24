@@ -3,7 +3,9 @@
 Wraps PM4Py's inductive miner and serializes its BPMN with a pure-Python
 layout, wrapped into rows so a long flow prints legibly on a page, with
 what contract C18 puts beside the tasks (their kinds and colours, notes,
-data objects and a legend). The step-level observed-flow BPMN
+data objects and a legend), and (contract C19) one plane per map: a
+sub-process's map is written inside its collapsed bpmn:subProcess and drawn
+in a diagram of its own (_Plane). The step-level observed-flow BPMN
 (bpmn_observed.py) is the only caller.
 """
 
@@ -874,7 +876,8 @@ def export_bpmn(bpmn_obj, out_path: str, *,
                 colours: dict | None = None,
                 notes: dict | None = None,
                 data: dict | None = None,
-                legend: str | None = None) -> None:
+                legend: str | None = None,
+                sub_planes: dict | None = None) -> None:
     """Serialize a BPMN 2.0 file with a computed BPMNDI layout.
 
     PM4Py's built-in `write_bpmn` invokes Graphviz `dot` to compute
@@ -908,11 +911,21 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     element has its place on the diagram, and a named event its name's:
     the layout keeps room for them all (_layout_full), and the lines and
     the flows' names keep clear of them.
+
+    Contract C19: `sub_planes` maps a task (its id()) that stands for a
+    sub-process to that sub-process's own map: a dict with its "model", the
+    keyword arguments above for it (its own "sub_planes" too, at any depth)
+    and "prefix", the text every id of its plane starts with, unique in the
+    file. Such a task (tagged "subProcess" in `task_tags`) is written as a
+    collapsed bpmn:subProcess, named, documented, coloured and joined to its
+    notes and files like a task, task sized, its shape isExpanded="false";
+    it holds the map's model, drawn in a BPMNDiagram of its own whose
+    plane's bpmnElement is the sub-process (_Plane). A task tagged
+    "subProcess" without an entry is a collapsed sub-process with nothing
+    in it (a label on several tasks holds its map on the first). The main
+    plane keeps its ids, and a file without a sub-process is written as it
+    was before sub-processes.
     """
-    documentation = documentation or {}
-    flow_names = flow_names or {}
-    task_tags, colours = task_tags or {}, colours or {}
-    notes, data = notes or {}, data or {}
     ET.register_namespace("bpmn", _BPMN_NS)
     ET.register_namespace("bpmndi", _BPMNDI_NS)
     ET.register_namespace("dc", _DC_NS)
@@ -931,235 +944,309 @@ def export_bpmn(bpmn_obj, out_path: str, *,
         f"{{{_BPMN_NS}}}process",
         {"id": "Process_1", "isExecutable": "false"},
     )
-
-    nodes = list(bpmn_obj.get_nodes())
-    flows = list(bpmn_obj.get_flows())
-
-    # Stable id per node so flows can reference them.
-    node_id: dict[int, str] = {}
-    node_cls: dict[str, str] = {}
-    for i, n in enumerate(nodes):
-        name = n.get_name() if hasattr(n, "get_name") else ""
-        nid = _safe_id("node", i, name)
-        node_id[id(n)] = nid
-        node_cls[nid] = type(n).__name__
-
-    # First pass: resolve every flow's (id, src, tgt) so we can attach
-    # <bpmn:incoming>/<bpmn:outgoing> children to each flow node. BPMN
-    # 2.0 requires each flowNode to declare which sequence flows enter
-    # and leave it -- bpmn-js emits a parse warning per missing pair
-    # if these references are absent.
-    flow_records: list[tuple[str, str, str, str]] = []
-    flow_docs: dict[str, str] = {}
-    incoming: dict[str, list[str]] = {nid: [] for nid in node_id.values()}
-    outgoing: dict[str, list[str]] = {nid: [] for nid in node_id.values()}
-    for i, f in enumerate(flows):
-        src, tgt = f.get_source(), f.get_target()
-        if id(src) not in node_id or id(tgt) not in node_id:
-            continue
-        sid, tid = node_id[id(src)], node_id[id(tgt)]
-        fid = f"flow_{i}"
-        name = flow_names.get(id(f))
-        flow_records.append((fid, sid, tid, name if isinstance(name, str) else ""))
-        text = documentation.get(id(f))
-        if isinstance(text, str) and text.strip():
-            flow_docs[fid] = text.strip()
-        outgoing[sid].append(fid)
-        incoming[tid].append(fid)
-
-    # C18: what each task and each named event has beside it, and the room
-    # it takes (_layout_full above, below, min_width).
-    note_sizes: dict[str, tuple[int, int]] = {}
-    note_text: dict[str, tuple[str, str | None]] = {}
-    data_names: dict[str, list[tuple[str, str, str, tuple[int, int]]]] = {}
-    event_names: dict[str, tuple[int, int]] = {}
-    above: dict[str, int] = {}
-    below: dict[str, int] = {}
-    min_width: dict[str, int] = {}
-    for n in nodes:
-        nid = node_id[id(n)]
-        name = n.get_name() if hasattr(n, "get_name") else ""
-        if id(n) in notes and notes[id(n)][0]:
-            note_text[nid] = notes[id(n)]
-            note_sizes[nid] = _note_size(notes[id(n)][0])
-            above[nid] = note_sizes[nid][1] + _NOTE_GAP
-            # The note starts at the task's left side; the task is centred
-            # in its column, which holds the note's width right of that.
-            half = _shape_size(node_cls[nid])[0] // 2
-            min_width[nid] = 2 * max(half, note_sizes[nid][0] - half)
-        if data.get(id(n)):
-            objects = [(key, dname, ddoc, _label_size(dname)) for key, dname, ddoc in data[id(n)]]
-            data_names[nid] = objects
-            below[nid] = _DATA_GAP + _DATA_H + max(size[1] for *_rest, size in objects)
-            min_width[nid] = max(min_width.get(nid, 0),
-                                 len(objects) * _DATA_SLOT - (_DATA_SLOT - _LABEL_WRAP))
-        if "Event" in node_cls[nid] and name:
-            event_names[nid] = _label_size(name)
-            below[nid] = _EVENT_NAME_GAP + event_names[nid][1]
-            min_width[nid] = max(_EVENT_SIZE, event_names[nid][0])
-
-    for n in nodes:
-        # A pm4py subclass takes the element of its nearest mapped base class:
-        # the miner ends its model with a NormalEndEvent (an EndEvent), which an
-        # exact class-name lookup wrote as a task named "end".
-        tag = task_tags.get(id(n)) or next((_NODE_TAG[k.__name__] for k in type(n).__mro__
-                                            if k.__name__ in _NODE_TAG), "task")
-        nid = node_id[id(n)]
-        attrs = {"id": nid}
-        name = n.get_name() if hasattr(n, "get_name") else ""
-        if name:
-            attrs["name"] = name
-        node_el = ET.SubElement(proc, f"{{{_BPMN_NS}}}{tag}", attrs)
-        # BPMN spec order: <documentation>, then <incoming> before <outgoing>,
-        # then an activity's properties and data input associations.
-        text = documentation.get(id(n))
-        if isinstance(text, str) and text.strip():
-            doc_el = ET.SubElement(node_el, f"{{{_BPMN_NS}}}documentation")
-            doc_el.text = text.strip()
-        for fid in incoming[nid]:
-            inc = ET.SubElement(node_el, f"{{{_BPMN_NS}}}incoming")
-            inc.text = fid
-        for fid in outgoing[nid]:
-            out = ET.SubElement(node_el, f"{{{_BPMN_NS}}}outgoing")
-            out.text = fid
-        if nid in data_names:
-            prop = f"Property_{nid}"
-            ET.SubElement(node_el, f"{{{_BPMN_NS}}}property",
-                          {"id": prop, "name": "__targetRef_placeholder"})
-            for key, *_rest in data_names[nid]:
-                assoc = ET.SubElement(node_el, f"{{{_BPMN_NS}}}dataInputAssociation",
-                                      {"id": f"DataInputAssociation_{key}"})
-                ET.SubElement(assoc, f"{{{_BPMN_NS}}}sourceRef").text = f"DataObjectReference_{key}"
-                ET.SubElement(assoc, f"{{{_BPMN_NS}}}targetRef").text = prop
-
-    for fid, sid, tid, name in flow_records:
-        attrs = {"id": fid, "sourceRef": sid, "targetRef": tid}
-        if name:
-            attrs["name"] = name
-        flow_el = ET.SubElement(proc, f"{{{_BPMN_NS}}}sequenceFlow", attrs)
-        if fid in flow_docs:
-            ET.SubElement(flow_el, f"{{{_BPMN_NS}}}documentation").text = flow_docs[fid]
-
-    # C18: the data objects (flow elements), then the artifacts: the notes,
-    # the legend and the associations.
-    for objects in data_names.values():
-        for key, dname, ddoc, _size in objects:
-            ET.SubElement(proc, f"{{{_BPMN_NS}}}dataObject", {"id": f"DataObject_{key}"})
-            ref = ET.SubElement(proc, f"{{{_BPMN_NS}}}dataObjectReference",
-                                {"id": f"DataObjectReference_{key}", "name": dname,
-                                 "dataObjectRef": f"DataObject_{key}"})
-            if ddoc:
-                ET.SubElement(ref, f"{{{_BPMN_NS}}}documentation").text = ddoc
-    note_ids = {nid: f"TextAnnotation_{k}" for k, nid in enumerate(note_text, start=1)}
-    for nid, (shown, whole) in note_text.items():
-        ann = ET.SubElement(proc, f"{{{_BPMN_NS}}}textAnnotation", {"id": note_ids[nid]})
-        if whole:
-            ET.SubElement(ann, f"{{{_BPMN_NS}}}documentation").text = whole
-        ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = shown
-    if legend:
-        ann = ET.SubElement(proc, f"{{{_BPMN_NS}}}textAnnotation", {"id": "TextAnnotation_legend"})
-        ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = legend
-    for k, nid in enumerate(note_text, start=1):
-        ET.SubElement(proc, f"{{{_BPMN_NS}}}association",
-                      {"id": f"Association_{k}", "associationDirection": "None",
-                       "sourceRef": nid, "targetRef": note_ids[nid]})
-
-    # ---- BPMNDI layout ----
-    sizes = {nid: _shape_size(node_cls[nid]) for nid in node_id.values()}
-    edge_list = [(s, t) for (_, s, t, _n) in flow_records]
-    ids = list(node_id.values())
-    splits = {sid for (_f, sid, _t, name) in flow_records if name}
-    room = {"above": above, "below": below, "min_width": min_width}
-    # Route once to count each channel's lanes, then lay out with channels
-    # tall enough for them and route for real.
-    draft = _layout_full(ids, edge_list, sizes, splits=splits, label_room=label_room, **room)
-    lanes = _lanes(draft, [(fid, s, t) for (fid, s, t, _n) in flow_records])
-    counts: dict[tuple[str, int], int] = {}
-    for channel, row, _lane in lanes.values():
-        counts[(channel, row)] = counts.get((channel, row), 0) + 1
-    lay = _layout_full(ids, edge_list, sizes, lanes_hint=counts, splits=splits,
-                       label_room=label_room, **room)
-    note_boxes, note_lines, data_boxes, event_boxes = _beside(lay, note_sizes, data_names,
-                                                              event_names)
-    extra = (list(note_boxes.values()) + [d[1] for d in data_boxes.values()]
-             + [d[2] for d in data_boxes.values()] + list(event_boxes.values()))
-    extra_lines = [(a, b) for pts in list(note_lines.values()) + [d[3] for d in data_boxes.values()]
-                   for a, b in zip(pts, pts[1:])]
-    routes = {fid: _waypoints(lay, lanes.get(fid), sid, tid, named=bool(name))
-              for (fid, sid, tid, name) in flow_records}
-    events = [_event_label(lay.pos[node_id[id(n)]], n.get_name()) for n in nodes
-              if "Event" in node_cls[node_id[id(n)]] and hasattr(n, "get_name") and n.get_name()]
-    first = None
-    if label_room:
-        gateways = {nid for nid, cls in node_cls.items() if "Gateway" in cls}
-        corners: set[tuple[str, str]] = set()
-        for fid, sid, tid, _name in flow_records:
-            routes[fid] = (_vertex_route(lay, lanes.get(fid), sid, tid, gateways, corners, extra)
-                           or routes[fid])
-    else:
-        first = {fid: _label_bounds(routes[fid], lanes.get(fid))
-                 for (fid, _s, _t, name) in flow_records if name}
-    placed = _place_labels(lay, flow_records, routes, lanes, taken=events, boxes=extra,
-                           lines=extra_lines, first=first)
-    legend_box = None
-    if legend:
-        drawn = list(lay.pos.values()) + extra + list(placed.values())
-        lines = [s for pts in routes.values() for s in zip(pts, pts[1:])] + extra_lines
-        legend_box = _place_legend(_legend_size(legend), drawn, lines)
-
-    diagram = ET.SubElement(
-        defs, f"{{{_BPMNDI_NS}}}BPMNDiagram", {"id": "BPMNDiagram_1"})
-    plane = ET.SubElement(
-        diagram, f"{{{_BPMNDI_NS}}}BPMNPlane",
-        {"id": "BPMNPlane_1", "bpmnElement": "Process_1"})
-
-    colour_of = {node_id[key]: value for key, value in colours.items() if key in node_id}
-    for nid in node_id.values():
-        attrs = {"id": f"Shape_{nid}", "bpmnElement": nid}
-        if nid in colour_of:
-            fill, stroke = colour_of[nid]
-            attrs[f"{{{_BIOC_NS}}}stroke"] = stroke
-            attrs[f"{{{_BIOC_NS}}}fill"] = fill
-        shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape", attrs)
-        _bounds(shape, lay.pos[nid])
-        if nid in event_boxes:
-            _bounds(ET.SubElement(shape, f"{{{_BPMNDI_NS}}}BPMNLabel"), event_boxes[nid])
-    for key, (_nid, box, name_box, _line) in data_boxes.items():
-        ref = f"DataObjectReference_{key}"
-        shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
-                              {"id": f"Shape_{ref}", "bpmnElement": ref})
-        _bounds(shape, box)
-        _bounds(ET.SubElement(shape, f"{{{_BPMNDI_NS}}}BPMNLabel"), name_box)
-    for nid, box in note_boxes.items():
-        shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
-                              {"id": f"Shape_{note_ids[nid]}", "bpmnElement": note_ids[nid]})
-        _bounds(shape, box)
-    if legend_box is not None:
-        shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
-                              {"id": "Shape_TextAnnotation_legend",
-                               "bpmnElement": "TextAnnotation_legend"})
-        _bounds(shape, legend_box)
-
-    for fid, sid, tid, name in flow_records:
-        edge = ET.SubElement(
-            plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
-            {"id": f"Edge_{fid}", "bpmnElement": fid})
-        points = routes[fid]
-        _waypoints_of(edge, points)
-        if name:
-            label = ET.SubElement(edge, f"{{{_BPMNDI_NS}}}BPMNLabel")
-            _bounds(label, placed[fid])
-    for k, nid in enumerate(note_text, start=1):
-        edge = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
-                             {"id": f"Edge_Association_{k}", "bpmnElement": f"Association_{k}"})
-        _waypoints_of(edge, note_lines[nid])
-    for key, (_nid, _box, _name_box, line) in data_boxes.items():
-        edge = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
-                             {"id": f"Edge_DataInputAssociation_{key}",
-                              "bpmnElement": f"DataInputAssociation_{key}"})
-        _waypoints_of(edge, line)
+    main = _Plane(bpmn_obj, "", documentation=documentation, flow_names=flow_names,
+                  label_room=label_room, task_tags=task_tags, colours=colours,
+                  notes=notes, data=data, legend=legend, sub_planes=sub_planes)
+    # C19: each sub-process's plane, depth first, with the id of the
+    # sub-process its diagram draws.
+    planes: list[tuple[_Plane, str]] = []
+    main.emit(proc, planes)
+    main.draw(defs, "Process_1")
+    for plane, element in planes:
+        plane.draw(defs, element)
 
     tree = ET.ElementTree(defs)
     if hasattr(ET, "indent"):
         ET.indent(tree, space="  ")
     tree.write(out_path, xml_declaration=True, encoding="utf-8")
+
+
+# The keyword arguments of export_bpmn a sub-process's map carries (C19).
+_PLANE_KEYS = ("documentation", "flow_names", "label_room", "task_tags", "colours",
+               "notes", "data", "legend", "sub_planes")
+
+
+class _Plane:
+    """One map of the file: the main process or (contract C19) a
+    sub-process's own map. It resolves its model's ids, its flows and what
+    contract C18 puts beside its tasks (__init__), writes its elements into
+    the process or the sub-process that holds them (emit), and lays out and
+    draws its diagram (draw). Every id is `prefix` plus the id the main
+    plane gives the same element, so the main plane (prefix "") keeps its
+    ids and a sub-process's are unique in the file."""
+
+    def __init__(self, bpmn_obj, prefix: str = "", *, documentation=None, flow_names=None,
+                 label_room=False, task_tags=None, colours=None, notes=None, data=None,
+                 legend=None, sub_planes=None):
+        self.prefix = prefix
+        self.documentation = documentation or {}
+        flow_names = flow_names or {}
+        self.label_room = label_room
+        self.task_tags, self.colours = task_tags or {}, colours or {}
+        notes, data = notes or {}, data or {}
+        self.legend = legend
+        self.sub_planes = sub_planes or {}
+        # C19: the sub-processes drawn collapsed on this plane.
+        self.collapsed: set[str] = set()
+        self.nodes = list(bpmn_obj.get_nodes())
+        flows = list(bpmn_obj.get_flows())
+
+        # Stable id per node so flows can reference them.
+        self.node_id: dict[int, str] = {}
+        self.node_cls: dict[str, str] = {}
+        for i, n in enumerate(self.nodes):
+            name = n.get_name() if hasattr(n, "get_name") else ""
+            nid = _safe_id("node", i, name)
+            self.node_id[id(n)] = nid
+            self.node_cls[nid] = type(n).__name__
+
+        # First pass: resolve every flow's (id, src, tgt) so we can attach
+        # <bpmn:incoming>/<bpmn:outgoing> children to each flow node. BPMN
+        # 2.0 requires each flowNode to declare which sequence flows enter
+        # and leave it: bpmn-js emits a parse warning per missing pair if
+        # these references are absent.
+        self.flow_records: list[tuple[str, str, str, str]] = []
+        self.flow_docs: dict[str, str] = {}
+        self.incoming: dict[str, list[str]] = {nid: [] for nid in self.node_id.values()}
+        self.outgoing: dict[str, list[str]] = {nid: [] for nid in self.node_id.values()}
+        for i, f in enumerate(flows):
+            src, tgt = f.get_source(), f.get_target()
+            if id(src) not in self.node_id or id(tgt) not in self.node_id:
+                continue
+            sid, tid = self.node_id[id(src)], self.node_id[id(tgt)]
+            fid = f"flow_{i}"
+            name = flow_names.get(id(f))
+            self.flow_records.append((fid, sid, tid, name if isinstance(name, str) else ""))
+            text = self.documentation.get(id(f))
+            if isinstance(text, str) and text.strip():
+                self.flow_docs[fid] = text.strip()
+            self.outgoing[sid].append(fid)
+            self.incoming[tid].append(fid)
+
+        # C18: what each task and each named event has beside it, and the room
+        # it takes (_layout_full above, below, min_width).
+        self.note_sizes: dict[str, tuple[int, int]] = {}
+        self.note_text: dict[str, tuple[str, str | None]] = {}
+        self.data_names: dict[str, list[tuple[str, str, str, tuple[int, int]]]] = {}
+        self.event_names: dict[str, tuple[int, int]] = {}
+        self.above: dict[str, int] = {}
+        self.below: dict[str, int] = {}
+        self.min_width: dict[str, int] = {}
+        for n in self.nodes:
+            nid = self.node_id[id(n)]
+            name = n.get_name() if hasattr(n, "get_name") else ""
+            if id(n) in notes and notes[id(n)][0]:
+                self.note_text[nid] = notes[id(n)]
+                self.note_sizes[nid] = _note_size(notes[id(n)][0])
+                self.above[nid] = self.note_sizes[nid][1] + _NOTE_GAP
+                # The note starts at the task's left side; the task is centred
+                # in its column, which holds the note's width right of that.
+                half = _shape_size(self.node_cls[nid])[0] // 2
+                self.min_width[nid] = 2 * max(half, self.note_sizes[nid][0] - half)
+            if data.get(id(n)):
+                objects = [(key, dname, ddoc, _label_size(dname)) for key, dname, ddoc in data[id(n)]]
+                self.data_names[nid] = objects
+                self.below[nid] = _DATA_GAP + _DATA_H + max(size[1] for *_rest, size in objects)
+                self.min_width[nid] = max(self.min_width.get(nid, 0),
+                                          len(objects) * _DATA_SLOT - (_DATA_SLOT - _LABEL_WRAP))
+            if "Event" in self.node_cls[nid] and name:
+                self.event_names[nid] = _label_size(name)
+                self.below[nid] = _EVENT_NAME_GAP + self.event_names[nid][1]
+                self.min_width[nid] = max(_EVENT_SIZE, self.event_names[nid][0])
+        self.note_ids = {nid: f"TextAnnotation_{k}" for k, nid in enumerate(self.note_text, start=1)}
+
+    def _pid(self, raw: str) -> str:
+        """An id of this plane: its prefix, then the main plane's id."""
+        return self.prefix + raw
+
+    def emit(self, parent, planes: list) -> None:
+        """Write this plane's elements into `parent` (the process, or the
+        sub-process that holds this map): the flow nodes, the sequence
+        flows, the data objects, then the artifacts. A sub-process node
+        holds its own map's elements (C19); its plane joins `planes`, with
+        the sub-process's id, before the planes of its own sub-processes."""
+        for n in self.nodes:
+            # A pm4py subclass takes the element of its nearest mapped base class:
+            # the miner ends its model with a NormalEndEvent (an EndEvent), which an
+            # exact class-name lookup wrote as a task named "end".
+            tag = self.task_tags.get(id(n)) or next((_NODE_TAG[k.__name__] for k in type(n).__mro__
+                                                     if k.__name__ in _NODE_TAG), "task")
+            nid = self.node_id[id(n)]
+            attrs = {"id": self._pid(nid)}
+            name = n.get_name() if hasattr(n, "get_name") else ""
+            if name:
+                attrs["name"] = name
+            node_el = ET.SubElement(parent, f"{{{_BPMN_NS}}}{tag}", attrs)
+            # BPMN spec order: <documentation>, then <incoming> before <outgoing>,
+            # then an activity's properties and data input associations, then
+            # (a sub-process) its flow elements and artifacts.
+            text = self.documentation.get(id(n))
+            if isinstance(text, str) and text.strip():
+                doc_el = ET.SubElement(node_el, f"{{{_BPMN_NS}}}documentation")
+                doc_el.text = text.strip()
+            for fid in self.incoming[nid]:
+                inc = ET.SubElement(node_el, f"{{{_BPMN_NS}}}incoming")
+                inc.text = self._pid(fid)
+            for fid in self.outgoing[nid]:
+                out = ET.SubElement(node_el, f"{{{_BPMN_NS}}}outgoing")
+                out.text = self._pid(fid)
+            if nid in self.data_names:
+                prop = self._pid(f"Property_{nid}")
+                ET.SubElement(node_el, f"{{{_BPMN_NS}}}property",
+                              {"id": prop, "name": "__targetRef_placeholder"})
+                for key, *_rest in self.data_names[nid]:
+                    assoc = ET.SubElement(node_el, f"{{{_BPMN_NS}}}dataInputAssociation",
+                                          {"id": self._pid(f"DataInputAssociation_{key}")})
+                    ET.SubElement(assoc, f"{{{_BPMN_NS}}}sourceRef").text = self._pid(
+                        f"DataObjectReference_{key}")
+                    ET.SubElement(assoc, f"{{{_BPMN_NS}}}targetRef").text = prop
+            if tag == "subProcess":
+                self.collapsed.add(nid)
+                spec = self.sub_planes.get(id(n))
+                if spec is not None:
+                    child = _Plane(spec["model"], spec.get("prefix") or "",
+                                   **{key: spec.get(key) for key in _PLANE_KEYS})
+                    planes.append((child, self._pid(nid)))
+                    child.emit(node_el, planes)
+
+        for fid, sid, tid, name in self.flow_records:
+            attrs = {"id": self._pid(fid), "sourceRef": self._pid(sid),
+                     "targetRef": self._pid(tid)}
+            if name:
+                attrs["name"] = name
+            flow_el = ET.SubElement(parent, f"{{{_BPMN_NS}}}sequenceFlow", attrs)
+            if fid in self.flow_docs:
+                ET.SubElement(flow_el, f"{{{_BPMN_NS}}}documentation").text = self.flow_docs[fid]
+
+        # C18: the data objects (flow elements), then the artifacts: the notes,
+        # the legend and the associations.
+        for objects in self.data_names.values():
+            for key, dname, ddoc, _size in objects:
+                ET.SubElement(parent, f"{{{_BPMN_NS}}}dataObject",
+                              {"id": self._pid(f"DataObject_{key}")})
+                ref = ET.SubElement(parent, f"{{{_BPMN_NS}}}dataObjectReference",
+                                    {"id": self._pid(f"DataObjectReference_{key}"), "name": dname,
+                                     "dataObjectRef": self._pid(f"DataObject_{key}")})
+                if ddoc:
+                    ET.SubElement(ref, f"{{{_BPMN_NS}}}documentation").text = ddoc
+        for nid, (shown, whole) in self.note_text.items():
+            ann = ET.SubElement(parent, f"{{{_BPMN_NS}}}textAnnotation",
+                                {"id": self._pid(self.note_ids[nid])})
+            if whole:
+                ET.SubElement(ann, f"{{{_BPMN_NS}}}documentation").text = whole
+            ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = shown
+        if self.legend:
+            ann = ET.SubElement(parent, f"{{{_BPMN_NS}}}textAnnotation",
+                                {"id": self._pid("TextAnnotation_legend")})
+            ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = self.legend
+        for k, nid in enumerate(self.note_text, start=1):
+            ET.SubElement(parent, f"{{{_BPMN_NS}}}association",
+                          {"id": self._pid(f"Association_{k}"), "associationDirection": "None",
+                           "sourceRef": self._pid(nid), "targetRef": self._pid(self.note_ids[nid])})
+
+    def draw(self, defs, element: str) -> None:
+        """Lay out this plane and add its BPMNDiagram to `defs`, its plane
+        drawing `element` (the process, or the sub-process whose map this
+        is)."""
+        nodes, node_id, node_cls = self.nodes, self.node_id, self.node_cls
+        flow_records = self.flow_records
+        sizes = {nid: _shape_size(node_cls[nid]) for nid in node_id.values()}
+        edge_list = [(s, t) for (_, s, t, _n) in flow_records]
+        ids = list(node_id.values())
+        splits = {sid for (_f, sid, _t, name) in flow_records if name}
+        room = {"above": self.above, "below": self.below, "min_width": self.min_width}
+        label_room = self.label_room
+        # Route once to count each channel's lanes, then lay out with channels
+        # tall enough for them and route for real.
+        draft = _layout_full(ids, edge_list, sizes, splits=splits, label_room=label_room, **room)
+        lanes = _lanes(draft, [(fid, s, t) for (fid, s, t, _n) in flow_records])
+        counts: dict[tuple[str, int], int] = {}
+        for channel, row, _lane in lanes.values():
+            counts[(channel, row)] = counts.get((channel, row), 0) + 1
+        lay = _layout_full(ids, edge_list, sizes, lanes_hint=counts, splits=splits,
+                           label_room=label_room, **room)
+        note_boxes, note_lines, data_boxes, event_boxes = _beside(lay, self.note_sizes,
+                                                                  self.data_names,
+                                                                  self.event_names)
+        extra = (list(note_boxes.values()) + [d[1] for d in data_boxes.values()]
+                 + [d[2] for d in data_boxes.values()] + list(event_boxes.values()))
+        extra_lines = [(a, b) for pts in list(note_lines.values()) + [d[3] for d in data_boxes.values()]
+                       for a, b in zip(pts, pts[1:])]
+        routes = {fid: _waypoints(lay, lanes.get(fid), sid, tid, named=bool(name))
+                  for (fid, sid, tid, name) in flow_records}
+        events = [_event_label(lay.pos[node_id[id(n)]], n.get_name()) for n in nodes
+                  if "Event" in node_cls[node_id[id(n)]] and hasattr(n, "get_name") and n.get_name()]
+        first = None
+        if label_room:
+            gateways = {nid for nid, cls in node_cls.items() if "Gateway" in cls}
+            corners: set[tuple[str, str]] = set()
+            for fid, sid, tid, _name in flow_records:
+                routes[fid] = (_vertex_route(lay, lanes.get(fid), sid, tid, gateways, corners, extra)
+                               or routes[fid])
+        else:
+            first = {fid: _label_bounds(routes[fid], lanes.get(fid))
+                     for (fid, _s, _t, name) in flow_records if name}
+        placed = _place_labels(lay, flow_records, routes, lanes, taken=events, boxes=extra,
+                               lines=extra_lines, first=first)
+        legend_box = None
+        if self.legend:
+            drawn = list(lay.pos.values()) + extra + list(placed.values())
+            lines = [s for pts in routes.values() for s in zip(pts, pts[1:])] + extra_lines
+            legend_box = _place_legend(_legend_size(self.legend), drawn, lines)
+
+        diagram = ET.SubElement(
+            defs, f"{{{_BPMNDI_NS}}}BPMNDiagram", {"id": self._pid("BPMNDiagram_1")})
+        plane = ET.SubElement(
+            diagram, f"{{{_BPMNDI_NS}}}BPMNPlane",
+            {"id": self._pid("BPMNPlane_1"), "bpmnElement": element})
+
+        colour_of = {node_id[key]: value for key, value in self.colours.items() if key in node_id}
+        for nid in node_id.values():
+            attrs = {"id": self._pid(f"Shape_{nid}"), "bpmnElement": self._pid(nid)}
+            if nid in self.collapsed:
+                # C19: a sub-process is drawn collapsed; its map is its own plane.
+                attrs["isExpanded"] = "false"
+            if nid in colour_of:
+                fill, stroke = colour_of[nid]
+                attrs[f"{{{_BIOC_NS}}}stroke"] = stroke
+                attrs[f"{{{_BIOC_NS}}}fill"] = fill
+            shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape", attrs)
+            _bounds(shape, lay.pos[nid])
+            if nid in event_boxes:
+                _bounds(ET.SubElement(shape, f"{{{_BPMNDI_NS}}}BPMNLabel"), event_boxes[nid])
+        for key, (_nid, box, name_box, _line) in data_boxes.items():
+            shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
+                                  {"id": self._pid(f"Shape_DataObjectReference_{key}"),
+                                   "bpmnElement": self._pid(f"DataObjectReference_{key}")})
+            _bounds(shape, box)
+            _bounds(ET.SubElement(shape, f"{{{_BPMNDI_NS}}}BPMNLabel"), name_box)
+        for nid, box in note_boxes.items():
+            shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
+                                  {"id": self._pid(f"Shape_{self.note_ids[nid]}"),
+                                   "bpmnElement": self._pid(self.note_ids[nid])})
+            _bounds(shape, box)
+        if legend_box is not None:
+            shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
+                                  {"id": self._pid("Shape_TextAnnotation_legend"),
+                                   "bpmnElement": self._pid("TextAnnotation_legend")})
+            _bounds(shape, legend_box)
+
+        for fid, sid, tid, name in flow_records:
+            edge = ET.SubElement(
+                plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
+                {"id": self._pid(f"Edge_{fid}"), "bpmnElement": self._pid(fid)})
+            points = routes[fid]
+            _waypoints_of(edge, points)
+            if name:
+                label = ET.SubElement(edge, f"{{{_BPMNDI_NS}}}BPMNLabel")
+                _bounds(label, placed[fid])
+        for k, nid in enumerate(self.note_text, start=1):
+            edge = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
+                                 {"id": self._pid(f"Edge_Association_{k}"),
+                                  "bpmnElement": self._pid(f"Association_{k}")})
+            _waypoints_of(edge, note_lines[nid])
+        for key, (_nid, _box, _name_box, line) in data_boxes.items():
+            edge = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
+                                 {"id": self._pid(f"Edge_DataInputAssociation_{key}"),
+                                  "bpmnElement": self._pid(f"DataInputAssociation_{key}")})
+            _waypoints_of(edge, line)

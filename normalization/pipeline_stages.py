@@ -504,12 +504,14 @@ def _run_mining_exports(
     pdd_map_image: str | None,
     pdd_tobe_image: str | None = None,
     events: list[dict[str, Any]] | None = None,
+    pdd_map_images: str | None = None,
 ) -> None:
     """The step-level observed-flow BPMN (when `mine` is set) plus the
     requested PDD export. The BPMN keeps its best-effort try/except. A
     requested PDD export that fails raises ExportFailed (C13 exit code 3); it
     runs last, so every analysis output is already written. `events` is the
-    derived event stream the PDD reads the entered fields from."""
+    derived event stream the PDD reads the entered fields from.
+    `pdd_map_images` is the manifest of the maps' pictures (contract C19)."""
     if mine:
         # Step observed-flow BPMN: the ACTUAL annotated step flow mined into
         # BPMN (the Process-diagram counterpart of the step Flow diagram).
@@ -556,6 +558,7 @@ def _run_mining_exports(
                 process_map_image=pdd_map_image,
                 tobe_map_image=pdd_tobe_image,
                 events=events,
+                map_images=pdd_map_images,
             )
         except Exception as e:  # noqa: BLE001 -- any failure fails the export
             # The traceback goes to normalize.log only (INFO is below the

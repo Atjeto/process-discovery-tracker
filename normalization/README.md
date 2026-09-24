@@ -36,6 +36,7 @@ python normalization/normalize.py <session_folder> --taxonomy normalization/taxo
 | `--names` | The remembered-names store: drafts whose `draft_key` it lists take the remembered name. |
 | `--pdd-out` | Render the PDD to this `.docx` path. |
 | `--pdd-map-image`, `--pdd-tobe-image` | Pictures of the As-Is and To-Be maps for the PDD. |
+| `--pdd-map-images` | A manifest of the maps' pictures for the PDD, the main map's and one per sub-process (`{"maps": [{"path": [...], "png": "..."}]}`). |
 
 Outputs land in the session folder: `stats.json`, `analysis.json`, the
 updated `annotations.json`, `process_map_step.bpmn` (with `--mine`) and
