@@ -8,14 +8,21 @@
  *   stands for opens the panel on its name and one line saying so.
  * It names the step, its system and description, its flow in one short
  * line when set (C17: "Only when ... · Goes back to step 2 when ..."), says
- * "In N of M transactions, about Xs each", and lists one row per occurrence:
- * "Transaction 1 at 0:39" (the
- * time since the recording started, the PDD's pointer) with a play button
- * that plays that occurrence in the panel's small video (when the recording
- * has one), its screenshots (a click opens one full size) and what was said
- * then (the transcript). At the foot: "Open in Steps", or "Show on timeline"
- * on the Steps level. The occurrences of a step are the steps of the runs
- * that share its map box (process-map-levels.mapNodeLabel).
+ * "In N of M transactions, about Xs each", and lists one row per time the
+ * step happened, under one line that says what the rows are (the owner's
+ * review): "This step happened 5 times: once in transactions 1, 3 and 4,
+ * twice in transaction 2. Play any of them." A row reads "Transaction 1 ·
+ * 0:39 into the recording · took 8s" (the time since the recording started,
+ * the PDD's clock; "Transaction 2, again" for a second time in one
+ * transaction), with a play button that plays that time in the panel's
+ * small video (when the project has one), then its screenshots (a click
+ * opens one full size), what was said then (the transcript) and its notes,
+ * each under a small lead. The video is cued to the row the panel opens on
+ * (a map box's reference transaction, the band or the Steps row clicked),
+ * and the row it is at is highlighted; a row's play moves both. At the
+ * foot: "Open in Steps", or "Show on timeline" on the Steps level. The
+ * occurrences of a step are the steps of the runs that share its map box
+ * (process-map-levels.mapNodeLabel).
  *
  * The panel is closed on the Overview and when a recording opens; its close
  * button is the inverse of every door (on Steps it then stays closed while
@@ -43,6 +50,12 @@ let _state = null;
 let _dismissed = false;
 let _stopAt = null;
 let _folder = null;
+/* The row the video was last cued to or played (a step id): the highlighted
+   row. A render whose focus is another row cues the video to it. */
+let _cuedId = null;
+/* The Steps selection the panel last followed: a redraw of the Steps level
+   with the same selection keeps the row in the video. */
+let _followed = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -81,28 +94,38 @@ function _interactions() {
   return m;
 }
 
-function _rowHtml(o, origin, placed, hasVideo, focusId) {
+/* True when a step has a start time (a step added by hand has none). */
+function _hasStart(st) {
+  return !!(st && st.time_range && isFinite(Date.parse(st.time_range.start)));
+}
+
+/* One row: what it is ("Transaction 2, again · 2:14 into the recording ·
+   took 9s"), its play button, then its screenshots, what was said and its
+   notes, each under a small lead. `again`: an earlier row is in the same
+   transaction. */
+function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
   const st = o.step;
-  const where = StepFacts.pointer(st, o.run ? [o.run] : [], origin) || "(no time)";
   // C16: the screenshots the step shows (recorded less the hidden ones, then
   // the ones added) and its notes (its own and those at a moment inside it).
   const shots = AnalystUI.shotsOf(st);
   const notes = AnalystUI.notesOf(st);
   const said = placed && placed.synced ? TM.sentencesForStep(placed.sentences, st) : [];
-  return '<li class="sp-occ' + (st.step_id === focusId ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '">' +
+  const focus = st.step_id === focusId;
+  return '<li class="sp-occ' + (focus ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '"' +
+      (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
-      (hasVideo ? '<button type="button" class="sp-play" title="Play this occurrence in the video above">▶</button>' : "") +
-      '<span class="sp-at">' + escapeHtml(where) + "</span>" +
-      '<span class="sp-dur">' + escapeHtml(StepFacts.duration(st.time_range)) + "</span>" +
+      (hasVideo && _hasStart(st) ? '<button type="button" class="sp-play" title="Play this occurrence in the video above">▶</button>' : "") +
+      '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin)) + "</span>" +
     "</div>" +
-    (shots.length ? '<div class="sp-shots">' + shots.map((sh) =>
+    (shots.length ? '<div class="sp-sec"><div class="sp-lead">Screenshots</div><div class="sp-shots">' + shots.map((sh) =>
       '<button type="button" class="sp-shot" data-ref="' + escapeAttr(sh.rel) + '" title="' +
         escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size") + '"><img src="' + escapeAttr(sh.url) +
-        '" alt="' + escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : "")) + '"></button>').join("") + "</div>" : "") +
-    (said.length ? '<ol class="sp-said">' + said.map((x) => '<li class="tr-row">' + TM.sentenceRowHtml(x, origin) + "</li>").join("") + "</ol>" : "") +
-    (notes.length ? '<ul class="sp-notes" title="Notes stay in the app: the PDD does not print them.">' + notes.map((n) =>
-      '<li class="sp-note">' + (n.at ? '<span class="sp-note-at">' + escapeHtml(sinceStart(n.at, origin)) + "</span> " : "") +
-      escapeHtml(n.text) + "</li>").join("") + "</ul>" : "") +
+        '" alt="' + escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : "")) + '"></button>').join("") + "</div></div>" : "") +
+    (said.length ? '<div class="sp-sec"><div class="sp-lead">Said:</div><ol class="sp-said">' +
+      said.map((x) => '<li class="tr-row">' + TM.sentenceRowHtml(x, origin) + "</li>").join("") + "</ol></div>" : "") +
+    (notes.length ? '<div class="sp-sec"><div class="sp-lead">Notes</div><ul class="sp-notes" title="Notes stay in the app: the PDD does not print them.">' +
+      notes.map((n) => '<li class="sp-note">' + (n.at ? '<span class="sp-note-at">' + escapeHtml(sinceStart(n.at, origin)) + "</span> " : "") +
+      escapeHtml(n.text) + "</li>").join("") + "</ul></div>" : "") +
     "</li>";
 }
 
@@ -117,10 +140,12 @@ function _renderMissing() {
     video.removeAttribute("src");
     video.hidden = true;
   }
+  _cuedId = null;
   $("sp-body").innerHTML = "";
 }
 
-/* Draw the panel for the current state (the video element stays as it is). */
+/* Draw the panel for the current state. The video moves only when the
+   highlighted row is not the one it was cued to (an open on another row). */
 function render() {
   const panel = $("step-panel");
   const s = _session();
@@ -154,16 +179,49 @@ function render() {
   if (video) {
     if (!src) { video.removeAttribute("src"); video.hidden = true; }
     else {
-      if (video.getAttribute("src") !== src) video.setAttribute("src", src);
+      // Another video starts at 0: the row is cued again.
+      if (video.getAttribute("src") !== src) { video.setAttribute("src", src); _cuedId = null; }
       video.hidden = false;
     }
   }
   const onSteps = State.getLevel() === "steps";
-  $("sp-body").innerHTML = '<ol class="sp-occs">' + occ.map((o) => _rowHtml(o, origin, TM.forSession(s), hasVideo, _state.focusId)).join("") + "</ol>" +
+  const placed = TM.forSession(s);
+  const inRun = new Set();
+  const rows = occ.map((o) => {
+    const again = !!o.run && inRun.has(o.run.caseId);
+    if (o.run) inRun.add(o.run.caseId);
+    return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId);
+  });
+  const playable = hasVideo ? occ.filter((o) => _hasStart(o.step)).length : 0;
+  $("sp-body").innerHTML =
+    '<p class="sp-explain" id="sp-explain">' + escapeHtml(StepFacts.occurrencesLine(occ, runs.length, playable)) + "</p>" +
+    '<ol class="sp-occs">' + rows.join("") + "</ol>" +
     '<div class="sp-foot">' + (onSteps
       ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
         (lead.time_range && lead.time_range.start ? "" : " disabled") + '>Show on timeline</button>'
       : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>') + "</div>";
+  // The panel opened on this row (or its row is gone): the video goes to it.
+  if (_state.focusId !== _cuedId) _cue(_state.focusId);
+}
+
+/* Where a step starts in the panel's video, in seconds, or NaN (no start
+   time, or no time the video can be lined up with). */
+function _videoSecs(step) {
+  return (Date.parse(step && step.time_range && step.time_range.start) - Date.parse(Video.videoStartTs())) / 1000;
+}
+
+/* The panel's video at a row's start, paused: the panel opens with its video
+   at the row it highlights, not where the video last stopped. Before the
+   video has loaded, the time set is where it starts once it has. */
+function _cue(stepId) {
+  _cuedId = stepId;
+  const video = $("sp-video");
+  const step = _steps().find((st) => st.step_id === stepId);
+  if (!video || video.hidden || !video.getAttribute("src") || !step) return;
+  _stopAt = null;
+  if (!video.paused) video.pause();
+  const at = _videoSecs(step);
+  if (isFinite(at) && at >= 0) video.currentTime = at;
 }
 
 function _show(open) {
@@ -181,7 +239,7 @@ function _show(open) {
 function _reset() {
   const s = _session();
   const folder = s ? s.sessionFolder : null;
-  if (folder !== _folder) { _folder = folder; _state = null; _dismissed = false; _show(false); }
+  if (folder !== _folder) { _folder = folder; _state = null; _dismissed = false; _cuedId = null; _followed = null; _show(false); }
 }
 
 /* Open the panel on a step's map box, with that step as its focus. */
@@ -220,14 +278,23 @@ function openForMissing(name) {
   render();
 }
 
-/* The Steps level's selection: the panel follows it unless it was closed. */
+/* The Steps level's selection: the panel follows it unless it was closed. A
+   redraw of the Steps level with the same selection draws the panel again
+   and keeps its row (a row played here stays the one in the video). */
 function followSteps(step) {
   _reset();
   if (!step || _dismissed) return;
+  const panel = $("step-panel");
+  if (panel && !panel.hidden && _state && _followed === step.step_id && _state.label === mapNodeLabel(step)) {
+    render();
+    return;
+  }
+  _followed = step.step_id;
   openForStep(step, true);
 }
 
-/* Play one occurrence in the panel's video, from its start to its end. */
+/* Play one occurrence in the panel's video, from its start to its end; its
+   row becomes the highlighted one. */
 function play(stepId) {
   const s = _session();
   const step = _steps().find((st) => st.step_id === stepId);
@@ -242,6 +309,7 @@ function play(stepId) {
   const from = (Date.parse(step.time_range && step.time_range.start) - base) / 1000;
   const to = (Date.parse(step.time_range && step.time_range.end) - base) / 1000;
   if (!isFinite(from) || from < 0) { toast("This step starts before the video does.", "error"); return; }
+  _cuedId = stepId;
   if (_state) { _state.focusId = stepId; render(); }
   const main = document.getElementById("video");
   if (main && !main.paused) main.pause();
@@ -260,6 +328,7 @@ function watch(step) {
 
 function close() {
   _state = null;
+  _cuedId = null;
   _show(false);
 }
 

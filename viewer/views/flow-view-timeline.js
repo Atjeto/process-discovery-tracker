@@ -3,7 +3,8 @@
  *
  * Extracted from flow-view.js (god-file split). Owns renderTimeline (the lane
  * stack: ticks / runs / activity+idle+markers / transcript / screenshots /
- * steps, via TimelineCore.renderLaneStack), the lane plugins' helpers
+ * steps, via TimelineCore.renderLaneStack, and the lanes' names at its left,
+ * renderLaneNames), the lane plugins' helpers
  * (layoutCaseLanes, monitorBadgeFor), the minimap, the lane-visibility
  * toggles, per-session zoom/scroll persistence, the timeline summary line,
  * and the zoom / middle-drag-pan / scroll-persist wiring. Self-wires its DOM
@@ -448,6 +449,44 @@ function setLaneToggle(key, on) {
   });
 })();
 
+/* The lanes' names at the left of the timeline (the owner's review: "the
+   lanes also don't have a description"): each drawn lane shows its name,
+   and its tooltip says what the lane shows. The ticks have none. */
+const LANE_NAMES = {
+  cases: { name: "Transactions", title: "Transactions: each pass through the process, from its start to its end; click one to go to its start." },
+  activity: { name: "Systems", title: "Systems: the system on screen at each moment, one band per window; click a band to go there, right-click to start or end a transaction or to add a note." },
+  transcript: { name: "Transcript", title: "Transcript: what was said, one block per sentence at the moment it was said, once the transcript is synced; click one to go there." },
+  notes: { name: "Notes", title: "Notes: your notes pinned to a moment; click one to go there, right-click to edit or delete it." },
+  screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot taken during the recording; click one to see it full size." },
+  steps: { name: "Steps", title: "Steps: each step of each transaction; click one to see all its moments." },
+};
+
+/* Write the names of the lanes drawn (`lanes` as the stack got them,
+   `layout` as it returned) into the column left of the timeline; null hides
+   the column (nothing is drawn). A name sits in the top 20 px of its lane. */
+function renderLaneNames(lanes, layout) {
+  const col = document.getElementById("tl-lane-names");
+  if (!col) return;
+  col.innerHTML = "";
+  col.hidden = !layout;
+  if (!layout) return;
+  for (const lane of lanes) {
+    const n = LANE_NAMES[lane.key];
+    const slot = layout.slots.get(lane.key);
+    if (!n || !slot || !(lane.height > 0) || lane.unnamed) continue;
+    const h = Math.min(slot.height, 20);
+    const el = document.createElement("div");
+    el.className = "tl-lane-name";
+    el.dataset.lane = lane.key;
+    el.style.top = slot.top + "px";
+    el.style.height = h + "px";
+    el.style.lineHeight = h + "px";
+    el.textContent = n.name;
+    el.title = n.title;
+    col.appendChild(el);
+  }
+}
+
 function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
@@ -464,6 +503,7 @@ function renderTimeline() {
   if (!sp) {
     const mm = document.getElementById("timeline-minimap");
     if (mm) mm.style.display = "none";
+    renderLaneNames([], null);
     // A session with nothing recorded and no video says so, in one line.
     if (!evs.length && !State.getSession().recordingAvailable) {
       host.style.width = "";
@@ -637,6 +677,8 @@ function renderTimeline() {
     key: "activity",
     height: activityH,
     gapBefore: casesH ? 6 : 4,
+    // A video project's low lane shows no system: it has no name.
+    unnamed: !evs.length,
     render(host, ctx) {
       const activityTop = ctx.slot.top;
       const activityH = ctx.slot.height;
@@ -780,11 +822,7 @@ function renderTimeline() {
       rail.style.top = screenshotsTop + "px";
       rail.style.height = screenshotsH + "px";
       host.appendChild(rail);
-      const railLabel = document.createElement("div");
-      railLabel.className = "tl-rail-label";
-      railLabel.style.top = (screenshotsTop + screenshotsH / 2 - 5) + "px";
-      railLabel.textContent = "CAPTURES";
-      host.appendChild(railLabel);
+      // (Its name, Screenshots, is at the left with the other lanes'.)
       const markY = screenshotsTop + (screenshotsH - 16) / 2;
       const camSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
         + 'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
@@ -895,13 +933,15 @@ function renderTimeline() {
   // owns the vertical layout maths, the zoom width, and the minHeight; each
   // lane plugin owns its own DOM. tailPx (14) + the 120 floor reproduce the
   // pre-core host.style.minHeight.
-  TimelineCore.renderLaneStack(host, {
-    lanes: [ticksLane, casesLane, activityLane, transcriptLane, notesLane, screenshotsLane, stepsLane],
+  const stack = [ticksLane, casesLane, activityLane, transcriptLane, notesLane, screenshotsLane, stepsLane];
+  const layout = TimelineCore.renderLaneStack(host, {
+    lanes: stack,
     span: { startMs: first, endMs: last },
     zoom: State.getZoomFactor(),
     tailPx: 14,
     minHeightFloor: 120,
   });
+  renderLaneNames(stack, layout);
 
   // Legend mirrors the apps observed while the activity lane rendered, and
   // explains only the marks the timeline draws: an entry whose lane is off is
@@ -1034,5 +1074,5 @@ module.exports = {
   renderTimeline, renderTimelineSummary, renderMinimap, syncMinimapViewport,
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
-  caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes,
+  caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES,
 };

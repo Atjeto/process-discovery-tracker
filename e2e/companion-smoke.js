@@ -14,7 +14,8 @@
  *     (b) four steps added by hand (no time, order 1 to 4, the implicit run),
  *         two with a system, one moved down with Alt+Down;
  *     (c) a screenshot from a file and one pasted with Ctrl+V; the pasted one
- *         chosen for the PDD;
+ *         chosen for the PDD; the step panel's row reads what it is (no
+ *         time, no play) with its screenshots under a lead;
  *     (d) a recorder screenshot removed is only hidden (its file stays); an
  *         added one removed leaves the folder, Ctrl+Z brings it back, Ctrl+Y
  *         takes it out again;
@@ -31,8 +32,8 @@
  *         applied, and the Steps list then says where each starts; (j) two
  *         steps added at the
  *         playhead; (k) a frame of the video captured as a screenshot; (l) a
- *         note at a moment, in the Notes lane; (m) the PDD carries the steps
- *         and the frame.
+ *         note at a moment, in the Notes lane (named at the timeline's left);
+ *         (m) the PDD carries the steps and the frame.
  *   Step flow (contract C17), in another empty project with four steps:
  *     (o) each step's Flow line reads "Always · then the next step";
  *     (p) "Only when" on step 2; "Go to" step 2 on step 4 (the dropdown lists
@@ -313,11 +314,21 @@ function zipFiles(buf) {
     c.cards = await page.evaluate(() => [...document.querySelectorAll("#step-detail .step-shot-card")].map((x) =>
       ({ ref: x.dataset.ref, loaded: (x.querySelector("img") || {}).naturalWidth > 0, pdd: (x.querySelector('[data-shot-act="pdd"]') || {}).textContent })));
     c.pastedId = pasted.id;
+    // The step panel beside the list (the owner's review): a step added by
+    // hand, in a project with no video, reads what it is, with no play.
+    c.panel = await page.evaluate((id) => {
+      const r = document.querySelector('#step-panel:not([hidden]) #sp-body .sp-occ[data-step-id="' + id + '"]');
+      return r ? { explain: ((document.getElementById("sp-explain") || {}).textContent || "").trim(), at: ((r.querySelector(".sp-at") || {}).textContent || "").trim(),
+        play: !!r.querySelector(".sp-play"), leads: [...r.querySelectorAll(".sp-lead")].map((x) => (x.textContent || "").trim()),
+        shots: r.querySelectorAll(".sp-shot").length } : null;
+    }, stepId(NAMES[0]));
   } catch (e) { c.err = errText(e); }
-  record("(c) Add screenshot from a file and by Ctrl+V in the step pane: two analyst screenshots on the step (files in screenshots/analyst/); Use in PDD marks the pasted one",
+  record("(c) Add screenshot from a file and by Ctrl+V in the step pane: two analyst screenshots on the step (files in screenshots/analyst/); Use in PDD marks the pasted one; the step panel's row reads \"Transaction 1 · no time in the recording\" under \"This step happened once in transaction 1.\", no play, its screenshots under a Screenshots lead",
     !c.err && c.shots.length === 2 && c.shots.every((x) => x.exists && x.onStep) &&
       JSON.stringify(c.shots.map((x) => x.source)) === '["file","paste"]' && c.cards.length === 2 && c.cards.every((x) => x.loaded) &&
-      c.cards.find((x) => x.ref === c.pastedId).pdd === "In the PDD",
+      c.cards.find((x) => x.ref === c.pastedId).pdd === "In the PDD" &&
+      !!c.panel && c.panel.explain === "This step happened once in transaction 1." && c.panel.at === "Transaction 1 · no time in the recording" &&
+      !c.panel.play && JSON.stringify(c.panel.leads) === '["Screenshots"]' && c.panel.shots === 2,
     JSON.stringify(c));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-steps.png") }).catch(() => {});
 
@@ -557,11 +568,20 @@ function zipFiles(buf) {
     await page.waitForSelector("#timeline .tl-note", { timeout: T });
     const n = (await session()).anno.analyst_notes;
     l.note = n.map((x) => ({ step: x.step_id, at: !!x.at }));
-    l.lane = await page.evaluate(() => ({ pins: document.querySelectorAll("#timeline .tl-note").length,
-      row: !document.getElementById("lane-notes-row").hidden, legend: getComputedStyle(document.querySelector("#timeline-legend .lg-note")).display }));
+    l.lane = await page.evaluate(() => {
+      // The lane's name at the left of the timeline, in the pins' row.
+      const name = document.querySelector('#tl-lane-names .tl-lane-name[data-lane="notes"]');
+      const pin = document.querySelector("#timeline .tl-note");
+      const nr = name && name.getBoundingClientRect(), pr = pin && pin.getBoundingClientRect();
+      return { pins: document.querySelectorAll("#timeline .tl-note").length,
+        row: !document.getElementById("lane-notes-row").hidden, legend: getComputedStyle(document.querySelector("#timeline-legend .lg-note")).display,
+        name: name ? (name.textContent || "").trim() : null, title: name ? name.title : null,
+        inRow: !!(nr && pr && (nr.top + nr.bottom) / 2 >= pr.top && (nr.top + nr.bottom) / 2 <= pr.bottom) };
+    });
   } catch (x) { l.err = errText(x); }
-  record("(l) right-click on the Timeline, Add note here: a note pinned to that moment (analyst_notes, no step), drawn in the Notes lane, listed in the Lanes menu and the legend",
-    !l.err && JSON.stringify(l.note) === '[{"step":null,"at":true}]' && l.lane.pins === 1 && l.lane.row && l.lane.legend !== "none",
+  record("(l) right-click on the Timeline, Add note here: a note pinned to that moment (analyst_notes, no step), drawn in the Notes lane (named Notes at the left, with its tooltip), listed in the Lanes menu and the legend",
+    !l.err && JSON.stringify(l.note) === '[{"step":null,"at":true}]' && l.lane.pins === 1 && l.lane.row && l.lane.legend !== "none" &&
+      l.lane.name === "Notes" && /^Notes: /.test(l.lane.title || "") && l.lane.inRow,
     JSON.stringify(l));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-notes.png") }).catch(() => {});
 

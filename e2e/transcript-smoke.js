@@ -15,14 +15,16 @@
  *   (a) before an import the only transcript UI is Attach on the Overview's
  *       project line (the "More" menu is gone, lane V1);
  *   (b) Attach transcript writes transcript.json and the copied original;
- *   (c) the not-synced state of the Timeline lane (its label carries Sync,
- *       Replace and Remove), the step editor and the Overview;
+ *   (c) the not-synced state of the Timeline lane (named Transcript at the
+ *       timeline's left; its label carries Sync, Replace and Remove), the
+ *       step editor and the Overview;
  *   (d) Sync (pick a sentence, click its moment on the timeline) writes
  *       offset_ms and the lane then draws the sentences said while recording;
  *   (e) the step editor lists the sentences of a step's window, Add fills the
  *       Description (empty, the draft's narration only its hint) and saves it
  *       in annotations.json, and the button then reads Added; a step with no
- *       talk says so;
+ *       talk says so; the step panel's row shows the sentences under a
+ *       "Said:" lead;
  *   (f) the Overview lists the talk outside the transactions by default and
  *       says so in its title line ("What was said outside the transactions",
  *       AD-29); a sentence said before the recording reads "m:ss before",
@@ -218,6 +220,8 @@ const WANT_OFFSET = -30000;
       laneActs: label ? [...label.querySelectorAll("button")].map((b) => (b.textContent || "").trim()) : [],
       laneRowHidden: !!(q("#lane-transcript-row") || {}).hidden,
       label: label ? label.textContent.trim() : null,
+      // The lane's name, at the left of the timeline with the other lanes'.
+      laneName: ((q('#tl-lane-names .tl-lane-name[data-lane="transcript"]') || {}).textContent || null),
       syncAction: !!(label && label.querySelector(".tl-tr-sync")),
       blocks: [...document.querySelectorAll("#timeline .tl-tr-block")].map((b) => b.dataset.seg),
       said: said ? {
@@ -267,7 +271,7 @@ const WANT_OFFSET = -30000;
       st = await surfaces();
     } catch (e) { err = errText(e); }
     const ok = !err && st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden &&
-      st.label === null && st.blocks.length === 0 && st.said === null && st.overview === null &&
+      st.label === null && st.laneName === null && st.blocks.length === 0 && st.said === null && st.overview === null &&
       !(await page.$("#btn-session-more-menu, #session-more-popup"));
     record("(a) before an import the only transcript UI is Attach on the Overview's project line (No transcript)", ok, JSON.stringify({ err, st }));
     if (!ok) await shot(page, "fail-transcript-before.png");
@@ -305,13 +309,13 @@ const WANT_OFFSET = -30000;
       await openOverviewTranscript();
       ov = (await surfaces()).overview;
     } catch (e) { err = errText(e); }
-    const ok = !err && /Transcript/.test(flow.label) && /Not synced/.test(flow.label) && flow.syncAction &&
+    const ok = !err && flow.laneName === "Transcript" && /Not synced/.test(flow.label) && flow.syncAction &&
       JSON.stringify(flow.laneActs) === JSON.stringify(["Sync...", "Replace...", "Remove"]) &&
       flow.blocks.length === 0 && step && step.note === NOT_SYNCED && step.rows.length === 0 && step.buttons.length === 0 &&
       ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during && ov.inDocUnderSummary &&
       ov.what === "Everything that was said";
-    record("(c) not synced: the lane says Not synced with Sync..., Replace... and Remove, the step editor shows one line, the Overview lists all 10 (\"Everything that was said\") with the line and no transactions filter, in the document under the project line",
-      ok, JSON.stringify({ err, label: flow && flow.label, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, what: ov.what, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
+    record("(c) not synced: the lane, named Transcript at the left, says Not synced with Sync..., Replace... and Remove, the step editor shows one line, the Overview lists all 10 (\"Everything that was said\") with the line and no transactions filter, in the document under the project line",
+      ok, JSON.stringify({ err, label: flow && flow.label, laneName: flow && flow.laneName, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, what: ov.what, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
     if (!ok) await shot(page, "fail-transcript-not-synced.png");
   }
 
@@ -351,10 +355,17 @@ const WANT_OFFSET = -30000;
 
   // ---- (e) the step editor ------------------------------------------------
   {
-    let err = null, listed = null, desc = null, after = null, empty = null, hint = null;
+    let err = null, listed = null, desc = null, after = null, empty = null, hint = null, panelSaid = null;
     try {
       await openStep(SAVE.step_id);
       listed = (await surfaces()).said;
+      // The step panel beside the list shows the same sentences in the
+      // step's row, under a Said: lead (the owner's review).
+      panelSaid = await page.evaluate((id) => {
+        const r = document.querySelector('#step-panel:not([hidden]) #sp-body .sp-occ[data-step-id="' + id + '"]');
+        return r ? { leads: [...r.querySelectorAll(".sp-lead")].map((l) => (l.textContent || "").trim()),
+          lines: [...r.querySelectorAll(".sp-said .tr-text")].map((e) => e.textContent) } : null;
+      }, SAVE.step_id);
       // Item 1: the drafting's narration is the description's hint, not its text.
       hint = await page.$eval("#step-desc", (el) => ({ value: el.value, placeholder: el.placeholder }));
       // Add saves the description at once (no Save button).
@@ -385,9 +396,10 @@ const WANT_OFFSET = -30000;
       listed.buttons.every((b) => b.text === "Add" && !b.disabled) && appended && hintOk &&
       typeof saved.description === "string" && saved.description === S.t0005 && saved.state === "edited" &&
       button(after, "t0005").text === "Added" && button(after, "t0004").text === "Add" &&
-      !!empty && empty.note === "Nothing was said during this step." && empty.rows.length === 0;
-    record("(e) the step editor lists the sentences of the step's window (10 s lead) under the resident Description (More stays closed; the draft's narration is its hint, not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so",
-      ok, JSON.stringify({ err, resident, listed, hint, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
+      !!empty && empty.note === "Nothing was said during this step." && empty.rows.length === 0 &&
+      !!panelSaid && JSON.stringify(panelSaid.leads) === '["Said:"]' && JSON.stringify(panelSaid.lines) === JSON.stringify([S.t0004, S.t0005]);
+    record("(e) the step editor lists the sentences of the step's window (10 s lead) under the resident Description (More stays closed; the draft's narration is its hint, not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so; the step panel's row shows them under a Said: lead",
+      ok, JSON.stringify({ err, resident, listed, panelSaid, hint, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
     if (!ok) await shot(page, "fail-transcript-step.png");
   }
 
@@ -504,8 +516,8 @@ const WANT_OFFSET = -30000;
       ov = (await surfaces()).overview;
     } catch (e) { err = errText(e); }
     const ok = !err && !fs.existsSync(TRANSCRIPT) && fs.existsSync(COPY) &&
-      st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden && st.label === null && st.blocks.length === 0 &&
-      stepSaid === null && ov === null && !(await page.$("#transcript-sync-card"));
+      st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden && st.label === null && st.laneName === null &&
+      st.blocks.length === 0 && stepSaid === null && ov === null && !(await page.$("#transcript-sync-card"));
     record("(h) Remove transcript deletes transcript.json, keeps transcript/meeting-transcript.vtt, and every transcript surface is gone",
       ok, JSON.stringify({ err, json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY), st, stepSaid, ov }));
     if (!ok) await shot(page, "fail-transcript-remove.png");
@@ -532,7 +544,7 @@ const WANT_OFFSET = -30000;
     } catch (e) { err = errText(e); }
     const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it on the Overview, on the line under the Checklist\.$/.test(toast.text) &&
       st.attach === "Replace" && st.lineState === "Transcript cannot be read" && !st.removeHidden && st.laneRowHidden && st.label === null &&
-      st.said === null && st.overview === null && again === false &&
+      st.laneName === null && st.said === null && st.overview === null && again === false &&
       !fs.existsSync(TRANSCRIPT) && after.attach === "Attach" && after.removeHidden;
     record("(j) a transcript.json that cannot be read is said once on load, shows nowhere else, and Remove transcript clears it",
       ok, JSON.stringify({ err, toast, again, st, after: after && [after.attach, after.removeHidden] }));

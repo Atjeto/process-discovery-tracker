@@ -166,3 +166,26 @@ test("sinceStartToIso puts a typed time since the recording started on the recor
   }
   assert.equal(sinceStartToIso(NaN, "0:19"), null);
 });
+
+/* The lanes' names (the owner's review: "The lanes also don't have a
+   description"). */
+
+test("every lane the timeline stacks but the ticks has a name at the left, with a tooltip that starts with it and says what the lane shows", () => {
+  const { LANE_NAMES } = Timeline;
+  assert.deepEqual(Object.keys(LANE_NAMES).sort(), ["activity", "cases", "notes", "screenshots", "steps", "transcript"]);
+  for (const [key, n] of Object.entries(LANE_NAMES)) {
+    assert.ok(typeof n.name === "string" && n.name.length > 0, key);
+    assert.ok(n.title.startsWith(n.name + ": ") && n.title.length > n.name.length + 20, key + ": " + n.title);
+  }
+  assert.equal(LANE_NAMES.activity.name, "Systems");
+  assert.equal(LANE_NAMES.steps.title, "Steps: each step of each transaction; click one to see all its moments.");
+});
+
+test("a lane the Lanes menu lists has the same name there as at the timeline's left", () => {
+  const html = require("fs").readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8");
+  const menu = [...html.matchAll(/<input type="checkbox" data-lane="([a-z]+)" \/>\s*([^<]+?)\s*<\/label>/g)].map((m) => [m[1], m[2]]);
+  assert.ok(menu.length >= 6, "the Lanes menu rows were found");
+  const named = menu.filter(([key]) => Timeline.LANE_NAMES[key]);
+  assert.deepEqual(named.map(([key]) => key).sort(), ["cases", "notes", "screenshots", "steps", "transcript"]);
+  for (const [key, word] of named) assert.equal(word, Timeline.LANE_NAMES[key].name, key);
+});

@@ -9,6 +9,9 @@
  *              which the step pane shows as a hint, not as the description
  *   draftedName the name the drafting gives a step (the Saved names dialog's
  *              Forget gives it back)
+ *   occurrenceLine / occurrencesLine  the step panel's rows and the line
+ *              above them ("Transaction 2, again · 2:14 into the recording ·
+ *              took 9s"; "This step happened 5 times: ...")
  * Twins of normalization/step_suggest.py (_default_step_description,
  * _draft_screen, _commit_label) and pdd_export.py (_entered, position).
  *
@@ -209,7 +212,79 @@ function factLine(parts) {
   return [p.system, p.screen, p.duration, p.ends, p.pointer].filter(Boolean).join(" · ");
 }
 
+/* The step panel's rows and the line above them (the owner's review of the
+   panel). */
+
+function _times(n) { return n === 1 ? "once" : n === 2 ? "twice" : n + " times"; }
+
+/* "1, 3 and 4"; a stretch of three or more in a row reads "1 to 4". */
+function _numberList(ns) {
+  const parts = [];
+  for (let i = 0; i < ns.length; i++) {
+    let j = i;
+    while (j + 1 < ns.length && ns[j + 1] === ns[j] + 1) j++;
+    if (j - i >= 2) { parts.push(ns[i] + " to " + ns[j]); i = j; } else parts.push(String(ns[i]));
+  }
+  return parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : (parts[0] || "");
+}
+
+/* One row of the step panel, one time the step happened: "Transaction 1 ·
+   0:39 into the recording · took 8s". `again`: an earlier row is in the same
+   transaction ("Transaction 2, again"). A step outside every transaction
+   reads "Outside the transactions", one added by hand "no time in the
+   recording". `run` as runs-model.buildRuns returns it, or null. */
+function occurrenceLine(step, run, again, originMs) {
+  const tr = step && step.time_range;
+  const at = sinceStart(tr && tr.start, originMs);
+  const took = duration(tr);
+  return [
+    run ? run.title + (again ? ", again" : "") : "Outside the transactions",
+    at ? at + " into the recording" : "no time in the recording",
+    took ? "took " + took : "",
+  ].filter(Boolean).join(" · ");
+}
+
+/* The line above the step panel's rows, built from the rows: how many times
+   the step happened, in which transactions, and what a row's play does.
+     rows      [{ run }] in the panel's order (run with its ordinal, or null
+               for a step outside every transaction)
+     runCount  how many transactions the project has
+     playable  how many of the rows have a play button
+   "This step happened 5 times: once in transactions 1, 3 and 4, twice in
+   transaction 2. Play any of them." */
+function occurrencesLine(rows, runCount, playable) {
+  const list = rows || [];
+  const total = list.length;
+  if (!total) return "";
+  const perRun = new Map();
+  let outside = 0;
+  for (const r of list) {
+    const n = r && r.run ? r.run.ordinal : NaN;
+    if (Number.isFinite(n)) perRun.set(n, (perRun.get(n) || 0) + 1); else outside++;
+  }
+  const ordinals = [...perRun.keys()].sort((a, b) => a - b);
+  let where;
+  if (!ordinals.length) where = ", outside the transactions";
+  else if (!outside && ordinals.length === 1) where = " in transaction " + ordinals[0];
+  else {
+    const counts = [...new Set(ordinals.map((o) => perRun.get(o)))].sort((a, b) => a - b);
+    if (!outside && counts.length === 1 && ordinals.length === runCount) where = ": " + _times(counts[0]) + " in each transaction";
+    else {
+      const groups = counts.map((k) => {
+        const ns = ordinals.filter((o) => perRun.get(o) === k);
+        return _times(k) + " in transaction" + (ns.length === 1 ? " " : "s ") + _numberList(ns);
+      });
+      if (outside) groups.push(_times(outside) + " outside the transactions");
+      where = ": " + groups.join(", ");
+    }
+  }
+  const can = Math.max(0, Math.min(total, playable || 0));
+  const play = !can ? "" : can === total ? (total === 1 ? " Play it." : " Play any of them.")
+    : can === 1 ? " Play the one with a time." : " Play the ones with a time.";
+  return "This step happened " + _times(total) + where + "." + play;
+}
+
 module.exports = {
   stepDatas, typedFields, draftedNarration, isDraftedDescription, commitName, endsAt, draftedName,
-  pointer, duration, formatMs, factLine,
+  pointer, duration, formatMs, factLine, occurrenceLine, occurrencesLine,
 };

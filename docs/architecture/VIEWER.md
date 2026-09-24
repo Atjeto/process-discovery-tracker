@@ -155,10 +155,13 @@ timeline step band, and a selected Steps row (Watch in the step pane opens
 it and plays the step); a task of the As-Is map is a map box too. It names
 the step, its system and screen, its description, its flow in one short
 line when one is set (contract C17: "Only when ... · Goes back to step 2
-when ...") and "In N of M transactions, about Xs each", then lists one row
-per occurrence across the transactions: "Transaction 1 at 0:39" with a play
-button for its own small video, the step's screenshots, what was said then
-and its notes. Its foot says *Open in Steps*, or *Show on timeline* on the
+when ...") and "In N of M transactions, about Xs each", then says how often the
+step happened ("This step happened 5 times: once in transactions 1, 3 and 4,
+twice in transaction 2. Play any of them.") and lists one row per time:
+"Transaction 1 · 0:39 into the recording · took 8s" ("Transaction 2, again"
+for a second time in one transaction) with a play button for its own small
+video, which opens paused on the row the panel opened on, then the step's
+screenshots, what was said then and its notes, each under a small lead. Its foot says *Open in Steps*, or *Show on timeline* on the
 Steps level. A task of the As-Is map that no step stands for (added or
 renamed in the editor, or its step renamed or hidden since the copy was
 made) opens the panel on its name, with one line saying no step has it. The panel closes on the Overview; closed on Steps, it stays

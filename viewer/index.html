@@ -162,9 +162,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <button class="icon-btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
               </div>
             </div>
-            <div class="timeline-minimap" id="timeline-minimap" title="Click to jump · drag the highlighted region to scroll" style="display:none"></div>
-            <div class="timeline-scroll" id="timeline-scroll" title="Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause">
-              <div class="timeline" id="timeline"></div>
+            <div class="timeline-minimap" id="timeline-minimap" title="The whole recording, shown while the timeline is zoomed in: the highlighted part is what the timeline below shows. Click to go to a part, or drag the highlighted part." style="display:none"></div>
+            <!-- The lanes' names at the left, the timeline beside them
+                 (flow-view-timeline.js renderLaneNames). -->
+            <div class="timeline-body">
+              <div class="tl-lane-names" id="tl-lane-names"></div>
+              <div class="timeline-scroll" id="timeline-scroll" title="Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause">
+                <div class="timeline" id="timeline"></div>
+              </div>
             </div>
             <div class="resize-v" id="resize-timeline" title="Drag to resize timeline height"></div>
             <div class="legend" id="timeline-legend">

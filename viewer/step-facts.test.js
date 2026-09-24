@@ -113,3 +113,42 @@ test("the pointer and the fact line: the system first, then the screen, the time
     pointer: "Transaction 1 at 0:19" }), "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19");
   assert.equal(SF.factLine({ system: "", screen: "", duration: "6s" }), "6s");
 });
+
+/* The step panel's rows and the line above them (the owner's review: "It
+   shows different timelines for each transaction ... I have no idea what
+   they represent"). */
+
+test("a row of the step panel reads what it is: the transaction (again for a second time in it), the time since the recording started, how long it took", () => {
+  const origin = Date.parse("2026-05-14T09:00:00Z");
+  const t = (s) => new Date(origin + s * 1000).toISOString();
+  const run = (n) => ({ caseId: "c" + n, ordinal: n, title: "Transaction " + n });
+  const step = (a, b) => ({ time_range: { start: t(a), end: b == null ? null : t(b) } });
+  assert.equal(SF.occurrenceLine(step(39, 47), run(1), false, origin), "Transaction 1 · 0:39 into the recording · took 8s");
+  assert.equal(SF.occurrenceLine(step(134, 143), run(2), true, origin), "Transaction 2, again · 2:14 into the recording · took 9s");
+  assert.equal(SF.occurrenceLine(step(19, 25), null, false, origin), "Outside the transactions · 0:19 into the recording · took 6s");
+  assert.equal(SF.occurrenceLine(step(65, null), run(1), false, origin), "Transaction 1 · 1:05 into the recording", "an open step has no length");
+  assert.equal(SF.occurrenceLine({ time_range: null }, run(3), false, origin), "Transaction 3 · no time in the recording", "a step added by hand");
+});
+
+test("the line above the rows is built from them: how many times, in which transactions, and what a row's play does", () => {
+  const run = (n) => ({ caseId: "c" + n, ordinal: n, title: "Transaction " + n });
+  const rows = (...ns) => ns.map((n) => ({ run: n ? run(n) : null }));
+  const L = SF.occurrencesLine;
+  assert.equal(L(rows(1, 2, 2, 3, 4), 4, 5),
+    "This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play any of them.");
+  assert.equal(L(rows(1, 2, 3, 4), 4, 4), "This step happened 4 times: once in each transaction. Play any of them.");
+  assert.equal(L(rows(1, 1, 2, 2), 2, 4), "This step happened 4 times: twice in each transaction. Play any of them.");
+  assert.equal(L(rows(1, 3), 4, 2), "This step happened twice: once in transactions 1 and 3. Play any of them.");
+  assert.equal(L(rows(2), 4, 1), "This step happened once in transaction 2. Play it.");
+  assert.equal(L(rows(1), 1, 1), "This step happened once in transaction 1. Play it.");
+  assert.equal(L(rows(2, 2, 2), 4, 3), "This step happened 3 times in transaction 2. Play any of them.");
+  assert.equal(L(rows(1, 2, 3, 4, 5, 6, 8, 9, 9), 10, 9),
+    "This step happened 9 times: once in transactions 1 to 6 and 8, twice in transaction 9. Play any of them.", "a stretch of three or more reads a to b");
+  assert.equal(L(rows(0), 0, 1), "This step happened once, outside the transactions. Play it.");
+  assert.equal(L(rows(1, 0), 1, 2), "This step happened twice: once in transaction 1, once outside the transactions. Play any of them.");
+  // No video: nothing to play. A row with no time (a step added by hand) has no play button.
+  assert.equal(L(rows(1, 2), 2, 0), "This step happened twice: once in each transaction.");
+  assert.equal(L(rows(1, 2, 3), 3, 2), "This step happened 3 times: once in each transaction. Play the ones with a time.");
+  assert.equal(L(rows(1, 2), 2, 1), "This step happened twice: once in each transaction. Play the one with a time.");
+  assert.equal(L([], 4, 0), "");
+});

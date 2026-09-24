@@ -3,11 +3,12 @@
  * on the Overview's recording line (contract C8, plan section 7). Nothing
  * here reads meaning into the text; transcript-model.js holds the time rule
  * and every computation.
- *   1. The Transcript lane (a plugin flow-view-timeline.js stacks), present
- *      only while a transcript is attached. Synced: one row of sentence
- *      blocks at their wall times (hover: time, speaker, text; click: seek).
- *      Not synced: the label says so. The label carries Sync, Replace and
- *      Remove in both states.
+ *   1. The Transcript lane (a plugin flow-view-timeline.js stacks, which
+ *      names it at the left with the other lanes), present only while a
+ *      transcript is attached. Synced: one row of sentence blocks at their
+ *      wall times (hover: time, speaker, text; click: seek). Not synced: the
+ *      label says so. The label carries Sync, Replace and Remove in both
+ *      states.
  *   2. Sync, the H4 video re-sync pattern (a non-blocking card, Cancel,
  *      Escape cancels): step 1 picks a sentence from a searchable list, step
  *      2 is a click on the timeline where it was said. The offset goes to
@@ -91,8 +92,9 @@ function transcriptLane(env) {
       const label = document.createElement("div");
       label.className = "tl-tr-label";
       label.style.top = (top + 2) + "px";   // a 16px row inside the 20px label row
-      label.innerHTML = '<span class="tl-tr-name">Transcript</span>' +
-        (placed.synced ? "" : '<span class="tl-tr-state">Not synced</span>') +
+      // The lane's name, Transcript, is at the left with the other lanes'
+      // (flow-view-timeline.js renderLaneNames).
+      label.innerHTML = (placed.synced ? "" : '<span class="tl-tr-state">Not synced</span>') +
         '<button type="button" class="link-btn tl-tr-sync" title="Place the transcript on the recording: ' +
         'pick a sentence, then click the moment on the timeline where it was said.">Sync...</button>' +
         '<button type="button" class="link-btn tl-tr-replace" title="' + escapeAttr(TM.REPLACE_TITLE) + '">Replace...</button>' +

@@ -9,8 +9,15 @@
  *       stores its path relative to the folder;
  *   (b) the map boxes name their system under the step name;
  *   (c) the step panel from each of its three doors (a map box, a timeline
- *       step band, a Steps row with Watch) plays the right occurrence in its
- *       own video, beside the content;
+ *       step band, a Steps row with Watch) opens with its own video cued to
+ *       the row it highlights and plays the right occurrence there, beside
+ *       the content;
+ *   (g) the owner's review: one line above the rows says what they are,
+ *       built from them, each row reads "Transaction N · m:ss into the
+ *       recording · took Ns", a second time in one transaction reads
+ *       "Transaction 2, again", and a row's play moves the highlight;
+ *   (L) the Timeline's lanes show their names at the left, each with a
+ *       tooltip, and the minimap's tooltip says what it is;
  *   (d) closed on Steps, it stays closed while rows are selected;
  *   (f) the As-Is map (C18, AD-32), with a note and a file on a step: Export,
  *       Process map (image), with no As-Is copy saves the step BPMN drawn by
@@ -35,6 +42,7 @@ const { launchViewer, logActionError } = require("./throwaway-profile.js");
 
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
+const StepFacts = require(path.join(VIEWER, "step-facts.js"));
 const SRC = path.join(REPO, "sessions", "example-aggregate", "sess-2026-0514-0900");
 const electronPath = require(path.join(VIEWER, "node_modules", "electron"));
 const VIDEO = path.join(os.tmpdir(), "pdt-e2e-synthetic-32s-v1.webm");
@@ -72,7 +80,9 @@ async function open(folder, errs) {
   return { v, page };
 }
 
-/* The panel's state, and where its video is. */
+/* The panel's state, and where its video is. A row's `at` is what it reads
+   ("Transaction 1 · 0:39 into the recording · took 8s"); `focus` and
+   `current` say it is the highlighted row, the one the video is at. */
 const panelState = (page) => page.evaluate(() => {
   const p = document.getElementById("step-panel");
   const v = document.getElementById("sp-video");
@@ -80,12 +90,22 @@ const panelState = (page) => page.evaluate(() => {
     shown: !!p && !p.hidden, name: ((document.getElementById("sp-name") || {}).textContent || "").trim(),
     system: ((document.querySelector("#sp-about .sp-system") || {}).textContent || "").trim(),
     count: ((document.querySelector("#sp-about .sp-count") || {}).textContent || "").trim(),
+    explain: ((document.getElementById("sp-explain") || {}).textContent || "").trim(),
     rows: [...document.querySelectorAll("#sp-body .sp-occ")].map((r) => ({ id: r.dataset.stepId,
-      at: ((r.querySelector(".sp-at") || {}).textContent || "").trim(), focus: r.classList.contains("focus") })),
+      at: ((r.querySelector(".sp-at") || {}).textContent || "").trim(), focus: r.classList.contains("focus"),
+      current: r.getAttribute("aria-current") === "true", play: !!r.querySelector(".sp-play"),
+      leads: [...r.querySelectorAll(".sp-lead")].map((l) => (l.textContent || "").trim()), shots: r.querySelectorAll(".sp-shot").length })),
     foot: [...document.querySelectorAll("#sp-body .sp-foot button")].map((b) => (b.textContent || "").trim()),
     video: v ? { t: v.currentTime, paused: v.paused, src: !!v.getAttribute("src") } : null,
   };
 });
+
+/* The line above the rows, as the rows shown make it (step-facts.js builds
+   it; the unit tests pin its wording): "Transaction N" read from each row. */
+const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r) => {
+  const m = /^Transaction (\d+)/.exec(r.at);
+  return { run: m ? { ordinal: Number(m[1]) } : null };
+}), runCount, st.rows.filter((r) => r.play).length);
 
 (async () => {
   const S = freshSession();
@@ -163,6 +183,21 @@ const panelState = (page) => page.evaluate(() => {
     return { want: Math.round(want * 10) / 10, t: st.video && Math.round(st.video.t * 10) / 10, paused: st.video && st.video.paused,
       ok: !!(st.video && !st.video.paused && st.video.t >= want - 0.3 && st.video.t <= want + 2.5) };
   };
+  /* Cue check (the owner's review): the panel opened with its video paused
+     at the step's start, not where the video last was, and the step's row is
+     the one highlighted. */
+  const cued = async (step) => {
+    const want = expectAt(step);
+    const still = await page.waitForFunction((w) => {
+      const v = document.getElementById("sp-video");
+      return !!(v && v.paused && !v.seeking && v.readyState >= 1 && Math.abs(v.currentTime - w) <= 0.3);
+    }, want, { timeout: T }).then(() => true, () => false);
+    const st = await panelState(page);
+    const lit = st.rows.filter((r) => r.focus || r.current);
+    return { want: Math.round(want * 10) / 10, t: st.video && Math.round(st.video.t * 10) / 10, paused: st.video && st.video.paused,
+      lit: lit.map((r) => r.id === step.step_id && r.focus && r.current),
+      ok: still && lit.length === 1 && lit[0].id === step.step_id && lit[0].focus && lit[0].current };
+  };
 
   // (b) + (c1) The map: every box names its system; a box opens the panel.
   let map = {}, fromMap = null;
@@ -179,9 +214,10 @@ const panelState = (page) => page.evaluate(() => {
       return { all, save: { system: n.data("system"), label: n.data("label") } };
     }, SAVE.name);
     await page.waitForSelector("#step-panel:not([hidden])", { timeout: T });
+    const cue = await cued(SAVE);
     const st = await panelState(page);
     await page.locator('#sp-body .sp-occ[data-step-id="' + SAVE.step_id + '"] .sp-play').click({ timeout: T });
-    fromMap = Object.assign({ st }, await played(SAVE));
+    fromMap = Object.assign({ st, cue }, await played(SAVE));
   } catch (e) { map.err = errText(e); }
   record("(b) V2 item 3: every map box names its system under the step name (Salesforce, SAP, Excel, Outlook, Notepad; never the browser)",
     !map.err && map.all.length > 0 && map.all.every((n) => n.system && n.label === n.id + "\n" + n.system) &&
@@ -190,9 +226,42 @@ const panelState = (page) => page.evaluate(() => {
   record("(c1) V2 item 4 + AD-29: a map box opens the step panel beside the map (its name, system, transactions, one row per occurrence, Open in Steps) and plays the Transaction 1 occurrence in its video",
     !!(fromMap && fromMap.ok && fromMap.st.shown && fromMap.st.name === SAVE.name && /^Salesforce/.test(fromMap.st.system) &&
       /^In \d of 4 transactions, about \d+s each$/.test(fromMap.st.count) && fromMap.st.rows.length >= 3 &&
-      /^Transaction 1 at \d+:\d{2}$/.test(fromMap.st.rows[0].at) && JSON.stringify(fromMap.st.foot) === '["Open in Steps"]' &&
+      /^Transaction 1 · \d+:\d{2} into the recording · took \d+s$/.test(fromMap.st.rows[0].at) &&
+      JSON.stringify(fromMap.st.foot) === '["Open in Steps"]' &&
       await page.evaluate(() => document.getElementById("session-map-dfg-host").getBoundingClientRect().width > 300)),
     JSON.stringify(map.err || fromMap));
+  const mapRows = fromMap ? fromMap.st.rows : [];
+  record("(g1) the owner's review: one line above the rows says what they are, built from them (\"This step happened N times: ... Play any of them.\"); each row reads \"Transaction N · m:ss into the recording · took Ns\"; the panel opens with its video paused at the row it highlights (a map box: Transaction 1), not where the video was",
+    !!(fromMap && fromMap.cue.ok && /^This step happened .+\. Play any of them\.$/.test(fromMap.st.explain) &&
+      fromMap.st.explain === lineFromRows(fromMap.st, 4) && mapRows.every((r) => r.play) &&
+      mapRows.every((r) => /^Transaction \d(, again)? · \d+:\d{2} into the recording · took \d+s$/.test(r.at)) &&
+      mapRows[0].id === SAVE.step_id),
+    JSON.stringify(map.err || { explain: fromMap.st.explain, fromRows: lineFromRows(fromMap.st, 4), rows: mapRows.map((r) => r.at), cue: fromMap.cue }));
+
+  // (g2) A step done twice in one transaction: va01's Check document (the
+  // demo's order is checked again in its second transaction).
+  const CHECK = "va01: Check document";
+  let twice = {};
+  try {
+    await page.evaluate((id) => document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"), CHECK);
+    await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, CHECK, { timeout: T });
+    twice.st = await panelState(page);
+    const first = anno.steps.find((s) => s.step_id === (twice.st.rows[0] || {}).id);
+    twice.cue = first ? await cued(first) : { ok: false, why: "no first row" };
+    // A row's play moves the highlight to it (its moment is past the 32 s
+    // video's end, so only the highlight is checked).
+    const again = twice.st.rows[2] || {};
+    await page.locator('#sp-body .sp-occ[data-step-id="' + again.id + '"] .sp-play').click({ timeout: T });
+    await wait(300);
+    twice.lit = (await panelState(page)).rows.filter((r) => r.focus || r.current).map((r) => ({ id: r.id, focus: r.focus, current: r.current }));
+    twice.againId = again.id;
+  } catch (e) { twice.err = errText(e); }
+  const tr = (twice.st && twice.st.rows) || [];
+  record("(g2) the owner's review: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play any of them.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row, and a row's play moves the highlight to that row",
+    !!(!twice.err && twice.st.explain === "This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play any of them." &&
+      JSON.stringify(tr.map((r) => r.at.split(" · ")[0])) === JSON.stringify(["Transaction 1", "Transaction 2", "Transaction 2, again", "Transaction 3", "Transaction 4"]) &&
+      twice.cue.ok && twice.lit.length === 1 && twice.lit[0].id === twice.againId && twice.lit[0].focus && twice.lit[0].current),
+    JSON.stringify(twice.err ? twice : { explain: twice.st.explain, rows: tr.map((r) => r.at), cue: twice.cue, lit: twice.lit, again: twice.againId }));
 
   // (c2) A timeline step band (the Steps lane is on by default).
   let fromBand = {};
@@ -203,13 +272,51 @@ const panelState = (page) => page.evaluate(() => {
     await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
       .dispatchEvent(new MouseEvent("click", { bubbles: true })), OPEN.step_id);
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, OPEN.name, { timeout: T });
+    fromBand.cue = await cued(OPEN);
     fromBand.st = await panelState(page);
     await page.locator("#sp-body .sp-occ.focus .sp-play").click({ timeout: T });
     Object.assign(fromBand, await played(OPEN));
   } catch (e) { fromBand.err = errText(e); }
-  record("(c2) V2 items 4 and 8: the Steps lane is on by default, and a click on its band opens the panel on that step and plays it",
-    !!(!fromBand.err && fromBand.laneOn && fromBand.ok && fromBand.st.rows.some((r) => r.focus && r.id === OPEN.step_id)),
+  record("(c2) V2 items 4 and 8: the Steps lane is on by default, and a click on its band opens the panel on that step, its video cued there (the row highlighted), and plays it",
+    !!(!fromBand.err && fromBand.laneOn && fromBand.ok && fromBand.cue.ok && fromBand.st.rows.some((r) => r.focus && r.id === OPEN.step_id)),
     JSON.stringify(fromBand));
+
+  // (L) The owner's review: each lane shows its name at the left, in the
+  // lane's row, with a tooltip saying what it shows; the minimap says what
+  // it is. The default lanes, then Screenshots turned on (and off again).
+  const lanes = {};
+  const laneNames = () => page.evaluate(() => {
+    const mid = (el) => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; };
+    const within = (y, sel) => [...document.querySelectorAll(sel)].some((b) => { const r = b.getBoundingClientRect(); return r.height > 0 && y >= r.top && y <= r.bottom; });
+    const MARK = { cases: "#timeline .tl-case-band", activity: "#timeline .tl-activity", screenshots: "#timeline .tl-screenshot", steps: "#timeline .tl-step-band" };
+    const col = document.getElementById("tl-lane-names");
+    const tl = document.getElementById("timeline-scroll").getBoundingClientRect();
+    return {
+      leftOfTimeline: !!col && !col.hidden && col.getBoundingClientRect().right <= tl.left + 1,
+      names: [...document.querySelectorAll("#tl-lane-names .tl-lane-name")].map((n) => ({ lane: n.dataset.lane, text: (n.textContent || "").trim(),
+        title: n.title, inLane: MARK[n.dataset.lane] ? within(mid(n), MARK[n.dataset.lane]) : null, whole: n.scrollWidth <= n.clientWidth })),
+    };
+  });
+  try {
+    lanes.def = await laneNames();
+    await page.locator("#btn-lanes").click({ timeout: T });
+    await page.locator('#lanes-popup input[data-lane="screenshots"]').check({ timeout: T });
+    await page.waitForSelector("#tl-lane-names .tl-lane-name[data-lane=\"screenshots\"]", { timeout: T });
+    lanes.shots = await laneNames();
+    await page.locator('#lanes-popup input[data-lane="screenshots"]').uncheck({ timeout: T });
+    await page.locator("#btn-lanes").click({ timeout: T });
+    await page.locator("#btn-zoom-in").click({ timeout: T });
+    lanes.minimap = await page.evaluate(() => { const m = document.getElementById("timeline-minimap"); return { shown: getComputedStyle(m).display !== "none", title: m.title }; });
+    await page.locator("#btn-zoom-reset").click({ timeout: T });
+  } catch (e) { lanes.err = errText(e); }
+  const said = (list) => (list || []).map((n) => n.text);
+  const eachOk = (list) => (list || []).every((n) => n.title.startsWith(n.text + ": ") && n.inLane === true && n.whole);
+  record("(L) the owner's review: the Timeline's lanes show their names at the left (Transactions, Systems, Steps; Screenshots once turned on), each in its lane's row with a tooltip saying what it shows; the minimap's tooltip says it is the whole recording",
+    !!(!lanes.err && lanes.def.leftOfTimeline && JSON.stringify(said(lanes.def.names)) === '["Transactions","Systems","Steps"]' && eachOk(lanes.def.names) &&
+      JSON.stringify(said(lanes.shots.names)) === '["Transactions","Systems","Screenshots","Steps"]' && eachOk(lanes.shots.names) &&
+      lanes.def.names.find((n) => n.lane === "steps").title === "Steps: each step of each transaction; click one to see all its moments." &&
+      lanes.minimap.shown && /^The whole recording/.test(lanes.minimap.title)),
+    JSON.stringify(lanes));
 
   // (c3) A Steps row, and Watch in the step pane.
   let fromRow = {};
@@ -217,15 +324,18 @@ const panelState = (page) => page.evaluate(() => {
     await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
     await page.locator('#step-list .step-row[data-step-id="' + SEARCH.step_id + '"]').click({ timeout: T });
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, SEARCH.name, { timeout: T });
+    fromRow.cue = await cued(SEARCH);
     fromRow.st = await panelState(page);
     await page.locator("#btn-step-watch").click({ timeout: T });
     Object.assign(fromRow, await played(SEARCH));
     fromRow.level = await page.evaluate(() => require("./state.js").getLevel());
     fromRow.listWidth = await page.evaluate(() => Math.round(document.getElementById("step-list").getBoundingClientRect().width));
   } catch (e) { fromRow.err = errText(e); }
-  record("(c3) V2 item 4: a selected Steps row opens the panel beside the list (Show on timeline), and Watch in the step pane plays the step there without leaving Steps",
-    !!(!fromRow.err && fromRow.ok && fromRow.level === "steps" && fromRow.listWidth > 250 &&
-      JSON.stringify(fromRow.st.foot) === '["Show on timeline"]'), JSON.stringify(fromRow));
+  const rowShots = ((fromRow.st && fromRow.st.rows) || []);
+  record("(c3) V2 item 4: a selected Steps row opens the panel beside the list (Show on timeline), its video cued to that row, and Watch in the step pane plays the step there without leaving Steps; a row's screenshots sit under a Screenshots lead",
+    !!(!fromRow.err && fromRow.ok && fromRow.cue.ok && fromRow.level === "steps" && fromRow.listWidth > 250 &&
+      JSON.stringify(fromRow.st.foot) === '["Show on timeline"]' && rowShots.some((r) => r.shots > 0) &&
+      rowShots.every((r) => (r.shots > 0) === (r.leads[0] === "Screenshots"))), JSON.stringify(fromRow));
 
   // (d) Closed on Steps, the panel stays closed while rows are selected.
   let closed = {};
@@ -400,10 +510,11 @@ const panelState = (page) => page.evaluate(() => {
     !failed.f1 && im.bpmnJs && !im.liveMap && im.note && im.file && im.legend && im.suggested === "process-map.svg" && im.revealed && im.level === "steps",
     JSON.stringify(failed.f1 || im));
   const tk = asis.task || {};
-  record("(f2) C18: with an As-Is copy chosen, the Map shows it drawn by bpmn-js (no picture), and a task opens the panel on its step (Transaction 1 in focus) with its play buttons, which play it",
+  const saveRow = ((tk.st && tk.st.rows) || []).find((r) => r.id === SAVE.step_id) || {};
+  record("(f2) C18: with an As-Is copy chosen, the Map shows it drawn by bpmn-js (no picture), and a task opens the panel on its step (Transaction 1 in focus) with its play buttons, which play it; the step's note shows in its row under a Notes lead",
     !!(!failed.f2 && asis.view && asis.view.shown && !asis.view.img && asis.view.viewer && asis.view.live === "none" &&
       tk.st && tk.st.shown && tk.st.name === SAVE.name && tk.st.rows.some((r) => r.focus && r.id === SAVE.step_id) &&
-      tk.plays === tk.st.rows.length && tk.ok),
+      tk.plays === tk.st.rows.length && tk.ok && JSON.stringify(saveRow.leads) === '["Notes"]'),
     JSON.stringify(failed.f2 || { view: asis.view, task: tk }));
   record("(f3) C18: a file on the As-Is map opens its attachment through the safe open path (attachments/ of the project)",
     !failed.f3 && !!asis.opened && path.resolve(asis.opened).toLowerCase() === path.resolve(S, "attachments", ATT.file).toLowerCase(),
