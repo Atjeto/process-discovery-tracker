@@ -12,7 +12,7 @@
  *      the next act. Once every act before the export is done it shrinks to
  *      one short line, so the home leads with the document. The As-Is map is
  *      not an act (AD-28): the PDD embeds the edited As-Is copy when there is
- *      one, else the map from the transactions.
+ *      one, else the process map (process_map_step.bpmn).
  *   2. the project line: the project (or, once written, the document title),
  *      who recorded it, its transactions, the reference transaction's steps,
  *      and the video and the transcript, each with its Attach; plus a warning

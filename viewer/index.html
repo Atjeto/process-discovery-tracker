@@ -80,13 +80,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <span>Export</span><span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="session-export-popup" style="display:none">
-        <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is your edited As-Is map when there is one, else the map from the transactions.">PDD (.docx)</button>
+        <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is the one the Map shows first, your edited As-Is map when there is one, else the process map.">PDD (.docx)</button>
         <!-- P2.12: both map items save the As-Is map chosen for the PDD
-             when there is one, else the map from the transactions
+             when there is one, else the process map
              (process_map_step.bpmn; the image drawn as the PDD draws it).
              C19: the image is the map the Map level shows (a sub-process's
              when one is chosen there); the BPMN file holds every map. -->
-        <button class="project-menu-item" id="btn-session-map-svg" title="Save the map the Map shows as an SVG image: the As-Is map chosen for the PDD, else the map from the transactions, as the PDD prints it. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
+        <button class="project-menu-item" id="btn-session-map-svg" title="Save the map the Map shows as an SVG image: the As-Is map chosen for the PDD, else the process map, as the PDD prints it. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
         <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
         <!-- One zip of the whole project folder, next to it (project-zip.js). -->
         <button class="project-menu-item" id="btn-session-zip" title="Make one zip of the whole project folder, next to it: the recording, your work, the video, the transcript, screenshots, attachments and edited maps. The way to hand the project to someone.">Whole project (.zip)</button>
@@ -422,7 +422,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Reference transaction.</strong> In Steps, check transaction 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm transaction</em>.</li>
             <li><strong>Other transactions.</strong> The other transactions arrive drafted and named like the reference transaction. Open each one in Steps: it lists how it differs from the reference transaction (extra, skipped or reordered steps). Fix a step where needed; the other transactions are not confirmed.</li>
             <li><strong>Document.</strong> On the Overview, you write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the map from the transactions.</li>
+            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is the one the Map shows first: your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the process map.</li>
           </ol>
           <p>Every change you make saves itself to the project folder: the top bar says <em>Saved</em>, and pointing at it shows the folder. That folder holds the whole project, with its video, transcript, screenshots, attachments and edited maps. To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it.</p>
           <h3>What the Overview shows</h3>

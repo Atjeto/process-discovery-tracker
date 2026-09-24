@@ -620,3 +620,10 @@ no separate image file per map (the owner's remark about images described today'
   differences, data and times below the main level in the PDD; sub-steps in saved processes (C5
   stays flat); merge, split and adding a moment on a sub-process; the draft-fix counter below the
   main level; sub-steps drafted from events outside the step's evidence.
+
+- **Amended by lane MV (2026-09-24)**, for C15, C18 and C19: the Map opens on the map the PDD
+  prints, the chosen As-Is copy else `process_map_step.bpmn`, drawn by bpmn-js and linked like
+  the As-Is view (`viewer/map-view.js` decides). The live map is the second view (*Show how the
+  transactions ran*). At a level the copy has no plane for, the step map's plane shows with one
+  line saying so. A stale step map is analyzed once when the Map needs it. *Edit* keeps a copy
+  only from its first change.

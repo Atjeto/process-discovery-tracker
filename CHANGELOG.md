@@ -29,7 +29,8 @@ implementation notes
   every future draft of the same control and screen, within the project
   and across later projects. Names given in a project travel with its
   folder, so the project drafts the same names on another machine. The
-  Saved names list, in the Steps toolbar, renames or forgets a name.
+  Remembered step names list, in the Steps toolbar, renames or forgets a
+  name.
 - **Differences between transactions**: every transaction other than the
   reference transaction lists how it differs from it (a skipped step, an
   extra step, a different order), or says it has none. The PDD's
@@ -38,12 +39,8 @@ implementation notes
   reference transaction repeats the merge on the same drafts in every
   other transaction (one undo), and a draft hidden in the reference
   transaction can be hidden in all of them at once.
-- **Reopen transaction**, the inverse of Confirm transaction.
-- **Saved processes**: "Save as this process" stores the confirmed
-  reference transaction. A later project of the same process that has no
-  confirmed reference transaction yet is compared with the closest saved
-  process, with "Stop comparing" to turn that off and "Forget this saved
-  process" to remove it (Undo brings it back).
+- **Undo confirm**, the inverse of Confirm transaction: the confirmed steps
+  become drafts again.
 - **Step flow**: a step can say when it happens and where the process goes
   after it. *Only when...* in the step pane gives the step a condition: the
   map draws a decision, with the condition on the way into the step and an
@@ -159,7 +156,13 @@ implementation notes
   resize the Steps level's two panes; double-click resets it.
 - **The step panel explains itself**: a line says how often the step
   happened and in which transactions. Each row reads "Transaction 1 · 0:39
-  into the recording · took 8s", and the Timeline names its lanes.
+  into the recording · took 8s". The Timeline has a header column with each
+  lane's name and key.
+- **The Map shows the map the PDD prints**:
+  - It opens on the step map (or the chosen As-Is copy), drawn and linked like
+    the As-Is view; *Show how the transactions ran* switches to the live map.
+  - Opening the editor and leaving it without a change keeps no copy.
+  - Ctrl+Z and Ctrl+Y undo and redo map edits inside the editor.
 
 ### Changed
 
@@ -183,15 +186,16 @@ implementation notes
   have a grid; each map gets a page of its own, landscape when it is wide.
   The analyst's fields survive a re-export.
 - **The analysis runs by itself**: a project is analyzed when it opens
-  without a current analysis, after Leave apps out and after a time range
-  is left out, when making the As-Is map and before a PDD export. One line
+  without a current analysis, after Apps outside the process and after a
+  time range is left out, when the Map's picture is older than the steps,
+  when making the As-Is map and before a PDD export. One line
   in the top bar says so, with Cancel; the log shows only when an analysis
   fails.
   Apply marker changes stays deliberate, and Help, Troubleshooting has
   Re-analyze.
 - **One top bar and no More menu**: New and Open are two menus; the video
-  and transcript actions sit on the project line, Leave apps out and Saved
-  names in the Steps toolbar. Flow is now called the Timeline.
+  and transcript actions sit on the project line, Apps outside the process
+  and Remembered step names in the Steps toolbar. Flow is now called the Timeline.
 - **Observations instead of findings** on the Overview, measured from the
   recording: the data typed twice (per field, where the recording says
   which) and where the time goes (per step and per system, with the
@@ -248,8 +252,9 @@ implementation notes
   map draws (its steps, events, paths, notes and files), not the file's
   bytes; a copy made before keeps the old comparison.
 - **A richer map**: the BPMN file draws a decision for a step that happens
-  only under a condition, names each early end after its condition, marks
-  recorded steps as user tasks and steps added by hand as manual tasks,
+  only under a condition, names each early end after its condition, draws
+  a step done in a system as a plain task and one done outside every system
+  as a manual task (the hand, explained in the legend),
   shows a step's notes beside it and its attached files under it, and gives
   each system a colour, with a legend. Task names stay the step names, so a
   BPMN tool imports them clean. An As-Is copy made before offers Copy again
@@ -289,8 +294,9 @@ Preserved in full on the `product-edition` branch.
   Suggested markers and anchor-candidate detection (for a recording with no
   fired markers) are cut; a missed marker is now added by hand ("Start a
   transaction here" on the Timeline).
-- **Canonical step sets and the Process Template workbench**, replaced by
-  saved processes (above).
+- **Canonical step sets, the Process Template workbench and saved
+  processes**: a process is recorded once, and comparing recordings is the
+  product line.
 - **The in-app vocabulary discovery workbench** ("Discover from window"
   and the App Library match workbench), replaced by remembered names
   (above); the shipped application vocabularies still enrich control
