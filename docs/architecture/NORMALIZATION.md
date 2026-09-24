@@ -3,7 +3,7 @@
 > Overview level. Field-level formats are in
 > [`shared/SCHEMA.md`](../../shared/SCHEMA.md); the decisions behind the
 > light version are in [ADR-0029](../adr/0029-ba-helper-refocus.md) and the
-> data contracts (C1 to C16) it points to.
+> data contracts (C1 to C18) it points to.
 
 ## Purpose and entry points
 
@@ -71,11 +71,13 @@ The session golden. It copies each of the 10 demo sessions in
 `sessions/example-aggregate/` to a temp folder, runs `normalize.py --mine`
 there, and compares a projection with `normalization/golden/`: stable
 `stats.json` meta counts, the step count, the distinct `process_label` set,
-and the step map's task names with its start and end events. Gateway and
-flow counts are left out because they move with the pm4py version; the
-viewer's e2e connectivity check pins the map's shape instead. Run it with a
-Python that has the pipeline dependencies (the bundled one); `--update`
-rewrites the goldens after an intended output change only. Detail:
+and the step map's task names, its tasks counted by kind (user and manual
+tasks, contract C18; none is left a plain task), and its start and end
+events with the end's name. Gateway and flow counts are left out because
+they move with the pm4py version; the viewer's e2e connectivity check pins
+the map's shape instead. Run it with a Python that has the pipeline
+dependencies (the bundled one); `--update` rewrites the goldens after an
+intended output change only. Detail:
 [normalization/golden/README.md](../../normalization/golden/README.md).
 
 ## Pipeline stages
@@ -126,7 +128,9 @@ helpers in `pipeline_stages.py`, in this order:
    `_merge_steps()` keeps every analyst-owned step (`confirmed`, `edited`,
    `manually_authored`, `hidden`), drops a fresh draft that overlaps one, lets
    a fresh draft inherit the `step_id` of the step it re-covers, and restamps
-   `process_label` and `grain_keys` on every step.
+   `process_label` and `grain_keys` on every step. A draft that still
+   carries a step flow key (`only_when` or `links`, contract C17) is the
+   analyst's: it is kept as `edited`, so no analysis drafts the flow away.
    `restamp_preserved_case_ids` (C9) moves a preserved step whose run no
    longer exists to the run that contains it in time. The merged steps are
    written to `annotations.json` here.
@@ -166,7 +170,7 @@ canonical matching and drift markers; phases; PII masking; the EUR-ROI stage;
 the PDD's findings section. Older session folders may still hold the removed
 files; nothing reads them.
 
-## The step map (`process_map_step.bpmn`, contract C15)
+## The step map (`process_map_step.bpmn`, contracts C15, C17, C18)
 
 `bpmn_observed.write_observed_bpmn` builds one trace per run from the run's
 visible steps, labelled by `process_label`, in the run's step order (time,
@@ -174,22 +178,69 @@ then `order` for the steps without a time), a step repeated back to back
 counted once. One run is drawn as a plain sequence; two or more runs go
 through pm4py's inductive miner (`mining.discover_inductive`). Steps
 outside every run are left out.
+
+**The flow the analyst set (C17).** When the steps carry a condition
+(`only_when`) or links (`links`) that change the map
+(`step_flow.changes_map`: an edge with a label, or one no transaction
+took), the map is drawn from the step flow edges instead of the chain or
+the miner. `step_flow.flow_edges` is the rule the viewer's live map uses
+too (`shared/flow-links-golden.json` pins both): the consecutive steps of
+each transaction, a condition on the edge into its step with an
+"otherwise" edge around it, a link from its step to the target or to the
+end, one edge per pair of map nodes with its labels joined by " or ". An
+exclusive gateway goes after a step with several ways out and before a
+step with several ways in; each label (a condition, "otherwise", a link's
+`when`) names its flow, cut after a whole word within 48 characters and
+whole in the flow's documentation.
+
 `mining.export_bpmn` writes valid BPMN 2.0 with diagram interchange and its
 own pure-Python layout: left to right, wrapped into rows when one row would
 print its labels below 8.5 pt on a landscape page, every flow routed around
-the boxes. What a BPMN tool receives besides the shapes:
+the boxes, and every element and name placed clear of the boxes, the lines
+and the other names. What a BPMN tool receives besides the shapes:
 
-- each task's `<bpmn:documentation>`: the step's analyst description (the
+- **Tasks** named by the step names (the system stays out of the name, so
+  an import into a BPMN tool stays clean). A task is a `manualTask` when
+  every step it stands for was added by hand (manually authored, no
+  recorded interaction), else a `userTask` (C18).
+- Each task's `<bpmn:documentation>`: the step's analyst description (the
   pattern run's first), then one line "System, screen. In N of M
   transactions, T on average." (no run count for the implicit run, no time
-  when no step of the task has one);
-- the start and end events named from the first line of the document's
-  `trigger` and `result` (unnamed while those are empty);
-- each flow leaving a branching gateway named "N of M transactions".
+  when no step of the task has one).
+- **Events.** The start event is named from the first line of the
+  document's `trigger` (unnamed while it is empty), the main end event from
+  the first line of `result`, else "End". A link to the end from a step no
+  transaction ended at gets an end event of its own, named by its `when`
+  (cut like a flow name, whole in its documentation; the flow into it
+  carries no name, so the `when` is said once). A link without a `when`,
+  or from a step where a transaction ended, goes to the main end.
+- **Branch names.** A branch leaving a gateway without a declared name says
+  "N of M transactions", the transactions that took it (not counted in the
+  implicit run of a session without a recording).
+- **A colour per system** (C18): each task's fill and stroke, written as
+  bpmn-js's `bioc:fill` and `bioc:stroke` (other tools ignore them), from a
+  palette of nine named colours in the order the systems are first used
+  (the reference transaction first: the PDD's order). A tenth system and
+  later keep the default look. One text annotation, `TextAnnotation_legend`,
+  lists them: "Colour by system", then one line per system ("SAP: orange",
+  "no colour" past the palette). It sits inside the map where there is
+  room, else beside or under it.
+- **Notes** (C18): the analyst's notes on a task's steps (`analyst_notes`
+  with a `step_id`) are one text annotation above the task, joined by an
+  association: one note per line, the text cut after a whole word within 90
+  characters, whole in the annotation's documentation. A note on a moment
+  is on no task.
+- **Attachments** (C18): each file attached to a task's steps is a data
+  object under it (`DataObjectReference_<attachment id>`, named by the
+  label, else the file name, documented with `attachments/<file>`), joined
+  by a data input association.
+- A step name on several tasks (a transaction that comes back to a step)
+  shows its notes and files on the first.
 
-It is the file Edit as the As-Is map copies (a reference map, ADR-0019) and
-the map the PDD prints when no As-Is copy is chosen. The pipeline never
-touches a copy.
+It is the file Edit as the As-Is map copies (a reference map, ADR-0019),
+the map the PDD prints when no As-Is copy is chosen, and the picture
+Export's Process map (image) saves then; the viewer draws each with bpmn-js.
+The pipeline never touches a copy.
 
 ## The PDD (`pdd_export.py`)
 
@@ -214,9 +265,12 @@ gaps. The sections, in the reader's order:
    the steps that followed it, with the number of runs) and a line naming
    `process_map_step.bpmn`. 3.2 the steps of the reference run: first the
    systems the process runs through, then one heading per step with its
-   context line, its description (C7: the analyst's text; a draft's
-   generated narration is left out), the fields it entered, its
-   attachments, its screenshots and the waste flag.
+   context line, "Only when ..." when the step has a condition (C17), its
+   description (C7: the analyst's text; a draft's generated narration is
+   left out), the fields it entered, its attachments, its screenshots, the
+   waste flag, and one line per link: "Then goes back to step N, <name>,
+   when ...", "Then goes on to step N ...", "Then skips to step N ..." or
+   "The process ends here when ...".
 4. **Variations, rules and exceptions.** 4.1 how each other run differed
    from the reference run (extra steps with their system, where and in how
    many runs; skipped steps; a different order; steps repeated within a
@@ -253,7 +307,9 @@ embedded.
 
 The PDD prints no analysis finding and reads no analysis stage, so a failed
 stage changes nothing in it. The notes the analyst pins to steps and moments
-(`annotations.analyst_notes`) are context in the viewer and are not printed.
+(`annotations.analyst_notes`) are context in the viewer: the PDD's text
+leaves them out, while its picture of the step map shows a step's notes
+beside its task (above).
 
 ## System names (`shared/system-names.json`, contract C14)
 
@@ -331,8 +387,9 @@ SCHEMA.md.
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
 | `case_quality.py`, `motifs.py`, `facts.py`, `findings.py` | The measured blocks of `analysis.json`: run coverage, repeated sequences, direct measurements, and the findings detectors with their evidence. |
 | `analysis*.py` | The step-based estimates: waste, time study, segments, automation candidates (ranked by `instance_count x mean_elapsed_ms x 0.7`), efficiency. |
-| `mining.py` | pm4py's inductive miner and the pure-Python BPMN writer and layout; only the step map uses it. |
-| `bpmn_observed.py` | The step map from the runs' visible steps, with its documentation, event names and branch names. |
+| `mining.py` | pm4py's inductive miner and the pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest); only the step map uses it. |
+| `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, and what C18 adds beside the tasks (`_map_extras`). |
+| `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of`. |
 | `pdd_export.py` | The PDD (above). |
 | `memo_export.py` | What is left of the findings memo: `run_rows` (the runs the PDD's tables read), the "could not run" wording, and `pdd_findings` (still written to `analysis.json`; nothing reads it). No memo document is written. |
 | `transcript_import.py` | The transcript parser and its CLI (above). |

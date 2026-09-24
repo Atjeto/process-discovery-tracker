@@ -26,8 +26,9 @@ session-integrity.json  every file's name and size, written at the end    captur
 annotations.json        the analyst sidecar                               viewer and pipeline
 annotations.json.2..5   rotating backups, newest first                    viewer
 derived_maps/           the editable As-Is and To-Be map copies           viewer
-screenshots/analyst/    screenshots the analyst adds by hand (C16)        viewer (not yet)
-attachments/            files the analyst attaches (C16)                  viewer (not yet)
+screenshots/analyst/    screenshots the analyst adds by hand (C16)        viewer
+attachments/            files the analyst attaches (C16)                  viewer
+video/                  an attached video, copied into the folder         viewer
 stats.json              statistics, the runs, draft_summary               pipeline
 analysis.json           facts, findings, analysis, stage_errors           pipeline
 process_map_step.bpmn   the step-level map (--mine)                       pipeline
@@ -43,9 +44,9 @@ The viewer never writes `transcript.json` itself except to set its
 A session can also start from a video or from nothing (`manifest.source`
 `"video"` or `"blank"`, contract C16): a folder with `manifest.json`, an
 empty `events.jsonl` and `annotations.json`, none of the capture files. The
-pipeline already analyzes such sessions and reads everything the analyst
-adds (screenshots, notes, attachments, a step's system); the viewer does not
-create them or write those keys yet.
+viewer makes them (its New menu) and writes everything the analyst adds
+(screenshots, notes, attachments, a step's system); the pipeline analyzes
+such sessions and reads those keys.
 
 Older folders, the committed demo sessions included, may also hold
 `events.xes`, `events.csv`, `dfg.json`, `process_map.bpmn` and
@@ -107,7 +108,7 @@ survives every re-analysis.
 | `external_video` | viewer | The attached video: `{ path, offset_ms, attached_at }` |
 | `step_filters` | viewer | Apps (and window titles) left out of the analysis |
 | `excluded_ranges[]` | viewer | Time spans left out of drafting and statistics |
-| `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer (not yet) | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; notes stay in the viewer |
+| `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; its text leaves the notes out, and the step map shows a step's notes and files beside its task (C18) |
 | `notes[]` | nobody now | The product edition's timestamped Flow notes; both writers seed it empty and round-trip old entries |
 | `analysis_overrides[]` | nobody now | Corrections to the waste and automation estimates; applied when an older file carries them |
 | `process_exclusions` | pipeline | What the self and ignored-app filter dropped; regenerated every run |
@@ -133,7 +134,7 @@ exits 2 without writing anything.
 |---|---|---|
 | `auto_suggested` | the drafting rule | No: replaced by the next drafts |
 | `confirmed` | Confirm transaction, on a draft left unchanged | Yes |
-| `edited` | the analyst changed a draft (rename, merge, split) | Yes |
+| `edited` | the analyst changed a draft (rename, merge, split, its flow) | Yes |
 | `manually_authored` | the analyst added a step | Yes |
 | `hidden` | the analyst hid a step | Yes, so a hidden draft never comes back |
 
@@ -159,7 +160,14 @@ Contract C16 adds keys a step may carry: `system` (set by the analyst; wins
 over the derived system), `order` (for a step without a time,
 `time_range: null`), `pdd_screenshot` (the one screenshot the PDD prints)
 and `hidden_screenshots` (recorder screenshots taken off the step). The
-pipeline reads them; the viewer does not write them yet.
+viewer writes them; the pipeline reads them.
+
+Contract C17 adds the flow the analyst sets on a step: `only_when` (the
+step happens only under this condition) and `links` (`[{ to, when }]`, to
+a step id or `"end"`: a loop back, a skip ahead or an early end). A draft
+that carries either stays `edited` through every analysis. The viewer's
+live map and the step map draw the same edges from them
+(`shared/flow-links-golden.json` pins both).
 
 ## The analyst's library
 

@@ -1,6 +1,6 @@
 # Viewer: the timeline
 
-> The Timeline level (`data-level="flow"`): the one timeline of a session,
+> The Timeline level (`data-level="flow"`): the one timeline of a project,
 > its lanes, its clock, and the video beside it. Read
 > [VIEWER.md](./VIEWER.md) first for the modules around it.
 
@@ -12,7 +12,7 @@
 | [`timeline/timeline-core.js`](../../viewer/timeline/timeline-core.js) | Pure layout: `chooseTicks` (the tick positions and labels), `packLanes`, `layoutLaneStack` and `renderLaneStack` (a stack of lane plugins). Unit-tested. |
 | [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | `timelineSpan()` (the stretch of time the timeline lays out), the playhead's place, seeking, Attach video and Sync video. |
 | [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane and the transcript's Sync. |
-| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click inserts a marker, adds a note, jumps to a step; a run band's menu), range selection, the Run select. |
+| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, jumps to a step; a transaction band's menu), range selection, the Transaction select. |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
 
 ## The one clock
@@ -23,9 +23,9 @@ notes, the Markers panel, the screenshot stamps and the transcript rows, as m:ss
 h:mm:ss from an hour. The origin is `manifest.started_at`, else the first
 event (`dom.recordingStartMs`); `chooseTicks(start, end, count, origin)`
 counts its ticks from it. The step pane, the step panel and the PDD's
-pointers ("Run 1 at 0:19") use the same clock. The time of day shows in one
-place only: the summary line above the timeline, "Recorded <date> <time> ·
-<length>".
+pointers ("Transaction 1 at 0:19") use the same clock. The time of day
+shows in one place only: the summary line above the timeline, "Recorded
+<date> <time> · <length>".
 
 ## The span
 
@@ -38,7 +38,7 @@ place only: the summary line above the timeline, "Recorded <date> <time> ·
   with no length in its file is measured by one seek past its end). The
   summary line reads "Video · <length>".
 - **A blank project** (nothing recorded, no video) has no span: the
-  timeline shows one line, "No recording and no video in this session.",
+  timeline shows one line, "No recording and no video in this project.",
   with *Attach video...* (`#tl-empty`). The legend and the minimap hide.
 
 ## The lanes
@@ -51,7 +51,7 @@ lane of height 0 is skipped. From top to bottom:
 | Lane | Shows | Clicks |
 |---|---|---|
 | Ticks | The time since the recording started; tick lines run down through the activity lane. | |
-| Runs | One band per run, labelled with its Start marker's label (else "Run N") when the band is wide enough; a run with no end runs to the end with a dashed edge. The runs are paired the way the pipeline pairs them: a Start while a run is open ends it (runs never nest), and the bands follow the markers the last analysis used. | Click: go to the run's start. Right-click: Jump to start, Jump to end. |
+| Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest), and the bands follow the markers the last analysis used. | Click: go to the transaction's start. Right-click: Jump to start, Jump to end. |
 | Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. Idle stretches and pending marker bars lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. |
 | Transcript | Only while a transcript is attached: the sentences said while the recording ran, at their times, once the transcript is placed (its own sync, else the synced video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
 | Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: go there. Right-click: Edit note, Delete note. |
@@ -65,14 +65,14 @@ and without a video a seek moves it and scrolls it into view.
 row (an "at desk" idle, where the recorder still saw input, looks
 different from "away"). **Pending markers**: a marker change waiting for
 *Apply marker changes* is drawn at once as a dashed bar, labelled
-"(pending)" on a Start; applied markers show as run bands and in the
-Markers panel.
+"(pending)" on a Start; applied markers show as transaction bands and in
+the Markers panel.
 
 **The lanes menu** (`#btn-lanes`) turns lanes on and off: Idle, Screenshots,
-Runs, Steps, and Transcript and Notes while they exist. A fresh profile
-shows Idle, Runs and Steps (and Transcript and Notes when there is one);
-Screenshots starts off. The choice persists in `pdt.timelineLanes`. The
-activity lane has no toggle.
+Transactions, Steps, and Transcript and Notes while they exist. A fresh
+profile shows Idle, Transactions and Steps (and Transcript and Notes when
+there is one); Screenshots starts off. The choice persists in
+`pdt.timelineLanes`. The activity lane has no toggle.
 
 **The legend** under the timeline names the systems drawn and explains only
 the marks on screen: idle, a pending marker, a screenshot, a note.
@@ -82,30 +82,30 @@ the marks on screen: idle, a pending marker, a screenshot, a note.
 A right-click on the activity row or on the timeline's background opens one
 menu at the moment clicked:
 
-- *Insert Start marker here...* and *Insert End marker here*: a marker edit,
-  shown at once as pending; *Apply N marker changes* in the top bar updates
-  the runs, the steps and the map.
+- *Start a transaction here...* and *End the transaction here*: a marker
+  edit, shown at once as pending; *Apply N marker changes* in the top bar
+  updates the transactions, the steps and the map.
 - *Add note here...*: a note pinned to that moment (the Notes lane turns on).
 - *Jump to step here*: the Steps level, on the step at that moment.
 
 **Range selection.** Shift-drag on the background selects a range; a card
 shows its length, events, markers, screenshots and systems, with *Insert
-run from selection* (a Start and an End marker, pending), *Exclude from
-analysis* (the range goes into `annotations.excluded_ranges` and the
-analysis runs again) and *Clear selection*. Esc clears it.
+transaction from selection* (a Start and an End marker, pending),
+*Exclude from analysis* (the range goes into `annotations.excluded_ranges`
+and the analysis runs again) and *Clear selection*. Esc clears it.
 
 ## The video beside it
 
-The video pane below the timeline plays the session's video: the one the
+The video pane below the timeline plays the project's video: the one the
 analyst attached (copied into the folder's `video/`, contract C16 and
 `video-path.js`), else the OBS recording. Without one the pane collapses to
 a slim band with *Attach video...*.
 
-- **Attach video** (the band, the Overview's recording line, or the empty
+- **Attach video** (the band, the Overview's project line, or the empty
   timeline) chooses the file, then syncs it with two clicks: pause the video
   at a moment you recognize and click *Mark frame*, then click the same
   moment on the timeline. The offset is saved in
-  `annotations.external_video.offset_ms`. A session with nothing recorded
+  `annotations.external_video.offset_ms`. A project with nothing recorded
   takes the video at offset 0 without the clicks. When the stored video is
   not found (a folder received from another machine without it), the video
   chosen with Attach video takes its place and keeps the stored sync.
@@ -123,8 +123,8 @@ a slim band with *Attach video...*.
   `0`) multiply or divide `State.zoomFactor` by 1.5 (never below 1) or reset
   it; the timeline is that many times as wide as its pane.
 - **Scroll**: a middle-button drag pans the timeline. The zoom and the scroll
-  persist per session folder in `pdt.timelineState`. On the first open of a
-  session the timeline scrolls to the first run when it starts later.
+  persist per project folder in `pdt.timelineState`. On the first open of a
+  project the timeline scrolls to the first transaction when it starts later.
 - **Minimap** (`#timeline-minimap`): shown only while zoomed in; a
   compressed view of the activity with the visible stretch marked. Click to
   jump there, drag the marked stretch to scroll.
@@ -137,10 +137,10 @@ a slim band with *Attach video...*.
 
 | Trigger | Re-renders |
 |---|---|
-| Session load | the timeline, its summary, the side panels |
+| Project load | the timeline, its summary, the side panels |
 | Switching to the Timeline | the timeline, with the zoom and scroll carried over |
 | A zoom button or key | the timeline |
 | An annotation edit | the `timeline` topic: the timeline, in place |
 | A lane toggle | the timeline |
 | The video's length becomes known (a video project) | the timeline, its summary and the playhead |
-| A transcript or video sync | the session, reloaded |
+| A transcript or video sync | the project, reloaded |

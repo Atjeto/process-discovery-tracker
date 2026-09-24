@@ -86,9 +86,9 @@ is defined. The hex tables below are the **light** values.
 | `--accent-2` | `#5a7a8a` | slate blue: the secondary accent |
 | `--accent-3` | `#b08040` | amber-gold: tertiary |
 | `--warn` | `#b08040` | amber-gold: markers, warnings |
-| `--bad` | `#a05a3a` | rust: errors, destructive |
+| `--bad` | `#a05a3a` | rust: errors, destructive, the save state's *Not saved* |
 | `--rec` | `#c04040` | red: recording, danger buttons |
-| `--va` | `#5a8f6a` | green: a done stage of What is left, the Confirmed chip and status |
+| `--va` | `#5a8f6a` | green: a ticked act of the Checklist, the Confirmed chip and status |
 
 `--bnva` and `--nva` are still defined next to `--va` (the product
 edition's waste bars) and nothing reads them.
@@ -140,8 +140,18 @@ byte-copies) by hand in the same commit.
   `var(--radius)` corners. The timeline pane, the Timeline's side panel,
   the Steps panes, the Map panel and the Overview's sections follow this;
   the step panel is a white column with a hairline on its left. The
-  Overview's What is left line is the exception: an amber wash
-  (`--accent-muted`) inside an `--accent` border.
+  Overview's Checklist is the exception: an amber wash (`--accent-muted`)
+  inside an `--accent` border.
+- **Who fills a block**: one short line beside an Overview block's title
+  (`.ov-block-who`, 11px `--fg-3`): "Measured from the recording" for the
+  Observations, "You write these. The PDD prints them." for the Document.
+- **An empty field looks empty**: a document field's placeholder (its
+  question) is light and italic (a mix of `--fg-3` and `--fg-4`, about 3:1
+  on the field), well apart from written text.
+- **The save state**: one quiet 11px word in the top bar (`--fg-3`), *Not
+  saved* in `--bad` at 600 weight; it fades in again after each save (no
+  fade with reduced motion). While the project zip is made, the Export
+  button carries the status line's pulsing dot.
 - **Buttons**: default, a white `--bg-2` fill, `--rule` border, `--fg`
   label, `--bg-3` with an accent border on hover. Primary: `--accent`
   fill, `--accent-text` label, `--accent-hover` on hover (one primary
@@ -229,6 +239,33 @@ cooler, so the bands read on the dark base. A band is coloured by its
 application and named by its business system (a Chrome band on Salesforce
 reads "Salesforce"), so two systems in one browser share a colour.
 
+## The step map's colours (contract C18)
+
+The pipeline writes a colour per system into `process_map_step.bpmn`
+(`normalization/bpmn_observed.py` `_PALETTE`), as bpmn-js's `bioc:fill` and
+`bioc:stroke`: a light fill and a dark stroke, in the order the reference
+transaction, then the others, first use the systems. bpmn-js writes a
+task's name in its stroke colour, so every pair keeps its name at 6.9:1 or
+more on its fill, legible in the PDD's print. A legend text annotation
+names each system's colour; a tenth system and later keep bpmn-js's default
+look and read "no colour" there.
+
+| Name | Fill | Stroke |
+|---|---|---|
+| blue | `#bfdbfe` | `#1e3a8a` |
+| orange | `#fed7aa` | `#7c2d12` |
+| green | `#bbf7d0` | `#14532d` |
+| purple | `#ddd6fe` | `#4c1d95` |
+| red | `#fecaca` | `#7f1d1d` |
+| teal | `#99f6e4` | `#134e4a` |
+| pink | `#fbcfe8` | `#831843` |
+| yellow | `#fef08a` | `#713f12` |
+| grey | `#e5e7eb` | `#374151` |
+
+The colours belong to the map file, not to the viewer's theme: a BPMN tool
+that reads bpmn-js's colour attributes shows them too, and one that does
+not ignores them.
+
 ## Notes
 
 - The process map (the directly-follows graph on the Map level,
@@ -236,14 +273,18 @@ reads "Salesforce"), so two systems in one browser share a colour.
   cytoscape renders to a `<canvas>` and cannot read CSS variables, so the
   active theme's hex snapshot is read fresh on each `render()`. Keep
   `dfgStyleTokens()` aligned with the `:root` token blocks if the palette
-  ever changes.
-- `dfg-viewer.js` `exportSvg()` stays hardcoded to the **light** palette
-  whatever the theme: an exported map goes into a document, which expects
-  a light background.
+  ever changes. Its Start and End are small circles (`--bg-2` fill, an
+  `--accent` ring for Start, a thick `--fg-2` ring for End); a condition on
+  a line is boxed text at the boxes' 11px (`--bg` behind it, a `--rule`
+  border) so it reads over the lines; a path set in Steps that no
+  transaction took is dashed.
 - The **BPMN** maps (the vendored `bpmn-js`: the As-Is map shown on the Map
-  level, the map editor, the pictures in the PDD) are drawn in the
-  library's own document colours (black lines and text, white shapes) and
-  are **not** themed: the editor's canvas stays light in the dark theme too.
+  level, the map editor, the pictures in the PDD and Export's map image)
+  are **not** themed: they are documents, drawn on a white page in both
+  themes, and the editor's canvas stays light in the dark theme too. Lines,
+  events and text are the library's black; since contract C18 each task
+  carries its system's colour ("The step map's colours" above), which
+  every place that draws the map shows the same way.
 - Studio Dark replaces the earlier abandoned "stratified-dark" theme. That
   theme's low-contrast translucent-tint problem (issues D1 to D3 in the
   ARCHITECTURE-ISSUES register) is addressed here: `--fg-3` is held lighter

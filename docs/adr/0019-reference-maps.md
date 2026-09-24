@@ -28,7 +28,9 @@ Constraints baked into the decision:
 
 ### Annotations schema
 
-One additive key, `reference_maps[]`; each entry: `map_id`, `name`, `kind` (`as_is`|`to_be`|`reference`), `file` (relative path under `derived_maps/`), `source` (`{notation, level, scope}` it was forked from), `forked_from_hash`, `forked_at`, `edited_at`, `pdd_role` (`null`|`as_is`|`to_be`), `notes`. See [SCHEMA](../../shared/SCHEMA.md) §`reference_maps`.
+One additive key, `reference_maps[]`; each entry: `map_id`, `name`, `kind` (`as_is`|`to_be`|`reference`), `file` (relative path under `derived_maps/`), `source` (`{notation, level, scope}` it was forked from), `forked_from_hash`, `forked_from_sig`, `forked_at`, `edited_at`, `pdd_role` (`null`|`as_is`|`to_be`), `notes`. See [SCHEMA](../../shared/SCHEMA.md) §`reference_maps`.
+
+**Drift (amended 2026-09-24).** `forked_from_hash` hashes the source file's bytes. Every analysis writes the same step map in a new element order, so a byte hash called every copy stale. `forked_from_sig` is a signature of the process the source draws (`reference-maps.js` `processSignature`): its tasks, events, flows, gateways by their neighbours, and data objects and notes with their task; ids, layout and documentation are ignored. A copy that stores `forked_from_sig` is stale when the current source's signature differs; a copy made before it keeps the byte rule.
 
 ### Re-normalize contract
 

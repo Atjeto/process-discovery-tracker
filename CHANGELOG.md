@@ -10,54 +10,72 @@ Draft notes for everything landed so far in the BA-helper refocus; a later
 release pass finalizes the version number and date. The app is refocused
 from a product for a buyer into a tool for the owner's own work as a
 process manager / business analyst: an SME records a process a few times,
-one run each time, the analyst confirms the recorder's drafted steps for
-one run, and the app gives a process map and a tool-neutral PDD. The
-complete prior product is preserved on the `product-edition` branch, tagged
-`product-edition-v1.5.0`, not deleted. Full rationale and the complete list
-of what changed: [ADR-0029](docs/adr/0029-ba-helper-refocus.md) and the
-plan's implementation notes
+one transaction each time, the analyst confirms the recorder's drafted
+steps for one transaction, and the app gives a process map and a
+tool-neutral PDD. The complete prior product is preserved on the
+`product-edition` branch, tagged `product-edition-v1.5.0`, not deleted.
+Full rationale and the complete list of what changed:
+[ADR-0029](docs/adr/0029-ba-helper-refocus.md) and the plan's
+implementation notes
 ([BA-HELPER-PLAN-2026-09-22.md](docs/To-Do/BA-HELPER-PLAN-2026-09-22.md)).
 
 ### Added
 
-- **The recorder drafts a session's steps**, one step per screen visit
+- **The recorder drafts a recording's steps**, one step per screen visit
   ending at its commit action (a button, menu command, or link); the
-  analyst confirms a run instead of authoring every step by hand, then
-  reviews how the other runs differ.
+  analyst confirms one transaction instead of authoring every step by
+  hand, then reviews how the other transactions differ.
 - **Names are remembered**: naming a drafted step once applies that name to
-  every future draft of the same control and screen, within the session
-  and across later sessions. Names given in a session travel with its
-  folder, so the session drafts the same names on another machine. The
+  every future draft of the same control and screen, within the project
+  and across later projects. Names given in a project travel with its
+  folder, so the project drafts the same names on another machine. The
   Saved names list, in the Steps toolbar, renames or forgets a name.
-- **Differences between runs**: every run other than the reference run
-  lists how it differs from it (a skipped step, an extra step, a different
-  order), or says it has none. The PDD's differences section uses the same
-  rule.
-- **Fixes carry across runs**: merging drafted steps in the reference run
-  repeats the merge on the same drafts in every other run (one undo), and
-  a draft hidden in the reference run can be hidden in all runs at once.
-- **Reopen run**, the inverse of Confirm run.
+- **Differences between transactions**: every transaction other than the
+  reference transaction lists how it differs from it (a skipped step, an
+  extra step, a different order), or says it has none. The PDD's
+  differences section uses the same rule.
+- **Fixes carry across transactions**: merging drafted steps in the
+  reference transaction repeats the merge on the same drafts in every
+  other transaction (one undo), and a draft hidden in the reference
+  transaction can be hidden in all of them at once.
+- **Reopen transaction**, the inverse of Confirm transaction.
 - **Saved processes**: "Save as this process" stores the confirmed
-  reference run. A later session of the same process that has no confirmed
-  reference run yet is compared with the closest saved process, with "Stop
-  comparing" to turn that off and "Forget this saved process" to remove it
-  (Undo brings it back).
-- **The Overview is the home**: a "What is left" line names the next thing
-  to do (mark the runs, confirm the reference run, review the other runs,
-  write the document, export the PDD) with one button for it, and shrinks
-  to one line once only the export is left. The recording line says who
-  recorded it, its runs and the reference run's steps; Recent names a
-  session by its document title.
+  reference transaction. A later project of the same process that has no
+  confirmed reference transaction yet is compared with the closest saved
+  process, with "Stop comparing" to turn that off and "Forget this saved
+  process" to remove it (Undo brings it back).
+- **Step flow**: a step can say when it happens and where the process goes
+  after it. *Only when...* in the step pane gives the step a condition: the
+  map draws a decision, with the condition on the way into the step and an
+  "otherwise" path around it. *Go to...* adds a link: after the step, when
+  its condition holds, the process goes back to an earlier step, on to a
+  later one, or ends. The dropdown lists the transaction's steps in order
+  and "End the process", and each link reads where it goes ("Goes back to
+  step 2, Check the customer, when the details are missing"). A link to a
+  step that is hidden or deleted is dropped and the toast says so; Ctrl+Z
+  brings both back. The map shows the decisions, loops and early ends, and
+  the PDD prints the flow under each step.
+- **The Overview is the home**: a Checklist of the five acts (mark the
+  transactions, confirm the reference transaction, review the other
+  transactions, write the document, export the PDD) ticks each one done,
+  says in a tooltip what it means, and has one button for the next; it
+  shrinks to one line once only the export is left. The project line says
+  who recorded it, its transactions and the reference transaction's steps;
+  Recent names a project by its document title.
 - **Document fields**: the Overview's document panel edits the title,
   purpose, scope, trigger, result, key contacts, business rules,
   exceptions, improvement and automation scope, and notes. Each prints in
-  its own place in the PDD, survives a re-export, and can be undone.
+  its own place in the PDD, survives a re-export, and can be undone. The
+  panel says who fills it ("You write these. The PDD prints them."), an
+  empty field looks empty, and its heading names the fields still to
+  write.
 - **Meeting transcript**: attach a Teams `.vtt` or `.docx` transcript. Its
   sentences show on a Transcript lane on the Timeline, under "Said during
   this step" in the step pane, and beside the document fields; one sentence
   and one click on the timeline sync it (a synced video syncs it too). A
   sentence can be added to a step's description or, with "Add to", to a
-  document field. Nothing in the app interprets what was said.
+  document field; one said before the recording started reads "0:28
+  before". Nothing in the app interprets what was said.
 - **Business system names**: the PDD and the step map name the system a
   step happened in (SAP, Excel, Outlook, and Salesforce for a Chrome window
   on Salesforce) from one shared rule list instead of an executable name
@@ -65,20 +83,22 @@ plan's implementation notes
   legend, the step pane, the Observations, the step panel, and the map,
   where each box names its system under the step's name. A system set by
   hand on a step wins.
-- **The step panel**: a click on a map box or on a step band on the
-  Timeline, or a step selected in Steps, opens one panel beside it: the
-  step's system and description, "in N of M runs, about 8s each", and
-  every occurrence with its moment ("Run 1 at 0:39"), played in the
-  panel's own small video, with its screenshots and what was said. Watch
-  in the step pane plays the step there, beside the steps.
-- **The video travels with the recording folder**: attaching a video copies
+- **The step panel**: a click on a map box (a task of the As-Is map too) or
+  on a step band on the Timeline, or a step selected in Steps, opens one
+  panel beside it: the step's system and description, its flow when one is
+  set, "in N of M transactions, about 8s each", and every occurrence with
+  its moment ("Transaction 1 at 0:39"), played in the panel's own small
+  video, with its screenshots and what was said. Watch in the step pane
+  plays the step there, beside the steps.
+- **The video travels with the project folder**: attaching a video copies
   it into the folder and stores where it is relative to the folder, so
   whoever receives the folder has the video too. A video the folder names
   but no longer finds keeps its sync when it is attached again.
-- **Projects without a recording**: the Open menu starts a project from a
+- **Projects without a recording**: the New menu starts a project from a
   video (the video is copied into a new folder and the Timeline runs on its
-  length) or from nothing. Such a project has one run until runs are
-  marked, and the map and the PDD work as for a recording.
+  length) or an empty one. Such a project is one transaction until the
+  Timeline marks where each one starts, and the map and the PDD work as for
+  a recording.
 - **Steps added by hand**: "+ Add step" adds a step without a time after
   the selected step (Alt+Up and Alt+Down move it); on the Timeline, "+ Step"
   adds one at the video's playhead. The step pane's System field says which
@@ -89,106 +109,155 @@ plan's implementation notes
   screenshot off the step (the recording keeps it) or deletes one you
   added. Ctrl+Z brings it back.
 - **Attachments**: any file (an example email, an input spreadsheet, an
-  SOP) attached to the session on the Overview, or to a step in the step
-  pane, is copied into the recording folder and opens from the app; the PDD
+  SOP) attached to the project on the Overview, or to a step in the step
+  pane, is copied into the project folder and opens from the app; the PDD
   lists the attachments, and a step's under that step.
 - **Notes**: a note on a step (the step pane) or at a moment (right-click
   the Timeline, "Add note here"), shown in the step pane, the step panel
-  and a Notes lane on the Timeline. Notes stay in the app; the PDD does not
-  print them.
+  and a Notes lane on the Timeline. The PDD's text leaves notes out; its
+  picture of the step map shows a step's notes beside it.
+- **Saved as you go**: every change saves itself to the project folder, and
+  one quiet word in the top bar says so: *Saved* (pointing at it shows the
+  time and the folder), *Saving...* while a long write lasts, or *Not
+  saved* in the error colour, with what was not saved and why, until a
+  later save succeeds. Edits in the map editor report the same way.
+- **Whole project (.zip)**: Export makes one zip of the project folder,
+  next to it, to hand the project to someone: the recording, the analyst's
+  work, the video, the transcript, screenshots, attachments and edited
+  maps. An earlier zip is never replaced (the next one is "Order call
+  (2).zip"), and extracting it gives the folder back.
 - **The recording bar**: a small strip replaces the capture app's Live
-  Session window and hotkey overlay. It shows the run in progress and the
-  elapsed time, with Next run, Pause and Stop, and a problem line only when
-  clicks and typing are not being recorded. It takes no keyboard focus,
-  stays out of screen captures and shared screens, and remembers its place.
+  Session window and hotkey overlay. It shows the transaction in progress
+  and the elapsed time, with Next transaction, Pause and Stop, and a
+  problem line only when clicks and typing are not being recorded. It
+  takes no keyboard focus, stays out of screen captures and shared
+  screens, and remembers its place.
 - **One way to start**: the recording bar's button, the tray, the welcome
-  and the run key all start the recording with Run 1; each later press
-  starts the next run, ending the open one first. Stopping ends the last
-  run by itself.
+  and the transaction key all start the recording with Transaction 1; each
+  later press starts the next transaction, ending the open one first.
+  Stopping ends the last transaction by itself.
 - **An end summary with a zip for the analyst**: after Stop, one screen
-  says where the recording is saved and how many runs it has, warns when no
-  run was marked, and can make a zip of the recording next to its folder
-  for the SME to send by hand (nothing is sent from the app).
+  says where the recording is saved and how many transactions it has,
+  warns when no transaction was marked, and can make a zip of the recording
+  next to its folder for the SME to send by hand (nothing is sent from the
+  app).
 - **A durable record of dropped events**: a write batch that could not be
-  saved is now counted and recorded on the session timeline instead of
+  saved is now counted and recorded on the recording's timeline instead of
   only appearing in a local log file.
 
 ### Changed
 
+- **One word for each thing**: the apps say *transaction* for one pass
+  through the process (a run in 1.5.0) and *project* for what the analyst
+  opens or starts (a recording or session in 1.5.0). The capture app's
+  project code and name are now the request code and name, and the PDD's
+  Document control prints them as the Request. Help and the Steps list say
+  what a transaction is where it first appears. Data keys, CLI flags and
+  file names keep the old words.
 - **The PDD is a document a process manager can hand over**: tool-neutral
   and in the reader's order (document control; purpose and scope with the
-  trigger and the result; the As-Is map and the reference run's steps;
-  variations, rules and exceptions; the data; applications and time;
-  improvement and automation scope; notes; attachments). Each step says its
-  system and screen, its average time, in how many runs it happened and
-  where it is in the recording ("Run 1 at 0:19"). One data table marks the
-  values typed again in another system; tables have a grid; each map gets a
-  page of its own, landscape when it is wide. The analyst's fields survive a
-  re-export.
-- **The analysis runs by itself**: a recording is analyzed when it opens
+  trigger and the result; the As-Is map and the reference transaction's
+  steps; variations, rules and exceptions; the data; applications and
+  time; improvement and automation scope; notes; attachments). Each step
+  says its system and screen, its average time, in how many transactions
+  it happened, where it is in the recording ("Transaction 1 at 0:19") and
+  the flow the analyst set on it ("Only when the customer is new.", "Then
+  goes back to step 2, Check the customer, when the details are missing.").
+  One data table marks the values typed again in another system; tables
+  have a grid; each map gets a page of its own, landscape when it is wide.
+  The analyst's fields survive a re-export.
+- **The analysis runs by itself**: a project is analyzed when it opens
   without a current analysis, after Leave apps out and after a time range
   is left out, when making the As-Is map and before a PDD export. One line
-  in the top bar says so, with Cancel; the log shows only when a run fails.
+  in the top bar says so, with Cancel; the log shows only when an analysis
+  fails.
   Apply marker changes stays deliberate, and Help, Troubleshooting has
   Re-analyze.
-- **One top bar and no More menu**: the video and transcript actions sit on
-  the recording line, Leave apps out and Saved names in the Steps toolbar.
-  Flow is now called the Timeline.
-- **Observations instead of findings** on the Overview: the data typed
-  twice (per field, where the recording says which) and where the time
-  goes (per step and per system).
+- **One top bar and no More menu**: New and Open are two menus; the video
+  and transcript actions sit on the project line, Leave apps out and Saved
+  names in the Steps toolbar. Flow is now called the Timeline.
+- **Observations instead of findings** on the Overview, measured from the
+  recording: the data typed twice (per field, where the recording says
+  which) and where the time goes (per step and per system, with the
+  Average time and in how many transactions it Happened).
 - **Attaching a video goes straight into syncing it**: pause at a moment
   you recognize, then click the same moment on the timeline.
-- **Only the reference run is confirmed**: the other runs are reviewed, not
-  confirmed. The "What is left" line counts them done once each was opened
-  in Steps, and says how many differ from the reference run.
+- **Only the reference transaction is confirmed**: the other transactions
+  are reviewed, not confirmed. The Checklist ticks them once each was
+  opened in Steps, and says how many differ from the reference
+  transaction.
 - **A step pane that leads with the system**: its fact line reads
-  "Salesforce · Account lookup · 6s · ends at Search · Run 1 at 0:19"; it
-  lists the fields typed in the step; the name, the system and the
-  description save as you go (no Save button, and Ctrl+Z undoes each
-  change); waste is a tag; the drafted narration is a hint, no longer
-  prefilled as the description.
+  "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at
+  0:19"; it lists the fields typed in the step; the name, the system, the
+  description and the flow save as you go (no Save button, and Ctrl+Z
+  undoes each change); waste is a tag; the drafted narration is a hint, no
+  longer prefilled as the description.
 - **One clock**: the timeline, the markers, the screenshots, the transcript
   rows, the step pane and the panel show the time since the recording
   started (0:39), the same pointer the PDD prints. The time of day shows
   only in the timeline's summary.
-- **The As-Is map first**: once an As-Is copy is chosen for the PDD, the
-  Map shows it first, read only, with Edit and a way back to the map from
-  the runs.
+- **The As-Is map first, and linked**: once an As-Is copy is chosen for the
+  PDD, the Map shows it first, read only and drawn as the PDD prints it,
+  with Edit and a way back to the map from the transactions. It is as
+  linked as the map from the transactions: a task opens the step panel on
+  its step (or says that no step has its name), a file opens its
+  attachment, and a note shows its whole text.
 - **Case identity is stable across re-analysis**: a confirmed or edited
   step no longer loses its place after a re-analyze.
 - **A failed export or analysis stage is reported honestly**: the viewer
   no longer opens a stale document after a failed export, and a stage
   that could not run says so instead of rendering as a measured zero.
-- **The recorder sidecar is supervised per session**: a crash-looping
+- **Every export opens its folder**: once the PDD, a map image, a BPMN file
+  or the project zip is saved, Explorer opens with the file selected, and
+  the toast names it.
+- **The recorder sidecar is supervised per recording**: a crash-looping
   recorder now reaches its restart limit and reports itself dead instead
   of restarting forever unnoticed; a spawn failure is now reported and
   retried the same way a crash is.
 - **One process map**: the Map shows one left-to-right map built from the
-  runs' steps, from a single run on. "Edit as the As-Is map" copies it
-  into the map editor as the PDD's As-Is map, analyzing first so the copy
-  carries the current step names. The PDD prints the edited As-Is copy
-  when there is one, else the map from the runs. The BPMN file behind it
-  covers the runs only, ends in a real end event, wraps into rows to print
-  legibly, and carries each step's description, system and run count; its
-  start and end are named after the trigger and the result.
+  transactions' steps, from a single transaction on, between a Start and
+  an End circle; a condition set in Steps labels its line, and a path set
+  in Steps that no transaction took is dashed. "Edit as the As-Is map"
+  copies it into the map editor as the PDD's As-Is map, analyzing first so
+  the copy carries the current step names. The PDD prints the edited As-Is
+  copy when there is one, else the map from the transactions, and Export's
+  Process map (image) saves that same picture from any level. The BPMN file
+  behind it covers the transactions only, ends in a real end event, wraps
+  into rows to print legibly, and carries each step's description, system
+  and transaction count; its start and end are named after the trigger and
+  the result.
+- **An edited map is out of date only when the process changed**: every
+  analysis writes the map file anew, in another order, so every As-Is or
+  To-Be copy used to read as changed. A copy now compares the process the
+  map draws (its steps, events, paths, notes and files), not the file's
+  bytes; a copy made before keeps the old comparison.
+- **A richer map**: the BPMN file draws a decision for a step that happens
+  only under a condition, names each early end after its condition, marks
+  recorded steps as user tasks and steps added by hand as manual tasks,
+  shows a step's notes beside it and its attached files under it, and gives
+  each system a colour, with a legend. Task names stay the step names, so a
+  BPMN tool imports them clean. An As-Is copy made before offers Copy again
+  to get them.
 - **Less on every screen** (the UI clarity audit): the step detail shows
   one fact line that ends with why the draft ends where it does, then the
   description and the step's screenshots; chips show only where a step
-  differs from its run; Screenshots is the Timeline's default tab; Open
-  merges opening another recording with Recent.
-- **The capture app speaks the SME's words**: Recording, Paused, Run 2,
-  Next run, Stop recording; setup items sit in one Setup (analyst) menu,
-  where the storage size is flagged instead of a toast after every
-  recording; the noise toasts are gone and Help fits one screen.
+  differs from its transaction; Screenshots is the Timeline's default tab;
+  Open lists Open project and the recent projects, and New the two ways to
+  start one.
+- **The capture app speaks the SME's words**: Recording, Paused,
+  Transaction 2, Next transaction, Stop recording; setup items sit in one
+  Setup (analyst) menu, where the storage size is flagged instead of a
+  toast after every recording; the noise toasts are gone and Help fits one
+  screen.
 - **The consent text says what is really left out**: only what is typed
   into password fields (consent text version 2, so a remembered consent to
   the old text is asked again).
 - **Drafts are hidden, not deleted**, so an analysis cannot bring them
   back; steps added by hand can still be deleted.
-- **Runs never nest**: a run start that arrives while a run is open ends
-  that run first, the way the capture app's run key does. A start inserted
-  in the viewer used to nest every later run inside the open one.
+- **Transactions never nest**: a start that arrives while a transaction is
+  open ends that transaction first, the way the capture app's transaction
+  key does. A start inserted in the viewer used to nest every later
+  transaction inside the open one.
 - **The Overview fits small screens**: it stays usable at 1366x768 and
   1024x768 instead of being squeezed out by the Session summary, and
   right-click menus stay inside the window.
@@ -200,9 +269,10 @@ plan's implementation notes
 
 Preserved in full on the `product-edition` branch.
 
-- **Case detection from anything other than run markers.** Suggested
-  markers and anchor-candidate detection (for a recording with no fired
-  markers) are cut; a missed run marker is now added by hand.
+- **Case detection from anything other than the transaction markers.**
+  Suggested markers and anchor-candidate detection (for a recording with no
+  fired markers) are cut; a missed marker is now added by hand ("Start a
+  transaction here" on the Timeline).
 - **Canonical step sets and the Process Template workbench**, replaced by
   saved processes (above).
 - **The in-app vocabulary discovery workbench** ("Discover from window"
@@ -223,8 +293,9 @@ Preserved in full on the `product-edition` branch.
 - **Compare Sessions**, the case-by-screen work-item view, cross-machine
   sync markers, app-vocabulary prep sessions, the worker close-out
   wizard's observed-value questions, and the per-marker label picker.
-- **Team taxonomy, the project layer, the command palette, and "Copy for
-  LLM."** No AI ships inside the product.
+- **Team taxonomy, the 1.x project files (a saved workspace that pointed
+  at sessions; a project is now the folder itself), the command palette,
+  and "Copy for LLM."** No AI ships inside the product.
 - **The standalone findings memo document and the HTML findings report**,
   and later the PDD's findings section with the "include in PDD" ticks:
   the PDD prints no findings.

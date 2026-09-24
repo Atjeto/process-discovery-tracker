@@ -122,7 +122,7 @@ install and no `pip install`.
    `Expand-Archive`) fail part way with no error shown. Anything under about
    80 characters is safe; `C:\Tools\pdt\` or a folder directly under the
    user profile is fine.
-3. Run `Process Discovery Viewer.exe` and click **Open recording...** to open a
+3. Run `Process Discovery Viewer.exe` and click **Open project...** to open a
    recording folder (unzip a zip first).
 
 The viewer analyzes a recording by itself when it opens without a current

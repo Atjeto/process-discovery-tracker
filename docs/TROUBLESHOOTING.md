@@ -191,11 +191,12 @@ on an element order or a namespace. That is a known swap point: see
 
 ## Viewer side
 
-### Open recording shows nothing
+### Open project shows nothing
 
-Open the recording folder itself: the one that holds `manifest.json`. A zip
-made by the capture app has the recording folder as its root, so after
-Explorer's Extract All the recording is the folder inside the extracted one.
+Open the recording folder itself (Open, *Open project...*): the one that
+holds `manifest.json`. A zip made by the capture app has the recording
+folder as its root, so after Explorer's Extract All the recording is the
+folder inside the extracted one.
 A folder without it shows "Failed to load: Not a project folder (no
 manifest.json)". The viewer has no developer tools to look further. Files
 that did not survive the copy from the SME's machine are named in a warning

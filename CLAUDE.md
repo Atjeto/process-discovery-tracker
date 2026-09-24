@@ -17,9 +17,9 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-28, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-32, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
-  Data contracts C1 to C16:
+  Data contracts C1 to C18:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
 - **Baseline** (health, CI history, code review RP-01 to RP-36):
   [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
@@ -70,17 +70,20 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 2. **Attach** a video (copied into the folder, synced with two clicks) and a
    transcript, if any.
 3. **Confirm the reference run** (run 1 unless another is picked): fix and
-   name its steps, write descriptions, Confirm transaction.
+   name its steps, write descriptions, set the flow where it branches or
+   loops (*Only when*, *Go to*), Confirm transaction.
 4. **Review the other runs**: each lists its differences; they are not
    confirmed.
 5. **Write the document** on the Overview (trigger, result and improvement
    among its fields).
 6. **Check the map**; optionally *Edit as the As-Is map* (and a To-Be copy).
 7. **Export the PDD**: its map is the edited As-Is copy when one exists, else
-   the map from the runs.
+   the map from the runs. Export also saves the map (image, BPMN) and the
+   *Whole project (.zip)*; each export opens Explorer at the file.
 
 Along the way the analyst adds what the recording lacks: steps, screenshots,
-notes, attachments, a step's system.
+notes, attachments, a step's system, the flow. Every change saves itself to
+the folder.
 
 ## Layout
 
@@ -90,7 +93,7 @@ notes, attachments, a step's system.
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
 | `e2e/` | The in-repo Playwright gate: seven smokes against the real viewer, all run by `run-all.js`. |
-| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule). |
+| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
 | `sessions/example-aggregate/` | The committed demo: 10 sessions of one order-to-cash process. |
@@ -117,9 +120,10 @@ notes, attachments, a step's system.
 ## Key concepts
 
 - **The words** (AD-29). People read *transaction* for one pass through the
-  process and *project* for what the analyst opens or starts; code, data
-  keys (`case_id`, `pattern_run`), CLI flags and file names keep run, case
-  and session.
+  process and *project* for what the analyst opens or starts; the capture
+  app's engagement reads *request* (AD-30). Code, data keys (`case_id`,
+  `pattern_run`, `engagement_id`), CLI flags and file names keep run, case,
+  session and engagement.
 - **The drafting rule** (C1, `step_suggest.py`). Within a run, a step is a
   stretch on one screen ending at a commit (a button, menu item or link
   invocation, or a vocab `completion: true`), inclusive; at the first
@@ -155,9 +159,19 @@ notes, attachments, a step's system.
 - **What the analyst adds** (C16), inside the folder: screenshots in
   `screenshots/analyst/` (a video frame, a pasted image or a file;
   `step.pdd_screenshot` picks the one the PDD prints), notes in
-  `analyst_notes` (on a step or a moment; never printed; the old `notes`
-  key round-trips), attachments in `attachments/` (listed in the PDD), and
-  `step.system`. Removing one deletes its entry and file; Undo restores both.
+  `analyst_notes` (on a step or a moment; out of the PDD's text, on the
+  step map beside their step; the old `notes` key round-trips), attachments
+  in `attachments/` (listed in the PDD), and `step.system`. Removing one
+  deletes its entry and file; Undo restores both.
+- **Step flow** (C17, AD-31). A step may carry `only_when` (a condition)
+  and `links` (`[{ to: step_id | "end", when }]`: a loop back, a skip or an
+  early end), set in the step pane's Flow line (*Only when...*, *Go to...*).
+  A draft that gets either becomes `edited`. One edge rule for the live map
+  (`process-map-levels.js`) and the step BPMN (`step_flow.py`), pinned by
+  `shared/flow-links-golden.json`. The live map draws Start and End circles,
+  the conditions on its lines and a dashed line for a path no transaction
+  took; the step BPMN gets exclusive gateways; the PDD prints the flow under
+  the step.
 - **System names** (C14): `shared/system-names.json` turns an application
   and a window title into the business system (Salesforce for a Chrome
   window on Salesforce), read by `app_names.py` and `system-names.js` for
@@ -170,12 +184,28 @@ notes, attachments, a step's system.
   since the recording started (m:ss or h:mm:ss); the time of day shows only
   in the Timeline's summary.
 - **The step panel** (`views/step-panel.js`): three doors (a map box, a
-  timeline step band, a Steps row) open one panel with every occurrence of
-  the step: its moment, a small video, screenshots, what was said, notes.
+  timeline step band, a Steps row; a task of the As-Is map is a map box
+  too) open one panel with every occurrence of the step: its moment, a
+  small video, screenshots, what was said, notes.
 - **The map.** One process map from the runs' visible steps, each box naming
   its system. `--mine` writes `process_map_step.bpmn`, which *Edit as the
   As-Is map* copies into an editable As-Is or To-Be map (ADR-0019; the
-  pipeline never touches a copy). The chosen As-Is map shows first.
+  pipeline never touches a copy). The chosen As-Is map shows first, drawn by
+  bpmn-js and linked (`asis-view.js`): a task opens the step panel, a file
+  its attachment, a note its text.
+- **The richer step map** (C18, AD-32). `process_map_step.bpmn` names its
+  main end after the Result and each early end after its `when`; recorded
+  steps are user tasks and steps added by hand manual tasks; a step's notes
+  are a text annotation and its attachments data objects; each system has a
+  colour (`bioc:fill`, `bioc:stroke`) listed in a legend. Without a chosen
+  As-Is copy, Export's map image and the PDD's map picture are this file
+  drawn by bpmn-js.
+- **Saving and handing over.** Every change saves itself to the project
+  folder; the top bar says *Saved*, *Saving...* or *Not saved*
+  (`save-state.js`, fed by `viewer:projectWrite` and the map editor's
+  writes). Export, *Whole project (.zip)* zips the folder next to it
+  (`project-zip.js`, `zip-folder.js`, a copy of the capture app's writer),
+  never over an earlier zip and not while an analysis runs.
 - **The PDD** (`pdd_export.py`): tool-neutral, built around the confirmed
   reference run. The document fields (C6) fill their places and survive
   re-export; a step's `description` (C7) is its text.
@@ -266,7 +296,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
   viewer. `e2e/run-all.js` runs seven smokes: `session`, `overview`, `runs`,
   `map-slim`, `transcript`, `panel` and `companion` (each `<name>-smoke.js`;
   [e2e/README.md](e2e/README.md) says what each covers). `session-smoke.js`
-  holds the map connectivity pin (one component, one entry, one end).
+  holds the map connectivity pin (one component, one entry step, one final
+  step, counted on the step boxes: the Start and End circles are left out).
 - The gates before any merge to master (resume state, "Gates"): full-deps
   pytest, the golden, `node --test` in `viewer/` and `capture/`,
   `node run-all.js` in `e2e/`, and `dotnet test` when `capture/recorder/`

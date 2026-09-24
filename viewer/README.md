@@ -4,8 +4,9 @@ The analyst's Electron app. It opens a project folder (a recording from the
 capture app, or a project started from a video or from nothing), runs the
 Python pipeline by itself, and shows the project in four levels: Overview,
 Timeline, Steps and Map. The analyst confirms the reference transaction,
-reviews the other transactions, writes the document and exports the PDD
-and the process map.
+sets the flow where the process branches or loops, reviews the other
+transactions, writes the document and exports the PDD, the process map and
+the whole project as a zip.
 
 How it is built: [docs/architecture/VIEWER.md](../docs/architecture/VIEWER.md)
 and [VIEWER-TIMELINE.md](../docs/architecture/VIEWER-TIMELINE.md). What it
@@ -42,7 +43,9 @@ packaged build; the shared rule files in `../shared/` or
   edits in `annotations.json` (backups `annotations.json.2` to `.5`), the
   analysis outputs, an attached video in `video/`, the transcript,
   screenshots and attachments the analyst added, and the edited maps in
-  `derived_maps/`.
+  `derived_maps/`. Every change saves itself there (the top bar says
+  *Saved*), and Export, *Whole project (.zip)* makes one zip of the folder,
+  next to it, to hand the project to someone.
 - On the analyst's computer (the app's user data folder): the saved names
   and the saved processes in `pdt-library/`, and the recent list, the theme
   and the layout in the app's local storage.

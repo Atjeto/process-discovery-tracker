@@ -71,17 +71,24 @@ The Python pipeline the viewer runs by itself; see
 - **The step map.** A BPMN 2.0 file of the transactions' steps
   (`process_map_step.bpmn`) that prints legibly: left to right, wrapped into
   rows, each task carrying its description, system and transaction count,
-  the branches labelled "N of M transactions", the start and end named
-  after the trigger and the result.
+  the branches labelled "N of M transactions". It also carries the flow
+  the analyst set on steps (a decision for a step that happens only under a
+  condition, a loop back, a skip, an early end), the start named after the
+  trigger, the main end after the result and each early end after its
+  condition, user tasks for recorded steps and manual tasks for steps added
+  by hand, each step's notes beside it, its attachments as files under it,
+  and a colour per system with a legend. Task names stay the step names,
+  so a BPMN tool imports them clean.
 - **The PDD (.docx).** Tool-neutral, in the reader's order: document
   control; purpose, scope, trigger, result and contacts; the As-Is map and
   the reference transaction's steps (each with its system, screen, average
-  time, "in N of M transactions", "Transaction 1 at 0:19", its
-  description, the fields it entered, its screenshots and attachments, a
-  waste flag); variations, business rules and exceptions; one data table;
-  applications and time; improvement and automation scope with the To-Be
-  map; notes; attachments. The analyst's fields survive every re-export;
-  an empty field leaves a visible gap.
+  time, "in N of M transactions", "Transaction 1 at 0:19", "Only when" its
+  condition, its description, the fields it entered, its screenshots and
+  attachments, a waste flag, and where the process goes after it besides
+  the next step); variations, business rules and exceptions; one data
+  table; applications and time; improvement and automation scope with the
+  To-Be map; notes; attachments. The analyst's fields survive every
+  re-export; an empty field leaves a visible gap.
 - **Meeting transcripts.** A Teams `.vtt` or `.docx` transcript is parsed
   into timed, speaker-tagged sentences; nothing interprets what was said.
 
@@ -90,75 +97,109 @@ The Python pipeline the viewer runs by itself; see
 The analyst's Electron app, with its own Python; see
 [architecture/VIEWER.md](architecture/VIEWER.md).
 
+The viewer says *transaction* for one pass through the process and
+*project* for what the analyst opens or starts.
+
 **Starting**
 
-- **Open a recording folder**, or start a project **from a video** (the
-  video is copied into a new folder and the timeline follows it) or **from
-  nothing**. Recent recordings are named by their document title once it
-  is written.
+- **New and Open.** The New menu starts a project **from a video** (the
+  video is copied into a new folder and the timeline follows it) or an
+  **empty** one; the Open menu opens a project folder (the one the SME's
+  capture app saved, or one made with New) and the recent projects, named
+  by their document title once it is written.
 - **The analysis runs by itself** when a folder opens without a current one
   and after the changes that need it, with one status line and Cancel. The
   log shows only when a run fails.
 
 **Overview**
 
-- **What is left**: the stages (runs, reference run, other runs, document,
-  PDD), each shown done or not, with one button for the next act.
-- **The recording line**: who recorded it, its runs, the reference run's
-  steps, the video and the transcript with Attach, and a warning only when
-  one is needed.
-- **The document**: ten fields that print in their own places in the PDD
-  (title, purpose, scope, trigger, result, contacts, business rules,
-  exceptions, improvement and automation scope, notes), the session's
-  attachments, and the transcript's sentences with *Add to* a field.
-- **Observations**: data typed twice, per field; where the time goes, per
-  step and per system.
+- **The Checklist**: the five acts (mark the transactions, confirm the
+  reference transaction, review the other transactions, write the
+  document, export the PDD), each ticked once done and explained in its
+  tooltip, with one button for the next act.
+- **The project line**: who recorded it, its transactions, the reference
+  transaction's steps, the video and the transcript with Attach, and a
+  warning only when one is needed.
+- **The document** ("You write these. The PDD prints them."): ten fields
+  that print in their own places in the PDD (title, purpose, scope,
+  trigger, result, contacts, business rules, exceptions, improvement and
+  automation scope, notes). An empty field looks empty, and the heading
+  counts the fields written and, once one is, names the ones still empty.
+  With it, the project's attachments and the transcript's sentences with
+  *Add to* a field; a sentence said before the recording started reads
+  "0:28 before".
+- **Observations** ("Measured from the recording"): data typed twice, per
+  field; where the time goes, per step and per system, with the Average
+  time and in how many transactions it happened.
 
 **Timeline**
 
-- **One timeline** of the recording: runs, activity by system, idle,
-  screenshots, the steps, the transcript and notes, on one clock (the time
-  since the recording started). A video project's timeline runs on its video.
+- **One timeline** of the recording: transactions, activity by system,
+  idle, screenshots, the steps, the transcript and notes, on one clock (the
+  time since the recording started). A video project's timeline runs on
+  its video.
 - **The video beside it**, attached and synced with two clicks and copied
   into the folder so it travels with it; a small playback bar.
-- **Run repair**: insert, move, rename and delete run markers, shown at once
-  as pending until *Apply marker changes*; insert a run from a selected
-  range, or exclude a range from the analysis.
+- **Transaction repair**: *Start a transaction here* and *End the
+  transaction here* from a right-click; move, rename and delete markers,
+  shown at once as pending until *Apply marker changes*; insert a
+  transaction from a selected range, or exclude a range from the analysis.
 - **Notes at a moment**, and the screenshots in a side panel and a gallery.
 
 **Steps**
 
-- **The runs and their steps.** Confirm the reference run after fixing its
-  boundaries (merge, split, add, hide) and names; *Reopen run* takes it back.
-  A merge carries to the same drafts of the other runs; a hidden draft can
-  be hidden in every run.
-- **The other runs are reviewed, not confirmed**: each lists its extra,
-  skipped and reordered steps against the reference run.
+- **The transactions and their steps**, under one line that says what a
+  transaction is. Confirm the reference transaction after fixing its
+  boundaries (merge, split, add, hide) and names; *Reopen transaction*
+  takes it back. A merge carries to the same drafts of the other
+  transactions; a hidden draft can be hidden in every transaction.
+- **The other transactions are reviewed, not confirmed**: each lists its
+  extra, skipped and reordered steps against the reference transaction.
 - **The step pane**: a fact line led by the system, Name, System, the fields
-  typed, Description (with what was said during the step), Waste, Watch and
-  Hide; screenshots (a video frame, a pasted image or a file, and the one
-  the PDD prints), notes and attachments. Everything saves as you go, and
-  Ctrl+Z undoes it.
+  typed, Description (with what was said during the step), the Flow line,
+  Waste, Watch and Hide; screenshots (a video frame, a pasted image or a
+  file, and the one the PDD prints), notes and attachments. Everything
+  saves as you go, and Ctrl+Z undoes it.
+- **Step flow**: the Flow line reads "Always · then the next step" until
+  the analyst sets *Only when...* (a condition: the map draws a decision
+  with an "otherwise" path around the step) or *Go to...* (after the step,
+  when a condition holds, back to an earlier step, on to a later one, or
+  the end). A link to a step that is hidden or deleted is dropped, and the
+  toast says so; Ctrl+Z brings both back.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
   Alt+Down), or *+ Step* at the video's playhead.
 - **Saved names and saved processes**: a name given once names the same
   drafted step in every later recording; *Save as this process* lets a later
-  recording be compared with the confirmed reference run. *Leave apps out*
-  drops an application from the drafts.
+  recording be compared with the confirmed reference transaction. *Leave
+  apps out* drops an application from the drafts.
 
 **Map**
 
-- **The process map** drawn from the runs' steps, left to right, each box
-  naming its system, the arrows weighted by the time along them (hover one
-  for how often the runs took it and its times, in words).
+- **The process map** drawn from the transactions' steps, left to right,
+  from a Start to an End circle, each box naming its system, the arrows
+  weighted by the time along them (hover one for how often the
+  transactions took it and its times, in words). The flow set in Steps
+  shows too: the conditions on their lines, and a dashed line for a path no
+  transaction took.
 - **Edit as the As-Is map**: an editable BPMN copy for the PDD (and a To-Be
-  copy); the chosen As-Is map shows first. An analysis never changes a copy.
+  copy). An analysis never changes a copy; a copy made before the step map
+  had its colours, notes and attachments offers *Copy again* for them.
+- **The As-Is map, linked**: the chosen copy shows first, drawn as the PDD
+  prints it. A task opens the step panel on its step, a file opens its
+  attachment, a note shows its whole text.
 
 **Everywhere**
 
-- **The step panel**: from a map box, a timeline step band or a Steps row,
-  every occurrence of the step with its moment in a small video, its
-  screenshots, what was said and its notes.
-- **Export**: the PDD, the process map as an image (SVG) and as BPMN.
+- **The step panel**: from a map box, an As-Is task, a timeline step band
+  or a Steps row, every occurrence of the step with its moment in a small
+  video, its screenshots, what was said and its notes, and its flow in one
+  line when one is set.
+- **Saved as you go**: every change saves itself to the project folder, and
+  the top bar says *Saved* (the time and the folder on hover), *Saving...*
+  or *Not saved* with the reason.
+- **Export**: the PDD, the process map as an image (SVG, the picture the
+  PDD prints) and as BPMN, and the *Whole project (.zip)*: one zip of the
+  folder, next to it, to hand the project to someone. Every export opens
+  its folder with the file selected.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
   and a dark theme.

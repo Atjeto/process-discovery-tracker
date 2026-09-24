@@ -4,7 +4,7 @@ A captured session is a self-contained folder: the integration seam between
 capture, normalization and the viewer (section 2.1 of the design). This file
 is the authoritative format reference;
 [DATA-MODEL.md](../docs/architecture/DATA-MODEL.md) is the working summary.
-Contract numbers (C1 to C16) refer to
+Contract numbers (C1 to C18) refer to
 `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; the decisions
 behind the light version are in [ADR-0029](../docs/adr/0029-ba-helper-refocus.md).
 
@@ -23,6 +23,7 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   screenshots/            # event-triggered screenshots
   screenshots/analyst/    # screenshots the analyst added by hand (C16)
   attachments/            # files the analyst attached (C16)
+  video/                  # an attached video, copied into the folder by the viewer
   obs/sync.json           # tracker to OBS clock offset, when OBS recorded
   session-integrity.json  # file manifest (name and size) written at session end
   annotations.json        # analyst sidecar (written by the viewer and the pipeline)
@@ -45,10 +46,9 @@ folder with `manifest.json`, an empty `events.jsonl` and `annotations.json`,
 without the capture files (`config.yaml`, `obs/`, `session-integrity.json`,
 the recorder's screenshots). Everything the analyst adds (steps,
 screenshots, notes, attachments) lives in the folder, so it travels with it.
-Today only the pipeline half of C16 exists: the pipeline reads such sessions
-and every key the analyst adds (screenshots, notes, attachments, a step's
-`system`, `order`, `pdd_screenshot`, `hidden_screenshots`), while the viewer
-neither creates such sessions nor writes those keys yet.
+The viewer makes such sessions (its New menu) and writes every key the
+analyst adds (screenshots, notes, attachments, a step's `system`, `order`,
+`pdd_screenshot`, `hidden_screenshots`); the pipeline reads them.
 
 ## events.jsonl envelope
 
@@ -269,9 +269,12 @@ file over `annotations.json`.
 
 **`external_video`** *(object or null)*: the attached video,
 `{ path, offset_ms, attached_at }`, written by the viewer when a video is
-attached and synced. `path` is absolute, or relative to the session folder
-for a video kept in the folder (a video session's, C16). `offset_ms` places
-the video on the session clock: video time 0 is `manifest.started_at` plus
+attached and synced. The viewer copies an attached video into the folder's
+`video/` (unless it is inside the folder already), so `path` is relative to
+the session folder, with `/`; it is absolute only from an older attach or
+when the copy failed. A path that no longer resolves falls back to a file of
+that name at the folder's top or in `video/`. `offset_ms` places the video
+on the session clock: video time 0 is `manifest.started_at` plus
 `offset_ms`. When the file exists, it wins over the manifest's OBS
 recording.
 
@@ -561,6 +564,7 @@ lives at `derived_maps/<map_id>.bpmn`.
       "file": "derived_maps/rm_<uuid>.bpmn",
       "source": { "notation": "bpmn", "level": "step", "scope": null },
       "forked_from_hash": "9f3c…",
+      "forked_from_sig": "4b1e…",
       "forked_at": "<ISO>",
       "edited_at": "<ISO>",
       "pdd_role": "to_be",
@@ -578,15 +582,35 @@ lives at `derived_maps/<map_id>.bpmn`.
   and read by `viewer/reference-maps.js`.
 - **`source`**: what was forked; always the step-level BPMN now.
 - **`forked_from_hash`**: a short hash (blake2b, sha256 fallback) of the
-  source `.bpmn` at fork time. When the current source hashes differently the
-  copy's row offers **Copy again**, which makes a new copy (the same name and
-  kind, no role) and never merges.
+  source `.bpmn` file's bytes at fork time.
+- **`forked_from_sig`**: a short hash of the process the source draws at
+  fork time (`viewer/reference-maps.js` `processSignature`): its tasks
+  (kind and name), events (kind and name), sequence flows (source, target
+  and name), data objects (name and the task holding each) and text
+  annotations (text and what each is joined to), names and texts with
+  their whitespace collapsed. Ids, the layout (`BPMNDiagram`) and the
+  documentation are left out. A node without a name (a gateway, a start
+  event while the Trigger is empty) counts by its kind and the nodes and
+  flows around it. `null` when the file holds no task, event or gateway;
+  absent on a copy made before it was stored. A duplicate keeps its
+  source's.
+- **Stale.** A copy is stale when the process it was made from has changed:
+  with `forked_from_sig`, when the current source's signature differs, so
+  an analysis that writes the same map in another element order (every
+  analysis does) is no change; without it, when the current file's bytes
+  hash differently from `forked_from_hash`. An unknown current mark is no
+  change. A stale copy's row offers **Copy again**, which makes a new copy
+  (the same name and kind, no role) and never merges. A copy made before
+  the step map had its colours, notes and attachments (C18) says that Copy
+  again brings them.
 - **`pdd_role`**: `null` | `as_is` | `to_be`: which PDD slot the map fills
   (one map per slot). At export the viewer renders the copy to PNG and passes
   it as `--pdd-map-image` (As-Is, section 3.1) or `--pdd-tobe-image` (To-Be,
   section 7.1). With no As-Is copy, the viewer draws `process_map_step.bpmn`
   the same way and passes that picture instead. The Map's "Edit as the As-Is
-  map" gives its copy the role `as_is` when no copy has it.
+  map" gives its copy the role `as_is` when no copy has it, and the Map shows
+  the `as_is` copy first, linked to the steps (a task opens its step, a data
+  object its attachment: C18).
 
 **Re-analysis:** `pipeline_stages._init_existing_anno` only makes sure the
 key exists, and no stage writes it, so `reference_maps[]` and the
@@ -683,10 +707,16 @@ two viewer-written keys, both optional, in any state:
   step's map node in every transaction where it appears.
 - **`links`**: `[{ "to": <step_id> | "end", "when": <string> }]`. After the
   step, when `when` holds, the process goes to that step (an earlier one is
-  a loop back, a later one a skip ahead) or ends (on the step map at an end
-  event of its own, named by the `when`: C18). A link never points at its
-  own step. A link whose target is hidden or removed is dropped by the
-  viewer; the pipeline ignores one it finds.
+  a loop back, a later one a skip ahead) or ends. On the step map a link to
+  the end from a step no transaction ended at gets an end event of its own,
+  named by its `when` (C18); one without a `when` goes to the main end. A
+  link never points at its own step. A link whose target is hidden or
+  removed is dropped by the viewer, which says so once (Undo brings both
+  back); the pipeline ignores one it finds. A merge keeps the first step's
+  condition and every step's links, and points the links to its steps at
+  the merged step (one that would then point at its own step is dropped); a
+  split keeps the condition on the first half and moves the links to the
+  second.
 
 A draft the analyst sets either key on becomes `edited` (the viewer does
 it, and re-normalization keeps a draft that still carries one as `edited`),
@@ -902,8 +932,9 @@ default the file's creation time; `annotations.json` gets `external_video`
 with the path relative to the folder and `offset_ms: 0`); a session started
 from nothing has `"blank"` (`started_at` is the creation time). Both have an
 empty `events.jsonl` and no capture fields (`config`, `obs`, `consent` and
-the rest are absent). The viewer does not create them yet. The pipeline
-reads them as sessions without a recording:
+the rest are absent). The viewer creates them (*New project from a
+video...*, *New empty project...*). The pipeline reads them as sessions
+without a recording:
 
 - **One implicit run.** While the derived stream has no start marker (the
   marker edits applied), the session has one implicit run covering the
@@ -1273,7 +1304,7 @@ range: they have no time to measure.
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
 | `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
-| `process_map_step.bpmn` | With `--mine`: the step-level BPMN from the visible steps that belong to a run (one trace per run, nodes labelled by `process_label`; one run is a plain sequence, two or more are mined), ending in a real end event. When the analyst has set the flow on steps (C17) it is drawn from the step flow edges instead: an exclusive gateway after a step with several ways out and before a step with several ways in, each condition the name of its flow (a long one cut after a whole word within 48 characters, and whole in the flow's documentation), loops and early ends included, the names placed clear of the boxes, lines and other names. Each task's documentation carries its description, system, screen, run count and average time; the start event takes the first line of `document.trigger` (unnamed while it is empty) and the main end event the first line of `document.result`, else "End"; each branch without a declared name says "N of M transactions" (C15; not counted in the implicit run of a session without a recording). Contract C18: each link to the end ends at an end event of its own, named by its `when` (cut like a flow name, whole in its documentation; an end the transactions reached stays the main end); a task is a `manualTask` when every step it stands for was added by hand (manually authored, no recorded interaction), else a `userTask`; its system's colour is written as bpmn-js's `bioc:fill` and `bioc:stroke` (light fills, dark strokes, from a fixed palette of nine named colours, in the order the reference transaction, then the others, first used the systems), with one text annotation, `TextAnnotation_legend`, naming each system's colour ("SAP: orange"); the notes on its steps are one text annotation above it, joined by an association (cut at 90 characters after a whole word, whole in its documentation); the files attached to its steps are data objects under it (`DataObjectReference_<attachment id>`, named by the label, else the file name, documented with `attachments/<file>`), each joined by a data input association. Every element has its place on the diagram (the events' names too), clear of the boxes, lines and names. "Edit as the As-Is map" copies it, and the PDD prints it when no As-Is copy is chosen. |
+| `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
@@ -1281,13 +1312,66 @@ temporary file and offers it for saving. Other writers: the capture app
 (`events.jsonl`, `manifest.json`, `config.yaml`, `screenshots/`,
 `obs/sync.json` `{ tracker_session_start_ts, obs_recording_start_ts,
 offset_ms, recording_path }`, `session-integrity.json`), the viewer
-(`annotations.json` and its backups, `derived_maps/`, the transcript's
-`offset_ms`) and `transcript_import.py` (`transcript.json`, `transcript/`).
+(`annotations.json` and its backups, `derived_maps/`, `video/`,
+`screenshots/analyst/`, `attachments/`, the transcript's `offset_ms`, and
+for a project it makes `manifest.json` and an empty `events.jsonl`) and
+`transcript_import.py` (`transcript.json`, `transcript/`). The viewer's
+Export, Whole project (.zip) writes `<folder name>.zip` next to the folder
+(`<folder name> (2).zip` when that name is taken), never inside it.
 
 **No longer written:** `events.xes`, `events.csv`, `dfg.json`, the
 activity-level `process_map.bpmn` and the per-case maps in `process_maps/`
 (removed in the light version, ADR-0029 AD-9). Older folders, the committed
 demo sessions included, may still hold them; nothing reads them.
+
+### The step map (`process_map_step.bpmn`)
+
+Valid BPMN 2.0 with diagram interchange, left to right, wrapped into rows
+when one row would print its labels below 8.5 pt on a landscape page, every
+line routed around the boxes, and every element and name placed clear of
+the boxes, the lines and the other names.
+
+- **What it is drawn from.** The visible steps that belong to a run: one
+  trace per run, nodes labelled by `process_label`, a step repeated back to
+  back counted once. One run is a plain sequence; two or more are mined.
+  When the flow the analyst set on steps (C17) changes the map (a condition,
+  or a path no transaction took), the map is drawn from the step flow edges
+  instead, the rule the viewer's live map uses: an exclusive gateway after a
+  step with several ways out and before a step with several ways in, loops
+  and early ends included.
+- **Tasks.** Named by the step names; the system stays out of the name. A
+  task is a `manualTask` when every step it stands for was added by hand
+  (manually authored, no recorded interaction), else a `userTask` (C18).
+  Its documentation holds its description, then its system, screen, the
+  number of transactions it happened in and its average time.
+- **Events.** The start event takes the first line of `document.trigger`
+  (unnamed while it is empty), the main end event the first line of
+  `document.result`, else "End". A link to the end from a step no
+  transaction ended at gets an end event of its own, named by its `when`
+  (C18); a link without a `when` goes to the main end.
+- **Flow names.** A condition, "otherwise" or a `when` names its flow; a
+  name longer than 48 characters is cut after a whole word and is whole in
+  the flow's documentation. The flow into an early end has no name: its end event says
+  the `when`. A branch without a declared name says "N of M transactions"
+  (C15; not counted in the implicit run of a session without a recording).
+- **A colour per system** (C18). Each task gets a light fill and a dark
+  stroke, written as bpmn-js's `bioc:fill` and `bioc:stroke` (other tools
+  ignore them), from a palette of nine named colours in the order the
+  reference transaction, then the others, first use the systems. A tenth
+  system and later keep the default look. One text annotation,
+  `TextAnnotation_legend`, names the colours: "Colour by system", then one
+  line per system ("SAP: orange", or "no colour").
+- **Notes** (C18). The notes on a task's steps (`analyst_notes` with that
+  `step_id`) are one text annotation above the task, joined by an
+  association: one note per line, cut after a whole word within 90
+  characters, whole in the annotation's documentation. A note on a moment
+  is on no task.
+- **Attachments** (C18). Each file attached to a task's steps is a data
+  object under it (`DataObjectReference_<attachment id>` and
+  `DataObject_<attachment id>`, named by the label, else the file name,
+  documented with `attachments/<file>`), joined by a data input
+  association. A step name on several tasks shows its notes and files on
+  the first.
 
 ## `normalize.py` exit codes (contract C13)
 

@@ -29,7 +29,9 @@ every push.
 
 1. **The process map is one connected graph.** The map the Map level draws
    from the runs' steps has one component, one entry step and one final
-   step, reads left to right, and draws every path. *Guard:*
+   step, reads left to right, and draws every path. The pin counts the step
+   boxes and the lines between them only: the Start and End circles join
+   every first and last step, so they would hide islands. *Guard:*
    `e2e/session-smoke.js`, "the process map is one connected graph (1
    component, 1 entry step, 1 final step), every path drawn" and "the
    process map reads left-to-right". **History:** a value-laden key once
@@ -70,12 +72,15 @@ every push.
    edited steps; Stop comparing), the pytest survival tests above.
 6. **One rule, two languages.** The value-free labels, the system names and
    the run differences are one rule set in `shared/`, read by Python and by
-   the viewer. *Guards:* the shared goldens (`process-label-golden.json`,
-   `screen-label-golden.json`, `run-differences-golden.json`) pinned from
-   both sides (`test_process_label.py`, `test_screen_label.py`,
-   `test_run_differences_golden.py`, `test_app_names.py`;
-   `process-map-levels.test.js`, `run-differences.test.js`,
-   `system-names.test.js`).
+   the viewer; the step flow's edges (contract C17: the live map and the
+   step BPMN) are one rule written in both, pinned by one golden. *Guards:*
+   the shared goldens (`process-label-golden.json`,
+   `screen-label-golden.json`, `run-differences-golden.json`,
+   `flow-links-golden.json`) pinned from both sides
+   (`test_process_label.py`, `test_screen_label.py`,
+   `test_run_differences_golden.py`, `test_flow_links_golden.py`,
+   `test_app_names.py`; `process-map-levels.test.js`,
+   `run-differences.test.js`, `system-names.test.js`).
 7. **User-facing copy is plain business English, without dashes.** No
    internal vocabulary in rendered strings (the banned list and its
    replacements are in [DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md), UI
@@ -128,7 +133,7 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
      viewer process's exit and its last output lines, then retries once.
    - `--session=<folder>` is read once, when the page first loads: a
      `page.reload()` opens nothing. Relaunch instead.
-3. **Stub the main process's dialogs** when a flow opens one:
+3. **Stub the main process's dialogs** when a flow opens one, and Explorer:
    ```js
    await v.app.evaluate(({ dialog }, f) => {
      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [f] });
@@ -136,6 +141,11 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
    await v.app.evaluate(({ dialog }, f) => {
      dialog.showSaveDialog = async () => ({ canceled: false, filePath: f });
    }, OUT);
+   // Every export ends by showing its file in Explorer: no window, and the
+   // file it showed is readable afterwards.
+   await v.app.evaluate(({ shell }) => {
+     shell.showItemInFolder = (f) => { global.__shown = f; };
+   });
    ```
 4. **Theme:** `page.evaluate(() => require("./theme.js").setTheme("dark"))`.
 
@@ -148,8 +158,9 @@ If a selector misses, grep `viewer/index.html` and the module named, and
 make the missing selector fail loud in your script, never skip a surface
 silently.
 
-**Top bar** (the levels, the status line and Export show once a session is
-open, `.app.has-session`):
+**Top bar** (the levels, the status line, the save state and Export show
+once a project is open, `.app.has-session`; opening one menu closes the
+others):
 - New: `#btn-new-menu` opens `#new-menu-popup`: `#btn-new-from-video`
   (New project from a video...), `#btn-new-blank` (New empty project...).
 - Open: `#btn-recent-menu` opens `#recent-menu-popup`: `#btn-open-session`
@@ -161,8 +172,14 @@ open, `.app.has-session`):
 - Status line `#session-pills`: while the pipeline runs `#run-status` and
   `#btn-cancel-normalize`; else `#btn-apply-marker-edits` when marker
   changes wait.
+- The save state `#save-state` (`role="status"`, focusable):
+  `data-state="saved"|"saving"|"failed"`, its text *Saved*, *Saving...* or
+  *Not saved*, the time, the folder or the reason in its `title`.
 - Export: `#btn-session-export-menu` opens `#session-export-popup`:
-  `#btn-session-pdd`, `#btn-session-map-svg`, `#btn-session-step-bpmn`.
+  `#btn-session-pdd`, `#btn-session-map-svg`, `#btn-session-step-bpmn`,
+  `#btn-session-zip` (Whole project (.zip); it reads "Making the zip..."
+  and the Export button carries `aria-busy="true"` while the zip is made).
+  Every export then shows its file in Explorer (step 3 above).
 - `#btn-help` (below), `#btn-theme-toggle`.
 
 **Shell:** the empty state `#session-empty` (`#btn-open-session-hero`,
@@ -180,11 +197,14 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#btn-attach-video`, `#btn-attach-transcript`, `#btn-remove-transcript`,
   the marker fixes `.summary-fix[data-fix]`.
 - The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"improvement"|"notes"]`
-  (saved on change), `#ov-doc-status`; the attachments `#ov-attach`
+  (saved on change), who fills it `#ov-doc-who`, `#ov-doc-status` (the
+  count, and the empty fields by name); the attachments `#ov-attach`
   (`#btn-ov-attach`, `.att-row[data-att-id]` with `.att-label-input` and
   `[data-att-act="open"|"remove"]`); the transcript `#ov-tr` (`#ov-tr-list`,
   `.tr-add-to[data-seg]` opens `#ov-tr-add-menu [data-doc-target]`).
-- Observations `#ov-observations details[data-module="retyped"|"time"]`.
+- Observations `#ov-observations details[data-module="retyped"|"time"]`,
+  who fills them `#ov-observations .ov-block-who`, the tables `table.ov-time`
+  (headers Average time, Happened in).
 
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
 - Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
@@ -222,6 +242,8 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`),
   `#btn-remembered-names` (the dialog `#remembered-names-dialog`,
   `[data-act="rename-name"|"forget-name"|"close"]`).
+- The list's title `#runs-pane-count` and the line under it that says what
+  a transaction is, `#runs-pane-note`.
 - The transactions `#step-list .run-group[data-case-id]`: the head
   `.run-row` (a click opens the transaction; a right-click opens
   `#run-ctx-menu`: "Use as reference transaction" on another transaction,
@@ -235,6 +257,13 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
 - The step pane `#step-detail` (focus it before Ctrl+V): `.step-fact`,
   `#step-name` (Enter or leaving it saves), `#step-system` (with
   `#step-system-list`), `#step-desc` (leaving it saves), `#step-said`,
+  the Flow line `#step-flow` (contract C17: `#step-flow-line`,
+  `#btn-flow-only-when`, `#btn-flow-go-to`; the condition `#step-only-when`
+  with `#btn-flow-remove-condition`; the links `.flow-links
+  .flow-link[data-i]` (`data-i="new"` for the row being added), each with
+  `.flow-link-text`, the dropdown `select.flow-link-to`
+  (`#flow-link-to-<i>`, its options the transaction's steps and `end`),
+  `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
   `#flag-waste`, `#btn-step-watch` (only with a video), `#btn-step-hide`;
   `#step-shots-sect` (`#btn-step-add-shot` opens `#shot-src-menu
   [data-src="video_frame"|"paste"|"file"]`; `.step-shot-card[data-ref][data-kind]`
@@ -246,21 +275,36 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   steps only).
 
 **The step panel** (`#step-panel`, `views/step-panel.js`; hidden until a
-door opens it): `#sp-name`, `#sp-about` (`.sp-system`, `.sp-count`),
-`#sp-video`, `#sp-body .sp-occ[data-step-id]` (`.sp-play`, `.sp-at`,
-`.sp-shot`), the foot `#btn-sp-steps` or `#btn-sp-timeline`, `#btn-sp-close`.
+door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line
+`#sp-flow` when one is set, `.sp-count`; `.sp-missing` alone for an As-Is
+task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
+(`.sp-play`, `.sp-at`, `.sp-shot`), the foot `#btn-sp-steps` or
+`#btn-sp-timeline`, `#btn-sp-close`.
 
 **Map** (`#session-layout-map`):
 - The map host `#session-map-dfg-host`; its cytoscape instance is
-  `host.__cy`, the edge tip `.dfg-edge-tip`; `#btn-session-map-zoom-fit`.
-  While the map cannot be drawn the host holds the message, with
-  `[data-map-cta="mark-runs"]` when no run is marked.
+  `host.__cy`, the edge tip `.dfg-edge-tip`; `#btn-session-map-zoom-fit`
+  (it fits the As-Is map while that shows). The Start and End circles are
+  nodes with `data("kind") === "event"` and `role` `start-event` or
+  `end-event` (their ids start with the character `\u0001`, so no step
+  name takes them); a box is any other node. An edge carries `observed`
+  (false for a path set in Steps that no transaction took: dashed),
+  `label` (the condition as drawn, cut short) and `fullLabel`. While the
+  map cannot be drawn the host holds the message, with
+  `[data-map-cta="mark-runs"]` when no transaction is marked.
 - The chosen As-Is map first: `#session-map-asis` (`#map-asis-title`,
-  `#map-asis-img`, `#btn-map-asis-edit`, `#btn-map-show-runs`) and
-  `#btn-map-show-asis` to come back to it.
+  `#btn-map-asis-edit`, `#btn-map-show-runs`) and `#btn-map-show-asis` to
+  come back to it. The map itself is `#map-asis-canvas`, a bpmn-js
+  navigated viewer (`host.__bpmnViewer`; shapes
+  `.djs-element[data-element-id]`, the ones a click opens marked
+  `.pdt-link`, the legend `TextAnnotation_legend` marked `.pdt-inert`); a
+  note opens the popover `#map-asis-note` (`.map-asis-pop-text`,
+  `.map-asis-pop-close`).
 - The edit act `#btn-fork-refmap`; `#btn-toggle-refmaps` (`#refmap-count`)
   shows `#refmap-panel`: `#refmap-list .refmap-row` with
-  `[data-rm-act="edit"|"dup"|"refork"|"del"]`, or `#refmap-empty`.
+  `[data-rm-act="edit"|"dup"|"refork"|"del"]` and, under a copy the
+  process map changed after, `.refmap-row-note` (what Copy again gives);
+  or `#refmap-empty`.
 - The editor overlay `#refmap-editor-overlay`: `#refmap-editor-name`,
   `#refmap-editor-pdd` (None, As-Is map, To-Be map), `#refmap-editor-host`
   (bpmn-js shapes `.djs-element[data-element-id]`),
@@ -280,7 +324,10 @@ fail): the tab row and the Compare, Template and App Library views; the More
 menu; the command palette; the Analyze button; the Phases and Analysis
 levels; the map's notation tabs, level select, rare-path slider and Expert
 drawer; the data posture and Copy for LLM; the Flow Notes tab; the
-shortcuts overlay.
+shortcuts overlay. Replaced since: the As-Is picture `#map-asis-img` (now
+the linked `#map-asis-canvas`) and `dfg-viewer.js` `exportSvg` (Export's
+map image draws the step BPMN); *New from a video* and *New without a
+recording* in the Open menu are the New menu's two items.
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has
