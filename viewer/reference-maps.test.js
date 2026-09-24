@@ -91,6 +91,166 @@ test("fork prefers the on-disk source hash; drift fires when the source changes"
   assert.equal(RM.isStale(e, RM.fileHash(srcFile)), true);
 });
 
+/* A step map as the pipeline writes it (mining.export_bpmn): the process
+   elements (a task's documentation, its incoming and outgoing flows and the
+   files it holds inside it), then the diagram. `v` varies what is not the
+   process: the ids (a prefix), the order of the process elements
+   (reversed), the layout (a shift) and the documentation text. MAP has an
+   unnamed start, a parallel block, two choices joined gateway to gateway, a
+   manual task, a named end, a file, a note and the legend. */
+const MAP = {
+  nodes: [
+    ["start", "startEvent", ""],
+    ["search", "userTask", "Account lookup: Search"],
+    ["fork", "parallelGateway", ""],
+    ["open", "userTask", "Open customer record"],
+    ["track", "userTask", "Order Tracking.xlsx: Save workbook"],
+    ["meet", "parallelGateway", ""],
+    ["x1", "exclusiveGateway", ""],
+    ["save", "userTask", "Order: Save order"],
+    ["call", "manualTask", "Call the customer"],
+    ["x2", "exclusiveGateway", ""],
+    ["x3", "exclusiveGateway", ""],
+    ["mail", "userTask", "Outlook: Send confirmation"],
+    ["print", "userTask", "Print the order"],
+    ["x4", "exclusiveGateway", ""],
+    ["end", "endEvent", "Order saved & confirmed"],
+  ],
+  flows: [
+    ["start", "search", ""], ["search", "fork", ""], ["fork", "open", ""], ["fork", "track", ""],
+    ["open", "meet", ""], ["track", "meet", ""], ["meet", "x1", ""],
+    ["x1", "save", "Customer found"], ["x1", "call", "Customer unknown"],
+    ["save", "x2", ""], ["call", "x2", ""], ["x2", "x3", ""],
+    ["x3", "mail", "3 of 4 transactions"], ["x3", "print", "1 of 4 transactions"],
+    ["mail", "x4", ""], ["print", "x4", ""], ["x4", "end", ""],
+  ],
+  data: [["att1", "Order form.pdf", "save"]],
+  notes: [["search", "Ask for the customer number first"]],
+  legend: "Colour by system\nSalesforce: blue\nExcel: green",
+};
+function stepMap(map, v = {}) {
+  const id = (k) => (v.ids || "") + k;
+  const text = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const attr = (s) => text(s).replace(/"/g, "&quot;").replace(/\n/g, "&#10;");
+  const flows = map.flows.map(([s, t, name], i) => ({ id: id("flow_" + i), s, t, name }));
+  const els = map.nodes.map(([k, kind, name]) => {
+    const held = map.data.filter((d) => d[2] === k);
+    return `<bpmn:${kind} id="${id(k)}"${name ? ` name="${attr(name)}"` : ""}>` +
+      (v.doc ? `<bpmn:documentation>${text(v.doc + k)}</bpmn:documentation>` : "") +
+      flows.filter((f) => f.t === k).map((f) => `<bpmn:incoming>${f.id}</bpmn:incoming>`).join("") +
+      flows.filter((f) => f.s === k).map((f) => `<bpmn:outgoing>${f.id}</bpmn:outgoing>`).join("") +
+      (held.length ? `<bpmn:property id="${id("Property_" + k)}" name="__targetRef_placeholder" />` : "") +
+      held.map(([dk]) => `<bpmn:dataInputAssociation id="${id("DataInputAssociation_" + dk)}">` +
+        `<bpmn:sourceRef>${id("DataObjectReference_" + dk)}</bpmn:sourceRef>` +
+        `<bpmn:targetRef>${id("Property_" + k)}</bpmn:targetRef></bpmn:dataInputAssociation>`).join("") +
+      `</bpmn:${kind}>`;
+  });
+  for (const f of flows) {
+    els.push(`<bpmn:sequenceFlow id="${f.id}" sourceRef="${id(f.s)}" targetRef="${id(f.t)}"${f.name ? ` name="${attr(f.name)}"` : ""} />`);
+  }
+  for (const [dk, name] of map.data) {
+    els.push(`<bpmn:dataObject id="${id("DataObject_" + dk)}" />`,
+      `<bpmn:dataObjectReference id="${id("DataObjectReference_" + dk)}" name="${attr(name)}" dataObjectRef="${id("DataObject_" + dk)}" />`);
+  }
+  map.notes.forEach(([k, note], i) => {
+    els.push(`<bpmn:textAnnotation id="${id("TextAnnotation_" + i)}"><bpmn:text>${text(note)}</bpmn:text></bpmn:textAnnotation>`,
+      `<bpmn:association id="${id("Association_" + i)}" associationDirection="None" sourceRef="${id(k)}" targetRef="${id("TextAnnotation_" + i)}" />`);
+  });
+  if (map.legend) els.push(`<bpmn:textAnnotation id="${id("TextAnnotation_legend")}"><bpmn:text>${text(map.legend)}</bpmn:text></bpmn:textAnnotation>`);
+  if (v.reverse) els.reverse();
+  const shapes = map.nodes.map(([k], i) => `<bpmndi:BPMNShape id="${id("Shape_" + k)}" bpmnElement="${id(k)}">` +
+    `<dc:Bounds x="${(v.dx || 0) + 150 * i}" y="120" width="100" height="80" /></bpmndi:BPMNShape>`);
+  return "<?xml version='1.0' encoding='utf-8'?>\n" +
+    '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" ' +
+    'xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1">\n  <bpmn:process id="Process_1" isExecutable="false">\n    ' +
+    els.join("\n    ") + "\n  </bpmn:process>\n  " +
+    '<bpmndi:BPMNDiagram id="BPMNDiagram_1"><bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">' +
+    shapes.join("") + "</bpmndi:BPMNPlane></bpmndi:BPMNDiagram>\n</bpmn:definitions>\n";
+}
+/* The next analysis of the same steps: other ids, another order, another
+   layout and other documentation. */
+const REORDERED = { ids: "n7_", reverse: true, dx: 37, doc: "In 3 of 4 transactions, 5s on average. " };
+function changed(edit) {
+  const map = JSON.parse(JSON.stringify(MAP));
+  edit(map);
+  return stepMap(map);
+}
+const flowOf = (map, s, t) => map.flows.find((f) => f[0] === s && f[1] === t);
+
+test("processSignature: one process with other ids, element order, layout and documentation has one signature", () => {
+  const a = stepMap(MAP), b = stepMap(MAP, REORDERED);
+  assert.notEqual(RM.hashContent(Buffer.from(a)), RM.hashContent(Buffer.from(b)), "the bytes differ");
+  assert.match(RM.processSignature(a), /^[0-9a-f]{16}$/);
+  assert.equal(RM.processSignature(b), RM.processSignature(a));
+});
+
+test("processSignature: a change to the process changes it", () => {
+  const base = RM.processSignature(stepMap(MAP));
+  const edits = {
+    "a renamed task": (m) => { m.nodes[7][2] = "Order: Save the order"; },
+    "an added flow": (m) => { m.flows.push(["x3", "x4", ""]); },
+    "a changed condition name": (m) => { flowOf(m, "x1", "call")[2] = "Customer not found"; },
+    "a task of another kind": (m) => { m.nodes[8][1] = "userTask"; },
+    "a renamed end event": (m) => { m.nodes[14][2] = "Order saved"; },
+    "a renamed data object": (m) => { m.data[0][1] = "Order form v2.pdf"; },
+    "a data object held by another task": (m) => { m.data[0][2] = "call"; },
+    "another note text": (m) => { m.notes[0][1] = "Ask for the order number first"; },
+    "a note joined to another task": (m) => { m.notes[0][0] = "open"; },
+    "another legend": (m) => { m.legend = "Colour by system\nSalesforce: orange\nExcel: green"; },
+    // Each branch keeps its task and its name but leaves from the other
+    // choice: the kinds and names of every flow's ends are as before, so
+    // only the gateways told apart by what they join see it.
+    "branches wired to the other choice": (m) => {
+      flowOf(m, "x1", "call")[0] = "x3"; flowOf(m, "call", "x2")[1] = "x4";
+      flowOf(m, "x3", "print")[0] = "x1"; flowOf(m, "print", "x4")[1] = "x2";
+    },
+  };
+  for (const [what, edit] of Object.entries(edits)) {
+    const sig = RM.processSignature(changed(edit));
+    assert.match(String(sig), /^[0-9a-f]{16}$/, what);
+    assert.notEqual(sig, base, what);
+  }
+});
+
+test("processSignature: no signature for XML that draws no process", () => {
+  assert.equal(RM.processSignature(null), null);
+  assert.equal(RM.processSignature(""), null);
+  assert.equal(RM.processSignature("<bpmn:definitions><bpmn:process id=\"P\" /></bpmn:definitions>"), null);
+});
+
+test("isStale: a copy with a process signature compares the process; one made before keeps the byte rule", () => {
+  const e = RM.buildEntry({ file: "f", forked_from_hash: "abc", forked_from_sig: "s1" });
+  assert.equal(RM.isStale(e, "def", "s1"), false, "other bytes, the same process");
+  assert.equal(RM.isStale(e, "abc", "s2"), true, "another process");
+  assert.equal(RM.isStale(e, "def", null), false, "an unknown current process is no change");
+  const before = RM.buildEntry({ file: "f", forked_from_hash: "abc" });
+  assert.equal(RM.isStale(before, "def", "s1"), true, "no signature: the bytes decide, as before");
+  assert.equal(RM.isStale(before, "abc", "s2"), false);
+});
+
+test("fork stores the process signature: the next analysis of the same steps is no drift, a changed process is, a duplicate carries it", () => {
+  const sf = tmpSession();
+  const src = path.join(sf, "process_map_step.bpmn");
+  fs.writeFileSync(src, stepMap(MAP));
+  const anno = {};
+  const e = RM.fork({
+    sessionFolder: sf, anno, xml: stepMap(MAP), source: { level: "step" },
+    sourceBpmnPath: src, nowIso: "t",
+  });
+  assert.equal(e.forked_from_hash, RM.fileHash(src));
+  assert.equal(e.forked_from_sig, RM.processSignature(stepMap(MAP)));
+  fs.writeFileSync(src, stepMap(MAP, REORDERED));
+  let now = RM.sourceMarks(src);
+  assert.notEqual(now.hash, e.forked_from_hash, "the file's bytes changed");
+  assert.equal(RM.isStale(e, now.hash, now.sig), false);
+  fs.writeFileSync(src, changed((m) => { m.nodes[7][2] = "Order: Save the order"; }));
+  now = RM.sourceMarks(src);
+  assert.equal(RM.isStale(e, now.hash, now.sig), true);
+  const dup = RM.duplicate({ sessionFolder: sf, anno, srcEntry: e, nowIso: "t2" });
+  assert.equal(dup.forked_from_sig, e.forked_from_sig);
+  assert.equal(RM.sourceMarks(path.join(sf, "missing.bpmn")), null);
+});
+
 test("duplicate copies the blob as a To-Be map with no PDD role, fresh id + file", () => {
   const sf = tmpSession();
   const anno = {};
@@ -146,10 +306,10 @@ test("setRole is the one role control: exclusive per slot, and the stored kind f
   assert.equal(RM.setRole(anno, "missing", "as_is"), null);
 });
 
-test("the stored shape of a map is unchanged (the Export menu reads it)", () => {
+test("the stored shape of a map keeps its keys (the Export menu reads it) and adds the process signature it was copied from", () => {
   const e = RM.buildEntry({ file: "derived_maps/x.bpmn", name: "As-Is map", kind: "as_is", source: { level: "step" }, forked_at: "t" });
   assert.deepEqual(Object.keys(e).sort(),
-    ["edited_at", "file", "forked_at", "forked_from_hash", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
+    ["edited_at", "file", "forked_at", "forked_from_hash", "forked_from_sig", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
 });
 
 test("C18: a copy made before the step map had its colours, notes and attachments is told apart (no user or manual task in it)", () => {

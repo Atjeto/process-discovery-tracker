@@ -43,6 +43,141 @@ function fileHash(p) {
   try { return hashContent(fs.readFileSync(p)); } catch (_) { return null; }
 }
 
+/* The process a map draws, as a signature. Every analysis writes the step
+   map's file anew, and the miner orders its elements (so their ids and the
+   layout) differently from one analysis to the next: two analyses of the
+   same steps give two files whose bytes differ. So a copy compares the
+   process instead: processSignature is a short hash of what the map says,
+   without its ids, its layout (the BPMNDiagram) or its documentation text:
+   the tasks (kind and name), the events (kind and name), the sequence flows
+   (source, target, name), the data objects (name, and the task holding
+   each) and the text annotations (text, and what each is joined to). A node
+   with no name (a gateway, a start event while the Trigger is empty) is
+   named by its kind and by the nodes and flows around it, over as many
+   rounds as there are such nodes, so a branch wired to another choice
+   counts as a change while a reordered file does not. Null when the XML
+   holds no task, event or gateway. Names and texts are compared with their
+   whitespace collapsed. */
+const _ACTIVITY = /^(?:task|[A-Za-z]+Task|subProcess|adHocSubProcess|transaction|callActivity)$/;
+const _EVENT = /^[A-Za-z]+Event$/;
+const _GATEWAY = /^[A-Za-z]+Gateway$/;
+const _ENTITY = { lt: "<", gt: ">", amp: "&", quot: "\"", apos: "'" };
+
+function _unescape(s) {
+  return s.replace(/&(#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z]+);/g, (all, e) => {
+    if (e[0] !== "#") return Object.prototype.hasOwnProperty.call(_ENTITY, e) ? _ENTITY[e] : all;
+    const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+    try { return String.fromCodePoint(code); } catch (_) { return all; }
+  });
+}
+function _words(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
+function _attrs(s) {
+  const out = Object.create(null);
+  const re = /([\w.:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m;
+  while ((m = re.exec(s || ""))) out[m[1]] = _unescape(m[2] != null ? m[2] : m[3]);
+  return out;
+}
+
+/* The process elements of a BPMN file, read by one pass over its tags (any
+   namespace prefix): { nodes: id => {kind, name}, flows: [{source, target,
+   name}], data: id => name, notes: id => text, joins: [[source, target]] of
+   the associations, holds: [[task id, data object reference id]] }. */
+function _readProcess(xml) {
+  const src = String(xml == null ? "" : xml);
+  const re = /<!-{2}[\s\S]*?-{2}>|<\?[\s\S]*?\?>|<!\[CDATA\[([\s\S]*?)\]\]>|<![^>]*>|<(\/?)(?:[\w.-]+:)?([\w.-]+)((?:\s+[\w.:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/g;
+  const p = { nodes: new Map(), flows: [], data: new Map(), notes: new Map(), joins: [], holds: [] };
+  const stack = [];
+  const close = (kind) => {
+    while (stack.length) {
+      const el = stack.pop();
+      const parent = stack.at(-1);
+      if (el.text != null && el.kind === "text" && parent) p.notes.set(parent.id, _words(el.text));
+      if (el.text != null && el.kind === "sourceRef") {
+        const task = stack.slice().reverse().find((o) => _ACTIVITY.test(o.kind));
+        if (task) p.holds.push([task.id, _words(el.text)]);
+      }
+      if (el.kind === kind) return;
+    }
+  };
+  let at = 0, anon = 0, m;
+  while ((m = re.exec(src))) {
+    const top = stack.at(-1);
+    if (top && top.text != null) top.text += _unescape(src.slice(at, m.index)) + (m[1] || "");
+    at = re.lastIndex;
+    if (m[3] == null) continue;   // a comment, a declaration or a CDATA section
+    if (m[2]) { close(m[3]); continue; }
+    const kind = m[3], a = _attrs(m[4]);
+    const el = { kind, id: a.id || "#" + (anon++), text: null };
+    if (_ACTIVITY.test(kind) || _EVENT.test(kind) || _GATEWAY.test(kind)) {
+      p.nodes.set(el.id, { kind, name: _words(a.name) });
+    } else if (kind === "sequenceFlow") {
+      p.flows.push({ source: a.sourceRef || "", target: a.targetRef || "", name: _words(a.name) });
+    } else if (kind === "dataObjectReference") {
+      p.data.set(el.id, _words(a.name));
+    } else if (kind === "textAnnotation") {
+      p.notes.set(el.id, "");
+    } else if (kind === "association") {
+      p.joins.push([a.sourceRef || "", a.targetRef || ""]);
+    } else if ((kind === "text" && top && top.kind === "textAnnotation") ||
+               (kind === "sourceRef" && top && top.kind === "dataInputAssociation")) {
+      el.text = "";
+    }
+    stack.push(el);
+    if (m[5]) close(kind);
+  }
+  return p;
+}
+
+function processSignature(xml) {
+  const p = _readProcess(xml);
+  if (!p.nodes.size) return null;
+  const ins = new Map(), outs = new Map();
+  for (const f of p.flows) {
+    if (!outs.has(f.source)) outs.set(f.source, []);
+    if (!ins.has(f.target)) ins.set(f.target, []);
+    outs.get(f.source).push(f);
+    ins.get(f.target).push(f);
+  }
+  let label = new Map();
+  for (const [id, n] of p.nodes) label.set(id, n.kind + ":" + n.name);
+  const lab = (id) => (label.has(id) ? label.get(id) : "?");
+  const digest = (v) => hashContent(Buffer.from(JSON.stringify(v), "utf-8"));
+  const sorted = (items) => items.map((v) => JSON.stringify(v)).sort();
+  const unnamed = [...p.nodes.keys()].filter((id) => !p.nodes.get(id).name);
+  for (let round = 0; round < unnamed.length; round++) {
+    const next = new Map(label);
+    for (const id of unnamed) {
+      next.set(id, digest([lab(id),
+        sorted((ins.get(id) || []).map((f) => [lab(f.source), f.name])),
+        sorted((outs.get(id) || []).map((f) => [f.name, lab(f.target)]))]));
+    }
+    label = next;
+  }
+  const nodes = [...p.nodes.values()];
+  return digest({
+    tasks: sorted(nodes.filter((n) => _ACTIVITY.test(n.kind)).map((n) => [n.kind, n.name])),
+    events: sorted(nodes.filter((n) => _EVENT.test(n.kind)).map((n) => [n.kind, n.name])),
+    flows: sorted(p.flows.map((f) => [lab(f.source), lab(f.target), f.name])),
+    data: sorted([...p.data].map(([id, name]) =>
+      [name, p.holds.filter((h) => h[1] === id).map((h) => lab(h[0])).sort()])),
+    notes: sorted([...p.notes].map(([id, text]) =>
+      [text, p.joins.filter((j) => j.includes(id)).map((j) => lab(j[0] === id ? j[1] : j[0])).sort()])),
+  });
+}
+
+/* A source map's marks as the file is on disk: the hash of its bytes (what a
+   copy made before the signature compares) and the signature of its
+   process; null when the file cannot be read. */
+function _marks(buf) {
+  return { hash: hashContent(buf), sig: processSignature(buf.toString("utf-8")) };
+}
+function sourceMarks(p) {
+  let buf;
+  try { buf = fs.readFileSync(p); } catch (_) { return null; }
+  return _marks(buf);
+}
+
 function genId() {
   try { return "rm_" + crypto.randomUUID(); }
   catch (_) { return "rm_" + crypto.randomBytes(8).toString("hex"); }
@@ -62,7 +197,7 @@ function find(anno, id) {
   return list(anno).find((m) => m && m.map_id === id) || null;
 }
 
-function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked_at } = {}) {
+function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked_from_sig, forked_at } = {}) {
   return {
     map_id: map_id || genId(),
     name: (name && String(name).trim()) || "Untitled map",
@@ -70,6 +205,7 @@ function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked
     file,
     source: source || null,
     forked_from_hash: forked_from_hash || null,
+    forked_from_sig: forked_from_sig || null,
     forked_at: forked_at || null,
     edited_at: forked_at || null,
     pdd_role: null,
@@ -122,11 +258,18 @@ function pddPick(anno, role) {
   return list(anno).find((m) => m && m.pdd_role === role) || null;
 }
 
-/* Stale = the source map this copy was forked from has since changed (a
-   re-analyze re-mined it). The copy is still perfectly valid — it is just no
-   longer a snapshot of the current mined map. */
-function isStale(entry, currentSourceHash) {
-  return !!(entry && entry.forked_from_hash && currentSourceHash &&
+/* Stale = the process in the source map this copy was forked from has since
+   changed (an analysis drew another map). The copy is still perfectly valid:
+   it is just no longer a copy of the current map. A copy that stores the
+   signature of the process it was made from (forked_from_sig) compares it
+   with the current one (processSignature), so an analysis that only
+   reorders the file is no change; a copy made before the signature was
+   stored compares the file's bytes (forked_from_hash), as it always did. An
+   unknown current mark is no change. */
+function isStale(entry, currentSourceHash, currentSourceSig) {
+  if (!entry) return false;
+  if (entry.forked_from_sig) return !!(currentSourceSig && entry.forked_from_sig !== currentSourceSig);
+  return !!(entry.forked_from_hash && currentSourceHash &&
             entry.forked_from_hash !== currentSourceHash);
 }
 
@@ -175,14 +318,18 @@ function deleteBpmn(sessionFolder, entry) {
 }
 
 /* Compose a fork: snapshot `xml` (the live view, WYSIWYF) into a new copy,
-   stamp provenance, write the blob, upsert the row. Returns the entry. */
+   stamp provenance (the source's hash and process signature), write the
+   blob, upsert the row. Returns the entry. */
 function fork({ sessionFolder, anno, xml, source, sourceBpmnPath, name, kind, nowIso }) {
   const map_id = genId();
   const file = path.posix.join(DERIVED_DIR, map_id + ".bpmn");
-  const forked_from_hash = sourceBpmnPath
-    ? fileHash(sourceBpmnPath)
-    : (xml ? hashContent(Buffer.from(xml, "utf-8")) : null);
-  const entry = buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked_at: nowIso || null });
+  const marks = sourceBpmnPath
+    ? sourceMarks(sourceBpmnPath)
+    : (xml ? _marks(Buffer.from(xml, "utf-8")) : null);
+  const entry = buildEntry({
+    map_id, name, kind, file, source,
+    forked_from_hash: marks && marks.hash, forked_from_sig: marks && marks.sig, forked_at: nowIso || null,
+  });
   writeBpmn(sessionFolder, entry, xml || "");
   upsert(anno, entry);
   return entry;
@@ -197,7 +344,8 @@ function duplicate({ sessionFolder, anno, srcEntry, nowIso }) {
   const file = path.posix.join(DERIVED_DIR, map_id + ".bpmn");
   const entry = buildEntry({
     map_id, name: "To-Be map", kind: "to_be",
-    file, source: srcEntry.source, forked_from_hash: srcEntry.forked_from_hash, forked_at: nowIso || null,
+    file, source: srcEntry.source, forked_from_hash: srcEntry.forked_from_hash,
+    forked_from_sig: srcEntry.forked_from_sig, forked_at: nowIso || null,
   });
   writeBpmn(sessionFolder, entry, xml);
   upsert(anno, entry);
@@ -216,7 +364,7 @@ function destroy({ sessionFolder, anno, id }) {
 
 module.exports = {
   KINDS, PDD_ROLES, DERIVED_DIR,
-  hashContent, fileHash, genId,
+  hashContent, fileHash, processSignature, sourceMarks, genId,
   ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale, predatesRichMap,
   derivedDir, absPath, fileExists, writeBpmn, readBpmn, deleteBpmn,
   fork, duplicate, destroy,

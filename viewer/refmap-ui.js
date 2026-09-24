@@ -74,17 +74,23 @@ function _asIsMap(s) {
 }
 
 /* ---- drift -------------------------------------------------------------- */
-/* The hash of the file a copy was made from, as it is now. Only the
-   step-level BPMN is a source; a copy made from another cell before the map
-   was reduced to one (the activity-level map) has no source the viewer reads
-   any more, so no drift is claimed for it. */
-function currentSourceHash(map) {
+/* The file a copy was made from, as it is now: the hash of its bytes and
+   the signature of its process (RefStore.sourceMarks). A copy compares the
+   process, so an analysis that only writes the same map in another order
+   says nothing (RefStore.isStale). Only the step-level BPMN is a source; a
+   copy made from another cell before the map was reduced to one (the
+   activity-level map) has no source the viewer reads any more, so no drift
+   is claimed for it. */
+function currentSource(map) {
   const s = session();
   if (!s || !map || !map.source || map.source.level !== "step") return null;
   const p = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
-  return p ? RefStore.fileHash(p) : null;
+  return p ? RefStore.sourceMarks(p) : null;
 }
-function driftFor(map) { return RefStore.isStale(map, currentSourceHash(map)); }
+function driftFor(map) {
+  const now = currentSource(map);
+  return !!now && RefStore.isStale(map, now.hash, now.sig);
+}
 
 /* ---- the Map's edit act ---------------------------------------------------- */
 /* Its label says what it makes (P1.12): the As-Is map while none is chosen,
