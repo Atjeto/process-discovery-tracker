@@ -1,0 +1,138 @@
+{
+  "about": "Contract C17 (step flow): the edges the process map draws from the transactions' step order plus the conditions and links the analyst sets on steps. Pinned for both renderers: the viewer's live map (viewer/process-map-levels.js) and the pipeline's step BPMN (normalization). A step is named here by its map node name; real data links by step_id. observed: the edge follows from the step order of at least one transaction. label: the analyst's condition text (only_when on the step the edge enters, or a link's when), 'otherwise' on the path around a conditional step, or null.",
+  "cases": [
+    {
+      "name": "one transaction: a conditional step and a loop back",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "only_when": "X"},
+          {"name": "C"},
+          {"name": "D", "links": [{"to": "B", "when": "check fails"}]}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": "X", "observed": true},
+        {"from": "A", "to": "C", "label": "otherwise", "observed": false},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "C", "to": "D", "label": null, "observed": true},
+        {"from": "D", "to": "B", "label": "check fails", "observed": false},
+        {"from": "D", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "the first step is conditional",
+      "transactions": [
+        [
+          {"name": "A", "only_when": "Y"},
+          {"name": "B"},
+          {"name": "C"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": "Y", "observed": true},
+        {"from": "start", "to": "B", "label": "otherwise", "observed": false},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "C", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "the last step is conditional",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B"},
+          {"name": "C", "only_when": "Z"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "B", "to": "C", "label": "Z", "observed": true},
+        {"from": "B", "to": "end", "label": "otherwise", "observed": false},
+        {"from": "C", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "a step can end the process early",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "links": [{"to": "end", "when": "rejected"}]},
+          {"name": "C"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "B", "to": "end", "label": "rejected", "observed": false},
+        {"from": "C", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "a skip forward over two steps",
+      "transactions": [
+        [
+          {"name": "A", "links": [{"to": "D", "when": "known customer"}]},
+          {"name": "B"},
+          {"name": "C"},
+          {"name": "D"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "A", "to": "D", "label": "known customer", "observed": false},
+        {"from": "B", "to": "C", "label": null, "observed": true},
+        {"from": "C", "to": "D", "label": null, "observed": true},
+        {"from": "D", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "two recorded transactions: a declared condition labels the observed branch",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B"},
+          {"name": "D"}
+        ],
+        [
+          {"name": "A"},
+          {"name": "B"},
+          {"name": "C", "only_when": "new product code"},
+          {"name": "D"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "B", "to": "C", "label": "new product code", "observed": true},
+        {"from": "B", "to": "D", "label": "otherwise", "observed": true},
+        {"from": "C", "to": "D", "label": null, "observed": true},
+        {"from": "D", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "the same declaration on the same step in two transactions is drawn once",
+      "transactions": [
+        [
+          {"name": "A"},
+          {"name": "B", "links": [{"to": "A", "when": "missing data"}]}
+        ],
+        [
+          {"name": "A"},
+          {"name": "B", "links": [{"to": "A", "when": "missing data"}]}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "A", "label": null, "observed": true},
+        {"from": "A", "to": "B", "label": null, "observed": true},
+        {"from": "B", "to": "A", "label": "missing data", "observed": false},
+        {"from": "B", "to": "end", "label": null, "observed": true}
+      ]
+    }
+  ]
+}

@@ -375,3 +375,35 @@ Everything the analyst adds lives in the session folder, so it travels with it.
   a blank session, and points at the video time in a video session.
 - **Removal.** Removing a screenshot, note or attachment the analyst added deletes its
   entry and its copied file; recorder screenshots are only hidden.
+
+## C17. Step flow: conditions and links set on steps (owner 2026-09-24; lanes F-P and F-V)
+
+The analyst sets the process flow while adding or reviewing steps, not afterwards in the
+map editor. The default after a step is always the next step in its transaction.
+
+- **Keys on a step** (any state; a draft touched this way becomes `edited`):
+  `only_when` (string or absent): the step happens only under this condition.
+  `links` (array or absent): `[{ "to": <step_id> | "end", "when": <string> }]`: after this
+  step, when the condition holds, the process goes to that step (earlier: a loop back;
+  later: a skip ahead) or ends. A link never points at its own step.
+- **Edges** (the same rule for the viewer's live map and the pipeline's step BPMN; pinned
+  by `shared/flow-links-golden.json`, which both sides test):
+  1. Observed edges: consecutive steps of each transaction, plus start to the first step and
+     the last step to end. `observed: true`.
+  2. A step S with `only_when`: every edge entering S from its previous step (in each
+     transaction where S appears; start when S is first) carries the condition as its
+     label, and a skip edge from that previous step to the step after S (end when S is
+     last) is added with the label "otherwise".
+  3. A link on S adds an edge S to the target (end for "end") labelled with its `when`.
+  4. Edges are keyed by (from node, to node) after the map's usual node rule; a declared
+     edge that coincides with an observed one is one edge, observed, carrying the declared
+     label. The same declaration from several transactions is one edge. Different labels on
+     one edge are joined with " or " in step order.
+- **Where it shows**: the step pane (a Flow line: "Always · then the next step", "Only
+  when…", "Go to…" with a dropdown of the transaction's steps in order plus End), the
+  live map (labels on the lines), the step BPMN and its image (exclusive gateways, the
+  labels as flow names), and the PDD under the step ("Only when …", "Then goes back to
+  step N, <name>, when …", "Then skips to step N … when …", "The process ends here when
+  …").
+- **Removal**: a link whose target step is hidden or removed is dropped (the viewer says so
+  once); Undo restores both.
