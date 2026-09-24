@@ -248,16 +248,9 @@ function _cue(stepId) {
   const step = _find(stepId);
   if (!video || video.hidden || !video.getAttribute("src") || !step) return;
   _stopAt = null;
+  if (!video.paused) video.pause();
   const at = _videoSecs(step);
-  // The pause and the seek wait for the next turn, outside the click that
-  // opened the panel: pausing the playing video inside it froze the whole
-  // page on a machine without a GPU (the CI runner; BH13). A later cue to
-  // another row cancels this one.
-  setTimeout(() => {
-    if (_cuedId !== stepId) return;
-    if (!video.paused) video.pause();
-    if (isFinite(at) && at >= 0) video.currentTime = at;
-  }, 0);
+  if (isFinite(at) && at >= 0) video.currentTime = at;
 }
 
 function _show(open) {

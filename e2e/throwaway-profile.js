@@ -130,7 +130,10 @@ async function launchOnce(electron, opts, want) {
   const app = await electron.launch({
     executablePath: opts.executablePath,
     cwd: opts.cwd,
-    args: [...(opts.args || []), "--user-data-dir=" + profileDir],
+    // On the CI runner (no GPU) the viewer runs without the GPU process: the
+    // panel smoke froze there in a map tap, run after run, with every process
+    // idle and the page answering nothing (BH13); no local run ever did.
+    args: [...(opts.args || []), ...(process.env.CI ? ["--disable-gpu"] : []), "--user-data-dir=" + profileDir],
   });
   const watch = watchProcess(app);
   let windowSize;
