@@ -55,6 +55,10 @@
  *     process (the line, every run's differences), and Stop comparing
  *     compares it with its own pattern run; Forget this saved process (P3.11)
  *     takes it out of processes.json and the toast's Undo brings it back.
+ * The divider between the transactions and the selected step: a mouse drag
+ * moves it and is remembered, a double-click or Enter gives the usual widths
+ * back, the keys and the step panel keep each pane at its minimum; where the
+ * panes stack (a window 1100 px wide or less) there is none.
  *
  * Writes only into its temp copies and its throwaway profile. Exits 0 when
  * every check passed, 1 on a failed check, 2 when it could not run (no Python
@@ -1113,6 +1117,138 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         back1.steps.length === 6 && lineBackAgain),
       JSON.stringify({ err: err3, forgot: forgot && forgot.processes.length, lineGone,
         restored: back1 && { name: back1.name, steps: back1.steps.length }, lineBackAgain }));
+  }
+
+  // ---- 12. the divider between the transactions and the selected step -------
+  // Side by side (a window wider than 1100 px): a mouse drag moves the
+  // boundary, is remembered and leaves the focus where it was; a double-click
+  // gives the usual widths back; with the focus, End, Left, Home and Enter
+  // (which does not rename the selected step); the step panel opening squeezes
+  // the panes, never below their minimums. Stacked (1100 px or less): no
+  // divider, and a share does not apply. A run checks what its window allows
+  // (the launch line says the size it really ran at).
+  {
+    const geo = () => page.evaluate(() => {
+      const split = document.querySelector("#session-layout-steps .editor-split");
+      const h = document.getElementById("steps-splitter");
+      const cs = getComputedStyle(split);
+      const w = (el) => (el ? Math.round(el.getBoundingClientRect().width * 10) / 10 : null);
+      return {
+        win: window.innerWidth, total: split.clientWidth,
+        list: w(document.getElementById("steps-list-pane")), detail: w(split.querySelector(".editor-detail-pane")),
+        shown: !!h && h.getClientRects().length > 0,
+        minList: parseFloat(cs.getPropertyValue("--split-min-list")), minDetail: parseFloat(cs.getPropertyValue("--split-min-detail")),
+        aria: h && { now: Number(h.getAttribute("aria-valuenow")), min: Number(h.getAttribute("aria-valuemin")), max: Number(h.getAttribute("aria-valuemax")) },
+        stored: localStorage.getItem("pdt.stepsSplit"),
+        panel: !document.getElementById("step-panel").hidden,
+        focus: document.activeElement ? document.activeElement.id || document.activeElement.tagName : null,
+        renaming: !!document.querySelector(".step-name-edit"),
+      };
+    });
+    const near = (a, b, tol) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= (tol == null ? 2 : tol);
+    const pct = (g) => Math.round((g.list / g.total) * 100);
+    let err = null, g0 = null;
+    try {
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.waitForSelector("#step-list .run-group.open .step-row", { timeout: T });
+      // A selected step (so Enter would rename it), with the step panel closed:
+      // the panes get the whole width.
+      await page.locator("#step-list .run-group.open .step-row").first().click({ timeout: T });
+      await page.waitForSelector("#step-name", { timeout: T });
+      await page.evaluate(() => require("./views/step-panel.js").close());
+      await page.waitForFunction(() => document.getElementById("step-panel").hidden, null, { timeout: T });
+      // Two frames: the layout and the divider's values follow the panel.
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      g0 = await geo();
+    } catch (e) { err = errText(e); }
+    const at = (g) => g && { total: g.total, list: g.list, detail: g.detail, aria: g.aria, stored: g.stored, panel: g.panel, focus: g.focus };
+    if (!g0) {
+      record("Steps divider: the Steps level shows a selected step with the step panel closed", false, err);
+    } else if (g0.win > 1100) {
+      // A mouse drag and a double-click.
+      let dragged = null, reset = null, errDrag = null;
+      try {
+        if (!g0.shown || g0.stored !== null) throw new Error("the divider is not at the usual widths: " + JSON.stringify(at(g0)));
+        // The middle of the divider's part in view (the level may scroll).
+        const box = await page.locator("#steps-splitter").boundingBox();
+        const inView = Math.min(box.height, (await page.evaluate(() => window.innerHeight)) - box.y);
+        const x = box.x + box.width / 2, y = box.y + inView / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + 150, y, { steps: 5 });
+        await page.mouse.up();
+        dragged = await geo();
+        await page.mouse.dblclick(x + 150, y);
+        await page.waitForFunction(() => localStorage.getItem("pdt.stepsSplit") === null, null, { timeout: T });
+        reset = await geo();
+      } catch (e) { errDrag = errText(e); }
+      const okDrag = !errDrag && !!dragged && near(dragged.list - g0.list, 150) && near(g0.detail - dragged.detail, 150) &&
+        near(Number(dragged.stored), dragged.list / dragged.total, 0.002) && near(dragged.aria.now, pct(dragged), 1) &&
+        dragged.focus !== "steps-splitter" &&
+        !!reset && near(reset.list, g0.list, 1) && near(reset.detail, g0.detail, 1) && reset.aria.now === g0.aria.now;
+      record("Steps divider (a " + g0.win + " px window): dragging it 150 px right widens the transactions by 150 px and narrows the selected step as much, remembered on this computer (pdt.stepsSplit), the focus left where it was; a double-click gives the usual widths back",
+        okDrag, JSON.stringify({ err: errDrag, before: at(g0), dragged: at(dragged), reset: at(reset) }));
+      if (!okDrag) await shot(page, "fail-runs-divider-drag.png");
+
+      // The keys, with the focus on the divider.
+      let k = null, errKeys = null;
+      try {
+        const step = await page.evaluate(() => require("./pane-splitter.js").KEY_STEP_PX);
+        k = { step };
+        await page.focus("#steps-splitter");
+        await page.keyboard.press("End"); k.end = await geo();
+        await page.keyboard.press("ArrowLeft"); k.left = await geo();
+        await page.keyboard.press("Home"); k.home = await geo();
+        await page.keyboard.press("Enter"); k.enter = await geo();
+      } catch (e) { errKeys = errText(e); }
+      const okKeys = !errKeys && !!k && !!k.enter &&
+        near(k.end.detail, g0.minDetail, 1) && k.end.aria.now === k.end.aria.max &&
+        near(k.left.list, k.end.list - k.step, 1) &&
+        near(k.home.list, g0.minList, 1) && k.home.aria.now === k.home.aria.min &&
+        near(k.enter.list, g0.list, 1) && k.enter.stored === null && k.enter.focus === "steps-splitter" && !k.enter.renaming;
+      record("Steps divider, keys: End gives the selected step its minimum (" + g0.minDetail + " px), Left moves the edge back a small step, Home gives the transactions their minimum (" + g0.minList + " px), each end read by aria-valuenow; Enter gives the usual widths back and does not rename the selected step",
+        okKeys, JSON.stringify({ err: errKeys, step: k && k.step, end: k && at(k.end), left: k && at(k.left), home: k && at(k.home),
+          enter: k && k.enter && Object.assign(at(k.enter), { renaming: k.enter.renaming }) }));
+      if (!okKeys) await shot(page, "fail-runs-divider-keys.png");
+
+      // The step panel opening beside a divider at its right end (another row
+      // selected: the panel follows the selection).
+      let wide = null, squeezed = null, errPanel = null;
+      const divider = (g) => g.total - g.list - g.detail;
+      try {
+        await page.focus("#steps-splitter");
+        await page.keyboard.press("End");
+        wide = await geo();
+        await page.locator("#step-list .run-group.open .step-row:not(.selected)").first().click({ timeout: T });
+        await page.waitForFunction(() => !document.getElementById("step-panel").hidden, null, { timeout: T });
+        // Two frames: the layout and the divider's values follow the panel.
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        squeezed = await geo();
+        await page.focus("#steps-splitter");
+        await page.keyboard.press("Enter");
+        await page.waitForFunction(() => localStorage.getItem("pdt.stepsSplit") === null, null, { timeout: T });
+      } catch (e) { errPanel = errText(e); }
+      const okPanel = !errPanel && !!squeezed && squeezed.panel && squeezed.total < wide.total &&
+        near(squeezed.detail, g0.minDetail, 1) && squeezed.list >= g0.minList - 1 &&
+        near(divider(squeezed), divider(g0), 1) && squeezed.aria.now === squeezed.aria.max;
+      record("Steps divider: the step panel opening beside it squeezes the panes, never below their minimums (the selected step keeps " + g0.minDetail + " px)",
+        okPanel, JSON.stringify({ err: errPanel, wide: at(wide), squeezed: at(squeezed) }));
+      if (!okPanel) await shot(page, "fail-runs-divider-panel.png");
+    } else {
+      // Stacked: each pane takes the whole width; a share set on the split
+      // (what a remembered one does) changes nothing.
+      let g1 = null, errStacked = null;
+      try {
+        await page.evaluate(() => document.querySelector("#session-layout-steps .editor-split").style.setProperty("--split-share", "0.8"));
+        g1 = await geo();
+        await page.evaluate(() => document.querySelector("#session-layout-steps .editor-split").style.removeProperty("--split-share"));
+      } catch (e) { errStacked = errText(e); }
+      const full = (g) => !!g && near(g.list, g.total, 1) && near(g.detail, g.total, 1);
+      const ok = !errStacked && !g0.shown && full(g0) && !!g1 && !g1.shown && full(g1);
+      record("Steps divider (a " + g0.win + " px window, the panes stacked): no divider, each pane as wide as the level, and a remembered share does not apply",
+        ok, JSON.stringify({ err: errStacked, stacked: at(g0), shown: g0.shown, withShare: at(g1) }));
+      if (!ok) await shot(page, "fail-runs-divider-stacked.png");
+    }
   }
 
   record("zero PAGE ERRORs", pageErrors.length === 0,

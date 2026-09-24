@@ -244,6 +244,12 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `[data-act="rename-name"|"forget-name"|"close"]`).
 - The list's title `#runs-pane-count` and the line under it that says what
   a transaction is, `#runs-pane-note`.
+- The divider between the list `#steps-list-pane` and the step pane:
+  `#steps-splitter` (`role="separator"`, `pane-splitter.js`; drag it, or
+  focus it for Left, Right, Home and End; a double-click or Enter resets it;
+  its share is `--split-share` on `.editor-split` and
+  `localStorage["pdt.stepsSplit"]`; hidden at 1100px wide or less, where
+  the panes stack).
 - The transactions `#step-list .run-group[data-case-id]`: the head
   `.run-row` (a click opens the transaction; a right-click opens
   `#run-ctx-menu`: "Use as reference transaction" on another transaction,

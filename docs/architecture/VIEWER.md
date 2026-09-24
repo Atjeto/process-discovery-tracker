@@ -128,7 +128,10 @@ container. The Overview is the default on load.
   line that says what a transaction is (the reference transaction with
   Confirm transaction or Reopen transaction and Save as this process; each
   other transaction with its differences; "Outside the transactions"), and
-  the step pane beside them. The toolbar has *+ Add step*, the bulk Hide
+  the step pane beside them. The divider between the two moves with a drag
+  or, focused, with Left, Right, Home and End; a double-click or Enter gives
+  the usual widths back (`pane-splitter.js`; at 1100px wide or less the two
+  stack, without it). The toolbar has *+ Add step*, the bulk Hide
   and Merge buttons (shown when two or more rows are ticked), *Leave apps
   out...* and *Saved names...*.
 - **Map**: the process map drawn from the transactions' steps between a
@@ -204,6 +207,7 @@ their module as `<name>.test.js`.
 | `theme.js` | The light and dark theme, its persistence, the per-app band colours and the map's colour snapshot. |
 | `recent.js` | The recent projects (`pdt.recentSessions`): the list on the empty state; the Open menu reads it too. |
 | `layout-controls.js` | The Timeline's resize handles and video modes (expanded, full screen); wires itself when required. |
+| `pane-splitter.js` | The Steps level's divider between the transactions and the selected step (`#steps-splitter`): the drag, the double-click, the keys, the share it remembers, each pane held at its minimum by the stylesheet's clamp; wired by `steps-view.js`. |
 | `python-runner.js` | Main process: finds the Python (`PDT_PYTHON`, the bundled one, else `python`), runs `normalize.py` (always with the bundled taxonomy) and `transcript_import.py`. |
 | `normalize-result.js` | What a finished run means for the analyst: the failure sentence (exit codes, contract C13), the PDD export outcome, and `analysisNeed()` with `ANALYSIS_FORMAT` (section 8). |
 | `build-package.js` | The electron-packager wrapper for releases. |
@@ -394,6 +398,7 @@ the bus. The topics and who listens (`renderer.js`):
 | `pdt.timelineState` | `flow-view-timeline.js` | Per session folder, the timeline's zoom and scroll. |
 | `pdt.timelineLanes` | `flow-view-timeline.js` | Which lanes are shown. |
 | `pdt.timelineHeight`, `pdt.videoWidth` | `layout-controls.js` | The dragged pane sizes. |
+| `pdt.stepsSplit` | `pane-splitter.js` | The Steps level's divider: the transactions' share of the width. |
 | `pdt.analysis.<item>` | `analysis-view.js` | Whether an Observations item is open. |
 | `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes. |
 

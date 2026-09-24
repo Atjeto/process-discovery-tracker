@@ -55,6 +55,7 @@ const AC = require("../analyst-content.js");
 const AnalystUI = require("./analyst-ui.js");
 const Video = require("./flow-view-video.js");
 const StepFlow = require("../step-flow.js");
+const PaneSplitter = require("../pane-splitter.js");
 const { processLabel, mapNodeLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
@@ -1912,6 +1913,8 @@ function initStepsView(deps) {
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
   if ($("#btn-remembered-names")) $("#btn-remembered-names").addEventListener("click", openRememberedNamesDialog);
+  // The divider between the transactions and the selected step.
+  if ($("#steps-splitter")) PaneSplitter.wire($("#steps-splitter"));
 }
 
 /* A2/A5: toggle one boolean flag on a step and persist. Shared by the step

@@ -1019,8 +1019,17 @@ details.analysis-module { padding: 0; }
 .editor-toolbar .link-help:hover { color: var(--accent); border-color: var(--accent); }
 .editor-split {
   /* The runs list is where the analyst reads and fixes step names, so it
-     gets the wider share (it was a 340px step list). */
-  display: grid; grid-template-columns: minmax(360px, 45%) 1fr; gap: 10px;
+     gets the wider share (it was a 340px step list). The divider between the
+     panes (pane-splitter.js) moves the boundary: --split-share is the list's
+     share of the width, 0.45 until the analyst moves it, and the clamp keeps
+     each pane at its minimum at any window width. The list's minimum keeps a
+     transaction's row whole (its name, badges and counts); the step pane's
+     keeps its fields usable. */
+  --split-min-list: 360px; --split-min-detail: 280px; --split-handle: 10px;
+  display: grid; gap: 10px 0;
+  grid-template-columns:
+    clamp(var(--split-min-list), calc(var(--split-share, 0.45) * 100%), calc(100% - var(--split-handle) - var(--split-min-detail)))
+    var(--split-handle) 1fr;
   flex: 1; min-height: 340px;
   /* B1: pin the single row to the available height (minmax(0,1fr)) instead
      of letting it grow to whichever pane is taller. The list pane then keeps
@@ -1030,12 +1039,20 @@ details.analysis-module { padding: 0; }
 }
 .editor-split > .editor-list-pane,
 .editor-split > .editor-detail-pane { min-height: 0; max-height: 100%; overflow-y: auto; }
+/* The divider: the Timeline's resize handle (.resize-h) filling its column,
+   with the transaction rows' focus ring for the keyboard. */
+.editor-split > .pane-splitter { width: auto; touch-action: none; }
+.editor-split > .pane-splitter:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.editor-split > .pane-splitter:focus-visible::after { background: var(--accent-2); }
 @media (max-width: 1100px) {
   /* One column: the list over the selected step, each pinned to half the
      height (B1's rule for both rows). With the detail row left at its content
      height, selecting a row grew it and shrank the list under the pointer, so
      the second click of a double-click (rename) landed on the detail pane. */
   .editor-split { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  /* Stacked, each pane takes the whole width: no divider, and the list's
+     share does not apply. */
+  .editor-split > .pane-splitter { display: none; }
 }
 /* The run select in the Timeline's header: it dims the other runs on the
    timeline. */

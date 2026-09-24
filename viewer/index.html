@@ -240,7 +240,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="editor-split">
-            <div class="editor-list-pane">
+            <div class="editor-list-pane" id="steps-list-pane">
               <div class="editor-pane-title">Transactions · <span id="runs-pane-count">0</span></div>
               <!-- What a transaction is, in one line (steps-view.js renderStepsLevel):
                    the SME's key in a recording, one transaction in a project
@@ -248,6 +248,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <p class="editor-pane-note" id="runs-pane-note"></p>
               <div id="step-list"></div>
             </div>
+            <!-- The divider (pane-splitter.js): drag it, or use Left, Right, Home
+                 and End while it has the focus; a double-click or Enter gives the
+                 usual widths back. Hidden where the panes stack. -->
+            <div class="resize-h pane-splitter" id="steps-splitter" role="separator" tabindex="0"
+                 aria-orientation="vertical" aria-controls="steps-list-pane"
+                 aria-valuenow="45" aria-valuemin="0" aria-valuemax="100"
+                 aria-label="Resize the transactions and the selected step"
+                 title="Drag to resize. Double-click to reset."></div>
             <div class="editor-detail-pane">
               <div class="editor-pane-title" id="step-detail-title">Selected step</div>
               <!-- tabindex: a click in the pane focuses it, so Ctrl+V pastes an image as a screenshot (C16). -->
