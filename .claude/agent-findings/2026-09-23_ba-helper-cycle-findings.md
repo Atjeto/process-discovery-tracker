@@ -151,7 +151,16 @@ limit, so a wait without its own timeout (a page.evaluate, for example) could ho
 runner for the default 6 hours. Correction (ae86382): run-all stops a smoke after
 PDT_E2E_SMOKE_MINUTES (default 10) with its whole process tree and fails it as a timeout,
 the e2e job stops after 60 minutes, and the panel smoke names the step it stalled on.
+Root cause (found at d3e6ec1 after six CI rounds): the (g2) check the P-W lane added tapped a
+map box with an expression-bodied `page.evaluate`, so it returned the cytoscape collection
+and Playwright tried to copy cytoscape's whole object graph back; on the runner that never
+finished (every process idle, the page answering no debugger). The (g1) tap used a block
+body. The product was never at fault: deferring the panel's video pause and seek and
+running without the GPU changed nothing and were reverted. The stall watch (the phase, the
+windows, a desktop screenshot kept as a CI artifact) is what found it.
 RULE: a CI run older than twice its usual time is a failure; look at it before the next push.
+RULE: a `page.evaluate` returns plain data only (a block body when the call is for its
+effect); never return DOM nodes, library objects or collections.
 
 ## What worked
 
