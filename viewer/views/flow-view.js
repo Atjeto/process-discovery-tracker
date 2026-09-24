@@ -23,6 +23,7 @@ const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotat
 const SaveState = require("../save-state.js");
 const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
+const SPM = require("../sub-process-maps.js");
 const { caseScopeOptionsHtml } = require("../case-scope.js");
 const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
@@ -341,6 +342,8 @@ async function loadSessionIntoView(folder, opts) {
   // anyway, but cleaning here avoids unbounded memory growth across
   // many session switches.
   if (prevFolder !== folder) resetUndoStack();
+  // C19: another project opens at its main level.
+  if (prevFolder !== folder) State.setMapPath([]);
   // Capture the loaded annotations as the undo baseline on EVERY load (including
   // a same-folder re-analyze), so the first edit records the true pre-edit state.
   captureBaseline();
@@ -1071,8 +1074,14 @@ async function addEventToSelectedStep(ev) {
   if (!sid) { toast("Select a step in the Steps view first", "error"); return; }
   const anno = State.getSession().annotations || {};
   anno.steps = anno.steps || [];
-  const step = anno.steps.find((s) => s.step_id === sid);
+  // C19: the selected step may be a sub-step, at any level.
+  const found = SPM.findStep(anno.steps, sid);
+  const step = found && found.step;
   if (!step) { toast("The selected step no longer exists", "error"); return; }
+  if (Array.isArray(step.sub_steps)) {
+    toast('"' + (step.name || "The step") + '" is a sub-process: add the interaction to one of its steps inside it, or dissolve it first.', "error");
+    return;
+  }
   step.evidence = step.evidence || { interaction_event_ids: [], screenshot_refs: [] };
   step.evidence.interaction_event_ids = step.evidence.interaction_event_ids || [];
   if (step.evidence.interaction_event_ids.includes(ev.event_id)) {

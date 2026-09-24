@@ -166,6 +166,17 @@ The viewer says *transaction* for one pass through the process and
   when a condition holds, back to an earlier step, on to a later one, or
   the end). A link to a step that is hidden or deleted is dropped, and the
   toast says so; Ctrl+Z brings both back.
+- **Sub-processes**: a step can hold steps of its own, at any depth. *Open
+  as a sub-process* gives a step one step per action recorded in it (a
+  field typed, a click; named without the values typed), in every
+  transaction where it happens; *Group into a sub-process...* moves ticked
+  steps, one after the other, into a new sub-process, and the same steps in
+  every transaction too. Its row's *▸ N sub-steps* opens it: a breadcrumb
+  names the way down and goes back up, and the list shows one block per
+  transaction that goes through it, compared with the reference
+  transaction's. Every step verb works inside it, the flow stays inside it,
+  Confirm transaction reaches every level, and *Dissolve sub-process* undoes
+  it. The step panel and the Timeline's steps lane follow the level shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
   Alt+Down), or *+ Step* at the video's playhead.
 - **Saved names and saved processes**: a name given once names the same

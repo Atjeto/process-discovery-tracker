@@ -24,6 +24,11 @@
  * occurrences of a step are the steps of the runs that share its map box
  * (process-map-levels.mapNodeLabel).
  *
+ * Contract C19: the panel works at a level. A step inside a sub-process
+ * opens it on that level: its occurrences are the steps of its node at that
+ * level across every visit of the sub-process (sub-process-maps.js), and a
+ * sub-process's panel has "Open sub-process" at its foot.
+ *
  * The panel is closed on the Overview and when a recording opens; its close
  * button is the inverse of every door (on Steps it then stays closed while
  * rows are selected, until a door opens it again).
@@ -41,9 +46,11 @@ const TM = require("../transcript-model.js");
 const StepFlow = require("../step-flow.js");
 const Video = require("./flow-view-video.js");
 const AnalystUI = require("./analyst-ui.js");
+const SPM = require("../sub-process-maps.js");
 
-/* { label, focusId }: the map box shown and the occurrence the foot's act
-   and a play act on; null while closed. */
+/* { label, path, focusId }: the map box shown, the level it is at (C19, []
+   the main level) and the occurrence the foot's act and a play act on; null
+   while closed. */
 let _state = null;
 /* The analyst closed the panel on the Steps level: row selections leave it
    closed until a door opens it again. */
@@ -66,12 +73,26 @@ function _steps() {
   return (s && s.annotations && s.annotations.steps) || [];
 }
 
+/* A step by id at any level (C19), or null. */
+function _find(id) {
+  const hit = SPM.findStep(_steps(), id);
+  return hit ? hit.step : null;
+}
+
 /* The occurrences of a map box: the runs' visible steps with that label, in
-   run order; a step outside every run joins when it is the focus. */
-function occurrences(label, runs, focus) {
+   run order; a step outside every run joins when it is the focus. At a level
+   below the main one (C19, `path`), the visible steps with that label in
+   every visit of that level, in transaction order. */
+function occurrences(label, runs, focus, path) {
   const out = [];
-  for (const r of runs) {
-    for (const st of r.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: r });
+  if (path && path.length) {
+    for (const v of SPM.levelVisits(runs.map((r) => r.members), path)) {
+      for (const st of v.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: runs[v.t] });
+    }
+  } else {
+    for (const r of runs) {
+      for (const st of r.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: r });
+    }
   }
   if (focus && !out.some((o) => o.step.step_id === focus.step_id)) out.push({ step: focus, run: null });
   return out;
@@ -152,8 +173,9 @@ function render() {
   if (!panel || !s || !_state) return;
   if (_state.missing != null) { _renderMissing(); return; }
   const runs = RunsModel.buildRuns(s.stats, _steps()).runs;
-  const focus = _steps().find((st) => st.step_id === _state.focusId) || null;
-  const occ = occurrences(_state.label, runs, focus);
+  const focus = _find(_state.focusId);
+  const path = _state.path || [];
+  const occ = occurrences(_state.label, runs, focus, path);
   if (!occ.length) { close(); return; }
   if (!occ.some((o) => o.step.step_id === _state.focusId)) _state.focusId = occ[0].step.step_id;
   const lead = (occ.find((o) => o.step.step_id === _state.focusId) || occ[0]).step;
@@ -166,8 +188,13 @@ function render() {
   const hasVideo = !!(s.recordingAvailable && s.recordingPath);
   // C17: the step's condition and links, in one short line when set (the
   // condition set on any step of this box: it holds in every transaction).
+  // C19: a link reads against the steps of the lead's own visit.
+  const txs = runs.map((r) => r.members);
+  const leadPlace = path.length ? SPM.placeOf(txs, path, lead.step_id) : null;
   const leadRun = runs.find((r) => r.caseId === lead.case_id);
-  const flow = StepFlow.panelLine(leadRun ? leadRun.visible : [], lead, occ.map((o) => StepFlow.onlyWhen(o.step)));
+  const flowList = path.length ? (leadPlace ? leadPlace.visible : []) : (leadRun ? leadRun.visible : []);
+  const flow = StepFlow.panelLine(flowList, lead, occ.map((o) => StepFlow.onlyWhen(o.step)));
+  const isSub = SPM.isSubProcessNode(txs, path, _state.label);
   $("sp-name").textContent = lead.name || "(unnamed step)";
   $("sp-about").innerHTML =
     ((where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
@@ -199,7 +226,9 @@ function render() {
     '<div class="sp-foot">' + (onSteps
       ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
         (lead.time_range && lead.time_range.start ? "" : " disabled") + '>Show on timeline</button>'
-      : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>') + "</div>";
+      : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>') +
+      (isSub ? '<button type="button" id="btn-sp-open-sub" title="Show the steps of this sub-process">▸ Open sub-process</button>' : "") +
+    "</div>";
   // The panel opened on this row (or its row is gone): the video goes to it.
   if (_state.focusId !== _cuedId) _cue(_state.focusId);
 }
@@ -216,7 +245,7 @@ function _videoSecs(step) {
 function _cue(stepId) {
   _cuedId = stepId;
   const video = $("sp-video");
-  const step = _steps().find((st) => st.step_id === stepId);
+  const step = _find(stepId);
   if (!video || video.hidden || !video.getAttribute("src") || !step) return;
   _stopAt = null;
   if (!video.paused) video.pause();
@@ -242,23 +271,26 @@ function _reset() {
   if (folder !== _folder) { _folder = folder; _state = null; _dismissed = false; _cuedId = null; _followed = null; _show(false); }
 }
 
-/* Open the panel on a step's map box, with that step as its focus. */
+/* Open the panel on a step's map box, at the step's level (C19), with that
+   step as its focus. */
 function openForStep(step, fromSteps) {
   _reset();
   if (!step || !_session() || State.getLevel() === "overview") return;
   if (!fromSteps) _dismissed = false;
-  _state = { label: mapNodeLabel(step), focusId: step.step_id };
+  const hit = SPM.findStep(_steps(), step.step_id);
+  _state = { label: mapNodeLabel(step), path: hit ? hit.path : [], focusId: step.step_id };
   _show(true);
   render();
 }
 
-/* A map box: its focus is the reference run's occurrence, else the first. */
-function openForNode(label) {
+/* A map box: its focus is the reference run's occurrence, else the first.
+   `path` is the level of the map it is on (C19; the main map by default). */
+function openForNode(label, path) {
   _reset();
   const s = _session();
   if (!s || label == null) return;
   const runs = RunsModel.buildRuns(s.stats, _steps()).runs;
-  const occ = occurrences(String(label), runs, null);
+  const occ = occurrences(String(label), runs, null, path || []);
   if (!occ.length) return;
   const ref = RunsModel.patternRun(s.annotations || {}, runs).run;
   const lead = (ref && occ.find((o) => o.run && o.run.caseId === ref.caseId)) || occ[0];
@@ -285,7 +317,9 @@ function followSteps(step) {
   _reset();
   if (!step || _dismissed) return;
   const panel = $("step-panel");
-  if (panel && !panel.hidden && _state && _followed === step.step_id && _state.label === mapNodeLabel(step)) {
+  const hit = SPM.findStep(_steps(), step.step_id);
+  if (panel && !panel.hidden && _state && _followed === step.step_id && _state.label === mapNodeLabel(step) &&
+      SPM.samePath(_state.path, hit ? hit.path : [])) {
     render();
     return;
   }
@@ -297,7 +331,7 @@ function followSteps(step) {
    row becomes the highlighted one. */
 function play(stepId) {
   const s = _session();
-  const step = _steps().find((st) => st.step_id === stepId);
+  const step = _find(stepId);
   const video = $("sp-video");
   if (!s || !step || !video || !s.recordingAvailable || !s.recordingPath) {
     toast("No video is linked to this project.", "error");
@@ -359,8 +393,23 @@ function refresh() {
     if (playBtn) { play(playBtn.closest(".sp-occ").dataset.stepId); return; }
     const shot = t.closest(".sp-shot");
     if (shot) { require("./flow-view-screenshots.js").openScreenshot(shot.dataset.ref); return; }
-    const step = _state && _steps().find((st) => st.step_id === _state.focusId);
+    const step = _state && _find(_state.focusId);
     if (!step) return;
+    if (t.closest("#btn-sp-open-sub")) {
+      // C19: the sub-process's level, in Steps (the Timeline's steps lane
+      // follows it there too).
+      const SV = require("./steps-view.js");   // lazy: it requires this module
+      const to = (_state.path || []).concat([_state.label]);
+      if (State.getLevel() === "flow") {
+        State.setMapPath(to);
+        State.emit("timeline");
+        return;
+      }
+      const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
+      if (State.getLevel() !== "steps" && btn) btn.click();
+      SV.goToLevel(to, { openAt: step.step_id });
+      return;
+    }
     if (t.closest("#btn-sp-steps")) {
       State.consumePendingStepJump();
       State.setSelectedStepId(step.step_id);

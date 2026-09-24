@@ -29,7 +29,9 @@ const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp, timelineSpan, attachVideo } = require("./flow-view-video.js");
 const AC = require("../analyst-content.js");
 const MarkerEdits = require("../marker-edits.js");
-const { numberOnlyLabel } = require("../runs-model.js");
+const RunsModel = require("../runs-model.js");
+const { numberOnlyLabel } = RunsModel;
+const SPM = require("../sub-process-maps.js");
 const { openScreenshot } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 
@@ -481,10 +483,40 @@ function renderLaneNames(lanes, layout) {
     el.style.top = slot.top + "px";
     el.style.height = h + "px";
     el.style.lineHeight = h + "px";
-    el.textContent = n.name;
-    el.title = n.title;
+    // A lane may say more than its kind (C19: "Steps in Save order").
+    el.textContent = lane.name || n.name;
+    el.title = lane.title || n.title;
+    if (lane.name) el.classList.add("tl-lane-level");
     col.appendChild(el);
   }
+  // C19: a lane that names its level widens the column to show the name,
+  // up to a limit (its tooltip holds the whole of a longer one); without one
+  // the column keeps its width.
+  const pane = col.closest(".timeline-pane");
+  if (!pane) return;
+  pane.style.removeProperty("--tl-names-w");
+  const named = col.querySelectorAll(".tl-lane-level");
+  if (!named.length) return;
+  const usual = parseFloat(getComputedStyle(pane).getPropertyValue("--tl-names-w")) || 0;
+  let want = 0;
+  for (const el of named) want = Math.max(want, el.scrollWidth + 14);
+  if (want > usual) pane.style.setProperty("--tl-names-w", Math.min(want, 220) + "px");
+}
+
+/* The steps the steps lane shows (C19): the level the Steps list shows
+   (State.mapPath), inside a sub-process its steps in every visit of it;
+   { steps, name } where name is the level's ("" at the main level, where
+   the lane shows every visible step). */
+function stepsForLevel(session) {
+  const anno = (session && session.annotations) || {};
+  const all = anno.steps || [];
+  const model = RunsModel.buildRuns(session && session.stats, all);
+  const txs = model.runs.map((r) => r.members);
+  const path = SPM.validPath(txs, State.getMapPath());
+  if (!path.length) return { steps: all.filter((s) => s && s.state !== "hidden"), name: "" };
+  const pattern = RunsModel.patternRun(anno, model.runs);
+  const ref = pattern.run ? Math.max(0, model.runs.indexOf(pattern.run)) : 0;
+  return { steps: SPM.levelVisits(txs, path).flatMap((v) => v.visible), name: SPM.nodeName(txs, path, ref) };
 }
 
 function renderTimeline() {
@@ -540,10 +572,11 @@ function renderTimeline() {
   const ticksH = 20;
   const caseRowH = 22;
 
-  // The steps lane shows the steps as they are: one band per visible step,
-  // named as in the Steps list.
+  // The steps lane shows the steps as they are: one band per visible step of
+  // the level the Steps list shows (C19), named as in the Steps list.
   const _anno = (State.getSession().annotations) || {};
-  const _stepsForLane = (_anno.steps || []).filter((s) => s && s.state !== "hidden").map((s) => ({
+  const _level = stepsForLevel(State.getSession());
+  const _stepsForLane = _level.steps.map((s) => ({
     label: s.name || s.step_id || "", step_id: s.step_id, time_range: s.time_range,
   }));
 
@@ -852,6 +885,8 @@ function renderTimeline() {
     key: "steps",
     height: stepsLaneH,
     gapBefore: 6,
+    name: _level.name ? "Steps in " + _level.name : "",
+    title: _level.name ? "Steps in " + _level.name + ": the steps of this sub-process, each time a transaction goes through it; click one to see all its moments." : "",
     render(host, ctx) {
       const stepsLaneTop = ctx.slot.top;
       for (const s of (lanes.steps ? _stepsForLane : [])) {
@@ -889,8 +924,8 @@ function renderTimeline() {
           if (s.time_range && s.time_range.start) seekToTimestamp(s.time_range.start);
           // V2 item 4: the step panel opens beside the timeline (lazy: the
           // panel requires the video module this one requires too).
-          const step = (_anno.steps || []).find((x) => x.step_id === s.step_id);
-          if (step) require("./step-panel.js").openForStep(step);
+          const hit = SPM.findStep(_anno.steps || [], s.step_id);
+          if (hit) require("./step-panel.js").openForStep(hit.step);
         });
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -1074,5 +1109,5 @@ module.exports = {
   renderTimeline, renderTimelineSummary, renderMinimap, syncMinimapViewport,
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
-  caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES,
+  caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES, stepsForLevel,
 };

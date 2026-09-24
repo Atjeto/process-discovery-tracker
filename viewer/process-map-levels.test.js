@@ -172,6 +172,19 @@ test("node rule: a drafted step's name wins in every state, over a stale process
   }
 });
 
+test("node rule (C19): a drafted sub-step, which carries an action_key, is its own name like a drafted step", () => {
+  // The value rules would cut "Enter Quantity: box" down; an action's name is
+  // drafted without values, so it stays whole in every state.
+  const name = "Salesforce - Order: Enter Quantity";
+  assert.notEqual(processLabel(name), name, "precondition: the value rules would change it");
+  for (const state of ["auto_suggested", "confirmed", "edited"]) {
+    const s = { step_id: "a", name, state, action_key: "chrome|Salesforce - Order|enter:quantity", process_label: "stale" };
+    assert.equal(mapNodeLabel(s), name, state);
+  }
+  // Without the key, the main rule: process_label, else the label of the name.
+  assert.equal(mapNodeLabel({ step_id: "b", name, state: "edited", process_label: "Stamped" }), "Stamped");
+});
+
 test("node rule: a step without a draft_key groups by its process_label", () => {
   const stamped = step("a", "raw name, Value-1", "c1", 1000);
   stamped.process_label = "Canonical step";

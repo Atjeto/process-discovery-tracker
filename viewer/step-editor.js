@@ -19,6 +19,46 @@
      page then must not save what it held (a blur during the redraw). */
   let _rendering = false;
 
+  /* A double-click renames the row its FIRST click landed on. That click
+     selects the row and the list is drawn again; the step panel may open
+     beside it, the list narrows and the rows move down, so the second click
+     can land on the row above (or on no row at all). `_firstClick` is that
+     first click, { stepId, at, onName }; the second click of the pair does
+     not select another row, and the double-click renames the row of the
+     first click wherever it is now. Only the analyst's own clicks count: a
+     rename started from the keyboard or a menu is a made-up double-click on
+     the row it names. */
+  let _firstClick = null;
+  const DOUBLE_CLICK_MS = 800;
+  function _pairedWith(e) {
+    const f = _firstClick;
+    return f && e && e.isTrusted && e.timeStamp - f.at >= 0 && e.timeStamp - f.at <= DOUBLE_CLICK_MS ? f : null;
+  }
+  function _liveRow(stepId) {
+    return Array.from(document.querySelectorAll(".step-row")).find((r) => r.dataset.stepId === stepId) || null;
+  }
+  // Every first click forgets the last one; a row's own click then records
+  // itself (the capture phase runs before the row's handler).
+  if (typeof document !== "undefined") document.addEventListener("click", (e) => {
+    if (e.isTrusted && e.detail <= 1) _firstClick = null;
+  }, true);
+  if (typeof document !== "undefined") document.addEventListener("dblclick", (e) => {
+    let row = null;
+    if (e.isTrusted) {
+      // The analyst's double-click: the row whose name took its first click
+      // (none when that click was elsewhere, a row's "▸ N sub-steps" say).
+      const f = _pairedWith(e);
+      row = f && f.onName ? _liveRow(f.stepId) : null;
+    } else {
+      const nameEl = e.target && e.target.closest ? e.target.closest(".step-row .step-name") : null;
+      row = nameEl ? nameEl.closest(".step-row") : null;
+    }
+    _firstClick = null;
+    if (!row || typeof row._pdtBeginRename !== "function") return;
+    e.stopPropagation();
+    row._pdtBeginRename();
+  });
+
   /* What each step chip means, on hover. */
   const CHIP_TITLES = {
     draft: "Draft: the recorder drafted this step and it has not been checked yet. On the reference transaction, Confirm transaction accepts it as it is.",
@@ -36,8 +76,11 @@
      where it differs from its run: `opts.baseline` is the chip class the run's
      status stands for ("draft" or "confirmed"), and a row whose chip is that
      class shows none (the run's own status says it). Without a baseline (the
-     steps outside runs) every row shows its chip.
-       opts: { nameListId, onBeginRename(step), emptyHtml, baseline } */
+     steps outside runs) every row shows its chip. A sub-process row (C19)
+     carries "▸ N sub-steps", which opens its level.
+       opts: { nameListId, onBeginRename(step), emptyHtml, baseline,
+               subSteps(step) (its visible sub-steps counted, null for a
+               plain step), onOpenSub(step) } */
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu, opts) {
     const o = opts || {};
     host.innerHTML = "";
@@ -73,13 +116,36 @@
       // time order. The multi-select check stays (a genuine per-row act for
       // merge and bulk delete).
       const _nameTitle = (s.name ? s.name + " - " : "") + "double-click to rename";
+      // C19: a sub-process carries the way into it, its sub-steps counted.
+      const subCount = typeof o.subSteps === "function" ? o.subSteps(s) : null;
+      const subHtml = Number.isInteger(subCount)
+        ? `<button type="button" class="step-sub-open" title="Open this sub-process: its steps, in every transaction that goes through it">▸ ${subCount} ${subCount === 1 ? "sub-step" : "sub-steps"}</button>`
+        : "";
       row.innerHTML = `
         <span class="multi-check" title="Click to select for merge or to hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${flagBadges}${chipHtml}
+        ${subHtml}${flagBadges}${chipHtml}
         <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
       `;
+      if (subHtml) {
+        row.dataset.subProcess = "true";
+        row.querySelector(".step-sub-open").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (o.onOpenSub) o.onOpenSub(s);
+        });
+      }
       row.addEventListener("click", (e) => {
+        // The second click of a double-click that began elsewhere (another
+        // row, when the list moved under the pointer, or a button that
+        // redrew the list) selects nothing: the double-click renames the row
+        // its first click landed on, if any.
+        if (e.isTrusted && e.detail > 1) {
+          const paired = _pairedWith(e);
+          if (!paired || paired.stepId !== s.step_id) return;
+        }
+        if (e.isTrusted && e.detail <= 1) {
+          _firstClick = { stepId: s.step_id, at: e.timeStamp, onName: !!(e.target && e.target.closest && e.target.closest(".step-name")) };
+        }
         if (e.ctrlKey || e.metaKey) {
           if (onMultiSelect) onMultiSelect(s.step_id);
         } else if (onSelect) {
@@ -104,21 +170,14 @@
           onContextMenu(s.step_id, e.clientX, e.clientY);
         });
       }
-      const nameEl = row.querySelector(".step-name");
-      nameEl.addEventListener("dblclick", (e) => {
-        e.stopPropagation();
-        // The first click of a double-click selects the row, and selecting
-        // re-renders the list, so this row can be detached by now (the
-        // browser still delivers dblclick to it). Rename the row that is on
-        // screen for this step, or the input would open where nobody sees it.
-        let target = nameEl;
-        if (!nameEl.isConnected) {
-          const live = Array.from(document.querySelectorAll(".step-row")).find((r) => r.dataset.stepId === s.step_id);
-          target = (live && live.querySelector(".step-name")) || nameEl;
-        }
+      // A double-click on the name renames the step (the document's dblclick
+      // listener above picks the row; this is how it starts the rename).
+      row._pdtBeginRename = () => {
+        const nameEl = row.querySelector(".step-name");
+        if (!nameEl) return;
         if (o.onBeginRename) o.onBeginRename(s);
-        beginInlineRename(target, s, onInlineRename, steps, o.nameListId);
-      });
+        beginInlineRename(nameEl, s, onInlineRename, steps, o.nameListId);
+      };
       host.appendChild(row);
     }
   }
@@ -179,11 +238,13 @@
          step, C7; the drafting's own narration is its hint, not its text)
          with "Said during this step" under it while a transcript is
          attached, the Flow line (C17: Only when and Go to), Waste, Watch
-         (with a video: it plays the step in the step panel) and Hide, and
-         the step's screenshots;
+         (with a video: it plays the step in the step panel), Hide and (C19)
+         Open as a sub-process, or on a sub-process Open sub-process and
+         Dissolve sub-process, and the step's screenshots;
        "More" (a native <details>, collapsed on every selection): the
          interactions the step is made of, Show on timeline, Split, Merge with
-         next, Merge selected, Delete (added steps only).
+         next, Merge selected (on a sub-process one line saying why neither
+         applies), Delete (added steps only).
      Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the fact
      line, the fields, the description and its hint, and (C16) the System
      field and the screenshots, notes and attachments (views/analyst-ui.js). */
@@ -199,8 +260,10 @@
     // A2: a boundary index chosen by the analyst (split AFTER this index).
     const splitAfterIndex = (callbacks && Number.isInteger(callbacks.splitAfterIndex))
       ? callbacks.splitAfterIndex : null;
+    // C19: a sub-process is not split or merged (its steps are, inside it).
+    const sub = callbacks.subProcess || null;
     const interListHtml = renderInteractionList(resolvedInter, interIds.length,
-      { splittable: true, splitAfterIndex, originMs: callbacks.originMs });
+      { splittable: !sub, splitAfterIndex, originMs: callbacks.originMs });
     const _hasSplitPoint = splitAfterIndex !== null;
     const splitBtnLabel = _hasSplitPoint ? "Split here" : "Split";
     const splitBtnTitle = _hasSplitPoint
@@ -227,6 +290,21 @@
     const hint = callbacks.descriptionHint || "The text the PDD prints under this step";
     const watchBtn = callbacks.recordingAvailable
       ? `<button id="btn-step-watch" title="Play this step in the video of the step panel">▶ Watch</button>` : "";
+    // C19: the way into a sub-process and its inverse, or the verb that makes
+    // one of this step.
+    const subBtns = sub
+      ? `<button id="btn-step-open-sub" title="Show the ${sub.count} ${sub.count === 1 ? "step" : "steps"} of this sub-process, in every transaction that goes through it">▸ Open sub-process</button>` +
+        `<button id="btn-step-dissolve" title="${escapeAttr(sub.group
+          ? "Put its steps back in its place, in every transaction. Ctrl+Z undoes it."
+          : "Drop its sub-steps, in every transaction; what you added to them moves to this step. Ctrl+Z undoes it.")}">Dissolve sub-process</button>`
+      : callbacks.canOpenAsSub
+        ? `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click), in every transaction where it happens, and show them">Open as a sub-process</button>`
+        : "";
+    const moreActs = sub
+      ? `<p class="step-sub-note" id="step-sub-note">A sub-process is not split or merged: dissolve it first, or work on its steps inside.</p>`
+      : `<button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
+            <button id="btn-step-merge" title="Merge this step with the next step of its transaction (the inverse of Split)">Merge with next</button>
+            ${mergeSelectedBtn}`;
     host.innerHTML = `
       ${fact ? `<p class="step-fact">${escapeHtml(fact)}</p>` : ""}
       <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList} title="Saved when you press Enter or leave the field"></label>
@@ -241,6 +319,7 @@
       <div class="actions">
         ${watchBtn}
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
+        ${subBtns}
       </div>
       ${callbacks.extrasHtml || ""}
       <details class="step-detail-more">
@@ -252,10 +331,8 @@
           <div class="evidence">${interListHtml}</div>
           <div class="actions">
             <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
-            <button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
-            <button id="btn-step-merge" title="Merge this step with the next step of its transaction (the inverse of Split)">Merge with next</button>
-            ${mergeSelectedBtn}
-            ${isAdded ? '<button id="btn-step-delete" class="danger" title="Delete this step you added">Delete</button>' : ""}
+            ${moreActs}
+            ${isAdded ? `<button id="btn-step-delete" class="danger" title="${escapeAttr(sub && sub.group ? "Delete this sub-process you made, with its steps" : "Delete this step you added")}">Delete</button>` : ""}
           </div>
         </div>
       </details>`;
@@ -296,8 +373,12 @@
     const hideBtn = document.getElementById("btn-step-hide");
     if (hideBtn) hideBtn.addEventListener("click", () =>
       callbacks.onToggleHide && callbacks.onToggleHide(step.step_id));
-    document.getElementById("btn-step-split").addEventListener("click", () =>
-      callbacks.onSplit && callbacks.onSplit(step.step_id));
+    // C19: the sub-process verbs.
+    const onClick = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
+    onClick("btn-step-open-sub", () => callbacks.onOpenSub && callbacks.onOpenSub(step.step_id));
+    onClick("btn-step-dissolve", () => callbacks.onDissolve && callbacks.onDissolve(step.step_id));
+    onClick("btn-step-make-sub", () => callbacks.onOpenAsSub && callbacks.onOpenAsSub(step.step_id));
+    onClick("btn-step-split", () => callbacks.onSplit && callbacks.onSplit(step.step_id));
     // A2: scissors on each interaction pick the split boundary.
     host.querySelectorAll(".si-split-btn").forEach((b) => {
       b.addEventListener("click", (e) => {
@@ -306,8 +387,7 @@
         if (callbacks.onPickSplit && Number.isInteger(after)) callbacks.onPickSplit(after);
       });
     });
-    document.getElementById("btn-step-merge").addEventListener("click", () =>
-      callbacks.onMerge && callbacks.onMerge(step.step_id));
+    onClick("btn-step-merge", () => callbacks.onMerge && callbacks.onMerge(step.step_id));
     const _mergeSelBtn = document.getElementById("btn-step-merge-selected");
     if (_mergeSelBtn) _mergeSelBtn.addEventListener("click", () =>
       callbacks.onMergeSelected && callbacks.onMergeSelected());

@@ -67,6 +67,10 @@ const _s = {
   // incidental re-render (select/rename/flag never set this, so they never
   // scroll). Mirrors pendingStepJumpTs's consume-once discipline.
   pendingStepReveal: false,
+  // Contract C19: the level the Steps level (and later the Map) shows, a
+  // path of map nodes from the main map down; [] is the main map. The step
+  // panel and the Timeline's steps lane follow it.
+  mapPath: [],
   // The analysis of the recording on screen: { folder, status } while it runs
   // ("running") or after it did not finish ("failed", "cancelled"); null when
   // none ran or the last one succeeded. The pages that wait for an analysis
@@ -255,6 +259,12 @@ function getSelectionRange() { return _s.selectionRange; }
 /** @param {*} v */
 function setSelectionRange(v) { _s.selectionRange = v; }
 
+/* The current level (C19): a copy of the path of map nodes ([] the main map). */
+/** @returns {string[]} */
+function getMapPath() { return _s.mapPath.slice(); }
+/** @param {string[]} v */
+function setMapPath(v) { _s.mapPath = Array.isArray(v) ? v.filter((n) => typeof n === "string") : []; }
+
 /* The analysis run of a recording: { folder, status } or null (see _s). */
 function getAnalysisRun() { return _s.analysisRun; }
 /** @param {*} v */
@@ -281,6 +291,8 @@ module.exports = {
   getZoomFactor, setZoomFactor,
   // flow timeline range selection
   getSelectionRange, setSelectionRange,
+  // the current level (C19)
+  getMapPath, setMapPath,
   // the analysis run of the recording on screen
   getAnalysisRun, setAnalysisRun,
 };

@@ -28,10 +28,21 @@
  * confirmed pattern run, and the comparison line can forget a saved process;
  * the Remembered names dialog renames or forgets a remembered name.
  *
+ * Contract C19 (sub-processes): a step may carry sub_steps, at any depth. The
+ * list shows one level at a time (State.mapPath, a path of map nodes; [] the
+ * main level): inside a sub-process a breadcrumb names the way down and goes
+ * up, and the list has one block per visit of the sub-process ("Transaction
+ * 2", "Transaction 2, again"), the reference transaction's first visit marked
+ * and compared with the others as a transaction is at the main level. A
+ * sub-process row opens its level ("▸ N sub-steps"); Open as a sub-process,
+ * Group into a sub-process and Dissolve sub-process make and undo one
+ * (sub-process-verbs.js), and every verb here works at the level shown.
+ *
  * The model is runs-model.js (pure, unit-tested); this module renders it and
  * owns the step verbs (rename / save / split / merge / hide / delete / add /
  * bulk hide or delete / confirm run / reopen run / use as pattern / save as
- * this process) and the ignored-apps and remembered-names dialogs.
+ * this process / the sub-process verbs) and the ignored-apps and
+ * remembered-names dialogs.
  * Cross-surface helpers (ensureAnnoShape, persistAnnotations,
  * jumpToStepInFlow, watchStep) are injected by
  * renderer.js via initStepsView().
@@ -56,6 +67,8 @@ const AnalystUI = require("./analyst-ui.js");
 const Video = require("./flow-view-video.js");
 const StepFlow = require("../step-flow.js");
 const PaneSplitter = require("../pane-splitter.js");
+const SPM = require("../sub-process-maps.js");
+const SPV = require("../sub-process-verbs.js");
 const { processLabel, mapNodeLabel } = require("../process-map-levels.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
@@ -79,9 +92,12 @@ let _splitAfter = { stepId: null, index: null };
    re-analysis of the same session (case ids are stable, C9), so a return to
    Steps finds the view as the analyst left it. `compare` is the saved process
    matched when the session opened ({ process, score }, C5) and
-   `compareStopped` the analyst's Stop comparing. */
+   `compareStopped` the analyst's Stop comparing. Inside a sub-process (C19)
+   `levelOpen` is the open block (a visit's key, see _containers) and
+   `levelKey` the level it belongs to; `open` keeps the main level's. */
 function _freshUi(folder) {
-  return { folder, open: undefined, showHidden: false, compare: null, compareStopped: false };
+  return { folder, open: undefined, showHidden: false, compare: null, compareStopped: false,
+    levelOpen: undefined, levelKey: "" };
 }
 let _ui = _freshUi(null);
 
@@ -121,9 +137,94 @@ function _model() {
   return RunsModel.buildRuns(s && s.stats, (s && s.annotations && s.annotations.steps) || []);
 }
 
+/* A step by id at any level (C19), or null. */
 function _findStep(stepId) {
+  const loc = _locate(stepId);
+  return loc ? loc.step : null;
+}
+
+/* Where a step is (sub-process-maps.findStep: its list, parent, depth and
+   the path of its level), or null. */
+function _locate(stepId) {
   const s = State.getSession();
-  return ((s && s.annotations && s.annotations.steps) || []).find((x) => x.step_id === stepId) || null;
+  return SPM.findStep((s && s.annotations && s.annotations.steps) || [], stepId);
+}
+
+/* ===== The level shown (contract C19) ==================================== */
+
+/* The transactions' main-level steps, in transaction order: what the
+   sub-process helpers take. */
+function _txs(model) { return model.runs.map((r) => r.members); }
+
+/* The reference transaction's index among them (0 without one). */
+function _refIndex(model, pattern) {
+  const i = pattern && pattern.run ? model.runs.indexOf(pattern.run) : -1;
+  return i >= 0 ? i : 0;
+}
+
+/* The level shown: State.mapPath as far as its maps are still there (a
+   sub-process dissolved, hidden or renamed since takes the level up). A
+   level other than the last one shown starts with its default block open. */
+function _levelPath(model) {
+  const want = State.getMapPath();
+  const path = SPM.validPath(_txs(model), want);
+  if (!SPM.samePath(path, want)) State.setMapPath(path);
+  const key = JSON.stringify(path);
+  if (_ui.levelKey !== key) {
+    _ui.levelKey = key;
+    _ui.levelOpen = undefined;
+    _ui.showHidden = false;
+  }
+  return path;
+}
+
+/* The open block's key at `path` (the main level's is _ui.open). */
+function _openKeyAt(path) { return path.length ? _ui.levelOpen : _ui.open; }
+function _setOpenKeyAt(path, key) { if (path.length) _ui.levelOpen = key; else _ui.open = key; }
+
+/* The blocks of rows the list shows at level `path`: at the main level each
+   transaction (key: its case_id) and the steps outside them (OUTSIDE);
+   inside a sub-process one per visit of it (key: the case_id, "#" and the
+   visit's number in its transaction, 0 the first). Each { key, run, index,
+   members (every step, hidden ones too, in order), visible, parents (the
+   steps whose sub_steps they are) }. */
+function _containers(model, path) {
+  if (!path.length) {
+    const out = model.runs.map((r) => ({ key: r.caseId, run: r, index: 0, members: r.members, visible: r.visible, parents: [] }));
+    if (model.outside.length) {
+      out.push({ key: OUTSIDE, run: null, index: 0, members: model.outside,
+        visible: model.outside.filter((s) => s.state !== "hidden"), parents: [] });
+    }
+    return out;
+  }
+  return SPM.levelVisits(_txs(model), path).map((v) => ({
+    key: model.runs[v.t].caseId + "#" + v.index, run: model.runs[v.t], index: v.index,
+    members: v.members, visible: v.visible, parents: v.parents,
+  }));
+}
+
+function _containerOf(containers, stepId) {
+  return containers.find((c) => c.members.some((s) => s.step_id === stepId)) || null;
+}
+
+/* The block of the level shown that holds a step, or null. */
+function _containerNow(stepId) {
+  const model = _model();
+  return _containerOf(_containers(model, _levelPath(model)), stepId);
+}
+
+/* The name of the process, the first crumb: the document's title (C6, the
+   PDD's title), else "Main process". */
+function _processName() {
+  const s = State.getSession();
+  const d = (s && s.annotations && s.annotations.document) || {};
+  const t = typeof d.title === "string" ? d.title.trim().split(/\r?\n/)[0].trim() : "";
+  return t || "Main process";
+}
+
+/* The name a level goes by (its node's first step's name). */
+function _levelName(model, pattern, path) {
+  return SPM.nodeName(_txs(model), path, _refIndex(model, pattern));
 }
 
 /* The rendered list row of a step, or null when it is not on screen (its
@@ -151,12 +252,17 @@ function _defaultOpen(model, pattern) {
    deselected, so no verb or shortcut acts on a step the analyst no longer
    sees (RP-12). */
 function _openGroup(key) {
-  if (_ui.open === key) return;
-  _ui.open = key;
+  const model = _model();
+  const path = _levelPath(model);
+  if (_openKeyAt(path) === key) return;
+  _setOpenKeyAt(path, key);
   State.getMultiSelectedStepIds().clear();
-  const s = _findStep(State.getSelectedStepId());
-  if (s && (key == null || RunsModel.groupKeyOf(s, _model().runs) !== key)) State.setSelectedStepId(null);
-  _markOpened(key);
+  const sel = State.getSelectedStepId();
+  if (sel && _findStep(sel)) {
+    const c = _containerOf(_containers(model, path), sel);
+    if (key == null || !c || c.key !== key) State.setSelectedStepId(null);
+  }
+  if (!path.length) _markOpened(key);
 }
 
 /* AD-28: a run other than the reference run is reviewed once it has been
@@ -182,13 +288,16 @@ function _markOpened(caseId) {
   Session.saveAnnotationsDirect(anno, "open a transaction").catch(() => { /* already shown */ });
 }
 
-/* Select a step and make sure it is on screen: its group opens, and hidden
-   steps show when it is hidden. Used by the step context menu. */
+/* Select a step and make sure it is on screen: its level shows, its group
+   opens, and hidden steps show when it is hidden. Used by the step context
+   menu. */
 function _selectAndReveal(stepId) {
-  const s = _findStep(stepId);
-  if (!s) return;
-  _openGroup(RunsModel.groupKeyOf(s, _model().runs));
-  if (s.state === "hidden") _ui.showHidden = true;
+  const loc = _locate(stepId);
+  if (!loc) return;
+  if (!SPM.samePath(loc.path, State.getMapPath())) State.setMapPath(loc.path);
+  const c = _containerNow(stepId);
+  if (c) _openGroup(c.key);
+  if (loc.step.state === "hidden") _ui.showHidden = true;
   State.setSelectedStepId(stepId);
 }
 
@@ -302,15 +411,29 @@ function renderStepsLevel() {
   const pattern = RunsModel.patternRun(anno, model.runs);
   const ref = _reference(pattern);
 
-  // A Flow request to show the step at a moment ("Jump to step here"):
-  // select the step containing it, else the nearest one, so a right-click in
-  // a gap between steps still lands on a step.
+  // An ARRIVAL (Open in Steps, a jump, or a return to Steps with a surviving
+  // selection) reveals the selected step: its level shows (C19), its group
+  // opens and, when it is hidden, the hidden steps show; the row is scrolled
+  // into view below. The one-shot flags are consumed here, so a later
+  // incidental re-render never scrolls.
   const pendingTs = State.consumePendingStepJump();
+  const arriveReveal = State.consumePendingStepReveal();
+  if (arriveReveal && !pendingTs) {
+    const loc = SPM.findStep(allSteps, State.getSelectedStepId());
+    if (loc && !SPM.samePath(loc.path, State.getMapPath())) State.setMapPath(loc.path);
+  }
+  const path = _levelPath(model);
+  const containers = _containers(model, path);
+
+  // A Flow request to show the step at a moment ("Jump to step here"):
+  // select the step of the level shown containing it, else the nearest one,
+  // so a right-click in a gap between steps still lands on a step.
   if (pendingTs) {
+    const levelSteps = path.length ? containers.flatMap((c) => c.members) : allSteps;
     const targetMs = new Date(pendingTs).getTime();
-    if (isFinite(targetMs) && allSteps.length) {
+    if (isFinite(targetMs) && levelSteps.length) {
       let best = null, bestDist = Infinity;
-      for (const s of allSteps) {
+      for (const s of levelSteps) {
         const tr = s.time_range; if (!tr) continue;
         const a = new Date(tr.start).getTime();
         const b = new Date(tr.end).getTime();
@@ -322,30 +445,29 @@ function renderStepsLevel() {
       if (best) State.setSelectedStepId(best.step_id);
     }
   }
-  // An ARRIVAL (Open in Steps, a jump, or a return to Steps with a surviving
-  // selection) reveals the selected step: its group opens and, when it is
-  // hidden, the hidden steps show; the row is scrolled into view below. The
-  // one-shot flag is consumed here, so a later incidental re-render never
-  // scrolls.
-  const arriveReveal = State.consumePendingStepReveal();
   const revealStep = (pendingTs || arriveReveal) ? _findStep(State.getSelectedStepId()) : null;
   if (revealStep) {
-    const key = RunsModel.groupKeyOf(revealStep, model.runs);
-    if (_ui.open !== key) { _ui.open = key; State.getMultiSelectedStepIds().clear(); _markOpened(key); }
+    const c = _containerOf(containers, revealStep.step_id);
+    const key = c ? c.key : (path.length ? undefined : RunsModel.groupKeyOf(revealStep, model.runs));
+    if (key !== undefined && _openKeyAt(path) !== key) {
+      _setOpenKeyAt(path, key);
+      State.getMultiSelectedStepIds().clear();
+      if (!path.length) _markOpened(key);
+    }
     if (revealStep.state === "hidden") _ui.showHidden = true;
   }
-  const openIsGone = _ui.open === undefined ||
-    (_ui.open === OUTSIDE ? !model.outside.length
-      : _ui.open !== null && !model.runs.some((r) => r.caseId === _ui.open));
-  if (openIsGone) _ui.open = _defaultOpen(model, pattern);
+  let open = _openKeyAt(path);
+  if (open === undefined || (open !== null && !containers.some((c) => c.key === open))) {
+    open = path.length ? _defaultVisit(containers, pattern) : _defaultOpen(model, pattern);
+    _setOpenKeyAt(path, open);
+  }
+  const openC = containers.find((c) => c.key === open) || null;
   // "Show hidden steps" lasts while the open group has hidden steps; with
   // none left (the last one unhidden, another group opened) it switches off,
   // so a step hidden later leaves the list as expected.
-  const openMembers = _ui.open === OUTSIDE ? model.outside
-    : ((model.runs.find((r) => r.caseId === _ui.open) || {}).members || []);
-  if (!openMembers.some((s) => s.state === "hidden")) _ui.showHidden = false;
+  if (!openC || !openC.members.some((s) => s.state === "hidden")) _ui.showHidden = false;
 
-  const visible = RunsModel.groupSteps(model, _ui.open, _ui.showHidden);
+  const visible = !openC ? [] : _ui.showHidden ? openC.members.slice() : openC.visible.slice();
   const visibleIds = new Set(visible.map((s) => s.step_id));
   // Ticks only ever stand on rows the analyst can see (RP-12).
   const multi = State.getMultiSelectedStepIds();
@@ -355,13 +477,15 @@ function renderStepsLevel() {
   const pc = $("#runs-pane-count");
   if (pc) pc.textContent = String(model.runs.length);
   const pn = $("#runs-pane-note");
-  if (pn) pn.textContent = transactionNote(session);
+  if (pn) pn.textContent = path.length ? NOTE_LEVEL : transactionNote(session);
   _renderFlagSummary(allSteps);
+  _renderCrumbs(model, pattern, path);
 
-  renderRunsList($("#step-list"), model, pattern, visible, session.stats, ref);
+  if (path.length) renderLevelList($("#step-list"), model, pattern, containers, open, visible);
+  else renderRunsList($("#step-list"), model, pattern, visible, session.stats, ref);
 
   const selId = State.getSelectedStepId();
-  const selected = selId && visibleIds.has(selId) ? allSteps.find((s) => s.step_id === selId) : null;
+  const selected = selId && visibleIds.has(selId) ? _findStep(selId) : null;
   const title = $("#step-detail-title");
   // The name or the description being typed in keeps what was typed and the
   // cursor across a redraw (an autosave redraws the pane); leaving the field
@@ -387,7 +511,8 @@ function renderStepsLevel() {
     if (State.getLevel() === "steps") StepPanel.followSteps(selected);
   } else {
     _detailStepId = null;
-    renderRunGuide(detail, model, pattern, ref);
+    if (path.length) renderLevelGuide(detail, model, pattern, containers, open, path);
+    else renderRunGuide(detail, model, pattern, ref);
   }
 
   if (revealStep && visibleIds.has(revealStep.step_id)) {
@@ -396,6 +521,210 @@ function renderStepsLevel() {
       if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 0);
   }
+}
+
+/* Inside a sub-process (C19): the block open by default, the reference
+   transaction's first visit, else the first block. */
+function _defaultVisit(containers, pattern) {
+  const ref = _refVisit(containers, pattern);
+  return ref ? ref.key : containers.length ? containers[0].key : null;
+}
+
+/* The block the others are compared with inside a sub-process: the
+   reference transaction's first visit, or null when it has none there. */
+function _refVisit(containers, pattern) {
+  if (!pattern || !pattern.run) return null;
+  return containers.find((c) => c.run === pattern.run && c.index === 0) || null;
+}
+
+/* The breadcrumb over the list inside a sub-process (C19): the way down from
+   the main process, each crumb but the last going up to its level, and
+   Dissolve sub-process beside it. Hidden at the main level. */
+function _renderCrumbs(model, pattern, path) {
+  const nav = $("#steps-crumbs");
+  if (!nav) return;
+  nav.hidden = !path.length;
+  nav.innerHTML = "";
+  if (!path.length) return;
+  const names = [_processName()].concat(path.map((_, d) => _levelName(model, pattern, path.slice(0, d + 1))));
+  const trail = document.createElement("span");
+  trail.className = "crumb-trail";
+  names.forEach((n, d) => {
+    if (d < path.length) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "crumb";
+      b.dataset.depth = String(d);
+      b.title = "Go up to " + n;
+      b.textContent = n;
+      b.addEventListener("click", () => goToLevel(path.slice(0, d)));
+      trail.appendChild(b);
+      const sep = document.createElement("span");
+      sep.className = "crumb-sep";
+      sep.setAttribute("aria-hidden", "true");
+      sep.textContent = "›";
+      trail.appendChild(sep);
+    } else {
+      const here = document.createElement("span");
+      here.className = "crumb crumb-here";
+      here.setAttribute("aria-current", "location");
+      here.title = n;
+      here.textContent = n;
+      trail.appendChild(here);
+    }
+  });
+  nav.appendChild(trail);
+  const dissolve = document.createElement("button");
+  dissolve.type = "button";
+  dissolve.className = "link-btn crumb-dissolve";
+  dissolve.id = "btn-dissolve-level";
+  dissolve.title = "Put the steps of this sub-process back in the steps above it, in every transaction";
+  dissolve.textContent = "Dissolve sub-process";
+  dissolve.addEventListener("click", () => dissolveAction(path.slice(0, -1), path[path.length - 1]));
+  nav.appendChild(dissolve);
+}
+
+/* The one line under the list's title inside a sub-process. */
+const NOTE_LEVEL = "One block per time a transaction goes through this sub-process.";
+
+/* The list inside a sub-process (C19): one block per visit, in transaction
+   order, the reference transaction's first visit marked and compared with
+   the others. */
+function renderLevelList(host, model, pattern, containers, open, visible) {
+  if (!host) return;
+  host.innerHTML = "";
+  const refVisit = _refVisit(containers, pattern);
+  for (const c of containers) host.appendChild(_visitGroupEl(c, pattern, refVisit, open, visible));
+}
+
+/* A visit's time: from its first step's start to its last step's end (the
+   steps whose sub-steps it lists), or null. */
+function _visitDuration(c) {
+  const a = c.parents.map((p) => Date.parse(p.time_range && p.time_range.start)).filter(Number.isFinite);
+  const b = c.parents.map((p) => Date.parse(p.time_range && (p.time_range.end || p.time_range.start))).filter(Number.isFinite);
+  return a.length && b.length ? Math.max(0, Math.max(...b) - Math.min(...a)) : null;
+}
+
+/* One visit of the sub-process: a transaction's block, with the same facts
+   as at the main level (its steps, its time, its differences from the
+   reference visit) and, on the reference transaction's first visit, its
+   status and Confirm transaction (C19: it confirms every level). */
+function _visitGroupEl(c, pattern, refVisit, open, visible) {
+  const run = c.run;
+  const isOpen = open === c.key;
+  const isRef = c === refVisit;
+  const rec = isRef ? pattern.record : null;
+  const confirmed = isRef && RunsModel.patternConfirmed(rec, run);
+  const g = document.createElement("div");
+  g.className = "run-group run-visit" + (isOpen ? " open" : "") + (isRef ? " pattern" : "");
+  g.dataset.caseId = run.caseId;
+  g.dataset.visit = c.key;
+  const n = c.visible.length;
+  const diffs = refVisit && !isRef
+    ? RunDiff.differences(refVisit.visible, c.visible, { reference: RunDiff.REFERENCE_RUN, unit: RunDiff.RUN_UNIT }) : null;
+  const dur = _visitDuration(c);
+  const meta = _plural(n, "step", "steps") + (dur != null ? " · " + formatDuration(dur) : "") +
+    (diffs ? " · " + (diffs.length ? _plural(diffs.length, "difference", "differences") : "no differences") : "");
+  const status = !isRef ? null : !n ? "empty" : confirmed ? "confirmed" : "draft";
+  g.innerHTML = _groupHead(isOpen,
+    '<span class="run-title">' + escapeHtml(run.title + (c.index ? ", again" : "")) + "</span>" +
+    '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
+    (isRef ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Reference</span>' : "") +
+    (status ? '<span class="run-status run-status-' + status + '">' + escapeHtml(RunsModel.STATUS_LABELS[status]) + "</span>" : "") +
+    '<span class="run-meta">' + escapeHtml(meta) + "</span>", "");
+  _wireHead(g, c.key);
+  if (!isOpen) return g;
+  const hidden = c.members.length - n;
+  const body = _groupBody(visible, hidden,
+    hidden ? "Every step here is hidden." : "No steps yet: + Add step adds one here.",
+    status || RunsModel.runStatus(c.members));
+  const acts = body.querySelector(".run-actions");
+  const buttons = [];
+  if (isRef && !confirmed && run.visible.length > 0) {
+    buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
+      "Accept the remaining drafted steps of this transaction, at every level (Ctrl+Enter). Ctrl+Z undoes it.",
+      () => confirmRunAction(run.caseId)));
+  }
+  if (isRef && RunsModel.canReopen(run, rec, true)) {
+    buttons.push(_actionBtn("reopen-run", "Reopen transaction", "",
+      "Turn this transaction's confirmed steps back into drafts, at every level; the steps you edited or added stay as they are. Ctrl+Z undoes it.",
+      () => reopenRunAction(run.caseId)));
+  }
+  for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
+  if (diffs && diffs.length) {
+    const list = document.createElement("ul");
+    list.className = "run-diffs";
+    list.title = "How this visit differs from the reference transaction's";
+    for (const d of diffs) {
+      const li = document.createElement("li");
+      li.dataset.kind = d.kind;
+      li.textContent = d.text;
+      list.appendChild(li);
+    }
+    body.insertBefore(list, acts.nextSibling);
+  }
+  g.appendChild(body);
+  return g;
+}
+
+/* The detail pane inside a sub-process when no step is selected. */
+const GUIDE_LEVEL = "The steps of this sub-process in this transaction: fix and name them as at the main level. + Add step adds one here.";
+const GUIDE_LEVEL_REF = "Confirm transaction accepts them with the rest of the transaction.";
+function renderLevelGuide(host, model, pattern, containers, open, path) {
+  if (!host) return;
+  const title = $("#step-detail-title");
+  const c = containers.find((x) => x.key === open) || null;
+  const isRef = !!(c && c === _refVisit(containers, pattern));
+  const head = c ? c.run.title + (c.index ? ", again" : "") : _levelName(model, pattern, path);
+  const paras = c ? [GUIDE_LEVEL].concat(isRef && !RunsModel.patternConfirmed(pattern.record, c.run) ? [GUIDE_LEVEL_REF] : [])
+    : ["Pick a transaction on the left to see its steps in this sub-process."];
+  if (title) title.textContent = head;
+  host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
+    "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
+}
+
+/* Show another level of the Steps list (C19): `path` from the main map
+   down. Going up selects the step the level left was inside, so the list
+   shows where the analyst came from; `opts.openAt` (a step id) opens the
+   block of the new level whose steps are that step's sub-steps. The step
+   panel and the Timeline's steps lane follow the level. */
+function goToLevel(path, opts) {
+  const o = opts || {};
+  const session = State.getSession();
+  if (!session) return;
+  const root = (session.annotations && session.annotations.steps) || [];
+  const model = _model();
+  const from = _levelPath(model);
+  const leaving = from.length ? (_containers(model, from).find((c) => c.key === _ui.levelOpen) || null) : null;
+  State.setMapPath(path);
+  const to = _levelPath(model);
+  State.getMultiSelectedStepIds().clear();
+  const containers = _containers(model, to);
+  let open;
+  let select = null;
+  if (o.openAt) {
+    const c = containers.find((x) => x.parents.some((p) => p.step_id === o.openAt));
+    if (c) open = c.key;
+  } else if (leaving && leaving.parents.length && to.length < from.length) {
+    // Going up: the step this level was inside, at the level shown now.
+    const loc = SPM.findStep(root, leaving.parents[0].step_id);
+    const chain = loc ? loc.ancestors.concat([loc.step]) : [];
+    select = chain[to.length] || null;
+    const c = select ? _containerOf(containers, select.step_id) : null;
+    if (c) open = c.key;
+  }
+  if (open !== undefined) _setOpenKeyAt(to, open);
+  if (!to.length && open !== undefined) _markOpened(open);
+  const sel = State.getSelectedStepId();
+  if (select) {
+    State.setSelectedStepId(select.step_id);
+    State.setPendingStepReveal();
+  } else if (sel && !_containerOf(containers, sel)) {
+    State.setSelectedStepId(null);
+  }
+  renderStepsLevel();
+  StepPanel.refresh();
+  State.emit("timeline");
 }
 
 /* What a transaction is, in the one line under the list's title (AD-29):
@@ -419,7 +748,7 @@ function transactionNote(session) {
 function _renderFlagSummary(allSteps) {
   const sumEl = $("#steps-summary");
   if (!sumEl) return;
-  const waste = allSteps.filter((st) => st.flags && st.flags.waste).length;
+  const waste = SPM.allSteps(allSteps).filter((st) => st.flags && st.flags.waste).length;
   sumEl.textContent = waste ? "Flagged: " + waste + " waste" : "";
 }
 
@@ -472,7 +801,7 @@ function _groupHead(isOpen, innerHtml, titleAttr) {
 function _wireHead(group, key) {
   const head = group.querySelector(".run-row");
   const toggle = () => {
-    _openGroup(_ui.open === key ? null : key);
+    _openGroup(_openKeyAt(State.getMapPath()) === key ? null : key);
     renderStepsLevel();
   };
   head.addEventListener("click", toggle);
@@ -527,6 +856,9 @@ function _groupBody(visible, hiddenCount, emptyText, baseline) {
       nameListId: NAME_LIST_ID,
       onBeginRename: (step) => _fillNameList(step),
       baseline: baseline || null,
+      // C19: a sub-process row opens its level ("▸ N sub-steps").
+      subSteps: (step) => (SPM.isSubProcess(step) ? step.sub_steps.filter((x) => x && x.state !== "hidden").length : null),
+      onOpenSub: (step) => openSubProcessAction(step.step_id),
     });
   return body;
 }
@@ -536,6 +868,8 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   const isPattern = !!(pattern.run && pattern.run.caseId === run.caseId);
   const rec = isPattern ? pattern.record : null;
   const patternConfirmed = !!(rec && rec.confirmed_at);
+  // C19: it reads confirmed only while no level below holds a draft.
+  const reads = isPattern && RunsModel.patternConfirmed(rec, run);
   const g = document.createElement("div");
   g.className = "run-group" + (isOpen ? " open" : "") + (isPattern ? " pattern" : "");
   g.dataset.caseId = run.caseId;
@@ -550,7 +884,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   // them. P3.8: "Use as reference run" is a once-a-session choice, so it
   // lives in the run's right-click menu, as the probe line of the confirmed
   // reference run does.
-  const status = !isPattern ? null : !run.visible.length ? "empty" : patternConfirmed ? "confirmed" : "draft";
+  const status = !isPattern ? null : !run.visible.length ? "empty" : reads ? "confirmed" : "draft";
   const canUsePattern = !isPattern && run.members.length > 0;
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
@@ -574,7 +908,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
     run.hiddenCount ? "Every step of this transaction is hidden." : recorded ? "No steps in this transaction."
       : "No steps yet: + Add step adds one after the selected step.", status || run.status);
   const acts = body.querySelector(".run-actions");
-  const canConfirm = isPattern && !patternConfirmed && run.visible.length > 0;
+  const canConfirm = isPattern && !reads && run.visible.length > 0;
   const buttons = [];
   if (canConfirm) {
     buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
@@ -698,7 +1032,7 @@ function renderRunGuide(host, model, pattern, ref) {
   } else if (key) {
     const run = model.runs.find((r) => r.caseId === key);
     const isPattern = !!(run && pattern.run && pattern.run.caseId === key);
-    const done = isPattern && pattern.record && pattern.record.confirmed_at;
+    const done = isPattern && RunsModel.patternConfirmed(pattern.record, run);
     head = run ? run.title + (run.label ? " (" + run.label + ")" : "") : "Transaction";
     // No step yet and no reference transaction to compare it with (or it is
     // the reference): the one act is adding the first step.
@@ -810,7 +1144,21 @@ function stepDetailCallbacks(selected, interactionsById) {
     onFlowLinkTarget: (id, i, to) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkTarget(s, i, to)),
     onFlowLinkWhen: (id, i, when) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkWhen(s, i, when)),
     onFlowRemoveLink: (id, i) => _flowEdit(id, "remove a link", (s) => StepFlow.removeLink(s, i)),
+    // C19: open it (a sub-process), or make it one (a step of a transaction).
+    subProcess: SPM.isSubProcess(selected)
+      ? { count: selected.sub_steps.filter((x) => x && x.state !== "hidden").length, group: selected.group === true } : null,
+    canOpenAsSub: !SPM.isSubProcess(selected) && selected.state !== "hidden" && _inTransaction(selected),
+    onOpenAsSub: openAsSubProcessAction,
+    onOpenSub: openSubProcessAction,
+    onDissolve: dissolveStepAction,
   };
+}
+
+/* A step of a transaction, at any level (a sub-step has its parent's
+   case_id): the sub-process verbs and the step flow need one. */
+function _inTransaction(step) {
+  const model = _model();
+  return !!(step && typeof step.case_id === "string" && model.runs.some((r) => r.caseId === step.case_id));
 }
 
 /* ===== Step flow (C17) ================================================= */
@@ -823,16 +1171,22 @@ function stepDetailCallbacks(selected, interactionsById) {
    the transactions. */
 function _flowFor(step) {
   const model = _model();
-  const run = model.runs.find((r) => r.caseId === RunsModel.groupKeyOf(step, model.runs));
-  if (!run) return null;
-  const list = run.visible;
+  // C19: the steps of the step's own level: at the main level its
+  // transaction's, inside a sub-process its visit's (a link stays in its
+  // level; End ends the sub-process).
+  const loc = _locate(step.step_id);
+  const path = loc ? loc.path : [];
+  const places = _containers(model, path).filter((c) => c.run);
+  const place = _containerOf(places, step.step_id);
+  if (!place) return null;
+  const list = place.visible;
   const inherited = [];
   if (!StepFlow.onlyWhen(step)) {
     const node = mapNodeLabel(step);
-    for (const r of model.runs) {
-      for (const s of r.visible) {
-        const c = s.step_id !== step.step_id && mapNodeLabel(s) === node ? StepFlow.onlyWhen(s) : "";
-        if (c && !inherited.some((x) => x.text === c)) inherited.push({ text: c, where: r.title });
+    for (const c of places) {
+      for (const s of c.visible) {
+        const cond = s.step_id !== step.step_id && mapNodeLabel(s) === node ? StepFlow.onlyWhen(s) : "";
+        if (cond && !inherited.some((x) => x.text === cond)) inherited.push({ text: cond, where: c.run.title + (c.index ? ", again" : "") });
       }
     }
   }
@@ -854,7 +1208,7 @@ function _flowFor(step) {
 async function _flowEdit(stepId, label, edit) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find((s) => s.step_id === stepId);
+  const step = _findStep(stepId);
   if (!step || !edit(step)) return;
   _markEdited(step);
   try { await persistAnnotations(anno, label); } catch (_) { /* already shown */ }
@@ -882,16 +1236,38 @@ function _linksDroppedText(n, several) {
    name (propagateName) get the same label, so the renamed step and its
    siblings group together before the next Analyze stamps them again. When it
    carries a draft_key, every other still-draft step with that key takes the
-   name at once. Returns { key, propagated } (key: the draft_key to remember,
-   or null). */
+   name at once, at every level. C19: a drafted sub-step (action_key) is
+   labelled by its name too, and its name reaches the drafted sub-steps of
+   its action_key, remembered under "action|" and the key; a sub-process's
+   name reaches every occurrence of its node at its level, whatever their
+   state, so the node and its map stay one (the level shown follows it).
+   Returns { key, propagated, occurrences } (key: the key to remember, or
+   null). */
 function _applyRename(anno, step, name) {
+  const loc = SPM.findStep(anno.steps || [], step.step_id);
+  const path = loc ? loc.path : [];
+  const oldNode = mapNodeLabel(step);
+  const model = _model();
+  const txs = _txs(model);
+  const subNode = SPM.isSubProcessNode(txs, path, oldNode);
   step.name = name;
   _markEdited(step);
-  const pl = (typeof step.draft_key === "string" && step.draft_key) ? String(name).trim() : processLabel(name);
+  const keyed = (typeof step.draft_key === "string" && step.draft_key) || (typeof step.action_key === "string" && step.action_key);
+  const pl = keyed ? String(name).trim() : processLabel(name);
   if (pl) step.process_label = pl;
-  const key = typeof step.draft_key === "string" && step.draft_key ? step.draft_key : null;
-  const propagated = key ? RunsModel.propagateName(anno.steps || [], step, name) : 0;
-  return { key, propagated };
+  const key = RunsModel.rememberKey(step) || null;
+  const propagated = step.draft_key ? RunsModel.propagateName(anno.steps || [], step, name)
+    : step.action_key ? RunsModel.propagateActionName(anno.steps || [], step, name) : 0;
+  let occurrences = 0;
+  if (subNode) {
+    occurrences = SPV.renameNode(txs, path, oldNode, name, step);
+    const cur = State.getMapPath();
+    if (cur.length > path.length && SPM.samePath(cur.slice(0, path.length), path) && cur[path.length] === oldNode) {
+      cur[path.length] = mapNodeLabel(step);
+      State.setMapPath(cur);
+    }
+  }
+  return { key, propagated, occurrences };
 }
 
 /* Remember `name` for `key` in the main-process store. A failed write is
@@ -912,7 +1288,8 @@ async function _rememberName(key, name) {
   return false;
 }
 
-function _renamedToast(propagated) {
+function _renamedToast(propagated, occurrences) {
+  if (occurrences) return "Renamed in every transaction: " + _plural(occurrences, "other occurrence", "other occurrences") + " took the name too.";
   return propagated
     ? "Renamed. " + _plural(propagated, "matching drafted step", "matching drafted steps") + " took the name too."
     : "Renamed";
@@ -930,16 +1307,16 @@ async function inlineRenameStep(stepId, newName, advance) {
   }
   if (!State.getSession() || !stepId || !newName) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find(s => s.step_id === stepId);
+  const step = _findStep(stepId);
   if (!step) return;
   // Tab moves on to the row below, in the list the analyst sees.
   const goNext = advance === true || advance === "next";
-  const next = goNext ? RunsModel.nextInGroup(_model(), stepId, _ui.showHidden) : null;
-  const { key, propagated } = _applyRename(anno, step, newName);
+  const next = goNext ? _nextRow(stepId) : null;
+  const { key, propagated, occurrences } = _applyRename(anno, step, newName);
   let saved = true;
   try { await persistAnnotations(anno, "rename step"); } catch (_) { saved = false; }   // already shown
   if (key) await _rememberName(key, newName);
-  if (saved && propagated) toast(_renamedToast(propagated), "success");
+  if (saved && (propagated || occurrences)) toast(_renamedToast(propagated, occurrences), "success");
   if (next) {
     State.setSelectedStepId(next.step_id);
     renderStepsLevel();
@@ -965,7 +1342,7 @@ const _markEdited = AC.markEdited;
 async function describeStepAction(stepId, text) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find((s) => s.step_id === stepId);
+  const step = _findStep(stepId);
   if (!step) return;
   step.description = text;
   _markEdited(step);
@@ -980,18 +1357,49 @@ function _removalFix(state) {
   return state === "manually_authored" ? { kind: "add", delta: -1 } : { kind: "drop", delta: 1 };
 }
 
+/* The draft-fix counter (the P1 probe) counts the main level only, and a
+   group (C19) is no add: taking one out or back counts nothing. */
+function _counts(step) {
+  const loc = step && _locate(step.step_id);
+  return !!(loc && loc.depth === 0 && step.group !== true);
+}
+
+/* C19: what a sub-process cannot take, in one line. */
+const SUBPROCESS_NO_MERGE = "A sub-process is not merged or split: dissolve it first, or work on its steps inside.";
+
+/* The row below a step in the block of the level shown (hidden rows count
+   when they show). */
+function _nextRow(stepId) {
+  const model = _model();
+  const path = _levelPath(model);
+  if (!path.length) return RunsModel.nextInGroup(model, stepId, _ui.showHidden);
+  const c = _containerOf(_containers(model, path), stepId);
+  if (!c) return null;
+  const list = _ui.showHidden ? c.members : c.visible;
+  const i = list.findIndex((s) => s.step_id === stepId);
+  return i >= 0 && i < list.length - 1 ? list[i + 1] : null;
+}
+
 /* Item 5: only a step the analyst added is deleted. Any other step came from
    the drafting, and the next Analyze would draft it again, so taking it out
    hides it instead (a hidden step stays out of every analysis). */
 async function deleteStep(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find(s => s.step_id === stepId);
+  const step = _findStep(stepId);
   if (step && step.state !== "manually_authored") {
     if (step.state !== "hidden") await toggleStepHidden(stepId);
     return;
   }
-  const ok = await confirmModal({
+  // C19: removing a group removes its steps too; Dissolve keeps them.
+  const inside = step && step.group === true ? SPM.descendants(step).length : 0;
+  const ok = await confirmModal(inside ? {
+    title: "Delete the sub-process?",
+    message: `Delete "${step.name || "(unnamed)"}" and its ${_plural(inside, "step", "steps")}?`,
+    detail: "To keep its steps, choose Dissolve sub-process instead. Ctrl+Z restores it.",
+    okLabel: "Delete",
+    danger: true,
+  } : {
     title: "Delete step?",
     message: step ? `Delete step "${step.name || "(unnamed)"}"?` : "Delete this step?",
     detail: "You added this step by hand. Ctrl+Z restores it.",
@@ -999,11 +1407,11 @@ async function deleteStep(stepId) {
     danger: true,
   });
   if (!ok) return;
-  if (step && step.state !== "hidden") {
+  if (step && step.state !== "hidden" && _counts(step)) {
     const f = _removalFix(step.state);
     RunsModel.recordFix(anno, _model().runs, step.case_id, f.kind, f.delta);
   }
-  anno.steps = anno.steps.filter(s => s.step_id !== stepId);
+  SPM.removeSteps(anno.steps, [stepId]);
   // C17: the links that went to it go too (Ctrl+Z brings both back).
   const dropped = StepFlow.dropLinksTo(anno.steps, [stepId]).length;
   if (State.getSelectedStepId() === stepId) State.setSelectedStepId(null);
@@ -1019,20 +1427,22 @@ async function deleteStep(stepId) {
 async function toggleStepHidden(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find(s => s.step_id === stepId);
+  const loc = _locate(stepId);
+  const step = loc && loc.step;
   if (!step) return;
   const runs = _model().runs;
+  const counts = _counts(step);
   if (step.state === "hidden") {
     const prev = step._prev_state || "auto_suggested";
     const f = _removalFix(prev);
-    RunsModel.recordFix(anno, runs, step.case_id, f.kind, -f.delta);
+    if (counts) RunsModel.recordFix(anno, runs, step.case_id, f.kind, -f.delta);
     step.state = prev;
     delete step._prev_state;
     await persistAnnotations(anno, "unhide step");
     toast("Step restored", "success");
   } else {
     const f = _removalFix(step.state);
-    RunsModel.recordFix(anno, runs, step.case_id, f.kind, f.delta);
+    if (counts) RunsModel.recordFix(anno, runs, step.case_id, f.kind, f.delta);
     step._prev_state = step.state;
     step.state = "hidden";
     // C17: the links that went to it go too, in the same edit.
@@ -1040,16 +1450,20 @@ async function toggleStepHidden(stepId) {
     if (State.getSelectedStepId() === stepId && !_ui.showHidden) State.setSelectedStepId(null);
     await persistAnnotations(anno, "hide step");
     const linksText = dropped ? " " + _linksDroppedText(dropped, false) : "";
-    // Item 2: a draft hidden in the pattern run is offered for every run.
+    // Item 2: a draft hidden in the pattern run is offered for every run
+    // (at the main level, where the drafts of the other runs are).
     const p = RunsModel.patternRun(anno, runs);
-    const others = p.run && step.case_id === p.run.caseId
+    const others = p.run && step.case_id === p.run.caseId && loc.depth === 0
       ? RunsModel.sameKeyDraftsElsewhere(_model(), p.run.caseId, step.draft_key) : [];
+    // C19: a sub-process hides with its steps.
+    const inside = SPM.isSubProcess(step) ? SPM.descendants(step).length : 0;
+    const what = inside ? "Sub-process hidden with its " + _plural(inside, "step", "steps") + "." : "Step hidden.";
     if (others.length) {
-      toast("Step hidden." + linksText + " " + _plural(RunsModel.runCount(others), "other transaction has", "other transactions have") +
+      toast(what + linksText + " " + _plural(RunsModel.runCount(others), "other transaction has", "other transactions have") +
         " the same drafted step.", "success",
         { action: { label: "Hide in all transactions", act: "hide-all-runs", onClick: () => hideInAllRuns(stepId) } });
     } else {
-      toast("Step hidden." + (linksText || ' "Show hidden steps" on its transaction lists it again.'), "success");
+      toast(what + (linksText || ' "Show hidden steps" on its transaction lists it again.'), "success");
     }
   }
 }
@@ -1062,7 +1476,7 @@ async function toggleStepHidden(stepId) {
 async function hideInAllRuns(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find((s) => s.step_id === stepId);
+  const step = (anno.steps || []).find((s) => s.step_id === stepId);
   const model = _model();
   const p = RunsModel.patternRun(anno, model.runs);
   if (!step || step.state !== "hidden" || !p.run || step.case_id !== p.run.caseId) return;
@@ -1078,9 +1492,10 @@ async function hideInAllRuns(stepId) {
 async function splitStep(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const idx = anno.steps.findIndex(s => s.step_id === stepId);
-  if (idx < 0) return;
-  const s = anno.steps[idx];
+  const loc = _locate(stepId);
+  if (!loc) return;
+  const s = loc.step;
+  if (SPM.isSubProcess(s)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
   const ids = (s.evidence || {}).interaction_event_ids || [];   // a step may lack evidence
   if (ids.length < 2) { toast("Need ≥2 interactions to split", "error"); return; }
   // A2: split at the analyst-picked boundary (split AFTER index i -> first
@@ -1098,7 +1513,7 @@ async function splitStep(stepId) {
   const firstEvents = firstIds.map(id => interMap[id]).filter(Boolean);
   const secondEvents = secondIds.map(id => interMap[id]).filter(Boolean);
   if (!firstEvents.length || !secondEvents.length) { toast("Could not split step", "error"); return; }
-  RunsModel.recordFix(anno, _model().runs, s.case_id, "split");
+  if (_counts(s)) RunsModel.recordFix(anno, _model().runs, s.case_id, "split");
   // G-4: splitting an already-split step must not stack suffixes
   // ("X (split 1) (split 1)") — strip any existing artifact first.
   const baseName = stripSplitSuffix(s.name);
@@ -1115,7 +1530,7 @@ async function splitStep(stepId) {
     state: "edited" });
   // C17: the condition stays with the first half, the links leave the second.
   StepFlow.splitFlow(first, second);
-  anno.steps.splice(idx, 1, first, second);
+  loc.list.splice(loc.list.indexOf(s), 1, first, second);
   _splitAfter = { stepId: null, index: null };
   await persistAnnotations(anno, 'split step');
   toast("Step split", "success");
@@ -1167,6 +1582,11 @@ async function addStepAtTimestamp(tsISO) {
     && new Date(s.time_range.end).getTime() > t);
   if (idx >= 0) {
     const s = anno.steps[idx];
+    // C19: a moment is not added to a sub-process (its steps take it).
+    if (SPM.isSubProcess(s)) {
+      toast('The playhead is inside the sub-process "' + (s.name || "") + '": add the moment to one of its steps inside it, or dissolve it first.', "error");
+      return;
+    }
     const ids = (s.evidence && s.evidence.interaction_event_ids) || [];
     const newName = nextStepName(anno.steps);
     RunsModel.recordFix(anno, runs, s.case_id, "split");
@@ -1307,13 +1727,22 @@ function _carryMerge(anno, runs, model, merged, idMap) {
 
 async function commitMerge(anno, toMerge, undoLabel) {
   const model = _model();
-  RunsModel.recordFix(anno, model.runs, toMerge[0].case_id, "merge");
+  // C19: below the main level the merged step takes the first step's place
+  // in its list; the counter and the carry are the main level's.
+  const loc = _locate(toMerge[0].step_id);
+  const main = !loc || loc.depth === 0;
+  if (main) RunsModel.recordFix(anno, model.runs, toMerge[0].case_id, "merge");
   const merged = mergeStepObjects(toMerge);
   const mergedIds = new Set(toMerge.map(s => s.step_id));
-  anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
-  anno.steps.push(merged);
+  if (main) {
+    anno.steps = anno.steps.filter(s => !mergedIds.has(s.step_id));
+    anno.steps.push(merged);
+  } else {
+    loc.list.splice(loc.list.indexOf(toMerge[0]), 0, merged);
+    SPM.removeSteps(anno.steps, mergedIds);
+  }
   const idMap = new Map([...mergedIds].map((id) => [id, merged.step_id]));
-  const carriedRuns = _carryMerge(anno, model.runs, model, merged, idMap);
+  const carriedRuns = main ? _carryMerge(anno, model.runs, model, merged, idMap) : 0;
   // C17: a link to a merged step goes to the step it became part of; one
   // between two steps of the same merge would point at its own step, so it
   // goes.
@@ -1342,10 +1771,11 @@ function _selfLinksText(n) {
 async function mergeStepWithNext(stepId) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find(s => s.step_id === stepId);
+  const step = _findStep(stepId);
   if (!step) { toast("Step not found", "error"); return; }
-  const next = RunsModel.nextInGroup(_model(), stepId, _ui.showHidden);
+  const next = _nextRow(stepId);
   if (!next) { toast("This is the last step of its transaction: there is no next step to merge with.", "error"); return; }
+  if (SPM.isSubProcess(step) || SPM.isSubProcess(next)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
   const toMerge = [step, next];
   const r = await commitMerge(anno, toMerge, 'merge step with next');
   toast((r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"') +
@@ -1360,12 +1790,16 @@ async function mergeSelectedSteps() {
   const multi = State.getMultiSelectedStepIds();
   if (!multi || multi.size < 2) { toast("Tick 2+ steps to merge", "error"); return; }
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const toMerge = anno.steps.filter(s => multi.has(s.step_id)).sort(RunsModel.byStart);
+  const ticked = SPM.allSteps(anno.steps).filter(s => multi.has(s.step_id));
+  // Below the main level (C19) steps that start together keep their order.
+  const toMerge = ticked.some((s) => (_locate(s.step_id) || {}).depth) ? SPM.inOrder(ticked) : ticked.sort(RunsModel.byStart);
   if (toMerge.length < 2) { toast("Select at least two steps to merge", "error"); return; }
-  if (new Set(toMerge.map((s) => s.case_id || null)).size > 1) {
+  const blocks = new Set(toMerge.map((s) => { const c = _containerNow(s.step_id); return c ? c.key : null; }));
+  if (new Set(toMerge.map((s) => s.case_id || null)).size > 1 || blocks.size > 1) {
     toast("Select steps from one transaction to merge them.", "error");
     return;
   }
+  if (toMerge.some(SPM.isSubProcess)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
   const r = await commitMerge(anno, toMerge, 'merge selected steps');
   multi.clear();
   syncMultiSelectButtons();
@@ -1379,7 +1813,7 @@ async function mergeSelectedSteps() {
    noise in the toolbar (clutter pass); it appears only when it can be used. */
 function syncMultiSelectButtons() {
   const n = State.getMultiSelectedStepIds().size;
-  for (const id of ["btn-delete-selected-steps", "btn-merge-selected"]) {
+  for (const id of ["btn-delete-selected-steps", "btn-merge-selected", "btn-group-selected"]) {
     const b = $("#" + id);
     if (b) b.hidden = n < 2;
   }
@@ -1399,7 +1833,7 @@ function syncMultiSelectButtons() {
    analyst added are deleted, every other visible step is hidden. */
 function _removalSplit(ids) {
   const s = State.getSession();
-  const steps = ((s && s.annotations && s.annotations.steps) || []).filter((x) => ids.has(x.step_id));
+  const steps = SPM.allSteps((s && s.annotations && s.annotations.steps) || []).filter((x) => ids.has(x.step_id));
   return {
     hide: steps.filter((x) => x.state !== "manually_authored" && x.state !== "hidden"),
     remove: steps.filter((x) => x.state === "manually_authored"),
@@ -1417,6 +1851,8 @@ async function addManualStep() {
   if (!name || !name.trim() || !State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const model = _model();
+  const path = _levelPath(model);
+  if (path.length) { _addSubStep(anno, model, path, name.trim()); await persistAnnotations(anno, "add step"); toast("Step added", "success"); return; }
   const open = model.runs.find((r) => r.caseId === _ui.open);
   const caseId = open ? open.caseId : _ui.open === OUTSIDE ? null : AC.implicitRunId(State.getSession().stats);
   const members = caseId ? ((model.runs.find((r) => r.caseId === caseId) || {}).members || []) : model.outside;
@@ -1430,17 +1866,38 @@ async function addManualStep() {
   toast("Step added", "success");
 }
 
+/* + Add step inside a sub-process (C19): a step without a time in the open
+   visit, right after the selected step (in its list) or at the end of the
+   visit; it belongs to the visit's transaction. Not a fix of the main level. */
+function _addSubStep(anno, model, path, name) {
+  const containers = _containers(model, path);
+  const c = containers.find((x) => x.key === _ui.levelOpen) || containers[0];
+  if (!c) return null;
+  const sel = State.getSelectedStepId();
+  const selLoc = sel && c.members.some((s) => s.step_id === sel) ? SPM.findStep(anno.steps, sel) : null;
+  const parent = (selLoc && selLoc.parent) || c.parents[c.parents.length - 1];
+  const step = makeStep(name, null, null, [], parent.case_id != null ? parent.case_id : null);
+  AC.placeUntimed(parent.sub_steps, step, selLoc ? selLoc.step : null);
+  parent.sub_steps.push(step);
+  _ui.levelOpen = c.key;
+  State.setSelectedStepId(step.step_id);
+  return step;
+}
+
 /* Move a step without a time up (-1) or down (+1) in its run (the step menu,
    Alt+Up and Alt+Down): its `order` and its neighbours' are written again.
    A step with a time keeps its place (its time orders it). */
 async function moveStep(stepId, delta) {
   if (!State.getSession()) return false;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = anno.steps.find((s) => s.step_id === stepId);
+  const loc = _locate(stepId);
+  const step = loc && loc.step;
   if (!step) return false;
   const model = _model();
   const key = RunsModel.groupKeyOf(step, model.runs);
-  const members = key === OUTSIDE ? model.outside : (model.runs.find((r) => r.caseId === key) || {}).members;
+  // C19: below the main level a step moves in the list that holds it.
+  const members = loc.depth ? loc.list
+    : key === OUTSIDE ? model.outside : (model.runs.find((r) => r.caseId === key) || {}).members;
   if (!AC.moveUntimed(members || [], step, delta, (s) => _ui.showHidden || s.state !== "hidden")) {
     toast(AC.hasTime(step) ? "A step with a time keeps its place: its time orders it."
       : delta < 0 ? "It cannot move further up." : "It cannot move further down.");
@@ -1472,10 +1929,13 @@ async function deleteSelectedSteps() {
   if (!hide.length && !remove.length) return;
   const what = [hide.length ? "hide " + _plural(hide.length, "drafted step", "drafted steps") : "",
     remove.length ? "delete " + _plural(remove.length, "step you added", "steps you added") : ""].filter(Boolean).join(" and ");
+  // C19: a group taken out takes its steps with it.
+  const inside = remove.filter((x) => x.group === true).reduce((n, g) => n + SPM.descendants(g).length, 0);
   const ok = await confirmModal({
     title: what.charAt(0).toUpperCase() + what.slice(1) + "?",
     message: "Take the " + (hide.length + remove.length) + " selected steps out: " + what + ".",
-    detail: "A hidden step stays out of every analysis. Ctrl+Z restores them all.",
+    detail: (inside ? "The sub-processes among them go with their " + _plural(inside, "step", "steps") +
+      " (Dissolve sub-process keeps them). " : "") + "A hidden step stays out of every analysis. Ctrl+Z restores them all.",
     okLabel: !remove.length ? "Hide " + hide.length : !hide.length ? "Delete " + remove.length : "Hide and delete",
     danger: remove.length > 0,
   });
@@ -1484,12 +1944,13 @@ async function deleteSelectedSteps() {
   ({ hide, remove } = _removalSplit(new Set(ids)));   // the live steps, after the dialog
   const runs = _model().runs;
   for (const s of hide.concat(remove)) {
+    if (!_counts(s)) continue;
     const f = _removalFix(s.state);
     RunsModel.recordFix(anno, runs, s.case_id, f.kind, f.delta);
   }
   RunsModel.hideSteps(hide);
   const removeIds = new Set(remove.map((s) => s.step_id));
-  anno.steps = anno.steps.filter(s => !removeIds.has(s.step_id));
+  SPM.removeSteps(anno.steps, removeIds);
   // C17: the links that went to them go too, in the same edit.
   const dropped = StepFlow.dropLinksTo(anno.steps, hide.concat(remove).map((s) => s.step_id)).length;
   const idSet = new Set(ids);
@@ -1694,12 +2155,165 @@ function renameSelectedStep() {
 /* Ctrl+Enter: confirm the open run, when it is on screen and has something
    to confirm. */
 function confirmOpenRun() {
-  const key = _ui.open;
-  if (!key || key === OUTSIDE) return false;
-  const group = [...document.querySelectorAll("#step-list .run-group")].find((g) => g.dataset.caseId === key);
-  if (!group || !group.querySelector('[data-act="confirm-run"]')) return false;
-  confirmRunAction(key);
+  // The open block, at any level (C19: a visit of the reference transaction
+  // carries Confirm transaction too).
+  const group = document.querySelector("#step-list .run-group.open");
+  if (!group || !group.dataset.caseId || !group.querySelector('[data-act="confirm-run"]')) return false;
+  confirmRunAction(group.dataset.caseId);
   return true;
+}
+
+/* ===== Sub-processes (contract C19) ===================================== */
+
+/* Screenshot path -> the time it was taken (the recording's screenshot
+   events): a drafted sub-step takes the parent's screenshots of its span. */
+function _shotTimes() {
+  const out = {};
+  for (const ev of ((State.getSession() && State.getSession().events) || [])) {
+    if (ev && ev.type === "system" && ev.data && typeof ev.data.path === "string") out[ev.data.path] = ev.timestamp;
+  }
+  return out;
+}
+
+/* Open as a sub-process (the step pane, the step menu): every visible
+   occurrence of the step's node at its level, in every transaction, that has
+   no sub-steps gets one drafted sub-step per recorded action; then the list
+   shows the new level, at this step's visit. One undoable edit. */
+async function openAsSubProcessAction(stepId) {
+  const session = State.getSession();
+  if (!session) return;
+  const anno = ensureAnnoShape(session.annotations);
+  const loc = _locate(stepId);
+  if (!loc || SPM.isSubProcess(loc.step) || loc.step.state === "hidden") return;
+  if (!_inTransaction(loc.step)) {
+    toast("A step outside the transactions is not opened as a sub-process: bring it into a transaction first.", "error");
+    return;
+  }
+  await _ensureRememberedLoaded();
+  const model = _model();
+  const node = mapNodeLabel(loc.step);
+  const r = SPV.openAsSubProcess(_txs(model), loc.path, loc.step, _interactionsById(),
+    { newId: cryptoRandomId, remembered: _remembered, shotTimes: _shotTimes() });
+  // The new level shows at once, open at this step's visit.
+  State.setMapPath(loc.path.concat([node]));
+  const next = _levelPath(_model());
+  const c = _containers(_model(), next).find((x) => x.parents.some((p) => p.step_id === stepId));
+  if (c) _ui.levelOpen = c.key;
+  State.getMultiSelectedStepIds().clear();
+  State.setSelectedStepId(null);
+  try { await persistAnnotations(anno, "open as a sub-process"); } catch (_) { return; }   // already shown
+  StepPanel.refresh();
+  const where = RunsModel.runCount(r.steps);
+  toast(r.subSteps
+    ? "Opened as a sub-process" + (where > 1 ? " in " + _plural(where, "transaction", "transactions") : "") + ": " +
+      _plural(r.subSteps, "step", "steps") + " drafted from the recorded actions. Ctrl+Z undoes it."
+    : "Opened as a sub-process. Nothing was recorded in it: + Add step adds its steps.", "success");
+}
+
+/* Show a sub-process's level (its row's "▸ N sub-steps", the step pane, the
+   step menu, the step panel), at the visit of that step. */
+function openSubProcessAction(stepId) {
+  const loc = _locate(stepId);
+  if (!loc || !SPM.isSubProcess(loc.step)) return;
+  goToLevel(loc.path.concat([mapNodeLabel(loc.step)]), { openAt: stepId });
+}
+
+/* Dissolve sub-process from its step (the step pane, the step menu). */
+function dissolveStepAction(stepId) {
+  const loc = _locate(stepId);
+  if (!loc || !SPM.isSubProcess(loc.step)) return;
+  return dissolveAction(loc.path, mapNodeLabel(loc.step));
+}
+
+/* Dissolve sub-process (C19), in every transaction, every occurrence of
+   `node` at level `path`: a group gives its steps back in its place, an
+   opened step drops its sub-steps (what the analyst added to them moves to
+   the step). One confirm names what goes, when anything the analyst wrote
+   does; the list then shows the level above. One undoable edit. */
+async function dissolveAction(path, node) {
+  const session = State.getSession();
+  if (!session) return;
+  const model = _model();
+  const pattern = RunsModel.patternRun(session.annotations || {}, model.runs);
+  const loss = SPV.dissolveLoss(_txs(model), path, node, _interactionsById());
+  if (!loss.occurrences) return;
+  const name = _levelName(model, pattern, path.concat([node]));
+  if (loss.descriptions || loss.flow) {
+    const lost = [loss.descriptions ? _plural(loss.descriptions, "description", "descriptions") + " you wrote" : "",
+      loss.flow ? _plural(loss.flow, "flow setting", "flow settings") + " (Only when, Go to)" : ""].filter(Boolean).join(" and ");
+    const ok = await confirmModal({
+      title: "Dissolve the sub-process?",
+      message: '"' + name + '" loses its ' + _plural(loss.subSteps, "step", "steps") +
+        (loss.opened > 1 ? " in " + _plural(loss.opened, "transaction", "transactions") : "") + ", with " + lost + ".",
+      detail: "The screenshots, notes and files you added to them move to the step. Ctrl+Z brings everything back.",
+      okLabel: "Dissolve",
+      danger: true,
+    });
+    if (!ok || !State.getSession()) return;
+  }
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const r = SPV.dissolve(anno, _txs(_model()), path, node);
+  // Inside it (or deeper), the list goes up to where it was.
+  const cur = State.getMapPath();
+  if (cur.length > path.length && SPM.samePath(cur.slice(0, path.length + 1), path.concat([node]))) State.setMapPath(path);
+  if (!_findStep(State.getSelectedStepId())) State.setSelectedStepId(null);
+  State.getMultiSelectedStepIds().clear();
+  try { await persistAnnotations(anno, "dissolve a sub-process"); } catch (_) { return; }   // already shown
+  StepPanel.refresh();
+  toast((r.groups
+    ? 'Dissolved: the steps of "' + name + '" are back where it was' + (r.groups > 1 ? ", in " + _plural(r.groups, "place", "places") : "")
+    : 'Dissolved: "' + name + '" has no steps of its own any more') + ". Ctrl+Z undoes it.", "success");
+}
+
+/* The words for a Group that cannot be made. */
+const GROUP_REFUSED = {
+  none: "Tick the steps to group in the list.",
+  places: "Tick steps of one transaction to group them.",
+  hidden: "A hidden step is not grouped: untick it, or unhide it first.",
+  few: "Tick two or more steps to group them.",
+  gap: "Tick steps that follow one another to group them.",
+};
+
+/* Group into a sub-process... (C19; the toolbar with two or more ticked
+   steps, the step menu): the ticked steps, one after the other in one
+   transaction at the level shown, move into a new sub-process named here,
+   and every other stretch of the same steps in every transaction too. One
+   undoable edit. */
+async function groupSelectedAction() {
+  const session = State.getSession();
+  if (!session) return;
+  const multi = State.getMultiSelectedStepIds();
+  const ids = [...multi];
+  let model = _model();
+  const path = _levelPath(model);
+  const check = SPV.groupCheck(_txs(model), path, ids);
+  if (check.error) { toast(GROUP_REFUSED[check.error] || GROUP_REFUSED.none, "error"); return; }
+  const others = check.groups - 1;
+  const name = await promptModal({
+    title: "Group into a sub-process",
+    message: "Name the sub-process",
+    detail: "The " + ids.length + " ticked steps move into it" +
+      (others ? ", and so do the same steps in " + _plural(others, "more place", "more places") : "") + ". Ctrl+Z undoes it.",
+    placeholder: "For example: Create the sales order",
+    okLabel: "Group",
+  });
+  if (!name || !name.trim() || !State.getSession()) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const inter = _interactionsById();
+  model = _model();
+  const r = SPV.groupInto(anno.steps, _txs(model), _levelPath(model), ids, {
+    name: name.trim(), newId: cryptoRandomId,
+    sessionId: (session.manifest && session.manifest.session_id) || "",
+    systemOf: (s) => SystemNames.whereOfStep(s, inter, _appNames()).system,
+  });
+  if (r.error) { toast(GROUP_REFUSED[r.error] || GROUP_REFUSED.none, "error"); return; }
+  multi.clear();
+  syncMultiSelectButtons();
+  if (r.ticked) State.setSelectedStepId(r.ticked.step_id);
+  try { await persistAnnotations(anno, "group into a sub-process"); } catch (_) { return; }   // already shown
+  toast('Grouped into "' + name.trim() + '"' +
+    (r.groups.length > 1 ? " here and in " + _plural(r.groups.length - 1, "other place", "other places") : "") +
+    ". Ctrl+Z undoes it.", "success");
 }
 
 /* ===== Leave apps out (step-noise denylist) =====
@@ -1885,7 +2499,7 @@ function openRememberedNamesDialog() {
     const anno = ensureAnnoShape(State.getSession().annotations);
     const inter = _interactionsById();
     const n = RunsModel.forgetSavedName(anno.steps, key, cur,
-      (s) => StepFacts.draftedName(s, StepFacts.stepDatas(s, inter)));
+      (s) => (s.action_key ? SPV.draftedAction(s, inter).name : StepFacts.draftedName(s, StepFacts.stepDatas(s, inter))));
     let saved = true;
     if (n) { try { await persistAnnotations(anno, "forget a saved name"); } catch (_) { saved = false; } }   // already shown
     if (saved) {
@@ -1911,6 +2525,7 @@ function initStepsView(deps) {
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
+  if ($("#btn-group-selected")) $("#btn-group-selected").addEventListener("click", groupSelectedAction);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
   if ($("#btn-remembered-names")) $("#btn-remembered-names").addEventListener("click", openRememberedNamesDialog);
   // The divider between the transactions and the selected step.
@@ -1922,7 +2537,7 @@ function initStepsView(deps) {
 async function toggleStepFlag(stepId, flagKey) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = (anno.steps || []).find(s => s.step_id === stepId);
+  const step = _findStep(stepId);
   if (!step) return;
   step.flags = step.flags || {};
   step.flags[flagKey] = !step.flags[flagKey];
@@ -1988,8 +2603,7 @@ function showStepContextMenu(stepId, x, y) {
   const prior = document.getElementById("step-ctx-menu");
   if (prior) prior.remove();
   const session = State.getSession();
-  const anno = session && session.annotations;
-  const step = anno && (anno.steps || []).find(s => s.step_id === stepId);
+  const step = session ? _findStep(stepId) : null;
   if (!step) return;
   _selectAndReveal(stepId);
 
@@ -2016,16 +2630,27 @@ function showStepContextMenu(stepId, x, y) {
   }
 
   const flags = step.flags || {};
-  addItem("Split at interaction…", () => {
-    renderStepsLevel();
-    toast("Click the scissors on an interaction, then Split", "success");
-  });
-  addItem("Merge with next", () => mergeStepWithNext(stepId));
+  const isSub = SPM.isSubProcess(step);
+  // C19: a sub-process opens and dissolves; it is not split or merged.
+  if (isSub) {
+    addItem("Open sub-process", () => openSubProcessAction(stepId));
+    addItem("Dissolve sub-process", () => dissolveStepAction(stepId));
+  } else {
+    addItem("Split at interaction…", () => {
+      renderStepsLevel();
+      toast("Click the scissors on an interaction, then Split", "success");
+    });
+    addItem("Merge with next", () => mergeStepWithNext(stepId));
+  }
   // P0.1: the selection-aware merge is a distinct item, shown only when a
   // multi-selection exists -- so its label can name the count it acts on.
   const _multiSel = State.getMultiSelectedStepIds();
   if (_multiSel && _multiSel.size >= 2) {
     addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
+    addItem("Group " + _multiSel.size + " selected steps into a sub-process…", () => groupSelectedAction());
+  }
+  if (!isSub && step.state !== "hidden" && _inTransaction(step)) {
+    addItem("Open as a sub-process", () => openAsSubProcessAction(stepId));
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
   // C16: a step without a time moves among its run's steps (Alt+Up, Alt+Down).
@@ -2035,12 +2660,12 @@ function showStepContextMenu(stepId, x, y) {
   }
   addItem(step.state === "hidden" ? "Unhide" : "Hide step", () => toggleStepHidden(stepId));
   addItem("Show on timeline", () => {
-    const s = (anno.steps || []).find(x => x.step_id === stepId);
+    const s = _findStep(stepId);
     if (s) jumpToStepInFlow(s);
   });
   if (session && session.recordingAvailable) {
     addItem("Watch", () => {
-      const s = (anno.steps || []).find(x => x.step_id === stepId);
+      const s = _findStep(stepId);
       if (s) watchStep(s);
     });
   }
@@ -2069,6 +2694,8 @@ module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp,
+  // C19: the level shown, and the way into a sub-process (the step panel).
+  goToLevel, openSubProcessAction,
   // Keyboard: act only on what the list shows (RP-12).
   visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep, moveStep,
   // G-4 label hygiene -- pure, exported for unit testing.

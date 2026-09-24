@@ -92,7 +92,7 @@ the folder.
 | `capture/` | SME side: tray app, recording bar, end summary, transaction key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
-| `e2e/` | The in-repo Playwright gate: seven smokes against the real viewer, all run by `run-all.js`. |
+| `e2e/` | The in-repo Playwright gate: eight smokes against the real viewer, all run by `run-all.js`. |
 | `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
@@ -293,11 +293,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 ## Verification
 
 - UI bugs are invisible to the unit suites: validate behaviour in the real
-  viewer. `e2e/run-all.js` runs seven smokes: `session`, `overview`, `runs`,
-  `map-slim`, `transcript`, `panel` and `companion` (each `<name>-smoke.js`;
-  [e2e/README.md](e2e/README.md) says what each covers). `session-smoke.js`
-  holds the map connectivity pin (one component, one entry step, one final
-  step, counted on the step boxes: the Start and End circles are left out).
+  viewer. `e2e/run-all.js` runs eight smokes: `session`, `overview`, `runs`,
+  `map-slim`, `transcript`, `panel`, `companion` and `subprocess` (each
+  `<name>-smoke.js`; [e2e/README.md](e2e/README.md) says what each covers).
+  `session-smoke.js` holds the map connectivity pin (one component, one entry
+  step, one final step, counted on the step boxes: the Start and End circles
+  are left out).
 - The gates before any merge to master (resume state, "Gates"): full-deps
   pytest, the golden, `node --test` in `viewer/` and `capture/`,
   `node run-all.js` in `e2e/`, and `dotnet test` when `capture/recorder/`

@@ -151,3 +151,18 @@ test("resetUndo clears both stacks", () => {
   assert.equal(State.canUndo("/s/A"), false);
   assert.equal(State.canRedo("/s/A"), false);
 });
+
+/* ---- the current level (contract C19) ------------------------------ */
+
+test("mapPath: the main map by default; a copy goes in and a copy comes out", () => {
+  assert.deepEqual(State.getMapPath(), []);
+  const p = ["Save order", "Enter the product"];
+  State.setMapPath(p);
+  p.push("changed outside");
+  const got = State.getMapPath();
+  assert.deepEqual(got, ["Save order", "Enter the product"]);
+  got.push("changed outside");
+  assert.deepEqual(State.getMapPath(), ["Save order", "Enter the product"]);
+  State.setMapPath(null);
+  assert.deepEqual(State.getMapPath(), []);
+});

@@ -148,10 +148,12 @@ function resolveStepGrainKeys(step, interactionsById) {
  * since 43d307b (step_suggest._step_process_label), so the map, the stats and
  * the PDD group the same steps. Any other step (added by hand, merged, split,
  * or from an older analysis) groups by its process_label: the one the
- * pipeline stamped, else the shared value rules applied to its name. */
+ * pipeline stamped, else the shared value rules applied to its name.
+ * Contract C19: a drafted sub-step (it carries an action_key) counts like a
+ * drafted step: its name is drafted free of values too, so it is its node. */
 function mapNodeLabel(step) {
   const name = (step && typeof step.name === "string") ? step.name.trim() : "";
-  if (step && step.draft_key && name) return name;
+  if (step && (step.draft_key || step.action_key) && name) return name;
   return (step && step.process_label) || processLabel(name) || "(unnamed step)";
 }
 

@@ -233,6 +233,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                  syncMultiSelectButtons() toggles `hidden`. -->
             <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
+            <!-- C19: the ticked steps, one after the other, into a new sub-process (in every transaction). -->
+            <button id="btn-group-selected" hidden title="Move the ticked steps, one after the other, into a new sub-process, and the same steps in the other transactions too. Dissolve sub-process is the inverse.">Group into a sub-process...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
             <button id="btn-ignored-apps" type="button" title="Leave apps out of the drafted steps, for example the recorder itself. Saving updates the steps and the map.">Leave apps out...</button>
@@ -246,6 +248,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                    the SME's key in a recording, one transaction in a project
                    without one until the Timeline marks more. -->
               <p class="editor-pane-note" id="runs-pane-note"></p>
+              <!-- C19: inside a sub-process, the way down (each crumb goes up) and
+                   Dissolve sub-process (steps-view.js _renderCrumbs). -->
+              <nav class="steps-crumbs" id="steps-crumbs" aria-label="Where these steps are" hidden></nav>
               <div id="step-list"></div>
             </div>
             <!-- The divider (pane-splitter.js): drag it, or use Left, Right, Home
@@ -432,6 +437,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>A merge in the reference transaction is also made in the other transactions wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every transaction. Splits and added steps are made in each transaction that needs them.</p>
           <h3>Differences between transactions</h3>
           <p>Every other transaction is compared with the reference transaction step by step, the way the PDD compares them: an open transaction lists its extra steps (and where they happen), its skipped steps and the steps done in a different order. The other transactions are not confirmed: once each has been opened, the Overview's Checklist ticks <em>Review the other transactions</em>.</p>
+          <h3>Sub-processes</h3>
+          <p>A step can hold steps of its own: a <strong>sub-process</strong>. <em>Open as a sub-process</em>, in the step pane, gives a step one step per action recorded in it (a field typed, a click); <em>Group into a sub-process</em>, in the Steps toolbar once two or more steps one after the other are ticked, moves them into a new one. Either is made in every transaction. The <em>&#9656; N sub-steps</em> button on its row opens it, one block per transaction that goes through it, and the line above the list goes back up. <em>Dissolve sub-process</em> undoes it, and Ctrl+Z undoes that. Confirm transaction confirms every level.</p>
+          <h3>The flow of the steps</h3>
+          <p>After a step the next one follows. Where the process branches or loops, say so in the step pane's Flow line: <em>Only when</em> gives the step a condition (the map draws a decision, with an "otherwise" path around it); <em>Go to</em> sends the process back to an earlier step, on to a later one or to its end, when a condition holds. Inside a sub-process the flow stays inside it: its end ends the sub-process.</p>
           <h3>Saved names</h3>
           <p>A name you give a drafted step goes at once to the same drafted steps in the other transactions, and this computer saves it: the next analysis of this project or a later one drafts those steps with it (each transaction says in one line how many of its names came from saved names). <em>Saved names</em>, in the Steps toolbar, lists them: rename one, or forget it.</p>
           <h3>Saved processes</h3>

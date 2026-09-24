@@ -17,7 +17,7 @@ viewer/python/python.exe normalization/golden_check.py   # the session golden
 cd viewer && node --test                                  # incl. the UI copy guard
 cd capture && node --test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj   # when capture/recorder/ changed
-cd e2e && node run-all.js                                 # the seven smokes, the real viewer
+cd e2e && node run-all.js                                 # the eight smokes, the real viewer
 ```
 
 If any goes red, you broke something: fix it or revert. Never commit red,
@@ -73,14 +73,17 @@ every push.
 6. **One rule, two languages.** The value-free labels, the system names and
    the run differences are one rule set in `shared/`, read by Python and by
    the viewer; the step flow's edges (contract C17: the live map and the
-   step BPMN) are one rule written in both, pinned by one golden. *Guards:*
-   the shared goldens (`process-label-golden.json`,
-   `screen-label-golden.json`, `run-differences-golden.json`,
-   `flow-links-golden.json`) pinned from both sides
+   step BPMN) and the maps a project holds (contract C19: one per
+   sub-process, their traces and numbers) are rules written in both, each
+   pinned by one golden. *Guards:* the shared goldens
+   (`process-label-golden.json`, `screen-label-golden.json`,
+   `run-differences-golden.json`, `flow-links-golden.json`,
+   `sub-process-maps-golden.json`) pinned from both sides
    (`test_process_label.py`, `test_screen_label.py`,
    `test_run_differences_golden.py`, `test_flow_links_golden.py`,
-   `test_app_names.py`; `process-map-levels.test.js`,
-   `run-differences.test.js`, `system-names.test.js`).
+   `test_app_names.py` and the pipeline's test of the sub-process maps;
+   `process-map-levels.test.js`, `run-differences.test.js`,
+   `system-names.test.js`, `sub-process-maps.test.js`).
 7. **User-facing copy is plain business English, without dashes.** No
    internal vocabulary in rendered strings (the banned list and its
    replacements are in [DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md), UI
@@ -95,7 +98,7 @@ every push.
 
 A fresh chip, even in a clean worktree, needs nothing outside the repo:
 `e2e/` bundles `playwright-core` and drives the viewer's own Electron
-(`npm install` in `viewer/` and `e2e/` once). The seven smokes are worked
+(`npm install` in `viewer/` and `e2e/` once). The eight smokes are worked
 examples; [e2e/README.md](../e2e/README.md) says what each covers.
 
 1. **Work on a temp copy, never on the committed demo.** The viewer analyzes
@@ -217,7 +220,9 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   system), `.tl-idle`, `.tl-marker.tl-marker-pending`, the transcript
   `.tl-tr-block[data-seg]` and its label `.tl-tr-label` (`.tl-tr-sync`,
   `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
-  screenshots `.tl-screenshot`, steps `.tl-step-band[data-step-id]`, the
+  screenshots `.tl-screenshot`, steps `.tl-step-band[data-step-id]` (the
+  level the Steps list shows; inside a sub-process its lane's name
+  `.tl-lane-name[data-lane="steps"]` reads "Steps in <name>"), the
   playhead `#tl-playhead`. A blank project shows `#tl-empty` with
   `#btn-tl-attach-video`.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
@@ -237,13 +242,24 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   only), `#event-table`, `#event-filter`.
 
 **Steps** (`#session-layout-steps`, `views/steps-view.js`):
-- Toolbar: `#btn-add-manual-step`, `#btn-delete-selected-steps` and
-  `#btn-merge-selected` (shown with two or more ticked rows), `#steps-summary`,
+- Toolbar: `#btn-add-manual-step`, `#btn-delete-selected-steps`,
+  `#btn-merge-selected` and `#btn-group-selected` (Group into a
+  sub-process..., contract C19; shown with two or more ticked rows), `#steps-summary`,
   `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`),
   `#btn-remembered-names` (the dialog `#remembered-names-dialog`,
   `[data-act="rename-name"|"forget-name"|"close"]`).
 - The list's title `#runs-pane-count` and the line under it that says what
-  a transaction is, `#runs-pane-note`.
+  a transaction is, `#runs-pane-note` (inside a sub-process, what a block
+  is).
+- The level shown (contract C19, `State.getMapPath()`, `[]` the main
+  level): inside a sub-process the breadcrumb `#steps-crumbs` (hidden at the
+  main level) holds the crumbs `button.crumb[data-depth]` (each goes up), the
+  current `.crumb.crumb-here` and `#btn-dissolve-level`; the blocks are
+  `#step-list .run-group.run-visit[data-case-id][data-visit]` (`data-visit`
+  is `<case_id>#<n>`, n counting that transaction's visits from 0; titled
+  "Transaction 2" or "Transaction 2, again"), the reference transaction's
+  first visit `.pattern` with its badge, status and
+  `[data-act="confirm-run"|"reopen-run"]`.
 - The divider between the list `#steps-list-pane` and the step pane:
   `#steps-splitter` (`role="separator"`, `pane-splitter.js`; drag it, or
   focus it for Left, Right, Home and End; a double-click or Enter resets it;
@@ -258,8 +274,10 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `.run-status`; `.run-actions [data-act="confirm-run"|"reopen-run"|"save-process"]`;
   `.run-diffs li[data-kind]`; `.run-names-note`; `.run-show-hidden`. The
   comparison with a saved process: `.runs-compare [data-act="stop-comparing"|"forget-process"]`.
-- The step rows `.step-row[data-step-id]` (double-click renames; right-click
-  opens `#step-ctx-menu`).
+- The step rows `.step-row[data-step-id]` (double-click renames the row its
+  first click landed on; right-click opens `#step-ctx-menu`). A sub-process
+  row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
+  sub-steps", a click opens its level).
 - The step pane `#step-detail` (focus it before Ctrl+V): `.step-fact`,
   `#step-name` (Enter or leaving it saves), `#step-system` (with
   `#step-system-list`), `#step-desc` (leaving it saves), `#step-said`,
@@ -270,7 +288,11 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
   `.flow-link-text`, the dropdown `select.flow-link-to`
   (`#flow-link-to-<i>`, its options the transaction's steps and `end`),
   `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
-  `#flag-waste`, `#btn-step-watch` (only with a video), `#btn-step-hide`;
+  `#flag-waste`, `#btn-step-watch` (only with a video), `#btn-step-hide`,
+  C19: `#btn-step-make-sub` (Open as a sub-process, on a step of a
+  transaction) or on a sub-process `#btn-step-open-sub` and
+  `#btn-step-dissolve` (its More shows `#step-sub-note` in place of Split
+  and Merge);
   `#step-shots-sect` (`#btn-step-add-shot` opens `#shot-src-menu
   [data-src="video_frame"|"paste"|"file"]`; `.step-shot-card[data-ref][data-kind]`
   with `[data-shot-act="pdd"|"remove"]`, and `[data-shot-act="unhide"]`);
@@ -285,7 +307,7 @@ door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line
 `#sp-flow` when one is set, `.sp-count`; `.sp-missing` alone for an As-Is
 task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 (`.sp-play`, `.sp-at`, `.sp-shot`), the foot `#btn-sp-steps` or
-`#btn-sp-timeline`, `#btn-sp-close`.
+`#btn-sp-timeline` and, for a sub-process, `#btn-sp-open-sub`, `#btn-sp-close`.
 
 **Map** (`#session-layout-map`):
 - The map host `#session-map-dfg-host`; its cytoscape instance is

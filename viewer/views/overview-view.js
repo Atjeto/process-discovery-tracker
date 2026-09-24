@@ -210,7 +210,8 @@ const PATH_STAGES = [
    next act is the first stage that is not done. Exporting leaves no record in
    the session, so the export stage is never shown done: it is the last act.
      runs:     at least one run is marked.
-     pattern:  the reference run is confirmed (pattern_run.confirmed_at).
+     pattern:  the reference run is confirmed (pattern_run.confirmed_at) and
+               no level below its main one holds a draft (C19).
      review:   every other run has been opened in Steps, where its
                differences show (annotations.opened_runs; AD-28: the other
                runs are not confirmed).
@@ -231,7 +232,7 @@ function pathState(sess) {
   const doc = documentStatus(anno.document);
   const done = {
     runs: runs.length > 0,
-    pattern: !!(pattern.run && pattern.record && pattern.record.confirmed_at),
+    pattern: !!pattern.run && RunsModel.patternConfirmed(pattern.record, pattern.run),
     review: runs.length > 0 && !nextOther,
     document: doc.filled === doc.total,
     export: false,

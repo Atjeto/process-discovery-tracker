@@ -22,6 +22,7 @@ const { persistAnnotations, ensureAnnoShape } = require("../session.js");
 const { escapeHtml, escapeAttr, toast, placeMenu, cryptoRandomId, recordingStartMs, sinceStart } = require("../dom.js");
 const { promptModal } = require("../modals.js");
 const AC = require("../analyst-content.js");
+const SPM = require("../sub-process-maps.js");
 const SystemNames = require("../system-names.js");
 // Lazy: the Overview's unit tests load this module without a page.
 const Video = () => require("./flow-view-video.js");
@@ -34,7 +35,12 @@ function _list(anno, key) {
   if (!Array.isArray(anno[key])) anno[key] = [];
   return anno[key];
 }
-function _step(anno, id) { return ((anno && anno.steps) || []).find((s) => s.step_id === id) || null; }
+/* A step by id at any level (C19: a sub-step has its own screenshots, notes
+   and attachments). */
+function _step(anno, id) {
+  const hit = SPM.findStep((anno && anno.steps) || [], id);
+  return hit ? hit.step : null;
+}
 function _now() { return new Date().toISOString(); }
 
 /* One undoable edit; a failed save has already been shown (session.js). */

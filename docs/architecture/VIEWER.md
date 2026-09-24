@@ -131,9 +131,10 @@ container. The Overview is the default on load.
   the step pane beside them. The divider between the two moves with a drag
   or, focused, with Left, Right, Home and End; a double-click or Enter gives
   the usual widths back (`pane-splitter.js`; at 1100px wide or less the two
-  stack, without it). The toolbar has *+ Add step*, the bulk Hide
-  and Merge buttons (shown when two or more rows are ticked), *Leave apps
-  out...* and *Saved names...*.
+  stack, without it). The toolbar has *+ Add step*, the bulk Hide, Merge
+  and *Group into a sub-process...* buttons (shown when two or more rows
+  are ticked), *Leave apps out...* and *Saved names...*. The list shows one
+  level at a time (contract C19, below).
 - **Map**: the process map drawn from the transactions' steps between a
   Start and an End circle, each box naming its system under its name; a
   condition set in Steps labels its line, and a path set in Steps that no
@@ -165,10 +166,47 @@ twice in transaction 2. Play any of them.") and lists one row per time:
 for a second time in one transaction) with a play button for its own small
 video, which opens paused on the row the panel opened on, then the step's
 screenshots, what was said then and its notes, each under a small lead. Its foot says *Open in Steps*, or *Show on timeline* on the
-Steps level. A task of the As-Is map that no step stands for (added or
+Steps level, and *Open sub-process* for a sub-process. At a level below the
+main one (C19) the panel shows the occurrences of the step's node in every
+visit of that level. A task of the As-Is map that no step stands for (added or
 renamed in the editor, or its step renamed or hidden since the copy was
 made) opens the panel on its name, with one line saying no step has it. The panel closes on the Overview; closed on Steps, it stays
 closed while rows are selected, until a door opens it again.
+
+**Sub-processes** (contract C19; [`sub-process-maps.js`](../../viewer/sub-process-maps.js),
+[`sub-process-verbs.js`](../../viewer/sub-process-verbs.js)). A step with
+`sub_steps` is a sub-process, at any depth. The Steps list shows one level
+at a time: `State.mapPath`, the path of map nodes from the main map down
+(`[]` the main level), which the step panel and the Timeline's steps lane
+follow too (the Map level joins in lane SUB-V2). A sub-process row carries
+*▸ N sub-steps*, which opens its level; a double-click on the name still
+renames. Inside, a breadcrumb over the list (`#steps-crumbs`) names the way
+down, the document's title (else "Main process") first; each crumb goes up
+and selects the step the level was inside, and *Dissolve sub-process*
+(`#btn-dissolve-level`) sits beside it. The list then has one block per
+visit of the sub-process ("Transaction 2", "Transaction 2, again"; key
+`data-visit`), the reference transaction's first visit marked Reference,
+with its status and Confirm transaction, and every other block compared
+with it (`run-differences.js`). The step pane works the same at every
+level; its Go to lists the visit's steps and End, which ends the
+sub-process only. The verbs, each one undoable edit at the level shown:
+*Open as a sub-process* (the step pane, the step menu: every visible
+occurrence of the step's node at its level, in every transaction, gets one
+drafted sub-step per recorded action, named without values and keyed by
+`action_key`; drafts become edited; the new level opens), *Group into a
+sub-process...* (two or more ticked steps one after the other in one
+transaction; the same stretches in every transaction are grouped too, and
+the links move with them), *+ Add step* (into the open visit), *Dissolve
+sub-process* (a group gives its steps back in its place; an opened step
+drops its sub-steps, whose screenshots, notes and attachments move to it;
+one confirm names the descriptions and flow that go). A sub-process's name
+reaches every occurrence of its node at its level; a drafted sub-step's
+name reaches the drafts of its action and is saved under `action|` and its
+key. Confirm transaction and Reopen transaction reach every level, and the
+reference transaction reads Draft while a level below holds a draft. Merge,
+Split and a moment added to a step are refused on a sub-process with one
+line; Hide hides it with everything under it; Delete on a group deletes its
+steps too (the confirm counts them and points at Dissolve).
 
 **Switching levels.** `selectLevel(name)` marks the level button and calls
 `applyLevel(name)` (`renderer.js`): it records the level in `state.js`,
@@ -239,18 +277,20 @@ their module as `<name>.test.js`.
 | `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
 | `flow-view-transcript.js` | The Transcript lane, the transcript's Sync, Attach, Replace and Remove. |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
-| `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Reopen transaction, Use as reference transaction, Save as this process, the comparison with a saved process, the Leave apps out and Saved names dialogs. |
-| `step-panel.js` | The step panel (section 2), its flow line, and the panel for an As-Is task no step stands for (`openForMissing`). |
+| `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Reopen transaction, Use as reference transaction, Save as this process, the comparison with a saved process, the Leave apps out and Saved names dialogs. C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
+| `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), and the panel for an As-Is task no step stands for (`openForMissing`). |
 | `analyst-ui.js` | What the analyst adds, on screen (C16): the System field, the screenshots (Add screenshot, Use in PDD, Remove, Ctrl+V), notes on a step or a moment, attachments on a step and on the Overview. |
 
 **Models** (pure: no DOM, no state; the unit tests drive them)
 
 | File | Owns |
 |---|---|
-| `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, saved-name propagation. |
+| `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, saved-name propagation. C19: Confirm and Reopen reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`, `rememberKey`). |
+| `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`. |
+| `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
 | `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
 | `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are pending until the next analysis. |
-| `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps, with the Start and End events and the step flow of contract C17 (`buildAnnotationDfg`, `flowEdges`, `stepLinks`, `mapNodeLabel`; one rule with the step BPMN, pinned by `shared/flow-links-golden.json`), and the value-free `processLabel` and `screenType` from the shared rule files. |
+| `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps, with the Start and End events and the step flow of contract C17 (`buildAnnotationDfg`, `flowEdges`, `stepLinks`, `mapNodeLabel`, where a drafted step or sub-step, with a `draft_key` or an `action_key`, is its name; one rule with the step BPMN, pinned by `shared/flow-links-golden.json`), and the value-free `processLabel` and `screenType` from the shared rule files. |
 | `step-flow.js` | The pure half of the step flow (C17): what the Flow line and the step panel say (`linkReading`, `panelLine`, `inheritedLine`), the steps a link can go to, the edits, and the repairs when a target step is hidden, removed, merged or split. |
 | `asis-links.js` | What a click on the As-Is map does (C18): a task names its step's map box, a data object its attachment (`DataObjectReference_<id>`), a text annotation its note; the legend, the flows, the events and the gateways do nothing. |
 | `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, `whereOfStep`, the systems the System field offers. |
@@ -268,7 +308,7 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `step-editor.js` | The step rows of a run and the step pane: the fact line, Name, System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. |
+| `step-editor.js` | The step rows of a run and the step pane: the fact line, Name, System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, *Open as a sub-process* (or on a sub-process *Open sub-process* and *Dissolve sub-process*, C19), the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. A double-click renames the row its first click landed on, even when that click's redraw moved the rows. |
 | `map-controller.js` | The Map's live process map: draws the data source once it has an edge (the Start's and the End's count), its fit control, a box click to the step panel. |
 | `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set. |
 | `refmap-ui.js` | The edited maps: which map the Map shows first and when the As-Is map is drawn again (`syncMapView`), the edit act (it analyzes first when the steps changed since the map file was written), the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`). |
@@ -300,7 +340,8 @@ require each other one way only. Where a later module needs an earlier one
 back, it requires it lazily at the call (the timeline's step band opens
 `step-panel.js`, the notes lane calls `analyst-ui.js`, the Overview's
 buttons reach `flow-view.js`, the As-Is map opens the step panel and an
-attachment), so the graph stays acyclic.
+attachment, the step panel's *Open sub-process* reaches `steps-view.js`),
+so the graph stays acyclic.
 
 A module may wire its own controls when it is required: the page is already
 parsed when `renderer.js` loads it (`flow-view.js`, `flow-view-timeline.js`,
@@ -375,7 +416,8 @@ a topic bus; there is no framework.
 | `caseScope` | The Transaction select: a run id, or `""` for all transactions (it dims the other transactions on the timeline only). |
 | `zoomFactor` | The Timeline's zoom. |
 | `selectionRange` | A Shift-drag range on the timeline. |
-| `pendingStepJump`, `pendingStepReveal` | A moment or a step the Steps level should show on arrival. |
+| `pendingStepJump`, `pendingStepReveal` | A moment or a step the Steps level should show on arrival (at the step's own level, C19). |
+| `mapPath` | The level shown (C19): the path of map nodes from the main map down, `[]` the main level. The Steps list, the step panel and the Timeline's steps lane follow it; a project opened resets it. |
 | `analysisRun` | `{ folder, status }` of the last run: `running`, `failed` or `cancelled` (null once one succeeds). |
 | undo and redo stacks | Annotation snapshots, at most 50 each, each pinned to its session folder. |
 

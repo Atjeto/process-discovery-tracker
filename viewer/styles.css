@@ -269,7 +269,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .sp-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .sp-said { list-style: none; margin: 0; padding: 0; }
 .sp-said .tr-row { font-size: 11px; }
-.sp-foot { margin-top: 8px; }
+.sp-foot { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .view.active > .loaded { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 /* ===== Empty states ===== */
@@ -1108,6 +1108,23 @@ details.analysis-module { padding: 0; }
 /* Under the Transactions title: what a transaction is, in one line. */
 .editor-pane-note { margin: -2px 0 8px; padding: 0 4px; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
 .editor-pane-note:empty { display: none; }
+/* C19: inside a sub-process, the way down from the main process (each crumb
+   goes up) and Dissolve sub-process beside it. */
+.steps-crumbs {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+  margin: 0 0 8px; padding: 5px 8px; font-size: 12px;
+  border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg-1);
+}
+.steps-crumbs[hidden] { display: none; }
+.crumb-trail { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 4px; flex: 1 1 auto; min-width: 0; }
+.steps-crumbs button.crumb {
+  padding: 1px 4px; border: 0; background: transparent; color: var(--accent);
+  font-size: 12px; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; text-align: left;
+}
+.steps-crumbs button.crumb:hover:not(:disabled) { color: var(--fg); background: transparent; }
+.crumb-here { font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+.crumb-sep { color: var(--fg-4); }
+.crumb-dissolve { flex: none; margin-left: auto; }
 .empty-pane {
   padding: 6px 4px; color: var(--fg-2); font-size: 12px; line-height: 1.6;
 }
@@ -1143,6 +1160,15 @@ details.analysis-module { padding: 0; }
   color: var(--fg-3); font-family: var(--font-mono); font-size: 10px;
   flex-shrink: 0;
 }
+/* C19: a sub-process row's way in ("▸ 6 sub-steps"), a small button in the
+   chips' shape; a click opens the sub-process, a double-click on the name
+   still renames. */
+.step-row .step-sub-open {
+  flex: none; display: inline-flex; align-items: center; height: 18px;
+  padding: 0 7px; border-radius: 9px; font-size: 10px; line-height: 1; white-space: nowrap;
+  color: var(--fg); border: 1px solid var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+}
+.step-row .step-sub-open:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-muted); }
 /* Hidden steps render dimmed in the list so they're visibly suppressed. */
 .step-row.step-hidden { opacity: 0.4; }
 
@@ -1363,6 +1389,8 @@ details.analysis-module { padding: 0; }
 .editor-detail-pane .actions {
   display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
 }
+/* C19: why a sub-process has no Split or Merge, in one line. */
+.step-sub-note { flex: 1 1 100%; margin: 2px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
 .editor-detail-pane .danger {
   background: transparent; border-color: var(--bad); color: var(--bad);
 }

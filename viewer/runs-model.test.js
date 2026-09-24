@@ -463,3 +463,81 @@ test("forgetSavedName: the steps that carry the forgotten name take their drafte
   assert.deepEqual(list.map((s) => [s.name, s.name_source || null]), [
     ["Order: Save", "draft"], ["Order: Save", null], ["Other name", null], ["Save", null]]);
 });
+
+/* ---- Sub-processes (contract C19): every level of a transaction ----------- */
+
+/* Run c1 with a sub-process: a1 opened (two drafted sub-steps, one of which
+   is itself opened), a hidden step with a draft under it. */
+function nested() {
+  const list = steps();
+  const a1 = list.find((s) => s.step_id === "a1");
+  a1.state = "edited";
+  a1.sub_steps = [
+    step("s1", "c1", "00:01", "00:02", { action_key: "chrome|Order|enter:qty", name: "Enter Quantity" }),
+    step("s2", "c1", "00:03", "00:04", { state: "edited", sub_steps: [step("q1", "c1", "00:03", "00:04", { action_key: "chrome|Order|click:ok" })] }),
+  ];
+  const a2 = list.find((s) => s.step_id === "a2");
+  a2.sub_steps = [step("h1", "c1", "00:21", "00:22")];
+  return list;
+}
+
+test("C19 runStatus, holdsDraft and patternConfirmed: a transaction reads confirmed only when no visible level holds a draft", () => {
+  const list = nested();
+  const { runs } = RM.buildRuns(STATS, list);
+  const c1 = runs.find((r) => r.caseId === "c1");
+  list.find((s) => s.step_id === "a3").state = "confirmed";
+  assert.equal(RM.runStatus(c1.members), "draft", "the sub-steps are drafts");
+  assert.equal(RM.holdsDraft(c1.members), true);
+  for (const id of ["s1", "q1"]) RM.visibleTree(list).find((s) => s.step_id === id).state = "confirmed";
+  assert.equal(RM.runStatus(c1.members), "confirmed", "the draft under a hidden step does not count");
+  assert.equal(RM.holdsDraft(c1.members), false);
+  assert.ok(!RM.visibleTree(list).some((s) => s.step_id === "h1"), "a hidden step's sub-steps are not visible");
+  const rec = { case_id: "c1", confirmed_at: "2026-09-24T10:00:00Z" };
+  assert.equal(RM.patternConfirmed(rec, c1), true);
+  RM.visibleTree(list).find((s) => s.step_id === "q1").state = "auto_suggested";
+  assert.equal(RM.patternConfirmed(rec, c1), false, "a draft at any level: it reads Draft again");
+  assert.equal(RM.patternConfirmed({ case_id: "c1", confirmed_at: null }, c1), false);
+  // The main level reads its record, as before sub-processes.
+  RM.visibleTree(list).find((s) => s.step_id === "q1").state = "confirmed";
+  list.find((s) => s.step_id === "a3").state = "auto_suggested";
+  assert.equal(RM.patternConfirmed(rec, c1), true, "a draft at the main level leaves the record as it reads");
+});
+
+test("C19 confirmRun and reopenRun cascade to every level of the transaction", () => {
+  const anno = { steps: nested() };
+  const { runs } = RM.buildRuns(STATS, anno.steps);
+  const r = RM.confirmRun(anno, runs, "c1", "2026-09-24T10:00:00Z");
+  const all = () => {
+    const out = {};
+    const walk = (l) => { for (const s of l) { out[s.step_id] = s.state; if (s.sub_steps) walk(s.sub_steps); } };
+    walk(anno.steps);
+    return out;
+  };
+  assert.equal(r.converted, 4, "a3, s1, q1 and the draft under the hidden step, nothing of the other runs");
+  const st = all();
+  assert.deepEqual([st.a1, st.a3, st.s1, st.s2, st.q1, st.h1, st.a2], ["edited", "confirmed", "confirmed", "edited", "confirmed", "confirmed", "hidden"]);
+  assert.equal(st.x1, "auto_suggested");
+  assert.equal(RM.runStatus(runs.find((x) => x.caseId === "c1").members), "confirmed");
+  const back = RM.reopenRun(anno, runs, "c1");
+  assert.equal(back.reopened, 4);
+  const st2 = all();
+  assert.deepEqual([st2.a3, st2.s1, st2.s2, st2.q1, st2.h1], ["auto_suggested", "auto_suggested", "edited", "auto_suggested", "auto_suggested"]);
+});
+
+test("C19 names: the Saved names dialog counts, renames and forgets a drafted sub-step's name (action| and its key) at every level", () => {
+  const list = nested();
+  const key = "action|chrome|Order|enter:qty";
+  const rows = RM.rememberedNameRows({ [key]: { name: "Type the quantity", updated_at: "t" } }, list);
+  assert.deepEqual(rows.map((x) => [x.key, x.inSession]), [[key, 1]]);
+  assert.equal(RM.renameSavedName(list, key, "Enter Quantity", "Type the quantity"), 1);
+  const s1 = RM.visibleTree(list).find((s) => s.step_id === "s1");
+  assert.deepEqual([s1.name, s1.name_source], ["Type the quantity", "remembered"]);
+  assert.equal(RM.forgetSavedName(list, key, "Type the quantity", () => "Enter Quantity"), 1);
+  assert.equal(s1.name, "Enter Quantity");
+});
+
+test("C19 dropDraftIdentity: a merged or split sub-step is no longer one drafted action", () => {
+  const s = RM.dropDraftIdentity({ action_key: "a|b|enter:c", name_source: "action" });
+  assert.equal(s.action_key, undefined);
+  assert.equal(s.name_source, undefined);
+});

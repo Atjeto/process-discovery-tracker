@@ -162,13 +162,30 @@ function removeLink(step, i) {
 
 /* ---- Repairs ---------------------------------------------------------------- */
 
+/* Every step of `steps` and of their sub_steps (contract C19: a link stays
+   inside its level, and step ids are unique, so a repair over the whole tree
+   is a repair per level). */
+function _tree(steps) {
+  const out = [];
+  const walk = (list) => {
+    for (const st of Array.isArray(list) ? list : []) {
+      if (!st || typeof st !== "object") continue;
+      out.push(st);
+      if (Array.isArray(st.sub_steps)) walk(st.sub_steps);
+    }
+  };
+  walk(steps);
+  return out;
+}
+
 /* A target step hidden or removed (C17, Removal): the links pointing at one
-   of `ids` are dropped. Returns [{ step, link }], the links dropped. */
+   of `ids` are dropped, at every level. Returns [{ step, link }], the links
+   dropped. */
 function dropLinksTo(steps, ids) {
   const gone = ids instanceof Set ? ids : new Set(ids || []);
   const dropped = [];
-  for (const st of steps || []) {
-    if (!st || !Array.isArray(st.links)) continue;
+  for (const st of _tree(steps)) {
+    if (!Array.isArray(st.links)) continue;
     const keep = st.links.filter((l) => !(l && gone.has(l.to)));
     if (keep.length === st.links.length) continue;
     for (const l of st.links) if (l && gone.has(l.to)) dropped.push({ step: st, link: l });
@@ -178,13 +195,13 @@ function dropLinksTo(steps, ids) {
 }
 
 /* Steps merged into one: `idMap` maps each merged step's id to the merged
-   step's, and a link to one of them goes to the merged step. A link that
-   would then point at its own step is dropped, and a link repeated by the
-   merge is kept once. Returns the number of links dropped. */
+   step's, and a link to one of them goes to the merged step, at every level.
+   A link that would then point at its own step is dropped, and a link
+   repeated by the merge is kept once. Returns the number of links dropped. */
 function retargetLinks(steps, idMap) {
   let dropped = 0;
-  for (const st of steps || []) {
-    if (!st || !Array.isArray(st.links)) continue;
+  for (const st of _tree(steps)) {
+    if (!Array.isArray(st.links)) continue;
     const out = [];
     let changed = false;
     for (const l of st.links) {

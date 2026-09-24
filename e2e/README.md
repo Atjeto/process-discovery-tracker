@@ -18,13 +18,13 @@ node session-smoke.js                     # one smoke on its own
 PDT_E2E_WINDOW=1366x768 node run-all.js   # (Bash) at a smaller window
 ```
 
-**`run-all.js`** runs the seven smokes one after another, each even when an
+**`run-all.js`** runs the eight smokes one after another, each even when an
 earlier one failed, passes their output through, then prints one summary
 line per smoke and a total:
 
 ```
 [run-all] PASS session-smoke.js    ..../.... checks   ..s  exit 0
-[run-all] 7 smokes: 7 passed, 0 failed
+[run-all] 8 smokes: 8 passed, 0 failed
 ```
 
 A smoke exits `0` when every check passed, `1` when a check failed, `2`
@@ -44,6 +44,7 @@ Every smoke also fails on any page error.
 | `transcript-smoke.js` | The meeting transcript: Attach, the lane before and after Sync, the sentences in the step pane and on the Overview (what was said outside the transactions; a sentence before the recording reads m:ss before), Add to a description or a document field, a bad file refused, the sentences in the exported PDD, Remove, an unreadable `transcript.json`. |
 | `panel-smoke.js` | The step panel from its three doors (a map box, a timeline step band, a Steps row with Watch), each playing the right moment in its own video; the map boxes naming their system; Attach video copying the video into the folder with a relative path, and the folder moved to another place still finding it. The As-Is map (contract C18), with a note and a file on a step: Export's map image drawn from the step BPMN; the chosen copy drawn by bpmn-js, where a task opens the panel on its step, a file opens its attachment, a note shows its whole text and the legend takes no click; an edit in the map editor shown in the top bar's save state, and a task renamed there saying in the panel that no step has its name. |
 | `companion-smoke.js` | Projects without a recording (contract C16): New empty project and New project from a video, from the New menu (the folder's files, the implicit run read as one transaction, what the Steps pane and the Map say before the first step, the Timeline on the video's length), steps added by hand in order and moved, a system per step, screenshots from a file, a paste and a video frame, Use in PDD, Remove with Undo and Redo, attachments on the session and on a step, notes on a step and at a moment, a video attached to an empty project at offset 0, transactions marked on a video's Timeline, and what the exported PDD carries. Step flow (contract C17): Only when and Go to on four steps (the Flow lines, the dropdown, the step panel's line, only_when and links by step id in `annotations.json`), the live map's Start and End, decision, loop and early end with their labels clear of the boxes, Undo and Redo, and a hidden target's link dropped with one toast. Saving: the top bar's save state (Saved with the folder and the time; Not saved with the reason while `annotations.json` is read-only, until the next edit saves both changes), and Export, Whole project (.zip) (the whole folder byte for byte next to it, Export busy while it is made, a second zip beside the first, Help saying how a project is handed over). |
+| `subprocess-smoke.js` | Sub-processes (contract C19): Open as a sub-process on the reference transaction's Save order (every transaction's occurrence gets one drafted sub-step per recorded action, named without the values typed, its parent edited, on disk), the level shown (the breadcrumb with Dissolve sub-process, one block per visit, the reference transaction's marked and the others compared with it), a drafted sub-step renamed (the other transactions' drafts of its action take the name, saved under `action|` and its key), the breadcrumb going up and the row's *▸ N sub-steps* going back in, Group into a sub-process (the same steps grouped in every transaction, on disk), Dissolve of the group (no confirm) and of the opened step (one confirm naming what goes) each undone by Ctrl+Z, Confirm transaction reaching every level (and a new sub-process with drafts reading Draft again), the step panel and the Timeline's steps lane ("Steps in <name>") at the level, Help. |
 
 ## How a smoke launches the viewer
 

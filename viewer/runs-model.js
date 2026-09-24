@@ -94,11 +94,48 @@ function byStart(a, b) {
   return String((a && a.step_id) || "").localeCompare(String((b && b.step_id) || ""));
 }
 
-/** @returns {"draft"|"confirmed"|"empty"} */
+/* Contract C19: a step may carry sub_steps (a sub-process), each the shape
+   of a step, at any depth. Call fn(step) for every step of `steps` and of
+   their sub_steps; `visibleOnly` leaves a hidden step out with everything
+   under it. */
+function _walk(steps, fn, visibleOnly) {
+  for (const s of Array.isArray(steps) ? steps : []) {
+    if (!s || typeof s !== "object" || (visibleOnly && s.state === "hidden")) continue;
+    fn(s);
+    if (Array.isArray(s.sub_steps)) _walk(s.sub_steps, fn, visibleOnly);
+  }
+}
+
+/* The visible steps of `steps` at every level (C19). */
+function visibleTree(steps) {
+  const out = [];
+  _walk(steps, (s) => out.push(s), true);
+  return out;
+}
+
+/* True when a visible step at any level of `steps` is still a draft: then
+   the transaction does not read confirmed (C19). */
+function holdsDraft(steps) {
+  return visibleTree(steps).some((s) => DRAFT_STATES.has(s.state));
+}
+
+/* A run's status; it reads confirmed only when no level holds a draft (C19).
+   @returns {"draft"|"confirmed"|"empty"} */
 function runStatus(members) {
   const vis = (members || []).filter((s) => s && s.state !== "hidden");
   if (!vis.length) return "empty";
-  return vis.every((s) => ANALYST_STATES.has(s.state)) ? "confirmed" : "draft";
+  return visibleTree(vis).every((s) => ANALYST_STATES.has(s.state)) ? "confirmed" : "draft";
+}
+
+/* The pattern run reads confirmed: it was confirmed (C3, its record) and no
+   level below the main one holds a draft since (C19: opening a step as a
+   sub-process drafts its sub-steps, and Confirm transaction then accepts
+   them). The main level reads its record as before. */
+function patternConfirmed(record, run) {
+  if (!(record && record.confirmed_at)) return false;
+  const below = ((run && run.members) || []).filter((s) => s && s.state !== "hidden" && Array.isArray(s.sub_steps))
+    .flatMap((s) => s.sub_steps);
+  return !holdsDraft(below);
 }
 
 /** The chip shown on a step row: { label, cls }. */
@@ -303,16 +340,26 @@ function recordFix(anno, runs, caseId, kind, delta) {
   return f[kind] !== before;
 }
 
-/* "Confirm run" (C2, C3): the run's remaining draft steps become `confirmed`;
-   for the pattern run, pattern_run.confirmed_at is set (kept when already
-   set). Returns { converted, patternConfirmed }. */
+/* The steps of run `caseId` at every level (C19: a sub-step has its
+   parent's case_id; the main-level step decides). */
+function _runTree(anno, caseId) {
+  const out = [];
+  for (const s of (anno && anno.steps) || []) {
+    if (s && s.case_id === caseId) _walk([s], (x) => out.push(x), false);
+  }
+  return out;
+}
+
+/* "Confirm run" (C2, C3): the run's remaining draft steps become `confirmed`,
+   at every level (C19); for the pattern run, pattern_run.confirmed_at is set
+   (kept when already set). Returns { converted, patternConfirmed }. */
 function confirmRun(anno, runs, caseId, nowIso) {
   const p = patternRun(anno, runs);
   const isPattern = !!(p.run && p.run.caseId === caseId);
   const rec = isPattern ? (p.record || designatePattern(anno, p.run)) : null;
   let converted = 0;
-  for (const s of (anno && anno.steps) || []) {
-    if (s && s.case_id === caseId && DRAFT_STATES.has(s.state)) {
+  for (const s of _runTree(anno, caseId)) {
+    if (DRAFT_STATES.has(s.state)) {
       s.state = "confirmed";
       converted++;
     }
@@ -322,16 +369,15 @@ function confirmRun(anno, runs, caseId, nowIso) {
 }
 
 /* "Reopen run", the inverse of Confirm run: the run's confirmed steps are
-   drafts again (a hidden step that was confirmed unhides as a draft), while
-   the steps the analyst edited or added keep their state; on the pattern
-   run, confirmed_at goes back to null and its draft-fix counts are kept.
-   Returns { reopened, patternReopened }. */
+   drafts again at every level (C19; a hidden step that was confirmed unhides
+   as a draft), while the steps the analyst edited or added keep their state;
+   on the pattern run, confirmed_at goes back to null and its draft-fix
+   counts are kept. Returns { reopened, patternReopened }. */
 function reopenRun(anno, runs, caseId) {
   const p = patternRun(anno, runs);
   const isPattern = !!(p.run && p.run.caseId === caseId);
   let reopened = 0;
-  for (const s of (anno && anno.steps) || []) {
-    if (!s || s.case_id !== caseId) continue;
+  for (const s of _runTree(anno, caseId)) {
     if (s.state === "confirmed") {
       s.state = "auto_suggested";
       reopened++;
@@ -349,7 +395,7 @@ function reopenRun(anno, runs, caseId) {
 function canReopen(run, patternRecord, isPattern) {
   if (!run) return false;
   if (isPattern) return !!(patternRecord && patternRecord.confirmed_at);
-  return run.status === "confirmed" && (run.members || []).some((s) => s.state === "confirmed");
+  return run.status === "confirmed" && visibleTree(run.members).some((s) => s.state === "confirmed");
 }
 
 /* ---- Carried boundary fixes (lane L12b) -------------------------------------- */
@@ -470,25 +516,45 @@ function probeLine(stats, runs, run, record) {
 /* ---- Names (C4) ------------------------------------------------------------ */
 
 /* An analyst renamed `step` to `name`: every OTHER still-draft step of the
-   session with the same draft_key takes the name at once, keeps state
-   auto_suggested, and gets name_source "remembered" (and the pipeline's own
-   process_label for a named draft: the name). The key is compared whole and
-   never split: a screen label can contain "|". Returns how many steps took
-   the name. */
+   session with the same draft_key takes the name at once, at every level
+   (C19: a group keeps its drafts as sub-steps), keeps state auto_suggested,
+   and gets name_source "remembered" (and the pipeline's own process_label
+   for a named draft: the name). The key is compared whole and never split: a
+   screen label can contain "|". Returns how many steps took the name. */
 function propagateName(steps, step, name) {
-  const key = step && step.draft_key;
+  return _propagate(steps, step, name, "draft_key");
+}
+
+/* C19: a drafted sub-step renamed: the session's other drafted sub-steps
+   with the same action_key take the name, as propagateName does for a
+   draft_key. Returns how many took it. */
+function propagateActionName(steps, step, name) {
+  return _propagate(steps, step, name, "action_key");
+}
+
+function _propagate(steps, step, name, field) {
+  const key = step && step[field];
   const nm = typeof name === "string" ? name.trim() : "";
   if (typeof key !== "string" || !key || !nm) return 0;
   let n = 0;
-  for (const s of steps || []) {
-    if (!s || s === step || s.step_id === step.step_id) continue;
-    if (s.state !== "auto_suggested" || s.draft_key !== key) continue;
+  _walk(steps, (s) => {
+    if (s === step || s.step_id === step.step_id) return;
+    if (s.state !== "auto_suggested" || s[field] !== key) return;
     s.name = nm;
     s.name_source = "remembered";
     s.process_label = nm;
     n++;
-  }
+  }, false);
   return n;
+}
+
+/* The key a step's name is remembered under (C4): its draft_key, or for a
+   drafted sub-step "action|" + its action_key (C19); "" for any other. */
+function rememberKey(step) {
+  if (!step) return "";
+  if (typeof step.draft_key === "string" && step.draft_key) return step.draft_key;
+  if (typeof step.action_key === "string" && step.action_key) return "action|" + step.action_key;
+  return "";
 }
 
 /* The C1 app of a step: the process name of its first interaction that has
@@ -567,17 +633,20 @@ function dropDraftIdentity(step) {
   delete step.draft_keys;
   delete step.name_source;
   delete step.end_reason;
+  // C19: a merged or split sub-step is no longer one drafted action either.
+  delete step.action_key;
   return step;
 }
 
 /* The session's visible steps with `draftKey` that the Saved names dialog
    renames or forgets with a saved name: every draft of the key, and the steps
-   the analyst confirmed, edited or added that carry the old name. The next
-   analysis names a draft with this session's own names first (C4), so a
+   the analyst confirmed, edited or added that carry the old name, at every
+   level; a key "action|..." is a drafted sub-step's (C19, rememberKey). The
+   next analysis names a draft with this session's own names first (C4), so a
    saved name changed in the store only would come back from them. */
 function _carriers(steps, draftKey, oldName) {
   const old = typeof oldName === "string" ? oldName.trim() : "";
-  return (steps || []).filter((s) => s && s.draft_key === draftKey && s.state !== "hidden" &&
+  return visibleTree(steps).filter((s) => rememberKey(s) === draftKey &&
     (DRAFT_STATES.has(s.state) || (old && String(s.name || "").trim() === old)));
 }
 
@@ -621,9 +690,9 @@ function forgetSavedName(steps, draftKey, oldName, draftedName) {
    matter), then by key. */
 function rememberedNameRows(names, steps) {
   const counts = new Map();
-  for (const s of steps || []) {
-    if (!s || s.state === "hidden" || typeof s.draft_key !== "string" || !s.draft_key) continue;
-    counts.set(s.draft_key, (counts.get(s.draft_key) || 0) + 1);
+  for (const s of visibleTree(steps)) {
+    const key = rememberKey(s);
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
   }
   const rows = Object.keys(names && typeof names === "object" ? names : {})
     .filter((key) => names[key] && typeof names[key].name === "string" && names[key].name.trim())
@@ -635,10 +704,12 @@ function rememberedNameRows(names, steps) {
 
 module.exports = {
   ANALYST_STATES, DRAFT_STATES, FIX_KINDS, OUTSIDE, STATUS_LABELS,
-  byStart, runStatus, stepChip, buildRuns, numberOnlyLabel, runForRange, groupKeyOf, groupSteps, nextInGroup,
+  byStart, runStatus, visibleTree, holdsDraft, patternConfirmed, stepChip, buildRuns, numberOnlyLabel, runForRange,
+  groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
   reopenRun, canReopen,
-  probeLine, propagateName, stepApp, readableApp, nameSuggestions, dropDraftIdentity, renameSavedName, forgetSavedName,
+  probeLine, propagateName, propagateActionName, rememberKey, stepApp, readableApp, nameSuggestions, dropDraftIdentity,
+  renameSavedName, forgetSavedName,
   rememberedNameRows,
   mergedDraftKeys, carriedMerges, sameKeyDraftsElsewhere, hideSteps, runCount,
 };
