@@ -14,10 +14,24 @@
  * when it printed none, for example after a crash). The exit code is 0 only
  * when every smoke exited 0. PDT_E2E_WINDOW and the rest of the environment
  * reach every smoke unchanged.
+ *
+ * A smoke gets PDT_E2E_SMOKE_MINUTES (default 10) to finish. One that runs
+ * longer is stopped with its viewer (the whole process tree) and fails with
+ * "timeout", so a check that waits forever cannot hold a CI job for hours;
+ * its last output says how far it got.
  */
 
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const path = require("path");
+
+const LIMIT_MIN = Number(process.env.PDT_E2E_SMOKE_MINUTES) > 0 ? Number(process.env.PDT_E2E_SMOKE_MINUTES) : 10;
+
+/* Stop a smoke and everything it started (its viewer and the viewer's
+   helpers): on Windows a plain kill leaves the Electron children running. */
+function stopTree(child) {
+  if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  else child.kill("SIGKILL");
+}
 
 const SMOKES = ["session-smoke.js", "overview-smoke.js", "runs-smoke.js", "map-slim-smoke.js", "transcript-smoke.js", "panel-smoke.js", "companion-smoke.js"];
 
@@ -31,10 +45,17 @@ function runOne(file) {
     const keep = (chunk) => { tail = (tail + chunk.toString("utf8")).slice(-20000); };
     child.stdout.on("data", (c) => { process.stdout.write(c); keep(c); });
     child.stderr.on("data", (c) => { process.stderr.write(c); keep(c); });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      console.log("\n[run-all] " + file + " did not finish within " + LIMIT_MIN + " min: stopping it and its viewer");
+      stopTree(child);
+    }, LIMIT_MIN * 60 * 1000);
     const done = (code, signal) => {
+      clearTimeout(timer);
       const counts = [...tail.matchAll(/(\d+)\/(\d+) checks passed, (\d+) failed/g)].pop();
       resolve({
-        file, code: code == null ? null : code, signal: signal || null,
+        file, code: timedOut ? null : (code == null ? null : code), signal: signal || null, timedOut,
         secs: Math.round((Date.now() - started) / 1000),
         checks: counts ? counts[1] + "/" + counts[2] + " checks" : "no count",
       });
@@ -56,7 +77,7 @@ function runOne(file) {
     const ok = r.code === 0;
     console.log("[run-all] " + (ok ? "PASS" : "FAIL") + " " + r.file.padEnd(width) + "  " +
       r.checks.padEnd(13) + " " + String(r.secs).padStart(4) + "s  " +
-      (r.signal ? "signal " + r.signal : "exit " + r.code));
+      (r.timedOut ? "timeout" : r.signal ? "signal " + r.signal : "exit " + r.code));
   }
   const failed = results.filter((r) => r.code !== 0).length;
   console.log("[run-all] " + results.length + " smokes: " + (results.length - failed) + " passed, " + failed + " failed");

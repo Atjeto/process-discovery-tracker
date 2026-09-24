@@ -51,8 +51,19 @@ const SEP = " " + String.fromCharCode(45) + " ";   // a window title's separator
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
+/* Where the smoke is: a step that waits forever (seen once on the CI runner,
+   after the owner's review checks) says which one before run-all stops it. */
+let phase = "start";
+let lastMove = Date.now();
+const at = (p) => { phase = p; lastMove = Date.now(); };
+setInterval(() => {
+  if (Date.now() - lastMove < 180000) return;
+  console.log("[panel-e2e] stalled for 3 min at: " + phase);
+  process.exit(1);
+}, 5000).unref();
 function record(name, ok, detail) {
   results.push({ name, ok: !!ok, detail });
+  at("after " + name.slice(0, 12));
   console.log(`[${ok ? " OK " : "FAIL"}] ${name}` + (detail ? "  | " + detail : ""));
 }
 const errText = (e) => { logActionError("panel-smoke", e); return String((e && e.message) || e).split("\n")[0]; };
@@ -243,16 +254,21 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   const CHECK = "va01: Check document";
   let twice = {};
   try {
+    at("(g2) tap the map box");
     await page.evaluate((id) => document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"), CHECK);
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, CHECK, { timeout: T });
+    at("(g2) read the panel");
     twice.st = await panelState(page);
     const first = anno.steps.find((s) => s.step_id === (twice.st.rows[0] || {}).id);
+    at("(g2) wait for the video cue");
     twice.cue = first ? await cued(first) : { ok: false, why: "no first row" };
     // A row's play moves the highlight to it (its moment is past the 32 s
     // video's end, so only the highlight is checked).
     const again = twice.st.rows[2] || {};
+    at("(g2) press a row's play");
     await page.locator('#sp-body .sp-occ[data-step-id="' + again.id + '"] .sp-play').click({ timeout: T });
     await wait(300);
+    at("(g2) read the highlight");
     twice.lit = (await panelState(page)).rows.filter((r) => r.focus || r.current).map((r) => ({ id: r.id, focus: r.focus, current: r.current }));
     twice.againId = again.id;
   } catch (e) { twice.err = errText(e); }
