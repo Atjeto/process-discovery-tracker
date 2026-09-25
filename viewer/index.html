@@ -442,35 +442,139 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="help-body">
 
         <section class="help-section active" data-section="start">
-          <h3>What is a transaction?</h3>
-          <p>A <strong>transaction</strong> is one pass through the process: one order entered, one ticket handled. The SME records the process a few times and presses the transaction key (or the recording bar's button) at the start of each transaction. A project made from a video, or an empty one, is one transaction until you mark where each one starts on the Timeline (an empty project has a timeline once you attach a video).</p>
-          <h3>From a recording to the PDD</h3>
-          <p>The SME sends you a zip of the recording (the capture app's end summary makes it). Unzip it (right-click it, <em>Extract All</em>), then open the folder with <em>Open project</em>: the folder <em>Extract All</em> makes opens too, since it holds the recording folder. You confirm the first transaction's drafted steps, review how the other transactions differ, write the document and export the PDD. The Overview's <em>Checklist</em> ticks what is done, with one button for the next act.</p>
+          <!-- Lane HT: the PM's guide, word for word docs/HOW-TO.md (the document may say
+               more; the page never says it in other words). session-smoke.js checks
+               every sentence here against the document. -->
+          <p>This guide gets a process manager started with the Process Discovery Tracker (PDT). It follows one example: an order-to-cash process. The SME recorded four orders. For each order they found the customer in Salesforce, entered the order, created the sales order in SAP, updated the tracking sheet in Excel and sent the confirmation email from Outlook.</p>
+          <h3>What PDT does</h3>
           <ol class="help-steps">
-            <li><strong>Transactions.</strong> Open the project: the app analyzes the recording by itself and drafts each transaction's steps and the map (the bar at the top says so while it works). Each transaction starts at a start marker; if one is missing, right-click the Timeline at that moment, choose <em>Start a transaction here</em> and click <em>Apply marker changes</em>.</li>
-            <li><strong>Reference transaction.</strong> In Steps, check transaction 1's drafted steps against the screenshots or the video. Fix the boundaries (merge, split, add, hide), name the steps the way the document should, write a description where a step needs one, then click <em>Confirm transaction</em>.</li>
-            <li><strong>Other transactions.</strong> The other transactions arrive drafted and named like the reference transaction. Open each one in Steps: it lists how it differs from the reference transaction (extra, skipped or reordered steps). Fix a step where needed; the other transactions are not confirmed.</li>
-            <li><strong>Document.</strong> On the Overview, you write the document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions and the improvement and automation scope. The PDD prints them in place of its placeholders.</li>
-            <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is the one the Map shows first: your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the process map. <em>Edited maps</em> lists your copies; <em>Delete</em> takes one out with its file, and Ctrl+Z brings both back.</li>
+            <li>The SME records the process a few times: each pass is a transaction, for example one order.</li>
+            <li>PDT drafts the steps of each transaction and draws the process map.</li>
+            <li>You fix and name the steps of one transaction, the reference transaction, and confirm it.</li>
+            <li>You write the document fields, and PDT writes the PDD with the map.</li>
+            <li>You hand the PDD and the whole project to the developers as a numbered version.</li>
           </ol>
-          <p>Every change you make saves itself to the project folder: the top bar says <em>Saved</em>, and pointing at it shows the folder. That folder holds the whole project, with its video, transcript, screenshots, attachments and edited maps. To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it.</p>
-          <p><strong>Several projects.</strong> <em>Open</em>, <em>Open in a new window</em> (or the button beside a recent project) opens another project beside this one; a project already open in another window opens read only, and says so. Closing a window closes only its project.</p>
-          <h3>What the Overview shows</h3>
+          <h3>Start a project</h3>
           <ul class="help-list">
-            <li><strong>Checklist</strong>: the five acts above, each ticked once it is done. The export is never ticked: the app keeps no record of it. When the As-Is map the PDD prints was made before the steps changed, it adds <em>Check the As-Is map</em>: check it, or make it again with <em>Copy again</em> on the Map.</li>
-            <li><strong>Document</strong>: you write these fields; the PDD prints them. Its line names the fields still empty.</li>
-            <li><strong>From the transcript</strong>: what was said outside the transactions, from the meeting transcript you attached; the app places each sentence by its time.</li>
-            <li><strong>Observations</strong>: the app measures these from the recording, and the PDD prints the same rows in its sections 5 and 6: <em>Data</em> (every field entered, with its system, its step and an example value, and the <em>Re-keyed data</em>: a value typed again in another system) and <em>Applications and time</em> (the time of each transaction, and each system's screens, steps and time per transaction). They are measured again with each analysis and each PDD export, and as the Overview opens after a change of the steps (<em>From the last analysis; refreshing</em> says so meanwhile; typing in the document stops it, and the next opening measures them).</li>
+            <li><strong>From the SME's recording.</strong> The SME records with the capture app and sends you the zip it makes (<em>Make a zip for the analyst</em>). Right-click the zip and choose <em>Extract All</em>. In PDT, choose <em>Open</em>, <em>Open project...</em> and pick the folder it made. PDT analyzes the recording by itself: the top bar says <em>Updating steps and map...</em> until it is done.</li>
+            <li><strong>From a video.</strong> Choose <em>New</em>, <em>New project from a video...</em> and pick the video, for example a Teams recording of the SME at work. Then name the project: its folder is made where you save it, with a copy of the video. You add the steps as you watch.</li>
+            <li><strong>From nothing.</strong> Choose <em>New</em>, <em>New empty project...</em> and name the project. You add the steps by hand.</li>
           </ul>
-          <h3>Optional inputs</h3>
+          <p>Help, <em>Recording keys</em>, lists what to tell the SME before they record.</p>
+          <h3>Your first hour</h3>
+          <p>The Overview's <em>Checklist</em> lists the main acts below and ticks each one when it is done; its button takes you to the next.</p>
+          <ol class="help-steps">
+            <li><strong>Attach the video and the transcript.</strong> On the Overview, click <em>Attach</em> after <em>No video</em> and pick the video. PDT opens the Timeline: pause the video at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. The video is copied into the project folder. Attach the meeting transcript (a Teams .vtt or .docx) with <em>Attach</em> after <em>No transcript</em>: the synced video places its sentences in time. Without a video, <em>Sync</em> on the Timeline's <em>Transcript</em> lane places it: pick a sentence, then click where it was said.</li>
+            <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Order #10900</em> to <em>Order #10903</em>. If one is missing, right-click the timeline where it starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em> in the top bar.</li>
+            <li><strong>Name the steps of the reference transaction, or pick them from the library.</strong> In Steps, transaction 1 is the reference transaction. Where the recorder cut a step wrongly, split or merge it first (see <em>Everyday tasks</em>). Then click each step and type its name in the step pane: the step that ends at <em>Save order</em> becomes <em>Enter the order in Salesforce</em>. The same drafted step in the other transactions takes the name too. Where the library has activities for the step's system, the <em>Name</em> field lists them: pick one instead of typing.</li>
+            <li><strong>Write short descriptions.</strong> <em>Description</em> in the step pane is the text the PDD prints under the step. One or two sentences are enough, for example: <em>Search the account by customer ID and open it.</em> The grey text in an empty <em>Description</em> is what the recorder saw; the PDD does not print it. With a transcript, <em>Said during this step</em> lists what the SME said then, and <em>Add</em> copies a sentence into the description.</li>
+            <li><strong>Set the flow where it branches or loops.</strong> Transaction 3 sent no confirmation email. On <em>Send the confirmation email</em>, click <em>Only when...</em> and type <em>the customer asked for a confirmation</em>. In transaction 2 the SME looked up a mapping in Notepad and did the SAP steps again. On <em>Create the sales order in SAP</em>, click <em>Go to...</em>, pick <em>Check the sales order in SAP</em> and type when: <em>SAP rejects the material number</em>. The map draws both.</li>
+            <li><strong>Confirm the transaction.</strong> Click <em>Confirm transaction</em> (Ctrl+Enter). The steps you did not change are accepted as they are. <em>Undo confirm</em>, beside the <em>Confirmed</em> badge, takes it back.</li>
+            <li><strong>Look at how the other transactions differ.</strong> Open transactions 2, 3 and 4 in Steps. Each lists how it differs from the reference transaction. Transaction 2 has an extra step (the Notepad lookup) and repeated steps. Transaction 3 reads <em>Not done</em> for the email, which is no difference once the email has its condition. Transaction 4 has no differences. The other transactions are not confirmed.</li>
+            <li><strong>Fill the document fields on the Overview.</strong> Open <em>Document</em> and write each field: title, purpose, scope, trigger, result, key contacts, business rules, exceptions, and the improvement and automation scope (notes are optional). For example, the title <em>Order to cash</em> and the trigger <em>A customer order arrives by email</em>. The PDD prints each field in its own place, and the title names the files PDT makes: <em>Order to cash PDD.docx</em>. With a transcript, <em>Add to</em> puts a sentence into a field. The <em>Observations</em> under the document are measured from the recording (here, the product code is typed again in SAP as the material number), and the PDD prints them too.</li>
+            <li><strong>Check the Map.</strong> The Map shows the map the PDD prints: a box per step in its system's colour, and the decisions from the flow you set. Click a box to see each time the step happened, with its moment in the video and its screenshots. <em>Show how the transactions ran</em> shows the paths the transactions took; point at a line to see how often.</li>
+            <li><strong>Export the PDD.</strong> Choose <em>Export</em>, <em>PDD (.docx)</em> and save it. Its folder opens with the file selected. The PDD is written again from the project each time, so export again after a change.</li>
+          </ol>
+          <h3>Everyday tasks</h3>
+          <p><strong>Add a step the recorder missed</strong></p>
+          <ol class="help-steps">
+            <li>In Steps, select the step it comes after.</li>
+            <li>Click <em>+ Add step</em> (or press N), type its name and click <em>Add step</em>.</li>
+            <li>In the step pane, set its <em>System</em>. Alt+Up and Alt+Down move it.</li>
+            <li>With a video, you can instead pause the video at that moment on the Timeline and click <em>+ Step</em> (or press S): the step gets that time.</li>
+          </ol>
+          <p><strong>Split or merge steps</strong></p>
+          <ol class="help-steps">
+            <li>Select the step in Steps and open <em>More</em> in the step pane.</li>
+            <li>To split it, click the scissors after the recorded action where the first part ends.</li>
+            <li>To merge it with the next step, click <em>Merge with next</em>. To merge several, tick them in the list and click <em>Merge selected</em>.</li>
+            <li>A merge is made in the other transactions too, but a name you then give the merged step is not: give it the same name in each transaction, so the map keeps one box.</li>
+          </ol>
+          <p><strong>Add a screenshot, a note or a file</strong></p>
+          <ol class="help-steps">
+            <li>Select the step in Steps.</li>
+            <li><em>Add screenshot</em>: a frame of the video, a pasted image (Ctrl+V) or an image file. <em>Use in PDD</em> picks the one the PDD prints under the step.</li>
+            <li><em>Add note</em>: notes stay in the app, beside the step on the Map; the PDD does not print them.</li>
+            <li><em>Attach file...</em>: for example the input data set or an example email. It is copied into the project folder, and the PDD lists it. For a file of the whole project, use <em>Add file...</em> under the document fields on the Overview.</li>
+          </ol>
+          <p><strong>Leave out an app or a stretch of the recording</strong></p>
+          <ol class="help-steps">
+            <li>An app, for example Teams during the call: in Steps, click <em>Apps outside the process...</em>, tick the app and click <em>Save</em>.</li>
+            <li>A stretch, for example a break: on the Timeline, hold Shift and drag across it, click <em>Leave out of the analysis</em>, then <em>Leave out</em>.</li>
+            <li>The steps and the map are drafted again without it. A stretch left out shows hatched: click it and choose <em>Include again</em> to bring it back.</li>
+          </ol>
+          <p><strong>Make a sub-process</strong></p>
+          <ol class="help-steps">
+            <li>To give a step its own steps, select it and click <em>Open as a sub-process</em>: <em>Enter the order in Salesforce</em> gets one step per field and click, from <em>Enter Product code</em> to <em>Click Save order</em>.</li>
+            <li>To group steps, tick steps that follow one another, click <em>Group into a sub-process...</em> and name it, for example <em>Book the order in SAP</em>.</li>
+            <li>Click <em>▸ 6 sub-steps</em> on its row to open it; the line above the list goes back up. <em>Dissolve sub-process</em> undoes it.</li>
+            <li>In the PDD, each sub-process gets a chapter with its own map.</li>
+          </ol>
+          <p><strong>Edit the map as your As-Is map, and make a To-Be copy</strong></p>
+          <ol class="help-steps">
+            <li>On the Map, click <em>Edit as the As-Is map</em>. The editor opens on a copy of the process map. Change it: the copy is kept once you change something.</li>
+            <li>Close the editor. The PDD now prints your As-Is map in place of the process map, and an analysis never changes it.</li>
+            <li>For the To-Be map, click <em>Edit a new copy</em>, set <em>Use in PDD as</em> to <em>To-Be map</em> and change the copy. The PDD prints it under the improvement scope.</li>
+            <li><em>Edited maps</em> lists your copies, with <em>Edit</em>, <em>Duplicate</em> and <em>Delete</em>.</li>
+          </ol>
+          <p><strong>Open a second project in a new window</strong></p>
+          <ol class="help-steps">
+            <li>Choose <em>Open in a new window...</em> in the <em>Open</em> menu, and pick the project folder.</li>
+            <li>It opens in a window of its own, and the project you had open stays open.</li>
+            <li>A project opens for editing in one window only: in a second window it opens read only.</li>
+          </ol>
+          <p><strong>Undo</strong></p>
+          <ol class="help-steps">
+            <li>Press Ctrl+Z to undo your last change, and Ctrl+Y to redo it.</li>
+            <li>Undo covers every change (steps, markers, document fields, edited maps, the video, a stretch left out, a removed transcript), up to 50, until you open another project.</li>
+            <li>In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map.</li>
+          </ol>
+          <h3>Hand over to the developers</h3>
+          <ol class="help-steps">
+            <li>Choose <em>Hand off...</em> in the <em>Export</em> menu.</li>
+            <li>Type what changed in this version (for version 1 it says <em>First hand-off</em> already) and click <em>Hand off</em>.</li>
+            <li>PDT makes <em>Order to cash v1.zip</em> next to the project folder and opens its folder. Send that zip to the developers.</li>
+          </ol>
+          <p><strong>What the zip holds.</strong> The whole project folder, and at its top the PDD and the Technical details of that version: <em>Order to cash v1 PDD.docx</em> and <em>Order to cash v1 Technical details.xlsx</em>. The Technical details is a spreadsheet for the developers: every click and entry of the reference transaction with the control it acted on, the fields typed in each transaction, and the applications.</p>
+          <p><strong>How a developer opens it.</strong> In PDT, choose <em>Open</em>, <em>Open a hand-off (.zip)...</em> and pick the zip. It opens read only: everything can be looked at and played, and nothing can change.</p>
+          <p><strong>The next version.</strong> Keep working in your project, then choose <em>Hand off...</em> again: PDT makes <em>Order to cash v2.zip</em>. The PDD says which version it is and lists every version with what changed. Ctrl+Z takes a hand-off back; its zip stays.</p>
+          <h3>Where things are kept</h3>
           <ul class="help-list">
-            <li><strong>A video</strong> of the recording, for example a Teams recording: attach it on the Overview (the line under the Checklist) or on the Timeline's video band, to check the steps against it and hear the SME explain. You sync it as you attach it: pause it at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. It is copied into the project folder, so the folder carries it. <em>Remove</em>, beside it on the Overview (or <em>Remove video</em> beside <em>Sync video</em> on the Timeline), takes the video out of the project with its copy in the folder; <em>Replace</em> takes out the copy it replaces. Ctrl+Z brings it back.</li>
-            <li><strong>A meeting transcript</strong> (.vtt or .docx): attach it on the Overview (the line under the Checklist). Its sentences show beside the document fields, and with each step once the transcript is placed in time: a synced video places it, or use <em>Sync</em> on the Timeline's Transcript lane (pick a sentence, then click where it was said). A sentence said before the recording started shows how long before (for example <em>0:28 before</em>). A sentence you add to a step's description or a field is printed in the PDD. <em>Remove</em> takes the transcript out of the project with its original file; Ctrl+Z brings them back.</li>
+            <li><strong>The project folder</strong> holds everything: the recording, your work, the video, the transcript, screenshots, attached files, the library and your edited maps. Copy it whole, never in parts.</li>
+            <li><strong>Every change you make saves itself to the project folder.</strong> The top bar says <em>Saved</em>; point at it to see the folder. If it says <em>Not saved</em>, point at it to see why.</li>
+            <li><strong>Made on export:</strong> the PDD, the map (as an image or as BPMN) and the Technical details go where you save them. <em>Whole project (.zip)</em> and <em>Hand off...</em> make their zip next to the project folder. Every export opens its folder with the file selected.</li>
+            <li><strong>Handing it on.</strong> To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it. For the developers, use <em>Hand off...</em> instead.</li>
           </ul>
-          <h3>Starting without a recording</h3>
-          <p>In the New menu, <em>New project from a video</em> makes a project from a video of the process (a Teams recording, a screen video): the video is copied into the new folder and the Timeline follows it. <em>New empty project</em> makes a project with nothing in it. Either is one transaction until you mark where each one starts on the Timeline; an empty project has a timeline to mark them on once you attach a video. Add its steps in Steps with <em>+ Add step</em> (Alt+Up and Alt+Down move a step without a time), or on the Timeline with <em>+ Step</em> at the video's playhead. The step pane's <em>System</em> field says which system a step happens in.</p>
-          <h3>Screenshots, notes and attachments</h3>
-          <p>In the step pane, <em>Add screenshot</em> takes a frame of the video, a pasted image (Ctrl+V in the pane) or an image file. <em>Use in PDD</em> picks the one the PDD prints under the step; <em>Remove</em> takes one off (a recorded screenshot stays in the recording). A note belongs to a step (the step pane) or to a moment (right-click the Timeline, <em>Add note here</em>). The PDD leaves notes out, in its text and in its map pictures; the Map shows a step's notes beside the step (an edited As-Is map shows the notes it was copied with), and so do Export's map image and BPMN file. <em>Attach file</em> in the step pane and <em>Add file</em> under the Overview's document fields copy a file (an example email, a spreadsheet, an SOP) into the project folder, and the PDD lists them. Ctrl+Z undoes each of these.</p>
+          <h3>The library</h3>
+          <p>The library lists named activities for each system: for SAP, for example, <em>Create sales order</em>. In the step pane, click the <em>Name</em> field: it lists the activities of the step's system, and a pick gives the step its name, its system and, when you wrote none, its description. You can still type any name. Where the library has no activities for the system yet, the field says so. A project keeps the library it started with, so a newer library does not change it. The owner of PDT maintains the library, and it comes with the app.</p>
+          <h3>When something looks wrong</h3>
+          <dl class="help-dl">
+            <dt>"This folder is not a project: it has no manifest.json."</dt>
+            <dd>The folder holds no recording. Unzip the SME's zip first (right-click it, <em>Extract All</em>) and open the folder it makes.</dd>
+            <dt>"This recording has no transactions marked."</dt>
+            <dd>The SME did not press the transaction key. On the Timeline, right-click where each transaction starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em>.</dd>
+            <dt>"The analysis failed, so the steps and the map are not drafted."</dt>
+            <dd>The log at the top says why. Choose Help, <em>Troubleshooting</em>, <em>Re-analyze</em>: your confirmed, edited, added and hidden steps are kept.</dd>
+            <dt>"The As-Is map was made before the steps changed: check it, or Copy again."</dt>
+            <dd>On the Map, edit your As-Is map to match the steps, or click <em>Copy again</em> for a new copy of the process map as it is now.</dd>
+          </dl>
+          <h3>Glossary</h3>
+          <table class="help-table">
+            <tr><td>Project</td><td>What you open or start in PDT: one folder with the recording or video, your work and all you add.</td></tr>
+            <tr><td>Request</td><td>The name of what the SME is asked to record, set in the capture app's <em>Recording setup</em>. The Overview shows it on the project line.</td></tr>
+            <tr><td>SME</td><td>The subject matter expert who does the process and records it.</td></tr>
+            <tr><td>Transaction</td><td>One pass through the process, for example one order.</td></tr>
+            <tr><td>Step</td><td>One piece of work in a transaction, for example <em>Create the sales order in SAP</em>.</td></tr>
+            <tr><td>Reference transaction</td><td>The transaction you name, fix and confirm; the PDD is built around it.</td></tr>
+            <tr><td>Sub-process</td><td>A step with steps of its own.</td></tr>
+            <tr><td>Process map</td><td>The map PDT draws from the steps.</td></tr>
+            <tr><td>As-Is map</td><td>Your edited copy of the process map; the PDD prints it in its place.</td></tr>
+            <tr><td>To-Be map</td><td>A copy you change to show the process as it should be.</td></tr>
+            <tr><td>PDD</td><td>The Process Definition Document: the Word document PDT writes.</td></tr>
+            <tr><td>Technical details</td><td>The spreadsheet for the developers that comes with a hand-off.</td></tr>
+            <tr><td>Hand-off</td><td>A numbered version for the developers: one zip.</td></tr>
+            <tr><td>Library</td><td>The named activities per system that a step's <em>Name</em> field lists.</td></tr>
+          </table>
         </section>
 
         <section class="help-section" data-section="stepsphases">
@@ -554,12 +658,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         </section>
 
         <!-- Lane HV (contract C20): hand-off versions, the read-only open and
-             the Technical details. -->
+             the Technical details. Lane HT: how to hand off and open a version
+             is in Getting started; this section keeps what it does not say. -->
         <section class="help-section" data-section="handoff">
           <h3>Handing a version to the developers</h3>
-          <p><em>Export</em>, <em>Hand off...</em> asks what changed in this version, then makes one zip next to the project folder, named after the project and its version (for example <em>Order entry v2.zip</em>): the whole project, with the PDD and the <em>Technical details</em> of that version. Each hand-off gets the next number, and the PDD says which version it is: its Document control reads <em>Version 2, handed off</em> with the date and your name, over a table of every version and what changed. A PDD exported between hand-offs reads <em>Working copy after version 2</em>. Ctrl+Z takes a hand-off's version back; its zip file stays where it is.</p>
+          <p>Each hand-off gets the next number, and the PDD says which version it is: its Document control reads <em>Version 2, handed off</em> with the date and your name, over a table of every version and what changed. A PDD exported between hand-offs reads <em>Working copy after version 2</em>.</p>
           <h3>Opening a hand-off</h3>
-          <p>A developer opens the zip with <em>Open</em>, <em>Open a hand-off (.zip)</em> (a button on the page shown while no project is open, too). The app keeps its own copy and opens it read only: everything can be looked at and played, and nothing can change. A hand-off unzipped by hand opens read only too. The Overview's project line reads the version, the date and who handed it off; <em>Export</em> opens the PDD and the Technical details the zip came with. A newer version is a zip of its own, opened the same way.</p>
+          <p><em>Open a hand-off (.zip)</em> is also a button on the page shown while no project is open. The app keeps its own copy of the hand-off. A hand-off unzipped by hand opens read only too. The Overview's project line reads the version, the date and who handed it off; <em>Export</em> opens the PDD and the Technical details the zip came with. A newer version is a zip of its own, opened the same way.</p>
           <h3>The Technical details</h3>
           <p>A spreadsheet of what the recording holds for a developer: every click, entry and choice of the reference transaction with the control it acted on and how the recorder identified it, every field with what was entered in each transaction (a password was never recorded), the values typed again in another system, and the programs. <em>Export</em>, <em>Technical details (.xlsx)</em> writes it on its own too.</p>
         </section>
@@ -583,7 +688,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
           </table>
-          <p class="help-hint">Undo covers every edit (steps, markers, document fields, the edited maps, the video, a stretch left out of the analysis, a removed transcript), up to 50, until you open another project. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map there.</p>
           <h3>Clicks</h3>
           <ul class="help-list">
             <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>

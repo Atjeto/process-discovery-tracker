@@ -1,0 +1,269 @@
+# How to use PDT
+
+This guide gets a process manager started with the Process Discovery Tracker
+(PDT). It follows one example: an order-to-cash process. The SME recorded
+four orders. For each order they found the customer in Salesforce, entered
+the order, created the sales order in SAP, updated the tracking sheet in
+Excel and sent the confirmation email from Outlook.
+
+In the app, the same guide is Help, *Getting started* (the ? in the top
+bar).
+
+## What PDT does
+
+1. The SME records the process a few times: each pass is a transaction, for
+   example one order.
+2. PDT drafts the steps of each transaction and draws the process map.
+3. You fix and name the steps of one transaction, the reference transaction,
+   and confirm it.
+4. You write the document fields, and PDT writes the PDD with the map.
+5. You hand the PDD and the whole project to the developers as a numbered
+   version.
+
+## Start a project
+
+- **From the SME's recording.** The SME records with the capture app and
+  sends you the zip it makes (*Make a zip for the analyst*). Right-click the
+  zip and choose *Extract All*. In PDT, choose *Open*, *Open project...* and
+  pick the folder it made. PDT analyzes the recording by itself: the top bar
+  says *Updating steps and map...* until it is done.
+- **From a video.** Choose *New*, *New project from a video...* and pick the
+  video, for example a Teams recording of the SME at work. Then name the
+  project: its folder is made where you save it, with a copy of the video.
+  You add the steps as you watch.
+- **From nothing.** Choose *New*, *New empty project...* and name the
+  project. You add the steps by hand.
+
+Help, *Recording keys*, lists what to tell the SME before they record.
+
+## Your first hour
+
+The Overview's *Checklist* lists the main acts below and ticks each one when
+it is done; its button takes you to the next.
+
+1. **Attach the video and the transcript.** On the Overview, click *Attach*
+   after *No video* and pick the video. PDT opens the Timeline: pause the
+   video at a moment you recognize, click *Mark frame*, then click the same
+   moment on the timeline. The video is copied into the project folder.
+   Attach the meeting transcript (a Teams .vtt or .docx) with *Attach* after
+   *No transcript*: the synced video places its sentences in time. Without a
+   video, *Sync* on the Timeline's *Transcript* lane places it: pick a
+   sentence, then click where it was said.
+2. **Check the transactions.** On the Timeline, each transaction is a band,
+   from *Order #10900* to *Order #10903*. If one is missing, right-click the
+   timeline where it starts, choose *Start a transaction here...*, then
+   click *Apply marker changes* in the top bar.
+3. **Name the steps of the reference transaction, or pick them from the
+   library.** In Steps, transaction 1 is the reference transaction. Where
+   the recorder cut a step wrongly, split or merge it first (see *Everyday
+   tasks*). Then click each step and type its name in the step pane: the
+   step that ends at *Save order* becomes *Enter the order in Salesforce*.
+   The same drafted step in the other transactions takes the name too. Where
+   the library has activities for the step's system, the *Name* field lists
+   them: pick one instead of typing.
+4. **Write short descriptions.** *Description* in the step pane is the text
+   the PDD prints under the step. One or two sentences are enough, for
+   example: *Search the account by customer ID and open it.* The grey text
+   in an empty *Description* is what the recorder saw; the PDD does not
+   print it. With a transcript, *Said during this step* lists what the SME
+   said then, and *Add* copies a sentence into the description.
+5. **Set the flow where it branches or loops.** Transaction 3 sent no
+   confirmation email. On *Send the confirmation email*, click *Only
+   when...* and type *the customer asked for a confirmation*. In transaction
+   2 the SME looked up a mapping in Notepad and did the SAP steps again. On
+   *Create the sales order in SAP*, click *Go to...*, pick *Check the sales
+   order in SAP* and type when: *SAP rejects the material number*. The map
+   draws both.
+6. **Confirm the transaction.** Click *Confirm transaction* (Ctrl+Enter).
+   The steps you did not change are accepted as they are. *Undo confirm*,
+   beside the *Confirmed* badge, takes it back.
+7. **Look at how the other transactions differ.** Open transactions 2, 3 and
+   4 in Steps. Each lists how it differs from the reference transaction.
+   Transaction 2 has an extra step (the Notepad lookup) and repeated steps.
+   Transaction 3 reads *Not done* for the email, which is no difference once
+   the email has its condition. Transaction 4 has no differences. The other
+   transactions are not confirmed.
+8. **Fill the document fields on the Overview.** Open *Document* and write
+   each field: title, purpose, scope, trigger, result, key contacts,
+   business rules, exceptions, and the improvement and automation scope
+   (notes are optional). For example, the title *Order to cash* and the
+   trigger *A customer order arrives by email*. The PDD prints each field in
+   its own place, and the title names the files PDT makes: *Order to cash
+   PDD.docx*. With a transcript, *Add to* puts a sentence into a field. The
+   *Observations* under the document are measured from the recording (here,
+   the product code is typed again in SAP as the material number), and the
+   PDD prints them too.
+9. **Check the Map.** The Map shows the map the PDD prints: a box per step
+   in its system's colour, and the decisions from the flow you set. Click a
+   box to see each time the step happened, with its moment in the video and
+   its screenshots. *Show how the transactions ran* shows the paths the
+   transactions took; point at a line to see how often.
+10. **Export the PDD.** Choose *Export*, *PDD (.docx)* and save it. Its
+    folder opens with the file selected. The PDD is written again from the
+    project each time, so export again after a change.
+
+## Everyday tasks
+
+### Add a step the recorder missed
+
+1. In Steps, select the step it comes after.
+2. Click *+ Add step* (or press N), type its name and click *Add step*.
+3. In the step pane, set its *System*. Alt+Up and Alt+Down move it.
+4. With a video, you can instead pause the video at that moment on the
+   Timeline and click *+ Step* (or press S): the step gets that time.
+
+### Split or merge steps
+
+1. Select the step in Steps and open *More* in the step pane.
+2. To split it, click the scissors after the recorded action where the first
+   part ends.
+3. To merge it with the next step, click *Merge with next*. To merge
+   several, tick them in the list and click *Merge selected*.
+4. A merge is made in the other transactions too, but a name you then give
+   the merged step is not: give it the same name in each transaction, so the
+   map keeps one box.
+
+### Add a screenshot, a note or a file
+
+1. Select the step in Steps.
+2. *Add screenshot*: a frame of the video, a pasted image (Ctrl+V) or an
+   image file. *Use in PDD* picks the one the PDD prints under the step.
+3. *Add note*: notes stay in the app, beside the step on the Map; the PDD
+   does not print them.
+4. *Attach file...*: for example the input data set or an example email. It
+   is copied into the project folder, and the PDD lists it. For a file of
+   the whole project, use *Add file...* under the document fields on the
+   Overview.
+
+### Leave out an app or a stretch of the recording
+
+1. An app, for example Teams during the call: in Steps, click *Apps outside
+   the process...*, tick the app and click *Save*.
+2. A stretch, for example a break: on the Timeline, hold Shift and drag
+   across it, click *Leave out of the analysis*, then *Leave out*.
+3. The steps and the map are drafted again without it. A stretch left out
+   shows hatched: click it and choose *Include again* to bring it back.
+
+### Make a sub-process
+
+1. To give a step its own steps, select it and click *Open as a
+   sub-process*: *Enter the order in Salesforce* gets one step per field and
+   click, from *Enter Product code* to *Click Save order*.
+2. To group steps, tick steps that follow one another, click *Group into a
+   sub-process...* and name it, for example *Book the order in SAP*.
+3. Click *▸ 6 sub-steps* on its row to open it; the line above the list goes
+   back up. *Dissolve sub-process* undoes it.
+4. In the PDD, each sub-process gets a chapter with its own map.
+
+### Edit the map as your As-Is map, and make a To-Be copy
+
+1. On the Map, click *Edit as the As-Is map*. The editor opens on a copy of
+   the process map. Change it: the copy is kept once you change something.
+2. Close the editor. The PDD now prints your As-Is map in place of the
+   process map, and an analysis never changes it.
+3. For the To-Be map, click *Edit a new copy*, set *Use in PDD as* to *To-Be
+   map* and change the copy. The PDD prints it under the improvement scope.
+4. *Edited maps* lists your copies, with *Edit*, *Duplicate* and *Delete*.
+
+### Open a second project in a new window
+
+1. Choose *Open in a new window...* in the *Open* menu, and pick the project
+   folder.
+2. It opens in a window of its own, and the project you had open stays open.
+3. A project opens for editing in one window only: in a second window it
+   opens read only.
+
+### Undo
+
+1. Press Ctrl+Z to undo your last change, and Ctrl+Y to redo it.
+2. Undo covers every change (steps, markers, document fields, edited maps,
+   the video, a stretch left out, a removed transcript), up to 50, until you
+   open another project.
+3. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the
+   map.
+
+## Hand over to the developers
+
+1. Choose *Hand off...* in the *Export* menu.
+2. Type what changed in this version (for version 1 it says *First hand-off*
+   already) and click *Hand off*.
+3. PDT makes *Order to cash v1.zip* next to the project folder and opens its
+   folder. Send that zip to the developers.
+
+**What the zip holds.** The whole project folder, and at its top the PDD and
+the Technical details of that version: *Order to cash v1 PDD.docx* and
+*Order to cash v1 Technical details.xlsx*. The Technical details is a
+spreadsheet for the developers: every click and entry of the reference
+transaction with the control it acted on, the fields typed in each
+transaction, and the applications.
+
+**How a developer opens it.** In PDT, choose *Open*, *Open a hand-off
+(.zip)...* and pick the zip. It opens read only: everything can be looked at
+and played, and nothing can change.
+
+**The next version.** Keep working in your project, then choose *Hand
+off...* again: PDT makes *Order to cash v2.zip*. The PDD says which version
+it is and lists every version with what changed. Ctrl+Z takes a hand-off
+back; its zip stays.
+
+## Where things are kept
+
+- **The project folder** holds everything: the recording, your work, the
+  video, the transcript, screenshots, attached files, the library and your
+  edited maps. Copy it whole, never in parts.
+- **Every change you make saves itself to the project folder.** The top bar
+  says *Saved*; point at it to see the folder. If it says *Not saved*, point
+  at it to see why.
+- **Made on export:** the PDD, the map (as an image or as BPMN) and the
+  Technical details go where you save them. *Whole project (.zip)* and *Hand
+  off...* make their zip next to the project folder. Every export opens its
+  folder with the file selected.
+- **Handing it on.** To hand the project to someone, use *Export*, *Whole
+  project (.zip)*: one zip of the folder, made next to it. For the
+  developers, use *Hand off...* instead.
+
+## The library
+
+The library lists named activities for each system: for SAP, for example,
+*Create sales order*. In the step pane, click the *Name* field: it lists the
+activities of the step's system, and a pick gives the step its name, its
+system and, when you wrote none, its description. You can still type any
+name. Where the library has no activities for the system yet, the field says
+so. A project keeps the library it started with, so a newer library does not
+change it. The owner of PDT maintains the library, and it comes with the
+app.
+
+## When something looks wrong
+
+- **"This folder is not a project: it has no manifest.json."** The folder
+  holds no recording. Unzip the SME's zip first (right-click it, *Extract
+  All*) and open the folder it makes.
+- **"This recording has no transactions marked."** The SME did not press the
+  transaction key. On the Timeline, right-click where each transaction
+  starts, choose *Start a transaction here...*, then click *Apply marker
+  changes*.
+- **"The analysis failed, so the steps and the map are not drafted."** The
+  log at the top says why. Choose Help, *Troubleshooting*, *Re-analyze*:
+  your confirmed, edited, added and hidden steps are kept.
+- **"The As-Is map was made before the steps changed: check it, or Copy
+  again."** On the Map, edit your As-Is map to match the steps, or click
+  *Copy again* for a new copy of the process map as it is now.
+
+## Glossary
+
+| Word | Meaning |
+|---|---|
+| Project | What you open or start in PDT: one folder with the recording or video, your work and all you add. |
+| Request | The name of what the SME is asked to record, set in the capture app's *Recording setup*. The Overview shows it on the project line. |
+| SME | The subject matter expert who does the process and records it. |
+| Transaction | One pass through the process, for example one order. |
+| Step | One piece of work in a transaction, for example *Create the sales order in SAP*. |
+| Reference transaction | The transaction you name, fix and confirm; the PDD is built around it. |
+| Sub-process | A step with steps of its own. |
+| Process map | The map PDT draws from the steps. |
+| As-Is map | Your edited copy of the process map; the PDD prints it in its place. |
+| To-Be map | A copy you change to show the process as it should be. |
+| PDD | The Process Definition Document: the Word document PDT writes. |
+| Technical details | The spreadsheet for the developers that comes with a hand-off. |
+| Hand-off | A numbered version for the developers: one zip. |
+| Library | The named activities per system that a step's *Name* field lists. |

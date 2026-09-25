@@ -225,6 +225,13 @@ implementation notes
   Checklist say so, and *Copy again* makes a fresh copy of the process map,
   which takes the old copy's place in the PDD once you change something in
   it.
+- **A How-to guide for process managers**: `docs/HOW-TO.md`, short and led
+  by one order-to-cash example (start a project, the first hour, everyday
+  tasks, the hand-off, where things are kept, the library, the messages
+  that need an act, a glossary). Help opens on it as *Getting started*, in
+  the same words, and `docs/PDT-How-to.docx`, made from it by
+  `scripts/make-howto-docx.py`, is the Word copy the build puts in `dist/`
+  to hand out.
 
 ### Changed
 

@@ -23,6 +23,7 @@ The index has two parts:
 
 | You want to | Read |
 |---|---|
+| Use the app as a process manager | [HOW-TO.md](HOW-TO.md) (the same guide as `PDT-How-to.docx` and the viewer's Help, Getting started) |
 | Know where the project is going and why | [To-Do/BA-HELPER-PLAN-2026-09-22.md](To-Do/BA-HELPER-PLAN-2026-09-22.md), [adr/0029-ba-helper-refocus.md](adr/0029-ba-helper-refocus.md) |
 | Understand the whole system fast | [architecture/OVERVIEW.md](architecture/OVERVIEW.md) |
 | Work with session files | [architecture/DATA-MODEL.md](architecture/DATA-MODEL.md), [../shared/SCHEMA.md](../shared/SCHEMA.md) |
@@ -106,7 +107,9 @@ enforces the numbering). The decisions that shape the light version:
 | [../SECURITY.md](../SECURITY.md), [Security-QA.md](Security-QA.md) | Threat model; one-page Q&A for a corporate security review |
 | [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and the guard for each, how to drive the viewer, the DOM handles of every surface |
 | [FEATURES.md](FEATURES.md) | What the light version does, by component (the product edition's catalogue is on its branch) |
-| `User-Guide.docx` | The product edition's generated user guide (binary, built by `build-user-guide.js`). No longer copied into a release: the in-app Help is the light version's guide |
+| [HOW-TO.md](HOW-TO.md) | The process managers' guide: start a project, the first hour, everyday tasks, the hand-off, a glossary. The viewer's Help, Getting started, says it in the same words (`e2e/session-smoke.js` checks every sentence) |
+| `PDT-How-to.docx` | The same guide as a Word file to hand out (binary, made from HOW-TO.md by `scripts/make-howto-docx.py`; the build copies it into `dist/`) |
+| `User-Guide.docx` | The product edition's generated user guide (binary, built by `build-user-guide.js`). No longer copied into a release: `PDT-How-to.docx` is the light version's guide |
 | [../capture/README.md](../capture/README.md), [../viewer/README.md](../viewer/README.md), [../normalization/README.md](../normalization/README.md), [../e2e/README.md](../e2e/README.md) | Component quick-starts |
 | [claude-skills/README.md](claude-skills/README.md) | Frozen 2026-07-03 snapshot of the skills pack (the live copy is user-global) |
 

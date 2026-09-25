@@ -335,8 +335,16 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "WARNING: SBOM generation failed; continuing anyway." -ForegroundColor Yellow
 }
 
-# No user guide file: the v0.2-era docs\User-Guide.docx described the product
-# edition, and the viewer's Help (its ? button) is the guide now (lane FX4).
+# The process managers' guide to hand out (lane HT): docs\PDT-How-to.docx,
+# made from docs\HOW-TO.md by scripts\make-howto-docx.py, the same words as
+# the viewer's Help, Getting started. It lands in dist\ as the old
+# User-Guide.docx did (that one described the product edition; lane FX4 cut it).
+$howTo = Join-Path $repoRoot "docs\PDT-How-to.docx"
+if (Test-Path $howTo) {
+  Copy-Item $howTo (Join-Path $distDir "PDT-How-to.docx")
+} else {
+  Write-Host "WARNING: docs\PDT-How-to.docx not found (run viewer\python\python.exe scripts\make-howto-docx.py); dist has no guide file." -ForegroundColor Yellow
+}
 
 # Security docs that recipients / security teams want
 foreach ($doc in @("SECURITY.md", "LICENSE", "docs\Security-QA.md")) {
@@ -373,11 +381,13 @@ embeddable and the normalization pipeline already installed in
 - No Python install required: the viewer finds its bundled interpreter.
 - Size on disk: $([math]::Round($viewerSize / 1MB, 1)) MB.
 
-### The guide
-The viewer's Help (the ? button in its top bar) is the guide: from a
-recording to the PDD, the Steps and the Map, the recording keys to tell the
-SME, handing a version to the developers, the shortcuts and troubleshooting.
-The capture app has its own Help in its tray menu.
+### PDT-How-to.docx
+The guide for process managers, to hand out: starting a project, the first
+hour, everyday tasks, handing a version to the developers, and a glossary.
+The viewer's Help (the ? button in its top bar) opens on the same guide,
+Getting started, and says more about the Steps, the Map, the recording keys
+to tell the SME, hand-offs, the shortcuts and troubleshooting. The capture
+app has its own Help in its tray menu.
 
 ### Security artifacts (for corp security review)
 - ``SECURITY.md``: threat model, data flows, network behavior, Electron hardening, input validation, dependency audit status, vulnerability reporting.

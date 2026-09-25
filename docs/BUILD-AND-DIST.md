@@ -25,7 +25,7 @@ Releases ship **unsigned** ([ADR-0026](adr/0026-distribution-unsigned-and-servic
 
 `build-distribution.ps1` keeps a `-CertThumbprint` parameter (signs every `.exe` via `signtool` when set) ready for a *future owner-held* certificate, but **do not pass it** for current releases: omitting it (the default) ships unsigned, build unchanged.
 
-The build no longer copies `docs/User-Guide.docx` into `dist/`: that guide described the v0.2-era product edition, and the viewer's in-app Help (the ? button) is the guide.
+The build copies `docs/PDT-How-to.docx`, the process managers' guide, into `dist/` beside the release folder. It is made from `docs/HOW-TO.md` by `scripts/make-howto-docx.py` (run it with `viewer/python/python.exe` after a change to the guide); the viewer's Help, Getting started, holds the same guide. The old `docs/User-Guide.docx` described the v0.2-era product edition and is no longer copied.
 
 ## The C# recorder sidecar
 

@@ -311,10 +311,13 @@ Steps with a selected step scrolls its row into view once.
 **Help** (`#help-modal`) holds the analyst's guide in eight sections
 (Getting started, Steps, Map, Markers, Recording keys, Hand-offs,
 Shortcuts, Troubleshooting), the version, and *Re-analyze*
-(Troubleshooting) for an analysis that stopped. Getting started says what
-a transaction is, what each block of the Overview shows, that every change
-saves itself and how a project is handed over; Hand-offs says how a
-version reaches the developers and how they open it.
+(Troubleshooting) for an analysis that stopped. Getting started is the
+process managers' guide, `docs/HOW-TO.md` in the same words
+(`e2e/session-smoke.js` checks every sentence against the document): what
+PDT does, starting a project, the first hour, everyday tasks, the hand-off,
+where things are kept, the library, the messages that need an act, and a
+glossary. The other sections say more about each part; Hand-offs adds what
+a version's PDD says and how a hand-off opens.
 
 ## 3. Module map
 

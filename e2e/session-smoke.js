@@ -21,6 +21,8 @@
  *     New and Open two menus, the Transaction select on the Timeline only
  *     ("Transaction 1 · <label>"), the version in Help, the active level
  *     legible under the mouse,
+ *   - Help opens on Getting started, the process managers' guide, which says
+ *     what docs/HOW-TO.md says in the same words (lane HT),
  *   - the Overview's Applications and time: the PDD's section 6 as
  *     analysis.json holds it (lane CC, one source), the time of every
  *     transaction and of every system; no dot strip, no total, no editor,
@@ -138,6 +140,37 @@ function bpmnFirstTasks(file) {
 async function shot(page, name) {
   const p = path.join(OUT, name);
   await page.screenshot({ path: p, fullPage: true }).catch((e) => console.log("shot fail", name, e.message));
+}
+
+/* Lane HT: docs/HOW-TO.md, the process managers' guide, as Help's Getting
+   started must follow it: its sections (##), the everyday tasks (### under
+   Everyday tasks), the first hour's acts (the bold lead of each numbered
+   item), the glossary's words (the table's first column), and its whole text
+   with the Markdown marks taken out. A block is a paragraph, a heading, a
+   list item or a table row, its wrapped lines joined. */
+function howToDoc() {
+  const md = fs.readFileSync(path.join(REPO, "docs", "HOW-TO.md"), "utf-8").replace(/\r\n/g, "\n");
+  const blocks = [];
+  for (const line of md.split("\n")) {
+    if (!line.trim()) { blocks.push(null); continue; }
+    const opens = /^(#|\||- |\d+\. )/.test(line);
+    const last = blocks[blocks.length - 1];
+    if (opens || last == null || /^(#|\|)/.test(last)) blocks.push(line.trim());
+    else blocks[blocks.length - 1] = last + " " + line.trim();
+  }
+  const heads = [], tasks = [], acts = [], rows = [];
+  let section = null;
+  for (const b of blocks.filter(Boolean)) {
+    if (b.startsWith("## ")) { section = b.slice(3).trim(); heads.push(section); continue; }
+    if (b.startsWith("### ") && section === "Everyday tasks") tasks.push(b.slice(4).trim());
+    const act = section === "Your first hour" && /^\d+\. \*\*(.+?)\*\*/.exec(b);
+    if (act) acts.push(act[1]);
+    const row = section === "Glossary" && /^\|([^|]+)\|/.exec(b);
+    if (row && !/^[\s:-]+$/.test(row[1])) rows.push(row[1].trim());
+  }
+  const plain = blocks.filter((b) => b && !/^\|[\s|:-]+\|$/.test(b)).join(" ")
+    .replace(/\*/g, "").replace(/\|/g, " ").replace(/\s+/g, " ");
+  return { heads, tasks, acts, terms: rows.slice(1), plain };   // rows[0] is the header row
 }
 
 /* Lane MV: the Map opens on the map the PDD prints, and analyzes first when
@@ -580,6 +613,63 @@ async function unreadableAnnotationsPin() {
     !escMenus.err && ["btn-new-menu", "btn-recent-menu", "btn-session-export-menu"].every((b) =>
       escMenus[b] && escMenus[b].open && escMenus[b].after.length === 0 && escMenus[b].focus === b),
     JSON.stringify(escMenus));
+
+  // Lane HT: Help opens on Getting started, the process managers' guide, and
+  // it is docs/HOW-TO.md in the same words: the same sections in the same
+  // order, the same everyday tasks, the first hour's ten acts and the
+  // glossary's words; every sentence on the page is found word for word in
+  // the document (the page may leave a sentence out, never say it in other
+  // words). No dash punctuation, and nothing wider than the Help's body.
+  const helpStart = {};
+  try {
+    helpStart.doc = howToDoc();
+    await page.locator("#btn-help").click({ timeout: 15000 });
+    helpStart.state = await page.evaluate(() => {
+      const sec = document.querySelector('.help-section[data-section="start"]');
+      const body = document.querySelector(".help-body");
+      const nav = document.querySelector(".help-nav-item.active");
+      const txt = (el) => (el ? el.textContent : "").replace(/\s+/g, " ").trim();
+      const heads = [], tasks = [], acts = [], terms = [];
+      let h = null;
+      for (const el of sec ? [...sec.children] : []) {
+        if (el.tagName === "H3") { h = txt(el); heads.push(h); continue; }
+        if (h === "Everyday tasks" && el.tagName === "P" && el.children.length === 1 &&
+          el.firstElementChild.tagName === "STRONG" && txt(el) === txt(el.firstElementChild)) tasks.push(txt(el));
+        if (h === "Your first hour" && el.tagName === "OL") {
+          for (const li of el.children) acts.push(txt(li.querySelector(":scope > strong")));
+        }
+        if (h === "Glossary" && el.tagName === "TABLE") for (const tr of el.querySelectorAll("tr")) terms.push(txt(tr.cells[0]));
+      }
+      return {
+        active: nav ? nav.dataset.section : null,
+        first: (document.querySelector(".help-nav-item") || { dataset: {} }).dataset.section,
+        firstLabel: txt(document.querySelector(".help-nav-item")),
+        shown: !!sec && sec.classList.contains("active") && sec.getClientRects().length > 0,
+        heads, tasks, acts, terms,
+        blocks: sec ? [...sec.querySelectorAll("h3, p, li, dt, dd, td")].map(txt) : [],
+        text: txt(sec),
+        wide: body ? body.scrollWidth - body.clientWidth : null,
+      };
+    });
+    await page.keyboard.press("Escape");
+  } catch (e) { logActionError("HT Help Getting started", e); helpStart.err = String(e.message).split("\n")[0]; }
+  const hs = helpStart.state || {}, hd = helpStart.doc || {};
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // Each block's sentences: a sentence ends at . ! or ? before a capital, a
+  // quote or a bracket.
+  const unmatched = (hs.blocks || []).flatMap((b) => b.split(/(?<=[.!?])\s+(?=[A-Z"(])/))
+    .filter((s) => s && !(hd.plain || "").includes(s));
+  record("lane HT: Help opens on Getting started, the guide of docs/HOW-TO.md in its words: the same sections, everyday tasks, " +
+    "first-hour acts (ten) and glossary words, every sentence of the page found in the document, no dash punctuation, nothing wider than the Help",
+    !helpStart.err && hs.active === "start" && hs.first === "start" && hs.firstLabel === "Getting started" && hs.shown &&
+      hd.heads.length === 9 && same(hs.heads, hd.heads) &&
+      hd.tasks.length === 8 && same(hs.tasks, hd.tasks) &&
+      hd.acts.length === 10 && same(hs.acts, hd.acts) &&
+      hd.terms.length >= 10 && same(hs.terms, hd.terms) &&
+      (hs.blocks || []).length > 60 && unmatched.length === 0 &&
+      !/[\u2013\u2014]| - |--/.test(hs.text || "") && hs.wide === 0,
+    JSON.stringify({ err: helpStart.err, active: hs.active, heads: hs.heads, tasks: hs.tasks, acts: (hs.acts || []).length,
+      terms: (hs.terms || []).length, blocks: (hs.blocks || []).length, unmatched: unmatched.slice(0, 3), wide: hs.wide }));
 
   // Lane FX3 (validation pass 3, F13): Help has a Map section: the two views,
   // the picker, the As-Is and To-Be maps, Edited maps and the two map exports.
