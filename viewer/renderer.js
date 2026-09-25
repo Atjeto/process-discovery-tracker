@@ -25,7 +25,7 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING, syncRawEventsShown } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING, syncRawEventsShown } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
@@ -1291,8 +1291,12 @@ function _closeOtherTopMenus(keep) {
    Two menus (owner review 2026-09-24, AD-29). New: "New project from a
    video..." and "New empty project..." (C16, flow-view's newProject). Open:
    "Open project..." (its click is flow-view's openSessionFlow; a recorder's
-   folder opens here too), then the recent projects, reachable from every
-   level. */
+   folder opens here too), "Open in a new window..." (lane MW, flow-view's
+   openInNewWindowFlow), then the recent projects, reachable from every
+   level, each with a button that opens it in a new window. */
+const NEW_WINDOW_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/>' +
+  '<path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 function renderRecentMenu() {
   const host = document.getElementById("recent-menu-content");
   if (!host) return;
@@ -1304,11 +1308,16 @@ function renderRecentMenu() {
       let missing = false;
       try { missing = !fs.existsSync(r.folder); } catch (_) { missing = true; }
       const label = r.label || path.basename(r.folder);
-      return '<button class="recent-menu-item' + (missing ? " missing" : "") + '" ' +
+      const item = '<button class="recent-menu-item' + (missing ? " missing" : "") + '" ' +
         'data-kind="session" data-folder="' + escapeHtml(r.folder) + '">' +
         '<span class="ri-label">' + escapeHtml(label) + '</span>' +
         (missing ? '<span class="ri-tag">missing</span>' : "") +
         '</button>';
+      // Lane MW: a project that is there opens in a new window too.
+      const newWindow = missing ? "" : '<button type="button" class="recent-menu-newwin" data-folder="' +
+        escapeHtml(r.folder) + '" title="Open in a new window" aria-label="' +
+        escapeHtml("Open " + label + " in a new window") + '">' + NEW_WINDOW_ICON + "</button>";
+      return '<div class="recent-menu-row">' + item + newWindow + "</div>";
     }).join("");
   }
   if (!html) {
@@ -1319,6 +1328,12 @@ function renderRecentMenu() {
     item.addEventListener("click", () => {
       toggleRecentMenu(false);
       loadSessionIntoView(item.dataset.folder);
+    });
+  });
+  host.querySelectorAll(".recent-menu-newwin").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      toggleRecentMenu(false);
+      openInNewWindow(btn.dataset.folder);
     });
   });
 }
@@ -1337,7 +1352,7 @@ function toggleRecentMenu(force) {
     e.stopPropagation();
     toggleRecentMenu();
   });
-  for (const id of ["btn-open-session", "btn-open-handoff"]) {
+  for (const id of ["btn-open-session", "btn-open-new-window", "btn-open-handoff"]) {
     const item = document.getElementById(id);
     if (item) item.addEventListener("click", () => toggleRecentMenu(false));
   }

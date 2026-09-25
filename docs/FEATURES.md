@@ -322,6 +322,13 @@ The viewer says *transaction* for one pass through the process and
   and played, and nothing can change. Its project line reads "Version 2,
   handed off <date> by <name> · Read only". A newer version is a zip of its
   own, opened the same way.
+- **Several projects at once**: *Open*, *Open in a new window...* (or the
+  button beside a recent project) opens another project in a new window,
+  and the one on screen stays open; starting the app again opens a new
+  window too. Each window is named after its project. A project already
+  open for editing in another window opens read only, its project line
+  "Open in another window: read only here". Closing a window closes only
+  its project.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
   and a dark theme.
 - **An unreadable annotations file** is said in a banner, which is all the

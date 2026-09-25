@@ -1021,6 +1021,11 @@ const GUIDE_READ_ONLY = {
   [GUIDE_OUTSIDE]: "These steps fall outside every marked transaction.",
   [GUIDE_LEVEL]: "The steps of this sub-process in this transaction.",
 };
+/* Lane MW: the same, for a project open for editing in another window,
+   which is no handed off version. */
+const GUIDE_ELSEWHERE = Object.assign({}, GUIDE_READ_ONLY, {
+  [GUIDE_PATTERN]: "This is the reference transaction. It is not confirmed yet.",
+});
 
 function renderRunGuide(host, model, pattern, ref) {
   if (!host) return;
@@ -1048,8 +1053,12 @@ function renderRunGuide(host, model, pattern, ref) {
     paras = [model.runs.length ? "Pick a transaction on the left to see its steps." : "Pick a step on the left."];
   }
   if (title) title.textContent = head || "Steps";
-  // Lane HV: a hand-off opened read only is looked at, not worked on.
-  if (RO.isReadOnly(State.getSession())) paras = paras.map((p) => (p in GUIDE_READ_ONLY ? GUIDE_READ_ONLY[p] : p)).filter(Boolean);
+  // Lane HV: a hand-off opened read only is looked at, not worked on (lane
+  // MW: and so is a project open for editing in another window).
+  if (RO.isReadOnly(State.getSession())) {
+    const guides = RO.isOpenElsewhere(State.getSession()) ? GUIDE_ELSEWHERE : GUIDE_READ_ONLY;
+    paras = paras.map((p) => (p in guides ? guides[p] : p)).filter(Boolean);
+  }
   host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
     "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
 }

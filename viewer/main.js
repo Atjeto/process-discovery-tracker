@@ -2,10 +2,13 @@
  * Process Discovery Viewer -- Electron main process.
  *
  * One surface: the Session view (one session, video synced with the
- * timeline, steps, map, and exports).
+ * timeline, steps, map, and exports). Lane MW: one process with several
+ * windows, each showing one project at most (window-registry.js); a second
+ * start of the viewer opens a new window here.
  *
  * Renderer talks to main via IPC for file open dialogs, normalization
- * runs, and session file loads.
+ * runs, and session file loads. A handler answers the window that asked:
+ * its dialogs open over that window, and its reports go to it.
  */
 
 "use strict";
@@ -22,11 +25,11 @@ const fs = require("node:fs");
 const _underElectron = _electron && typeof _electron === "object" && _electron.ipcMain;
 const _noopIpc = { handle() {}, on() {} };
 // whenReady() returns a never-resolving promise under the shim so the
-// .then(createMainWindow) lifecycle hook never fires outside Electron.
+// .then(createWindow) lifecycle hook never fires outside Electron.
 const _noopApp = { whenReady() { return new Promise(() => {}); }, on() {}, quit() {} };
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = _underElectron
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = _underElectron
   ? _electron
-  : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} } };
+  : { app: _noopApp, BrowserWindow: { getAllWindows: () => [] }, ipcMain: _noopIpc, dialog: {}, shell: {}, Menu: { setApplicationMenu() {} }, screen: {} };
 const { runNormalize } = _underElectron ? require("./python-runner.js") : { runNormalize: async () => ({}) };
 const { runTranscriptImport, transcriptImportResult } = require("./python-runner.js");
 const AnnoStore = require("./annotations-store.js");
@@ -39,8 +42,13 @@ const ProjectZip = require("./project-zip.js");
 const ProjectFolder = require("./project-folder.js");
 const HandoffZip = require("./handoff-zip.js");
 const HandoffOpen = require("./handoff-open.js");
+const WindowRegistry = require("./window-registry.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 const { clearStaged } = require("./staged-outputs.js");
+
+/* Lane MW: the projects the windows show (window-registry.js). A project
+   open for editing in one window opens read only in another. */
+const _windows = WindowRegistry.createRegistry();
 
 /* Lane HV (contract C20): a hand-off zip opens read only, extracted under
    <userData>/handoffs (handoff-open.js), and so does a hand-off unzipped by
@@ -48,52 +56,60 @@ const { clearStaged } = require("./staged-outputs.js");
    handler below that writes a project folder, or runs the analysis that
    rewrites one, refuses such a folder first, before any dialog and before
    the save state hears of a write. The renderer shows no editing control
-   there; this is the sink that holds even when one slips through. */
+   there; this is the sink that holds even when one slips through. Lane MW:
+   the same for a project another window has open for editing, refused to
+   the window (`sender`, the IPC call's webContents) that shows it read only;
+   without `sender` only a hand-off is refused. */
 function _userData() {
   return typeof app.getPath === "function" ? app.getPath("userData") : null;
 }
 const READ_ONLY_ERROR = "this is a hand-off opened read only: nothing in it can change.";
-function _refuseReadOnly(sessionFolder) {
-  const root = path.resolve(String(sessionFolder || ""));
-  return sessionFolder && HandoffOpen.isReadOnlyProject(_userData(), root)
-    ? { ok: false, code: "READ_ONLY", error: READ_ONLY_ERROR } : null;
+const ELSEWHERE_ERROR = "this project is open in another window, so it is read only here.";
+function _refuseReadOnly(sessionFolder, sender) {
+  if (!sessionFolder) return null;
+  const root = path.resolve(String(sessionFolder));
+  if (HandoffOpen.isReadOnlyProject(_userData(), root)) return { ok: false, code: "READ_ONLY", error: READ_ONLY_ERROR };
+  return sender && _windows.readOnlyHere(sender.id, root) ? { ok: false, code: "READ_ONLY", error: ELSEWHERE_ERROR } : null;
 }
 
-let mainWindow = null;
+/* The window an IPC call came from: the dialogs it opens open over it. */
+function _winOf(e) {
+  return (e && e.sender && BrowserWindow.fromWebContents(e.sender)) || undefined;
+}
 
-/* Pull any --session=<path> off argv so we can preload a session
-   the capture app handed us. Filter file:// or http args defensively. */
-function parseInitialSessionArg() {
-  const args = process.argv.slice(1);
-  for (const a of args) {
-    if (typeof a !== "string") continue;
-    if (a.startsWith("--session=")) {
-      const p = a.slice("--session=".length);
-      try {
-        const abs = path.resolve(p);
-        if (fs.existsSync(path.join(abs, "manifest.json"))) return abs;
-      } catch (_) {}
-    }
+/* The --session=<folder> of a command line: the launch's (the capture app
+   hands a session over this way), or a second start's, with the folder it
+   started in (`cwd`). Only a folder that holds a manifest.json counts, so a
+   file:// or http argument never does. Else null. */
+function sessionArg(argv, cwd) {
+  for (const a of argv || []) {
+    if (typeof a !== "string" || !a.startsWith("--session=")) continue;
+    try {
+      const abs = path.resolve(String(cwd || process.cwd()), a.slice("--session=".length));
+      if (fs.existsSync(path.join(abs, "manifest.json"))) return abs;
+    } catch (_) {}
   }
   return null;
 }
-const initialSessionArg = parseInitialSessionArg();
+const initialSessionArg = sessionArg(process.argv.slice(1), process.cwd());
 
-// Module-scope handle for the currently-running normalize child
-// process. The runNormalize() caller registers here via onProc
-// so viewer:cancelNormalize can kill the one in flight.
-let _normalizeHandle = null;
-// The session folder that run is analyzing (resolved), or null. The analysis
-// starts by itself (on open, after Apps outside the process, inside the As-Is act and
-// the PDD export), so a run can be under way while the analyst works: the
-// pipeline reads annotations.json when it starts and replaces it when it
-// drafts, so a save in between would be lost (or would overwrite the new
-// drafts). The annotations writers below refuse while it lasts.
-let _normalizeFolder = null;
+/* The analyses running, one per window at most (a window runs its own one
+   at a time, flow-view.js runPipeline): the window's webContents id ->
+   { folder (resolved), handle (the child process's, for Cancel) }. The
+   analysis starts by itself (on open, after Apps outside the process, inside
+   the As-Is act and the PDD export), so a run can be under way while the
+   analyst works: the pipeline reads annotations.json when it starts and
+   replaces it when it drafts, so a save in between would be lost (or would
+   overwrite the new drafts). The annotations writers below refuse to write
+   a folder while it is analyzed, whichever window asked for the run. */
+const _analyses = new Map();
+function _analyzing(root) {
+  for (const run of _analyses.values()) if (run.folder === root) return true;
+  return false;
+}
 const ANALYSIS_RUNNING_ERROR = "the steps and the map are being updated. Make the change again once the update is done.";
 function _refuseWhileAnalyzing(root) {
-  return _normalizeFolder !== null && _normalizeFolder === root
-    ? { ok: false, code: "ANALYSIS_RUNNING", error: ANALYSIS_RUNNING_ERROR } : null;
+  return _analyzing(root) ? { ok: false, code: "ANALYSIS_RUNNING", error: ANALYSIS_RUNNING_ERROR } : null;
 }
 
 /* The save state in the top bar (save-state.js). Each write of a project
@@ -102,14 +118,16 @@ function _refuseWhileAnalyzing(root) {
    ok, error, code }. channel: "annotations", "video", "transcript",
    "screenshot" or "attachment". A handler that asks for a file first starts
    its write once the file is chosen, so a cancelled dialog writes nothing and
-   says nothing. The analysis and the exports report nothing. */
+   says nothing. The analysis and the exports report nothing. Lane MW: the
+   report goes to the window that wrote (`sender`, the IPC call's
+   webContents). */
 const NO_PROJECT = { code: "NO_PROJECT" };
-function _projectWrite(sessionFolder, channel) {
+function _projectWrite(sender, sessionFolder, channel) {
   const folder = path.resolve(String(sessionFolder || ""));
   let started = false;
   const send = (msg) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send("viewer:projectWrite", Object.assign({ folder, channel }, msg));
+    if (!sender || sender.isDestroyed()) return;
+    sender.send("viewer:projectWrite", Object.assign({ folder, channel }, msg));
   };
   const w = {
     start() {
@@ -172,8 +190,15 @@ function validateScreenshotOpen(p, roots = _knownSessionRoots) {
   return { ok: false, error: "Path is outside the active session's screenshots folder." };
 }
 
-function createMainWindow() {
-  mainWindow = new BrowserWindow({
+/* One window of the viewer (lane MW: there can be several). `sessionFolder`:
+   the project it opens as it loads (the launch's --session, Open in a new
+   window..., a second start of the viewer), or null for the start page. A
+   window opened beside another takes its size and sits a little lower and
+   to the right, inside the screen, so it is seen to be a new one. Closing it
+   lets its project go (window-registry.js) and stops an analysis it runs. */
+const WINDOW_STEP = 32;
+function createWindow(sessionFolder) {
+  const opts = {
     width: 1400,
     height: 900,
     title: "Process Discovery Viewer",
@@ -191,29 +216,51 @@ function createMainWindow() {
       experimentalFeatures: false,
       spellcheck: false,
     },
-  });
+  };
+  const beside = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
+  if (beside) {
+    const b = beside.getNormalBounds();
+    const area = screen.getDisplayMatching(b).workArea;
+    opts.width = b.width;
+    opts.height = b.height;
+    opts.x = Math.max(area.x, Math.min(b.x + WINDOW_STEP, area.x + area.width - b.width));
+    opts.y = Math.max(area.y, Math.min(b.y + WINDOW_STEP, area.y + area.height - b.height));
+  }
+  const win = new BrowserWindow(opts);
+  const id = win.webContents.id;
   /* Block any attempt to open external URLs from rendered content
      (e.g. malformed BPMN with an embedded link). */
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   /* Block in-page navigation away from the loaded index.html. */
-  mainWindow.webContents.on("will-navigate", (e, url) => {
+  win.webContents.on("will-navigate", (e, url) => {
     if (!url.startsWith("file://")) e.preventDefault();
   });
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
-  mainWindow.on("closed", () => { mainWindow = null; });
+  win.loadFile(path.join(__dirname, "index.html"));
+  // A page loaded (again) shows no project until it opens one: its hold goes
+  // as the page is navigated to, before anything on it can open a project.
+  win.webContents.on("did-navigate", () => { _windows.close(id); });
+  win.on("closed", () => {
+    _windows.close(id);
+    _newProjectPlans.delete(id);
+    // The killed run moves nothing into the project (normalize.py does that
+    // as its very last act); its handler below clears what it staged.
+    const run = _analyses.get(id);
+    if (run && run.handle) { try { run.handle.kill(); } catch (_) { /* it ended */ } }
+  });
 
-  // If the launcher passed --session=<path>, tell the renderer to open it.
-  if (initialSessionArg) {
-    mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow.webContents.send("viewer:openInitialSession", initialSessionArg);
+  // The project this window opens as it loads (read once, see CLAUDE.md).
+  if (sessionFolder) {
+    win.webContents.once("did-finish-load", () => {
+      if (!win.isDestroyed()) win.webContents.send("viewer:openInitialSession", sessionFolder);
     });
   }
+  return win;
 }
 
 /* --- IPC handlers ------------------------------------------------- */
 
-ipcMain.handle("viewer:openSessionFolder", async () => {
-  const r = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle("viewer:openSessionFolder", async (_e) => {
+  const r = await dialog.showOpenDialog(_winOf(_e), {
     title: "Open project",
     properties: ["openDirectory"],
   });
@@ -221,10 +268,23 @@ ipcMain.handle("viewer:openSessionFolder", async () => {
   return r.filePaths[0];
 });
 
+/* Lane MW: Open, Open in a new window... The project folder `folder` (the
+   one chosen, or the one recording folder it holds, project-folder.js)
+   opens in a new window, and the project on screen stays open. Result
+   { ok: true, folder } or { ok: false, error } (a sentence; then no window
+   opens). */
+ipcMain.handle("viewer:openInNewWindow", (_e, { folder } = {}) => {
+  let root;
+  try { root = ProjectFolder.resolveProjectFolder(String(folder || "")).folder; }
+  catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
+  createWindow(root);
+  return { ok: true, folder: root };
+});
+
 /* Lane HV: Open a hand-off (.zip). Windows' folder dialog, the one Open
    project shows, lists folders only, so a hand-off zip is picked here. */
-ipcMain.handle("viewer:openHandoffDialog", async () => {
-  const r = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle("viewer:openHandoffDialog", async (_e) => {
+  const r = await dialog.showOpenDialog(_winOf(_e), {
     title: "Open a hand-off",
     properties: ["openFile"],
     filters: [{ name: "Hand-off zip", extensions: ["zip"] }],
@@ -236,18 +296,29 @@ ipcMain.handle("viewer:openHandoffDialog", async () => {
 /* A project folder, or (lane HV) a hand-off zip: extracted under
    <userData>/handoffs, or found where it was extracted before
    (handoff-open.js), and its project folder opened read only. The result
-   then carries openedZip (the zip) and handoffReused. */
+   then carries openedZip (the zip) and handoffReused. Lane MW: the window
+   holds the project it loaded (_heldBy). */
 ipcMain.handle("viewer:loadSession", async (_e, sessionFolder) => {
   const chosen = String(sessionFolder || "");
   let isZip = false;
   try { isZip = /\.zip$/i.test(chosen) && fs.statSync(chosen).isFile(); } catch (_) { isZip = false; }
-  if (!isZip) return loadSessionData(chosen);
+  if (!isZip) return _heldBy(_e.sender, loadSessionData(chosen));
   const opened = await HandoffOpen.openHandoffZip(chosen, _userData());
-  return Object.assign(loadSessionData(opened.folder), { openedZip: path.resolve(chosen), handoffReused: opened.reused });
+  return _heldBy(_e.sender, Object.assign(loadSessionData(opened.folder), { openedZip: path.resolve(chosen), handoffReused: opened.reused }));
 });
 
+/* Lane MW: the window `sender` now shows the project `data` loaded, in
+   place of the one it showed (window-registry.js). A project another window
+   has open for editing opens read only here: readOnly true, and
+   openElsewhere true for the renderer's line "Open in another window: read
+   only here". */
+function _heldBy(sender, data) {
+  const held = _windows.open(sender.id, data.sessionFolder, data.readOnly);
+  return Object.assign(data, { readOnly: held.readOnly, openElsewhere: held.elsewhere });
+}
+
 ipcMain.handle("viewer:exportFile", async (_e, { sourcePath, suggestedName }) => {
-  const r = await dialog.showSaveDialog(mainWindow, {
+  const r = await dialog.showSaveDialog(_winOf(_e), {
     title: "Export",
     defaultPath: suggestedName || path.basename(sourcePath),
   });
@@ -257,7 +328,7 @@ ipcMain.handle("viewer:exportFile", async (_e, { sourcePath, suggestedName }) =>
 });
 
 ipcMain.handle("viewer:saveSvgFile", async (_e, { content, suggestedName }) => {
-  const r = await dialog.showSaveDialog(mainWindow, {
+  const r = await dialog.showSaveDialog(_winOf(_e), {
     title: "Export process map as SVG",
     defaultPath: suggestedName || "process-map.svg",
     filters: [{ name: "SVG image", extensions: ["svg"] }],
@@ -282,8 +353,12 @@ const _zipping = new Set();
 ipcMain.handle("viewer:exportProjectZip", async (_e, { sessionFolder } = {}) => {
   const root = _sessionRoot(sessionFolder);
   if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
-  if (_refuseReadOnly(root)) return { ok: false, code: "READ_ONLY", error: "A hand-off opened read only is not zipped again: the zip you opened is its zip." };
-  if (_normalizeFolder !== null && _normalizeFolder === root) {
+  const ro = _refuseReadOnly(root, _e.sender);
+  if (ro) {
+    return ro.error === ELSEWHERE_ERROR ? ro
+      : { ok: false, code: "READ_ONLY", error: "A hand-off opened read only is not zipped again: the zip you opened is its zip." };
+  }
+  if (_analyzing(root)) {
     return { ok: false, error: "The steps and the map are being updated: make the zip once the update is done." };
   }
   if (_zipping.has(root)) return { ok: false, error: "A zip of this project is being made already." };
@@ -310,13 +385,13 @@ ipcMain.handle("viewer:exportProjectZip", async (_e, { sessionFolder } = {}) => 
 ipcMain.handle("viewer:exportHandoffZip", async (_e, { sessionFolder, base, version, pdd, tech } = {}) => {
   const root = _sessionRoot(sessionFolder);
   if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
-  const ro = _refuseReadOnly(root);
+  const ro = _refuseReadOnly(root, _e.sender);
   if (ro) return ro;
   if (!Number.isInteger(version) || version < 1) return { ok: false, error: "The version number is missing." };
   for (const f of [pdd, tech]) {
     if (typeof f !== "string" || !fs.existsSync(f)) return { ok: false, error: "The PDD or the Technical details were not written." };
   }
-  if (_normalizeFolder !== null && _normalizeFolder === root) {
+  if (_analyzing(root)) {
     return { ok: false, error: "The steps and the map are being updated: hand off once the update is done." };
   }
   if (_zipping.has(root)) return { ok: false, error: "A zip of this project is being made already." };
@@ -495,14 +570,17 @@ function translatePipelineError(text) {
   return text;
 }
 
-/* One analysis at a time per viewer: while it runs, _normalizeFolder names its
-   session folder (the annotations writers refuse to write there, see above).
+/* One analysis at a time per window (flow-view.js runPipeline), and one of a
+   project at a time, whichever window asked: while it runs, _analyses names
+   its session folder (the annotations writers refuse to write there, see
+   above).
    Result contract for the renderer: { ok: true, ...runner result } on
    success; { ok: false, error } on failure, where `error` is the full sentence
    to show the analyst (for a non-zero normalize.py exit it carries the
    pipeline's "[normalize] ERROR:" line, see normalize-result.js), plus `code`
    (the exit code, or null) and `cancelled` when the analyst cancelled. */
 ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
+  const sender = _e.sender;
   let root;
   try {
     root = path.resolve(opts.sessionFolder);
@@ -510,8 +588,10 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       return { ok: false, code: null, error: "Analysis could not start: this is not a project folder (no manifest.json)." };
     }
     // Lane HV: the analysis rewrites the project's outputs; a hand-off opened
-    // read only keeps the ones it came with.
-    if (_refuseReadOnly(root)) return { ok: false, code: null, error: "Analysis does not run here: " + READ_ONLY_ERROR };
+    // read only keeps the ones it came with (lane MW: and so does a project
+    // open for editing in another window).
+    const ro = _refuseReadOnly(root, sender);
+    if (ro) return { ok: false, code: null, error: "Analysis does not run here: " + ro.error };
     // RP-04: normalize.py rewrites annotations.json. Never launch it over an
     // unreadable one (the pipeline's own check is C13 exit code 2; this guard
     // also covers a pipeline that predates it).
@@ -521,12 +601,16 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       error: e.code === "ANNOTATIONS_UNREADABLE" ? "Analysis stopped, nothing was changed: " + e.message
         : "Analysis could not start: " + e.message };
   }
+  if (_analyzing(root)) {
+    return { ok: false, code: null, error: "Analysis could not start: the steps and the map of this project are being updated in another window." };
+  }
   // C21: every analysis gets the app's activity library when there is one;
   // the first analysis of a project copies it into the project folder, and
   // from then on the pipeline reads the project's copy.
   const appLibrary = Library.appLibraryPath();
   const libraryPath = fs.existsSync(appLibrary) ? appLibrary : null;
-  _normalizeFolder = root;
+  const run = { folder: root, handle: null };
+  _analyses.set(sender.id, run);
   try {
     const result = await runNormalize({
       sessionFolder: root,
@@ -541,8 +625,8 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       techOut: opts.techOut || null,
       handoff: Number.isInteger(opts.handoff) && opts.handoff >= 1 ? opts.handoff : null,
       libraryPath,
-      onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
-      onProc: (h) => { _normalizeHandle = h; },
+      onLog: (text) => { if (!sender.isDestroyed()) sender.send("viewer:normalizeLog", translatePipelineError(text)); },
+      onProc: (h) => { run.handle = h; },
     });
     if (result && result.cancelled) {
       // Lane FX1: the killed run moved nothing into the project (normalize.py
@@ -558,14 +642,15 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
     if (e && e.signal) clearStaged(root);
     return resultFromRunnerError(e);
   } finally {
-    _normalizeHandle = null;
-    _normalizeFolder = null;
+    if (_analyses.get(sender.id) === run) _analyses.delete(sender.id);
   }
 });
 
-ipcMain.handle("viewer:cancelNormalize", () => {
-  if (_normalizeHandle) {
-    try { _normalizeHandle.kill(); } catch (_) {}
+/* Cancel: the analysis of the window that asked. */
+ipcMain.handle("viewer:cancelNormalize", (_e) => {
+  const run = _analyses.get(_e.sender.id);
+  if (run && run.handle) {
+    try { run.handle.kill(); } catch (_) {}
     return { ok: true };
   }
   return { ok: false, error: "No analysis in progress" };
@@ -575,9 +660,9 @@ ipcMain.handle("viewer:cancelNormalize", () => {
    Stored on the session's annotations under external_video so the raw
    manifest stays untouched. */
 ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const r = await dialog.showOpenDialog(mainWindow, {
+  const r = await dialog.showOpenDialog(_winOf(_e), {
     title: "Attach external video",
     properties: ["openFile"],
     filters: [{ name: "Video", extensions: ["mp4", "mkv", "webm", "mov", "avi"] }],
@@ -599,9 +684,9 @@ ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {
      and (lane FX2) while the project's analysis runs, which would refuse the
      entry's save and leave the copy in video/ unlisted.
      Result { ok, stored, copied, copyError } or { ok: false, error }. */
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "video");
+  const w = _projectWrite(_e.sender, sessionFolder, "video");
   w.start();
   try {
     const root = path.resolve(String(sessionFolder || ""));
@@ -646,12 +731,12 @@ function _sessionRoot(sessionFolder) {
    { ok: true, summary }, or { ok: false, code, error } (error: the script's
    reason; exit 2 and 3 leave the previous transcript in place). */
 ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "transcript");
+  const w = _projectWrite(_e.sender, sessionFolder, "transcript");
   const root = _sessionRoot(sessionFolder);
   if (!root) return w.end({ ok: false, code: null, error: "this is not a project folder." }, NO_PROJECT);
-  const r = await dialog.showOpenDialog(mainWindow, {
+  const r = await dialog.showOpenDialog(_winOf(_e), {
     title: "Attach transcript",
     properties: ["openFile"],
     filters: [{ name: "Teams transcript", extensions: ["vtt", "docx"] }],
@@ -671,9 +756,9 @@ ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => 
    removed, tag, files } (tag and files: what restoreTranscript puts back) or
    { ok: false, error }. */
 ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "transcript");
+  const w = _projectWrite(_e.sender, sessionFolder, "transcript");
   w.start();
   try {
     const root = _sessionRoot(sessionFolder);
@@ -696,9 +781,9 @@ ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
    of the same name attached since is kept). Result { ok: true, restored,
    kept } or { ok: false, error }. */
 ipcMain.handle("viewer:restoreTranscript", (_e, { sessionFolder, tag, files } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "transcript");
+  const w = _projectWrite(_e.sender, sessionFolder, "transcript");
   w.start();
   try {
     const root = _sessionRoot(sessionFolder);
@@ -714,9 +799,9 @@ ipcMain.handle("viewer:restoreTranscript", (_e, { sessionFolder, tag, files } = 
 /* Sync: rewrites transcript.json's offset_ms (atomically) and nothing else.
    Result { ok: true } or { ok: false, error }. */
 ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "transcript");
+  const w = _projectWrite(_e.sender, sessionFolder, "transcript");
   w.start();
   try {
     const root = _sessionRoot(sessionFolder);
@@ -739,8 +824,9 @@ function _holdDir(root) {
   return path.join(app.getPath("userData"), "pdt-removed", key);
 }
 
-/* The project chosen by the last chooseNewProject, made by createProject. */
-let _newProjectPlan = null;
+/* The project chosen by a window's last chooseNewProject, made by its
+   createProject: the window's webContents id -> the plan. */
+const _newProjectPlans = new Map();
 
 /* New project from a video / New empty project: the video (for a video
    project), then one save dialog for the project's name and where its folder
@@ -748,16 +834,16 @@ let _newProjectPlan = null;
    user's Documents). Result null (cancelled), { ok: true, name, folder } or
    { ok: false, error }. Nothing is made until createProject. */
 ipcMain.handle("viewer:chooseNewProject", async (_e, { kind } = {}) => {
-  _newProjectPlan = null;
+  _newProjectPlans.delete(_e.sender.id);
   const video = kind === "video";
   let videoPath = null;
   if (video) {
-    const r = await dialog.showOpenDialog(mainWindow, { title: "New project from a video: choose the video", properties: ["openFile"], filters: VIDEO_FILTER });
+    const r = await dialog.showOpenDialog(_winOf(_e), { title: "New project from a video: choose the video", properties: ["openFile"], filters: VIDEO_FILTER });
     if (r.canceled || !r.filePaths.length) return null;
     videoPath = r.filePaths[0];
   }
   const base = video ? path.dirname(videoPath) : app.getPath("documents");
-  const s = await dialog.showSaveDialog(mainWindow, {
+  const s = await dialog.showSaveDialog(_winOf(_e), {
     title: "Name the project: its folder is made here",
     defaultPath: path.join(base, video ? path.parse(videoPath).name : "New process"),
     buttonLabel: "Create",
@@ -766,15 +852,16 @@ ipcMain.handle("viewer:chooseNewProject", async (_e, { kind } = {}) => {
   const folder = path.resolve(s.filePath);
   const why = NewProject.folderProblem(folder);
   if (why) return { ok: false, error: why + " (" + folder + ")." };
-  _newProjectPlan = { kind: video ? "video" : "blank", videoPath, folder, name: path.basename(folder) };
-  return { ok: true, name: _newProjectPlan.name, folder };
+  const plan = { kind: video ? "video" : "blank", videoPath, folder, name: path.basename(folder) };
+  _newProjectPlans.set(_e.sender.id, plan);
+  return { ok: true, name: plan.name, folder };
 });
 
-/* Make the project chosen last (the renderer passes no path). Result
-   { ok: true, folder } or { ok: false, error }. */
-ipcMain.handle("viewer:createProject", async () => {
-  const plan = _newProjectPlan;
-  _newProjectPlan = null;
+/* Make the project the window chose last (the renderer passes no path).
+   Result { ok: true, folder } or { ok: false, error }. */
+ipcMain.handle("viewer:createProject", async (_e) => {
+  const plan = _newProjectPlans.get(_e.sender.id) || null;
+  _newProjectPlans.delete(_e.sender.id);
   if (!plan) return { ok: false, error: "no project was chosen." };
   try {
     const r = await NewProject.createProject(Object.assign({ id: require("node:crypto").randomUUID(), now: new Date().toISOString() }, plan));
@@ -792,9 +879,9 @@ ipcMain.handle("viewer:createProject", async () => {
    anything is asked or written while the project's analysis runs (the
    entry's save would be refused, and the file left in the folder unlisted). */
 ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "screenshot");
+  const w = _projectWrite(_e.sender, sessionFolder, "screenshot");
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
@@ -802,7 +889,7 @@ ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data 
     if (busy) return w.end(busy);
     let buf;
     if (source === "file") {
-      const r = await dialog.showOpenDialog(mainWindow, { title: "Add a screenshot", properties: ["openFile"],
+      const r = await dialog.showOpenDialog(_winOf(_e), { title: "Add a screenshot", properties: ["openFile"],
         filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg"] }] });
       if (r.canceled || !r.filePaths.length) return null;
       w.start();
@@ -826,15 +913,15 @@ ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data 
    label } (label: the original file name) or { ok: false, error }. Lane
    FX2: refused before the dialog while the project's analysis runs. */
 ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "attachment");
+  const w = _projectWrite(_e.sender, sessionFolder, "attachment");
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
     const busy = _refuseWhileAnalyzing(root);
     if (busy) return w.end(busy);
-    const r = await dialog.showOpenDialog(mainWindow, { title: "Attach a file", properties: ["openFile"] });
+    const r = await dialog.showOpenDialog(_winOf(_e), { title: "Attach a file", properties: ["openFile"] });
     if (r.canceled || !r.filePaths.length) return null;
     w.start();
     const c = AnalystFiles.copyAttachment(root, r.filePaths[0]);
@@ -876,9 +963,9 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
      session folder). Prevents accidental writes to arbitrary paths
      via a manipulated IPC payload. Lane HV: never in a hand-off opened
      read only. */
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "annotations");
+  const w = _projectWrite(_e.sender, sessionFolder, "annotations");
   w.start();
   try {
     const root = path.resolve(String(sessionFolder || ""));
@@ -918,9 +1005,9 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
    while the project's analysis runs. Result { ok: true, backup, mtimeMs,
    keptAs } or { ok: false, error } (a sentence). */
 ipcMain.handle("viewer:restoreAnnotationsBackup", (_e, { sessionFolder, expect } = {}) => {
-  const ro = _refuseReadOnly(sessionFolder);
+  const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
-  const w = _projectWrite(sessionFolder, "annotations");
+  const w = _projectWrite(_e.sender, sessionFolder, "annotations");
   w.start();
   try {
     const root = _sessionRoot(sessionFolder);
@@ -989,8 +1076,8 @@ async function _librarySources(paths, readOne) {
 
 /* Help, Build the library...: Add projects... Result as _librarySources, or
    null when the dialog was cancelled. */
-ipcMain.handle("viewer:libraryAddProjects", async () => {
-  const r = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle("viewer:libraryAddProjects", async (_e) => {
+  const r = await dialog.showOpenDialog(_winOf(_e), {
     title: "Add projects to the library",
     properties: ["openDirectory", "multiSelections"],
   });
@@ -1000,8 +1087,8 @@ ipcMain.handle("viewer:libraryAddProjects", async () => {
 
 /* Add hand-off zips...: each zip read where it is, never extracted
    (handoff-open.js readProjectZip). */
-ipcMain.handle("viewer:libraryAddZips", async () => {
-  const r = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle("viewer:libraryAddZips", async (_e) => {
+  const r = await dialog.showOpenDialog(_winOf(_e), {
     title: "Add hand-off zips to the library",
     properties: ["openFile", "multiSelections"],
     filters: [{ name: "Hand-off (.zip)", extensions: ["zip"] }],
@@ -1022,7 +1109,7 @@ ipcMain.handle("viewer:saveLibrary", async (_e, payload) => {
   const doc = payload && payload.library;
   const bad = Library.problems(doc);
   if (bad.length) return { ok: false, error: "The library was not saved: " + bad[0] + "." };
-  const r = await dialog.showSaveDialog(mainWindow, {
+  const r = await dialog.showSaveDialog(_winOf(_e), {
     title: "Save the library",
     defaultPath: Library.appLibraryPath(),
     filters: [{ name: "Library (.json)", extensions: ["json"] }],
@@ -1043,24 +1130,40 @@ ipcMain.handle("viewer:saveLibrary", async (_e, payload) => {
 
 /* --- App lifecycle ----------------------------------------------- */
 
+/* Lane MW: one viewer per user profile. A second start of the viewer (its
+   shortcut clicked again, a launch with --session) opens a new window in the
+   running one, with its project, and ends. Two viewers on one profile did
+   not share the recent projects and settings (the second's were lost when it
+   closed), the second emptied the first's removed files waiting for an Undo
+   as it started, and each could edit a project the other had open. */
+const _firstInstance = typeof app.requestSingleInstanceLock === "function" ? app.requestSingleInstanceLock() : true;
+if (!_firstInstance) app.quit();
+
+app.on("second-instance", (_e, argv, cwd) => {
+  if (app.isReady()) createWindow(sessionArg(argv, cwd));
+});
+
 app.whenReady().then(() => {
+  if (!_firstInstance) return;
   Menu.setApplicationMenu(null);
   // Removed screenshots and attachments waited there for an Undo of the
   // last run; its undo history is gone (C16, analyst-files.js).
   try { fs.rmSync(path.join(app.getPath("userData"), "pdt-removed"), { recursive: true, force: true }); }
   catch (e) { console.warn("[viewer] the removed files of the last run were not cleared: " + e.message); }
-  createMainWindow();
+  createWindow(initialSessionArg);
 });
 
+/* Closing a window closes its project only; the viewer ends with its last
+   window. */
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+  if (_firstInstance && BrowserWindow.getAllWindows().length === 0) createWindow(null);
 });
 
 /* Exported for unit tests (the security helper is pure and validated in
    isolation). Importing this module under plain node is made safe by the
    Electron shim near the top. */
-module.exports = { validateScreenshotOpen, _knownSessionRoots, loadSessionData, READ_ONLY_ERROR };
+module.exports = { validateScreenshotOpen, _knownSessionRoots, loadSessionData, sessionArg, READ_ONLY_ERROR, ELSEWHERE_ERROR };

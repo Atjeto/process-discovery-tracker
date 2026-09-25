@@ -42,7 +42,8 @@
  *      changes nothing.
  *   5. A hand-off opened read only (lane HV, contract C20) says "Read only",
  *      with its version in the tooltip, and no report changes that: nothing
- *      is written there.
+ *      is written there. So does a project open for editing in another
+ *      window (lane MW), the tooltip saying so.
  *
  * The state logic is pure (initialState, withUnreadable, applyWrite, view),
  * so the unit tests pin it; mount, projectOpened and noteWrite drive the
@@ -91,10 +92,12 @@ function sameFolder(a, b) {
 
 /* The state of a project just opened. `unreadable`: the load's
    annotationsError, when annotations.json cannot be read. `readOnly`: the
-   line of a hand-off opened read only (rule 5), else null. */
-function initialState(folder, unreadable, readOnly) {
+   line of a hand-off opened read only (rule 5), else null. `elsewhere`
+   (lane MW): true when it is read only because another window has it open
+   for editing. */
+function initialState(folder, unreadable, readOnly, elsewhere) {
   return withUnreadable({ folder: folder || null, inFlight: 0, savingShown: false, savedAt: null, failures: [],
-    readOnly: readOnly || null }, unreadable);
+    readOnly: readOnly || null, elsewhere: !!(readOnly && elsewhere) }, unreadable);
 }
 
 /* The state with the unreadable annotations.json failure as the latest load
@@ -175,7 +178,9 @@ function view(state, fmtTime) {
   const where = state.folder ? ": " + state.folder : "";
   if (state.readOnly) {
     return { kind: "readonly", text: "Read only",
-      title: state.readOnly + ", opened read only: nothing here can change. Changes are made in the analyst's project." };
+      title: state.elsewhere
+        ? "Open in another window: read only here. Changes are made in the window where this project was opened first."
+        : state.readOnly + ", opened read only: nothing here can change. Changes are made in the analyst's project." };
   }
   if (state.inFlight > 0 && state.savingShown) {
     return { kind: "saving", text: "Saving...", title: "Saving to the project folder" + where + "." };
@@ -251,13 +256,16 @@ function mount(el, deps) {
 function projectOpened(session) {
   const folder = (session && session.sessionFolder) || null;
   const unreadable = (session && session.annotationsError) || null;
+  // Lane MW: read only because another window has the project open for
+  // editing (read-only.js isOpenElsewhere).
+  const elsewhere = !!(session && session.readOnly === true && session.openElsewhere === true);
   const readOnly = session && session.readOnly === true
-    ? (Handoff.handedOffLine(Handoff.latest(session.annotations)) || "A hand-off") : null;
+    ? (elsewhere ? "Open in another window" : Handoff.handedOffLine(Handoff.latest(session.annotations)) || "A hand-off") : null;
   if (folder && sameFolder(folder, _state.folder)) {
-    _state = Object.assign(withUnreadable(_state, unreadable), { readOnly });
+    _state = Object.assign(withUnreadable(_state, unreadable), { readOnly, elsewhere });
   } else {
     _clearTimer();
-    _state = initialState(folder, unreadable, readOnly);
+    _state = initialState(folder, unreadable, readOnly, elsewhere);
   }
   _render(false);
 }

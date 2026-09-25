@@ -524,9 +524,15 @@ function _summaryWarnings(sess) {
 
 /* Lane HV (contract C20): the line of a hand-off opened read only, "Version
    2, handed off 2026-09-25 by rasha · Read only", what changed in its
-   tooltip; "" for a project the analyst works on. */
+   tooltip; "" for a project the analyst works on. Lane MW: a project open
+   for editing in another window says so instead (#ov-elsewhere). */
 function _handoffLineHtml(sess) {
   if (!RO.isReadOnly(sess)) return "";
+  if (RO.isOpenElsewhere(sess)) {
+    return '<div class="ov-handoff" id="ov-elsewhere" title="' +
+      escapeAttr("Changes are made in the window where this project was opened first. Opened again once that window closes, it can be changed here.") +
+      '">' + escapeHtml(RO.ELSEWHERE_LINE) + "</div>";
+  }
   const entry = Handoff.latest(sess.annotations);
   const title = entry && entry.note ? "What changed in this version: " + entry.note : "";
   return '<div class="ov-handoff" id="ov-handoff"' + (title ? ' title="' + escapeAttr(title) + '"' : "") + ">" +
@@ -742,6 +748,9 @@ function _wireTranscript(host) {
 function _documentHtml(anno, sess, open) {
   const doc = (anno && anno.document) || null;
   const st = documentStatus(doc);
+  // Lane HV: a hand-off says who wrote the fields; lane MW: a project open
+  // for editing in another window is the analyst's own, still to write there.
+  const handedOff = RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess);
   const fields = DOC_FIELDS.map((f) => {
     const value = _docValue(doc, f.key);
     // P3.6: where the field lands is its tooltip, not a line. AD-29: an
@@ -762,8 +771,8 @@ function _documentHtml(anno, sess, open) {
     '<summary class="analysis-module-head" title="The PDD prints each field you write in place of its ' +
       'placeholder; the fields are kept for every later export.">' +
       '<span class="analysis-module-title">Document</span>' +
-      '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(RO.isReadOnly(sess) ? DOC_WHO_READ_ONLY : DOC_WHO) + "</span>" +
-      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, RO.isReadOnly(sess))) + "</span>" +
+      '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(handedOff ? DOC_WHO_READ_ONLY : DOC_WHO) + "</span>" +
+      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, handedOff)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
     '<div class="analysis-module-body ov-doc-body">' + fields + AnalystUI.overviewAttachmentsHtml(anno) +

@@ -110,9 +110,10 @@ async function beforeProjectWrite(sessionFolder) {
 async function writeAnnotations(sessionFolder, annotations, what) {
   // Lane HV: a hand-off opened read only is never written (main.js refuses it
   // too); no control offers a change there, so this says one slipped through.
+  // Lane MW: nor is a project open for editing in another window.
   const open = State.getSession();
   if (RO.isReadOnly(open) && open.sessionFolder === sessionFolder) {
-    const msg = "Your change" + (what ? " (" + what + ")" : "") + " was not saved: " + RO.READ_ONLY_REASON;
+    const msg = "Your change" + (what ? " (" + what + ")" : "") + " was not saved: " + RO.reasonFor(open);
     console.error("[session] annotations.json not saved: read only");
     Dom.toast(msg, "error");
     throw _surfacedError(msg);

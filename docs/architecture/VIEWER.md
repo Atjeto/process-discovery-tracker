@@ -20,6 +20,7 @@
 9. [Edits, undo and saving](#9-edits-undo-and-saving)
 10. [Exports](#10-exports)
 11. [A hand-off opened read only](#11-a-hand-off-opened-read-only-contract-c20)
+12. [Several windows](#12-several-windows-lane-mw)
 
 ## 1. Process model
 
@@ -29,11 +30,13 @@ The viewer is an Electron app: one **main process**
 [`renderer.js`](../../viewer/renderer.js) and the modules that entry
 `require()`s). There is no bundler: every module is plain CommonJS.
 
-- **One window**, 1400x900, no application menu. A `--session=<folder>`
-  argument (the folder must hold a `manifest.json`) is sent to the renderer
-  once, after the page's first `did-finish-load`, as
-  `viewer:openInitialSession`. A page reload therefore opens nothing: a
-  driver relaunches instead.
+- **One process, several windows** (lane MW, section 12), 1400x900 for the
+  first, no application menu. A `--session=<folder>` argument (the folder
+  must hold a `manifest.json`) is sent to the renderer once, after the
+  page's first `did-finish-load`, as `viewer:openInitialSession`. A page
+  reload therefore opens nothing: a driver relaunches instead. One viewer
+  runs per user profile: a second start opens a new window in the running
+  one (with its `--session`) and ends.
 - **The renderer has Node** (`nodeIntegration: true`,
   `contextIsolation: false`), so modules `require()` each other and
   `node:fs` directly. The risk is contained around it: a Content Security
@@ -52,10 +55,12 @@ The viewer is an Electron app: one **main process**
   document, an image or a mail opens in its program; any other type is
   shown in its folder); it writes `annotations.json` only into a folder
   with a `manifest.json`.
-- **One analysis at a time.** While `normalize.py` runs on a folder, the
-  main process refuses annotation writes to that folder (the pipeline
-  rewrites `annotations.json`): the analyst is told to make the change again
-  once the update is done. A zip of that project waits too (section 10).
+- **One analysis at a time** in a window, and of a project. While
+  `normalize.py` runs on a folder, the main process refuses annotation
+  writes to that folder (the pipeline rewrites `annotations.json`), from
+  any window: the analyst is told to make the change again once the update
+  is done. A zip of that project waits too (section 10), and so does a
+  second analysis of it.
 - **Every write of a project folder is reported.** The handlers that write
   into a folder (`annotations.json`, the video, the transcript, a screenshot,
   an attachment) send `viewer:projectWrite` as the write starts and again
@@ -320,7 +325,8 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `main.js` | The main process: the window, every `viewer:*` handler (section 5), `loadSessionData()`, the path checks, the one-analysis lock, the write reports (`viewer:projectWrite`), the holding folder for removed files. |
+| `main.js` | The main process: the windows and the one-viewer-per-profile lock (section 12), every `viewer:*` handler (section 5), `loadSessionData()`, the path checks, the one-analysis lock, the write reports (`viewer:projectWrite`), the holding folder for removed files. |
+| `window-registry.js` | Lane MW: which window shows which project, in the main process; a project open for editing in one window opens read only in another (`open`, `close`, `readOnlyHere`, `editorOf`). Pure. |
 | `index.html` | The markup: the top bar, the four level containers, the step panel, the playback bar, Help, the map editor overlay. |
 | `renderer.js` | The wiring entry: the level switcher, the Map level's live map data (`_sessionMapData`, the system per box; whether it draws, `_liveMapState`; C19: the level shown, `_mapLevel`, and its picker), the state bus subscriptions, the keyboard shortcuts, Help, the playback bar, the New, Open and Export menus, the exports (section 10), the save state's mount, boot. |
 | `save-state.js` | The save state in the top bar (section 9): its pure state (`applyWrite`, `view`) and the element it drives, fed by `Ipc.onProjectWrite` and by `noteWrite` for the map files the renderer writes. |
@@ -331,7 +337,7 @@ their module as `<name>.test.js`.
 | `dom.js` | `$`, `$$`, escaping, `formatDuration`, the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
 | `modals.js` | `promptModal` (`required`: OK waits for some text), `confirmModal`: themed dialogs. |
 | `handoff.js` | Pure (contract C20): the versions of `annotations.handoffs` (`entries`, `latest`, `nextVersion`, `newEntry`), the one line a version says (`handedOffLine`, the PDD's words; `readOnlyLine`), the project's name as the app shows it and made safe for Windows, and the hand-off's file names. |
-| `read-only.js` | A hand-off opened read only (C20): `isReadOnly(session)`, the check every verb reachable without a control makes, and `lockInputs` (the step pane's and the document's fields read only). |
+| `read-only.js` | A hand-off opened read only (C20): `isReadOnly(session)`, the check every verb reachable without a control makes, and `lockInputs` (the step pane's and the document's fields read only); lane MW: `isOpenElsewhere` and `reasonFor`, for a project open for editing in another window. |
 | `theme.js` | The light and dark theme, its persistence, the per-app band colours and the map's colour snapshot. |
 | `recent.js` | The recent projects (`pdt.recentSessions`): the list on the empty state; the Open menu reads it too. |
 | `layout-controls.js` | The Timeline's resize handles and video modes (expanded, full screen); wires itself when required. |
@@ -465,8 +471,9 @@ which the renderer shows.
 | Group | Channel | Does |
 |---|---|---|
 | Session | `viewer:openSessionFolder` | The folder picker. |
+| | `viewer:openInNewWindow` | Lane MW: the project folder given (or the one project folder it holds) opens in a new window; `{ ok: false, error }` and no window when it is no project. |
 | | `viewer:openHandoffDialog` | The file picker for a hand-off zip (C20): the chosen `.zip` path, or null. |
-| | `viewer:loadSession` | Loads a folder (below), or a hand-off zip: extracted under `<userData>/handoffs` (`handoff-open.js`) and its project loaded read only, the answer adding `openedZip` and `handoffReused`. |
+| | `viewer:loadSession` | Loads a folder (below), or a hand-off zip: extracted under `<userData>/handoffs` (`handoff-open.js`) and its project loaded read only, the answer adding `openedZip` and `handoffReused`. The window that asked now holds the project (section 12). |
 | Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`, and C20's `techOut` and `handoff`; C21's `--library`, the app's library file, when it exists and the pipeline takes the flag); streams its log. |
 | | `viewer:cancelNormalize` | Stops the run in progress. |
 | Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back (screenshots, attachments, the video's copy, the edited maps' files). |
@@ -493,8 +500,9 @@ which the renderer shows.
 | | `viewer:addAttachment` | The file picker, then a copy into `attachments/`. |
 | | `viewer:openAttachment` | Opens an attachment of a loaded session, or shows it in its folder. |
 
-Three messages go the other way: `viewer:openInitialSession` (the
-`--session` folder, once at startup), `viewer:normalizeLog` (the
+Three messages go the other way: `viewer:openInitialSession` (the project
+a window opens as it loads: the `--session` folder, or the one a new window
+was made for), `viewer:normalizeLog` (the
 pipeline's output as it runs) and `viewer:projectWrite` (each write of a
 project folder: `{ folder, channel, phase: "start" }`, then `{ folder,
 channel, phase: "end", ok, error, code }`, `channel` one of `annotations`,
@@ -512,7 +520,10 @@ channel, phase: "end", ok, error, code }`, `channel` one of `annotations`,
 `readOnly` (contract C20) is true for a folder under `<userData>/handoffs`,
 where a hand-off opens: every handler that writes a project folder, or runs
 the analysis, refuses such a folder first (`_refuseReadOnly`), before any
-dialog and before the save state hears of a write.
+dialog and before the save state hears of a write. `viewer:loadSession`
+adds `openElsewhere` (lane MW): true, with `readOnly` true, when another
+window has the project open for editing; those handlers refuse that
+window's writes the same way.
 
 `events` are sorted by time (malformed lines skipped). The video is the
 analyst's attached one when its stored path resolves on this machine, else
@@ -839,3 +850,53 @@ programs). Nothing can change:
   "Version 2, handed off 2026-09-25 by rasha · Read only", what changed in
   its tooltip; the top bar's save state reads *Read only*, and the Recent
   list names the entry "<name> · version 2, read only".
+
+## 12. Several windows (lane MW)
+
+The owner: a PM works on one project and opens another at the same time, or
+keeps one open for reference while working on another. Not over
+complicated: one process, several windows, no lock files.
+
+- **Opening.** *Open in a new window...* (`#btn-open-new-window`, the Open
+  menu) asks for a project folder with the folder dialog, and each recent
+  project in the Open menu has a button that opens it in a new window
+  (`.recent-menu-newwin`); both go through `viewer:openInNewWindow`, which
+  makes a window (`main.js createWindow`, the size of the window it opens
+  from, a little lower and to the right) that opens the project as it
+  loads (`viewer:openInitialSession`). The project on screen stays open.
+  Each window is named after its project ("Order entry · Process Discovery
+  Viewer", "(read only)" added when it is), so the taskbar tells them apart.
+- **One viewer per profile.** `app.requestSingleInstanceLock()`: a second
+  start of the viewer (the shortcut clicked again, a `--session` launch)
+  opens a new window in the running one, with its `--session` (`main.js
+  sessionArg`, resolved in the folder it started in), and ends. Two
+  processes on one profile did not share the recent projects and settings
+  (the second got an empty Local Storage and its changes were lost when it
+  closed), and the second emptied `<userData>/pdt-removed` as it started,
+  taking the first one's files waiting for an Undo.
+- **The same project twice.** The main process keeps which window shows
+  which project (`window-registry.js`, keyed by the window's webContents
+  id; a folder is one project whatever its case or slashes). A project open
+  for editing in one window opens read only in another: `viewer:loadSession`
+  answers `readOnly: true` and `openElsewhere: true`, and the page is a
+  read-only page as in section 11 (`.app.read-only`, plus `.app.open-elsewhere`,
+  which hides the hand-off's two Export items), its project line
+  `#ov-elsewhere` "Open in another window: read only here" and its save
+  state *Read only*, its tooltip saying where changes are made. Every
+  handler that writes a project folder refuses that window's writes
+  (`_refuseReadOnly(folder, sender)`), never the editing window's. A hand-off
+  opens read only in every window and holds nothing.
+- **Letting go.** A window that opens another project, or loads its page
+  again, lets its project go; a closed window lets it go and stops an
+  analysis it was running (the run moves nothing in, and its staged files
+  are cleared). A window opened read only stays so; opened again once no
+  window edits the project, it opens for editing. Nothing is written for
+  this anywhere, so nothing is left behind and no zip can carry it.
+- **Per window.** A dialog opens over the window that asked (`_winOf`), the
+  write reports and the analysis log go to it, Cancel stops its own
+  analysis, and New project remembers its choice per window. One analysis
+  of a project runs at a time, whichever window asked. The recent projects,
+  the theme and the layout are the profile's, shared by every window (a
+  window reads them as it draws them).
+- **Closing.** Closing a window closes only its project; the viewer ends
+  with its last window.

@@ -28,6 +28,13 @@ function openHandoffDialog() {
   return ipcRenderer.invoke("viewer:openHandoffDialog");
 }
 
+/** Lane MW: open the project folder `folder` in a new window.
+ *  @param {string} folder
+ *  @returns {Promise<{ok: boolean, folder?: string, error?: string}>} */
+function openInNewWindow(folder) {
+  return ipcRenderer.invoke("viewer:openInNewWindow", { folder });
+}
+
 /* ---- Normalization ---- */
 
 /** @param {object} opts @returns {Promise<any>} */
@@ -228,7 +235,7 @@ function onProjectWrite(fn) {
 }
 
 module.exports = {
-  loadSession, openSessionFolder, openHandoffDialog,
+  loadSession, openSessionFolder, openHandoffDialog, openInNewWindow,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
   readAppLibrary, libraryAddProjects, libraryAddZips, saveLibrary,

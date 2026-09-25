@@ -207,6 +207,15 @@ implementation notes
   maps and the PDD and Technical details it came with can be looked at and
   played, and nothing can change. A hand-off unzipped by hand opens read
   only too. A newer version is a zip of its own.
+- **Several projects at once**: *Open in a new window...* in the Open menu,
+  or the button beside a recent project, opens another project in a new
+  window while the one on screen stays open, and starting the app again
+  opens a new window of the running app (two copies of the app on one
+  profile lost the second one's recent projects and settings, and could
+  take the first one's removed files waiting for an Undo). A project already
+  open for editing in another window opens read only, its project line
+  "Open in another window: read only here". Each window is named after its
+  project; closing one closes only its project.
 - **Technical details (.xlsx)**: a workbook for the developers' design
   document, in every hand-off and on its own in Export: every click, entry
   and choice of the reference transaction with the control it acted on,

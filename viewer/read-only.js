@@ -20,6 +20,10 @@
  *   - session.js refuses every annotations.json write for a read-only
  *     project, and main.js refuses every write into the folder, so a
  *     control that slips through changes nothing.
+ * Lane MW: a project open for editing in another window of the viewer opens
+ * read only the same way (main.js, window-registry.js), `openElsewhere` true
+ * beside `readOnly`; its project line says so (ELSEWHERE_LINE) in place of a
+ * hand-off's version.
  * Pure: no electron here, and the DOM only where a host is given.
  */
 
@@ -29,10 +33,26 @@ const VIEW_ONLY = [".ov-tr-search", ".ov-tr-speaker", ".ov-tr-during-cb"];
 
 /* The sentence a refused change says. */
 const READ_ONLY_REASON = "this is a hand-off opened read only, so nothing in it can change.";
+const ELSEWHERE_REASON = "this project is open in another window, so it is read only here.";
 
-/* Whether `session` (State.getSession()) is a hand-off opened read only. */
+/* The project line of a project open for editing in another window. */
+const ELSEWHERE_LINE = "Open in another window: read only here";
+
+/* Whether `session` (State.getSession()) opened read only: a hand-off, or
+   (lane MW) a project open for editing in another window. */
 function isReadOnly(session) {
   return !!(session && session.readOnly === true);
+}
+
+/* Whether `session` is read only because another window has it open for
+   editing (lane MW), not because it is a hand-off. */
+function isOpenElsewhere(session) {
+  return isReadOnly(session) && session.openElsewhere === true;
+}
+
+/* The sentence a refused change says for `session`. */
+function reasonFor(session) {
+  return isOpenElsewhere(session) ? ELSEWHERE_REASON : READ_ONLY_REASON;
 }
 
 /* Make the fields inside `host` readable only: a text field or a text area
@@ -47,4 +67,6 @@ function lockInputs(host) {
   });
 }
 
-module.exports = { isReadOnly, lockInputs, READ_ONLY_REASON, VIEW_ONLY };
+module.exports = {
+  isReadOnly, isOpenElsewhere, reasonFor, lockInputs, READ_ONLY_REASON, ELSEWHERE_REASON, ELSEWHERE_LINE, VIEW_ONLY,
+};

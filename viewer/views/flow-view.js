@@ -179,6 +179,23 @@ async function openSessionFlow() {
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
 
+/* Lane MW: Open in a new window... (the Open menu), and the new-window
+   button of a recent project (renderer.js): the project opens in a new
+   window and the one on screen stays open. Read only there when another
+   window has it open for editing (main.js). */
+async function openInNewWindow(folder) {
+  let r;
+  try { r = await Ipc.openInNewWindow(folder); }
+  catch (e) { r = { ok: false, error: ipcErrorText(e) }; }
+  if (!r || !r.ok) toast("The project did not open: " + ((r && r.error) || "no reason was given"), "error");
+}
+async function openInNewWindowFlow() {
+  const folder = await Ipc.openSessionFolder();
+  if (!folder) return;
+  await openInNewWindow(folder);
+}
+if ($("#btn-open-new-window")) $("#btn-open-new-window").addEventListener("click", openInNewWindowFlow);
+
 /* Lane HV (C20): Open a hand-off (.zip). The zip an analyst handed off is
    extracted under userData and opens read only (main.js viewer:loadSession,
    handoff-open.js); Windows' folder dialog would not list it. */
@@ -259,10 +276,11 @@ function _rerenderWaiting() {
    A failed run shows the log; a cancelled one does not (nothing failed). */
 function runPipeline(opts, label) {
   const folder = opts.sessionFolder;
-  // Lane HV: a hand-off opened read only keeps the analysis it came with.
+  // Lane HV: a hand-off opened read only keeps the analysis it came with
+  // (lane MW: and so does a project open for editing in another window).
   const open = State.getSession();
   if (RO.isReadOnly(open) && open.sessionFolder === folder) {
-    return Promise.resolve({ ok: false, error: "The analysis does not run here: " + RO.READ_ONLY_REASON });
+    return Promise.resolve({ ok: false, error: "The analysis does not run here: " + RO.reasonFor(open) });
   }
   _pendingRuns += 1;
   const job = _runQueue.then(async () => {
@@ -420,7 +438,10 @@ async function loadSessionIntoView(folder, opts) {
   // Lane FX2 (validation pass 3, F3): the step panel belongs to the project
   // it showed: another project closes it (the same one draws it again).
   StepPanel.refresh();
-  if (loaded && loaded.openedZip && RO.isReadOnly(loaded)) {
+  if (RO.isOpenElsewhere(loaded)) {
+    // Lane MW: another window has this project open for editing.
+    toast("This project is open in another window, so it opens read only here.", "info");
+  } else if (loaded && loaded.openedZip && RO.isReadOnly(loaded)) {
     // Lane HV: a hand-off zip opens read only.
     const line = Handoff.handedOffLine(Handoff.latest(loaded.annotations));
     toast("Opened " + (line ? line.charAt(0).toLowerCase() + line.slice(1) : "the hand-off") +
@@ -444,8 +465,11 @@ async function loadSessionIntoView(folder, opts) {
   const shell = document.querySelector(".app");
   if (shell) shell.classList.add("has-session");
   // Lane HV: a hand-off opened read only shows no editing control
-  // (read-only.js, styles.css .read-only).
+  // (read-only.js, styles.css .read-only). Lane MW: nor does a project open
+  // for editing in another window, whose Export has no hand-off files either
+  // (.open-elsewhere).
   if (shell) shell.classList.toggle("read-only", RO.isReadOnly(State.getSession()));
+  if (shell) shell.classList.toggle("open-elsewhere", RO.isOpenElsewhere(State.getSession()));
   renderAnnotationsErrorBanner();
   // The top bar's save state follows the project on screen (save-state.js).
   SaveState.projectOpened(State.getSession());
@@ -457,8 +481,13 @@ async function loadSessionIntoView(folder, opts) {
      and folder (session-summary.recentLabel). */
   const label = recentLabel(State.getSession(), path.basename(folder));
   // Lane HV: a hand-off opened read only says which version it is.
-  const handed = RO.isReadOnly(State.getSession()) ? Handoff.latest(State.getSession().annotations) : null;
+  const handed = RO.isReadOnly(State.getSession()) && !RO.isOpenElsewhere(State.getSession())
+    ? Handoff.latest(State.getSession().annotations) : null;
   pushRecent(folder, handed ? label + " · version " + handed.version + ", read only" : label);
+  // Lane MW: each window is named after its project, so the taskbar and
+  // Alt+Tab tell the windows apart.
+  document.title = Handoff.projectName(State.getSession()) +
+    (RO.isReadOnly(State.getSession()) ? " (read only)" : "") + " · Process Discovery Viewer";
 
   renderSessionPills();
   // C8: the transcript's menu items follow the loaded file.
@@ -1383,6 +1412,8 @@ function initFlowView(deps) {
 module.exports = {
   initFlowView,
   loadSessionIntoView, renderTimeline, renderMarkersList,
+  // Lane MW: a project in a new window (the Open menu's recent projects).
+  openInNewWindow,
   // The analysis: automatic runs, the deliberate ones (confirm), and the
   // pipeline runner the exports share (one status line, one log).
   renderSessionPills, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING,

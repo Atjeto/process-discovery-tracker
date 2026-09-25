@@ -527,7 +527,8 @@ async function unreadableAnnotationsPin() {
       chrome.newMenu === "New" && JSON.stringify(chrome.newItems) === JSON.stringify(["New project from a video...", "New empty project..."]) &&
       JSON.stringify(chrome.newItemIds) === JSON.stringify(["btn-new-from-video", "btn-new-blank"]) &&
       // Lane HV: a hand-off zip has its own item (the folder dialog lists folders only).
-      chrome.openMenu === "Open" && JSON.stringify(chrome.openItems) === JSON.stringify(["Open project...", "Open a hand-off (.zip)..."]) &&
+      // Lane MW: another project in a new window (e2e/windows-smoke.js).
+      chrome.openMenu === "Open" && JSON.stringify(chrome.openItems) === JSON.stringify(["Open project...", "Open in a new window...", "Open a hand-off (.zip)..."]) &&
       chrome.openFolderInMenu && chrome.openFolderLabel === "Open project..." &&
       chrome.analyzeButton === 0 && chrome.moreMenu === 0 && chrome.actionsBar === 0 &&
       JSON.stringify(chrome.bars) === "[true]" && chrome.allInBar && chrome.inOrder &&

@@ -1657,7 +1657,11 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
    document) are read only (read-only.js lockInputs). The Export menu keeps
    the map exports and gains the two files the hand-off came with. */
 .app:not(.read-only) #btn-handoff-open-pdd,
-.app:not(.read-only) #btn-handoff-open-tech { display: none; }
+.app:not(.read-only) #btn-handoff-open-tech,
+.app.open-elsewhere #btn-handoff-open-pdd,
+.app.open-elsewhere #btn-handoff-open-tech { display: none; }
+/* Lane MW: a project open for editing in another window is read only the
+   same way (.read-only), and came with no hand-off files (.open-elsewhere). */
 .app.read-only #btn-session-pdd,
 .app.read-only #btn-session-tech,
 .app.read-only #btn-session-zip,
@@ -2004,6 +2008,16 @@ button.danger:disabled {
 }
 .recent-menu-item.missing .ri-label { color: var(--fg-4); text-decoration: line-through; }
 .recent-menu-empty { padding: 8px 10px; color: var(--fg-4); font-size: 11px; font-style: italic; }
+/* Lane MW: a recent project's row, with its button that opens it in a new
+   window at the end. */
+.recent-menu-row { display: flex; align-items: stretch; gap: 2px; }
+.recent-menu-row .recent-menu-item { flex: 1 1 auto; min-width: 0; }
+.recent-menu-newwin {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; padding: 0; background: transparent; border: 0; border-radius: 3px;
+  color: var(--fg-3); cursor: pointer;
+}
+.recent-menu-newwin:hover, .recent-menu-newwin:focus-visible { background: var(--bg-3); color: var(--fg); }
 
 /* Lanes toggle menu (timeline header) */
 .lanes-menu { position: relative; display: inline-block; }

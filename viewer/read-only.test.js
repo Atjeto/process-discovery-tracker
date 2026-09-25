@@ -95,6 +95,34 @@ test("the save state of a hand-off opened read only reads Read only, with its ve
   assert.equal(el.textContent, "Saved");
 });
 
+test("lane MW: a project open for editing in another window is read only here, and says why in its own words", async () => {
+  const el = { textContent: "", title: "", dataset: {}, classList: { remove() {}, add() {} }, offsetWidth: 0 };
+  SaveState.mount(el, { subscribe: null });
+  const handedOffBefore = { handoffs: [{ version: 3, handed_off_at: "2026-09-25T10:00:00Z", by: "rasha", note: "x" }] };
+  SaveState.projectOpened({ sessionFolder: "D:\\w\\a", readOnly: true, openElsewhere: true, annotations: handedOffBefore });
+  assert.equal(el.textContent, "Read only");
+  assert.match(el.title, /^Open in another window: read only here\./, "never the hand-off's version line");
+  SaveState.noteWrite({ folder: "D:\\w\\a", channel: "annotations", phase: "end", ok: false, error: "x" });
+  assert.equal(el.textContent, "Read only", "no report changes it");
+  const sess = { sessionFolder: "D:\\w\\a", readOnly: true, openElsewhere: true };
+  assert.equal(RO.isReadOnly(sess), true);
+  assert.equal(RO.isOpenElsewhere(sess), true);
+  assert.equal(RO.isOpenElsewhere({ readOnly: false, openElsewhere: true }), false);
+  assert.equal(RO.isOpenElsewhere({ readOnly: true }), false, "a hand-off");
+  assert.equal(RO.reasonFor(sess), RO.ELSEWHERE_REASON);
+  assert.equal(RO.reasonFor({ readOnly: true }), RO.READ_ONLY_REASON);
+  assert.equal(RO.ELSEWHERE_LINE, "Open in another window: read only here");
+  // The renderer refuses its writes too, in those words, before main is asked.
+  State.setSession(Object.assign({ manifest: {}, annotations: { steps: [] } }, sess));
+  State.resetUndo();
+  Session.captureBaseline();
+  saves = 0;
+  toasts.length = 0;
+  await assert.rejects(Session.writeAnnotations("D:\\w\\a", { steps: [] }, "edit"), (e) => e.pdtSurfaced === true);
+  assert.equal(saves, 0);
+  assert.match(toasts[0].msg, /open in another window, so it is read only here/);
+});
+
 test("lockInputs makes a pane's fields read only and leaves the transcript's filters usable", () => {
   const el = (tagName, type, cls) => ({ tagName, readOnly: false, disabled: false,
     getAttribute: (k) => (k === "type" ? type : null), matches: (sel) => !!cls && sel === "." + cls });

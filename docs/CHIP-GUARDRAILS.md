@@ -17,7 +17,7 @@ viewer/python/python.exe normalization/golden_check.py   # the session golden
 cd viewer && node --test                                  # incl. the UI copy guard
 cd capture && node --test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj   # when capture/recorder/ changed
-cd e2e && node run-all.js                                 # the ten smokes, the real viewer
+cd e2e && node run-all.js                                 # every smoke, the real viewer
 ```
 
 If any goes red, you broke something: fix it or revert. Never commit red,
@@ -103,7 +103,7 @@ every push.
 
 A fresh chip, even in a clean worktree, needs nothing outside the repo:
 `e2e/` bundles `playwright-core` and drives the viewer's own Electron
-(`npm install` in `viewer/` and `e2e/` once). The ten smokes are worked
+(`npm install` in `viewer/` and `e2e/` once). The smokes are worked
 examples; [e2e/README.md](../e2e/README.md) says what each covers.
 
 1. **Work on a temp copy, never on the committed demo.** The viewer analyzes
@@ -141,6 +141,13 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
      viewer process's exit and its last output lines, then retries once.
    - `--session=<folder>` is read once, when the page first loads: a
      `page.reload()` opens nothing. Relaunch instead.
+   - **One viewer per profile** (lane MW). A second start on the same
+     `--user-data-dir` ends at once and opens a window in the running
+     viewer, so two viewers need two profiles (two `launchViewer` calls
+     have them). A window a flow opens arrives as
+     `v.app.waitForEvent("window")` (set it up before the click); the main
+     process's stubs cover every window; `page.evaluate(() => window.close())`
+     closes one (`e2e/windows-smoke.js`).
 3. **Stub the main process's dialogs** when a flow opens one, and Explorer:
    ```js
    await v.app.evaluate(({ dialog }, f) => {
@@ -172,10 +179,14 @@ others):
 - New: `#btn-new-menu` opens `#new-menu-popup`: `#btn-new-from-video`
   (New project from a video...), `#btn-new-blank` (New empty project...).
 - Open: `#btn-recent-menu` opens `#recent-menu-popup`: `#btn-open-session`
-  (Open project...), `#btn-open-handoff` (Open a hand-off (.zip)..., opened
+  (Open project...), `#btn-open-new-window` (Open in a new window..., lane
+  MW: the folder dialog, then the project in a new window), `#btn-open-handoff`
+  (Open a hand-off (.zip)..., opened
   read only; also `#btn-open-handoff-hero` on the empty state: stub
   `dialog.showOpenDialog` to answer the zip's path) and the recent projects
-  `#recent-menu-content .recent-menu-item[data-folder]`.
+  `#recent-menu-content .recent-menu-item[data-folder]`, each in a
+  `.recent-menu-row` with, when its folder is there, the button that opens
+  it in a new window `.recent-menu-newwin[data-folder]`.
 - Levels: `.view-mode-btn[data-level="overview"|"flow"|"steps"|"map"]`
   (the Timeline is `flow`); each shows `#session-layout-<level>`. The
   Overview is the default on load.
@@ -184,8 +195,9 @@ others):
   changes wait.
 - The save state `#save-state` (`role="status"`, focusable):
   `data-state="saved"|"saving"|"failed"|"readonly"`, its text *Saved*,
-  *Saving...*, *Not saved* or (a hand-off opened read only) *Read only*,
-  the time, the folder, the reason or the version in its `title`.
+  *Saving...*, *Not saved* or (a hand-off opened read only, or a project
+  open in another window) *Read only*, the time, the folder, the reason or
+  the version in its `title`.
 - New, Open and Export each close on Escape (the keyboard back on the
   menu's button).
 - Export: `#btn-session-export-menu` opens `#session-export-popup`:
@@ -214,6 +226,15 @@ and every editing control is hidden (`styles.css`, beside
 drawn. A smoke that checks "nothing is written" snapshots the extracted
 folder (names, sizes, times, hashes) before and after
 (`e2e/handoff-smoke.js`).
+
+**A project open in another window** (lane MW): the same read-only page
+(`.app.read-only`), with `State.getSession().openElsewhere === true` and
+`.app.open-elsewhere` (the Export menu's two hand-off items hidden too); the
+project line's first line is `#ov-elsewhere` ("Open in another window:
+read only here") in place of `#ov-handoff`, and the window's title ends
+"(read only) · Process Discovery Viewer". The main process refuses a write
+from that window (`{ ok: false, code: "READ_ONLY" }`) and takes the
+editing window's (`e2e/windows-smoke.js`).
 
 **Shell:** the empty state `#session-empty` (`#btn-open-session-hero`,
 `#recent-list-session li[data-folder]`, `#recent-clear-all`); the loaded

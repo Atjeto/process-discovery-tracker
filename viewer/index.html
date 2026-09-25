@@ -47,6 +47,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       </button>
       <div class="project-menu-popup" id="recent-menu-popup" style="display:none; min-width: 280px;">
         <button class="project-menu-item" id="btn-open-session" type="button" title="Open a project folder: the folder the SME's capture app saved, or a project made with New">Open project...</button>
+        <!-- Lane MW: another project beside this one (flow-view.js
+             openInNewWindowFlow); a recent project's own button does the same. -->
+        <button class="project-menu-item" id="btn-open-new-window" type="button" title="Open another project folder in a new window: the project on screen stays open. A project already open for editing in another window opens read only in the new one.">Open in a new window...</button>
         <button class="project-menu-item" id="btn-open-handoff" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only, to look at, play and read, with the PDD and the Technical details it came with.">Open a hand-off (.zip)...</button>
         <div class="recent-menu-section" id="recent-menu-content"></div>
       </div>
@@ -451,6 +454,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>PDD.</strong> Export the PDD (.docx); every export opens its folder with the file selected. Its process map is the one the Map shows first: your edited As-Is map when you made one (on the Map, <em>Edit as the As-Is map</em>), else the process map. <em>Edited maps</em> lists your copies; <em>Delete</em> takes one out with its file, and Ctrl+Z brings both back.</li>
           </ol>
           <p>Every change you make saves itself to the project folder: the top bar says <em>Saved</em>, and pointing at it shows the folder. That folder holds the whole project, with its video, transcript, screenshots, attachments and edited maps. To hand the project to someone, use <em>Export</em>, <em>Whole project (.zip)</em>: one zip of the folder, made next to it.</p>
+          <p><strong>Several projects.</strong> <em>Open</em>, <em>Open in a new window</em> (or the button beside a recent project) opens another project beside this one; a project already open in another window opens read only, and says so. Closing a window closes only its project.</p>
           <h3>What the Overview shows</h3>
           <ul class="help-list">
             <li><strong>Checklist</strong>: the five acts above, each ticked once it is done. The export is never ticked: the app keeps no record of it. When the As-Is map the PDD prints was made before the steps changed, it adds <em>Check the As-Is map</em>: check it, or make it again with <em>Copy again</em> on the Map.</li>

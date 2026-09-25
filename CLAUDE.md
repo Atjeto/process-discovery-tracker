@@ -103,7 +103,7 @@ the folder.
 | `capture/` | SME side: tray app, recording bar, end summary, transaction key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
-| `e2e/` | The in-repo Playwright gate: ten smokes against the real viewer, all run by `run-all.js`. |
+| `e2e/` | The in-repo Playwright gate: the smokes against the real viewer, all run by `run-all.js`. |
 | `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19); `pdd-rows-golden.json` (pins the PDD's rows of sections 5 and 6 that the Overview shows); `steps-signature-golden.json` (pins the signature of the steps those rows were measured from). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
@@ -283,6 +283,18 @@ the folder.
   (`tech_details.py`, written by `xlsx_writer.py` on the standard library):
   the reference transaction's recorded controls in the PDD's step order,
   the data fields per transaction, the re-keyed values, the applications.
+- **Several windows** (lane MW). One viewer process, several windows, one
+  project each: *Open in a new window...* (Open menu) or the button beside
+  a recent project opens another project beside the one on screen, and a
+  second start of the viewer opens a window in the running one
+  (`requestSingleInstanceLock`). The main process keeps which window shows
+  which project (`window-registry.js`): a project open for editing in one
+  window opens read only in another (the hand-off's read-only page,
+  `openElsewhere`, the project line "Open in another window: read only
+  here"; main refuses that window's writes). No lock files: closing a
+  window lets its project go, and the viewer ends with its last window.
+  Dialogs, write reports, the analysis log and Cancel belong to the window
+  that asked.
 - **The PDD** (`pdd_export.py`): tool-neutral, built around the confirmed
   reference run. The document fields (C6) fill their places and survive
   re-export; a step's `description` (C7) is its text.
@@ -383,10 +395,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 ## Verification
 
 - UI bugs are invisible to the unit suites: validate behaviour in the real
-  viewer. `e2e/run-all.js` runs ten smokes: `session`, `overview`, `runs`,
-  `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`
-  and `library` (each `<name>-smoke.js`; [e2e/README.md](e2e/README.md) says
-  what each covers).
+  viewer. `e2e/run-all.js` runs the smokes: `session`, `overview`, `runs`,
+  `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`,
+  `library` and `windows` (each `<name>-smoke.js`;
+  [e2e/README.md](e2e/README.md) says what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles
   are left out).
@@ -463,3 +475,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
   instead.
 - A worktree build needs a real copy of `viewer/python`, not a junction:
   electron-packager fails with EPERM trying to symlink it.
+- One viewer runs per profile (lane MW): a second start opens a window in
+  the running one and ends. `npm start` and the packaged app share the
+  profile (`%APPDATA%\process-discovery-tracker-viewer`), so `npm start`
+  while the packaged viewer runs opens a window of the packaged one. The
+  e2e launches each have a profile of their own.
