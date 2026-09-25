@@ -66,9 +66,16 @@ function readRememberedNames() {
 
 /** Forget a remembered name.
  *  @param {{draftKey: string}} payload
- *  @returns {Promise<{ok: boolean, removed?: boolean, path?: string, error?: string}>} */
+ *  @returns {Promise<{ok: boolean, removed?: boolean, previous?: object|null, path?: string, error?: string}>} */
 function forgetStepName(payload) {
   return ipcRenderer.invoke("viewer:forgetStepName", payload);
+}
+
+/** Put a remembered name back as it was (an undo or a redo of a rename).
+ *  @param {{draftKey: string, entry: ({name: string, updated_at: string}|null)}} payload
+ *  @returns {Promise<{ok: boolean, path?: string, error?: string}>} */
+function restoreStepName(payload) {
+  return ipcRenderer.invoke("viewer:restoreStepName", payload);
 }
 
 /* ---- Export / shell ---- */
@@ -204,7 +211,7 @@ module.exports = {
   loadSession, openSessionFolder,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
-  rememberStepName, readRememberedNames, forgetStepName,
+  rememberStepName, readRememberedNames, forgetStepName, restoreStepName,
   exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip,
   attachExternalVideo, copyVideoIn,
   importTranscript, removeTranscript, restoreTranscript, saveTranscriptSync,

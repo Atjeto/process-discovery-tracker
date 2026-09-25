@@ -72,6 +72,8 @@ function createMapController(config) {
       },
       nodeSystems: (data && data.nodeSystems) || null,
       subNodes: (data && data.subNodes) || [],
+      // Lane FX2: the boxes flagged as waste.
+      wasteNodes: (data && data.wasteNodes) || [],
       layoutScope: (data && data.layoutScope) || "",
       // A box dragged: Reset layout shows.
       onLayoutChange: _syncReset,

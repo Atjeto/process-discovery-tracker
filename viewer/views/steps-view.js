@@ -1255,7 +1255,8 @@ function _applyRename(anno, step, name) {
 }
 
 /* Remember `name` for `key` in the main-process store. A failed write is
-   shown; the session rename is saved either way. */
+   shown; the session rename is saved either way. Returns the store's answer
+   ({ ok, previous, entry }: the entry before and the one written). */
 async function _rememberName(key, name) {
   let r;
   try {
@@ -1264,12 +1265,12 @@ async function _rememberName(key, name) {
     r = { ok: false, error: (e && e.message) || String(e) };
   }
   if (r && r.ok) {
-    _remembered[key] = { name, updated_at: new Date().toISOString() };
-    return true;
+    _remembered[key] = (r.entry && typeof r.entry === "object") ? r.entry : { name, updated_at: new Date().toISOString() };
+    return r;
   }
   toast("The new name is saved in this project, but it could not be remembered for later analyses: " +
     ((r && r.error) || "no reason was given"), "error");
-  return false;
+  return r || { ok: false };
 }
 
 function _renamedToast(propagated, occurrences) {
@@ -1277,6 +1278,13 @@ function _renamedToast(propagated, occurrences) {
   return propagated
     ? "Renamed. " + _plural(propagated, "matching drafted step", "matching drafted steps") + " took the name too."
     : "Renamed";
+}
+
+/* The remembered name of `key` changed in the store (the rename's undo entry
+   carries it, lane FX2): { key, before, after } from the store's answer, or
+   null when nothing was remembered. */
+function _namesChange(key, r) {
+  return r && r.ok && key ? [{ key, before: r.previous || null, after: r.entry || null }] : null;
 }
 
 async function inlineRenameStep(stepId, newName, advance) {
@@ -1297,9 +1305,11 @@ async function inlineRenameStep(stepId, newName, advance) {
   const goNext = advance === true || advance === "next";
   const next = goNext ? _nextRow(stepId) : null;
   const { key, propagated, occurrences } = _applyRename(anno, step, newName);
+  // The name is remembered first, so the rename's undo entry carries the
+  // store's entry before it and Ctrl+Z puts it back (lane FX2).
+  const names = key ? _namesChange(key, await _rememberName(key, newName)) : null;
   let saved = true;
-  try { await persistAnnotations(anno, "rename step"); } catch (_) { saved = false; }   // already shown
-  if (key) await _rememberName(key, newName);
+  try { await persistAnnotations(anno, "rename step", undefined, names ? { names } : undefined); } catch (_) { saved = false; }   // already shown
   if (saved && (propagated || occurrences)) toast(_renamedToast(propagated, occurrences), "success");
   if (next) {
     State.setSelectedStepId(next.step_id);
@@ -1502,16 +1512,18 @@ async function splitStep(stepId) {
   // ("X (split 1) (split 1)") — strip any existing artifact first.
   const baseName = stripSplitSuffix(s.name);
   // Neither half is one draft any more: no draft identity (a rename of a
-  // half is not remembered under the whole draft's key).
+  // half is not remembered under the whole draft's key). A step the analyst
+  // added gives two added steps (lane FX2).
+  const state = AC.derivedState([s]);
   const second = RunsModel.dropDraftIdentity({ ...s, step_id: cryptoRandomId(),
     name: baseName + " (split 2)",
     time_range: { start: secondEvents[0].timestamp, end: secondEvents[secondEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: secondIds },
-    state: "edited" });
+    state });
   const first = RunsModel.dropDraftIdentity({ ...s, name: baseName + " (split 1)",
     time_range: { start: firstEvents[0].timestamp, end: firstEvents[firstEvents.length - 1].timestamp },
     evidence: { ...s.evidence, interaction_event_ids: firstIds },
-    state: "edited" });
+    state });
   // C17: the condition stays with the first half, the links leave the second.
   StepFlow.splitFlow(first, second);
   loc.list.splice(loc.list.indexOf(s), 1, first, second);
@@ -1560,31 +1572,49 @@ async function addStepAtTimestamp(tsISO) {
     return;
   }
 
-  // Playhead inside a step: split that step at the playhead.
-  const idx = anno.steps.findIndex(s => s.time_range
-    && new Date(s.time_range.start).getTime() < t
-    && new Date(s.time_range.end).getTime() > t);
-  if (idx >= 0) {
-    const s = anno.steps[idx];
-    // C19: a moment is not added to a sub-process (its steps take it).
-    if (SPM.isSubProcess(s)) {
-      toast('The playhead is inside the sub-process "' + (s.name || "") + '": add the moment to one of its steps inside it, or dissolve it first.', "error");
-      return;
-    }
+  // Playhead inside a step: split that step at the playhead. C19 and lane
+  // FX2 (validation pass 3, F15): inside a sub-process its steps take the
+  // moment, at any depth (never the sub-process itself), so a sub-step gets
+  // a time the way a main-level step does.
+  const place = SPV.momentPlace(anno.steps, t);
+  if (place.kind === "split") {
+    const s = place.list[place.index];
     const ids = (s.evidence && s.evidence.interaction_event_ids) || [];
-    const newName = nextStepName(anno.steps);
-    RunsModel.recordFix(anno, runs, s.case_id, "split");
+    const newName = nextStepName(SPM.allSteps(anno.steps));
+    // The draft-fix counter counts the main level only (C19).
+    if (!place.parent) RunsModel.recordFix(anno, runs, s.case_id, "split");
+    // A step the analyst added stays added in both halves (lane FX2).
+    const state = AC.derivedState([s]);
     const first = RunsModel.dropDraftIdentity({ ...s, time_range: { start: s.time_range.start, end: tISO },
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) < t) },
-      state: "edited" });
+      state });
     const second = RunsModel.dropDraftIdentity({ ...s, step_id: cryptoRandomId(), name: newName,
       time_range: { start: tISO, end: s.time_range.end },
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) >= t) },
-      state: "edited" });
+      state });
     StepFlow.splitFlow(first, second);   // C17, as in splitStep
-    anno.steps.splice(idx, 1, first, second);
+    place.list.splice(place.index, 1, first, second);
     await persistAnnotations(anno, "Add step at playhead");
-    toast('Added "' + newName + '"', "success");
+    toast('Added "' + newName + '"' + (place.parent ? ' inside "' + (place.parent.name || "") + '"' : ""), "success");
+    return;
+  }
+
+  // Playhead inside a sub-process, between its steps: a new sub-step from
+  // the playhead to its next step's start, or to the sub-process's end.
+  if (place.parent) {
+    const parent = place.parent;
+    const parentEnd = new Date(parent.time_range.end).getTime();
+    const nextSub = place.list.filter((s) => s && s.time_range && s.time_range.start)
+      .map((s) => new Date(s.time_range.start).getTime()).filter((ms) => ms >= t).sort((a, b) => a - b)[0];
+    const endMs = Math.min(nextSub != null ? nextSub : parentEnd, parentEnd);
+    if (!(endMs - t > 0)) { toast("A step already starts here"); return; }
+    const newName = nextStepName(SPM.allSteps(anno.steps));
+    const own = new Set((parent.evidence && parent.evidence.interaction_event_ids) || []);
+    const ids = inter.filter((e) => { const et = new Date(e.timestamp).getTime(); return own.has(e.event_id) && et >= t && et < endMs; })
+      .map((e) => e.event_id);
+    place.list.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids, parent.case_id != null ? parent.case_id : null));
+    await persistAnnotations(anno, "Add step at playhead");
+    toast('Added "' + newName + '" inside "' + (parent.name || "") + '"', "success");
     return;
   }
 
@@ -1681,7 +1711,8 @@ function mergeStepObjects(toMerge) {
       interaction_event_ids: toMerge.flatMap(s => (s.evidence && s.evidence.interaction_event_ids) || []),
       screenshot_refs: toMerge.flatMap(s => (s.evidence && s.evidence.screenshot_refs) || []),
     },
-    state: "edited",
+    // Steps the analyst added merge into an added step (lane FX2).
+    state: AC.derivedState(toMerge),
   });
   if (keys) merged.draft_keys = keys;
   const links = StepFlow.mergedLinks(toMerge);
@@ -1852,7 +1883,9 @@ async function addManualStep() {
 
 /* + Add step inside a sub-process (C19): a step without a time in the open
    visit, right after the selected step (in its list) or at the end of the
-   visit; it belongs to the visit's transaction. Not a fix of the main level. */
+   visit; it belongs to the visit's transaction. Not a fix of the main level.
+   (The Timeline's + Step puts one at the video's playhead, with its time,
+   lane FX2.) */
 function _addSubStep(anno, model, path, name) {
   const containers = _containers(model, path);
   const c = containers.find((x) => x.key === _ui.levelOpen) || containers[0];
@@ -2083,8 +2116,12 @@ async function openAsSubProcessAction(stepId) {
   await _ensureRememberedLoaded();
   const model = _model();
   const node = mapNodeLabel(loc.step);
+  // Lane FX2: the names this project's own sub-steps give their actions
+  // first, then this computer's remembered names (C4's precedence).
+  const pattern = RunsModel.patternRun(anno, model.runs);
   const r = SPV.openAsSubProcess(_txs(model), loc.path, loc.step, _interactionsById(),
-    { newId: cryptoRandomId, remembered: _remembered, shotTimes: _shotTimes() });
+    { newId: cryptoRandomId, remembered: _remembered, shotTimes: _shotTimes(),
+      projectNames: SPV.projectActionNames(anno.steps, pattern.run ? pattern.run.caseId : null) });
   // The new level shows at once, open at this step's visit.
   State.setMapPath(loc.path.concat([node]));
   const next = _levelPath(_model());
@@ -2179,12 +2216,11 @@ async function groupSelectedAction() {
   const path = _levelPath(model);
   const check = SPV.groupCheck(_txs(model), path, ids);
   if (check.error) { toast(GROUP_REFUSED[check.error] || GROUP_REFUSED.none, "error"); return; }
-  const others = check.groups - 1;
+  // Lane FX2: the prompt says exactly what will happen, counted before it does.
   const name = await promptModal({
     title: "Group into a sub-process",
     message: "Name the sub-process",
-    detail: "The " + ids.length + " ticked steps move into it" +
-      (others ? ", and so do the same steps in " + _plural(others, "more place", "more places") : "") + ". Ctrl+Z undoes it.",
+    detail: SPV.groupPromptText(check, ids.length) + " Ctrl+Z undoes it.",
     placeholder: "For example: Create the sales order",
     okLabel: "Group",
   });
@@ -2254,11 +2290,19 @@ function openIgnoredAppsDialog() {
 
   const list = backdrop.querySelector("#ia-list");
   const names = _appNames();
+  // Lane FX2: each app is named by the business systems it stands for here
+  // (Salesforce, not Google Chrome), the app beside them when its own name
+  // differs (ticking it leaves all of it out).
+  const systems = SystemNames.appSystems((State.getSession() || {}).events, names);
   list.innerHTML = apps.map((a) => {
     const checked = current.has(a.proc.toLowerCase()) ? " checked" : "";
+    const app = readableApp(a.proc, names) || a.proc;
+    const sys = systems[a.proc] || [];
+    const label = sys.length ? sys.join(", ") : app;
     return '<label class="cb" style="display:flex;gap:8px;padding:5px 4px;align-items:center" title="' + escapeAttr(a.proc) + '">' +
       '<input type="checkbox" data-proc="' + escapeHtml(a.proc) + '"' + checked + ' />' +
-      '<span style="flex:1">' + escapeHtml(readableApp(a.proc, names) || a.proc) + '</span>' +
+      '<span style="flex:1"><span class="ia-system">' + escapeHtml(label) + "</span>" +
+        (sys.length && !sys.includes(app) ? ' <span class="meta ia-app">(' + escapeHtml(app) + ")</span>" : "") + "</span>" +
       '<span class="meta">' + a.count + ' interactions</span>' +
       '</label>';
   }).join("");
@@ -2363,13 +2407,15 @@ function openRememberedNamesDialog() {
     let r;
     try { r = await Ipc.rememberStepName({ draftKey: key, name: nm }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
     if (!r || !r.ok) { toast("The name was not renamed: " + ((r && r.error) || "no reason was given"), "error"); return; }
-    _remembered[key] = { name: nm, updated_at: new Date().toISOString() };
+    _remembered[key] = (r.entry && typeof r.entry === "object") ? r.entry : { name: nm, updated_at: new Date().toISOString() };
     // The session's own steps with that name take the new one too: the next
-    // analysis names drafts with this session's names first (C4).
+    // analysis names drafts with this session's names first (C4). Its undo
+    // puts the remembered name back too (lane FX2).
     const anno = ensureAnnoShape(State.getSession().annotations);
     const n = RunsModel.renameSavedName(anno.steps, key, cur, nm);
+    const undoNames = _namesChange(key, r);
     let saved = true;
-    if (n) { try { await persistAnnotations(anno, "rename a remembered name"); } catch (_) { saved = false; } }   // already shown
+    if (n) { try { await persistAnnotations(anno, "rename a remembered name", undefined, undoNames ? { names: undoNames } : undefined); } catch (_) { saved = false; } }   // already shown
     if (saved) {
       toast("Renamed" + (n ? ": " + _plural(n, "step in this project took", "steps in this project took") +
         " the new name" : "") + ".", "success");
@@ -2380,7 +2426,7 @@ function openRememberedNamesDialog() {
   async function forgetRemembered(key) {
     const cur = (names[key] && names[key].name) || "";
     const ok = await confirmModal({ title: "Forget this name?", message: 'Forget "' + cur + '"?',
-      detail: "The steps of this project with this name get their drafted names back, and later analyses no longer use it. Ctrl+Z gives this project its names back.",
+      detail: "The steps of this project with this name get their drafted names back, and later analyses no longer use it. Ctrl+Z gives this project its names back and remembers the name again.",
       okLabel: "Forget" });
     if (!ok || !State.getSession()) return;
     let r;
@@ -2388,13 +2434,15 @@ function openRememberedNamesDialog() {
     if (!r || !r.ok) { toast("The name was not forgotten: " + ((r && r.error) || "no reason was given"), "error"); return; }
     delete _remembered[key];
     // Otherwise the next analysis names the drafts with this session's own
-    // steps that still carry it (C4).
+    // steps that still carry it (C4). Its undo remembers the name again
+    // (lane FX2).
     const anno = ensureAnnoShape(State.getSession().annotations);
     const inter = _interactionsById();
     const n = RunsModel.forgetSavedName(anno.steps, key, cur,
       (s) => (s.action_key ? SPV.draftedAction(s, inter).name : StepFacts.draftedName(s, StepFacts.stepDatas(s, inter))));
+    const undoNames = r.previous ? [{ key, before: r.previous, after: null }] : null;
     let saved = true;
-    if (n) { try { await persistAnnotations(anno, "forget a remembered name"); } catch (_) { saved = false; } }   // already shown
+    if (n) { try { await persistAnnotations(anno, "forget a remembered name", undefined, undoNames ? { names: undoNames } : undefined); } catch (_) { saved = false; } }   // already shown
     if (saved) {
       toast('Forgot "' + cur + '".' + (n ? " " + _plural(n, "step in this project has its drafted name",
         "steps in this project have their drafted names") + " again." : ""), "success");
@@ -2423,6 +2471,8 @@ function initStepsView(deps) {
   if ($("#btn-remembered-names")) $("#btn-remembered-names").addEventListener("click", openRememberedNamesDialog);
   // The divider between the transactions and the selected step.
   if ($("#steps-splitter")) PaneSplitter.wire($("#steps-splitter"));
+  // Lane FX2: an undo or a redo put a remembered name back: read them again.
+  State.subscribe("names", () => { _remembered = {}; _rememberedLoad = null; _ensureRememberedLoaded(); });
 }
 
 /* A2/A5: toggle one boolean flag on a step and persist. Shared by the step

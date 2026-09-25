@@ -64,6 +64,12 @@ let _cuedId = null;
 /* The Steps selection the panel last followed: a redraw of the Steps level
    with the same selection keeps the row in the video. */
 let _followed = null;
+/* Lane FX2: the analyst moved the panel's video (played it, or dragged its
+   position) since it was cued to the highlighted row; a seek this module
+   makes itself (`_selfSeek`) is not the analyst's. A frame of the video for
+   a step without a time is taken only once the analyst chose its moment. */
+let _moved = false;
+let _selfSeek = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -121,6 +127,56 @@ function _hasStart(st) {
   return !!(st && st.time_range && isFinite(Date.parse(st.time_range.start)));
 }
 
+/* The lengths of the videos whose file holds none (a recorded .webm reports
+   Infinity), measured off screen (_measure), in seconds by file URL; NaN
+   while one is measured. */
+const _measured = new Map();
+
+/* The panel's video length in ms, NaN while unknown. */
+function _lengthMs() {
+  const v = $("sp-video");
+  const d = v ? v.duration : NaN;
+  if (Number.isFinite(d) && d > 0) return d * 1000;
+  const m = v ? _measured.get(v.getAttribute("src")) : undefined;
+  return Number.isFinite(m) && m > 0 ? m * 1000 : NaN;
+}
+
+/* Measure the length of the video at `src` when its file holds none: a copy
+   off screen is sought past its end, which makes the browser find it, so the
+   panel's own video is never moved for it. The rows are drawn again once it
+   is known (the ones past the end then say so). */
+function _measure(src) {
+  if (!src || _measured.has(src)) return;
+  _measured.set(src, NaN);
+  const m = document.createElement("video");
+  m.muted = true;
+  m.preload = "metadata";
+  let over = false;
+  const done = (secs) => {
+    if (over) return;
+    over = true;
+    m.removeAttribute("src");
+    try { m.load(); } catch (_) { /* nothing loaded */ }
+    if (!(Number.isFinite(secs) && secs > 0)) { _measured.delete(src); return; }
+    _measured.set(src, secs);
+    const v = $("sp-video"), panel = $("step-panel");
+    if (_state && v && panel && !panel.hidden && v.getAttribute("src") === src) render();
+  };
+  m.addEventListener("loadedmetadata", () => {
+    if (Number.isFinite(m.duration)) { done(m.duration); return; }
+    m.addEventListener("durationchange", () => { if (Number.isFinite(m.duration)) done(m.duration); });
+    m.currentTime = 1e101;
+  }, { once: true });
+  m.addEventListener("error", () => done(NaN), { once: true });
+  setTimeout(() => done(NaN), 20000);
+  m.src = src;
+}
+
+/* Where a step's moment is in the project's video (StepFacts.videoMoment). */
+function _moment(step) {
+  return StepFacts.videoMoment(step, Date.parse(Video.videoStartTs()), _lengthMs());
+}
+
 /* One row: what it is ("Transaction 2, again · 2:14 into the recording ·
    took 9s"), its play button, then its screenshots, what was said and its
    notes, each under a small lead. `again`: an earlier row is in the same
@@ -133,12 +189,17 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
   const notes = AnalystUI.notesOf(st);
   const said = placed && placed.synced ? TM.sentencesForStep(placed.sentences, st) : [];
   const focus = st.step_id === focusId;
+  // Lane FX2: a moment the video does not cover says so, and has no play.
+  const m = hasVideo ? _moment(st) : null;
+  const waste = !!(st.flags && st.flags.waste);
   return '<li class="sp-occ' + (focus ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '"' +
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
-      (hasVideo && _hasStart(st) ? '<button type="button" class="sp-play" title="Play this occurrence in the video above">▶</button>' : "") +
+      (m && m.kind === "covered" ? '<button type="button" class="sp-play" title="Play this occurrence in the video above">▶</button>' : "") +
       '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin)) + "</span>" +
+      (waste ? '<span class="step-tag-waste sp-waste-tag" title="Flagged as waste: this step should not be needed">Waste</span>' : "") +
     "</div>" +
+    (m && m.kind === "outside" ? '<p class="sp-nocover">' + escapeHtml(StepFacts.NOT_COVERED) + "</p>" : "") +
     (shots.length ? '<div class="sp-sec"><div class="sp-lead">Screenshots</div><div class="sp-shots">' + shots.map((sh) =>
       '<button type="button" class="sp-shot" data-ref="' + escapeAttr(sh.rel) + '" title="' +
         escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size") + '"><img src="' + escapeAttr(sh.url) +
@@ -196,21 +257,40 @@ function render() {
   const flowList = path.length ? (leadPlace ? leadPlace.visible : []) : (leadRun ? leadRun.visible : []);
   const flow = StepFlow.panelLine(flowList, lead, occ.map((o) => StepFlow.onlyWhen(o.step)));
   const isSub = SPM.isSubProcessNode(txs, path, _state.label);
+  // Lane FX2 (validation pass 2, F21): the waste flag shows here too, as in
+  // Steps and the PDD.
+  const wasted = occ.filter((o) => o.step.flags && o.step.flags.waste).length;
   $("sp-name").textContent = lead.name || "(unnamed step)";
   $("sp-about").innerHTML =
     ((where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
+    (wasted ? '<p class="sp-waste" id="sp-waste"><span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span> ' +
+      escapeHtml(wasted === occ.length ? "Flagged as waste" : "Flagged as waste in " + wasted + " of " + occ.length) + "</p>" : "") +
     (desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
     (flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
     '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length)) + "</p>";
   const video = $("sp-video");
   const src = hasVideo ? "file:///" + String(s.recordingPath).replace(/\\/g, "/") : "";
+  // Lane FX2 (validation pass 2, F7; pass 3, F14): the video shows only a
+  // moment of the highlighted row: its start when the video covers it, else
+  // it is hidden with one line saying the video does not cover it; a step
+  // without a time shows the video's start with one line, and a frame of it
+  // is taken only once the analyst goes to the step's moment.
+  const focusStep = (occ.find((o) => o.step.step_id === _state.focusId) || occ[0]).step;
+  const fm = hasVideo ? _moment(focusStep) : null;
   if (video) {
     if (!src) { video.removeAttribute("src"); video.hidden = true; }
     else {
       // Another video starts at 0: the row is cued again.
       if (video.getAttribute("src") !== src) { video.setAttribute("src", src); _cuedId = null; }
-      video.hidden = false;
+      video.hidden = !!fm && fm.kind === "outside";
     }
+  }
+  const note = $("sp-video-note");
+  if (note) {
+    const text = !fm ? "" : fm.kind === "outside" ? StepFacts.NOT_COVERED + "."
+      : fm.kind === "untimed" ? UNTIMED_NOTE : "";
+    note.textContent = text;
+    note.hidden = !text;
   }
   const onSteps = State.getLevel() === "steps";
   const placed = TM.forSession(s);
@@ -220,9 +300,11 @@ function render() {
     if (o.run) inRun.add(o.run.caseId);
     return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId);
   });
-  const playable = hasVideo ? occ.filter((o) => _hasStart(o.step)).length : 0;
+  const kinds = hasVideo ? occ.map((o) => _moment(o.step).kind) : [];
+  const playable = kinds.filter((k) => k === "covered").length;
+  const uncovered = kinds.filter((k) => k === "outside").length;
   $("sp-body").innerHTML =
-    '<p class="sp-explain" id="sp-explain">' + escapeHtml(StepFacts.occurrencesLine(occ, runs.length, playable)) + "</p>" +
+    '<p class="sp-explain" id="sp-explain">' + escapeHtml(StepFacts.occurrencesLine(occ, runs.length, playable, uncovered)) + "</p>" +
     '<ol class="sp-occs">' + rows.join("") + "</ol>" +
     '<div class="sp-foot">' + (onSteps
       ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
@@ -235,24 +317,56 @@ function render() {
   if (_state.focusId !== _cuedId) _cue(_state.focusId);
 }
 
-/* Where a step starts in the panel's video, in seconds, or NaN (no start
-   time, or no time the video can be lined up with). */
-function _videoSecs(step) {
-  return (Date.parse(step && step.time_range && step.time_range.start) - Date.parse(Video.videoStartTs())) / 1000;
-}
+/* The line under the panel's video for a step without a time (lane FX2). */
+const UNTIMED_NOTE = "This step has no time in the recording: play the video to its moment, then Add screenshot takes that frame.";
 
 /* The panel's video at a row's start, paused: the panel opens with its video
    at the row it highlights, not where the video last stopped. Before the
-   video has loaded, the time set is where it starts once it has. */
+   video has loaded, the time set is where it starts once it has. Lane FX2:
+   a step without a time is cued to the video's start (never the frame the
+   previous row left), and a moment the video does not cover is not cued (the
+   video is hidden then). */
 function _cue(stepId) {
   _cuedId = stepId;
+  _moved = false;
   const video = $("sp-video");
   const step = _find(stepId);
   if (!video || video.hidden || !video.getAttribute("src") || !step) return;
   _stopAt = null;
   if (!video.paused) video.pause();
-  const at = _videoSecs(step);
-  if (isFinite(at) && at >= 0) video.currentTime = at;
+  const m = _moment(step);
+  const at = m.kind === "covered" ? m.at : m.kind === "untimed" ? 0 : NaN;
+  if (isFinite(at) && at >= 0 && Math.abs((video.currentTime || 0) - at) > 0.001) {
+    _selfSeek = true;
+    video.currentTime = at;
+  }
+}
+
+/* Lane FX2: where "A frame of the video" takes the frame for step `stepId`
+   (views/analyst-ui.js), so it never saves another step's frame:
+     { video }  the panel's video, when the panel shows this step and its
+                video is at the step's moment (cued there, or moved by the
+                analyst, which is the only way for a step without a time);
+     { at }     the step's start, in seconds into the video, when the panel
+                does not show it there (the frame is read from a copy of the
+                video, off screen);
+     { why }    no frame can be taken, and why.
+   `src` is the video's file URL. */
+function frameSource(stepId) {
+  const s = _session();
+  const step = _find(stepId);
+  if (!s || !step || !s.recordingAvailable || !s.recordingPath) return { why: "There is no video to take a frame from." };
+  const src = "file:///" + String(s.recordingPath).replace(/\\/g, "/");
+  const m = _moment(step);
+  if (m.kind === "outside") return { why: StepFacts.NOT_COVERED + ": no frame of it can be taken." };
+  if (m.kind === "unplaced") return { why: "The video cannot be lined up with the project, so no frame of this step can be taken." };
+  const panel = $("step-panel");
+  const video = $("sp-video");
+  const shown = !!(panel && !panel.hidden && _state && _state.focusId === stepId && video && !video.hidden &&
+    video.getAttribute("src") === src);
+  if (shown && (m.kind === "covered" || _moved)) return { video, src };
+  if (m.kind === "covered") return { at: m.at, src };
+  return { why: "This step has no time in the recording: play the step panel's video to its moment first, then add the frame." };
 }
 
 function _show(open) {
@@ -345,12 +459,14 @@ function play(stepId) {
   const from = (Date.parse(step.time_range && step.time_range.start) - base) / 1000;
   const to = (Date.parse(step.time_range && step.time_range.end) - base) / 1000;
   if (!isFinite(from) || from < 0) { toast("This step starts before the video does.", "error"); return; }
+  // Lane FX2: past the video's end nothing of the step is in it.
+  if (_moment(step).kind === "outside") { toast(StepFacts.NOT_COVERED + ".", "error"); return; }
   _cuedId = stepId;
   if (_state) { _state.focusId = stepId; render(); }
   const main = document.getElementById("video");
   if (main && !main.paused) main.pause();
   _stopAt = isFinite(to) && to > from ? to : null;
-  const go = () => { video.currentTime = from; video.play().catch(() => {}); };
+  const go = () => { _selfSeek = true; video.currentTime = from; video.play().catch(() => {}); };
   if (video.readyState >= 1) go(); else video.addEventListener("loadedmetadata", go, { once: true });
 }
 
@@ -433,7 +549,21 @@ function refresh() {
     video.addEventListener("timeupdate", () => {
       if (_stopAt != null && video.currentTime >= _stopAt) { video.pause(); _stopAt = null; }
     });
+    // Lane FX2: the analyst's own moves of the video (a play, a drag of its
+    // position) are told from the ones this module makes.
+    video.addEventListener("play", () => { _moved = true; });
+    video.addEventListener("seeked", () => { if (_selfSeek) _selfSeek = false; else _moved = true; });
+    // Once the video's length is known the rows say which moments it covers:
+    // they are drawn again (where the video is stays as it is). A video whose
+    // file holds no length (a recorded .webm reports Infinity) is measured
+    // off screen.
+    video.addEventListener("loadedmetadata", () => {
+      if (!isFinite(video.duration)) _measure(video.getAttribute("src"));
+    });
+    video.addEventListener("durationchange", () => {
+      if (isFinite(video.duration) && video.duration > 0 && _state && !panel.hidden) render();
+    });
   }
 })();
 
-module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine };
+module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine, frameSource };

@@ -98,11 +98,21 @@ function _writeAtomic(p, text, fs) {
   }
 }
 
+/* The entry a store holds for `key` ({ name, updated_at }), or null. */
+function _entryOf(current, key) {
+  if (current.status !== "ok" || !Object.prototype.hasOwnProperty.call(current.raw.names, key)) return null;
+  const e = current.raw.names[key];
+  return e && typeof e === "object" && typeof e.name === "string"
+    ? { name: e.name, updated_at: typeof e.updated_at === "string" ? e.updated_at : "" } : null;
+}
+
 /* Remember `name` for `draftKey`: every other entry is kept as it is on disk.
-   Creates the folder and the file when absent. Returns { path }. Throws
-   NamesUnreadableError when the current file cannot be read (it is left
-   untouched), and the file-system error when the write fails (the previous
-   store stays in place). */
+   Creates the folder and the file when absent. Returns { path, previous,
+   entry }: the key's entry before (null when it had none) and the one
+   written, so an undo of the rename puts the store back (lane FX2,
+   restoreName). Throws NamesUnreadableError when the current file cannot be
+   read (it is left untouched), and the file-system error when the write
+   fails (the previous store stays in place). */
 function rememberName(p, draftKey, name, opts) {
   const o = opts || {};
   const fs = o.fs || nodeFs;
@@ -114,10 +124,12 @@ function rememberName(p, draftKey, name, opts) {
   if (current.status === "unreadable") throw new NamesUnreadableError(p, current.error);
   // Keep the file's own entries as they are (including any this version does
   // not read); only this key changes.
+  const previous = _entryOf(current, key);
   const doc = current.status === "ok" ? current.raw : { version: VERSION, names: {} };
-  doc.names[key] = { name: nm, updated_at: o.now || new Date().toISOString() };
+  const entry = { name: nm, updated_at: o.now || new Date().toISOString() };
+  doc.names[key] = entry;
   _writeAtomic(p, JSON.stringify(doc, null, 2), fs);
-  return { path: p };
+  return { path: p, previous, entry: Object.assign({}, entry) };
 }
 
 /* Forget the name remembered for `draftKey`, the inverse of rememberName
@@ -135,10 +147,23 @@ function forgetName(p, draftKey, opts) {
   if (current.status === "unreadable") {
     throw new NamesUnreadableError(p, current.error, "so the name cannot be forgotten. Remove or repair the file, then try again.");
   }
-  if (current.status !== "ok" || !Object.prototype.hasOwnProperty.call(current.raw.names, key)) return { path: p, removed: false };
+  if (current.status !== "ok" || !Object.prototype.hasOwnProperty.call(current.raw.names, key)) return { path: p, removed: false, previous: null };
+  const previous = _entryOf(current, key);
   delete current.raw.names[key];
   _writeAtomic(p, JSON.stringify(current.raw, null, 2), fs);
-  return { path: p, removed: true };
+  return { path: p, removed: true, previous };
 }
 
-module.exports = { LIBRARY_DIR, FILE, VERSION, namesStorePath, readNamesFile, rememberName, forgetName, NamesUnreadableError };
+/* Put the store's entry for `draftKey` back as it was (lane FX2: Ctrl+Z and
+   Ctrl+Y of a rename or a forget): `entry` ({ name, updated_at }) written as
+   it is, or, null, the key's entry removed. Returns { path }. The same
+   failures as rememberName and forgetName. */
+function restoreName(p, draftKey, entry, opts) {
+  const o = opts || {};
+  if (entry && typeof entry.name === "string" && entry.name.trim()) {
+    return { path: rememberName(p, draftKey, entry.name, { fs: o.fs, now: entry.updated_at || undefined }).path };
+  }
+  return { path: forgetName(p, draftKey, { fs: o.fs }).path };
+}
+
+module.exports = { LIBRARY_DIR, FILE, VERSION, namesStorePath, readNamesFile, rememberName, forgetName, restoreName, NamesUnreadableError };

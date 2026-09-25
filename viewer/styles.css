@@ -251,6 +251,14 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .sp-about .sp-flow { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-video { width: 100%; max-height: 240px; background: #000; border-radius: var(--radius-sm); }
 .sp-video[hidden] { display: none; }
+/* Lane FX2: the video has no moment of the highlighted row (not covered, or
+   no time): one line; and the row whose moment it does not cover. */
+.sp-video-note { margin: 0; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
+.sp-video-note[hidden] { display: none; }
+.sp-nocover { margin: 2px 0 0; font-size: 11px; color: var(--fg-3); }
+/* The waste flag, as the Steps row shows it. */
+.sp-about .sp-waste { color: var(--fg-2); }
+.sp-occ-head .sp-waste-tag { margin-left: auto; }
 /* The line above the rows that says what they are (the owner's review). */
 .sp-explain { margin: 0 0 6px; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .sp-occs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -890,6 +898,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .map-view-bar[hidden] { display: none; }
 .map-view-title { font-weight: 600; color: var(--fg); }
 .map-view-note { color: var(--fg-3); }
+/* Lane FX2: the As-Is copy shown was made before the steps changed; its
+   Copy again follows the words. */
+.map-view-stale { color: var(--fg); padding: 1px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--warn) 18%, transparent); border-left: 3px solid var(--warn); }
+.map-view-stale[hidden] { display: none; }
+.map-view-stale + #btn-map-asis-recopy { margin-left: -8px; }
 /* The map the PDD prints, first, read only (lane MV; C18): drawn by bpmn-js
    (asis-view.js) in the document colours, on the editor's page in both
    themes and with no frame around it, so it reads as the editor shows it; a
@@ -1550,6 +1564,18 @@ details.analysis-module { padding: 0; }
 .anno-error-banner strong { color: var(--bad); margin-right: 4px; }
 /* Its one act (lane CC): Restore the newest backup, on a line of its own. */
 .anno-error-banner .anno-error-restore { display: block; margin-top: 8px; }
+/* Lane FX2: while annotations.json cannot be read, the banner is all the page
+   shows (flow-view.js renderAnnotationsErrorBanner): the levels, the status
+   line, the save state, Export, the step panel and the Raw events drawer
+   wait until the file can be read. (The levels' own display is set inline
+   by renderer.js applyLevel, hence !important.) */
+.app.annotations-unreadable .session-only,
+.app.annotations-unreadable .session-layout-overview,
+.app.annotations-unreadable .session-layout,
+.app.annotations-unreadable .session-layout-stepsphases,
+.app.annotations-unreadable .session-layout-map,
+.app.annotations-unreadable .event-table-host,
+.app.annotations-unreadable .step-panel { display: none !important; }
 
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {
@@ -1719,6 +1745,8 @@ button.danger:disabled {
   transition: transform 0.12s, box-shadow 0.12s;
 }
 .tl-screenshot svg { width: 10px; height: 10px; }
+/* Lane FX2: a screenshot the analyst added (a frame of the video on a step). */
+.tl-screenshot.tl-screenshot-added { background: var(--accent); color: var(--accent-text); }
 .tl-screenshot:hover {
   transform: scale(1.3);
   box-shadow: var(--shadow-lg);
@@ -2253,6 +2281,15 @@ button.danger:disabled {
   max-width: calc(100% - 12px); box-sizing: border-box; padding: 1px 6px; border-radius: 2px;
   font-size: 10px; font-weight: 600; color: var(--fg-2); background: var(--bg-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+/* Lane FX2: a band of an app outside the process, left out of the analysis
+   too: the same hatch over its colour, its name still readable. */
+.tl-activity.tl-app-left-out { border-left: 1px dashed var(--fg-3); border-right: 1px dashed var(--fg-3); }
+.tl-activity.tl-app-left-out::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--bg-2) 78%, transparent) 0 5px,
+    color-mix(in srgb, var(--fg-3) 32%, var(--bg-2)) 5px 7px); }
+.tl-activity.tl-app-left-out .tl-activity-label { color: var(--fg); text-shadow: none; }
+.tl-activity.tl-app-left-out .tl-act-dur { color: var(--fg); background: var(--bg-2); }
 .lg-left-out::before { border: 1px dashed var(--fg-3); box-sizing: border-box;
   background: repeating-linear-gradient(135deg, var(--bg-2) 0 2px, color-mix(in srgb, var(--fg-3) 45%, var(--bg-2)) 2px 3px); }
 /* The step panel's notes of an occurrence. */

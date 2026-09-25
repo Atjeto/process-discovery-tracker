@@ -171,6 +171,10 @@
     return h + "h " + String(rm).padStart(2, "0") + "m";
   }
 
+  /* Lane FX2: the quiet marker on a box whose step is flagged as waste (the
+     word the Steps row and the step panel show). */
+  const WASTE_MARK = "Waste";
+
   /* C19: the mark on a sub-process's box, as BPMN marks a collapsed
      sub-process: a small square with a plus at the bottom of the box, in the
      theme's colours (an image, so it keeps its size beside the label). */
@@ -218,7 +222,9 @@
       elements.push({ data: { id: START, label: "Start", kind: "event", role: "start-event" } });
     }
     // AD-28: a box names its step and, under it, the system it happened in.
+    // Lane FX2: a box flagged as waste says so on a last line, quietly.
     const systems = opts.nodeSystems || {};
+    const waste = new Set(Array.isArray(opts.wasteNodes) ? opts.wasteNodes : []);
     for (const n of stepNodes) {
       const isStart = dfg.start_activities && dfg.start_activities[n];
       const isEnd = dfg.end_activities && dfg.end_activities[n];
@@ -226,10 +232,11 @@
       elements.push({
         data: {
           id: n,
-          label: system ? n + "\n" + system : n,
+          label: [n, system, waste.has(n) ? WASTE_MARK : ""].filter(Boolean).join("\n"),
           system,
           role: isStart ? "start" : isEnd ? "end" : "activity",
           sub: subs.has(n),
+          waste: waste.has(n),
         },
       });
     }
@@ -321,6 +328,12 @@
             padding: "17px",
             "text-margin-y": -9,
           },
+        },
+        {
+          // Lane FX2: a box flagged as waste: its border dashed, its last
+          // line the word Waste.
+          selector: "node[?waste]",
+          style: { "border-style": "dashed", "border-width": 1.5 },
         },
         {
           // C17: the process's start and end, small circles named beside them.

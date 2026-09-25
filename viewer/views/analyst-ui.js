@@ -18,7 +18,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { persistAnnotations, ensureAnnoShape } = require("../session.js");
+const { persistAnnotations, ensureAnnoShape, beforeProjectWrite } = require("../session.js");
 const { escapeHtml, escapeAttr, toast, placeMenu, cryptoRandomId, recordingStartMs, sinceStart } = require("../dom.js");
 const { promptModal } = require("../modals.js");
 const AC = require("../analyst-content.js");
@@ -214,14 +214,48 @@ async function setSystem(stepId, value) {
 
 /* ---- Screenshots ------------------------------------------------------------- */
 
-/* The video a frame is taken from: the step panel's while it shows one, else
-   the Timeline's. */
-function _frameVideo() {
-  const panel = document.getElementById("step-panel");
-  const sp = document.getElementById("sp-video");
-  if (panel && !panel.hidden && sp && !sp.hidden && sp.getAttribute("src")) return sp;
-  const v = document.getElementById("video");
-  return v && v.getAttribute("src") && _sess() && _sess().recordingAvailable ? v : null;
+/* Whether the project has a video a frame can be taken from. */
+function _hasVideo() {
+  const s = _sess();
+  return !!(s && s.recordingAvailable && s.recordingPath);
+}
+
+/* Lane FX2 (validation pass 3, F14): a frame of the video for step
+   `stepId` is never another step's. The step panel says where it comes from
+   (step-panel.js frameSource): its video when it shows the step at its
+   moment, else the step's start read from a copy of the video off screen;
+   a step without a time takes one only once the analyst played the panel's
+   video to its moment. Returns { data, secs } (a base64 PNG, the seconds
+   into the video), or { why }. */
+async function _frameFor(stepId) {
+  const src = require("./step-panel.js").frameSource(stepId);   // lazy: the panel requires this module
+  if (src.why) return { why: src.why };
+  if (src.video) {
+    const data = await _grabFrame(src.video);
+    return data ? { data, secs: src.video.currentTime } : { why: "The video frame could not be read." };
+  }
+  const v = document.createElement("video");
+  v.muted = true;
+  v.preload = "auto";
+  try {
+    await new Promise((res, rej) => {
+      v.addEventListener("loadeddata", res, { once: true });
+      v.addEventListener("error", () => rej(new Error("the video could not be read")), { once: true });
+      v.src = src.src;
+    });
+    await new Promise((res) => {
+      v.addEventListener("seeked", res, { once: true });
+      setTimeout(res, 4000);
+      v.currentTime = src.at;
+    });
+    const data = await _grabFrame(v);
+    return data ? { data, secs: src.at } : { why: "The video frame could not be read." };
+  } catch (e) {
+    return { why: "The video frame could not be read: " + ((e && e.message) || e) + "." };
+  } finally {
+    v.removeAttribute("src");
+    try { v.load(); } catch (_) { /* nothing loaded */ }
+  }
 }
 
 /* The video's current frame as a base64 PNG, or null. */
@@ -252,17 +286,19 @@ async function addScreenshot(stepId, source, data) {
   if (!s || !stepId) return;
   let at = null;
   if (source === "video_frame") {
-    const v = _frameVideo();
-    if (!v) { toast("There is no video to take a frame from.", "error"); return; }
-    data = await _grabFrame(v);
-    if (!data) { toast("The video frame could not be read.", "error"); return; }
-    at = Video().videoTimeToSessionTs(v.currentTime);
+    const f = await _frameFor(stepId);
+    if (f.why) { toast(f.why, "error"); return; }
+    data = f.data;
+    at = Video().videoTimeToSessionTs(f.secs);
   } else if (source === "paste" && !data) {
     const img = require("electron").clipboard.readImage();
     if (img.isEmpty()) { toast("The clipboard holds no image. Copy one first, or press Ctrl+V in this pane.", "error"); return; }
     data = img.toPNG().toString("base64");
   }
   let r;
+  // Lane FX2: the Overview's rows refresh stops first (main refuses the copy
+  // while an analysis of the project runs).
+  await beforeProjectWrite(s.sessionFolder);
   try { r = await Ipc.addScreenshot({ sessionFolder: s.sessionFolder, source, data }); }
   catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   if (!r) return;   // the file dialog was cancelled
@@ -282,7 +318,7 @@ function _shotMenu(btn, stepId) {
   menu.id = "shot-src-menu";
   menu.className = "project-menu-popup shot-src-menu";
   menu.setAttribute("role", "menu");
-  menu.innerHTML = (_frameVideo() ? '<button type="button" class="project-menu-item" data-src="video_frame">A frame of the video</button>' : "") +
+  menu.innerHTML = (_hasVideo() ? '<button type="button" class="project-menu-item" data-src="video_frame">A frame of the video</button>' : "") +
     '<button type="button" class="project-menu-item" data-src="paste" title="Or press Ctrl+V in the step pane">Paste an image</button>' +
     '<button type="button" class="project-menu-item" data-src="file">From a file...</button>';
   document.body.appendChild(menu);
@@ -411,6 +447,7 @@ async function attachFile(stepId) {
   const s = _sess();
   if (!s) return;
   let r;
+  await beforeProjectWrite(s.sessionFolder);   // lane FX2, as for a screenshot
   try { r = await Ipc.addAttachment({ sessionFolder: s.sessionFolder }); }
   catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   if (!r) return;

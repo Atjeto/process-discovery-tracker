@@ -18,7 +18,8 @@
  *     (still drafts, name_source "remembered"; the run says in one line how
  *     many of its names are remembered names) and lands in the profile's
  *     remembered-names store; a broken store shows an error and still saves
- *     the session rename; the name box suggests the name;
+ *     the session rename; the name box suggests the name; lane FX2: Ctrl+Z
+ *     of the rename puts the store back as it was, Ctrl+Y remembers it again;
  *   - the draft-fix count (C3, pattern_run.draft_fixes in annotations.json;
  *     the list shows no live counter, P2.9): merge / split / add / hide each
  *     count on the pattern run, renames do not, and Ctrl+Z, Unhide and
@@ -369,6 +370,30 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       store && store.version === 1 && entry && entry.name === NAME_SEARCH && typeof entry.updated_at === "string";
     record("C4: renaming a run-1 draft names the same-key drafts of runs 2 to 4 at once (still drafts, name_source remembered) and writes the store in the profile",
       ok, JSON.stringify({ err, per: per.map((s) => [s.state, s.name, s.name_source]), store }));
+
+    // Lane FX2 (validation pass 3, F4): the rename's Ctrl+Z puts the store
+    // back as it was (the key had no entry), and Ctrl+Y remembers the name
+    // again, the entry as the rename wrote it.
+    const und = {};
+    const searchName = (a, r) => (stepsOf(a, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name;
+    try {
+      await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
+      await page.keyboard.press("Control+z");
+      const a1 = await waitDisk(ANNO, (a) => RUNS.every((r) => searchName(a, r) !== NAME_SEARCH));
+      und.undoneNames = RUNS.map((r) => searchName(a1, r));
+      const s1 = await waitDisk(STORE, (st) => !!st && !(st.names || {})[KEY_SEARCH]);
+      und.undoneEntry = s1 ? (s1.names || {})[KEY_SEARCH] || null : "no store";
+      await page.keyboard.press("Control+y");
+      const a2 = await waitDisk(ANNO, (a) => RUNS.every((r) => searchName(a, r) === NAME_SEARCH));
+      und.redoneNames = RUNS.map((r) => searchName(a2, r));
+      const s2 = await waitDisk(STORE, (st) => !!(st && (st.names || {})[KEY_SEARCH]));
+      und.redoneEntry = s2 ? (s2.names || {})[KEY_SEARCH] || null : null;
+    } catch (e) { und.err = errText(e); }
+    record("lane FX2: Ctrl+Z of that rename gives every transaction its drafted name back and takes the name out of the store again (it had none); Ctrl+Y renames them again and remembers the name as the rename wrote it",
+      !und.err && und.undoneNames.every((n) => n && n !== NAME_SEARCH) && und.undoneEntry === null &&
+        und.redoneNames.every((n) => n === NAME_SEARCH) && !!und.redoneEntry && und.redoneEntry.name === NAME_SEARCH &&
+        !!entry && und.redoneEntry.updated_at === entry.updated_at,
+      JSON.stringify(und));
 
     await openRun(R2);
     const g2 = await group(R2);

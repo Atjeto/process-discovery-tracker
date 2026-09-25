@@ -91,3 +91,26 @@ test("a changed step is the analyst's; the implicit run id and the System choice
   assert.equal(AC.implicitRunId({ case_stats: [{ case_id: "r1" }] }), null);
   assert.deepEqual(AC.systemChoices(["SAP", "Phone"], ["Salesforce", "sap", "Excel"]), ["SAP", "Phone", "Salesforce", "Excel"]);
 });
+
+test("lane FX2: the Timeline's screenshots are the recording's and the ones the analyst added with a moment, in time order", () => {
+  const ev = (ts, kind, p) => ({ type: "system", timestamp: ts, data: { kind, path: p } });
+  const events = [
+    ev("2026-05-14T09:00:19Z", "screenshot", "screenshots/shot_01.png"),
+    { type: "activity", timestamp: "2026-05-14T09:00:20Z", data: {} },
+    ev("2026-05-14T09:00:40Z", "screenshot_manual", "screenshots/shot_02.png"),
+    ev("2026-05-14T09:00:41Z", "idle_start", "x.png"),
+  ];
+  const added = [
+    { id: "a1", file: "a1.png", step_id: "s3", at: "2026-05-14T09:00:31Z", source: "video_frame" },
+    { id: "a2", file: "a2.png", step_id: "s4", at: null, source: "file" },
+    { id: "a3", file: "../../a3.png", step_id: null, at: "2026-05-14T09:00:50Z", source: "paste" },
+    { id: "", file: "a4.png", at: "2026-05-14T09:00:55Z" },
+  ];
+  assert.deepEqual(AC.timelineShots(events, added), [
+    { ts: "2026-05-14T09:00:19Z", rel: "screenshots/shot_01.png", kind: "recorded", stepId: null },
+    { ts: "2026-05-14T09:00:31Z", rel: "screenshots/analyst/a1.png", kind: "added", stepId: "s3" },
+    { ts: "2026-05-14T09:00:40Z", rel: "screenshots/shot_02.png", kind: "manual", stepId: null },
+    { ts: "2026-05-14T09:00:50Z", rel: "screenshots/analyst/a3.png", kind: "added", stepId: null },
+  ], "one without a moment, or without an id, is not on the Timeline; a file is read by its name only");
+  assert.deepEqual(AC.timelineShots(null, null), []);
+});

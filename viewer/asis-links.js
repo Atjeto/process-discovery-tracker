@@ -32,6 +32,11 @@ const Planes = require("./map-planes.js");
 
 const LEGEND_ID = "TextAnnotation_legend";
 const DATA_PREFIX = "DataObjectReference_";
+/* The id the pipeline gives the text annotation of a step's notes (C18,
+   mining.py: TextAnnotation_1, TextAnnotation_2, ...; in a sub-process's
+   plane with its prefix). The legend is TextAnnotation_legend, and one the
+   analyst draws in the map editor gets bpmn-js's own id. */
+const NOTE_ID = /^TextAnnotation_\d+$/;
 
 /* bpmn-js's is(): the element's business object is an instance of `type`. */
 function is(element, type) {
@@ -64,6 +69,15 @@ function documentation(element) {
    sub-process's plane has its own, its id prefixed). */
 function isLegend(element) {
   return is(element, "bpmn:TextAnnotation") && Planes.baseId(_bo(element).id) === LEGEND_ID;
+}
+
+/* A step's notes on the map (C18): the text annotation the pipeline wrote
+   for them, never the legend or one the analyst drew in the editor. Lane
+   FX2: the PDD's pictures of the maps leave these out, with the lines that
+   join them to their tasks (refmap-ui.js), since notes stay in the app; the
+   Map on screen keeps them. */
+function isStepNote(element) {
+  return is(element, "bpmn:TextAnnotation") && NOTE_ID.test(Planes.baseId(_bo(element).id));
 }
 
 /* The root of a plane: bpmn-js draws a sub-process's map on a root whose
@@ -179,4 +193,4 @@ function attachmentFor(action, attachments) {
   return (action.file && list.find((a) => _fileName(a.file) === action.file)) || null;
 }
 
-module.exports = { LEGEND_ID, is, documentation, isLegend, elementAction, taskNode, projectPath, attachmentFor };
+module.exports = { LEGEND_ID, is, documentation, isLegend, isStepNote, elementAction, taskNode, projectPath, attachmentFor };

@@ -307,6 +307,31 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
   }
 
   // ---- 4. Group into a sub-process ------------------------------------------
+  // Lane FX2 (validation pass 2, F5): first a Go to on transaction 2's first
+  // Check document (back to its Save order), the step pane's real verb; the
+  // Group below lifts it to that transaction's first group, and Dissolve
+  // (5.) must give it back to Check, not to the group's last step.
+  const LOOP_WHEN = "the check finds an error";
+  const t2Steps = () => (readJson(ANNO).steps || []).filter((s) => s.case_id === R2)
+    .sort((a, b) => Date.parse(a.time_range.start) - Date.parse(b.time_range.start) || (a.step_id < b.step_id ? -1 : 1));
+  const CHECK_T2 = (t2Steps().find((s) => s.draft_key === K_CHECK) || {}).step_id;
+  const SAVE_T2 = (t2Steps().find((s) => s.draft_key === K_SAVE) || {}).step_id;
+  {
+    let err = null;
+    try {
+      await openBlock(R2);
+      await page.locator('#step-list .run-group.open .step-row[data-step-id="' + CHECK_T2 + '"]').click({ timeout: T });
+      await page.click("#btn-flow-go-to");
+      await page.selectOption("#flow-link-to-new", SAVE_T2);
+      await page.waitForSelector("#flow-link-when-0", { timeout: T });
+      await page.fill("#flow-link-when-0", LOOP_WHEN);
+      await page.press("#flow-link-when-0", "Enter");
+    } catch (e) { err = errText(e); }
+    const disk = await waitDisk(ANNO, (a) => (a.steps || []).some((s) => s.step_id === CHECK_T2 && (s.links || []).some((l) => l.when === LOOP_WHEN)));
+    const check = (disk.steps || []).find((s) => s.step_id === CHECK_T2) || {};
+    record("lane FX2 setup: a Go to set in the step pane on transaction 2's first Check document, back to its Save order",
+      !err && JSON.stringify(check.links) === JSON.stringify([{ to: SAVE_T2, when: LOOP_WHEN }]), JSON.stringify({ err, links: check.links }));
+  }
   {
     let err = null, prompt = null, rowBtn = null;
     try {
@@ -328,10 +353,16 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       gs.every((g) => g.name === GROUP && g.state === "manually_authored" && !g.draft_key && g.system === "SAP" &&
         g.sub_steps.map((s) => s.draft_key).join() === K_CHECK + ",sapgui|va01|Button:create-sales-order") &&
       !(disk.steps || []).some((s) => s.draft_key === K_CHECK) && rowBtn === "▸ 2 sub-steps" &&
-      /^The 2 ticked steps move into it, and so do the same steps in 4 more places\./.test(prompt || "");
-    record("Group into a sub-process: two consecutive steps of the reference transaction, named, and the same steps grouped in every transaction (transaction 2 twice), on disk",
+      // Lane FX2 (validation pass 2, F16): the prompt says exactly what the
+      // Group will do, counted before it does it.
+      prompt === "Groups these 2 steps and the same steps in 4 other places, in 3 transactions (5 groups). Ctrl+Z undoes it.";
+    record("Group into a sub-process: two consecutive steps of the reference transaction, named (the prompt says what will happen: 4 other places, 3 transactions, 5 groups), and the same steps grouped in every transaction (transaction 2 twice), on disk",
       ok, JSON.stringify({ err, prompt, perRun, rowBtn, sample: gs[0] && { name: gs[0].name, state: gs[0].state, system: gs[0].system, subs: gs[0].sub_steps.map((s) => s.name) } }));
     if (!ok) await shot(page, "fail-subproc-group.png");
+    const lifted = gs.find((g) => g.sub_steps.some((s) => s.step_id === CHECK_T2)) || {};
+    record("lane FX2: Group lifts the Go to of transaction 2's Check to its group, and remembers the step it came from",
+      JSON.stringify(lifted.links) === JSON.stringify([{ to: SAVE_T2, when: LOOP_WHEN, lifted_from: [CHECK_T2] }]),
+      JSON.stringify({ links: lifted.links }));
   }
 
   // ---- 5. Dissolve both, and Undo ---------------------------------------------
@@ -345,6 +376,11 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     } catch (e) { err = errText(e); }
     const gone = readJson(ANNO);
     const back = RUNS.map((r) => (gone.steps || []).filter((s) => s.case_id === r && s.draft_key === K_CHECK).length);
+    // Lane FX2: the Go to is back on the step that carried it, Check, and
+    // not on the group's last step, Create.
+    const t2Gone = (gone.steps || []).filter((s) => s.case_id === R2);
+    const checkBack = (t2Gone.find((s) => s.step_id === CHECK_T2) || {}).links;
+    const createAfter = t2Gone.filter((s) => s.draft_key === "sapgui|va01|Button:create-sales-order").map((s) => s.links || null);
     let undone = null;
     try {
       await blur();
@@ -354,6 +390,11 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     const ok = !err && confirms === 0 && groups(gone).length === 0 && back.join() === "1,2,1,1" && undone && groups(undone).length === 5;
     record("Dissolve the group (its step pane): no confirm, its steps back in their places in every transaction; Ctrl+Z brings the groups back",
       ok, JSON.stringify({ err, confirms, back, undone: undone && groups(undone).length }));
+    const linkOk = JSON.stringify(checkBack) === JSON.stringify([{ to: SAVE_T2, when: LOOP_WHEN }]) &&
+      createAfter.length === 2 && createAfter.every((l) => l === null) &&
+      !!undone && groups(undone).some((g) => (g.links || []).some((l) => l.when === LOOP_WHEN));
+    record("lane FX2: Group then Dissolve gives the Go to back to the step that carried it (transaction 2's Check), never to the group's last step; Ctrl+Z puts it back on the group",
+      linkOk, JSON.stringify({ checkBack, createAfter }));
   }
   {
     let err = null, msg = null, after = null, undone = null;

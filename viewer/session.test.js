@@ -122,6 +122,19 @@ test("setBeforeWrite: every write waits for it first (the Overview's rows refres
   assert.deepEqual(order, ["stop BW", "stopped", "write"]);
 });
 
+test("lane FX2: beforeProjectWrite waits for the same hook (a file copied in stops the Overview's rows refresh first)", async () => {
+  const order = [];
+  Session.setBeforeWrite(async (folder) => { order.push("stop " + folder); await new Promise((r) => setTimeout(r, 5)); order.push("stopped"); });
+  try {
+    await Session.beforeProjectWrite("CP");
+    order.push("copy");
+  } finally {
+    Session.setBeforeWrite(null);
+  }
+  assert.deepEqual(order, ["stop CP", "stopped", "copy"]);
+  await Session.beforeProjectWrite("CP");   // no hook: nothing to wait for
+});
+
 test("the undo baseline does not advance on a failed save", async () => {
   loadFakeSession("F2", [{ step_id: "a", name: "orig" }]);
   Ipc.saveAnnotations = async () => ({ ok: false, error: "ENOSPC: no space left on device" });
@@ -266,6 +279,44 @@ test("an undo of Leave out of the analysis analyzes again; an undo of Remove vid
   assert.deepEqual(calls, ["reload CC2"]);
   assert.deepEqual(State.getSession().annotations.external_video, { path: "video/a.mp4", offset_ms: 0 });
   Session.initSession({ renderSessionPills: () => {} });
+});
+
+test("lane FX2: an undo of a rename puts its remembered name back, and a redo renames it again", async () => {
+  loadFakeSession("NM1", [{ step_id: "a", name: "Open the customer record", draft_key: "k1", state: "auto_suggested" }]);
+  const calls = [];
+  const restore = Ipc.restoreStepName;
+  Ipc.restoreStepName = async (payload) => { calls.push(payload); return { ok: true }; };
+  const emitted = [];
+  const unsub = State.subscribe("names", () => emitted.push("names"));
+  try {
+    const anno = Session.ensureAnnoShape(State.getSession().annotations);
+    anno.steps[0].name = "Open the customer's record";
+    const names = [{ key: "k1", before: null, after: { name: "Open the customer's record", updated_at: "t1" } }];
+    await Session.persistAnnotations(anno, "rename step", undefined, { names });
+    await Session.performUndo();
+    assert.equal(State.getSession().annotations.steps[0].name, "Open the customer record");
+    assert.deepEqual(calls, [{ draftKey: "k1", entry: null }], "nothing was remembered for the key before: it is forgotten again");
+    await Session.performRedo();
+    assert.equal(State.getSession().annotations.steps[0].name, "Open the customer's record");
+    assert.deepEqual(calls[1], { draftKey: "k1", entry: { name: "Open the customer's record", updated_at: "t1" } });
+    await Session.performUndo();
+    assert.deepEqual(calls[2], { draftKey: "k1", entry: null }, "the redo entry carries the names too");
+    assert.deepEqual(emitted, ["names", "names", "names"], "the Steps level reads the names again each time");
+    // An edit without names never touches the store.
+    calls.length = 0;
+    await editStepNameInPlace("plain", "rename step");
+    await Session.performUndo();
+    assert.deepEqual(calls, []);
+    // A store that cannot be written is said; the project is reverted anyway.
+    Ipc.restoreStepName = async () => ({ ok: false, error: "The remembered names file cannot be read" });
+    await Session.persistAnnotations(State.getSession().annotations, "rename step", undefined, { names });
+    toasts.length = 0;
+    await Session.performUndo();
+    assert.ok(toasts.some((x) => x.kind === "error" && /remembered name could not be put back/.test(x.msg)), JSON.stringify(toasts));
+  } finally {
+    Ipc.restoreStepName = restore;
+    unsub();
+  }
 });
 
 test("recordFileAct: Remove transcript is undone and redone by its own acts, and leaves the annotations alone", async () => {

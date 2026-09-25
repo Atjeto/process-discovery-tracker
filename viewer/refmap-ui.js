@@ -34,9 +34,11 @@ const Session = require("./session.js");
 const RefStore = require("./reference-maps.js");
 const PdtBpmn = require("./bpmn-viewer.js");
 const AsIsView = require("./asis-view.js");
+const AsIsLinks = require("./asis-links.js");
 const Planes = require("./map-planes.js");
 const MapView = require("./map-view.js");
 const SaveState = require("./save-state.js");
+const AsIsFresh = require("./asis-freshness.js");
 const { toast, escapeHtml } = require("./dom.js");
 const { confirmModal } = require("./modals.js");
 
@@ -135,22 +137,15 @@ function _asIsMap(s) {
 }
 
 /* ---- drift -------------------------------------------------------------- */
-/* The file a copy was made from, as it is now: the hash of its bytes and
-   the signature of its process (RefStore.sourceMarks). A copy compares the
-   process, so an analysis that only writes the same map in another order
-   says nothing (RefStore.isStale). Only the step-level BPMN is a source; a
-   copy made from another cell before the map was reduced to one (the
-   activity-level map) has no source the viewer reads any more, so no drift
-   is claimed for it. */
-function currentSource(map) {
-  const s = session();
-  if (!s || !map || !map.source || map.source.level !== "step") return null;
-  const p = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
-  return p ? RefStore.sourceMarks(p) : null;
-}
+/* Whether a copy was made before the steps changed (asis-freshness.js): a
+   copy that kept the signature of the maps its steps drew compares it with
+   the steps now, at once; an older copy compares the process of
+   process_map_step.bpmn with the one it was copied from (so an analysis
+   that only writes the same map in another order says nothing), once the
+   steps are analyzed. A copy made from another map than the step map (the
+   activity-level map of old) claims no drift. */
 function driftFor(map) {
-  const now = currentSource(map);
-  return !!now && RefStore.isStale(map, now.hash, now.sig);
+  return AsIsFresh.copyStale(session(), map);
 }
 
 /* ---- the Map's edit act ---------------------------------------------------- */
@@ -234,7 +229,8 @@ function _analyzeForMap(s) {
 }
 
 /* The header line: which picture shows (MapView.line), or nothing while the
-   live map says why it draws no map. */
+   live map says why it draws no map. Lane FX2: while the As-Is copy it shows
+   was made before the steps changed, it says so, with Copy again. */
 function _setBar(p, copy, copyName) {
   const bar = $("map-view-bar");
   if (!bar) return;
@@ -247,6 +243,10 @@ function _setBar(p, copy, copyName) {
   set("map-view-note", l.note);
   const edit = $("btn-map-asis-edit");
   if (edit) edit.hidden = !l.edit;
+  const stale = $("map-view-stale");
+  if (stale) { stale.hidden = !l.stale; stale.textContent = l.stale || ""; }
+  const recopy = $("btn-map-asis-recopy");
+  if (recopy) recopy.hidden = !l.stale;
   const toRuns = $("btn-map-show-runs");
   if (toRuns) { toRuns.hidden = !l.toRuns; if (l.toRuns) toRuns.textContent = l.toRuns; }
   const toMap = $("btn-map-show-map");
@@ -284,7 +284,7 @@ function syncMapView() {
   const copySrc = asIs ? _source("copy:" + asIs.map_id, RefStore.absPath(folder, asIs)) : null;
   const stepPath = _deps.sourceBpmnPath ? _deps.sourceBpmnPath() : null;
   const stepSrc = _source("step", stepPath);
-  const copy = copySrc ? { plane: _planeOf(copySrc, path) } : null;
+  const copy = copySrc ? { plane: _planeOf(copySrc, path), stale: driftFor(asIs) } : null;
   const annoMs = _annoMtime(folder);
   const p = MapView.pick({
     want: _mapView.which,
@@ -367,6 +367,12 @@ function refresh() {
   });
 }
 
+/* Copy again (lane FX2): a new copy of the process map as it is now, named
+   like the copy it was clicked on, kept at its first change (as Edit's), and
+   then in that copy's place in the PDD. */
+const RECOPY_TITLE = "Make a new copy of the process map as it is now, named like this one. It is kept once you change " +
+  "something in it, and then takes this copy's place in the PDD; this copy stays as it is.";
+
 /* What Copy again gives a copy the process map changed after (C18): a copy
    made before the map had its colours, notes and attachments gets them. */
 function copyAgainLine(m, s) {
@@ -393,7 +399,7 @@ function rowHtml(m, s) {
         "</select></label>" +
       '<button class="icon-btn xs" data-rm-act="edit" data-rm-id="' + esc(m.map_id) + '">Edit</button>' +
       (stale ? '<button class="icon-btn xs" data-rm-act="refork" data-rm-id="' + esc(m.map_id) +
-        '" title="Make a new copy of the process map as it is now, named like this one. This copy stays as it is.">Copy again</button>' : "") +
+        '" title="' + esc(RECOPY_TITLE) + '">Copy again</button>' : "") +
       '<button class="icon-btn xs" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '" title="Copy this map, for example to start the To-Be map from it">Duplicate</button>' +
       '<button class="icon-btn xs danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Delete</button>'
     );
@@ -477,14 +483,20 @@ async function onRowPdd(id, role) {
    The copy opens in the editor unsaved and is kept at its first change
    (lane MV, _keepCopy): Edit and leaving without a change keeps nothing. */
 
-/* The editing of a new copy (Edit, not Copy again): { folder, entry, xml,
-   label, kept, touched }. `entry` is its row, written with its file at the
-   first change; `touched`: its name or role was changed in the editor. */
+/* The editing of a new copy (Edit, Edit a new copy, Copy again): { folder,
+   entry, xml, label, kept, touched, replaces, tookRole }. `entry` is its
+   row, written with its file at the first change; `touched`: its name or
+   role was changed in the editor. Lane FX2, Copy again: the new copy's row
+   carries the PDD role of the copy it was asked on (`replaces`), so the
+   editor shows it, and takes it from that copy when it is kept (`tookRole`,
+   the role it took, given back if the keeping is taken back). */
 let _edit = null;
 
-/* `like`: the copy "Copy again" was clicked on; the new copy takes its name
-   and kind, and no role (the analyst moves the role when the new copy is
-   ready). Copy again is asked for, so its copy is kept at once. */
+/* `like`: the copy "Copy again" was clicked on (the gallery's row, or the
+   Map's header while the As-Is copy it shows is older than the steps). The
+   new copy takes its name and kind; like Edit's, it is kept only at its
+   first change (lane FX2: leaving the editor without one keeps nothing),
+   and then it takes the PDD role of the copy it was asked on. */
 async function onFork(like) {
   const s = session();
   if (!s || !s.sessionFolder) { toast("Open a project first.", "error"); return; }
@@ -532,23 +544,17 @@ async function onFork(like) {
     name: like ? like.name : (asIs ? "As-Is map" : "To-Be map"),
     kind: like ? like.kind : (asIs ? "as_is" : "to_be"),
     nowIso: new Date().toISOString(),
+    // Lane FX2: the maps the steps draw now, so the copy says when the
+    // steps change after it (asis-freshness.js).
+    stepsSig: AsIsFresh.stepsMapSignature(cur.annotations, cur.stats),
   };
-  if (like) {
-    let entry;
-    try {
-      entry = _writeMap(cur.sessionFolder, () => RefStore.fork(Object.assign({ sessionFolder: cur.sessionFolder, anno: cur.annotations }, made)));
-    } catch (e) {
-      toast("The map was not copied: " + ((e && e.message) || e), "error");
-      return;
-    }
-    await persist("Copy the process map");
-    _showGallery(true);
-    openEditor(entry.map_id);
-    return;
-  }
   const entry = RefStore.forkEntry(made);
-  if (asIs) { entry.pdd_role = "as_is"; entry.kind = "as_is"; }
-  _edit = { folder: cur.sessionFolder, entry, xml, label: asIs ? "Make the As-Is map" : "Copy the process map", kept: false, touched: false };
+  const role = asIs ? "as_is" : like && RefStore.PDD_ROLES.includes(like.pdd_role) ? like.pdd_role : null;
+  if (role) { entry.pdd_role = role; entry.kind = role; }
+  _edit = { folder: cur.sessionFolder, entry, xml,
+    label: like ? "Copy the process map again" : asIs ? "Make the As-Is map" : "Copy the process map",
+    kept: false, touched: false, replaces: like ? like.map_id : null, tookRole: null };
+  if (like) _showGallery(true);
   await _openEditorOn(cur, entry, xml);
 }
 
@@ -568,6 +574,10 @@ async function _keepCopy() {
     toast("The map was not copied: " + ((e && e.message) || e), "error");
     return;
   }
+  // Copy again (lane FX2): the new copy takes the PDD role of the copy it was
+  // asked on (roles are exclusive, so that copy lets it go below).
+  const old = t.replaces ? RefStore.find(s.annotations, t.replaces) : null;
+  t.tookRole = old && old.pdd_role && old.pdd_role === t.entry.pdd_role ? old.pdd_role : null;
   RefStore.upsert(s.annotations, t.entry);
   if (t.entry.pdd_role) RefStore.setRole(s.annotations, t.entry.map_id, t.entry.pdd_role);
   try { await persist(t.label); } catch (_) { /* the save said why; the next save writes it */ }
@@ -588,6 +598,8 @@ async function _takeBack(t) {
   const was = _stepMapCurrent(s);
   RefStore.remove(s.annotations, entry.map_id);
   RefStore.deleteBpmn(t.folder, entry);
+  // Copy again: the copy it was asked on gets its PDD role back.
+  if (t.tookRole && t.replaces && RefStore.find(s.annotations, t.replaces)) RefStore.setRole(s.annotations, t.replaces, t.tookRole);
   try { await Session.saveAnnotationsDirect(s.annotations, "the unchanged copy removed"); }
   catch (_) { /* the save said why; the next save writes it */ }
   if (was) _markCurrent(s);
@@ -706,15 +718,19 @@ async function renderPddMaps() {
 async function renderEntryToPng(sessionFolder, entry) {
   return renderBpmnToPng(RefStore.readBpmn(sessionFolder, entry));
 }
+/* A picture the PDD prints leaves the steps' notes out (lane FX2): the note
+   dialog promises that notes stay in the app. The Map on screen, Export's
+   map image and the BPMN file keep them. */
+const PDD_PICTURE = { withoutNotes: true };
 /* A BPMN diagram drawn by an off-screen bpmn-js and saved as a PNG data URL,
    or null. The one renderer of the PDD's map images: the As-Is and To-Be
    copies above, and (AD-28) the map from the runs, process_map_step.bpmn,
    when no As-Is copy exists (renderer.js exportArtifact). Export, Process
-   map (image) saves the SVG it draws (xmlToSvg, renderer.js exportMapSvg),
-   so the picture saved is the PDD's. */
+   map (image) saves the SVG the same renderer draws (xmlToSvg, renderer.js
+   exportMapSvg), with the notes the PDD's picture leaves out. */
 async function renderBpmnToPng(xml) {
   if (!xml) return null;
-  const svg = await xmlToSvg(xml);
+  const svg = (await _drawPlanes(xml, [[]], PDD_PICTURE)).maps[0].svg;
   if (!svg) return null;
   try { return await svgToPng(svg); } catch (_) { return null; }
 }
@@ -722,13 +738,27 @@ async function renderBpmnToPng(xml) {
 function xmlToSvg(xml) {
   return _drawPlanes(xml, [[]]).then((r) => r.maps[0].svg);
 }
+/* The steps' notes (asis-links.isStepNote) and the lines that join them to
+   their tasks, taken off a drawn diagram: its picture then shows neither.
+   Only the drawing changes; the diagram's file is not touched. */
+function _dropNotes(v) {
+  const canvas = v.get("canvas");
+  for (const note of v.get("elementRegistry").filter((el) => AsIsLinks.isStepNote(el) && !el.labelTarget)) {
+    for (const line of [...(note.incoming || []), ...(note.outgoing || [])]) {
+      try { canvas.removeConnection(line); } catch (_) { /* already gone */ }
+    }
+    try { canvas.removeShape(note); } catch (_) { /* already gone */ }
+  }
+}
+
 /* Contract C19: the maps of one BPMN diagram (its planes, map-planes.js),
    drawn by one off-screen bpmn-js and saved as SVG, the plane of each path of
    `paths` ([] the main map) in turn (saveSVG saves the plane shown):
    { drawn, maps: [{ svg, found }] }, found false for a map the file has no
    plane for; drawn false (and every svg null) when the file could not be
-   drawn at all. */
-function _drawPlanes(xml, paths) {
+   drawn at all. `opts.withoutNotes` (the PDD's pictures, lane FX2): the
+   steps' notes are left out of every plane. */
+function _drawPlanes(xml, paths, opts) {
   const list = Array.isArray(paths) ? paths : [];
   const none = () => ({ drawn: false, maps: list.map(() => ({ svg: null, found: false })) });
   return new Promise((resolve) => {
@@ -741,6 +771,7 @@ function _drawPlanes(xml, paths) {
       .then(async () => {
         const canvas = v.get("canvas");
         const main = canvas.getRootElement();
+        if (opts && opts.withoutNotes) _dropNotes(v);
         const maps = [];
         for (const p of list) {
           const sub = Array.isArray(p) && p.length > 0;
@@ -759,9 +790,10 @@ function _drawPlanes(xml, paths) {
 }
 /* The maps at `paths` of one BPMN diagram as PNG data URLs (null for one it
    has no plane for, or that could not be drawn): the PDD's pictures of the
-   sub-processes' maps (renderer.js exportArtifact). */
+   sub-processes' maps (renderer.js exportArtifact), without the steps'
+   notes. */
 async function renderPlanesToPng(xml, paths) {
-  const r = await _drawPlanes(xml, paths);
+  const r = await _drawPlanes(xml, paths, PDD_PICTURE);
   const out = [];
   for (const m of r.maps) {
     let png = null;
@@ -848,6 +880,10 @@ function initRefmapUI(deps) {
   // it; how the transactions ran one click away, and back.
   const editAsIs = $("btn-map-asis-edit");
   if (editAsIs) editAsIs.addEventListener("click", () => { const e = _asIsMap(session()); if (e) openEditor(e.map_id); });
+  // Lane FX2: Copy again on the header, while the As-Is copy shown is older
+  // than the steps.
+  const recopy = $("btn-map-asis-recopy");
+  if (recopy) recopy.addEventListener("click", () => { const e = _asIsMap(session()); if (e) onFork(e); });
   const showRuns = $("btn-map-show-runs");
   if (showRuns) showRuns.addEventListener("click", () => _showMapView("runs"));
   const showMap = $("btn-map-show-map");

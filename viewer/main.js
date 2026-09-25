@@ -36,6 +36,7 @@ const VideoPath = require("./video-path.js");
 const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
 const ProjectZip = require("./project-zip.js");
+const ProjectFolder = require("./project-folder.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 const { clearStaged } = require("./staged-outputs.js");
 
@@ -283,19 +284,17 @@ ipcMain.handle("viewer:openExternal", (_e, p) => {
 
 function loadSessionData(sessionFolder) {
   /* Normalize and resolve to an absolute path so downstream file
-     accesses are anchored to a known root. */
-  const root = path.resolve(sessionFolder);
-  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
-    throw new Error(`Project folder not found: ${root}`);
-  }
+     accesses are anchored to a known root. Lane FX2 (validation pass 3,
+     F7): the folder Windows' Extract All makes of the SME's zip holds the
+     recording folder; that one opens (project-folder.js). A folder that is
+     no project and holds none is refused with a sentence saying what to
+     open. The session's sessionFolder is the folder that opened. */
+  const root = ProjectFolder.resolveProjectFolder(sessionFolder).folder;
   sessionFolder = root;
   // Track this resolved root so viewer:openExternal can confine
   // renderer-supplied screenshot paths to a session we actually loaded.
   _knownSessionRoots.add(root);
   const manifestPath = path.join(sessionFolder, "manifest.json");
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error(`Not a project folder (no manifest.json): ${sessionFolder}`);
-  }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
   /* Stream events.jsonl in. JSONL is line-delimited; we parse each
@@ -502,7 +501,9 @@ ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {
      annotations.external_video as one undoable edit (flow-view-video.js), so
      Undo takes an attach, a replace or a sync back, and the save moves a
      replaced copy out of video/ for that Undo (analyst-files.js). Refused
-     before anything is copied while annotations.json cannot be read (RP-04).
+     before anything is copied while annotations.json cannot be read (RP-04),
+     and (lane FX2) while the project's analysis runs, which would refuse the
+     entry's save and leave the copy in video/ unlisted.
      Result { ok, stored, copied, copyError } or { ok: false, error }. */
   const w = _projectWrite(sessionFolder, "video");
   w.start();
@@ -511,6 +512,8 @@ ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {
     if (!sessionFolder || !fs.existsSync(path.join(root, "manifest.json"))) {
       return w.end({ ok: false, error: "Not a project folder" }, NO_PROJECT);
     }
+    const busy = _refuseWhileAnalyzing(root);
+    if (busy) return w.end(busy);
     AnnoStore.assertWritable(root);
     const plan = VideoPath.storePlan(root, videoPath, {
       exists: fs.existsSync,
@@ -681,12 +684,16 @@ ipcMain.handle("viewer:createProject", async () => {
    here), or "video_frame" / "paste" with `data` (the image, base64). It is
    written as screenshots/analyst/<id>.<png|jpg>. Result null (cancelled),
    { ok: true, id, file } or { ok: false, error }. The renderer then adds the
-   analyst_screenshots entry (an undoable edit). */
+   analyst_screenshots entry (an undoable edit). Lane FX2: refused before
+   anything is asked or written while the project's analysis runs (the
+   entry's save would be refused, and the file left in the folder unlisted). */
 ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data } = {}) => {
   const w = _projectWrite(sessionFolder, "screenshot");
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
+    const busy = _refuseWhileAnalyzing(root);
+    if (busy) return w.end(busy);
     let buf;
     if (source === "file") {
       const r = await dialog.showOpenDialog(mainWindow, { title: "Add a screenshot", properties: ["openFile"],
@@ -710,12 +717,15 @@ ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data 
 
 /* Attach a file: an open dialog, then a copy into attachments/ (a numeric
    suffix when the name is taken). Result null (cancelled), { ok: true, file,
-   label } (label: the original file name) or { ok: false, error }. */
+   label } (label: the original file name) or { ok: false, error }. Lane
+   FX2: refused before the dialog while the project's analysis runs. */
 ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
   const w = _projectWrite(sessionFolder, "attachment");
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
+    const busy = _refuseWhileAnalyzing(root);
+    if (busy) return w.end(busy);
     const r = await dialog.showOpenDialog(mainWindow, { title: "Attach a file", properties: ["openFile"] });
     if (r.canceled || !r.filePaths.length) return null;
     w.start();
@@ -824,9 +834,25 @@ ipcMain.handle("viewer:rememberStepName", (_e, payload) => {
     p = namesStorePath();
     const { draftKey, name } = payload || {};
     const r = NamesStore.rememberName(p, draftKey, name);
-    return { ok: true, path: r.path };
+    // Lane FX2: the entry before and the one written, for the rename's undo.
+    return { ok: true, path: r.path, previous: r.previous, entry: r.entry };
   } catch (e) {
     console.error("[viewer:rememberStepName] not remembered:", e && e.message);
+    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+  }
+});
+
+/* Lane FX2: Ctrl+Z (or Ctrl+Y) of a rename or a forget puts the key's entry
+   back as it was: { draftKey, entry } (null takes the key out). Result
+   { ok: true, path } or { ok: false, code, error, path }. */
+ipcMain.handle("viewer:restoreStepName", (_e, payload) => {
+  let p = null;
+  try {
+    p = namesStorePath();
+    const { draftKey, entry } = payload || {};
+    return { ok: true, path: NamesStore.restoreName(p, draftKey, entry || null).path };
+  } catch (e) {
+    console.error("[viewer:restoreStepName] not put back:", e && e.message);
     return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
   }
 });
@@ -854,7 +880,7 @@ ipcMain.handle("viewer:forgetStepName", (_e, payload) => {
   try {
     p = namesStorePath();
     const r = NamesStore.forgetName(p, (payload || {}).draftKey);
-    return { ok: true, path: r.path, removed: r.removed };
+    return { ok: true, path: r.path, removed: r.removed, previous: r.previous };
   } catch (e) {
     console.error("[viewer:forgetStepName] not forgotten:", e && e.message);
     return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };

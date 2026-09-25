@@ -160,10 +160,34 @@ function _derivedWhere(step, interactionsById, names) {
   return (a || t) ? whereData(a, t, names) : { system: "", screen: "" };
 }
 
+/* The systems each application of a recording stands for (lane FX2,
+   validation pass 2, F10: the Apps outside the process dialog names the
+   business system, Salesforce, not the browser): { process name: [systems] }
+   from its interactions' window titles, the most used first (a tie keeps
+   the first seen). `interactions`: the recording's interaction events. */
+function appSystems(interactions, names) {
+  const counts = new Map();
+  for (const ev of interactions || []) {
+    const d = ev && ev.type === "interaction" && ev.data;
+    const proc = d && typeof d.process_name === "string" ? d.process_name : "";
+    if (!proc) continue;
+    const system = systemName(proc, d.window_title, names);
+    if (!system) continue;
+    const per = counts.get(proc) || new Map();
+    per.set(system, (per.get(system) || 0) + 1);
+    counts.set(proc, per);
+  }
+  const out = {};
+  for (const [proc, per] of counts) {
+    out[proc] = [...per].map((e, i) => [e[0], e[1], i]).sort((a, b) => (b[1] - a[1]) || (a[2] - b[2])).map((e) => e[0]);
+  }
+  return out;
+}
+
 /* Every system the shared list names, each once, in its order (the step
    pane's System field offers them, C16). */
 function knownSystems() {
   return [...new Set(RULES.map((r) => r.system))];
 }
 
-module.exports = { appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName, knownSystems };
+module.exports = { appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName, knownSystems, appSystems };

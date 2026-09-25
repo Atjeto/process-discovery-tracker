@@ -28,12 +28,16 @@ function _timecode(ms) {
 
 /* `cases` = [{ id, label, startMs, title? }] (flow-view.deriveCases, each
    with the Steps level's title when it has one); `scope` = the selected case
-   id ("" for all transactions); `sessionStartMs` = the first event's time.
+   id ("" for all transactions); `sessionStartMs` = the first event's time;
+   `implicit` (lane FX2): the words of a project's one implicit transaction
+   (analyst-content.IMPLICIT_TRANSACTION), its one option then.
    A case with a title reads "Transaction 1 · Order #10900" ("Transaction 1"
    without a label worth showing). One without (not a run the Steps level
    knows) keeps its label, or its id, and duplicate labels get a [H:MM:SS]
    offset so they can be told apart (P2.8). Returns the options' HTML. */
-function caseScopeOptionsHtml(cases, scope, sessionStartMs) {
+function caseScopeOptionsHtml(cases, scope, sessionStartMs, implicit) {
+  // A project with no start marker is one transaction: the whole of it.
+  if (implicit) return '<option value="" selected>' + escapeHtml(implicit) + "</option>";
   const labelCounts = {};
   for (const c of cases) {
     const k = c.label || c.id;

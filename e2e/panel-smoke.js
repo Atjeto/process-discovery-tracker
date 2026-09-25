@@ -15,7 +15,9 @@
  *   (g) the owner's review: one line above the rows says what they are,
  *       built from them, each row reads "Transaction N · m:ss into the
  *       recording · took Ns", a second time in one transaction reads
- *       "Transaction 2, again", and a row's play moves the highlight;
+ *       "Transaction 2, again", and a row's play moves the highlight; lane
+ *       FX2: a row whose moment the 32 s video does not cover says so, with
+ *       no play, and the panel opened on one hides its video and says why;
  *   (L) the Timeline's lanes show their names at the left, each with a
  *       tooltip, and the minimap's tooltip says what it is;
  *   (d) closed on Steps, it stays closed while rows are selected;
@@ -160,18 +162,22 @@ const panelState = (page) => page.evaluate(() => {
     rows: [...document.querySelectorAll("#sp-body .sp-occ")].map((r) => ({ id: r.dataset.stepId,
       at: ((r.querySelector(".sp-at") || {}).textContent || "").trim(), focus: r.classList.contains("focus"),
       current: r.getAttribute("aria-current") === "true", play: !!r.querySelector(".sp-play"),
+      nocover: ((r.querySelector(".sp-nocover") || {}).textContent || "").trim(),
       leads: [...r.querySelectorAll(".sp-lead")].map((l) => (l.textContent || "").trim()), shots: r.querySelectorAll(".sp-shot").length })),
     foot: [...document.querySelectorAll("#sp-body .sp-foot button")].map((b) => (b.textContent || "").trim()),
     video: v ? { t: v.currentTime, paused: v.paused, src: !!v.getAttribute("src") } : null,
+    videoHidden: v ? v.hidden : null,
+    videoNote: (() => { const n = document.getElementById("sp-video-note"); return n && !n.hidden ? (n.textContent || "").trim() : ""; })(),
   };
 });
 
 /* The line above the rows, as the rows shown make it (step-facts.js builds
-   it; the unit tests pin its wording): "Transaction N" read from each row. */
+   it; the unit tests pin its wording): "Transaction N" read from each row,
+   the rows with a play, and (lane FX2) the rows the video does not cover. */
 const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r) => {
   const m = /^Transaction (\d+)/.exec(r.at);
   return { run: m ? { ordinal: Number(m[1]) } : null };
-}), runCount, st.rows.filter((r) => r.play).length);
+}), runCount, st.rows.filter((r) => r.play).length, st.rows.filter((r) => r.nocover).length);
 
 (async () => {
   const S = freshSession();
@@ -287,6 +293,9 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     }, SAVE.name);
     await page.waitForSelector("#step-panel:not([hidden])", { timeout: T });
     const cue = await cued(SAVE);
+    // Lane FX2: the synthetic video's file holds no length; once it is
+    // measured, the rows past its end say so.
+    await page.waitForSelector("#sp-body .sp-occ .sp-nocover", { timeout: T }).catch(() => {});
     const st = await panelState(page);
     await page.locator('#sp-body .sp-occ[data-step-id="' + SAVE.step_id + '"] .sp-play').click({ timeout: T });
     fromMap = Object.assign({ st, cue }, await played(SAVE));
@@ -303,12 +312,13 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       await page.evaluate(() => document.getElementById("session-map-dfg-host").getBoundingClientRect().width > 300)),
     JSON.stringify(map.err || fromMap));
   const mapRows = fromMap ? fromMap.st.rows : [];
-  record("(g1) the owner's review: one line above the rows says what they are, built from them (\"This step happened N times: ... Play any of them.\"); each row reads \"Transaction N · m:ss into the recording · took Ns\"; the panel opens with its video paused at the row it highlights (a map box: Transaction 1), not where the video was",
-    !!(fromMap && fromMap.cue.ok && /^This step happened .+\. Play any of them\.$/.test(fromMap.st.explain) &&
-      fromMap.st.explain === lineFromRows(fromMap.st, 4) && mapRows.every((r) => r.play) &&
+  record("(g1) the owner's review + lane FX2: one line above the rows says what they are, built from them (\"This step happened N times: ... Play the one the video covers.\"); each row reads \"Transaction N · m:ss into the recording · took Ns\"; the rows past the 32 s video's end say \"The video does not cover this moment\", with no play; the panel opens with its video paused at the row it highlights (a map box: Transaction 1), not where the video was",
+    !!(fromMap && fromMap.cue.ok && /^This step happened .+\. Play the one the video covers\.$/.test(fromMap.st.explain) &&
+      fromMap.st.explain === lineFromRows(fromMap.st, 4) && mapRows[0].play && !mapRows[0].nocover && mapRows.length > 1 &&
+      mapRows.slice(1).every((r) => !r.play && r.nocover === StepFacts.NOT_COVERED) &&
       mapRows.every((r) => /^Transaction \d(, again)? · \d+:\d{2} into the recording · took \d+s$/.test(r.at)) &&
       mapRows[0].id === SAVE.step_id),
-    JSON.stringify(map.err || { explain: fromMap.st.explain, fromRows: lineFromRows(fromMap.st, 4), rows: mapRows.map((r) => r.at), cue: fromMap.cue }));
+    JSON.stringify(map.err || { explain: fromMap.st.explain, fromRows: lineFromRows(fromMap.st, 4), rows: mapRows.map((r) => [r.at, r.play, r.nocover]), cue: fromMap.cue }));
 
   // (g2) A step done twice in one transaction: va01's Check document (the
   // demo's order is checked again in its second transaction).
@@ -327,22 +337,41 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     const first = anno.steps.find((s) => s.step_id === (twice.st.rows[0] || {}).id);
     at("(g2) wait for the video cue");
     twice.cue = first ? await cued(first) : { ok: false, why: "no first row" };
-    // A row's play moves the highlight to it (its moment is past the 32 s
-    // video's end, so only the highlight is checked).
+    // Lane FX2 (validation pass 2, F7): the rows after Transaction 1's are
+    // past the 32 s video's end: they say so, with no play. Opened on one of
+    // them (its Timeline band), the panel hides its video and says why; the
+    // play of the row the video covers moves the highlight there, shows the
+    // video again and plays it.
     const again = twice.st.rows[2] || {};
-    at("(g2) press a row's play");
-    await page.locator('#sp-body .sp-occ[data-step-id="' + again.id + '"] .sp-play').click({ timeout: T });
-    await wait(300);
-    at("(g2) read the highlight");
-    twice.lit = (await panelState(page)).rows.filter((r) => r.focus || r.current).map((r) => ({ id: r.id, focus: r.focus, current: r.current }));
     twice.againId = again.id;
+    at("(g2) open the panel on a row past the video's end (its Timeline band)");
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+    await page.waitForSelector('#timeline .tl-step-band[data-step-id="' + again.id + '"]', { timeout: T });
+    await page.evaluate((id) => {
+      document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }, again.id);
+    await page.waitForFunction((id) => !!document.querySelector('#sp-body .sp-occ.focus[data-step-id="' + id + '"]'), again.id, { timeout: T });
+    twice.outside = await panelState(page);
+    at("(g2) press the covered row's play");
+    await page.locator('#sp-body .sp-occ[data-step-id="' + first.step_id + '"] .sp-play').click({ timeout: T });
+    const pl = await played(first);
+    at("(g2) read the highlight");
+    const back = await panelState(page);
+    twice.lit = back.rows.filter((r) => r.focus || r.current).map((r) => ({ id: r.id, focus: r.focus, current: r.current }));
+    twice.back = { videoHidden: back.videoHidden, note: back.videoNote, played: pl };
   } catch (e) { twice.err = errText(e); }
   const tr = (twice.st && twice.st.rows) || [];
-  record("(g2) the owner's review: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play any of them.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row, and a row's play moves the highlight to that row",
-    !!(!twice.err && twice.st.explain === "This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play any of them." &&
+  const out = twice.outside || {};
+  record("(g2) the owner's review + lane FX2: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row; the rows past the video's end say so, with no play; opened on one of them (its Timeline band) the panel hides its video and says why; Transaction 1's play moves the highlight there, shows the video and plays it",
+    !!(!twice.err && twice.st.explain === "This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers." &&
       JSON.stringify(tr.map((r) => r.at.split(" · ")[0])) === JSON.stringify(["Transaction 1", "Transaction 2", "Transaction 2, again", "Transaction 3", "Transaction 4"]) &&
-      twice.cue.ok && twice.lit.length === 1 && twice.lit[0].id === twice.againId && twice.lit[0].focus && twice.lit[0].current),
-    JSON.stringify(twice.err ? twice : { explain: twice.st.explain, rows: tr.map((r) => r.at), cue: twice.cue, lit: twice.lit, again: twice.againId }));
+      tr[0].play && !tr[0].nocover && tr.slice(1).every((r) => !r.play && r.nocover === StepFacts.NOT_COVERED) && twice.cue.ok &&
+      out.videoHidden === true && out.videoNote === StepFacts.NOT_COVERED + "." &&
+      (out.rows || []).some((r) => r.id === twice.againId && r.focus && !r.play && r.nocover === StepFacts.NOT_COVERED) &&
+      twice.lit.length === 1 && twice.lit[0].id === tr[0].id && twice.lit[0].focus && twice.lit[0].current &&
+      twice.back.videoHidden === false && twice.back.note === "" && twice.back.played.ok),
+    JSON.stringify(twice.err ? twice : { explain: twice.st.explain, rows: tr.map((r) => [r.at, r.play, r.nocover]), cue: twice.cue,
+      outside: { hidden: out.videoHidden, note: out.videoNote }, lit: twice.lit, back: twice.back }));
 
   // (c2) A timeline step band (the Steps lane is on by default).
   let fromBand = {};
@@ -627,10 +656,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     JSON.stringify(failed.f1 || im));
   const tk = asis.task || {};
   const saveRow = ((tk.st && tk.st.rows) || []).find((r) => r.id === SAVE.step_id) || {};
-  record("(f2) C18: with an As-Is copy chosen, the Map shows it drawn by bpmn-js (no picture), and a task opens the panel on its step (Transaction 1 in focus) with its play buttons, which play it; the step's note shows in its row under a Notes lead",
+  record("(f2) C18: with an As-Is copy chosen, the Map shows it drawn by bpmn-js (no picture), and a task opens the panel on its step (Transaction 1 in focus) with the play buttons of the rows its video covers (lane FX2), which play it; the step's note shows in its row under a Notes lead",
     !!(!failed.f2 && asis.view && asis.view.shown && !asis.view.img && asis.view.viewer && asis.view.live === "none" &&
       tk.st && tk.st.shown && tk.st.name === SAVE.name && tk.st.rows.some((r) => r.focus && r.id === SAVE.step_id) &&
-      tk.plays === tk.st.rows.length && tk.ok && JSON.stringify(saveRow.leads) === '["Notes"]'),
+      tk.plays >= 1 && tk.plays === tk.st.rows.filter((r) => !r.nocover).length && tk.ok && JSON.stringify(saveRow.leads) === '["Notes"]'),
     JSON.stringify(failed.f2 || { view: asis.view, task: tk }));
   record("(f3) C18: a file on the As-Is map opens its attachment through the safe open path (attachments/ of the project)",
     !failed.f3 && !!asis.opened && path.resolve(asis.opened).toLowerCase() === path.resolve(S, "attachments", ATT.file).toLowerCase(),

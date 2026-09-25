@@ -152,3 +152,28 @@ test("the line above the rows is built from them: how many times, in which trans
   assert.equal(L(rows(1, 2), 2, 1), "This step happened twice: once in each transaction. Play the one with a time.");
   assert.equal(L([], 4, 0), "");
 });
+
+test("lane FX2: where a step's moment is in the video: covered, outside (before its start, or past its end once its length is known), without a time, or not placed", () => {
+  const T0 = Date.parse("2026-05-14T09:00:15Z");   // the video's 0:00 on the project's clock
+  const at = (sec) => new Date(Date.parse("2026-05-14T09:00:00Z") + sec * 1000).toISOString();
+  const step = (a, b) => ({ time_range: { start: at(a), end: b == null ? null : at(b) } });
+  const LEN = 32000;   // a 32 s video: it covers 0:15 to 0:47 of the recording
+  assert.deepEqual(SF.videoMoment(step(20, 25), T0, LEN), { kind: "covered", at: 5, to: 10 });
+  assert.deepEqual(SF.videoMoment(step(49, 53), T0, LEN), { kind: "outside", at: 34 }, "after the video's end");
+  assert.deepEqual(SF.videoMoment(step(47, 48), T0, LEN), { kind: "outside", at: 32 }, "the end itself is past the last frame");
+  assert.deepEqual(SF.videoMoment(step(10, 20), T0, LEN), { kind: "outside", at: -5 }, "before the video starts");
+  assert.deepEqual(SF.videoMoment(step(49, null), T0, NaN), { kind: "covered", at: 34, to: null }, "a length not known yet: after the start counts");
+  assert.deepEqual(SF.videoMoment({ time_range: null }, T0, LEN), { kind: "untimed" });
+  assert.deepEqual(SF.videoMoment(step(20, 25), NaN, LEN), { kind: "unplaced" });
+  assert.equal(SF.NOT_COVERED, "The video does not cover this moment");
+});
+
+test("lane FX2: the line above the rows says which rows play when the video does not cover the others", () => {
+  const run = (n) => ({ caseId: "c" + n, ordinal: n, title: "Transaction " + n });
+  const rows = (...ns) => ns.map((n) => ({ run: run(n) }));
+  const L = SF.occurrencesLine;
+  assert.equal(L(rows(1, 2, 3, 4), 4, 3, 1), "This step happened 4 times: once in each transaction. Play the ones the video covers.");
+  assert.equal(L(rows(1, 2), 2, 1, 1), "This step happened twice: once in each transaction. Play the one the video covers.");
+  assert.equal(L(rows(1, 2), 2, 0, 2), "This step happened twice: once in each transaction.", "none covered: nothing to play");
+  assert.equal(L(rows(1, 2, 3), 3, 2, 0), "This step happened 3 times: once in each transaction. Play the ones with a time.");
+});

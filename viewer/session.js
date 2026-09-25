@@ -91,15 +91,23 @@ function _surfacedError(message) {
 let _beforeWrite = null;
 function setBeforeWrite(fn) { _beforeWrite = typeof fn === "function" ? fn : null; }
 
+/* Wait for that hook before a write of the project folder. Lane FX2: a file
+   copied in (a screenshot, an attachment, a video) waits for it too, since
+   main refuses the copy while an analysis of the project runs; the Overview's
+   rows refresh, which the analyst did not ask for, so stops first, and only
+   an analysis that is not stopped for an edit refuses it. */
+async function beforeProjectWrite(sessionFolder) {
+  if (!_beforeWrite) return;
+  try { await _beforeWrite(sessionFolder); }
+  catch (e) { console.error("[session] before the write:", e); }
+}
+
 /* The one renderer write path for annotations.json (RP-04). Resolves to the
    main-process result ({ ok: true, path }) or rejects with an error that has
    ALREADY been shown to the analyst as an error toast. `what` names the edit
    in that message. */
 async function writeAnnotations(sessionFolder, annotations, what) {
-  if (_beforeWrite) {
-    try { await _beforeWrite(sessionFolder); }
-    catch (e) { console.error("[session] before the write:", e); }
-  }
+  await beforeProjectWrite(sessionFolder);
   let r;
   try {
     r = await Ipc.saveAnnotations({ sessionFolder, annotations });
@@ -128,11 +136,16 @@ async function writeAnnotations(sessionFolder, annotations, what) {
   return r;
 }
 
-async function saveAnnotationsWithUndo(annotations, label) {
+/* `extra` (optional) rides on the edit's undo entry: `names` (lane FX2), the
+   remembered names the edit changed, [{ key, before, after }] (each an entry
+   { name, updated_at }, or null for none), which an undo puts back to
+   `before` and a redo to `after`. */
+async function saveAnnotationsWithUndo(annotations, label, extra) {
   const session = State.getSession();
   if (!session || !session.sessionFolder) return null;
   const sf = session.sessionFolder;
   const snap = snapshotAnnotations(annotations);
+  const names = extra && Array.isArray(extra.names) && extra.names.length ? extra.names : null;
   return _serial(async () => {
     const r = await writeAnnotations(sf, annotations, label);
     // Only a save that reached the disk becomes undoable and moves the
@@ -146,10 +159,32 @@ async function saveAnnotationsWithUndo(annotations, label) {
     // and must not move the new session's baseline.
     if (State.getSession() !== session) return r;
     const prev = _baseline !== null ? _baseline : snapshotAnnotations(session.annotations);
-    State.recordEdit({ label: label || "edit", annotations: prev, sessionFolder: sf });
+    State.recordEdit(Object.assign({ label: label || "edit", annotations: prev, sessionFolder: sf }, names ? { names } : {}));
     _baseline = snap;   // this edit is now the committed state
     return r;
   });
+}
+
+/* Lane FX2: an undo (`which` "undo") or a redo of an edit that changed the
+   remembered names puts each key's entry back to what it was before the
+   edit, or after it. A key that cannot be put back is said once; the
+   project's own names are reverted either way. Then the Steps level reads
+   the names again ("names"). */
+async function _revertNames(names, which) {
+  if (!Array.isArray(names) || !names.length) return;
+  const failed = [];
+  for (const n of names) {
+    if (!n || typeof n.key !== "string" || !n.key) continue;
+    let r;
+    try { r = await Ipc.restoreStepName({ draftKey: n.key, entry: which === "undo" ? (n.before || null) : (n.after || null) }); }
+    catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+    if (!r || !r.ok) failed.push((r && r.error) || "no reason was given");
+  }
+  if (failed.length) {
+    Dom.toast("The project's names are " + (which === "undo" ? "back" : "renamed again") + ", but the remembered name could not be " +
+      (which === "undo" ? "put back" : "renamed again") + ": " + failed[0], "error", { hold: true });
+  }
+  State.emit("names");
 }
 
 /* A settings write that is deliberately NOT undoable (the caller re-analyzes
@@ -226,14 +261,17 @@ function _revert(which) {
       return;
     }
     // Push the CURRENT (pre-revert) state onto the opposite stack so the
-    // analyst can flip back.
+    // analyst can flip back (with the names it changed, lane FX2).
     const current = {
       label: popped.label,
       annotations: _baseline !== null ? _baseline : snapshotAnnotations(session.annotations),
       sessionFolder: popped.sessionFolder,
     };
+    if (popped.names) current.names = popped.names;
     if (which === "undo") State.pushRedo(current); else State.pushUndo(current);
     _baseline = snapshotAnnotations(popped.annotations);   // the reverted state is now committed
+    // Lane FX2: a rename's remembered name goes back (or forward) with it.
+    if (popped.names) await _revertNames(popped.names, which);
     applyRevertedAnnotations(popped.annotations);
     Dom.toast((which === "undo" ? "Undone: " : "Redone: ") + popped.label);
   });
@@ -299,7 +337,7 @@ function ensureAnnoShape(anno) {
 
 const DEFAULT_EDIT_TOPICS = ["steps", "timeline"];
 
-async function persistAnnotations(anno, undoLabel, topics) {
+async function persistAnnotations(anno, undoLabel, topics, extra) {
   /* Step / marker edits route through here: persist via the
      undo helper (so Ctrl+Z reverts) then emit the change topics so the
      affected views re-render themselves -- no full-session reload.
@@ -309,7 +347,7 @@ async function persistAnnotations(anno, undoLabel, topics) {
      the caller's success message never follows an unsaved edit. */
   const session = State.getSession();
   try {
-    await saveAnnotationsWithUndo(anno, undoLabel || "marker edit");
+    await saveAnnotationsWithUndo(anno, undoLabel || "marker edit", extra);
   } finally {
     // Only the session the edit belongs to (another may have been opened
     // while the save was queued).
@@ -342,7 +380,7 @@ function initSession(deps) {
 
 module.exports = {
   initSession, resetUndoStack, captureBaseline, canUndo, canRedo,
-  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct, setBeforeWrite,
+  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct, setBeforeWrite, beforeProjectWrite,
   performUndo, performRedo, applyRevertedAnnotations, revertFollowUp,
   ensureAnnoShape, persistAnnotations,
 };

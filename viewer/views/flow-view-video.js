@@ -20,7 +20,7 @@
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
 const { $, formatDuration, toast } = require("../dom.js");
-const { saveAnnotationsWithUndo } = require("../session.js");
+const { saveAnnotationsWithUndo, beforeProjectWrite } = require("../session.js");
 const { confirmModal } = require("../modals.js");
 const { isVideoCopy } = require("../analyst-files.js");
 
@@ -365,6 +365,9 @@ async function applyVideoSync(offsetMs, pendingPath, relink) {
   };
   let r;
   try {
+    // Lane FX2: the Overview's rows refresh stops first (main refuses the
+    // copy while an analysis of the project runs).
+    await beforeProjectWrite(session.sessionFolder);
     r = await Ipc.copyVideoIn({ sessionFolder: session.sessionFolder, videoPath: pendingPath || session.recordingPath });
   } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   if (!r || !r.ok) { failed(r && r.error); return; }

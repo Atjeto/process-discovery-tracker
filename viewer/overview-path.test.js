@@ -204,7 +204,10 @@ test("AD-28: the acts are the transactions, the reference transaction, the other
     fs.writeFileSync(path.join(dir, "derived_maps", "rm_1.bpmn"), "<definitions/>");
     sess.annotations.reference_maps = [{ map_id: "rm_1", file: "derived_maps/rm_1.bpmn", pdd_role: "as_is" }];
     const after = pathState(sess);
-    assert.deepEqual(Object.keys(after.done), ["runs", "pattern", "review", "document", "export"]);
+    // Lane FX2: the As-Is item is listed only while the copy is older than
+    // the steps; a copy made from the steps as they are is nothing to do.
+    assert.deepEqual(Object.keys(after.done), ["runs", "pattern", "review", "document", "asis", "export"]);
+    assert.equal(after.done.asis, true);
     assert.deepEqual([before.next, after.next], ["export", "export"]);
     const html = overviewHtml(session({ sessionFolder: null, annotations: { steps: [] } }));
     assert.ok(!html.includes('data-stage="map"') && !html.includes("As-Is map"), "no As-Is stage on the line");
@@ -268,6 +271,41 @@ test("once every stage before the export is done, the line shrinks to one short 
   assert.ok(html.includes(">Export PDD</button>"));
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc" open>'), "the home leads with the document");
   assert.ok(overviewHtml(sess, null, false).includes('id="ov-doc">'), "a document the analyst closed stays closed");
+});
+
+test("lane FX2: an As-Is map made before the steps changed is a Checklist item (with Copy again named), and the PDD is not ready meanwhile", () => {
+  const fs2 = require("node:fs");
+  const RM = require("./reference-maps.js");
+  const AsIsFresh = require("./asis-freshness.js");
+  const sess = session({ sessionFolder: fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-asis-")) });
+  confirmRun(sess, "c1");
+  openRuns(sess, "c2", "c3");
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  sess.annotations.document = Object.assign({}, FULL_DOC);
+  const e = RM.buildEntry({ map_id: "rm_1", file: "derived_maps/rm_1.bpmn", name: "As-Is map", source: { level: "step" },
+    forked_from_steps: AsIsFresh.stepsMapSignature(sess.annotations, sess.stats) });
+  RM.upsert(sess.annotations, e);
+  RM.setRole(sess.annotations, "rm_1", "as_is");
+  RM.writeBpmn(sess.sessionFolder, e, "<definitions/>");
+  assert.ok(fs2.existsSync(path.join(sess.sessionFolder, e.file)));
+  let st = pathState(sess);
+  assert.equal(st.ready, true, "made from the steps as they are: nothing to check");
+  assert.ok(!overviewHtml(sess).includes('data-stage="asis"'));
+  sess.annotations.steps[0].name = "Look up the customer";
+  st = pathState(sess);
+  assert.equal(st.asIsStale, true);
+  assert.equal(st.done.asis, false);
+  assert.equal(st.next, "asis");
+  assert.equal(st.ready, false, "the Checklist no longer says the PDD is ready");
+  const html = overviewHtml(sess);
+  assert.ok(/<li class="ov-next-stage next" data-stage="asis" title="The As-Is map was made before the steps changed: check it, or Copy again\.[^"]*">Check the As-Is map<\/li>/.test(html), html.slice(0, 900));
+  assert.ok(html.includes('data-next-act="asis"'));
+  assert.ok(html.includes(">Check the As-Is map</button>"));
+  assert.ok(html.includes('<div class="ov-next-say">The As-Is map was made before the steps changed: check it, or Copy again.</div>'));
+  // Still listed, not done, while an earlier act is the next one.
+  sess.annotations.document.purpose = "";
+  const html2 = overviewHtml(sess);
+  assert.ok(/<li class="ov-next-stage" data-stage="asis" title="[^"]+">Check the As-Is map<\/li>/.test(html2));
 });
 
 test("with no transactions, the Checklist carries the mark-transactions instruction and button", () => {
@@ -397,4 +435,21 @@ test("the document is collapsed while acts are left, says who writes it, how man
   const all = session({});
   all.annotations.document = Object.assign({}, FULL_DOC);
   assert.ok(overviewHtml(all).includes('id="ov-doc-status">9 of 9 written</span>'));
+});
+
+test("lane FX2: a project without start markers is one transaction, said the same way on the Checklist and the project line", () => {
+  const sess = session({ stats: { meta: {}, case_stats: [{ case_id: "imp", start_ts: t(0), end_ts: null, implicit: true }] },
+    manifest: { source: "blank", label: "Order intake" }, events: [] });
+  for (const s of sess.annotations.steps) s.case_id = "imp";
+  const st = pathState(sess);
+  assert.equal(st.implicit, true);
+  assert.equal(st.done.runs, true);
+  const html = overviewHtml(sess);
+  assert.ok(/<li class="ov-next-stage done" data-stage="runs" title="[^"]+"><span class="ov-next-mark" aria-hidden="true">✓<\/span>One transaction \(not marked\)<\/li>/.test(html), html.slice(0, 600));
+  assert.ok(html.includes('<span data-summary="runs">One transaction (not marked)</span>'));
+  assert.ok(!/1 transaction</.test(html));
+  // A recording with its markers keeps its count.
+  const marked = overviewHtml(session());
+  assert.ok(marked.includes('<span data-summary="runs">3 transactions</span>'));
+  assert.ok(marked.includes(">Mark the transactions</li>"));
 });

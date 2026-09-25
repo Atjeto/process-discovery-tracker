@@ -39,6 +39,10 @@ const NOTE = {
 const TO_RUNS = "Show how the transactions ran";
 const TO_STEP = "Show the process map";
 const TO_COPY = "Show the As-Is map";
+/* Lane FX2: the chosen As-Is copy was made before the steps changed
+   (asis-freshness.js); the header says so, before its Copy again. */
+const STALE = "Made before the steps changed: check it, or";
+const RECOPY = "Copy again";
 
 /* What the Map shows. `o`:
      want    "map" (the default) or "runs": the view the analyst chose for
@@ -85,17 +89,20 @@ function pick(o) {
 }
 
 /* The Map's one header line for a pick: { title, note, edit (the copy's
-   Edit shows), toRuns (the link to the live map, "" for none), toMap (the
-   way back, "" for none) }. `copy` and `copyName` as for pick: the chosen
-   copy and the name the analyst gave it. */
+   Edit shows), stale (lane FX2: the words before Copy again while the copy
+   shown was made before the steps changed, "" otherwise), toRuns (the link
+   to the live map, "" for none), toMap (the way back, "" for none) }.
+   `copy` and `copyName` as for pick: the chosen copy ({ plane, stale }) and
+   the name the analyst gave it. */
 function line(p, copy, copyName) {
   const r = p || {};
   if (r.view === "bpmn" && r.source === "copy") {
-    return { title: String(copyName || "").trim() || TITLE.COPY, note: NOTE.COPY, edit: true, toRuns: TO_RUNS, toMap: "" };
+    return { title: String(copyName || "").trim() || TITLE.COPY, note: NOTE.COPY, edit: true,
+      stale: copy && copy.stale ? STALE : "", toRuns: TO_RUNS, toMap: "" };
   }
-  if (r.view === "bpmn") return { title: TITLE.STEP, note: NOTE.STEP, edit: false, toRuns: TO_RUNS, toMap: "" };
+  if (r.view === "bpmn") return { title: TITLE.STEP, note: NOTE.STEP, edit: false, stale: "", toRuns: TO_RUNS, toMap: "" };
   const toMap = !r.back ? "" : copy && copy.plane !== false ? TO_COPY : TO_STEP;
-  return { title: TITLE.RUNS, note: NOTE.RUNS, edit: false, toRuns: "", toMap };
+  return { title: TITLE.RUNS, note: NOTE.RUNS, edit: false, stale: "", toRuns: "", toMap };
 }
 
-module.exports = { WHY, TITLE, NOTE, TO_RUNS, TO_STEP, TO_COPY, pick, line };
+module.exports = { WHY, TITLE, NOTE, TO_RUNS, TO_STEP, TO_COPY, STALE, RECOPY, pick, line };

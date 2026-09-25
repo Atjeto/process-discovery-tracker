@@ -50,3 +50,10 @@ test("no transactions: one plain line under All transactions", () => {
   assert.equal(caseScopeOptionsHtml([], "", NaN),
     '<option value="">All transactions</option><option value="" disabled>(no transactions yet)</option>');
 });
+
+test("lane FX2: a project whose one transaction is implicit offers it in the Checklist's words, and nothing else", () => {
+  const AC = require("./analyst-content.js");
+  assert.equal(AC.IMPLICIT_TRANSACTION, "One transaction (not marked)");
+  assert.equal(caseScopeOptionsHtml([], "", NaN, AC.IMPLICIT_TRANSACTION),
+    '<option value="" selected>One transaction (not marked)</option>');
+});

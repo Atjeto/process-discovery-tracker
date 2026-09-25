@@ -44,6 +44,13 @@
  *       annotations.json untouched);
  *   (m6) a new copy changed, then the change undone with Ctrl+Z before
  *       leaving, keeps nothing either (its entry and file taken back);
+ *   (m7) lane FX2: a step renamed after the As-Is copy was made: the Map's
+ *       header says the copy was made before the steps changed, with Copy
+ *       again, at once (no analysis first), and the Overview's Checklist
+ *       lists Check the As-Is map; Copy again left without a change keeps
+ *       nothing, with a change keeps the new copy, which takes the old one's
+ *       PDD role (the old one stays, with none) and shows without the line;
+ *       Ctrl+Z gives the old copy its role back, Ctrl+Y the new one;
  *   (f) on a marker-STRIPPED copy the map is withheld: the lock message says
  *       why (no runs marked) with the mark-runs instruction, its button lands
  *       on Flow with the Markers panel, and the edit act says why it makes no
@@ -204,6 +211,8 @@ const pictureProbe = () => {
     toRuns: vis($("btn-map-show-runs")) ? $("btn-map-show-runs").textContent.trim() : null,
     toMap: vis($("btn-map-show-map")) ? $("btn-map-show-map").textContent.trim() : null,
     edit: vis($("btn-map-asis-edit")),
+    stale: vis($("map-view-stale")) ? $("map-view-stale").textContent.trim() : null,
+    recopy: vis($("btn-map-asis-recopy")) ? $("btn-map-asis-recopy").textContent.trim() : null,
     why: vis($("map-view-why")) ? $("map-view-why").textContent.trim() : null,
     root: bv ? bv.get("canvas").getRootElement().type : null,
     rootId: bv ? bv.get("canvas").getRootElement().id : null,
@@ -680,6 +689,87 @@ const lockProbe = () => {
       JSON.stringify(m6.after.files) === JSON.stringify(m6.before.files) && m6.after.pic.title === "As-Is map"),
     JSON.stringify({ err: m6.err, label: m6.label, before: m6.before, whileEdited: m6.whileEdited,
       after: m6.after && { maps: m6.after.maps, onDisk: m6.after.onDisk, files: m6.after.files, title: m6.after.pic.title } }));
+
+  // (m7) Lane FX2 (validation pass 2, F1 and F12): the As-Is copy made
+  // before the steps changed says so where it matters, and Copy again.
+  const STALE_TEXT = "Made before the steps changed: check it, or";
+  const RENAMED2 = "Enter the order, renamed after the copy";
+  const m7 = {};
+  try {
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: 20000 });
+    await page.waitForSelector("#step-list .run-group.open .step-row", { state: "visible", timeout: 20000 });
+    await page.locator("#step-list .run-group.open .step-row", { hasText: "Save order" }).first().click({ timeout: 20000 });
+    await page.locator("#step-name").fill(RENAMED2, { timeout: 20000 });
+    await page.locator("#step-name").press("Enter");
+    await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
+      .some((e) => e.textContent.trim() === n), RENAMED2, { timeout: 20000 });
+    m7.bpmnBefore = fs.statSync(STEP_BPMN).mtimeMs;
+    await openMapLevel(page);
+    // At once: the header says it before any analysis (the copy shows, so
+    // the Map does not analyze).
+    m7.header = await page.evaluate(pictureProbe);
+    m7.analyzed = fs.statSync(STEP_BPMN).mtimeMs !== m7.bpmnBefore;
+    await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 20000 });
+    await page.waitForSelector("#ov-next", { timeout: 20000 });
+    await page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+    m7.checklist = await page.evaluate(() => {
+      const li = document.querySelector('#ov-next .ov-next-stage[data-stage="asis"]');
+      return { item: li ? li.textContent.trim() : null, done: !!(li && li.classList.contains("done")),
+        title: li ? li.title : null, ready: !!document.querySelector("#ov-next.ov-next-ready") };
+    });
+    await openMapLevel(page);
+    await mapSettled(page);
+    // Copy again, left without a change: nothing kept.
+    m7.filesBefore = derivedFiles();
+    await page.locator("#btn-map-asis-recopy").click({ timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
+    await wait(900);
+    m7.editorName = await page.locator("#refmap-editor-name").inputValue({ timeout: 20000 });
+    m7.editorPdd = await page.locator("#refmap-editor-pdd").inputValue({ timeout: 20000 });
+    await page.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await wait(1500);
+    m7.unchanged = { maps: await mapsNow(), onDisk: mapsOnDisk(), files: derivedFiles() };
+    // Copy again, with a change: the new copy is kept and takes the role.
+    await page.locator("#btn-map-asis-recopy").click({ timeout: 20000 });
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: 20000 });
+    await wait(900);
+    await editorChange(page, "Copied again and changed");
+    await page.locator("#btn-refmap-editor-close").click({ timeout: 20000 });
+    await page.waitForFunction(() => {
+      const bv = (document.getElementById("map-asis-canvas") || {}).__bpmnViewer;
+      return !!bv && bv.get("elementRegistry").filter((e) => e.businessObject && e.businessObject.name === "Copied again and changed").length > 0;
+    }, null, { timeout: 30000 });
+    await wait(500);
+    m7.kept = { maps: await mapsNow(), onDisk: mapsOnDisk(), files: derivedFiles(), pic: await page.evaluate(pictureProbe) };
+    // Ctrl+Z: the old copy has its role back; Ctrl+Y: the new one again.
+    await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(() => ((require("./state.js").getSession().annotations || {}).reference_maps || []).length === 1, null, { timeout: 20000 });
+    m7.undone = { maps: await mapsNow(), onDisk: mapsOnDisk() };
+    await page.keyboard.press("Control+y");
+    await page.waitForFunction(() => ((require("./state.js").getSession().annotations || {}).reference_maps || []).length === 2, null, { timeout: 20000 });
+    m7.redone = { maps: await mapsNow(), onDisk: mapsOnDisk() };
+  } catch (e) { m7.err = String(e.message).split("\n")[0]; }
+  await shot(page, "map-slim-copy-again.png");
+  const h7 = m7.header || {};
+  record("(m7) lane FX2: a step renamed after the As-Is copy was made: the header says so at once (no analysis first), with Copy again, and the Overview's Checklist lists Check the As-Is map, not done",
+    !!(!m7.err && h7.shown && h7.title === "As-Is map" && h7.stale === STALE_TEXT && h7.recopy === "Copy again" && h7.edit && m7.analyzed === false &&
+      m7.checklist && m7.checklist.item === "Check the As-Is map" && !m7.checklist.done && !m7.checklist.ready &&
+      /made before the steps changed: check it, or Copy again/.test(m7.checklist.title || "")),
+    JSON.stringify({ err: m7.err, header: { title: h7.title, stale: h7.stale, recopy: h7.recopy }, analyzed: m7.analyzed, checklist: m7.checklist }));
+  const k7 = m7.kept || {};
+  record("(m7) lane FX2: Copy again opens a new copy named like the old one and in its PDD role; left without a change it keeps nothing; with a change it keeps the new copy, which takes the old one's PDD role and shows without the line; Ctrl+Z gives the old copy its role back, Ctrl+Y the new one",
+    !!(!m7.err && m7.editorName === "As-Is map" && m7.editorPdd === "as_is" &&
+      JSON.stringify(m7.unchanged.maps) === '["As-Is map:as_is"]' && JSON.stringify(m7.unchanged.onDisk) === '["As-Is map:as_is"]' &&
+      JSON.stringify(m7.unchanged.files) === JSON.stringify(m7.filesBefore) &&
+      JSON.stringify(k7.maps) === '["As-Is map:none","As-Is map:as_is"]' && JSON.stringify(k7.onDisk) === '["As-Is map:none","As-Is map:as_is"]' &&
+      k7.files.length === m7.filesBefore.length + 1 && k7.pic && k7.pic.stale === null && k7.pic.recopy === null &&
+      k7.pic.names.includes("Copied again and changed") &&
+      JSON.stringify(m7.undone.maps) === '["As-Is map:as_is"]' && JSON.stringify(m7.redone.maps) === '["As-Is map:none","As-Is map:as_is"]'),
+    JSON.stringify({ err: m7.err, editor: [m7.editorName, m7.editorPdd], unchanged: m7.unchanged, kept: k7 && { maps: k7.maps, onDisk: k7.onDisk, files: (k7.files || []).length,
+      stale: k7.pic && k7.pic.stale }, undone: m7.undone, redone: m7.redone }));
 
   await close();
 

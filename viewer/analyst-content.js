@@ -26,6 +26,21 @@ function markEdited(step) {
   }
 }
 
+/* The state of the steps a Split, a Merge or + Step makes of `sources` (lane
+   FX2, validation pass 3, F5): steps the analyst added stay added (they keep
+   Delete, and the step map a manual task when they have no system), any
+   other is the analyst's edit. */
+function derivedState(sources) {
+  const list = (Array.isArray(sources) ? sources : [sources]).filter(Boolean);
+  return list.length && list.every((s) => s.state === "manually_authored") ? "manually_authored" : "edited";
+}
+
+/* The one words for a project's implicit run (lane FX2, validation pass 3,
+   F9): a project without start markers is one transaction, said the same
+   way on the Checklist, the project line and the Timeline (and, by the
+   pipeline, in the Observations and the PDD). */
+const IMPLICIT_TRANSACTION = "One transaction (not marked)";
+
 /* The case_id of the session's implicit run (C16: a video or blank session
    with no run marked), or null. */
 function implicitRunId(stats) {
@@ -95,6 +110,31 @@ function stepShots(step, analystShots) {
   return out;
 }
 
+/* Every screenshot with a moment, for the Timeline (lane FX2, validation
+   pass 2, F11 and pass 3, F8): the recording's (its screenshot events,
+   `kind` "recorded", or "manual" for the SME's screenshot key) and the ones
+   the analyst added with a moment (a frame of the video: analyst_screenshots
+   with an `at`, `kind` "added"), in time order (a tie keeps the recording's
+   first). Each { ts, rel, kind, stepId }: `rel` the session-relative file,
+   `stepId` the step an added one is on (null for a recorded one). */
+function timelineShots(events, analystShots) {
+  const out = [];
+  for (const ev of events || []) {
+    const d = ev && ev.type === "system" && ev.data;
+    if (!d || (d.kind !== "screenshot" && d.kind !== "screenshot_manual") || typeof d.path !== "string" || !d.path) continue;
+    if (!Number.isFinite(Date.parse(ev.timestamp))) continue;
+    out.push({ ts: ev.timestamp, rel: d.path, kind: d.kind === "screenshot_manual" ? "manual" : "recorded", stepId: null });
+  }
+  for (const a of analystShots || []) {
+    const f = a && fileName(a.file);
+    if (!f || !a.id || !Number.isFinite(Date.parse(a.at))) continue;
+    out.push({ ts: a.at, rel: SHOTS_DIR + "/" + f, kind: "added", stepId: typeof a.step_id === "string" ? a.step_id : null });
+  }
+  return out.map((x, i) => ({ x, i }))
+    .sort((p, q) => (Date.parse(p.x.ts) - Date.parse(q.x.ts)) || (p.i - q.i))
+    .map((p) => p.x);
+}
+
 /* How many recorder screenshots were taken off the step. */
 function hiddenShotCount(step) {
   const refs = new Set((step && step.evidence && step.evidence.screenshot_refs) || []);
@@ -133,6 +173,6 @@ function systemChoices(own, shared) {
 }
 
 module.exports = {
-  hasTime, markEdited, implicitRunId, placeUntimed, moveUntimed,
-  stepShots, hiddenShotCount, notesForStep, momentNotes, systemChoices,
+  hasTime, markEdited, derivedState, implicitRunId, IMPLICIT_TRANSACTION, placeUntimed, moveUntimed,
+  stepShots, hiddenShotCount, timelineShots, notesForStep, momentNotes, systemChoices,
 };

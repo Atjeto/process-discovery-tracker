@@ -66,3 +66,18 @@ test("a system the analyst set on the step wins over the derived one (C16)", () 
   assert.deepEqual(SN.whereOfStep({ grain_keys: { app: "sapgui", screen: "va01" }, system: "  " }, {}, {}),
     { system: "SAP", screen: "va01" }, "a blank system is not set");
 });
+
+test("lane FX2: the systems each application stands for in a recording, the most used first (the Apps outside the process dialog names them)", () => {
+  const ev = (proc, title) => ({ type: "interaction", data: { process_name: proc, window_title: title } });
+  const events = [
+    ev("chrome.exe", "Salesforce" + SEP + "Account lookup"), ev("chrome.exe", "Incident | ServiceNow"),
+    ev("chrome.exe", "Salesforce" + SEP + "Order #10900"), ev("notepad.exe", "Notepad" + SEP + "Internal mappings.txt"),
+    { type: "activity", data: { app: "EXCEL.EXE", title: "Excel" } }, ev("", "no process"),
+  ];
+  assert.deepEqual(SN.appSystems(events, NAMES), {
+    "chrome.exe": ["Salesforce", "ServiceNow"],
+    "notepad.exe": ["Notepad"],
+  });
+  assert.deepEqual(SN.appSystems([], NAMES), {});
+  assert.deepEqual(SN.appSystems([ev("chrome.exe", "New Tab")], NAMES), { "chrome.exe": ["Google Chrome"] }, "a browser on no web system is the browser");
+});

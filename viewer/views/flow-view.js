@@ -25,6 +25,7 @@ const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
 const { isVideoCopy } = require("../analyst-files.js");
 const { caseScopeOptionsHtml } = require("../case-scope.js");
+const AC = require("../analyst-content.js");
 const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
 const { recentLabel } = require("../session-summary.js");
@@ -48,6 +49,8 @@ const {
 } = Timeline;
 const Transcript = require("./flow-view-transcript.js");
 const AnalystUI = require("./analyst-ui.js");
+const StepPanel = require("./step-panel.js");
+const { ipcErrorText } = require("../project-folder.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -137,8 +140,11 @@ function populateCaseScope() {
     const run = runs.find((r) => r.caseId === c.id);
     return run ? Object.assign({}, c, { title: run.title }) : c;
   });
+  // Lane FX2: a project whose one transaction is implicit says so, in the
+  // Checklist's words.
+  const implicit = sess && AC.implicitRunId(sess.stats) ? AC.IMPLICIT_TRANSACTION : "";
   sel.innerHTML = caseScopeOptionsHtml(titled, State.getCaseScope(),
-    evs.length ? new Date(evs[0].timestamp).getTime() : NaN);
+    evs.length ? new Date(evs[0].timestamp).getTime() : NaN, implicit);
   // Wrapper picks up the visual cue that scoping is active.
   const wrap = sel.closest(".case-scope");
   if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
@@ -378,11 +384,25 @@ async function loadSessionIntoView(folder, opts) {
   const prevFolder = State.getSession() ? State.getSession().sessionFolder : null;
   // The Overview's rows refresh belongs to the project it measures.
   if (prevFolder && prevFolder !== folder) stopRowsRefresh();
+  let loaded;
   try {
-    State.setSession(await Ipc.loadSession(folder));
+    loaded = await Ipc.loadSession(folder);
   } catch (e) {
-    toast("Failed to load: " + (e.message || e), "error");
+    // Lane FX2 (validation pass 3, F7): the reason in its own words, never
+    // the IPC call's.
+    toast("The project did not open: " + ipcErrorText(e), "error");
     return;
+  }
+  // The folder that opened: the one chosen, or the one recording folder it
+  // holds (the SME's zip unzipped, main.js loadSessionData).
+  const asked = folder;
+  folder = (loaded && loaded.sessionFolder) || folder;
+  State.setSession(loaded);
+  // Lane FX2 (validation pass 3, F3): the step panel belongs to the project
+  // it showed: another project closes it (the same one draws it again).
+  StepPanel.refresh();
+  if (path.resolve(String(asked)) !== path.resolve(String(folder))) {
+    toast("Opened the recording in the folder you chose: " + path.basename(folder) + ".", "info");
   }
   // Reset undo when switching to a different session. Undo/redo
   // stack entries are pinned to a sessionFolder so they'd be unusable
@@ -546,6 +566,13 @@ function renderAnnotationsErrorBanner() {
   const html = annotationsErrorBannerHtml(State.getSession() && State.getSession().annotationsError);
   el.innerHTML = html;
   el.style.display = html ? "" : "none";
+  // Lane FX2 (validation pass 3, F12): while the file cannot be read, the
+  // banner is all the page shows: no level, no editing control, no Export
+  // (styles.css .annotations-unreadable), so the project never looks empty
+  // and nothing offers an edit the main process would refuse. New, Open,
+  // Help and the theme stay.
+  const shell = document.querySelector(".app");
+  if (shell) shell.classList.toggle("annotations-unreadable", !!html);
   const btn = el.querySelector("#btn-restore-annotations");
   if (btn) btn.addEventListener("click", () => restoreNewestBackup());
 }

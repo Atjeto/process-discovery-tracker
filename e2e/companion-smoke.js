@@ -24,6 +24,11 @@
  *     (g) the PDD (word/document.xml): the steps in their order, the systems,
  *         the Attachments section, only the chosen screenshot, no note;
  *     (n) Attach video on its Timeline: offset 0, and the Timeline follows it.
+ *     (w) lane FX2: a step without a time shows the video's start in the
+ *         step panel, with one line saying so, and A frame of the video waits
+ *         until the video is played to the step's moment; (x) lane FX2: while
+ *         the analysis runs, a screenshot, an attachment and a video are
+ *         refused before anything is copied into the folder.
  *   A video project (the New menu's "New project from a video...", a
  *   synthetic video):
  *     (h) the video is copied into video/ (relative path, offset 0) and the
@@ -34,6 +39,11 @@
  *         playhead; (k) a frame of the video captured as a screenshot; (l) a
  *         note at a moment, in the Notes lane (named at the timeline's left);
  *         (m) the PDD carries the steps and the frame.
+ *     (h2) lane FX2: the step panel open on the project before closes as the
+ *         video project opens; (z) lane FX2: the frame shows in the
+ *         Screenshots lane, the Screenshots list and the gallery; (y) lane
+ *         FX2: + Step inside an added step and Merge with next keep the steps
+ *         added (Delete, manual tasks on the step map).
  *   Step flow (contract C17), in another empty project with four steps:
  *     (o) each step's Flow line reads "Always · then the next step";
  *     (p) "Only when" on step 2; "Go to" step 2 on step 4 (the dropdown lists
@@ -460,6 +470,91 @@ function zipFiles(buf) {
     !n.err && n.video.path === "video/" + path.basename(VIDEO) && n.video.offset_ms === 0 && n.copied && !n.tl.empty && n.tl.sync,
     JSON.stringify(n));
 
+  // (w) Lane FX2 (validation pass 3, F14): a step without a time, in a
+  // project with a video. The step panel shows the video's start with one
+  // line saying the step has no time, never the moment the previous step's
+  // video was left at; A frame of the video waits, with the reason, until the
+  // analyst plays the video to the step's moment, then takes that frame.
+  let w = {};
+  const UNTIMED = "This step has no time in the recording: play the video to its moment, then Add screenshot takes that frame.";
+  const spVideo = () => page.evaluate(() => {
+    const vd = document.getElementById("sp-video"), note = document.getElementById("sp-video-note");
+    return { t: vd.currentTime, hidden: vd.hidden, note: note && !note.hidden ? (note.textContent || "").trim() : "",
+      play: !!document.querySelector("#sp-body .sp-play") };
+  });
+  const seekPanel = (secs) => page.evaluate((t) => new Promise((res) => {
+    const vd = document.getElementById("sp-video");
+    vd.addEventListener("seeked", () => res(vd.currentTime), { once: true });
+    vd.currentTime = t;
+  }), secs);
+  const shotCount = () => page.evaluate(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length);
+  try {
+    await level("steps");
+    await selectStep(stepId(NAMES[0]));
+    await page.waitForFunction(() => {
+      const vd = document.querySelector("#step-panel:not([hidden]) #sp-video[src]");
+      return !!(vd && vd.readyState >= 1 && !vd.seeking);
+    }, null, { timeout: T });
+    w.movedTo = await seekPanel(12);
+    await selectStep(stepId(NAMES[3]));
+    await page.waitForFunction(() => { const vd = document.getElementById("sp-video"); return !vd.seeking && vd.currentTime === 0; }, null, { timeout: T });
+    w.next = await spVideo();
+    w.before = await shotCount();
+    await shotMenu("video_frame");
+    await page.waitForFunction(() => /no time in the recording: play the step panel's video/.test((document.getElementById("toast") || {}).textContent || ""),
+      null, { timeout: T });
+    w.refused = { toast: await page.evaluate(() => document.getElementById("toast").textContent), count: await shotCount() };
+    w.playedTo = await seekPanel(6);
+    await shotMenu("video_frame");
+    await page.waitForFunction((k) => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === k + 1, w.before, { timeout: T });
+    const shot = (await session()).anno.analyst_screenshots.slice(-1)[0];
+    w.shot = { source: shot.source, onStep: shot.step_id === stepId(NAMES[3]),
+      atSec: (Date.parse(shot.at) - Date.parse(readJson(path.join(BLANK, "manifest.json")).started_at)) / 1000,
+      file: fs.existsSync(path.join(BLANK, "screenshots", "analyst", shot.file)) };
+  } catch (x) { w.err = errText(x); }
+  record("(w) lane FX2: a step without a time, in a project with a video: the step panel shows the video's start (not 0:12, where the previous step's video was left) with one line saying the step has no time, and no play; A frame of the video is refused, with the reason, until the video is played to the step's moment, then saves that frame",
+    !w.err && Math.abs(w.movedTo - 12) < 0.3 && w.next.t === 0 && !w.next.hidden && w.next.note === UNTIMED && !w.next.play &&
+      /^This step has no time in the recording: play the step panel's video to its moment first, then add the frame\./.test(w.refused.toast) &&
+      w.refused.count === w.before && Math.abs(w.playedTo - 6) < 0.3 &&
+      w.shot.source === "video_frame" && w.shot.onStep && w.shot.file && Math.abs(w.shot.atSec - 6) < 0.5,
+    JSON.stringify(w));
+
+  // (x) Lane FX2 (validation pass 3, F6): while the project's analysis runs,
+  // Add screenshot, Attach file and a video copied in are refused before
+  // anything is copied into the folder (the entry's save would be refused,
+  // and nothing would list the file), each with the reason.
+  let xr = {};
+  const inBlank = (...sub) => { try { return fs.readdirSync(path.join(BLANK, ...sub)).sort(); } catch (_) { return []; } };
+  const blankFiles = () => ({ shots: inBlank("screenshots", "analyst"), atts: inBlank("attachments"), video: inBlank("video") });
+  const OTHER_VIDEO = path.join(TMP, "second-video.webm");
+  try {
+    fs.copyFileSync(VIDEO, OTHER_VIDEO);
+    await level("steps");
+    await selectStep(stepId(NAMES[2]));
+    xr.before = blankFiles();
+    await page.evaluate(() => { require("./views/flow-view.js").analyzeSession(); });
+    await page.waitForFunction(() => { const r = require("./state.js").getAnalysisRun(); return !!(r && r.status === "running"); }, null, { timeout: T });
+    await stubOpen(PNG_B);
+    await shotMenu("file");
+    await page.waitForFunction(() => /^The screenshot was not added: /.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    xr.shot = await page.evaluate(() => document.getElementById("toast").textContent);
+    await stubOpen(SHEET);
+    await page.locator("#btn-step-attach").click({ timeout: T });
+    await page.waitForFunction(() => /^The file was not attached: /.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    xr.att = await page.evaluate(() => document.getElementById("toast").textContent);
+    xr.video = await page.evaluate(([f, vid]) => require("./ipc.js").copyVideoIn({ sessionFolder: f, videoPath: vid }), [BLANK, OTHER_VIDEO]);
+    xr.stillRunning = await page.evaluate(() => { const r = require("./state.js").getAnalysisRun(); return !!(r && r.status === "running"); });
+    await page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+    await settled();
+    xr.after = blankFiles();
+  } catch (x) { xr.err = errText(x); }
+  const BUSY = "the steps and the map are being updated. Make the change again once the update is done.";
+  record("(x) lane FX2: while the project's analysis runs, Add screenshot and Attach file in the step pane and a video copied in are refused before anything is copied into the folder, each saying the steps and the map are being updated",
+    !xr.err && xr.stillRunning && xr.shot.startsWith("The screenshot was not added: " + BUSY) && xr.att.startsWith("The file was not attached: " + BUSY) &&
+      !!xr.video && xr.video.ok === false && xr.video.code === "ANALYSIS_RUNNING" && xr.video.error === BUSY &&
+      JSON.stringify(xr.after) === JSON.stringify(xr.before),
+    JSON.stringify(xr));
+
   // ================= B. A video project =================
   const VPROJ = path.join(TMP, "Order call");
   let h = {};
@@ -467,8 +562,12 @@ function zipFiles(buf) {
   try {
     await stubOpen(VIDEO);
     await stubSave(VPROJ);
+    // Lane FX2 (validation pass 3, F3): the step panel open on the empty
+    // project's step closes as another project opens.
+    h.panelBefore = await page.evaluate(() => !document.getElementById("step-panel").hidden);
     await newProject("#btn-new-from-video");
     await opened(VPROJ);
+    h.panelAfter = await page.evaluate(() => ({ hidden: document.getElementById("step-panel").hidden, level: require("./state.js").getLevel() }));
     await settled();
     await level("flow");
     await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 30000 });
@@ -486,6 +585,9 @@ function zipFiles(buf) {
     !h.err && h.manifest.source === "video" && h.video.path === "video/" + path.basename(VIDEO) && h.video.offset_ms === 0 && h.copied &&
       h.span && Math.abs((h.span.endMs - h.span.startMs) - 31900) < 2500 && h.tl.bands === 0 && h.tl.ticks > 2 && h.tl.sync && h.tl.step,
     JSON.stringify(h));
+  record("(h2) lane FX2: the step panel, open on a step of the empty project, closes as the video project opens (at the same level)",
+    !h.err && h.panelBefore === true && !!h.panelAfter && h.panelAfter.hidden === true && h.panelAfter.level === "steps",
+    JSON.stringify({ before: h.panelBefore, after: h.panelAfter }));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-video.png") }).catch(() => {});
 
   // (i) Two transactions marked by right-click, applied.
@@ -570,6 +672,47 @@ function zipFiles(buf) {
     !k.err && k.shot.source === "video_frame" && k.shot.onStep && k.shot.png && k.shot.bytes > 500 && Math.abs(k.shot.atSec - 10) < 0.5,
     JSON.stringify(k.shot || k.err));
 
+  // (z) Lane FX2 (validation pass 2, F11; pass 3, F8): the frame added with a
+  // moment shows where the recording's screenshots do: a mark in the
+  // Timeline's Screenshots lane (its tooltip says you added it, when and on
+  // which step), a card in the Screenshots list badged "added", and the
+  // gallery's Added by you.
+  let z = {};
+  try {
+    const s = await session();
+    const shot = (s.anno.analyst_screenshots || [])[0] || {};
+    z.on = (s.anno.steps.find((x) => x.step_id === shot.step_id) || {}).name || "";
+    await level("flow");
+    // The marker edits of (i) left the Markers tab open beside the video.
+    await page.locator('.anno-tab[data-anno="screens"]').click({ timeout: T });
+    await page.locator("#btn-lanes").click({ timeout: T });
+    await page.locator('#lanes-popup input[data-lane="screenshots"]').check({ timeout: T });
+    await page.locator("#btn-lanes").click({ timeout: T });
+    await page.waitForSelector("#timeline .tl-screenshot-added", { timeout: T });
+    z.lane = await page.evaluate(() => [...document.querySelectorAll("#timeline .tl-screenshot")].map((d) => ({
+      added: d.classList.contains("tl-screenshot-added"), title: d.title })));
+    z.legend = await page.evaluate(() => getComputedStyle(document.querySelector("#timeline-legend .lg-screenshot")).display);
+    z.grid = await page.evaluate(() => [...document.querySelectorAll("#screenshots-grid .thumb")].map((c) => ({
+      badge: ((c.querySelector(".badge") || {}).textContent || ""), title: c.title, img: !!c.querySelector("img"),
+      shown: c.getClientRects().length > 0 })));
+    await page.locator("#btn-open-gallery").click({ timeout: T });
+    await page.waitForSelector("#screenshot-gallery", { state: "visible", timeout: T });
+    await page.selectOption("#gallery-filter", "added");
+    z.gallery = await page.evaluate(() => ({ pos: document.getElementById("gallery-pos").textContent,
+      reason: document.getElementById("gallery-reason").textContent,
+      options: [...document.querySelectorAll("#gallery-filter option")].map((o) => o.textContent) }));
+    await page.locator("#gallery-close").click({ timeout: T });
+    await page.locator("#btn-lanes").click({ timeout: T });
+    await page.locator('#lanes-popup input[data-lane="screenshots"]').uncheck({ timeout: T });
+    await page.locator("#btn-lanes").click({ timeout: T });
+  } catch (x) { z.err = errText(x); }
+  const zTitle = (z.lane && z.lane[0] && z.lane[0].title) || "";
+  record("(z) lane FX2: the frame added with a moment shows where the recording's screenshots do: a mark in the Timeline's Screenshots lane (its tooltip: added by you, when, on which step), a card in the Screenshots list badged added, and in the gallery under Added by you",
+    !z.err && !!z.on && z.lane.length === 1 && z.lane[0].added && /^Added by you, a frame at 0:(09|10), on /.test(zTitle) && zTitle.endsWith(", on " + z.on) &&
+      z.legend !== "none" && z.grid.length === 1 && z.grid[0].badge === "added" && z.grid[0].img && z.grid[0].shown && z.grid[0].title === zTitle &&
+      z.gallery.pos === "1 / 1" && z.gallery.reason === "added by you, on " + z.on && z.gallery.options.includes("Added by you"),
+    JSON.stringify(z));
+
   // (l) A note at a moment, in the Notes lane.
   let l = {};
   try {
@@ -608,6 +751,60 @@ function zipFiles(buf) {
   } catch (x) { m.err = errText(x); }
   record("(m) the video project's PDD carries its steps and the captured frame, and no note",
     !m.err && m.steps.length === 2 && m.steps.every(Boolean) && m.frame && !m.note, JSON.stringify(m));
+
+  // (y) Lane FX2 (validation pass 3, F5): steps the analyst added stay added
+  // through + Step at a moment inside one and Merge with next: both halves
+  // and the merged step keep Delete (manually_authored), and the step map
+  // draws them as manual tasks (no system set).
+  let y = {};
+  try {
+    const start = Date.parse(readJson(path.join(VPROJ, "manifest.json")).started_at);
+    const secs = (iso) => Math.round((Date.parse(iso) - start) / 100) / 10;
+    const byStart = (p, q) => Date.parse(p.time_range.start) - Date.parse(q.time_range.start);
+    const all = (await session()).anno.steps.slice().sort(byStart);
+    const whole = all[0];
+    const n = all.length;
+    await level("flow");
+    await page.evaluate((t) => { const vd = document.getElementById("video"); vd.pause(); vd.currentTime = t; }, 12);
+    await wait(400);
+    await page.locator("#btn-add-step").click({ timeout: T });
+    await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k + 1, n, { timeout: T });
+    const halves = (await session()).anno.steps.filter((x) => x.case_id === whole.case_id).sort(byStart);
+    y.halves = halves.map((x) => ({ state: x.state, from: secs(x.time_range.start), to: secs(x.time_range.end), same: x.step_id === whole.step_id }));
+    await level("steps");
+    y.deletable = [];
+    for (const half of halves) {
+      await selectStep(half.step_id);
+      y.deletable.push(await page.evaluate(() => !!document.getElementById("btn-step-delete")));
+    }
+    await selectStep(halves[0].step_id);
+    await page.evaluate(() => { const d = document.querySelector("#step-detail details.step-detail-more"); if (d) d.open = true; });
+    await page.locator("#btn-step-merge").click({ timeout: T });
+    await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k, n, { timeout: T });
+    const merged = (await session()).anno.steps.find((x) => x.step_id === halves[0].step_id) || {};
+    y.merged = { state: merged.state, from: secs(merged.time_range.start), to: secs(merged.time_range.end), name: merged.name };
+    await selectStep(merged.step_id);
+    y.mergedDeletable = await page.evaluate(() => !!document.getElementById("btn-step-delete"));
+    // The step map, once the Map has analyzed the changed steps.
+    const BPMN = path.join(VPROJ, "process_map_step.bpmn");
+    const annoAt = fs.statSync(path.join(VPROJ, "annotations.json")).mtimeMs;
+    await level("map");
+    const by = Date.now() + 180000;
+    while (Date.now() < by && !(fs.existsSync(BPMN) && fs.statSync(BPMN).mtimeMs > annoAt)) await wait(500);
+    await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+    const xml = fs.readFileSync(BPMN, "utf8");
+    const named = (tag) => [...xml.matchAll(new RegExp("<(?:bpmn:)?" + tag + "\\b[^>]*\\bname=\"([^\"]*)\"", "g"))].map((mm) => mm[1]);
+    y.manual = named("manualTask");
+    y.plain = named("task");
+    y.names = (await session()).anno.steps.map((x) => x.name);
+  } catch (x) { y.err = errText(x); }
+  record("(y) lane FX2: steps the analyst added stay added: + Step at a moment inside one splits it into two added steps, Merge with next makes one added step of them again; each keeps Delete, and the step map draws them as manual tasks (no system set)",
+    !y.err && y.halves.length === 2 && y.halves.every((x) => x.state === "manually_authored") && y.halves[0].same &&
+      Math.abs(y.halves[0].to - 12) < 0.6 && Math.abs(y.halves[1].from - 12) < 0.6 &&
+      y.deletable.length === 2 && y.deletable.every(Boolean) &&
+      y.merged.state === "manually_authored" && Math.abs(y.merged.from - y.halves[0].from) < 0.2 && Math.abs(y.merged.to - y.halves[1].to) < 0.2 &&
+      y.mergedDeletable && y.names.length === 2 && y.names.every((nm) => y.manual.includes(nm)) && !y.names.some((nm) => y.plain.includes(nm)),
+    JSON.stringify(y));
 
   // ================= C. Step flow (contract C17) =================
   // The analyst sets the flow while adding steps: a condition and links on

@@ -405,8 +405,21 @@ function flowEdges(dfg) {
   ];
 }
 
+/* The boxes a step of which is flagged as waste (lane FX2, validation pass
+   2, F21): the live map marks them. `runs`: one array of steps per run (a
+   hidden step marks nothing). */
+function wasteNodes(runs) {
+  const out = new Set();
+  for (const run of runs || []) {
+    for (const st of Array.isArray(run) ? run : []) {
+      if (st && st.state !== "hidden" && st.flags && st.flags.waste === true) out.add(mapNodeLabel(st));
+    }
+  }
+  return [...out];
+}
+
 module.exports = {
-  buildAnnotationDfg, flowEdges, stepLinks, mapNodeLabel, processLabel, cutPositions,
+  buildAnnotationDfg, flowEdges, stepLinks, mapNodeLabel, processLabel, cutPositions, wasteNodes,
   START, END, OTHERWISE,
   // Used by the Steps level (steps-view.js): the value-free screen label and
   // the view-time fallback for a step's screen / app keys.

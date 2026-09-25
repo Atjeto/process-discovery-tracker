@@ -21,18 +21,47 @@ const State = require("../state.js");
 const { $, toast, recordingStartMs, sinceStart } = require("../dom.js");
 const Ipc = require("../ipc.js");
 const { seekToTimestamp } = require("./flow-view-video.js");
+const AC = require("../analyst-content.js");
+const SPM = require("../sub-process-maps.js");
 
 /* P2.7 gallery state. _allScreenshots is stashed by renderScreenshots so
    the gallery can step through the same set the grid shows. */
 let _allScreenshots = [];
 let _galleryState = null;  // { idx, filterReason, playing, playTimer, expanded }
 
+/* The screenshots the Timeline shows, as screenshot events: the recording's,
+   and (lane FX2) the ones the analyst added with a moment, their kind
+   "screenshot_added" and the step they are on (analyst-content.js
+   timelineShots). */
+function timelineScreenshots(sess) {
+  const s = sess || State.getSession();
+  if (!s) return [];
+  const KIND = { recorded: "screenshot", manual: "screenshot_manual", added: "screenshot_added" };
+  return AC.timelineShots(s.events, (s.annotations || {}).analyst_screenshots).map((x) => ({
+    timestamp: x.ts, type: "system", data: { kind: KIND[x.kind], path: x.rel }, stepId: x.stepId,
+  }));
+}
+
+/* The name of the step an added screenshot is on, or "". */
+function _stepName(stepId) {
+  const s = State.getSession();
+  const hit = stepId && s ? SPM.findStep((s.annotations || {}).steps || [], stepId) : null;
+  return hit && typeof hit.step.name === "string" ? hit.step.name.trim() : "";
+}
+
+/* What a screenshot says under the pointer: when it was taken, and for one
+   the analyst added, that and the step it is on. */
+function screenshotTitle(s, origin) {
+  const when = sinceStart(s.timestamp, origin);
+  if (s.data.kind !== "screenshot_added") return "Taken at " + when + "\n" + s.data.path;
+  const on = _stepName(s.stepId);
+  return "Added by you, a frame at " + when + (on ? ", on " + on : "");
+}
+
 function renderScreenshots() {
   const host = $("#screenshots-grid");
   host.innerHTML = "";
-  const shots = (State.getSession().events || []).filter((e) =>
-    e.type === "system" &&
-    (e.data.kind === "screenshot" || e.data.kind === "screenshot_manual"));
+  const shots = timelineScreenshots();
   // Stash for the gallery (P2.7).
   _allScreenshots = shots;
   if (!shots.length) {
@@ -55,13 +84,13 @@ function renderScreenshots() {
     stamp.className = "stamp";
     stamp.textContent = sinceStart(s.timestamp, origin);
     card.appendChild(stamp);
-    if (s.data.kind === "screenshot_manual") {
+    if (s.data.kind === "screenshot_manual" || s.data.kind === "screenshot_added") {
       const b = document.createElement("div");
       b.className = "badge";
-      b.textContent = "manual";
+      b.textContent = s.data.kind === "screenshot_added" ? "added" : "manual";
       card.appendChild(b);
     }
-    card.title = "Taken at " + sinceStart(s.timestamp, origin) + "\n" + s.data.path;
+    card.title = screenshotTitle(s, origin);
     card.addEventListener("click", () => { seekToTimestamp(s.timestamp); openScreenshot(s.data.path); });
     host.appendChild(card);
   }
@@ -80,7 +109,8 @@ function _galleryFilter(reason) {
   return _allScreenshots.filter((s) => {
     const k = s.data.kind || "";
     if (reason === "manual") return k === "screenshot_manual";
-    if (reason === "auto")   return k !== "screenshot_manual";
+    if (reason === "auto")   return k === "screenshot";
+    if (reason === "added")  return k === "screenshot_added";
     return true;
   });
 }
@@ -145,6 +175,7 @@ function openScreenshotGallery() {
           '<option value="all">All screenshots</option>' +
           '<option value="manual">Manual only</option>' +
           '<option value="auto">Auto only</option>' +
+          '<option value="added">Added by you</option>' +
         '</select>' +
         '<button id="gallery-play" type="button" class="link-btn">Play (Space)</button>' +
         '<button id="gallery-close" type="button" class="link-btn">Close (Esc)</button>' +
@@ -207,7 +238,9 @@ function _galleryRenderFrame() {
   document.getElementById("gallery-ts").textContent = sinceStart(s.timestamp, recordingStartMs(State.getSession()));
   const reasonEl = document.getElementById("gallery-reason");
   reasonEl.textContent =
-    s.data.kind === "screenshot_manual" ? "manual" : (s.data.reason || "automatic");
+    s.data.kind === "screenshot_manual" ? "manual"
+      : s.data.kind === "screenshot_added" ? "added by you" + (_stepName(s.stepId) ? ", on " + _stepName(s.stepId) : "")
+        : (s.data.reason || "automatic");
   // I10: this frame stands in for a run of near-identical ones -- offer
   // a click to expand them.
   if (entry.similar > 0) {
@@ -281,7 +314,9 @@ function openScreenshot(relPath) {
   const btn = document.getElementById("btn-open-gallery");
   if (btn) btn.addEventListener("click", openScreenshotGallery);
 })();
+// Lane FX2: a screenshot the analyst adds or removes shows (or leaves) at once.
+State.subscribe("timeline", () => { if (State.getSession() && document.getElementById("screenshots-grid")) renderScreenshots(); });
 
 module.exports = {
-  renderScreenshots, openScreenshot,
+  renderScreenshots, openScreenshot, timelineScreenshots, screenshotTitle,
 };

@@ -197,7 +197,7 @@ function find(anno, id) {
   return list(anno).find((m) => m && m.map_id === id) || null;
 }
 
-function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked_from_sig, forked_at } = {}) {
+function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked_from_sig, forked_from_steps, forked_at } = {}) {
   return {
     map_id: map_id || genId(),
     name: (name && String(name).trim()) || "Untitled map",
@@ -206,6 +206,10 @@ function buildEntry({ map_id, name, kind, file, source, forked_from_hash, forked
     source: source || null,
     forked_from_hash: forked_from_hash || null,
     forked_from_sig: forked_from_sig || null,
+    // Lane FX2: the signature of the maps the steps drew when the copy was
+    // made (asis-freshness.js stepsMapSignature): the copy is older than the
+    // steps once they draw another.
+    forked_from_steps: forked_from_steps || null,
     forked_at: forked_at || null,
     edited_at: forked_at || null,
     pdd_role: null,
@@ -323,10 +327,11 @@ function deleteBpmn(sessionFolder, entry) {
 }
 
 /* The row of a new copy of `xml`, with its provenance (the source's hash and
-   process signature), and nothing written: the Map's Edit opens a new copy
-   this way and keeps it (writeBpmn, upsert) only once the analyst changes
-   it (refmap-ui.js). */
-function forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso }) {
+   process signature, and `stepsSig`, the signature of the maps the steps
+   drew then), and nothing written: the Map's Edit opens a new copy this way
+   and keeps it (writeBpmn, upsert) only once the analyst changes it
+   (refmap-ui.js). */
+function forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso, stepsSig }) {
   const map_id = genId();
   const file = path.posix.join(DERIVED_DIR, map_id + ".bpmn");
   const marks = sourceBpmnPath
@@ -334,15 +339,16 @@ function forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso }) {
     : (xml ? _marks(Buffer.from(xml, "utf-8")) : null);
   return buildEntry({
     map_id, name, kind, file, source,
-    forked_from_hash: marks && marks.hash, forked_from_sig: marks && marks.sig, forked_at: nowIso || null,
+    forked_from_hash: marks && marks.hash, forked_from_sig: marks && marks.sig,
+    forked_from_steps: stepsSig || null, forked_at: nowIso || null,
   });
 }
 
 /* Compose a fork: snapshot `xml` (the live view, WYSIWYF) into a new copy,
    stamp provenance (the source's hash and process signature), write the
    blob, upsert the row. Returns the entry. */
-function fork({ sessionFolder, anno, xml, source, sourceBpmnPath, name, kind, nowIso }) {
-  const entry = forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso });
+function fork({ sessionFolder, anno, xml, source, sourceBpmnPath, name, kind, nowIso, stepsSig }) {
+  const entry = forkEntry({ xml, source, sourceBpmnPath, name, kind, nowIso, stepsSig });
   writeBpmn(sessionFolder, entry, xml || "");
   upsert(anno, entry);
   return entry;
@@ -358,7 +364,8 @@ function duplicate({ sessionFolder, anno, srcEntry, nowIso }) {
   const entry = buildEntry({
     map_id, name: "To-Be map", kind: "to_be",
     file, source: srcEntry.source, forked_from_hash: srcEntry.forked_from_hash,
-    forked_from_sig: srcEntry.forked_from_sig, forked_at: nowIso || null,
+    forked_from_sig: srcEntry.forked_from_sig, forked_from_steps: srcEntry.forked_from_steps,
+    forked_at: nowIso || null,
   });
   writeBpmn(sessionFolder, entry, xml);
   upsert(anno, entry);

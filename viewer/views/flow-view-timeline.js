@@ -33,7 +33,7 @@ const RunsModel = require("../runs-model.js");
 const { numberOnlyLabel } = RunsModel;
 const { isoMs } = require("../run-differences.js");
 const SPM = require("../sub-process-maps.js");
-const { openScreenshot } = require("./flow-view-screenshots.js");
+const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 
 /* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
@@ -84,6 +84,26 @@ function leftOutBands(ranges) {
     if (Number.isFinite(a) && Number.isFinite(b) && b > a) out.push({ range: r, startMs: a, endMs: b });
   }
   return out.sort((x, y) => x.startMs - y.startMs);
+}
+
+/* Lane FX2 (validation pass 2, F10): an app the analyst put among the apps
+   outside the process (annotations.step_filters.ignored_processes, the
+   process names the dialog lists) is left out of the analysis: its bands are
+   drawn hatched like a stretch left out. The pipeline's rule for a window
+   band (process_filter.py): the process name, without ".exe" and case,
+   is one of them. Pure + unit-tested. */
+function _procKey(p) {
+  const s = String(p == null ? "" : p).trim().toLowerCase();
+  return s.endsWith(".exe") ? s.slice(0, -4) : s;
+}
+function appLeftOut(app, ignored) {
+  const key = _procKey(app);
+  return !!key && (Array.isArray(ignored) ? ignored : []).some((p) => typeof p === "string" && _procKey(p) === key);
+}
+/* What such a band says under the pointer, before the band's own lines. */
+function appLeftOutTitle(system) {
+  return "Left out of the analysis: " + (system || "this app") + " is among the apps outside the process, so its steps " +
+    "are not drafted and its time is not counted. Apps outside the process, in Steps, includes it again.";
 }
 
 /* What a band left out of the analysis says under the pointer. */
@@ -498,7 +518,7 @@ const LANE_NAMES = {
   activity: { name: "Systems", title: "Systems: the system on screen at each moment, one band per window; click a band to go there, right-click to start or end a transaction or to add a note." },
   transcript: { name: "Transcript", title: "Transcript: what was said, one block per sentence at the moment it was said, once the transcript is synced; click one to go there." },
   notes: { name: "Notes", title: "Notes: your notes pinned to a moment; click one to go there, right-click to edit or delete it." },
-  screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot taken during the recording; click one to see it full size." },
+  screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot taken during the recording, and one per frame of the video you added to a step; click one to see it full size." },
   steps: { name: "Steps", title: "Steps: each step of each transaction; click one to see all its moments." },
 };
 
@@ -613,6 +633,17 @@ function renderLaneNames(lanes, layout, host) {
   if (want > usual) pane.style.setProperty("--tl-names-w", Math.min(want, 240) + "px");
 }
 
+/* A step's band on the steps lane: { startMs, endMs } from its time range,
+   or null when it has none or it ends before it starts. Lane FX2
+   (validation pass 2, F8): a step that starts and ends in the same moment (a
+   one-click step) gets a band too, drawn at the lane's smallest width.
+   Pure + unit-tested. */
+function stepBandSpan(step) {
+  const tr = step && step.time_range;
+  const a = Date.parse(tr && tr.start), b = Date.parse(tr && tr.end);
+  return Number.isFinite(a) && Number.isFinite(b) && b >= a ? { startMs: a, endMs: b } : null;
+}
+
 /* The steps the steps lane shows (C19): the level the Steps list shows
    (State.mapPath), inside a sub-process its steps in every visit of it;
    { steps, name } where name is the level's ("" at the main level, where
@@ -706,6 +737,9 @@ function renderTimeline() {
   // pending marker bars and a place to right-click.
   const activityH = evs.length ? 60 : 28;
   const screenshotsH = lanes.screenshots ? 26 : 0;
+  // The recording's screenshots and (lane FX2) the ones the analyst added
+  // with a moment.
+  const shotMarks = timelineScreenshots(State.getSession());
   const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
   const notes = allNotes.filter((n) => { const t = Date.parse(n.at); return t >= first && t <= last; });
   const notesH = (lanes.notes && notes.length) ? 18 : 0;
@@ -719,6 +753,9 @@ function renderTimeline() {
   // The stretches left out of the analysis, drawn over the Systems lane where
   // they are made (a Shift-drag range, Leave out of the analysis).
   const leftOut = leftOutBands(_anno.excluded_ranges).filter((b) => b.endMs > first && b.startMs < last);
+  // Lane FX2: the apps outside the process, drawn hatched too.
+  const ignoredApps = ((_anno.step_filters || {}).ignored_processes) || [];
+  let appsLeftOut = 0;
 
   // ===== Time-axis ticks =====
   // Tick positions, intervals, and labels come from the shared timeline
@@ -841,7 +878,9 @@ function renderTimeline() {
         const inScope = !scopeRange ||
           (t + dur / 2 >= scopeRange.startMs && t + dur / 2 <= scopeRange.endMs);
         const band = document.createElement("div");
-        band.className = "tl-band tl-activity" + (inScope ? "" : " out-of-scope");
+        const outApp = appLeftOut(ev.data.app, ignoredApps);
+        if (outApp) appsLeftOut++;
+        band.className = "tl-band tl-activity" + (inScope ? "" : " out-of-scope") + (outApp ? " tl-app-left-out" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = activityTop + "px";
@@ -851,7 +890,7 @@ function renderTimeline() {
         // The system the band names (C14): Salesforce, not the browser.
         const system = appLabel(ev.data.app, ev.data.title, appNames);
         if (ev.data.app && !observedApps.has(system)) observedApps.set(system, ev.data.app);
-        band.title = system + (ev.data.title ? "\n" + ev.data.title : "") +
+        band.title = (outApp ? appLeftOutTitle(system) + "\n" : "") + system + (ev.data.title ? "\n" + ev.data.title : "") +
           "\n" + sinceStart(ev.timestamp, origin) + " (" + formatDuration(dur) + ")";
 
         // Label: app name (top line, bold-ish) + window title (second line, dim).
@@ -1011,17 +1050,17 @@ function renderTimeline() {
       host.appendChild(rail);
       // (Its name, Screenshots, is at the left with the other lanes'.)
       const markY = screenshotsTop + (screenshotsH - 16) / 2;
-      for (const ev of evs) {
-        if (ev.type !== "system") continue;
-        if (ev.data.kind !== "screenshot" && ev.data.kind !== "screenshot_manual") continue;
+      for (const ev of shotMarks) {
         const t = new Date(ev.timestamp).getTime();
+        if (!(t >= first && t <= last)) continue;
         const x = ((t - first) / span) * 100;
+        const added = ev.data.kind === "screenshot_added";
         const dot = document.createElement("div");
-        dot.className = "tl-screenshot";
+        dot.className = "tl-screenshot" + (added ? " tl-screenshot-added" : "");
         dot.style.left = "calc(" + x + "% - 8px)";
         dot.style.top = markY + "px";
         dot.innerHTML = SCREENSHOT_ICON;
-        dot.title = "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "");
+        dot.title = added ? screenshotTitle(ev, origin) : "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "");
         dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
         host.appendChild(dot);
       }
@@ -1042,10 +1081,9 @@ function renderTimeline() {
     render(host, ctx) {
       const stepsLaneTop = ctx.slot.top;
       for (const s of (lanes.steps ? _stepsForLane : [])) {
-        if (!s.time_range || !s.time_range.start || !s.time_range.end) continue;
-        const sStart = new Date(s.time_range.start).getTime();
-        const sEnd   = new Date(s.time_range.end).getTime();
-        if (!isFinite(sStart) || !isFinite(sEnd) || sEnd <= sStart) continue;
+        const bandSpan = stepBandSpan(s);
+        if (!bandSpan) continue;
+        const sStart = bandSpan.startMs, sEnd = bandSpan.endMs;
         const x = ((sStart - first) / span) * 100;
         const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
         const band = document.createElement("div");
@@ -1137,9 +1175,9 @@ function renderTimeline() {
   const legendShows = {
     ".lg-idle": !!lanes.idle && evs.length > 0,
     ".lg-marker": markerRows.some((m) => m.pending),
-    ".lg-screenshot": !!lanes.screenshots && evs.length > 0,
+    ".lg-screenshot": !!lanes.screenshots && shotMarks.length > 0,
     ".lg-note": notesH > 0,
-    ".lg-left-out": leftOut.length > 0,
+    ".lg-left-out": leftOut.length > 0 || appsLeftOut > 0,
   };
   for (const [sel, on] of Object.entries(legendShows)) {
     const el = document.querySelector("#timeline-legend " + sel);
@@ -1265,5 +1303,5 @@ module.exports = {
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
   caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES, stepsForLevel,
-  leftOutBands, leftOutTitle, leftOutLabel, LEFT_OUT_LABEL,
+  leftOutBands, leftOutTitle, leftOutLabel, LEFT_OUT_LABEL, appLeftOut, appLeftOutTitle, stepBandSpan,
 };

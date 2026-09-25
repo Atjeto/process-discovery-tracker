@@ -92,6 +92,9 @@ test("lane MV: forkEntry makes a new copy's row with its provenance and writes n
   assert.equal(e.pdd_role, null);
   assert.equal(e.forked_at, "2026-09-24T00:00:00.000Z");
   assert.equal(fs.existsSync(path.join(sf, "derived_maps")), false, "no folder, no file");
+  assert.equal(e.forked_from_steps, null, "no signature of the steps was given");
+  // Lane FX2: the signature of the maps the steps drew, kept on the row.
+  assert.equal(RM.forkEntry({ xml: "<source/>", source: { level: "step" }, stepsSig: "abc123" }).forked_from_steps, "abc123");
   // Kept: the file and the row, as fork makes them at once.
   const anno = {};
   RM.writeBpmn(sf, e, "<source/>");
@@ -268,8 +271,9 @@ test("fork stores the process signature: the next analysis of the same steps is 
   fs.writeFileSync(src, changed((m) => { m.nodes[7][2] = "Order: Save the order"; }));
   now = RM.sourceMarks(src);
   assert.equal(RM.isStale(e, now.hash, now.sig), true);
-  const dup = RM.duplicate({ sessionFolder: sf, anno, srcEntry: e, nowIso: "t2" });
+  const dup = RM.duplicate({ sessionFolder: sf, anno, srcEntry: Object.assign({}, e, { forked_from_steps: "s1" }), nowIso: "t2" });
   assert.equal(dup.forked_from_sig, e.forked_from_sig);
+  assert.equal(dup.forked_from_steps, "s1", "a duplicate carries the steps it was made from (lane FX2)");
   assert.equal(RM.sourceMarks(path.join(sf, "missing.bpmn")), null);
 });
 
@@ -329,10 +333,10 @@ test("setRole is the one role control: exclusive per slot, and the stored kind f
   assert.equal(RM.setRole(anno, "missing", "as_is"), null);
 });
 
-test("the stored shape of a map keeps its keys (the Export menu reads it) and adds the process signature it was copied from", () => {
+test("the stored shape of a map keeps its keys (the Export menu reads it) and adds the process signature it was copied from, and (lane FX2) the steps'", () => {
   const e = RM.buildEntry({ file: "derived_maps/x.bpmn", name: "As-Is map", kind: "as_is", source: { level: "step" }, forked_at: "t" });
   assert.deepEqual(Object.keys(e).sort(),
-    ["edited_at", "file", "forked_at", "forked_from_hash", "forked_from_sig", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
+    ["edited_at", "file", "forked_at", "forked_from_hash", "forked_from_sig", "forked_from_steps", "kind", "map_id", "name", "notes", "pdd_role", "source"]);
 });
 
 test("C18: a copy made before the step map had its colours, notes and attachments is told apart (no user or manual task, no legend, no colour in it)", () => {

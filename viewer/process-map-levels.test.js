@@ -410,3 +410,11 @@ test("resolveStepGrainKeys mirrors the Python rules (typed field wins over nav)"
   assert.equal(k.app, "OUTLOOK");
 });
 
+
+test("lane FX2: the boxes a step of which is flagged as waste, by the map's node rule; a hidden step marks nothing", () => {
+  const { wasteNodes } = require("./process-map-levels.js");
+  const st = (name, waste, extra) => Object.assign({ step_id: name, name, draft_key: "k|" + name, state: "edited", flags: { waste } }, extra || {});
+  assert.deepEqual(wasteNodes([[st("Check", true), st("Save", false)], [st("Check", true), st("Log", true, { state: "hidden" })]]), ["Check"]);
+  assert.deepEqual(wasteNodes([[st("Save", false)]]), []);
+  assert.deepEqual(wasteNodes(null), []);
+});

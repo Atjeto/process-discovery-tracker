@@ -191,13 +191,42 @@ function _remembered(store, key) {
   return e && typeof e.name === "string" ? e.name.trim() : "";
 }
 
+/* The names this project's own sub-steps give their actions (lane FX2,
+   validation pass 1: C4's name precedence, F1, for drafted sub-steps, as
+   step_suggest.session_names gives drafts theirs): { action_key: name } from
+   the sub-steps with an action_key at every level, first the names the
+   analyst typed (states edited and manually_authored), then the names
+   accepted (confirmed); hidden sub-steps name nothing; within each, the
+   reference transaction's first (`patternCaseId`), then time order. The
+   names travel with the folder, so Open as a sub-process drafts the same
+   names on another computer. */
+function projectActionNames(steps, patternCaseId) {
+  const all = [];
+  SPM.eachStep(steps, (s, _list, _i, ancestors) => {
+    if (!ancestors.length || s.state === "hidden" || ancestors.some((a) => a.state === "hidden")) return;
+    const key = _t(s.action_key), name = _t(s.name);
+    if (key && name) all.push({ s, key, name, n: all.length });
+  });
+  const rank = (s) => (s.state === "edited" || s.state === "manually_authored" ? 0 : s.state === "confirmed" ? 1 : 9);
+  const start = (s) => { const t = Date.parse(s.time_range && s.time_range.start); return Number.isFinite(t) ? t : Infinity; };
+  const out = {};
+  all.filter((x) => rank(x.s) < 9)
+    .sort((a, b) => (rank(a.s) - rank(b.s)) ||
+      ((a.s.case_id === patternCaseId ? 0 : 1) - (b.s.case_id === patternCaseId ? 0 : 1)) ||
+      (start(a.s) - start(b.s)) || (a.n - b.n))
+    .forEach((x) => { if (!(x.key in out)) out[x.key] = x.name; });
+  return out;
+}
+
 /**
  * The drafted sub-steps of `parent`: one per recorded action in its
  * evidence.interaction_event_ids, [] when it has none (a step added by hand,
  * a project without a recording).
  * @param {object} parent
  * @param {Object<string, object>} interactionsById  event_id -> interaction event
- * @param {{newId?: Function, remembered?: object, shotTimes?: Object<string, string>}} opts
+ * @param {{newId?: Function, remembered?: object, projectNames?: object, shotTimes?: Object<string, string>}} opts
+ *   projectNames: the names the project's own sub-steps give their actions
+ *   (projectActionNames), which come first (C4's precedence, lane FX2);
  *   remembered: the C4 store's names; shotTimes: screenshot path -> the time
  *   it was taken (the recording's screenshot events).
  */
@@ -215,7 +244,8 @@ function draftSubSteps(parent, interactionsById, opts) {
     // To the next action's first event; the last ends at its own last event.
     const end = isLast ? a.events[a.events.length - 1].timestamp : actions[i + 1].events[0].timestamp;
     const s0 = Date.parse(start), s1 = Date.parse(end);
-    const saved = _remembered(o.remembered, "action|" + a.key);
+    const own = o.projectNames && typeof o.projectNames[a.key] === "string" ? _t(o.projectNames[a.key]) : "";
+    const saved = own || _remembered(o.remembered, "action|" + a.key);
     const name = saved || a.name;
     return {
       step_id: _newId(o),
@@ -324,14 +354,39 @@ function _group(members, opts) {
   return g;
 }
 
-/* Keep each (to, when) once and drop a link to the step's own id. */
+/* Keep each (to, when) once and drop a link to the step's own id. A link
+   kept once for several members (lane FX2) remembers every member it was
+   lifted from. */
 function _cleanLinks(stepId, links) {
   const out = [];
   for (const l of links || []) {
     if (!l || typeof l.to !== "string" || !l.to || l.to === stepId) continue;
-    if (out.some((x) => x.to === l.to && _line(x.when) === _line(l.when))) continue;
+    const same = out.find((x) => x.to === l.to && _line(x.when) === _line(l.when));
+    if (same) {
+      const from = _liftedFrom(l);
+      if (from.length) {
+        const i = out.indexOf(same);
+        out[i] = Object.assign({}, same, { lifted_from: [...new Set(_liftedFrom(same).concat(from))] });
+      }
+      continue;
+    }
     out.push(l);
   }
+  return out;
+}
+
+/* Lane FX2 (validation pass 2, F5): Group remembers where a link it moves
+   came from, so Dissolve gives it back there. On a link the group took from
+   a member: `lifted_from`, the member's step id (the members', when two had
+   the same link); on a link it pointed at the group instead of a member:
+   `pointed_to`, that member's step id. Readers of the flow read `to` and
+   `when` only (C17), so both keys ride along unread until Dissolve. */
+function _liftedFrom(link) {
+  return Array.isArray(link && link.lifted_from) ? link.lifted_from.filter((id) => typeof id === "string" && id) : [];
+}
+function _without(link, key) {
+  const out = Object.assign({}, link);
+  delete out[key];
   return out;
 }
 function _setLinks(step, links) { if (links.length) step.links = links; else delete step.links; }
@@ -367,23 +422,26 @@ function groupInto(root, transactions, path, tickedIds, opts) {
   const groupOf = new Map();
   for (const x of made) for (const s of x.members) groupOf.set(s.step_id, x.group);
 
-  // Links from outside a group to its members point at the group.
+  // Links from outside a group to its members point at the group, and
+  // remember the member (pointed_to, lane FX2).
+  const toGroup = (l) => Object.assign({}, l, { to: groupOf.get(l.to).step_id, pointed_to: l.to });
   for (const s of SPM.allSteps(root)) {
     if (groupOf.has(s.step_id) || !Array.isArray(s.links) || !s.links.some((l) => l && groupOf.has(l.to))) continue;
-    const next = s.links.map((l) => (l && groupOf.has(l.to) ? Object.assign({}, l, { to: groupOf.get(l.to).step_id }) : l));
+    const next = s.links.map((l) => (l && groupOf.has(l.to) ? toGroup(l) : l));
     _setLinks(s, _cleanLinks(s.step_id, next));
   }
-  // A member's link that leaves its group moves to the group.
+  // A member's link that leaves its group moves to the group, and remembers
+  // the member it came from (lifted_from, lane FX2).
   for (const x of made) {
     const own = new Set(x.members.map((s) => s.step_id));
     const moved = [];
     for (const s of x.members) {
       if (!Array.isArray(s.links)) continue;
       const keep = s.links.filter((l) => l && own.has(l.to));
-      for (const l of s.links) if (l && !own.has(l.to)) moved.push(l);
+      for (const l of s.links) if (l && !own.has(l.to)) moved.push(Object.assign({}, l, { lifted_from: [s.step_id] }));
       if (keep.length !== s.links.length) _setLinks(s, keep);
     }
-    const out = moved.map((l) => (groupOf.has(l.to) ? Object.assign({}, l, { to: groupOf.get(l.to).step_id }) : l));
+    const out = moved.map((l) => (groupOf.has(l.to) ? toGroup(l) : l));
     _setLinks(x.group, _cleanLinks(x.group.step_id, out));
   }
 
@@ -436,6 +494,38 @@ function groupCheck(transactions, path, tickedIds) {
   return { stretches, groups: stretches.length, transactions: new Set(stretches.map((s) => s.pl.t)).size };
 }
 
+function _count(n, one, many) { return n + " " + (n === 1 ? one : many); }
+const _WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+function _say(n) { return _WORDS[n] || String(n); }
+
+/* What Group into a sub-process will do, said before it is done (lane FX2,
+   validation pass 2, F16): how many ticked steps, where the same steps are
+   grouped too, how many groups that makes, and where a group takes another
+   number of steps than the ticked ones (the same steps one after the other
+   there). `check`: groupCheck's answer (no error); `ticked`: how many steps
+   are ticked. The places are transactions at the main level, and a
+   transaction's visits of a sub-process below it (their `t`). Pure. */
+function groupPromptText(check, ticked) {
+  const stretches = (check && check.stretches) || [];
+  const mine = stretches.find((st) => st.ticked) || null;
+  const others = stretches.filter((st) => !st.ticked);
+  const size = (st) => st.b - st.a + 1;
+  let text = "Groups these " + _count(ticked, "step", "steps");
+  if (others.length) {
+    const home = mine ? mine.pl.t : -1;
+    const txs = new Set(others.map((st) => st.pl.t));
+    const where = others.length === txs.size && !txs.has(home)
+      ? _count(txs.size, "other transaction", "other transactions")
+      : _count(others.length, "other place", "other places") +
+        (txs.size === 1 && txs.has(home) ? " of this transaction" : ", in " + _count(txs.size, "transaction", "transactions"));
+    text += " and the same steps in " + where;
+  }
+  text += " (" + _count(stretches.length || 1, "group", "groups") + ").";
+  const odd = others.filter((st) => size(st) !== ticked)
+    .map((st) => "In transaction " + (st.pl.t + 1) + " a group takes " + _say(size(st)) + " steps, the same steps one after the other there.");
+  return odd.length ? text + " " + odd.join(" ") : text;
+}
+
 /* ---- Dissolve sub-process ------------------------------------------------------ */
 
 /* The sub-process occurrences of `node` at level `path` (hidden ones too). */
@@ -473,12 +563,14 @@ function dissolveLoss(transactions, path, node, interactionsById) {
 }
 
 /* Point every link to `fromId` (at any level) at `toId`, or drop it when
-   toId is null. */
-function _retarget(root, fromId, toId) {
+   toId is null. A link that pointed at a member before Group (pointed_to,
+   lane FX2) goes back to that member when `back` has it. */
+function _retarget(root, fromId, toId, back) {
   for (const s of SPM.allSteps(root)) {
     if (!Array.isArray(s.links) || !s.links.some((l) => l && l.to === fromId)) continue;
-    const next = s.links.filter((l) => l && (toId || l.to !== fromId))
-      .map((l) => (l.to === fromId ? Object.assign({}, l, { to: toId }) : l));
+    const target = (l) => (back && back.has(l.pointed_to) ? l.pointed_to : toId);
+    const next = s.links.filter((l) => l && (l.to !== fromId || target(l)))
+      .map((l) => (l.to === fromId ? _without(Object.assign({}, l, { to: target(l) }), "pointed_to") : l));
     _setLinks(s, _cleanLinks(s.step_id, next));
   }
 }
@@ -505,8 +597,10 @@ function _dissolveGroup(anno, transactions, path, g) {
   const place = SPM.placeOf(transactions, path, g.step_id);
   const at = place ? place.visible.indexOf(g) : -1;
   const after = at >= 0 && at + 1 < place.visible.length ? place.visible[at + 1].step_id : StepFlow.END;
-  // A link to the group points at its first sub-step.
-  _retarget(root, g.step_id, first ? first.step_id : null);
+  // A link to the group points at the member it pointed at before Group
+  // (lane FX2), else at its first sub-step.
+  const members = new Set(subs.map((s) => s.step_id));
+  _retarget(root, g.step_id, first ? first.step_id : null, members);
   // A sub-step's link to End points at the step that followed the group.
   if (after !== StepFlow.END) {
     for (const s of subs) {
@@ -515,11 +609,20 @@ function _dissolveGroup(anno, transactions, path, g) {
     }
   }
   if (first) {
-    // Its Only when goes to its first sub-step, its links to its last.
+    // Its Only when goes to its first sub-step; a link it took from a member
+    // goes back to that member (lane FX2), and its own links to its last.
     const cond = StepFlow.onlyWhen(g);
     if (cond) first.only_when = StepFlow.onlyWhen(first) ? cond + " and " + StepFlow.onlyWhen(first) : cond;
-    const own = StepFlow.links(g);
-    if (own.length && last) _setLinks(last, _cleanLinks(last.step_id, StepFlow.links(last).concat(own)));
+    const back = new Map();
+    for (const l of StepFlow.links(g)) {
+      const from = _liftedFrom(l).filter((id) => members.has(id));
+      for (const id of from.length ? from : last ? [last.step_id] : []) {
+        back.set(id, (back.get(id) || []).concat([_without(l, "lifted_from")]));
+      }
+    }
+    for (const s of subs) {
+      if (back.has(s.step_id)) _setLinks(s, _cleanLinks(s.step_id, StepFlow.links(s).concat(back.get(s.step_id))));
+    }
     // What the analyst put on the group goes to its first sub-step.
     _moveContent(anno, new Set([g.step_id]), first.step_id);
     const desc = _t(g.description);
@@ -559,6 +662,28 @@ function dissolve(anno, transactions, path, node) {
   return { groups, opened };
 }
 
+/* ---- A moment on the clock (+ Step at the playhead) ------------------------------ */
+
+/* Where + Step at the moment `t` (ms) goes (lane FX2, validation pass 3,
+   F15): { kind: "split", list, index, parent } when a step with a time holds
+   the moment (it is split there), else { kind: "open", list, parent } (a new
+   step from the moment on, in `list`). A sub-process holding the moment is
+   entered (C19: its steps take the moment, never the sub-process itself), at
+   any depth: `parent` is the sub-process whose sub_steps `list` is, null at
+   the main level. So a sub-step gets a time the way a main-level step does. */
+function momentPlace(steps, t) {
+  let list = Array.isArray(steps) ? steps : [], parent = null;
+  for (;;) {
+    const i = list.findIndex((s) => s && s.time_range &&
+      Date.parse(s.time_range.start) < t && Date.parse(s.time_range.end) > t);
+    if (i < 0) return { kind: "open", list, parent };
+    const s = list[i];
+    if (!SPM.isSubProcess(s)) return { kind: "split", list, index: i, parent };
+    parent = s;
+    list = s.sub_steps;
+  }
+}
+
 /* ---- Rename ------------------------------------------------------------------- */
 
 /* A sub-process renamed (C19): every other step of its node at level `path`
@@ -581,6 +706,6 @@ function renameNode(transactions, path, node, name, except) {
 }
 
 module.exports = {
-  actionOf, actionsOf, eventPrefix, parentPrefix, draftSubSteps, draftedAction,
-  openAsSubProcess, groupCheck, groupInto, dissolveLoss, dissolve, renameNode,
+  actionOf, actionsOf, eventPrefix, parentPrefix, draftSubSteps, draftedAction, projectActionNames,
+  openAsSubProcess, groupCheck, groupPromptText, groupInto, dissolveLoss, dissolve, renameNode, momentPlace,
 };

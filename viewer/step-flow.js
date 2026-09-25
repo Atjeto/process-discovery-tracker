@@ -138,6 +138,9 @@ function setLinkTarget(step, i, to) {
   const list = links(step);
   if (!list[i] || typeof to !== "string" || !to || to === step.step_id || list[i].to === to) return false;
   list[i] = Object.assign({}, list[i], { to });
+  // It goes elsewhere now: the member it pointed at before a Group is not its
+  // target any more (sub-process-verbs.js, lane FX2).
+  delete list[i].pointed_to;
   _setLinks(step, list);
   return true;
 }

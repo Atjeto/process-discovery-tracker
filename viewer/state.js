@@ -22,8 +22,9 @@
 /**
  * Renderable concerns a view can subscribe to. An edit emits the
  * topics it touched; every function subscribed to that topic re-runs.
- * "mapPath": the level the Map shows changed (contract C19).
- * @typedef {"steps"|"timeline"|"markers"|"mapPath"} ChangeTopic
+ * "mapPath": the level the Map shows changed (contract C19). "names": the
+ * remembered step names were put back by an undo or a redo (lane FX2).
+ * @typedef {"steps"|"timeline"|"markers"|"mapPath"|"names"} ChangeTopic
  */
 
 /**

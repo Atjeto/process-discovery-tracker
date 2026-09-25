@@ -244,15 +244,40 @@ function occurrenceLine(step, run, again, originMs) {
   ].filter(Boolean).join(" · ");
 }
 
+/* Where a step's moment is in the project's video (lane FX2, validation
+   pass 2, F7): { kind: "covered", at, to } (seconds into the video, `to`
+   null without an end), { kind: "outside", at } (the video does not cover
+   its start: before the video starts, or at or after its end once its
+   length is known), { kind: "untimed" } (a step without a time) or
+   { kind: "unplaced" } (the video cannot be lined up with the project).
+   `videoStartMs`: the video's 0:00 on the project's clock; `lengthMs`: the
+   video's length, NaN while unknown (a start at or after 0 then counts as
+   covered). Pure. */
+function videoMoment(step, videoStartMs, lengthMs) {
+  const tr = step && step.time_range;
+  const start = Date.parse(tr && tr.start);
+  if (!Number.isFinite(start)) return { kind: "untimed" };
+  if (!Number.isFinite(videoStartMs)) return { kind: "unplaced" };
+  const at = (start - videoStartMs) / 1000;
+  if (at < 0 || (Number.isFinite(lengthMs) && lengthMs > 0 && at * 1000 >= lengthMs)) return { kind: "outside", at };
+  const end = Date.parse(tr && tr.end);
+  return { kind: "covered", at, to: Number.isFinite(end) ? (end - videoStartMs) / 1000 : null };
+}
+
+/* The line a row of the step panel shows when the video does not cover its
+   moment (it then has no play button). */
+const NOT_COVERED = "The video does not cover this moment";
+
 /* The line above the step panel's rows, built from the rows: how many times
    the step happened, in which transactions, and what a row's play does.
      rows      [{ run }] in the panel's order (run with its ordinal, or null
                for a step outside every transaction)
      runCount  how many transactions the project has
      playable  how many of the rows have a play button
+     uncovered how many rows have a time the video does not cover (lane FX2)
    "This step happened 5 times: once in transactions 1, 3 and 4, twice in
    transaction 2. Play any of them." */
-function occurrencesLine(rows, runCount, playable) {
+function occurrencesLine(rows, runCount, playable, uncovered) {
   const list = rows || [];
   const total = list.length;
   if (!total) return "";
@@ -280,11 +305,12 @@ function occurrencesLine(rows, runCount, playable) {
   }
   const can = Math.max(0, Math.min(total, playable || 0));
   const play = !can ? "" : can === total ? (total === 1 ? " Play it." : " Play any of them.")
-    : can === 1 ? " Play the one with a time." : " Play the ones with a time.";
+    : uncovered > 0 ? (can === 1 ? " Play the one the video covers." : " Play the ones the video covers.")
+      : can === 1 ? " Play the one with a time." : " Play the ones with a time.";
   return "This step happened " + _times(total) + where + "." + play;
 }
 
 module.exports = {
   stepDatas, typedFields, draftedNarration, isDraftedDescription, commitName, endsAt, draftedName,
-  pointer, duration, formatMs, factLine, occurrenceLine, occurrencesLine,
+  pointer, duration, formatMs, factLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
 };

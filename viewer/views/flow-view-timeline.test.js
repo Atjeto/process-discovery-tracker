@@ -210,3 +210,28 @@ test("a band left out says what it is and what a click does; its label is the le
   assert.deepEqual([200, 150, 149, 64, 63, 0].map(Timeline.leftOutLabel),
     ["Left out of the analysis", "Left out of the analysis", "Left out", "Left out", "", ""]);
 });
+
+test("lane FX2: an app outside the process is left out of the analysis: its bands are the apps the dialog lists, by process name, case and .exe aside", () => {
+  const { appLeftOut, appLeftOutTitle } = Timeline;
+  assert.equal(appLeftOut("notepad.exe", ["notepad.exe"]), true);
+  assert.equal(appLeftOut("NOTEPAD.EXE", ["notepad"]), true);
+  assert.equal(appLeftOut("notepad", ["Notepad.exe"]), true);
+  assert.equal(appLeftOut("notepad++.exe", ["notepad.exe"]), false, "a process name, not a part of one");
+  assert.equal(appLeftOut("chrome.exe", []), false);
+  assert.equal(appLeftOut("", ["notepad.exe"]), false);
+  assert.equal(appLeftOut("chrome.exe", null), false);
+  assert.equal(appLeftOutTitle("Notepad"),
+    "Left out of the analysis: Notepad is among the apps outside the process, so its steps are not drafted and its time is not counted. Apps outside the process, in Steps, includes it again.");
+});
+
+test("lane FX2: a one-click step (it starts and ends in the same moment) gets a band on the steps lane; only a step with no time or one ending before it starts gets none", () => {
+  const { stepBandSpan } = Timeline;
+  const tr = (start, end) => ({ time_range: { start, end } });
+  assert.deepEqual(stepBandSpan(tr("2026-05-14T09:00:47Z", "2026-05-14T09:00:47Z")),
+    { startMs: Date.parse("2026-05-14T09:00:47Z"), endMs: Date.parse("2026-05-14T09:00:47Z") });
+  assert.deepEqual(stepBandSpan(tr("2026-05-14T09:00:40Z", "2026-05-14T09:00:47Z")),
+    { startMs: Date.parse("2026-05-14T09:00:40Z"), endMs: Date.parse("2026-05-14T09:00:47Z") });
+  assert.equal(stepBandSpan(tr("2026-05-14T09:00:47Z", "2026-05-14T09:00:40Z")), null);
+  assert.equal(stepBandSpan({ time_range: null }), null);
+  assert.equal(stepBandSpan(tr("2026-05-14T09:00:47Z", null)), null);
+});

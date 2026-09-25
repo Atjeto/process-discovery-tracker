@@ -202,6 +202,19 @@ test("C19: a file and a note in a plane work as on the main map, their ids read 
   assert.strictEqual(L.isLegend(el.Sub1_TextAnnotation_1), false);
 });
 
+test("lane FX2: a step's notes are the pipeline's TextAnnotation_<n> (a plane's with its prefix), never the legend or one drawn in the editor (the PDD's pictures leave them out)", async () => {
+  const el = await elements();
+  for (const id of ["TextAnnotation_1", "TextAnnotation_2", "TextAnnotation_3"]) assert.strictEqual(L.isStepNote(el[id]), true, id);
+  assert.strictEqual(L.isStepNote(el.TextAnnotation_legend), false);
+  for (const id of ["node_1_Save", "Association_1", "DataObjectReference_att-1"]) assert.strictEqual(L.isStepNote(el[id]), false, id);
+  const drawn = { id: "TextAnnotation_0v7w1k8", type: "bpmn:TextAnnotation",
+    businessObject: { id: "TextAnnotation_0v7w1k8", $type: "bpmn:TextAnnotation", $instanceOf: (t) => t === "bpmn:TextAnnotation" } };
+  assert.strictEqual(L.isStepNote(drawn), false, "an annotation the analyst drew in the editor stays on the picture");
+  const sub = await subElements();
+  assert.strictEqual(L.isStepNote(sub.Sub1_TextAnnotation_1), true);
+  assert.strictEqual(L.isStepNote(sub.Sub1_TextAnnotation_legend), false);
+});
+
 test("C19: a click on the canvas of a sub-process's plane (its root, whose business object is the sub-process) does nothing", async () => {
   const el = await subElements();
   assert.strictEqual(L.elementAction(el.plane), null);

@@ -81,3 +81,24 @@ test("mergeStepObjects caps a runaway merged name", () => {
   const merged = SV.mergeStepObjects([mk("a", long + "1"), mk("b", long + "2")]);
   assert.ok(merged.name.length <= 120, "merged name capped at ~120 chars");
 });
+
+// --- Lane FX2 (validation pass 3, F5): steps the analyst added stay added ---
+
+test("lane FX2: a merge of steps the analyst added is an added step (it keeps Delete and its hand marker); any other merge is edited", () => {
+  const mk = (id, state, extra) => Object.assign({
+    step_id: id, name: "Step " + id, state, time_range: null, order: 1,
+    evidence: { interaction_event_ids: [], screenshot_refs: [] },
+  }, extra || {});
+  assert.equal(SV.mergeStepObjects([mk("a", "manually_authored"), mk("b", "manually_authored")]).state, "manually_authored");
+  assert.equal(SV.mergeStepObjects([mk("a", "manually_authored"), mk("b", "auto_suggested", { draft_key: "k" })]).state, "edited");
+  assert.equal(SV.mergeStepObjects([mk("a", "edited"), mk("b", "confirmed")]).state, "edited");
+});
+
+test("lane FX2: derivedState, the rule Split, Merge and + Step follow", () => {
+  const AC = require("./analyst-content.js");
+  assert.equal(AC.derivedState({ state: "manually_authored" }), "manually_authored", "a split half of an added step");
+  assert.equal(AC.derivedState([{ state: "manually_authored" }, { state: "manually_authored" }]), "manually_authored");
+  assert.equal(AC.derivedState([{ state: "manually_authored" }, { state: "confirmed" }]), "edited");
+  assert.equal(AC.derivedState({ state: "auto_suggested" }), "edited");
+  assert.equal(AC.derivedState([]), "edited");
+});

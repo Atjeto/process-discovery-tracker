@@ -208,30 +208,51 @@ async function unreadableAnnotationsPin() {
     /annotations\.json in this project folder cannot be read/.test(banner) && /annotations\.json\.2/.test(banner),
     banner.slice(0, 260));
 
-  // The real verb: insert a Start marker from the Flow timeline's menu. The
-  // save must be refused with an error toast, and no file may change (no
-  // write, no backup rotation).
+  // Lane FX2 (validation pass 3, F12): the page is the banner alone, so the
+  // project never looks empty and nothing offers an edit: no level, no
+  // editing control, no Export, no step panel, no Raw events; New, Open, Help
+  // and the theme stay.
+  let only = null;
+  try {
+    only = await p.evaluate(() => {
+      const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+      const loaded = document.getElementById("session-loaded");
+      return {
+        banner: vis(document.getElementById("annotations-error-banner")),
+        levels: [...document.querySelectorAll(".view-mode-btn")].filter(vis).length,
+        layouts: ["overview", "flow", "steps", "map"].filter((l) => vis(document.getElementById("session-layout-" + l))),
+        edits: ["btn-add-manual-step", "btn-add-step", "btn-attach-video", "btn-attach-transcript", "btn-fork-refmap", "btn-ov-next"]
+          .filter((id) => vis(document.getElementById(id))),
+        exportMenu: vis(document.getElementById("btn-session-export-menu")),
+        status: vis(document.getElementById("session-pills")), saveState: vis(document.getElementById("save-state")),
+        stepPanel: vis(document.getElementById("step-panel")), rawEvents: vis(document.querySelector(".event-table-host")),
+        stay: ["btn-new-menu", "btn-recent-menu", "btn-help", "btn-theme-toggle"].filter((id) => vis(document.getElementById(id))),
+        emptyWords: /No video|No transcript|No steps yet|No transactions/.test(loaded ? loaded.innerText || "" : ""),
+      };
+    });
+  } catch (e) { logActionError("FX2 unreadable page", e); only = { err: String(e.message).split("\n")[0] }; }
+  record("lane FX2: with annotations.json unreadable the page is the banner alone: no level, no editing control, no Export, nothing that reads as an empty project; New, Open, Help and the theme stay",
+    !!(only && !only.err && only.banner && only.levels === 0 && only.layouts.length === 0 && only.edits.length === 0 && !only.exportMenu &&
+      !only.status && !only.saveState && !only.stepPanel && !only.rawEvents && only.stay.length === 4 && !only.emptyWords),
+    JSON.stringify(only));
+  if (!(only && only.levels === 0)) await shot(p, "fail-fx2-unreadable-page.png");
+
+  // Nothing on the page edits now; the main process still refuses a save
+  // through the one write path (session.js), with an error toast, and no
+  // file may change (no write, no backup rotation).
   const toastText = () => p.$eval("#toast", (el) => el.className.includes("error") ? (el.textContent || "") : "");
   let saveMsg = "";
   try {
-    await p.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
-    await p.waitForSelector("#timeline .tl-band", { state: "visible", timeout: T });
-    await p.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
-    await p.evaluate(() => {
-      const tl = document.getElementById("timeline");
-      const r = tl.getBoundingClientRect();
-      tl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true,
-        clientX: r.left + r.width * 0.3, clientY: r.top + 4 }));
+    await p.evaluate(async () => {
+      const S = require("./session.js");
+      try { await S.persistAnnotations(S.ensureAnnoShape({ steps: [] }), "insert start marker"); } catch (_) { /* shown as a toast */ }
     });
-    await p.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
-    await p.locator(".modal-prompt .modal-input").fill("RP-04 probe run", { timeout: T });
-    await p.locator(".modal-prompt .modal-ok").click({ timeout: T });
     await p.waitForFunction(() => /was not saved/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: T });
     saveMsg = await toastText();
-  } catch (e) { logActionError("RP-04 insert marker", e); saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
+  } catch (e) { logActionError("RP-04 save refused", e); saveMsg = "no refusal shown: " + String(e.message).split("\n")[0]; }
   const afterSave = untouched();
-  record("RP-04: an edit on that session is refused with an error naming the problem; annotations.json and its backups are untouched",
+  record("RP-04: a save on that session is refused with an error naming the problem; annotations.json and its backups are untouched",
     /was not saved/.test(saveMsg) && /cannot be read/.test(saveMsg) && afterSave,
     "toast=" + JSON.stringify(saveMsg.slice(0, 200)) + " filesUntouched=" + afterSave);
 
@@ -608,22 +629,27 @@ async function unreadableAnnotationsPin() {
     !!(laneClick.ok && laneClick.stayedFlow && laneClick.selected && laneClick.highlighted),
     JSON.stringify(laneClick));
   // Item 1: the steps lane shows the steps as they are (no roll-up by a grain
-  // notch): one band per visible step, named as the step is named.
+  // notch): one band per visible step, named as the step is named. Lane FX2
+  // (validation pass 2, F8): a one-click step (it starts and ends in the same
+  // moment) has its band too.
   const laneBands = await page.evaluate(() => {
     const steps = ((require("./state.js").getSession().annotations || {}).steps || [])
       .filter((st) => st && st.state !== "hidden" && st.time_range && st.time_range.start && st.time_range.end &&
-        Date.parse(st.time_range.end) > Date.parse(st.time_range.start));
+        Date.parse(st.time_range.end) >= Date.parse(st.time_range.start));
     const bands = [...document.querySelectorAll(".tl-step-band[data-step-id]")];
     const byId = Object.fromEntries(steps.map((st) => [st.step_id, st]));
+    const oneClick = steps.filter((st) => Date.parse(st.time_range.end) === Date.parse(st.time_range.start));
     return {
       steps: steps.length, bands: bands.length,
       named: bands.every((b) => byId[b.dataset.stepId] && (b.textContent || "") === byId[b.dataset.stepId].name),
       folded: bands.filter((b) => / steps\)/.test(b.title || "")).length,
+      oneClick: oneClick.length,
+      oneClickDrawn: oneClick.filter((st) => { const b = bands.find((x) => x.dataset.stepId === st.step_id); return !!b && b.getBoundingClientRect().width > 0; }).length,
     };
   }).catch((e) => ({ err: e.message }));
-  record("item 1: the Flow steps lane shows one band per step, named as the step (no roll-up)",
+  record("item 1 + lane FX2: the Flow steps lane shows one band per step, named as the step (no roll-up), one-click steps included",
     !!(laneBands && !laneBands.err && laneBands.steps > 0 && laneBands.bands === laneBands.steps &&
-      laneBands.named && laneBands.folded === 0), JSON.stringify(laneBands));
+      laneBands.named && laneBands.folded === 0 && laneBands.oneClick > 0 && laneBands.oneClickDrawn === laneBands.oneClick), JSON.stringify(laneBands));
   // "Open in Steps" on a band of the LAST run: the Steps view opened on the
   // pattern run (run 1) before, so the arrival has to open another run to
   // reveal the step.
@@ -1876,6 +1902,62 @@ async function unreadableAnnotationsPin() {
         lo.undone && lo.undone.ranges.length === 1 && lo.undone.band && lo.undone.run2.steps === L.run2.steps &&
         lo.redone && lo.redone.ranges.length === 0 && !lo.redone.band && lo.redone.run2.steps === B.run2.steps),
       JSON.stringify({ menu: lo.menu, included: lo.included, undone: lo.undone, redone: lo.redone }));
+  }
+
+  // --- Lane FX2 (validation pass 2, F10): an app outside the process ------
+  // Steps, Apps outside the process...: the dialog names each app by the
+  // business systems it stands for (Salesforce, the browser beside it); with
+  // Notepad ticked and saved (the analysis runs), the Timeline draws
+  // Notepad's bands hatched like a stretch left out, with the tooltip and
+  // the legend's entry; unticked again, they are plain.
+  if (FRESH) {
+    const ap = {};
+    const T = 20000;
+    const idle = () => page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+    const dialog = async (tick) => {
+      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+      await page.locator("#btn-ignored-apps").click({ timeout: T });
+      await page.waitForSelector("#ia-list label", { timeout: T });
+      const rows = await page.evaluate(() => [...document.querySelectorAll("#ia-list label")].map((l) => ({
+        proc: l.querySelector("input").dataset.proc, name: ((l.querySelector(".ia-system") || {}).textContent || "").trim(),
+        app: ((l.querySelector(".ia-app") || {}).textContent || "").trim(), checked: l.querySelector("input").checked })));
+      const box = page.locator('#ia-list input[data-proc="notepad.exe"]');
+      if (tick) await box.check({ timeout: T }); else await box.uncheck({ timeout: T });
+      await page.locator("#ia-save").click({ timeout: T });
+      await page.waitForFunction(() => !document.getElementById("ia-save"), null, { timeout: T });
+      await wait(300);
+      await idle();
+      return rows;
+    };
+    const bands = () => page.evaluate(() => {
+      const all = [...document.querySelectorAll("#timeline .tl-activity")];
+      const lg = document.querySelector("#timeline-legend .lg-left-out");
+      const notepad = all.filter((b) => /^notepad/i.test(b.dataset.app || ""));
+      return { notepad: notepad.length, hatched: notepad.filter((b) => b.classList.contains("tl-app-left-out")).length,
+        others: all.filter((b) => !/^notepad/i.test(b.dataset.app || "") && b.classList.contains("tl-app-left-out")).length,
+        title: notepad[0] ? notepad[0].title.split("\n")[0] : null, legend: !!(lg && getComputedStyle(lg).display !== "none") };
+    });
+    try {
+      ap.rows = await dialog(true);
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+      await page.waitForSelector("#timeline .tl-activity", { timeout: T });
+      ap.out = await bands();
+      await shot(page, "fx2-app-left-out.png");
+      await dialog(false);
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+      await page.waitForSelector("#timeline .tl-activity", { timeout: T });
+      ap.back = await bands();
+    } catch (e) { logActionError("FX2 app left out", e); ap.err = String(e.message).split("\n")[0]; }
+    const chrome = (ap.rows || []).find((r) => /^chrome/i.test(r.proc)) || {};
+    record("lane FX2: Apps outside the process names each app by its business systems (Salesforce, the browser beside it)",
+      !!(!ap.err && chrome.name === "Salesforce" && chrome.app === "(Google Chrome)" &&
+        (ap.rows || []).some((r) => /^notepad/i.test(r.proc) && r.name === "Notepad" && r.app === "")),
+      JSON.stringify({ err: ap.err, rows: ap.rows }));
+    record("lane FX2: an app left out of the analysis (Notepad) is drawn hatched on the Timeline, with the tooltip and the legend's entry of a stretch left out; included again, it is plain",
+      !!(!ap.err && ap.out && ap.out.notepad > 0 && ap.out.hatched === ap.out.notepad && ap.out.others === 0 &&
+        /^Left out of the analysis: Notepad is among the apps outside the process, so its steps are not drafted and its time is not counted\./.test(ap.out.title || "") &&
+        ap.out.legend && ap.back && ap.back.hatched === 0 && ap.back.notepad === ap.out.notepad && !ap.back.legend),
+      JSON.stringify({ out: ap.out, back: ap.back }));
   }
 
   // Page errors gate (checked last so we capture errors from every interaction).

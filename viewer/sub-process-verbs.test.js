@@ -225,8 +225,10 @@ test("C19 Group: the links (from outside to a member: the group; a member's link
   const { t1, t2, t3, root } = groupFixture();
   const r = SPV.groupInto(root, [t1, t2, t3], [], ["check1", "create1"], { name: "Create the sales order", newId });
   const g = r.groups[0];
-  assert.deepEqual(t1[4].links, [{ to: g.step_id, when: "a price is missing" }], "a loop back into the group points at the group");
-  assert.deepEqual(g.links, [{ to: "end", when: "the order is cancelled" }], "a member's link to End moves to the group");
+  // Lane FX2: each moved link remembers the member it went to or came from,
+  // so Dissolve gives it back there.
+  assert.deepEqual(t1[4].links, [{ to: g.step_id, when: "a price is missing", pointed_to: "check1" }], "a loop back into the group points at the group");
+  assert.deepEqual(g.links, [{ to: "end", when: "the order is cancelled", lifted_from: ["create1"] }], "a member's link to End moves to the group");
   assert.deepEqual(t1[1].links, [{ to: "create1", when: "the check passes" }], "a link among members stays");
   assert.equal(t1[3].links, undefined);
 });
@@ -315,6 +317,71 @@ test("C19 Dissolve an opened step: it drops its sub-steps, what the analyst adde
   assert.equal(save1.state, "edited", "it keeps everything it had");
 });
 
+test("lane FX2: Group then Dissolve gives each link back to the member that carried it, and each link to a member back to that member", () => {
+  // Validation pass 2, F5: Check carries a Go to step 3 (a loop back), Create
+  // follows it; grouped, the link moves to the group; dissolved, it went to
+  // the last sub-step (Create) and the loop left after Create.
+  const mk = (id, min, extra) => Object.assign({ step_id: id, name: id, process_label: id, state: "edited", case_id: "r",
+    time_range: { start: at("09:00:" + min), end: at("09:00:" + min) } }, extra || {});
+  const root = [mk("search", "10"), mk("open", "12"), mk("enter", "14"),
+    mk("check", "16", { links: [{ to: "enter", when: "the check finds an error" }] }), mk("create", "18"),
+    mk("log", "20", { links: [{ to: "create", when: "the order is incomplete" }] })];
+  const txs = [root.slice()];
+  const r = SPV.groupInto(root, txs, [], ["check", "create"], { name: "Create the order in SAP", newId });
+  const g = r.groups[0];
+  assert.deepEqual(g.links, [{ to: "enter", when: "the check finds an error", lifted_from: ["check"] }]);
+  assert.deepEqual(root.find((s) => s.step_id === "log").links,
+    [{ to: g.step_id, when: "the order is incomplete", pointed_to: "create" }]);
+  const d = SPV.dissolve({ steps: root }, [root.slice()], [], "Create the order in SAP");
+  assert.deepEqual(d, { groups: 1, opened: 0 });
+  const by = (id) => root.find((s) => s.step_id === id);
+  assert.deepEqual(by("check").links, [{ to: "enter", when: "the check finds an error" }], "the loop leaves after Check again");
+  assert.equal(by("create").links, undefined, "Create carries no link");
+  assert.deepEqual(by("log").links, [{ to: "create", when: "the order is incomplete" }], "the link into the group goes back to Create, not the first sub-step");
+  assert.deepEqual(root.map((s) => s.step_id), ["search", "open", "enter", "check", "create", "log"]);
+});
+
+test("lane FX2: two members with the same link are both given it back; a link the group got of its own goes to its last sub-step", () => {
+  const mk = (id, min, extra) => Object.assign({ step_id: id, name: id, process_label: id, state: "edited", case_id: "r",
+    time_range: { start: at("09:01:" + min), end: at("09:01:" + min) } }, extra || {});
+  const same = { to: "end", when: "the customer cancels" };
+  const root = [mk("a", "10"), mk("b", "12", { links: [Object.assign({}, same)] }), mk("c", "14", { links: [Object.assign({}, same)] }), mk("d", "16")];
+  const r = SPV.groupInto(root, [root.slice()], [], ["b", "c"], { name: "BC", newId });
+  const g = r.groups[0];
+  assert.deepEqual(g.links, [{ to: "end", when: "the customer cancels", lifted_from: ["b", "c"] }], "kept once on the group");
+  g.links.push({ to: "a", when: "a retry is needed" });
+  SPV.dissolve({ steps: root }, [root.slice()], [], "BC");
+  const by = (id) => root.find((s) => s.step_id === id);
+  assert.deepEqual(by("b").links, [{ to: "end", when: "the customer cancels" }]);
+  assert.deepEqual(by("c").links, [{ to: "end", when: "the customer cancels" }, { to: "a", when: "a retry is needed" }]);
+});
+
+test("lane FX2: Group's prompt says what it will do before it is done: the groups, where they are, and a group of another size", () => {
+  const mk = (id, name, c, sec) => ({ step_id: id, name, process_label: name, state: "edited", case_id: c,
+    time_range: { start: at("09:02:" + sec), end: at("09:02:" + sec) } });
+  const say = (txs, ids) => SPV.groupPromptText(SPV.groupCheck(txs, [], ids), ids.length);
+  const lone = [mk("a1", "Check", "r1", "10"), mk("b1", "Create", "r1", "12"), mk("c1", "Log", "r1", "14")];
+  assert.equal(say([lone], ["a1", "b1"]), "Groups these 2 steps (1 group).");
+  const other = (n, sec) => [mk("a" + n, "Check", "r" + n, sec), mk("b" + n, "Create", "r" + n, String(Number(sec) + 2))];
+  assert.equal(say([lone, other(2, "20"), other(3, "30")], ["a1", "b1"]),
+    "Groups these 2 steps and the same steps in 2 other transactions (3 groups).");
+  const { t1, t2, t3 } = groupFixture();
+  assert.equal(say([t1, t2, t3], ["check1", "create1"]),
+    "Groups these 2 steps and the same steps in 2 other places, in 1 transaction (3 groups).", "the demo's shape: twice in transaction 2");
+  const twice = lone.concat([mk("a4", "Check", "r1", "16"), mk("b4", "Create", "r1", "18")]);
+  assert.equal(say([twice], ["a1", "b1"]),
+    "Groups these 2 steps and the same steps in 1 other place of this transaction (2 groups).");
+  const longer = [mk("a5", "Check", "r2", "40"), mk("a6", "Check", "r2", "41"), mk("b5", "Create", "r2", "42")];
+  assert.equal(say([lone, longer], ["a1", "b1"]),
+    "Groups these 2 steps and the same steps in 1 other transaction (2 groups). " +
+    "In transaction 2 a group takes three steps, the same steps one after the other there.");
+  // It is said from the check alone: what groupInto then does matches it.
+  const check = SPV.groupCheck([lone, longer], [], ["a1", "b1"]);
+  const r = SPV.groupInto(lone.concat(longer), [lone.slice(), longer.slice()], [], ["a1", "b1"], { name: "G", newId });
+  assert.equal(r.groups.length, check.groups);
+  assert.deepEqual(r.groups.map((g) => g.sub_steps.length), [2, 3]);
+});
+
 test("C19 Dissolve: untimed sub-steps take the group's place among the untimed steps", () => {
   const mk = (id, order) => ({ step_id: id, name: id, process_label: id, state: "manually_authored", case_id: "r", time_range: null, order });
   const root = [mk("a", 1), mk("b", 2), mk("c", 3), mk("d", 4)];
@@ -388,4 +455,59 @@ test("C19 drafting: the rules for the kinds the demo does not record (toggles, t
   // Without a prefix, the event's application and screen, without values.
   assert.equal(SPV.actionOf({ kind: "invoked", control_type: "Button", name: "Save", process_name: "EXCEL.EXE", window_title: "Order #10900" }).key,
     "excel|Order|click:Save");
+});
+
+test("lane FX2: Open as a sub-process names a sub-step from the project's own sub-steps of its action first, then from the remembered names", () => {
+  const save1 = drafted("save1", "run1", "09:00:29", "09:00:37", K_SAVE, "Save order");
+  const save2 = drafted("save2", "run2", "09:01:52", "09:01:59", K_SAVE, "Save order");
+  const save3 = drafted("save3", "run3", "09:03:31", "09:03:41", K_SAVE, "Save order");
+  const root = [save1, save2];
+  SPV.openAsSubProcess([[save1], [save2]], [], save1, INTER, { newId });
+  // The analyst renamed transaction 1's Quantity (edited) and accepted
+  // transaction 2's Product code (confirmed); another computer remembers
+  // nothing, or something else.
+  save1.sub_steps[1].name = "Type the quantity";
+  save1.sub_steps[1].state = "edited";
+  save2.sub_steps[0].state = "confirmed";
+  save2.sub_steps[0].name = "Enter the product code";
+  save2.sub_steps[2].state = "hidden";
+  save2.sub_steps[2].name = "A hidden name";
+  const names = SPV.projectActionNames(root, "run1");
+  assert.deepEqual(names, {
+    "chrome|Salesforce - Order|enter:quantity": "Type the quantity",
+    "chrome|Salesforce - Order|enter:product-code": "Enter the product code",
+  }, "typed names, then accepted ones; a draft or a hidden sub-step names nothing");
+  const remembered = { "action|chrome|Salesforce - Order|enter:quantity": { name: "From this computer" },
+    "action|chrome|Salesforce - Order|enter:unit-price": { name: "Type the price" } };
+  const subs = SPV.draftSubSteps(save3, INTER, { newId, remembered, projectNames: names });
+  assert.deepEqual(subs.slice(0, 3).map((s) => [s.name, s.name_source]), [
+    ["Enter the product code", "remembered"], ["Type the quantity", "remembered"], ["Type the price", "remembered"]]);
+  assert.equal(subs[3].name_source, "action");
+  // A typed name wins over an accepted one, and the reference transaction's
+  // over another's.
+  save2.sub_steps[1].name = "Quantity typed in transaction 2";
+  save2.sub_steps[1].state = "edited";
+  assert.equal(SPV.projectActionNames(root, "run2")["chrome|Salesforce - Order|enter:quantity"], "Quantity typed in transaction 2");
+  assert.equal(SPV.projectActionNames(root, "run1")["chrome|Salesforce - Order|enter:quantity"], "Type the quantity");
+});
+
+test("lane FX2: + Step at a moment inside a sub-process goes to its steps, at any depth: a sub-step with a time is split there, else a new sub-step starts there", () => {
+  const mk = (id, a, b, extra) => Object.assign({ step_id: id, name: id, state: "manually_authored", case_id: "r",
+    time_range: a == null ? null : { start: at("09:00:" + a), end: at("09:00:" + b) } }, extra || {});
+  const inner = mk("inner", "20", "30", { sub_steps: [mk("deep1", "20", "24"), mk("deep2", "26", "30")] });
+  const sub = mk("sub", "16", "32", { sub_steps: [mk("u1", null, null, { order: 1 }), inner] });
+  const root = [mk("first", "05", "16"), sub, mk("last", "32", "40")];
+  const ms = (s) => Date.parse(at("09:00:" + s));
+  let p = SPV.momentPlace(root, ms("10"));
+  assert.deepEqual([p.kind, p.list === root, p.index, p.parent], ["split", true, 0, null], "a main-level step is split as before");
+  p = SPV.momentPlace(root, ms("18"));
+  assert.deepEqual([p.kind, p.list === sub.sub_steps, p.parent && p.parent.step_id], ["open", true, "sub"],
+    "inside the sub-process, between its steps with a time: a new sub-step there (never the sub-process split)");
+  p = SPV.momentPlace(root, ms("22"));
+  assert.deepEqual([p.kind, p.list[p.index].step_id, p.parent.step_id], ["split", "deep1", "inner"], "two levels down");
+  p = SPV.momentPlace(root, ms("25"));
+  assert.deepEqual([p.kind, p.parent.step_id], ["open", "inner"]);
+  p = SPV.momentPlace(root, ms("45"));
+  assert.deepEqual([p.kind, p.list === root, p.parent], ["open", true, null], "after every step: the main level");
+  assert.equal(SPV.momentPlace(null, ms("10")).kind, "open");
 });

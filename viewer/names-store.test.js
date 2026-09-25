@@ -118,7 +118,7 @@ test("forgetName removes only its key; the other entries (read or not) stay on d
   const doc = JSON.parse(fs.readFileSync(p, "utf-8"));
   doc.names.odd = { name: "", note: "kept" };
   fs.writeFileSync(p, JSON.stringify(doc));
-  assert.deepEqual(Names.forgetName(p, KEY_A), { path: p, removed: true });
+  assert.deepEqual(Names.forgetName(p, KEY_A), { path: p, removed: true, previous: { name: "Save the case", updated_at: "t1" } });
   const after = JSON.parse(fs.readFileSync(p, "utf-8"));
   assert.deepEqual(Object.keys(after.names).sort(), [KEY_B, "odd"].sort());
   assert.deepEqual(Names.readNamesFile(p).names, { [KEY_B]: { name: "Check the order", updated_at: "t2" } });
@@ -127,12 +127,12 @@ test("forgetName removes only its key; the other entries (read or not) stay on d
 
 test("forgetName with nothing to forget writes nothing; an unreadable store is never replaced", () => {
   const absent = Names.namesStorePath(tempUserData());
-  assert.deepEqual(Names.forgetName(absent, KEY_A), { path: absent, removed: false });
+  assert.deepEqual(Names.forgetName(absent, KEY_A), { path: absent, removed: false, previous: null });
   assert.equal(fs.existsSync(absent), false, "no file is created to forget nothing");
   const p = Names.namesStorePath(tempUserData());
   Names.rememberName(p, KEY_B, "Check", { now: "t" });
   const before = fs.readFileSync(p);
-  assert.deepEqual(Names.forgetName(p, KEY_A), { path: p, removed: false });
+  assert.deepEqual(Names.forgetName(p, KEY_A), { path: p, removed: false, previous: null });
   assert.deepEqual(fs.readFileSync(p), before);
   fs.writeFileSync(p, '{"version":1,"names":{');
   const broken = fs.readFileSync(p);
@@ -150,6 +150,29 @@ test("a failed forget leaves the previous store in place and no temp file behind
     assert.equal(fs.readFileSync(p, "utf-8"), before);
     assert.deepEqual(leftoverTemps(p), []);
   }
+});
+
+test("lane FX2: a rename says the key's entry before it and the one written; restoreName puts either back exactly (an undo and a redo)", () => {
+  const p = Names.namesStorePath(tempUserData());
+  const first = Names.rememberName(p, KEY_A, "Save the case", { now: "t1" });
+  assert.deepEqual([first.previous, first.entry], [null, { name: "Save the case", updated_at: "t1" }]);
+  Names.rememberName(p, KEY_B, "Check the order", { now: "t2" });
+  const second = Names.rememberName(p, KEY_A, "Save and close", { now: "t3" });
+  assert.deepEqual(second.previous, { name: "Save the case", updated_at: "t1" });
+  // Ctrl+Z of the second rename: the first name, with its own time, back.
+  Names.restoreName(p, KEY_A, second.previous);
+  assert.deepEqual(Names.readNamesFile(p).names[KEY_A], { name: "Save the case", updated_at: "t1" });
+  // Ctrl+Z of the first rename: nothing was remembered for the key before it.
+  Names.restoreName(p, KEY_A, first.previous);
+  assert.deepEqual(Object.keys(Names.readNamesFile(p).names), [KEY_B], "the other key is left alone");
+  // Ctrl+Y: the renames again.
+  Names.restoreName(p, KEY_A, second.entry);
+  assert.deepEqual(Names.readNamesFile(p).names[KEY_A], { name: "Save and close", updated_at: "t3" });
+  assert.deepEqual(leftoverTemps(p), []);
+  const broken = Names.namesStorePath(tempUserData());
+  fs.mkdirSync(path.dirname(broken), { recursive: true });
+  fs.writeFileSync(broken, '{"version":1,"names":{');
+  assert.throws(() => Names.restoreName(broken, KEY_A, first.entry), (e) => e.code === "NAMES_UNREADABLE");
 });
 
 test("nothing is remembered for a blank name or a step without a draft key", () => {

@@ -32,7 +32,7 @@ const Video = require("./views/flow-view-video.js");
 const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText,
   initOverview, refreshRowsIfOlder, stopRowsRefresh } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
-const { buildAnnotationDfg, mapNodeLabel, flowEdges } = require("./process-map-levels.js");
+const { buildAnnotationDfg, mapNodeLabel, flowEdges, wasteNodes } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
 const RunDiff = require("./run-differences.js");
 const SystemNames = require("./system-names.js");
@@ -238,6 +238,9 @@ function _sessionMapData() {
     dfg: buildAnnotationDfg(traces, { leftOut }),
     // AD-28: each box names the system its step happened in, under its name.
     nodeSystems: _nodeSystems(sess, traces),
+    // Lane FX2 (validation pass 2, F21): a box a step of which is flagged as
+    // waste says so, quietly.
+    wasteNodes: wasteNodes(traces),
     // §B2: the map is TIME-weighted: edge thickness carries the time that
     // flowed along each path; the times and the count are in the tooltip.
     edgeWeight: "time",
@@ -507,7 +510,9 @@ function applyLevel(name) {
    wrappers so hoisting order does not matter. */
 initStepsView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
-  persistAnnotations: (a, label) => persistAnnotations(a, label),
+  // Lane FX2: the topics and the undo entry's extra (a rename's remembered
+  // names) pass through.
+  persistAnnotations: (a, label, topics, extra) => persistAnnotations(a, label, topics, extra),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   // Watch plays the step in the step panel, beside the steps (V2 item 4).
   watchStep: (s) => StepPanel.watch(s),
@@ -897,6 +902,10 @@ document.addEventListener("keydown", (e) => {
   // once took the As-Is copy away and left the map edit in place).
   const mapEditor = document.getElementById("refmap-editor-overlay");
   if (mapEditor && mapEditor.style.display !== "none") return;
+  // Lane FX2: while annotations.json cannot be read, the page is the banner
+  // alone and no shortcut edits anything (Help's ? still opens Help).
+  const unreadable = State.getSession() && State.getSession().annotationsError;
+  if (unreadable && !(e.key === "?" || (e.shiftKey && e.key === "/"))) return;
   // Don't intercept other shortcuts while typing in inputs
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;

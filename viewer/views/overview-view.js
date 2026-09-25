@@ -44,6 +44,8 @@ const { pushRecent } = require("../recent.js");
 const AnalystUI = require("./analyst-ui.js");
 const { isVideoCopy } = require("../analyst-files.js");
 const Fresh = require("../rows-freshness.js");
+const AsIsFresh = require("../asis-freshness.js");
+const AC = require("../analyst-content.js");
 
 /* ---- Stage failures (contract C12, RP-10) -------------------------------- */
 
@@ -202,10 +204,19 @@ const PATH_STAGES = [
   { key: "document", label: "Write the document",
     title: "Write the document fields on this page: you write them, and the PDD prints them. Ticked once every " +
       "field but Notes is written." },
+  // Lane FX2: listed only while the As-Is map the PDD prints was made
+  // before the steps changed (asis-freshness.js); not an act otherwise
+  // (AD-28: the As-Is map is not a stage).
+  { key: "asis", label: "Check the As-Is map", onlyWhenDue: true,
+    title: "The As-Is map was made before the steps changed: check it, or Copy again. On the Map, Edit opens it; " +
+      "Copy again makes a new copy of the process map as it is now, which then takes its place in the PDD." },
   { key: "export", label: "Export the PDD",
     title: "Export the Process Definition Document (.docx) with the button or the Export menu. The app keeps no " +
       "record of an export, so this item is never ticked." },
 ];
+
+/* Lane FX2: the Checklist's line while the As-Is map is older than the steps. */
+const ASIS_STALE = "The As-Is map was made before the steps changed: check it, or Copy again.";
 
 /* The analyst path's state, derived from the session data alone (pure: the
    runs as the Steps level builds them, the reference run record, the runs
@@ -249,11 +260,15 @@ function pathState(sess) {
     pattern: !!pattern.run && RunsModel.patternConfirmed(pattern.record, pattern.run),
     review: runs.length > 0 && !nextOther,
     document: doc.filled === doc.total,
+    // Lane FX2: the As-Is map the PDD prints was made before the steps changed.
+    asis: !AsIsFresh.chosenAsIsStale(sess),
     export: false,
   };
   const next = PATH_STAGES.find((st) => !done[st.key]).key;
+  // Lane FX2: a project without start markers has one implicit transaction.
+  const implicit = !!AC.implicitRunId(sess && sess.stats);
   return { done, next, ready: next === "export", runs, pattern: pattern.run, nextOther,
-    nextDiffers: !!(nextOther && differs.has(nextOther.caseId)), differing, doc };
+    nextDiffers: !!(nextOther && differs.has(nextOther.caseId)), differing, doc, asIsStale: !done.asis, implicit };
 }
 
 /* The one button for the next act: its text and, where the text alone does
@@ -277,6 +292,9 @@ function _nextAct(state) {
     case "document":
       return { button: "Write the document",
         title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: you write them, and the PDD prints them in place of its placeholders." };
+    case "asis":
+      return { button: "Check the As-Is map", say: ASIS_STALE,
+        title: "Open the Map: Edit the As-Is map to match the steps, or Copy again for a new copy of the process map as it is now." };
     default:
       return { button: "Export PDD",
         title: "Write the Process Definition Document (.docx) with the process map (your edited As-Is map when there is one), the steps and the document fields. Its folder opens with the file selected." };
@@ -294,12 +312,14 @@ function _nextLineHtml(state) {
       '<span class="ov-next-ready-text">Everything before the export is done: the PDD is ready to export.</span>' +
       button + "</div>";
   }
-  const stages = PATH_STAGES.map((st) => {
+  const stages = PATH_STAGES.filter((st) => !st.onlyWhenDue || !state.done[st.key]).map((st) => {
     const cls = state.done[st.key] ? "done" : (st.key === state.next ? "next" : "");
+    // Lane FX2: the implicit transaction reads as it does everywhere.
+    const label = st.key === "runs" && state.implicit ? AC.IMPLICIT_TRANSACTION : st.label;
     return '<li class="ov-next-stage' + (cls ? " " + cls : "") + '" data-stage="' + st.key + '" title="' +
       escapeAttr(st.title) + '">' +
       (state.done[st.key] ? '<span class="ov-next-mark" aria-hidden="true">✓</span>' : "") +
-      escapeHtml(st.label) + "</li>";
+      escapeHtml(label) + "</li>";
   }).join("");
   return '<div class="ov-next" id="ov-next" data-next="' + state.next + '">' +
     '<span class="ov-next-label">Checklist</span>' +
@@ -314,6 +334,12 @@ function _openRunInSteps(run) {
   const first = run && ((run.visible && run.visible[0]) || (run.members && run.members[0]));
   if (first && first.step_id) State.setSelectedStepId(first.step_id);
   const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
+  if (btn) btn.click();
+}
+
+/* Lane FX2: the Map, where the As-Is map shows with its Edit and Copy again. */
+function _openMap() {
+  const btn = document.querySelector('.view-mode-btn[data-level="map"]');
   if (btn) btn.click();
 }
 
@@ -344,6 +370,7 @@ async function _goNext(act) {
   if (act === "pattern") { _openRunInSteps(state.pattern); return; }
   if (act === "review") { _openRunInSteps(state.nextOther); return; }
   if (act === "document") { _openDocument(); return; }
+  if (act === "asis") { _openMap(); return; }
   _exportPdd();
 }
 
@@ -408,7 +435,8 @@ function _summaryLine(sess, state) {
   if (sme && !["video", "blank"].includes(m.source)) parts.push("recorded by " + escapeHtml(sme));
   if (state) {
     const runs = state.runs.length;
-    parts.push('<span data-summary="runs">' + (runs ? _plural(runs, "transaction", "transactions") : "No transactions") + "</span>");
+    parts.push('<span data-summary="runs">' + (state.implicit ? AC.IMPLICIT_TRANSACTION
+      : runs ? _plural(runs, "transaction", "transactions") : "No transactions") + "</span>");
     if (state.pattern) {
       parts.push('<span data-summary="steps">' + _plural(state.pattern.visible.length, "step", "steps") +
         " in " + escapeHtml(state.pattern.title.toLowerCase()) + "</span>");
@@ -978,5 +1006,5 @@ module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
   initOverview, refreshRowsIfOlder, stopRowsRefresh,
   mapEmptyText, hasAnalysisBlocks, waitingSentence,
-  DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET,
+  DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET, ASIS_STALE,
 };
