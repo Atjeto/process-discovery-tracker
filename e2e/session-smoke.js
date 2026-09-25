@@ -597,7 +597,7 @@ async function unreadableAnnotationsPin() {
   } catch (e) { logActionError("FX3 Help Map", e); helpMap.err = String(e.message).split("\n")[0]; }
   const hm = helpMap.state || {};
   record("lane FX3: Help has a Map section after Steps: what the Map shows and how the transactions ran, the picker for sub-processes, Edit as the As-Is map and the To-Be map, Edited maps, and the image and BPMN exports",
-    !helpMap.err && JSON.stringify(hm.nav) === JSON.stringify(["start", "stepsphases", "map", "markers", "capture", "shortcuts", "trouble"]) &&
+    !helpMap.err && JSON.stringify(hm.nav) === JSON.stringify(["start", "stepsphases", "map", "markers", "capture", "handoff", "shortcuts", "trouble"]) &&
       hm.shown && JSON.stringify(hm.heads) === JSON.stringify(["What the Map shows", "Sub-processes", "Your As-Is and To-Be maps", "Exporting the map"]) &&
       ["Show how the transactions ran", "Map:", "Edit as the As-Is map", "Edit a new copy", "To-Be map", "Edited maps", "Copy again",
         "Process map (image)", "Process map (BPMN)"].every((w) => (hm.text || "").includes(w)),
