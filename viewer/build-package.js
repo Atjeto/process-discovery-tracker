@@ -83,8 +83,14 @@ function buildIgnore(prodDepDirs) {
       // Build the candidate whitelist key. npm ls --parseable returns
       // package roots only -- no trailing slash, no file part.
       const pkgPath = m[1].toLowerCase().replace(/\\/g, "/");
-      if (!prodDepDirs.has(pkgPath)) {
-        return true; // devDep tree -- drop
+      if (/^\/node_modules\/@[^/]+$/.test(pkgPath)) {
+        // A scope folder itself ("/node_modules/@dagrejs"): keep it when a
+        // production dependency lives in it, so its packages are judged one
+        // by one. Dropping the folder dropped every scoped runtime dep.
+        const inScope = pkgPath + "/";
+        if (![...prodDepDirs].some((d) => d.startsWith(inScope))) return true;
+      } else if (!prodDepDirs.has(pkgPath)) {
+        return true; // devDep tree: drop
       }
     }
     return IGNORE.some((re) => re.test(filePath));
