@@ -65,9 +65,9 @@ function checkDisk(label, dir, { failGb, warnGb, statfs = fs.statfsSync } = {}) 
     else if (warnGb != null && freeGb < warnGb) status = "warn";
     const note =
       status === "fail"
-        ? `only ${freeGb} GB free (< ${failGb} GB) -- a session here WILL lose data`
+        ? `only ${freeGb} GB free (< ${failGb} GB): a recording here WILL lose data`
         : status === "warn"
-          ? `${freeGb} GB free (< ${warnGb} GB) -- fine for one session, tight for a pilot week`
+          ? `${freeGb} GB free (< ${warnGb} GB): fine for one recording, tight for a pilot week`
           : `${freeGb} GB free`;
     return { label, dir, status, free_gb: freeGb, note };
   } catch (e) {
@@ -103,7 +103,7 @@ function computeAppTier(controls) {
     return {
       tier: "wall", n_controls: 0, share_automation_id: 0,
       mean_confidence: 0, dominant_framework: null,
-      note: "the recorder couldn't see any controls in this window -- the app may run as administrator or block accessibility tools",
+      note: "the recorder couldn't see any controls in this window: the app may run as administrator or block accessibility tools",
     };
   }
   const fwTally = {};
@@ -131,12 +131,12 @@ function computeAppTier(controls) {
     };
   }
   if (shareAid >= 0.25 && meanConf >= 0.6) {
-    return { tier: "rich", ...base, note: "controls are reliably identifiable -- best capture quality" };
+    return { tier: "rich", ...base, note: "controls are reliably identifiable: best capture quality" };
   }
   if (meanConf >= 0.5) {
-    return { tier: "basic", ...base, note: "controls have readable names but few stable ids -- capture works, with some detail lost" };
+    return { tier: "basic", ...base, note: "controls have readable names but few stable ids: capture works, with some detail lost" };
   }
-  return { tier: "minimal", ...base, note: "controls are mostly anonymous -- expect thin detail from this app" };
+  return { tier: "minimal", ...base, note: "controls are mostly anonymous: expect thin detail from this app" };
 }
 
 /* ----------------------------------------------- window enumeration seam */

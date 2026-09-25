@@ -1,9 +1,10 @@
 # ADR-0029: BA-helper refocus
 
 **Status:** Accepted
+**Note (2026-09-25):** Amended since it was written. The light template (D6 / AD-8, the saved processes) was removed from the app by lane CL on 2026-09-24 (owner: a process is recorded once; comparing recordings is the product line). Projects started from a video or from nothing landed (D8, AD-25 and AD-27, contract C16). Lane FX1 cut the analysis layer nothing read ([ADR-0008](0008-build-the-analysis-layer.md), [ADR-0016](0016-segment-level-automation-candidacy.md)). The later contracts are C17 to C20: the step flow, the richer maps, sub-processes, and the hand-off versions with the Technical details.
 **Date:** 2026-09-23
 **Deciders:** Project owner
-**Related:** [ADR-0026](0026-distribution-unsigned-and-services-boutique-scope.md) (the services-boutique scope this narrows further), [ADR-0028](0028-case-screen-work-items.md) (the case-scoped screen visit this replaces), [ADR-0025](0025-in-app-vocabulary-discovery.md) (the discovery workbench this replaces with light vocab), [ADR-0017](0017-suggested-markers.md) and [ADR-0018](0018-anchor-candidates.md) (the unbracketed-session detectors this cuts), [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the anchor case-detection mode and map matrix this narrows), [ADR-0016](0016-segment-level-automation-candidacy.md) (the automation-candidacy layer whose ROI extension this cuts), [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the grain slider this narrows), [ADR-0013](0013-value-free-grouping-and-map-readability.md) (the value-free labels this reuses), [ADR-0015](0015-intra-session-repetition-alignment.md) (the alignment engine this supersedes: the runs are compared by draft key instead), [docs/To-Do/BA-HELPER-PLAN-2026-09-22.md](../To-Do/BA-HELPER-PLAN-2026-09-22.md) (the plan of record this closes out), [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](../../.claude/agent-findings/2026-09-23_ba-helper-contracts.md) (the data-shape contracts, C1 to C16 as of 2026-09-24).
+**Related:** [ADR-0026](0026-distribution-unsigned-and-services-boutique-scope.md) (the services-boutique scope this narrows further), [ADR-0028](0028-case-screen-work-items.md) (the case-scoped screen visit this replaces), [ADR-0025](0025-in-app-vocabulary-discovery.md) (the discovery workbench this replaces with light vocab), [ADR-0017](0017-suggested-markers.md) and [ADR-0018](0018-anchor-candidates.md) (the unbracketed-session detectors this cuts), [ADR-0012](0012-active-case-stamping-and-map-matrix.md) (the anchor case-detection mode and map matrix this narrows), [ADR-0016](0016-segment-level-automation-candidacy.md) (the automation-candidacy layer whose ROI extension this cuts), [ADR-0024](0024-step-grain-as-view-time-rollup.md) (the grain slider this narrows), [ADR-0013](0013-value-free-grouping-and-map-readability.md) (the value-free labels this reuses), [ADR-0015](0015-intra-session-repetition-alignment.md) (the alignment engine this supersedes: the runs are compared by draft key instead), [docs/To-Do/BA-HELPER-PLAN-2026-09-22.md](../To-Do/BA-HELPER-PLAN-2026-09-22.md) (the plan of record this closes out), [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](../../.claude/agent-findings/2026-09-23_ba-helper-contracts.md) (the data-shape contracts, C1 to C20 as of 2026-09-25).
 
 ## Context
 
@@ -41,7 +42,8 @@ implementation notes.
    the SME describes the process.
 3. The recorder always runs; it is the primary input. Optionally, a video
    (the SME's own screen recording, or a recording of the call) and
-   optionally the call's transcript.
+   optionally the call's transcript. (AD-25 and AD-27 later added projects
+   started from a video or from nothing: see D8.)
 4. The analyst opens the session, confirms the recorder's drafted steps for
    one run, reviews how the other runs differ, finishes the process map, and
    exports a PDD.
@@ -126,6 +128,13 @@ engine (`viewer/step-alignment.js`,
 [ADR-0015](0015-intra-session-repetition-alignment.md)) was removed in lane
 L7b.
 
+**Note (2026-09-24):** lane CL removed the saved-process store from the app
+(owner: a process is recorded once; comparing recordings is the product
+line). Nothing writes or reads `processes.json` any more, *Save as this
+process* and the "Compared with saved process" line are gone, and the
+store's format stays in contract C5 so the feature can come back. The
+comparison of the runs within one session by draft key is unchanged.
+
 **D7. No privacy masking for internal use; password redaction stays.**
 Structural PII masking (`normalization/pii_masking.py`, the derived-stream
 token redaction) is cut: for an internal tool, real example values (a
@@ -142,7 +151,7 @@ gate stays configurable (`off` / `per_session` / `once` in
 against a video, no recorder) was a deferred fallback, built only if a real
 SME turned out unable to run the recorder. AD-25 and AD-27 reversed this:
 sessions started from a video or from nothing are part of the release
-(contract C16; the pipeline half has landed, the viewer half has not).
+(contract C16; both halves landed, lanes V3-P and V3-V).
 
 **AD-9.** The view-time grain slider ([ADR-0024](0024-step-grain-as-view-time-rollup.md))
 and the notation-by-level map matrix ([ADR-0012](0012-active-case-stamping-and-map-matrix.md))
@@ -196,6 +205,13 @@ Removed from `master` (preserved in full on `product-edition`):
   point found them broken, fixed in the same cycle.
 - **Team taxonomy, project layer, command palette, "Copy for LLM."** Not on
   the path; no AI ships inside the product.
+- **Saved processes** (2026-09-24, lane CL; see D6 / AD-8): the light
+  template, with *Save as this process* and the comparison with a saved
+  process on open.
+- **The analysis layer nothing read** (2026-09-25, lane FX1): the facts,
+  the findings, the waste, time study, segment, automation and efficiency
+  estimates, and `pdd_findings`; `analysis.json` keeps the transaction
+  check, the coverage caveat and the PDD's rows (format 4).
 
 The CLI surface after this cycle (contract C11,
 `normalization/normalize.py`) keeps `session_folder`, `--taxonomy` (pending
@@ -213,8 +229,8 @@ and adds `--names` (C4). It drops `--canonical`, `--phase-bpmn-out`,
   review the differences," which is the plan's central time saving, if the
   P1 probe validates draft quality on a real recording.
 - One engine per job: light vocab renames by exact `draft_key`, in the
-  viewer, at draft time; light template matches saved processes, in the
-  viewer, by `draft_key` overlap. The former viewer-side advisory matcher
+  viewer, at draft time; light template matched saved processes, in the
+  viewer, by `draft_key` overlap (removed on 2026-09-24, see D6 / AD-8). The former viewer-side advisory matcher
   (`viewer/vocab-match.js`) and the JS-versus-Python regex drift it risked
   (RP-17) are gone with the workbench it served.
 - A materially smaller app: about half of the restart point's fix list
@@ -231,7 +247,8 @@ and adds `--names` (C4). It drops `--canonical`, `--phase-bpmn-out`,
 - A session with no fired run markers has no case detection at all now
   (previously an accepted anchor candidate could still segment it). Accepted
   because the scenario the plan targets always uses the run hotkey.
-- The value-add of light vocab and light template is unproven at the scale
+- The value-add of light vocab (and of light template, until its removal
+  on 2026-09-24) is unproven at the scale
   of a real engagement until the P1 probe and the
   [P5 real-session gate](../To-Do/P5-REAL-SESSION-GATE.md) run; both are
   owner-gated steps this cycle could build up to but not close.

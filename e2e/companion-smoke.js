@@ -8,7 +8,8 @@
  *         label), an empty events.jsonl and annotations.json; the analysis
  *         gives it one implicit run; the Timeline says in one line that there
  *         is no recording or video, with Attach video; the Steps list says
- *         the whole project is one transaction until the Timeline marks more;
+ *         the whole project is one transaction and, with no video to mark
+ *         more on, to attach one first (lane FX4);
  *     (a2) before the first step, the Steps pane says to add it and the Map
  *         says there are no steps yet;
  *     (b) four steps added by hand (no time, order 1 to 4, the implicit run),
@@ -23,7 +24,8 @@
  *         copy inside attachments/; (f) a note on a step;
  *     (g) the PDD (word/document.xml): the steps in their order, the systems,
  *         the Attachments section, only the chosen screenshot, no note;
- *     (n) Attach video on its Timeline: offset 0, and the Timeline follows it.
+ *     (n) Attach video on its Timeline: offset 0, and the Timeline follows it;
+ *         the Steps list then says the Timeline marks the transactions.
  *     (w) lane FX2: a step without a time shows the video's start in the
  *         step panel, with one line saying so, and A frame of the video waits
  *         until the video is played to the step's moment; (x) lane FX2: while
@@ -250,12 +252,12 @@ function zipFiles(buf) {
       title: ((document.querySelector("#session-layout-steps .editor-list-pane .editor-pane-title") || {}).textContent || "").replace(/\s+/g, " ").trim(),
       note: ((document.getElementById("runs-pane-note") || {}).textContent || "").trim() }));
   } catch (e) { a.err = errText(e); }
-  record("(a) New empty project: manifest (session_id, source blank, started_at, label), an empty events.jsonl and annotations.json; one implicit run after the analysis; the Timeline says in one line there is no recording or video, with Attach video; the Steps list says the whole project is one transaction (AD-29)",
+  record("(a) New empty project: manifest (session_id, source blank, started_at, label), an empty events.jsonl and annotations.json; one implicit run after the analysis; the Timeline says in one line there is no recording or video, with Attach video; the Steps list says the whole project is one transaction (AD-29) and, with no video to mark them on, to attach one first (lane FX4)",
     !a.err && JSON.stringify(Object.keys(a.manifest)) === '["session_id","source","started_at","label"]' &&
       a.manifest.source === "blank" && a.manifest.label === "Order intake" && a.events === "" && a.annoExists &&
       a.runs.length === 1 && a.runs[0].implicit === true && /^No recording and no video in this project\. /.test(a.timeline.text) && a.timeline.attach &&
       a.steps.title === "Transactions · 1" &&
-      a.steps.note === "The whole project is one transaction until you mark where each one starts on the Timeline.",
+      a.steps.note === "The whole project is one transaction. To mark where each one starts, attach a video first: the Timeline then follows it.",
     JSON.stringify(a));
   const implicitId = a.runs && a.runs[0] && a.runs[0].id;
 
@@ -573,9 +575,14 @@ function zipFiles(buf) {
     n.video = readJson(path.join(BLANK, "annotations.json")).external_video;
     n.copied = fs.existsSync(path.join(BLANK, "video", path.basename(VIDEO)));
     n.tl = await page.evaluate(() => ({ empty: !!document.getElementById("tl-empty"), sync: document.getElementById("btn-sync-video").hidden }));
+    // Lane FX4: with the video the Timeline can mark the transactions, and
+    // the Steps list says so again.
+    await level("steps");
+    n.note = await page.evaluate(() => ((document.getElementById("runs-pane-note") || {}).textContent || "").trim());
   } catch (x) { n.err = errText(x); }
-  record("(n) Attach video on a blank project's Timeline: the video is copied in, starts with the session (offset 0, no sync to do) and the Timeline follows it",
-    !n.err && n.video.path === "video/" + path.basename(VIDEO) && n.video.offset_ms === 0 && n.copied && !n.tl.empty && n.tl.sync,
+  record("(n) Attach video on a blank project's Timeline: the video is copied in, starts with the session (offset 0, no sync to do) and the Timeline follows it; the Steps list then says the transactions are marked on the Timeline (lane FX4)",
+    !n.err && n.video.path === "video/" + path.basename(VIDEO) && n.video.offset_ms === 0 && n.copied && !n.tl.empty && n.tl.sync &&
+      n.note === "The whole project is one transaction until you mark where each one starts on the Timeline.",
     JSON.stringify(n));
 
   // (w) Lane FX2 (validation pass 3, F14): a step without a time, in a

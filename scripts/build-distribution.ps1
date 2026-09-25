@@ -335,11 +335,8 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "WARNING: SBOM generation failed; continuing anyway." -ForegroundColor Yellow
 }
 
-# User guide
-$userGuide = Join-Path $repoRoot "docs\User-Guide.docx"
-if (Test-Path $userGuide) {
-  Copy-Item $userGuide (Join-Path $distDir "User-Guide.docx")
-}
+# No user guide file: the v0.2-era docs\User-Guide.docx described the product
+# edition, and the viewer's Help (its ? button) is the guide now (lane FX4).
 
 # Security docs that recipients / security teams want
 foreach ($doc in @("SECURITY.md", "LICENSE", "docs\Security-QA.md")) {
@@ -356,44 +353,43 @@ $captureSize = (Get-ChildItem -Recurse (Join-Path $distDir "capture") -ErrorActi
 $viewerSize = (Get-ChildItem -Recurse (Join-Path $distDir "viewer") -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
 
 $distMdContent = @"
-# Process Discovery Tracker - Distribution
+# Process Discovery Tracker: distribution
 
 Built: $builtAt
 
 ## Contents
 
 ### capture/
-Process Discovery Tracker (worker-side). Tray app, no install required.
+Process Discovery Tracker (the SME's side). A tray app, no install required.
 - Run ``Process Discovery Tracker.exe`` from this folder.
 - Recordings land in ``%APPDATA%\process-discovery-tracker-capture\sessions\``.
 - Size on disk: $([math]::Round($captureSize / 1MB, 1)) MB.
 
 ### viewer/
-Process Discovery Viewer (analyst-side). Ships with Python 3.11 embeddable
-and the normalization pipeline already installed in ``resources\``.
+Process Discovery Viewer (the analyst's side). It ships with a Python 3.11
+embeddable and the normalization pipeline already installed in
+``resources\``, and needs nothing from ``capture/``.
 - Run ``Process Discovery Viewer.exe`` from this folder.
-- No Python install required - the bundled interpreter is auto-discovered.
-- App Library "Discover from window" borrows the recorder from a co-located
-  capture app: extract the ``capture/`` folder alongside ``viewer/`` (same parent)
-  for that one feature. Every other viewer feature is standalone.
+- No Python install required: the viewer finds its bundled interpreter.
 - Size on disk: $([math]::Round($viewerSize / 1MB, 1)) MB.
 
-### User-Guide.docx
-Complete user guide covering installation, configuration, OBS setup,
-running a session, reviewing in the viewer, aggregate analysis, exports,
-annotations, keyboard shortcuts, install topology, and troubleshooting.
+### The guide
+The viewer's Help (the ? button in its top bar) is the guide: from a
+recording to the PDD, the Steps and the Map, the recording keys to tell the
+SME, handing a version to the developers, the shortcuts and troubleshooting.
+The capture app has its own Help in its tray menu.
 
 ### Security artifacts (for corp security review)
-- ``SECURITY.md`` - threat model, data flows, network behavior, Electron hardening, input validation, dependency audit status, vulnerability reporting.
-- ``Security-QA.md`` - one-page Q&A for fast-track security review.
-- ``LICENSE`` - internal-use license.
-- ``SBOM.json`` - CycloneDX 1.5 software bill of materials covering both apps (production npm deps) and the bundled Python.
+- ``SECURITY.md``: threat model, data flows, network behavior, Electron hardening, input validation, dependency audit status, vulnerability reporting.
+- ``Security-QA.md``: one-page Q&A for a fast-track security review.
+- ``LICENSE``: internal-use license.
+- ``SBOM.json``: CycloneDX 1.5 software bill of materials covering both apps (production npm deps) and the bundled Python.
 
 ## Installation
 
 Both apps are portable (no installer). To deploy:
 
-1. Copy the relevant folder to the target machine (anywhere - Program Files,
+1. Copy the relevant folder to the target machine (anywhere: Program Files,
    ``C:\Tools\``, the user's profile, your call).
 2. Optionally pin the .exe to the taskbar or create a Start Menu shortcut.
 3. For capture, install OBS Studio 28+ if you want video recording, and
@@ -402,16 +398,15 @@ Both apps are portable (no installer). To deploy:
 
 ## SmartScreen note
 
-These binaries are **unsigned by design** (ADR-0026 — PDT is the owner's IP and
+These binaries are **unsigned by design** (ADR-0026: PDT is the owner's IP and
 is not signed under the employer's certificate). First launch on a fresh machine
 may show "Windows protected your PC"; click **More info > Run anyway**. This is
 expected for an internal, unzip-and-run tool.
 
 ## See also
 
-- ``../process_discovery_tracker_design.md`` - full design doc (kept at the
-  repo root; not shipped in dist by default).
-- In-app help: tray menu -> Help (capture), ? button in topbar (viewer).
+- In-app help: the tray menu's Help (capture), the ? button in the top bar
+  (viewer).
 "@
 
 # UTF-8 WITHOUT a BOM. PS 5.1's `Set-Content -Encoding UTF8` prepends a BOM,

@@ -157,8 +157,8 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
    ```
 4. **Theme:** `page.evaluate(() => require("./theme.js").setTheme("dark"))`.
 
-A human can instead run `npm start` in `viewer/` (Ctrl+R reloads the
-renderer).
+A human can instead run `npm start` in `viewer/`. The app has no reload
+key: after a code change, quit it and start it again.
 
 ### The DOM handles of every surface
 
@@ -228,8 +228,10 @@ shown only after a failed run; `#toast`.
 **Overview** (`#overview-content`, `views/overview-view.js`):
 - Before the first analysis: `#ov-waiting` (`data-run` = the run state).
 - The Checklist `#ov-next` (`data-next` = the next stage; stages
-  `.ov-next-stage[data-stage="runs"|"pattern"|"review"|"document"|"export"]`,
-  `.done` when done) and its one button `#btn-ov-next` (`data-next-act`).
+  `.ov-next-stage[data-stage="runs"|"pattern"|"review"|"document"|"asis"|"export"]`,
+  `.done` when done; `asis`, *Check the As-Is map*, is listed only while the
+  As-Is map the PDD prints was made before the steps changed, lane FX2; the
+  export is never done) and its one button `#btn-ov-next` (`data-next-act`).
 - The project line `#ov-summary`: in a hand-off opened read only its first
   line `#ov-handoff` ("Version 2, handed off <date> by <name> · Read only",
   what changed in its `title`);
@@ -278,10 +280,13 @@ shown only after a failed run; `#toast`.
   column and at the same heights in `#timeline`; while the pointer is on a
   cell, its lane lit in `#timeline` as `.tl-lane-hover`.
 - Lanes: `.tl-case-band` (runs), `.tl-activity` (`.tl-act-app` names the
-  system), `.tl-idle`, `.tl-marker.tl-marker-pending`, the transcript
+  system; `.tl-app-left-out`, hatched, for an app among the Apps outside
+  the process, lane FX2), `.tl-idle`, `.tl-marker.tl-marker-pending`, the transcript
   `.tl-tr-block[data-seg]` and its label `.tl-tr-label` (`.tl-tr-sync`,
   `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
-  screenshots `.tl-screenshot`, steps `.tl-step-band[data-step-id]` (the
+  screenshots `.tl-screenshot` (`.tl-screenshot-added` for one the analyst
+  added at a moment, lane FX2), steps `.tl-step-band[data-step-id]` (a
+  one-click step too, at the lane's smallest width; the
   level the Steps list shows; inside a sub-process its lane's name
   `.tl-lane-name[data-lane="steps"]` reads "Steps in <name>"), the
   playhead `#tl-playhead`. A blank project shows `#tl-empty` with
@@ -390,7 +395,9 @@ shown only after a failed run; `#toast`.
 door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line
 `#sp-flow` when one is set, `.sp-count`; `.sp-missing` alone for an As-Is
 task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
-(`.sp-play`, `.sp-at`, `.sp-shot`), the foot `#btn-sp-steps` or
+(`.sp-play`, `.sp-at`, `.sp-shot`), `#sp-video-note` (the one line when the
+video has no moment of the row: not covered, or no time; lane FX2), the
+foot `#btn-sp-steps` or
 `#btn-sp-timeline` and, for a sub-process, `#btn-sp-open-sub`, `#btn-sp-close`.
 
 **Map** (`#session-layout-map`; lane MV: the map the PDD prints first, how
@@ -399,9 +406,11 @@ the transactions ran one click away):
   it draws nothing): `#map-view-title` ("Process map", the As-Is copy's
   name, or "How the transactions ran"), `#map-view-note` ("(the PDD prints
   this map)", "(edited; the PDD prints this map)"), `#btn-map-asis-edit`
-  (the chosen copy's Edit), `#btn-map-show-runs` (Show how the transactions
-  ran) and `#btn-map-show-map` (the way back: Show the process map, or Show
-  the As-Is map). `#map-view-why` is the one line saying why the map the PDD
+  (the chosen copy's Edit), `#map-view-stale` and `#btn-map-asis-recopy`
+  (lane FX2: shown while the chosen As-Is copy was made before the steps
+  changed, the line and *Copy again*), `#btn-map-show-runs` (Show how the
+  transactions ran) and `#btn-map-show-map` (the way back: Show the process
+  map, or Show the As-Is map). `#map-view-why` is the one line saying why the map the PDD
   prints does not show. The Map analyzes first when that map is
   `process_map_step.bpmn` and older than the steps:
   `require("./refmap-ui.js").mapBusy()` is true while it runs and

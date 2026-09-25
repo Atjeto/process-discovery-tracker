@@ -429,9 +429,9 @@ State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 // Item 6: the top bar's "Apply N marker changes" call to action.
 State.subscribe("markers",  renderSessionPills);
-// Lab-phase §A5 + R4: the Overview renders the what-is-left line, the
-// findings AND (R4) the Evidence modules retired from the Analysis level, so
-// it follows markers, analysis and steps.
+// The Overview renders the Checklist, the project line and the
+// Observations (the PDD's rows in analysis.json), so it follows markers,
+// analysis and steps.
 State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
@@ -537,7 +537,7 @@ initStepsView({
   analyze: () => analyzeSession(),
 });
 
-/* (Steps CRUD and ignored apps -> views/steps-view.js) */
+/* (Steps CRUD and Apps outside the process -> views/steps-view.js) */
 
 /* ============ Step map / PDD exports ============================= */
 

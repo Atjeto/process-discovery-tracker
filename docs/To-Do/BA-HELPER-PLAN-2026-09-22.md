@@ -387,14 +387,17 @@ was asleep, or on the owner's word where a quote says so (the full record
 and reasoning: `.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md`).
 AD-7 to AD-15 are consolidated in
 [ADR-0029](../adr/0029-ba-helper-refocus.md), which this section points to
-rather than duplicates; AD-16 to AD-28 and what the owner parked are
-recorded here.
+rather than duplicates; AD-16 to AD-33, the lanes after them and what the
+owner parked are recorded here (brought up to date on 2026-09-25).
 
 - **AD-7.** Light vocab is a remembered-names store keyed by a drafted
   step's `draft_key`, not app-vocab YAML entries (revises section 6).
 - **AD-8.** Light template is a saved-process store matched in the viewer
   by `draft_key` overlap; `canonical_match.py`, the Process Template editor,
   and `viewer/canonical-author.js` are cut, not reused (revises section 6).
+  Lane CL removed the saved-process store from the app on 2026-09-24
+  (owner: a process is recorded once; comparing recordings is the product
+  line), with *Save as this process* (section 5 step 8).
 - **AD-9.** The detail (grain) slider, the map matrix and its expert
   drawer, and activity-level mining (XES/CSV) are cut together with the map
   lane that replaces them.
@@ -424,7 +427,10 @@ recorded here.
   the bundled `taxonomy.yaml` the viewer always passes. Classification stays
   an internal engine with no editing UI. The viewer's screen keys and
   `recognition.js` stay, both in use. Why: keep the engines that create
-  value, cut the editing screens.
+  value, cut the editing screens. Lane FX1 (2026-09-25) then cut the
+  analysis stages nothing read (the waste, efficiency and automation
+  estimates, the facts and the findings); classification still feeds the
+  activity statistics.
 - **AD-17.** The UI clarity audit
   ([UI-CLARITY-AUDIT-2026-09-23.md](UI-CLARITY-AUDIT-2026-09-23.md)) became
   the scope of the subtraction lanes, LUX-A (the Overview and the chrome)
@@ -432,7 +438,9 @@ recorded here.
   deleting the Flow Notes tab, whose notes never reached the PDD. AD-27
   reversed the notes half: notes pinned to a step or a moment are back as
   `annotations.analyst_notes` (contract C16), which the pipeline keeps and
-  the PDD does not print; the viewer does not show them yet.
+  the PDD does not print; the viewer shows them in the step pane, the step
+  panel and a Notes lane on the Timeline (lane V3-V), and the step map
+  beside their step (C18).
 - **AD-18.** The map and its As-Is copy work from one run. The plan's gate
   (two runs, 70% coverage) left a one-run session with no way to a PDD. A
   session with no runs marked still has no map, and says how to mark them.
@@ -446,14 +454,17 @@ recorded here.
   1: one fact, one home, and the runs are deliberate repeats anyway. AD-24
   then cut section 1, and lane V1 replaced the Overview's findings with two
   observations (data typed twice, where the time goes), in which the time
-  per application takes the candidates' place.
+  per application takes the candidates' place. Lane CC made those the PDD's
+  own rows of its sections 5 and 6 (Data, Applications and time), one source
+  for both.
 - **AD-21.** The docs were split to use a free agent slot: the top-level
   docs (L12b-1: SCHEMA, CLAUDE.md, README, OVERVIEW, DATA-MODEL,
   NORMALIZATION, the docs index, the CHANGELOG) beside the transcript UI,
   the rest later. On 2026-09-24 a docs lane brought the capture, pipeline,
-  schema, deploy, troubleshooting and ADR docs up to date; the viewer docs,
-  FEATURES, CHIP-GUARDRAILS, the e2e README, the in-app Help and CLAUDE.md
-  are still to be updated after the viewer lanes.
+  schema, deploy, troubleshooting and ADR docs up to date (lane D1); lane D2
+  did the viewer docs, FEATURES, CHIP-GUARDRAILS, the e2e README, the in-app
+  Help and CLAUDE.md the same day, and lane FX4 swept every doc against the
+  code on 2026-09-25.
 - **AD-22.** A concept-level step back (lane LUX-2) ran before the release,
   with the owner's test: an element must give meaningful or valuable
   information, give control, or be a feature. Its two phases are in
@@ -465,9 +476,9 @@ recorded here.
   (owner): a process manager matches steps to the video and the
   transcript; a developer opens the folder and goes from the map to the
   video, the transcript and the screenshots instead of juggling files. The
-  plan did not name this. It is lane V2's scope (one step panel opened from
-  a map box, a timeline band or a Steps row, with a small video; the video
-  stored relative to the folder so the session travels); not landed yet.
+  plan did not name this. Lane V2 built it (one step panel opened from a
+  map box, a timeline band or a Steps row, with a small video; the video
+  stored relative to the folder so the session travels).
   The draft's reason ("ended at Save order") stays in the step pane's fact
   line (landed in LUX-B).
 - **AD-24.** The step-back review's first phase was adopted for the PDD and
@@ -486,24 +497,28 @@ recorded here.
   reversing D8 (owner: "We ship when it's ready, there is no value in
   shipping something that... has no value"). A session can start from a
   video or from nothing (`manifest.source`, contract C16), with one implicit
-  run until runs are marked, and steps placed by hand. The pipeline half
-  has landed (lane V3-P); the viewer half (New from video, a timeline on the
-  video clock, frames as step screenshots) has not. The release has no
-  date: it ships when every lane is in and checked.
+  run until runs are marked, and steps placed by hand. Both halves landed:
+  the pipeline (lane V3-P) and the viewer (lane V3-V: New project from a
+  video, New empty project, a timeline on the video clock, frames as step
+  screenshots). The release has no date: it ships when every lane is in and
+  checked.
 - **AD-26.** The step-back review became lanes: P (the PDD, AD-24), V1
   (the viewer shell and home), V2 (navigation), C (the capture app), then
   docs. Landed: P; V1 (the analysis runs by itself, one top bar, no More
   menu, two observations on the Overview, the trigger, result and
   improvement fields, a video synced by clicking, Recent named by the
   document title, Flow renamed the Timeline); C (a small recording bar in
-  place of the Live Session window, one start that begins with Run 1, an
-  end summary with a local zip for the analyst, consent text version 2).
-  V2 has not landed. Exceptions: the step time from the end of the previous
-  step stays deferred with the parked timing items. One clock: times are
-  shown and printed as the time since the recording started (m:ss,
-  h:mm:ss), the time of day only where the date matters; the PDD and the
-  recording bar use it, the viewer's time labels do not yet. Open owner
-  fact: whether a developer who receives the folder may change it.
+  place of the Live Session window, one start that begins with Run 1, now
+  Transaction 1 (AD-29), an end summary with a local zip for the analyst,
+  consent text version 2); then V2 (the step panel, the video beside the
+  steps, the portable video). Exceptions: the step time from the end of the
+  previous step stays deferred with the parked timing items. One clock:
+  times are shown and printed as the time since the recording started
+  (m:ss, h:mm:ss), the time of day only in the Timeline's summary; the PDD,
+  the recording bar and, since V2, the viewer use it (the Raw events rows
+  since lane FX1). The open owner fact, whether a developer who receives
+  the folder may change it, was settled on 2026-09-25: a developer adds
+  nothing, and a hand-off opens read only (contract C20, below).
 - **AD-27.** Owner correction ("I feel you are overcomplicating it
   again... creating a product again"): the proposal for telling the whole
   process story was withdrawn, except what the owner named (the system on
@@ -517,20 +532,43 @@ recorded here.
   frame, a pasted image, a file) and the one the PDD prints; notes pinned to
   a step or a moment; attachments of any file on the project or a step,
   kept in the folder and listed in the PDD; the system of a hand-added
-  step. The pipeline half (V3-P, contract C16) has landed; the viewer half
-  has not.
+  step. Both halves landed (V3-P and V3-V, contract C16).
 - **AD-28.** The companion critique
   ([COMPANION-CRITIQUE-2026-09-23.md](COMPANION-CRITIQUE-2026-09-23.md)) was
   adopted. Landed: the As-Is map is no longer a stage of What is left (the
   PDD prints the edited As-Is copy when one exists, else the map from the
   runs); one shared rule for system names (`shared/system-names.json`) in
   the pipeline and the PDD; the summary line counts the reference run's
-  steps; the PDD says the runs were recorded as a walkthrough. Not landed
-  (lane V2): no Confirm on runs 2 to N (the Other runs stage completes once
-  each run's differences were opened); the system names on the viewer's
-  legend, fact line and map boxes; a step pane led by the system, with the
-  fields typed and no Save button; the probe line moved to the reference
-  run's menu.
+  steps; the PDD says the runs were recorded as a walkthrough. Landed with
+  lane V2 too: no Confirm on runs 2 to N (the Other runs stage completes
+  once each run's differences were opened); the system names on the
+  viewer's legend, fact line and map boxes; a step pane led by the system,
+  with the fields typed and no Save button; the probe line moved to the
+  reference run's menu.
+- **AD-29 and AD-30.** The owner's review of the 2.0.0 build: the apps say
+  *transaction* for one pass through the process and *project* for what the
+  analyst opens or starts (code and data keys unchanged), and the capture
+  app's engagement reads *request*. New and Open became two menus, and What
+  is left a Checklist with action wording.
+- **AD-31 to AD-33.** Step flow set on steps (*Only when*, *Go to*: contract
+  C17), richer maps from the data the app holds (named ends, notes, files,
+  a colour per system: C18) and sub-processes at any depth (C19), each
+  pinned by a golden shared by the viewer and the pipeline.
+- **The lanes after them (2026-09-24 and 2026-09-25).** Lane CL: clearer
+  controls, plain BPMN tasks with the hand only for work outside every
+  system, *Undo confirm*, and the saved processes removed (AD-8 above).
+  Lane MV: the Map shows the map the PDD prints, with how the transactions
+  ran one click away, and the map editor's own undo. Lane CC, complete or
+  cut: the stretches left out of the analysis shown with *Include again*,
+  video Remove and Replace, the Overview's rows as the PDD's, *Reset
+  layout*, *Restore the newest backup*. A validation pass (2026-09-25) then
+  led to lanes FX1 (data and outputs; the unread analysis layer cut,
+  `analysis.json` format 4), FX2 (the viewer's joins: the As-Is copy's
+  staleness and *Copy again*, links given back by Dissolve, a rename's
+  undo restoring the remembered name) and FX3 (wording, Help, the capture
+  app, waste on the step map). Lane HV (owner, 2026-09-25): numbered
+  hand-offs to the developers, a hand-off opened read only, and the
+  Technical details workbook (contract C20).
 - **Parked by the owner (2026-09-23)**, "practical, but no current value.
   We'll see how the adoption goes": a project link and a document status or
   sign-off; optional timed runs with a measured handling time (the business

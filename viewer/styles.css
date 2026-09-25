@@ -642,7 +642,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .markers-list .marker-row:hover .marker-actions { opacity: 1; }
 .markers-list .marker-row.deleted { opacity: 0.45; text-decoration: line-through; }
 .markers-list .marker-row.deleted .meta.bad { text-decoration: none; color: var(--bad); }
-/* Item 6: a change that waits for Analyze. */
+/* Item 6: a change that waits for Apply marker changes. */
 .markers-list .marker-row.pending { box-shadow: inset 3px 0 0 var(--warn); }
 .markers-list .marker-row .pending-tag { color: var(--fg); font-weight: 600; text-decoration: none; }
 /* Item 6: the one call to action that applies pending marker changes (the
@@ -974,8 +974,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
      .session-layout-stepsphases above. With them the Overview was the one
      flex child that absorbed all the shrinking, so on a 768 px tall window
      the open Session summary and the Raw events bar squeezed it to 24 px
-     (1366x768) or 0 px (1024x768): the badge, the findings and Export PDD
-     could not be seen or clicked. Content height + the view's own
+     (1366x768) or 0 px (1024x768): the Overview's content could not be
+     seen or clicked. Content height + the view's own
      overflow:auto scrolls the whole page instead. */
 }
 #overview-content {
@@ -1849,7 +1849,8 @@ button.danger:disabled {
   box-shadow: var(--shadow-lg);
 }
 
-/* Marker bars: case-boundary divider. A high-contrast --fg line and
+/* A marker's bar on the timeline (only a pending one is drawn: the
+   transaction bands show the applied markers). A high-contrast --fg line and
    pill, each with a --bg halo, so they stay legible over any colored
    activity bar instead of melting into it. Adapts to both themes. */
 .tl-marker {
@@ -1870,10 +1871,10 @@ button.danger:disabled {
   font-family: var(--font-mono); letter-spacing: 0.3px;
   pointer-events: none;
 }
-/* Item 6: a marker change that waits for Analyze (marker-edits.js): dashed,
-   in the warning colour (a pending delete in the error colour), and drawn
-   even with the Marker bars lane off. The label keeps the high-contrast
-   fg-on-bg pair and gains a dashed outline. */
+/* Item 6: a marker change that waits for Apply marker changes
+   (marker-edits.js): dashed, in the warning colour (a pending delete in the
+   error colour), drawn on the activity row whatever lanes are shown. The
+   label keeps the high-contrast fg-on-bg pair and gains a dashed outline. */
 .tl-marker.tl-marker-pending {
   width: 0; background: transparent; box-shadow: none;
   border-left: 2px dashed var(--warn);

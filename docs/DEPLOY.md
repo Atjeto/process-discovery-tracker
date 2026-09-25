@@ -31,15 +31,16 @@ No admin rights, no installer, no PATH changes. OBS is optional.
    each open program; the report lands in `readiness-report.json` next to
    the recordings.
 5. Optional set-up, all in the tray's Setup (analyst) menu: Recording setup
-   (the project and the named runs), Settings (keys, OBS, screenshots, the
-   storage limit, the idle end of the open run), Profile (who is recording).
+   (the request and the named transactions), Settings (keys, OBS,
+   screenshots, the storage limit, the idle end of the open transaction),
+   Profile (who is recording).
    For a project-wide YAML instead, set `PDT_CONFIG` before launch (`setx
    PDT_CONFIG "C:\Users\<user>\PDT\config\project.yaml"`, which takes effect
    for programs started afterwards); Settings and Profile still layer on
    top. The keys are in [CAPTURE.md](architecture/CAPTURE.md#configuration).
 
 Recordings land under
-`%APPDATA%\process-discovery-tracker-capture\sessions\<project>\<timestamp>\`.
+`%APPDATA%\process-discovery-tracker-capture\sessions\<request code>\<timestamp>\`.
 The capture app never writes to its install folder, so the install is read
 only at runtime. The recorder is a large single-file .NET executable that
 unpacks itself to `%TEMP%` on first run; on a nearly full C: drive it
@@ -128,9 +129,22 @@ install and no `pip install`.
 The viewer analyzes a recording by itself when it opens without a current
 analysis. It writes into the recording folder (`annotations.json` and its
 backups, `stats.json`, `analysis.json`, `process_map_step.bpmn`,
-`normalize.log`, `derived_maps/` for the edited maps, `transcript.json`
-when a transcript is attached) but never changes `events.jsonl`, so
-analyzing again is always safe. The viewer needs no capture install.
+`normalize.log`, `derived_maps/` for the edited maps, `transcript.json` and
+`transcript/` when a transcript is attached, `video/`,
+`screenshots/analyst/` and `attachments/` for what the analyst adds) but
+never changes `events.jsonl`, so analyzing again is always safe. Export's
+*Whole project (.zip)* and *Hand off...* write their zips next to the
+folder, never inside it. The viewer needs no capture install.
+
+### The developers
+
+A developer who builds from the analyst's work installs the viewer the same
+way. The analyst's *Hand off...* makes `<project> v<N>.zip` (the project,
+that version's PDD and its Technical details workbook); the developer opens
+it with Open, *Open a hand-off (.zip)...*. The viewer extracts it under
+`%APPDATA%\process-discovery-tracker-viewer\handoffs\` and opens it read
+only: everything can be looked at and played, nothing can change, and no
+analysis runs. A newer version comes as a zip of its own.
 
 ## Upgrades
 
@@ -151,6 +165,7 @@ The install is a folder. Upgrading is replacing that folder.
 | Capture settings | `%APPDATA%\process-discovery-tracker-capture\` (`user-config.json`, `quick-config.yaml`, `recording-bar.json`) | Settings, Profile, Recording setup, the bar's place. |
 | Capture logs | `%APPDATA%\process-discovery-tracker-capture\` (`boot.log`, `app.log`) | Append-only. |
 | The analyst's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` (`remembered-names.json`) | The remembered step names. A `processes.json` there (the saved processes, removed on 2026-09-24) is not read. |
+| The hand-offs opened | `%APPDATA%\process-discovery-tracker-viewer\handoffs\` | One folder per hand-off zip opened, read only; the app removes none. |
 | A project YAML | Wherever `PDT_CONFIG` points | Owned by the analyst, not the install. |
 
 **What does not survive:** anything inside the unzipped folder: the bundled
@@ -198,7 +213,8 @@ artifacts; the BPMN file is derived from them.
 Each SME gets the capture zip and records on their own machine; each
 recording folder reaches the analyst on its own (a zip or a copy). A shared
 project YAML can go to every machine (`PDT_CONFIG`). There is no central
-service: the recording folder is the only hand-off.
+service: the recording folder is the only thing that moves, and a
+hand-off zip the only thing that reaches the developers.
 
 ## Troubleshooting
 

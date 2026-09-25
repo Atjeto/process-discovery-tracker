@@ -449,8 +449,8 @@ def main() -> int:
           f"{total_cases} cases total, at:")
     print(f"  {SESSIONS_ROOT}")
     print()
-    print("In the Viewer: Compare Sessions tab -> 'Open sessions to")
-    print("compare...' -> select that folder to load all sessions.")
+    print("In the Viewer: Open, Open project... on any one of them")
+    print("(each session is a project of its own).")
     return 0 if ok == len(SESSIONS) else 1
 
 

@@ -38,8 +38,8 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   transcript.json         # its parsed segments, if any
 ```
 
-Two small stores live outside any session folder, on the analyst's machine:
-see "Analyst library" below.
+One small store lives outside any session folder, on the analyst's machine,
+beside the hand-offs opened there: see "Analyst library" below.
 
 **Sessions without a recording (C16).** A session can also start from a
 video or from nothing (`manifest.source` `"video"` or `"blank"`): a new
@@ -325,6 +325,15 @@ instrument:
   [P1 draft-probe runbook](../docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md) reports.
   The pipeline preserves this key verbatim and never regenerates it.
 
+**`opened_runs`** *(array of case ids; viewer-written, AD-28)*: the other
+runs the analyst opened in Steps, where each lists its differences from the
+pattern run. An opening is recorded only once the pattern run is confirmed,
+never for the pattern run itself, not while the project's analysis runs, and
+not in a hand-off opened read only. The Overview's Checklist ticks *Review
+the other transactions* once every other run is in the list; the other runs
+are never confirmed. It is written without an undo entry (opening a run is
+not an edit), and the pipeline round-trips it untouched.
+
 **`document`** *(object or null; contract C6, viewer-written)*: the PDD's
 document-level sections, as fields that survive re-export:
 
@@ -423,11 +432,13 @@ analyst pins to a step or a moment:
 ```
 
 A note shows where its step or moment shows (the step pane, the timeline,
-the panel). Notes are context in the viewer: the PDD's text does not print
-them (the document's own Notes field, `document.notes`, is printed). The
-step map (`process_map_step.bpmn`, so also its As-Is copy and the PDD's
-picture of it) shows the notes on a step's task as one text annotation
-joined to the task (contract C18); a note on a moment is on no task. The key
+the panel). Notes are context in the viewer: the PDD does not print them,
+in its text or in its map pictures (the document's own Notes field,
+`document.notes`, is printed; lane FX2: the viewer draws the PDD's pictures
+without the notes). The step map (`process_map_step.bpmn`, so also its
+As-Is copy, the Map and Export's map image and BPMN file) shows the notes on
+a step's task as one text annotation joined to the task (contract C18); a
+note on a moment is on no task. The key
 is not `notes`: that one holds the product edition's Flow notes (see "Notes
 and marker edits"). Removing a note deletes its entry. The pipeline never
 writes this key and round-trips it untouched.
@@ -456,8 +467,9 @@ spreadsheet, an SOP, a form):
   writes this key and round-trips it untouched.
 
 **`step_filters`** *(object)*: apps and windows the analyst left out of the
-analysis. `ignored_processes` is written by the viewer's ignored-apps
-dialog; `ignored_window_titles` is read by the pipeline but only ever seeded
+analysis. `ignored_processes` is written by the viewer's *Apps outside the
+process* dialog (the Steps toolbar), and the Timeline draws those apps'
+bands hatched (lane FX2); `ignored_window_titles` is read by the pipeline but only ever seeded
 empty by the viewer. Process names match case-insensitively with or without
 `.exe`; titles match as case-insensitive substrings. Matching interactions
 and activity events are dropped from the derived stream before anything
@@ -631,6 +643,7 @@ lives at `derived_maps/<map_id>.bpmn`.
       "source": { "notation": "bpmn", "level": "step", "scope": null },
       "forked_from_hash": "9f3c…",
       "forked_from_sig": "4b1e…",
+      "forked_from_steps": "c07a…",
       "forked_at": "<ISO>",
       "edited_at": "<ISO>",
       "pdd_role": "to_be",
@@ -660,15 +673,32 @@ lives at `derived_maps/<map_id>.bpmn`.
   flows around it. `null` when the file holds no task, event or gateway;
   absent on a copy made before it was stored. A duplicate keeps its
   source's.
-- **Stale.** A copy is stale when the process it was made from has changed:
-  with `forked_from_sig`, when the current source's signature differs, so
-  an analysis that writes the same map in another element order (every
-  analysis does) is no change; without it, when the current file's bytes
-  hash differently from `forked_from_hash`. An unknown current mark is no
-  change. A stale copy's row offers **Copy again**, which makes a new copy
-  (the same name and kind, no role) and never merges. A copy made before
-  the step map had its colours, notes and attachments (C18) says that Copy
-  again brings them.
+- **`forked_from_steps`** (lane FX2): the signature of the maps the steps
+  drew when the copy was made (`viewer/asis-freshness.js`
+  `stepsMapSignature`, a SHA-256 hex digest): every map of the project (the
+  main one and one per sub-process), its boxes and lines by the live map's
+  rule (the conditions, the paths no transaction took, how often each was
+  taken), each box's notes, files, system set, hand marker, sub-process and
+  waste mark, and the first lines of the Trigger and the Result. It is taken
+  from the steps themselves, so a rename counts at once, before an analysis
+  writes the step map again; a confirmed transaction, a description or a
+  screenshot changes nothing. `null`, or absent, on a copy made before it
+  was kept. A duplicate keeps its source's.
+- **Stale.** A copy is stale when the steps it was made from have changed:
+  with `forked_from_steps`, when the signature of the maps the steps draw
+  now differs; without it (a copy made before), with `forked_from_sig`, when
+  the current source's process signature differs, so an analysis that
+  writes the same map in another element order (every analysis does) is no
+  change; without either, when the current file's bytes hash differently
+  from `forked_from_hash`. An unknown current mark is no change. A stale
+  copy's row offers **Copy again**, and while the As-Is copy the PDD prints
+  is stale, the Map's line and the Overview's Checklist (*Check the As-Is
+  map*) say so, the Map's line with Copy again too. Copy again makes a new
+  copy of the process map as it is now, named and kinded like the stale
+  one, which opens in the editor and is kept at its first change, like
+  Edit's; then it takes the stale copy's PDD role (lane FX2). It never
+  merges, and the stale copy stays. A copy made before the step map had its
+  colours, notes and attachments (C18) says that Copy again brings them.
 - **`pdd_role`**: `null` | `as_is` | `to_be`: which PDD slot the map fills
   (one map per slot). At export the viewer renders the copy to PNG and passes
   it as `--pdd-map-image` (As-Is, section 3.1) or `--pdd-tobe-image` (To-Be,
@@ -780,7 +810,13 @@ two viewer-written keys, both optional, in any state:
   a loop back, a later one a skip ahead) or ends. On the step map a link to
   the end from a step no transaction ended at gets an end event of its own,
   named by its `when` (C18); one without a `when` goes to the main end. A
-  link never points at its own step. A link whose target is hidden or
+  link never points at its own step. A link that *Group into a sub-process*
+  (C19) moved remembers where it was, for *Dissolve* to give it back (lane
+  FX2): `lifted_from`, the member steps it was taken from (a link to a step
+  outside the group, or to End, moves to the group), or `pointed_to`, the
+  member it pointed at before it was pointed at the group. Readers of the
+  flow read `to` and `when` only, and a link whose target the analyst
+  changes drops `pointed_to`. A link whose target is hidden or
   removed is dropped by the viewer, which says so once (Undo brings both
   back); the pipeline ignores one it finds. A merge keeps the first step's
   condition and every step's links, and points the links to its steps at
@@ -959,19 +995,22 @@ revision before ADR-0029) and on branch `product-edition`.
 | `pii_masking`, `pii_masking_config` | The structural PII masking report and config | No masking for internal use; password redaction at capture stays (D7) |
 | `group_annotations[]` | Name, note, waste, hidden on a case-scoped screen visit ([ADR-0028](../docs/adr/0028-case-screen-work-items.md)) | The runs-and-steps view replaces the work-item case tree |
 | `self_annotations[]` | The worker's answers to the close-out wizard's questions | The questions are cut; the end summary asks nothing |
-| `matched_against` | Which Process Template a session was matched against | Template matching is cut; saved-process matching (C5) writes nothing here |
+| `matched_against` | Which Process Template a session was matched against | Template matching is cut (the saved processes of C5, cut too, never wrote it) |
 | `starred_screenshots[]` | Screenshots the analyst starred for the HTML findings report | The report is cut; the PDD's findings section that later embedded evidence screenshots is cut too (AD-24) |
 | `memo_selection[]` | The findings the analyst ticked for the PDD's findings section ("include in PDD") | The PDD prints no findings (AD-24) and the ticks are gone (lane V1) |
 
 ## Analyst library (outside the session folder)
 
-Two stores on the analyst's machine, in the viewer's user data folder
-(Electron `userData`) under `pdt-library/`, and (contract C20) the
-hand-offs opened there, under `handoffs/` (below). Both are written by the viewer
-through a temp file renamed over the store, so a failed write leaves the
-previous store in place. A store that exists but cannot be read (bad JSON,
-a byte order mark, the wrong `version`) is reported and never replaced.
-Entries a reader skips are kept on disk as they are.
+One store on the analyst's machine, in the viewer's user data folder
+(Electron `userData`) under `pdt-library/`, written by the viewer through a
+temp file renamed over the store, so a failed write leaves the previous
+store in place. A store that exists but cannot be read (bad JSON, a byte
+order mark, the wrong `version`) is reported and never replaced. Entries a
+reader skips are kept on disk as they are. Beside it, the hand-offs opened
+there live under `handoffs/` (contract C20, below), and the files the
+analyst removed from a project (a screenshot, an attachment, a video copy,
+an edited map's file, a transcript) wait for their Undo under
+`pdt-removed/`, emptied when the viewer starts.
 
 ### `pdt-library/remembered-names.json` (contract C4, light vocab)
 
@@ -983,10 +1022,14 @@ Entries a reader skips are kept on disk as they are.
 - Written when the analyst renames a step that carries a `draft_key`; the
   rename also applies at once to every still-draft step in the session with
   the same key. The Remembered step names dialog (Steps toolbar) renames an entry
-  (and the session's still-draft steps with that key) or forgets it (the
-  entry is deleted). It does not rename the session's edited or confirmed
-  steps of that key, and their name comes first at the next analysis (see
-  `name_source`).
+  or forgets it (the entry is deleted). Either reaches the project too:
+  every draft of the key, and every other step of the key that carries the
+  old name, at every level, takes the new name (Forget: its drafted name
+  back), so the next analysis does not bring the old name back from the
+  session's own names (see `name_source`). An undo or a redo of a rename or
+  a forget puts the store's entry back as it was before or after (lane FX2).
+  A drafted sub-step's name (C19) is kept under the key
+  `"action|" + action_key`; the project's own sub-step names come first.
 - Read by the pipeline through `normalize.py --names <path>` at draft time,
   after the session's own names; the viewer passes it on every analysis it
   runs when the file exists. A missing or unreadable file is not a failure
@@ -1079,8 +1122,8 @@ transcript's `offset_ms` are relative to it.
 
 `source` (contract C16) says how the session was made. The capture app
 writes none, which means `"recorder"`. A session started from a video has
-`"video"` (`started_at` is the moment the analyst says the video starts, by
-default the file's creation time; `annotations.json` gets `external_video`
+`"video"` (`started_at` is the video file's creation time, else its
+modified time; no question is asked; `annotations.json` gets `external_video`
 with the path relative to the folder and `offset_ms: 0`); a session started
 from nothing has `"blank"` (`started_at` is the creation time). Both have an
 empty `events.jsonl` and no capture fields (`config`, `obs`, `consent` and
@@ -1223,8 +1266,9 @@ moment on the timeline) rewrites `offset_ms` in `transcript.json` atomically
 and keeps every other key as it is (`viewer/transcript-store.js`). A
 re-import replaces the file entirely, so `offset_ms` goes back to `null`; a
 copy already in `transcript/` with the same name is replaced, any other
-earlier copy is left alone. Removing a transcript deletes `transcript.json`
-only; the copy in `transcript/` stays. A `transcript.json` that exists but
+earlier copy is left alone. Removing a transcript (lane CC) takes
+`transcript.json` and every file in `transcript/` out of the folder,
+parked for its Undo, which puts them back. A `transcript.json` that exists but
 cannot be used (not JSON, not version 1, no `segments` list) is reported and
 ignored. A sentence the analyst adds is appended to a step's `description`
 or a `document` field; the transcript file itself never changes.
@@ -1557,7 +1601,7 @@ cross-cutting conventions.
 
 | Topic | Rule |
 |---|---|
-| Identifiers | Treat every id as opaque. `event_id`, `session_id` and `step_id` are RFC 4122 v4 UUIDs in lowercase hex; a run's `case_id` is a v5 UUID derived from the session and its start marker (C9). A synthetic marker's event id is `insert-<edit_id>`; other ids carry a prefix (`rm_` reference maps, `proc-` saved processes, `t0001` transcript segments). |
+| Identifiers | Treat every id as opaque. `event_id`, `session_id` and `step_id` are RFC 4122 v4 UUIDs in lowercase hex; a run's `case_id` is a v5 UUID derived from the session and its start marker (C9). A synthetic marker's event id is `insert-<edit_id>`; other ids carry a prefix (`rm_` reference maps, `t0001` transcript segments; `proc-` was the saved processes', C5). |
 | Timestamps | ISO 8601 with millisecond precision and a timezone (`...Z` for UTC). Always emit UTC; comparing across sessions needs no timezone work. |
 | Encoding | Text files are UTF-8 without a byte order mark. `events.jsonl` uses LF line endings, even on Windows. |
 | Paths inside session artifacts | Relative to the session folder, forward slashes (`screenshots/foo.jpg`). `external_video.path` may be absolute. The `file` of an `analyst_screenshots` or `attachments` entry is a file name inside `screenshots/analyst/` or `attachments/` (C16). |
@@ -1595,7 +1639,7 @@ video or blank session, C16) with no start marker has one implicit run
 covering the whole session instead (see manifest.json `source`).
 
 - A `start` marker opens a run. **Runs never nest.** A `start` that arrives
-  while a run is open ends that run first. The capture app's run hotkey
+  while a run is open ends that run first. The capture app's transaction key
   already writes an `end` (`reason: "auto_close_for_sibling"`) before the
   next `start`; when a stream lacks it (a start inserted in the viewer, for
   example), the pipeline ends the open run at the new start, records it on
@@ -1710,4 +1754,5 @@ The schema is versioned implicitly: an additive change is non-breaking;
 renames and removals would be breaking. `annotations.json` has an explicit
 `version` (currently `1`); bump it on a breaking change. `events.jsonl` does
 not version itself; `manifest.json` is the place for a future capture-schema
-version. The two analyst library stores carry their own `version` (1).
+version. The analyst library's store carries its own `version` (1), as the
+saved processes' file did.

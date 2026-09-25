@@ -20,7 +20,7 @@ SME hands it to the analyst.
 
 Output: one recording folder per recording, under the app's user data
 folder:
-`%APPDATA%\process-discovery-tracker-capture\sessions\<project>\<YYYYMMDD-HHMMSS>\`
+`%APPDATA%\process-discovery-tracker-capture\sessions\<request code>\<YYYYMMDD-HHMMSS>\`
 (file by file below, "The recording folder"; formats in
 [SCHEMA.md](../../shared/SCHEMA.md)).
 
@@ -185,7 +185,7 @@ under Setup (analyst) deletes its zip too.
 | File | What |
 |---|---|
 | `events.jsonl` | The raw event stream, append-only |
-| `manifest.json` | Recording metadata: ids, project, start and end, status, the optional name, the config snapshot, consent, the OBS video's path, the displays |
+| `manifest.json` | Recording metadata: ids, the request (code and name), start and end, status, the optional name, the config snapshot, consent, the OBS video's path, the displays |
 | `config.yaml` | The configuration the recording used |
 | `screenshots/` | The screenshots (`_d<displayId>` suffix per display when `screenshots.display` is `all`) |
 | `obs/sync.json` | The OBS video's clock offset, when OBS recorded |
@@ -239,7 +239,7 @@ shared with the viewer.
 | `consent-window.js` | `consent.html` | The consent gate (below). The pure decision and record logic is in `consent.js`. |
 | `settings-window.js` | `settings.html` | Setup (analyst), Settings: keys, OBS, screenshots, the storage limit and the idle end of the open transaction. |
 | `profile-window.js` | `profile.html` | Setup (analyst), Profile: who is recording. |
-| `session-config-window.js` | `session-config.html` | Setup (analyst), Recording setup: the project and the named transactions. |
+| `session-config-window.js` | `session-config.html` | Setup (analyst), Recording setup: the request (code and name) and the named transactions. |
 
 **Other:** `build-package.js` (the `electron-packager` wrapper for
 releases), `test/` (the `node:test` suite: `npm test`), `recorder/` (the C#

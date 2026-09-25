@@ -2,7 +2,8 @@
 
 The analyst-side Python pipeline. It turns a session folder into runs,
 drafted steps, statistics and the analysis, writes the step-level process
-map (`--mine`) and renders the PDD (`--pdd-out`). The viewer runs it with
+map (`--mine`) and renders the PDD (`--pdd-out`) and the Technical details
+workbook (`--tech-out`). The viewer runs it with
 its bundled Python, by itself when a session opens without a current
 analysis; it also runs from a shell.
 
@@ -31,12 +32,14 @@ python normalization/normalize.py <session_folder> --taxonomy normalization/taxo
 
 | Flag | Effect |
 |---|---|
-| `--taxonomy` | The classification rules. The analysis stages use them; drafting does not. |
+| `--taxonomy` | The classification rules. The activity statistics use them; drafting does not. |
 | `--mine` | Also write `process_map_step.bpmn`, the step-level map. |
-| `--names` | The remembered-names store: drafts whose `draft_key` it lists take the remembered name. |
+| `--names` | The remembered-names store: a draft whose `draft_key` it lists takes the remembered name, after the names the session's own steps give. |
 | `--pdd-out` | Render the PDD to this `.docx` path. |
 | `--pdd-map-image`, `--pdd-tobe-image` | Pictures of the As-Is and To-Be maps for the PDD. |
 | `--pdd-map-images` | A manifest of the maps' pictures for the PDD, the main map's and one per sub-process (`{"maps": [{"path": [...], "png": "..."}]}`). |
+| `--tech-out` | Write the Technical details workbook (`.xlsx`) to this path. |
+| `--handoff` | The hand-off version the PDD and the workbook are made for ("Version N, handed off ..."); without it they are a working copy. |
 
 Outputs land in the session folder: `stats.json`, `analysis.json`, the
 updated `annotations.json`, `process_map_step.bpmn` (with `--mine`) and
@@ -45,7 +48,8 @@ safe; the analyst's steps survive it.
 
 Exit codes: 0 success; 1 a usage error, a folder that is not a session
 folder, or a crash; 2 `annotations.json` cannot be read (nothing written);
-3 a requested export failed after the analysis outputs were written.
+3 a requested export failed, and nothing in the project was changed (a run
+moves its outputs into place only as its last act, once it succeeded).
 
 Import a Teams meeting transcript (separate entry point):
 

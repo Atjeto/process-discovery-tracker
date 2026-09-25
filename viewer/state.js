@@ -17,14 +17,16 @@
 
 "use strict";
 
-/** @typedef {"overview"|"flow"|"steps"|"map"|"analysis"} Level */
+/** @typedef {"overview"|"flow"|"steps"|"map"} Level */
 
 /**
  * Renderable concerns a view can subscribe to. An edit emits the
  * topics it touched; every function subscribed to that topic re-runs.
- * "mapPath": the level the Map shows changed (contract C19). "names": the
- * remembered step names were put back by an undo or a redo (lane FX2).
- * @typedef {"steps"|"timeline"|"markers"|"mapPath"|"names"} ChangeTopic
+ * "analysis": the project's analysis.json was read again (the Overview
+ * shows its rows). "mapPath": the level the Map shows changed (contract
+ * C19). "names": the remembered step names were put back by an undo or a
+ * redo (lane FX2).
+ * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"|"names"} ChangeTopic
  */
 
 /**
@@ -52,8 +54,8 @@
 /** @type {ViewerState} */
 const _s = {
   currentSession: null,
-  // Lab-phase §A5: the Overview level (case-quality badge → facts →
-  // findings → Export PDD) is the default surface a loaded session opens on.
+  // The Overview (the Checklist, the project line, the document, the
+  // Observations) is the level a loaded project opens on.
   currentLevel: "overview",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),

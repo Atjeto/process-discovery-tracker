@@ -202,7 +202,7 @@ const PATH_STAGES = [
       "their boundaries and names, then click Confirm transaction. Ticked once it is confirmed." },
   { key: "review", label: "Review the other transactions",
     title: "Open each other transaction in Steps: it lists how it differs from the reference transaction. The other " +
-      "transactions are not confirmed. Ticked once each has been opened." },
+      "transactions are not confirmed. Ticked once each has been opened after the reference transaction is confirmed." },
   { key: "document", label: "Write the document",
     title: "Write the document fields on this page: you write them, and the PDD prints them. Ticked once every " +
       "field but Notes is written." },
@@ -772,8 +772,8 @@ function _documentHtml(anno, sess, open) {
 
 /* Save one field through the one write path (persistAnnotations: undoable,
    one entry per field). The panel stays as it is (no re-render, so typing in
-   the next field goes on); the status, the what-is-left line and the
-   recording line update in place. An undo or a re-analysis re-renders the
+   the next field goes on); the status, the Checklist and the recording
+   line update in place. An undo or a re-analysis re-renders the
    Overview with the values on disk. */
 async function _saveDocField(key, value) {
   const sess = State.getSession();
@@ -801,8 +801,8 @@ async function _saveDocField(key, value) {
   _refreshPathInPlace();
 }
 
-/* Update the what-is-left line, the document status and the recording line
-   without re-rendering the rest of the Overview. */
+/* Update the Checklist, the document status and the recording line without
+   re-rendering the rest of the Overview. */
 function _refreshPathInPlace() {
   const sess = State.getSession();
   const host = document.getElementById("overview-content");
@@ -834,7 +834,7 @@ function _wireDocument(host) {
 
 /* ---- Export -------------------------------------------------------------- */
 
-/* AD-13: the what-is-left line's last act is the PDD. It clicks the Export
+/* AD-13: the Checklist's last act is the PDD. It clicks the Export
    menu's PDD item (#btn-session-pdd, wired in renderer.js), so the Overview
    and the menu share one export path. */
 function _exportPdd() {

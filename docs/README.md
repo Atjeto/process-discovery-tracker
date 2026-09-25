@@ -2,9 +2,10 @@
 
 Process Discovery Tracker (PDT) is an internal Windows tool for a business
 analyst or process manager. An SME records a business process a few times,
-the recorder drafts the steps, the analyst confirms one run and reviews how
-the others differ, and the tool produces a process map and a tool-neutral
-PDD.
+the recorder drafts the steps, the analyst confirms one transaction and
+reviews how the others differ, and the tool produces a process map and a
+tool-neutral PDD, handed to the developers as numbered versions with a
+Technical details workbook.
 
 > **New here? Start with [architecture/OVERVIEW.md](architecture/OVERVIEW.md).**
 
@@ -58,7 +59,7 @@ The index has two parts:
 | [architecture/NORMALIZATION.md](architecture/NORMALIZATION.md) | The pipeline: CLI, stages, modules, outputs |
 | [interaction-recorder.md](interaction-recorder.md) | Design of the C# UI Automation recorder |
 | [architecture/DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md) | CSS tokens, the two themes, contrast rules, the UI copy style guide |
-| [architecture/VIEWER.md](architecture/VIEWER.md) | The viewer: its modules, the four levels, the step panel, state, IPC, the automatic analysis, the exports |
+| [architecture/VIEWER.md](architecture/VIEWER.md) | The viewer: its modules, the four levels, the step panel, state, IPC, the automatic analysis, the exports, a hand-off opened read only |
 | [architecture/VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md) | The timeline: its lanes, the one clock, a video project's timeline, the video beside it |
 
 ### Principles that still bind
@@ -80,12 +81,10 @@ enforces the numbering). The decisions that shape the light version:
 | [0001](adr/0001-click-recorder-sidecar-language.md) | The recorder is a C# sidecar |
 | [0002](adr/0002-app-vocabularies.md) | App vocabularies (the matching engine stays; in-app authoring is cut) |
 | [0007](adr/0007-activity-event-granularity.md) | Activity-event granularity: the window title in the run key |
-| [0008](adr/0008-build-the-analysis-layer.md) | The analysis layer |
 | [0011](adr/0011-platform-recognition-layer.md) | The platform recognition layer |
 | [0012](adr/0012-active-case-stamping-and-map-matrix.md) | Marker-based case stamping (narrowed: anchors and the map matrix are cut) |
 | [0013](adr/0013-value-free-grouping-and-map-readability.md) | Value-free grouping (`process_label`) |
 | [0014](adr/0014-distribution-model.md) | GitHub Releases and electron-packager |
-| [0016](adr/0016-segment-level-automation-candidacy.md) | Segment-level automation candidacy (narrowed: the ROI extension is cut) |
 | [0019](adr/0019-reference-maps.md) | Reference maps: editable As-Is and To-Be copies |
 | [0023](adr/0023-recorder-capture-confidence.md) | Recorder capture confidence |
 | [0024](adr/0024-step-grain-as-view-time-rollup.md) | Step grain keys (narrowed: the grain slider is cut, `grain_keys` stay) |
@@ -107,7 +106,7 @@ enforces the numbering). The decisions that shape the light version:
 | [../SECURITY.md](../SECURITY.md), [Security-QA.md](Security-QA.md) | Threat model; one-page Q&A for a corporate security review |
 | [CHIP-GUARDRAILS.md](CHIP-GUARDRAILS.md) | Agents read first: the hard invariants and the guard for each, how to drive the viewer, the DOM handles of every surface |
 | [FEATURES.md](FEATURES.md) | What the light version does, by component (the product edition's catalogue is on its branch) |
-| `User-Guide.docx` | Generated end-user guide (binary, built by `build-user-guide.js`). Still describes the product edition; the in-app Help is the light version's guide |
+| `User-Guide.docx` | The product edition's generated user guide (binary, built by `build-user-guide.js`). No longer copied into a release: the in-app Help is the light version's guide |
 | [../capture/README.md](../capture/README.md), [../viewer/README.md](../viewer/README.md), [../normalization/README.md](../normalization/README.md), [../e2e/README.md](../e2e/README.md) | Component quick-starts |
 | [claude-skills/README.md](claude-skills/README.md) | Frozen 2026-07-03 snapshot of the skills pack (the live copy is user-global) |
 
@@ -137,6 +136,7 @@ branch `product-edition`.
 | ADR | Status |
 |---|---|
 | [0003](adr/0003-viewer-architecture-refactor.md), [0004](adr/0004-flow-timeline-steps-rework.md), [0005](adr/0005-capture-architecture-remediation.md), [0006](adr/0006-backlog-sequencing.md), [0010](adr/0010-ux-overhaul-viewer-recorder.md) | Past refactors, reworks and sequencing; implemented, history now |
+| [0008](adr/0008-build-the-analysis-layer.md), [0016](adr/0016-segment-level-automation-candidacy.md) | The analysis layer and segment-level automation candidacy; cut from the light version on 2026-09-25 (lane FX1), since no screen and no document read them |
 | [0009](adr/0009-normalization-redesign-v013.md) | v0.13 normalization redesign; superseded in part |
 | [0015](adr/0015-intra-session-repetition-alignment.md) | Intra-session alignment; its engine (`step-alignment.js`) is removed, the differences view aligns by draft key instead |
 | [0017](adr/0017-suggested-markers.md), [0018](adr/0018-anchor-candidates.md) | Suggested markers and anchor candidates; cut |

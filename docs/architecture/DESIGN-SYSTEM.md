@@ -22,11 +22,11 @@ palettes for data marks that cannot read CSS variables, all owned by
 
 ## The themes
 
-**Warm Editorial** (default, light) — warm off-white surfaces, a single
+**Warm Editorial** (default, light): warm off-white surfaces, a single
 amber accent, slate-blue as the cool secondary, sharp corners, soft warm
 shadows, geometric-sans typography.
 
-**Studio Dark** (opt-in, dark) — a cool charcoal-blue base, a teal
+**Studio Dark** (opt-in, dark): a cool charcoal-blue base, a teal
 accent, a brighter foreground; cinematic and technical. It is a pure
 recolour: geometry, typography, and layout are shared with Warm
 Editorial.
@@ -41,7 +41,7 @@ theme before first paint so there is no flash. The video stage carries a
 subtle radial-gradient glow and a faint grid in both themes.
 
 Fonts are **self-hosted** (woff2 under `viewer/fonts/`, loaded via
-`@font-face`) — the capture and analyst machines run offline and the
+`@font-face`): the capture and analyst machines run offline and the
 renderer's Content-Security-Policy forbids a web-font CDN, so a
 `fonts.googleapis.com` link is not an option. `font-src 'self'` already
 covers the local files; no CSP change was needed.
@@ -186,8 +186,8 @@ byte-copies) by hand in the same commit.
 
 ## UI copy style guide (lab Phase F)
 
-Business users read every string the product renders — labels, tooltips,
-empty states, the memo, the PDD. The register rules, set after the owner's
+Business users read every string the product renders: labels, tooltips,
+empty states, the PDD, the Technical details. The register rules, set after the owner's
 v1.1.0 walk-through ([docs/To-Do/ui-copy-feedback.md](../To-Do/ui-copy-feedback.md)):
 
 1. **The test for every string:** would a business analyst with zero
@@ -195,11 +195,11 @@ v1.1.0 walk-through ([docs/To-Do/ui-copy-feedback.md](../To-Do/ui-copy-feedback.
    artifact name is unavoidable (BPMN, case anchor in analyst surfaces),
    the tooltip explains it in plain words.
 2. **Sentences over fragments.** Say what the user gets or risks, not how
-   the machine works ("Pressing this finishes a piece of work — we use it
+   the machine works ("Pressing this finishes a piece of work: we use it
    to know where one step ends", not "completion: step-boundary hint").
 3. **No internal vocabulary in rendered copy.** The banned list below is
    enforced by `viewer/ui-copy-guard.test.js` (which exports it as
-   `BANNED_COPY` — keep the two in sync). The terms stay legal in code
+   `BANNED_COPY`; keep the two in sync). The terms stay legal in code
    identifiers, JSON keys, comments, and docs.
 
 | Banned in copy | Say instead |
@@ -213,27 +213,25 @@ v1.1.0 walk-through ([docs/To-Do/ui-copy-feedback.md](../To-Do/ui-copy-feedback.
 | motif | "repeated sequence" |
 | segment-grain | "step sequence" |
 | heuristic | "estimate" / "automatic guess" / "by default" |
-| provisional | "estimate — review before relying on it" |
+| provisional | "estimate: review before relying on it" |
 | unsegmented, case-segmented | "no cases identified yet" / "cases identified" |
 | posture | "data sharing mode" |
 | modal pattern | "usual pattern" |
 | cargo-cult | (code comments/docs only) |
-| anchor *(worker/business copy)* | "the field that identifies the ticket/order" — may stay in analyst Machine surfaces with a plain tooltip |
+| anchor *(worker/business copy)* | "the field that identifies the ticket/order"; it may stay in analyst surfaces with a plain tooltip |
 
-**Worked examples (the bar):**
+**Worked examples (the bar), from the light version:**
 
-- Expert drawer → **"Advanced views** — These views use methods that need
-  cleaner data than desktop recording can provide, so treat them as
-  exploration, not evidence. The files are still exported for specialists."
-- App Library checklist: `completes step` → **"'Done' action"** (*"Pressing
-  this finishes a piece of work — like Save, Submit or Send. We use it to
-  know where one step ends and the next begins."*); `carries value` →
-  **"Workers type data here"**; `case-id source` → **"Identifies the
-  ticket/order"** (*"What's typed here tells us which ticket, order or
-  customer the work belongs to — it lets the app split a long recording
-  into separate cases."*).
-- Free-text placeholder → *"What does this do, in plain words? e.g. 'sends
-  the order to billing'"*.
+- An act said by what the analyst gets: *Apps outside the process...*,
+  *"Pick the apps that are not part of the process, for example Teams or
+  Outlook used during the call, or the recorder itself. Their clicks and
+  typing are left out of the steps and the map, and the project is
+  analyzed again."*
+- A mark explained where it shows: a stretch left out of the analysis on
+  the Timeline, *"Left out of the analysis, 1:10 to 1:45: its steps are not
+  drafted and its time is not counted. Click to include it again."*
+- A state said in plain words: the Checklist's *Export the PDD*, *"The app
+  keeps no record of an export, so this item is never ticked."*
 
 ## JS colour palettes (data marks)
 
@@ -261,7 +259,8 @@ The pipeline writes a colour per system into `process_map_step.bpmn`
 `bioc:stroke`: a light fill and a dark stroke, in the order the reference
 transaction, then the others, first use the systems. A step done in a system
 is a plain task; a step done outside every system is a manual task, whose
-hand marker the legend explains in its last line. bpmn-js writes a
+hand marker the legend explains in a line of its own (after it, a Waste
+line when a task is flagged as waste, lane FX3). bpmn-js writes a
 task's name in its stroke colour, so every pair keeps its name at 6.9:1 or
 more on its fill, legible in the PDD's print. A legend text annotation
 names each system's colour; a tenth system and later keep bpmn-js's default
@@ -294,7 +293,8 @@ not ignores them.
   `--accent` ring for Start, a thick `--fg-2` ring for End); a condition on
   a line is boxed text at the boxes' 11px (`--bg` behind it, a `--rule`
   border) so it reads over the lines; a path set in Steps that no
-  transaction took is dashed.
+  transaction took is dashed; a box whose step is flagged as waste has a
+  dashed border and a last line, *Waste* (lane FX2).
 - The **BPMN** maps (the vendored `bpmn-js`: the As-Is map shown on the Map
   level, the map editor, the pictures in the PDD and Export's map image)
   are **not** themed: they are documents, drawn on a white page in both

@@ -4,11 +4,12 @@
  *
  * The analyst never changes events.jsonl. Inserting, moving, renaming or
  * deleting a marker queues an entry in annotations.marker_edits, which the
- * pipeline replays on every Analyze (normalization/marker_edits.py) and keeps.
+ * pipeline replays on every analysis (normalization/marker_edits.py) and keeps.
  * So an edit is PENDING until an analysis has run after it: it was made
  * (edit.ts) later than the last analysis (stats.meta.normalization_run_at),
  * or the session was never analyzed. Pending edits show at once in the
- * Markers list and on the timeline, with one call to action (Analyze);
+ * Markers list and on the timeline, with one call to action (Apply marker
+ * changes);
  * applied edits read as ordinary markers, and the timeline's case lane
  * follows what the last analysis used.
  *
@@ -50,7 +51,7 @@ function _validEdits(markerEdits) {
                                       last analysis used)
      inserted, edited, deleted        what the edits did
      deletedApplied                   the delete was already analyzed
-     pending                          some edit on it waits for Analyze
+     pending                          some edit on it waits for an analysis
      reason                           the capture-time reason, if any */
 function markerView(events, markerEdits, analyzedMs) {
   const byEvent = new Map();
@@ -102,7 +103,7 @@ function markerView(events, markerEdits, analyzedMs) {
   return rows.sort((a, b) => t(a) - t(b));
 }
 
-/* How many marker edits wait for Analyze (the call to action's count). */
+/* How many marker edits wait for an analysis (the call to action's count). */
 function pendingEditCount(markerEdits, analyzedMs) {
   return _validEdits(markerEdits).filter((e) => isPendingEdit(e, analyzedMs)).length;
 }

@@ -95,8 +95,10 @@ one menu closes the others.
   a project made with New), *Open a hand-off (.zip)...* (a hand-off, opened
   read only: section 11), then the recent projects.
 - **The status line** (`#session-pills`): "Updating steps and map..." with
-  Cancel while the pipeline runs; else, when marker changes wait, the one
-  call to action *Apply N marker changes*; else nothing.
+  Cancel while the pipeline runs (an export's own run says what it writes:
+  "Writing the PDD...", "Writing the Technical details...", "Handing off
+  version N..."); else, when marker changes wait, the one call to action
+  *Apply N marker changes*; else nothing.
 - **The save state** (`#save-state`): *Saved* (the time of the last save
   and the folder in its tooltip), *Saving...* while a write lasts, *Not
   saved* in the error colour (what was not saved and why in its tooltip)
@@ -119,8 +121,11 @@ container. The Overview is the default on load.
 - **Overview**: the Checklist (five acts: Mark the transactions, Confirm
   the reference transaction, Review the other transactions, Write the
   document, Export the PDD; each ticked or not from the session data alone,
-  each with a tooltip that says what it means, and one button for the next
-  act; it shrinks to one line once only the export is left); the project
+  so the export is never ticked; each with a tooltip that says what it
+  means, and one button for the next act; while the As-Is map the PDD
+  prints was made before the steps changed, *Check the As-Is map* comes
+  before the export (lane FX2, `asis-freshness.js`); it shrinks to one line
+  once only the export is left); the project
   line (its name, who recorded it, its transactions, the reference
   transaction's steps, the video and the transcript with their Attach,
   Replace and Remove (the video's Remove only for a video the analyst
@@ -186,7 +191,13 @@ container. The Overview is the default on load.
   the PDD's picture draw it. One header line (`#map-view-bar`) says which
   picture shows: "Process map (the PDD prints this map)", or the copy's name
   and "(edited; the PDD prints this map)" with the copy's *Edit*, and
-  *Show how the transactions ran*. That second view is the live map drawn
+  *Show how the transactions ran*. While that copy was made before the steps
+  changed (lane FX2: `asis-freshness.js` compares the signature of the maps
+  the steps draw now with the one the copy kept, `forked_from_steps`), the
+  line says so (`#map-view-stale`) with *Copy again*
+  (`#btn-map-asis-recopy`): a new copy of the process map, named like it,
+  kept at its first change, which then takes its place in the PDD (the old
+  copy stays in the gallery). That second view is the live map drawn
   from the transactions' steps between a Start and an End circle, each box
   naming its system under its name, the arrows weighted by time (the tip
   says how often each was taken); a condition set in Steps labels its line,
@@ -290,12 +301,13 @@ Timeline's zoom and scroll; the Steps level keeps the Timeline's viewport
 while the analyst is on it, so a return lands where it was). Arriving on
 Steps with a selected step scrolls its row into view once.
 
-**Help** (`#help-modal`) holds the analyst's guide in six sections (Getting
-started, Steps, Markers, Recording keys, Shortcuts, Troubleshooting), the
-version, and *Re-analyze* (Troubleshooting) for an analysis that stopped.
-Getting started says what a transaction is, what each block of the
-Overview shows, that every change saves itself and how a project is handed
-over.
+**Help** (`#help-modal`) holds the analyst's guide in eight sections
+(Getting started, Steps, Map, Markers, Recording keys, Hand-offs,
+Shortcuts, Troubleshooting), the version, and *Re-analyze*
+(Troubleshooting) for an analysis that stopped. Getting started says what
+a transaction is, what each block of the Overview shows, that every change
+saves itself and how a project is handed over; Hand-offs says how a
+version reaches the developers and how they open it.
 
 ## 3. Module map
 
@@ -340,6 +352,8 @@ their module as `<name>.test.js`.
 | `handoff-zip.js` | Export, Hand off... (contract C20): `<project> v<N>.zip` next to the folder (never over another zip), the folder zipped by `zip-folder.js`, then the PDD and the Technical details of the version appended at the zip's root (`appendFiles`), built as `.building` and renamed when complete. |
 | `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD and the Technical details of the version it lists last; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD and Technical details beside it) and `handoffFile` (the PDD or the workbook it came with). |
 | `zip-folder.js` | The zip writer (PKZIP 2.0 without ZIP64, UTF-8 names, written as `.partial` and renamed at the end): a copy of `capture/zip-folder.js`, kept identical by `project-zip.test.js`, since a packaged viewer cannot reach `capture/`. |
+| `project-folder.js` | Which folder a chosen folder opens (lane FX2): a project folder, or the one project folder inside it (the folder Windows' Extract All makes of the SME's zip); any other folder is refused with a sentence that says what to open. |
+| `staged-outputs.js` | What a stopped analysis leaves (lane FX1): the `*.pdt-staged` files `normalize.py` writes before it moves its outputs in, removed once a cancelled run's process has ended. |
 
 **Views** (`views/`)
 
@@ -379,7 +393,8 @@ their module as `<name>.test.js`.
 | `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
 | `transcript-model.js` | The transcript's time rule (its own sync, else the video's; a sentence said before the recording reads "0:28 before") and every pick of sentences (for a step, outside the transactions, by speaker or search). |
 | `session-summary.js` | The project line's facts, the request (`requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
-| `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`); whether a copy is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its colours, notes and attachments (C18). |
+| `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`), keeping the signature of the maps its steps drew (`forked_from_steps`, lane FX2); for a copy made before that was kept, whether it is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its colours, notes and attachments (C18). |
+| `asis-freshness.js` | Whether an edited copy was made from the steps as they are now (lane FX2): `stepsMapSignature` (every map of the project, its boxes and lines, each box's notes, files, system, hand marker, sub-process and waste mark, and the Trigger and the Result), `copyStale` (the signature a copy kept, else `reference-maps.js` `isStale`), `chosenAsIsStale` for the Map's line and the Checklist. |
 | `case-scope.js` | The Transaction select's options ("Transaction 1 · Order #10900"), escaped. |
 | `recognition.js` | Platform recognition of an interaction (ADR-0011), for the step pane's interaction list. |
 | `identity-line.js` | The one readable line per captured control in that list (no marker on it: a project is recorded once, lane CC). |
@@ -406,13 +421,15 @@ wrappers, so the load order does not matter.
 ```
 renderer.js
   initFlowView({ rerenderActiveLevel, addStepAtTimestamp })
-  initSession({ renderSessionPills })
+  initSession({ renderSessionPills, reloadSession, analyzeSession })
+  initOverview({ analyze, busy, cancel })
   initRecent({ onOpenSession })
   initStepsView({ ensureAnnoShape, persistAnnotations, jumpToStepInFlow,
                   watchStep, analyze })
+  HandoffUI.initHandoffUI({ writeDocuments })
   RefmapUI.initRefmapUI({ renderLiveMap, renderMap, liveMap, analysisBusy,
                           sourceBpmnPath, analyze, mapPath, onAsIsLevel,
-                          mainMapName })
+                          mainMapName, hasSteps })
 ```
 
 The same pattern repeats inside the Timeline: `flow-view.js` requires its
@@ -450,7 +467,7 @@ which the renderer shows.
 | | `viewer:cancelNormalize` | Stops the run in progress. |
 | Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back (screenshots, attachments, the video's copy, the edited maps' files). |
 | | `viewer:restoreAnnotationsBackup` | The unreadable banner's Restore the newest backup: keeps the unreadable file as `annotations.unreadable-<time>.json`, copies the newest readable backup into place (the one confirmed, else refused). |
-| Remembered step names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName` | Save, read, forget a name. |
+| Remembered step names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName`, `viewer:restoreStepName` | Save, read, forget a name; put a key's entry back as it was, for the undo and the redo of a rename or a forget (lane FX2). |
 | Export and shell | `viewer:exportFile` | A save dialog, then a copy of the given file. |
 | | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
 | | `viewer:exportProjectZip` | Zips an open project next to its folder (`project-zip.js`); refused while that project's analysis runs, one zip of a project at a time. Answers the zip's path, size and entry count. |
@@ -520,10 +537,11 @@ the bus. The topics and who listens (`renderer.js`):
 | Topic | Re-renders |
 |---|---|
 | `steps` | the Steps level, the Overview, the Map, the step panel |
-| `timeline` | the timeline |
+| `timeline` | the timeline, the Screenshots panel |
 | `markers` | the Markers panel, the status line, the Overview |
 | `analysis` | the Overview |
 | `mapPath` | the Map (the step panel's *Open sub-process* on the Map) |
+| `names` | the Steps level's remembered names, read again (an undo or a redo put one back, lane FX2) |
 
 **Kept on this machine** (`localStorage`, every key starts with `pdt.`):
 
@@ -629,7 +647,12 @@ Every annotation write in the renderer goes through `session.js`:
 - `persistAnnotations(annotations, label, topics)` saves with undo and emits
   the topics (default `steps` and `timeline`).
 - `saveAnnotationsDirect` writes without an undo entry: opening a run
-  (`opened_runs`) and *Apps outside the process* (an analysis follows at once).
+  (`opened_runs`), *Apps outside the process* (an analysis follows at once)
+  and the taking back of a new map copy whose changes were all undone
+  (`refmap-ui.js`).
+- An edit that changed the remembered names (a rename, a forget) keeps the
+  store's entries from before and after on its undo entry: its undo and its
+  redo put them back (`viewer:restoreStepName`) and emit `names` (lane FX2).
 - A failed write shows one error toast and rejects, so the caller's success
   message never follows an unsaved edit; the edit stays in memory and the
   next successful save writes it.
@@ -726,7 +749,7 @@ PDD.docx*, *Order to cash map.bpmn*, *Order to cash As-Is map.bpmn*.
   the steps): one file with every map.
 - **Technical details (.xlsx)** (`exportTechDetails`, contract C20). The
   pipeline writes the workbook (`--tech-out`) to a temp path in one run, as
-  the PDD does, and it is offered as `technical-details.xlsx`. The PDD and
+  the PDD does, and it is offered as `<project> Technical details.xlsx`. The PDD and
   the workbook share `writeDocuments`: the maps drawn first for the PDD,
   one run, each file offered only when this run wrote it.
 - **Hand off...** (`views/handoff-ui.js`, contract C20). One dialog, "What

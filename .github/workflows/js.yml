@@ -4,8 +4,7 @@ name: JS syntax + unit tests
 # node:test suites and a node --check parse gate, on the Windows target the apps
 # ship to. The Electron binary download is skipped: the suites only `require`
 # modules (require("electron") resolves to a path string), they never launch the
-# app -- the live UI is covered by the _pdt_verify Playwright harness, a separate
-# follow-up to fold into CI.
+# app: the live UI is covered by the e2e smokes (e2e.yml).
 on:
   push:
     branches: [master, viewer-refactor]

@@ -55,8 +55,9 @@ A Windows tool in three layers that never talk over a network:
    it runs the pipeline by itself. Four levels: Overview, Timeline, Steps,
    Map.
 
-The hand-off is the **session folder**, copied from the SME's machine to the
-analyst's; what the analyst adds (a video, a transcript, screenshots, notes,
+What travels is the **session folder**: copied from the SME's machine to the
+analyst's, and handed to the developers as numbered versions (*Hand-offs*
+below). What the analyst adds (a video, a transcript, screenshots, notes,
 attachments, edited maps) lives in it too. No AI ships inside the product.
 
 ## The analyst path
@@ -64,10 +65,12 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 1. **Open** a recording folder (*Open project...*, Open menu), or start a
    project with *New project from a video...* or *New empty project...*
    (New menu). The analysis runs by itself (on open when it is missing or
-   older, after Apps outside the process, on the Map when the steps are
-   newer than its map, inside Edit as the As-Is map, before a PDD export),
-   with one status line and Cancel. *Apply N marker changes* stays
-   deliberate; Help, Troubleshooting has Re-analyze.
+   older, after Apps outside the process, after a stretch is left out of
+   the analysis or included again, as the Overview opens when its rows are
+   older than the steps, on the Map when the steps are newer than its map,
+   inside Edit as the As-Is map, before a PDD export, a map export or a
+   hand-off), with one status line and Cancel. *Apply N marker changes*
+   stays deliberate; Help, Troubleshooting has Re-analyze.
 2. **Attach** a video (copied into the folder, synced with two clicks) and a
    transcript, if any.
 3. **Confirm the reference run** (run 1 unless another is picked): fix and
@@ -80,7 +83,8 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 6. **Check the map**: the Map shows the map the PDD prints (the process map,
    or the edited As-Is map), with *Show how the transactions ran* one click
    away; optionally *Edit as the As-Is map* (and a To-Be copy), kept once
-   something in it is changed.
+   something in it is changed. When the steps change after the As-Is copy
+   was made, the Map and the Checklist say so, with *Copy again*.
 7. **Export the PDD**: its map is the edited As-Is copy when one exists, else
    the map from the runs. Export also saves the map (image, BPMN), the
    *Technical details (.xlsx)* and the *Whole project (.zip)*; each export
@@ -150,10 +154,20 @@ the folder.
   `<viewer userData>/pdt-library/remembered-names.json`, keyed by `draft_key`): a rename is remembered and names the session's other
   drafts of that key at once. The pipeline reads it through `--names`, after
   the session's own names, which travel with the folder. The Remembered step
-  names dialog (Steps toolbar) renames or forgets one.
+  names dialog (Steps toolbar) renames or forgets one (every draft of its key
+  and the steps that carry the name). Ctrl+Z of a rename puts the store's
+  entry back too (lane FX2). A drafted sub-step's name is kept under
+  `action|<action_key>`; the project's own sub-step names come first.
 - **Runs.** Markers only, never nested: a Start while a run is open ends
   that run first. Case ids are deterministic (C9), so analyst steps stay
   attached across re-analysis. A recording without run markers has no runs.
+- **Leaving things out.** *Apps outside the process* (Steps toolbar,
+  `step_filters`) and *Leave out of the analysis* (a Shift-drag on the
+  Timeline, `excluded_ranges`) take events out before drafting. Both show
+  hatched on the Timeline; a stretch left out offers *Include again*, cuts
+  its transaction's trace on both maps (C17) and is said once, first, in
+  Steps and the PDD's 4.1, where the reference steps done in it are not read
+  as skipped.
 - **Sessions without a recording** (C16): `manifest.source` `video` or
   `blank`, an empty `events.jsonl`, one implicit run until a Start is
   inserted; a video project's Timeline runs on the video's length. Steps
@@ -162,8 +176,9 @@ the folder.
 - **What the analyst adds** (C16), inside the folder: screenshots in
   `screenshots/analyst/` (a video frame, a pasted image or a file;
   `step.pdd_screenshot` picks the one the PDD prints), notes in
-  `analyst_notes` (on a step or a moment; out of the PDD's text, on the
-  step map beside their step; the old `notes` key round-trips), attachments
+  `analyst_notes` (on a step or a moment; out of the PDD's text and its map
+  pictures, on the Map, the map exports and the step map beside their step;
+  the old `notes` key round-trips), attachments
   in `attachments/` (listed in the PDD), and `step.system`. Removing one
   deletes its entry and file; Undo restores both.
 - **Step flow** (C17, AD-31). A step may carry `only_when` (a condition)
@@ -183,6 +198,8 @@ the folder.
 - **The video travels with the folder.** Attach video copies it into
   `video/` and stores its path relative to the folder; a missing absolute
   path falls back to a file of that name in the folder (`video-path.js`).
+  Remove video and Replace take the copy out of the folder, and Ctrl+Z
+  brings it back (lane CC).
 - **One clock.** The viewer's times and the PDD's pointers read the time
   since the recording started (m:ss or h:mm:ss); the time of day shows only
   in the Timeline's summary.
@@ -202,7 +219,12 @@ the folder.
   copies the process map into an editable As-Is or To-Be map (ADR-0019; the
   pipeline never touches a copy), kept at its first change: leaving the
   editor without one keeps nothing. In the editor, Ctrl+Z and Ctrl+Y are the
-  map's own (bpmn-js's keyboard, bound while it is open).
+  map's own (bpmn-js's keyboard, bound while it is open). A copy keeps the
+  signature of the maps its steps drew (`forked_from_steps`,
+  `asis-freshness.js`, lane FX2): once the steps draw another, the Map's line
+  and the Checklist's *Check the As-Is map* say so, and *Copy again* makes a
+  new copy, kept at its first change, which takes the old one's place in the
+  PDD.
 - **The richer step map** (C18, AD-32). `process_map_step.bpmn` names its
   main end after the Result and each early end after its `when`; a step done
   in a system is a plain task and a step done outside every system (added by
@@ -211,14 +233,17 @@ the folder.
   its attachments data objects; each system has a colour (`bioc:fill`,
   `bioc:stroke`) listed in a legend, which also says what the hand means.
   Without a chosen As-Is copy, the Map's picture, Export's map image and the
-  PDD's map picture are this file drawn by bpmn-js.
+  PDD's map picture are this file drawn by bpmn-js (the PDD's picture
+  without the steps' notes, lane FX2).
 - **Sub-processes** (C19, AD-33).
   - **Storage.** A step's `sub_steps` array holds its sub-steps, nested and
     the same shape as steps. `annotations.steps` stays the main level, so a
     reader that ignores `sub_steps` sees only that.
   - **Creating one.** *Open as a sub-process* drafts one sub-step per
     recorded action (`action_key`, never `draft_key`). *Group into a
-    sub-process* adds a parent with `group: true`. *Dissolve* undoes either.
+    sub-process* adds a parent with `group: true`; a link it moves remembers
+    where it was (`lifted_from`, `pointed_to`, lane FX2). *Dissolve* undoes
+    either and gives each such link back.
   - **The maps.** `mapTree` (`viewer/sub-process-maps.js`) and `map_tree`
     (`normalization/sub_process_maps.py`) list the project's maps. They are
     pinned by `shared/sub-process-maps-golden.json`: traces per visit, the
@@ -295,7 +320,7 @@ Each app (from `capture/` or `viewer/`):
 
 ```
 npm install
-npm start          # launch (Ctrl+R in the app reloads the renderer)
+npm start          # launch; after a code change, quit and start it again (no reload key)
 npm test           # node:test unit suite
 ```
 

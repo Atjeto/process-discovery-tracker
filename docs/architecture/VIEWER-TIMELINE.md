@@ -40,7 +40,11 @@ place only: the summary line above the timeline, "Recorded <date> <time> ·
   summary line reads "Video · <length>".
 - **A blank project** (nothing recorded, no video) has no span: the
   timeline shows one line, "No recording and no video in this project.",
-  with *Attach video...* (`#tl-empty`). The legend and the minimap hide.
+  with *Attach video...* (`#tl-empty`). The legend and the minimap hide, and
+  so do the controls that act on a drawn timeline (the Transaction select,
+  Lanes, the zoom) and the video band (lane FX3); the Markers tab says that
+  transactions are marked on the timeline, which such a project has once a
+  video is attached, and the Steps list says the same.
 
 ## The lanes
 
@@ -53,11 +57,11 @@ lane of height 0 is skipped. From top to bottom:
 |---|---|---|
 | Ticks | The time since the recording started; tick lines run down through the activity lane. | |
 | Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest), and the bands follow the markers the last analysis used. | Click: go to the transaction's start. Right-click: Jump to start, Jump to end. |
-| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. Idle stretches, pending marker bars and the stretches left out of the analysis lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. A stretch left out: click or right-click for Include again. |
+| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. A band of an app among the Apps outside the process is hatched too, its tooltip saying so (lane FX2, `.tl-app-left-out`). Idle stretches, pending marker bars and the stretches left out of the analysis lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. A stretch left out: click or right-click for Include again. |
 | Transcript | Only while a transcript is attached: the sentences said while the recording ran, at their times, once the transcript is placed (its own sync, else the synced video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
 | Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: go there. Right-click: Edit note, Delete note. |
-| Screenshots | A rail of the recorder's screenshots. | Click: open it in the image viewer. |
-| Steps | One band per visible step with a time, named as in Steps. | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here. |
+| Screenshots | A rail of the recorder's screenshots, and of the ones the analyst added at a moment (a video frame; lane FX2, `.tl-screenshot-added`, the step it is on in its tooltip). | Click: open it in the image viewer. |
+| Steps | One band per visible step with a time, named as in Steps; a step that starts and ends at one moment (a one-click step) is drawn at the lane's smallest width (lane FX2). | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here. |
 
 **The header column** (`#tl-lane-names`, `renderLaneNames`), drawn like a
 video editor's track headers (the owner's reviews): a column of its own
@@ -184,4 +188,5 @@ a slim band with *Attach video...*.
 | An annotation edit | the `timeline` topic: the timeline, in place |
 | A lane toggle | the timeline |
 | The video's length becomes known (a video project) | the timeline, its summary and the playhead |
-| A transcript or video sync | the project, reloaded |
+| A video attached, replaced, synced or removed | the project, reloaded |
+| A transcript sync | the timeline (the loaded transcript takes the new offset) |

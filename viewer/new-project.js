@@ -1,8 +1,8 @@
 /*
  * new-project.js: a session folder made without a recording (contract C16),
- * main process only. "New from a video..." makes one around a video (copied
- * into its video/ folder, the path stored relative to the folder, offset 0);
- * "New without a recording..." makes an empty one. Each gets manifest.json
+ * main process only. "New project from a video..." makes one around a video
+ * (copied into its video/ folder, the path stored relative to the folder,
+ * offset 0); "New empty project..." makes an empty one. Each gets manifest.json
  * (session_id, source, started_at, label: the name the analyst gave), an
  * empty events.jsonl and annotations.json. The analysis then gives it one
  * implicit run (the pipeline's half of C16).

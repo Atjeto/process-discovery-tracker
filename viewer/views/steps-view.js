@@ -39,9 +39,9 @@
  *
  * The model is runs-model.js (pure, unit-tested); this module renders it and
  * owns the step verbs (rename / save / split / merge / hide / delete / add /
- * bulk hide or delete / confirm run / reopen run / use as pattern / save as
- * this process / the sub-process verbs) and the ignored-apps and
- * remembered-names dialogs.
+ * bulk hide or delete / confirm run / undo confirm / use as pattern / the
+ * sub-process verbs) and the Apps outside the process and Remembered step
+ * names dialogs.
  * Cross-surface helpers (ensureAnnoShape, persistAnnotations,
  * jumpToStepInFlow, watchStep) are injected by
  * renderer.js via initStepsView().
@@ -718,16 +718,20 @@ function goToLevel(path, opts) {
 /* What a transaction is, in the one line under the list's title (AD-29):
    in a recording the SME marks each one with the transaction key; a project
    without a recording (C16, manifest.source video or blank) is one
-   transaction until the Timeline marks where each one starts. Pure. */
+   transaction until the Timeline marks where each one starts. An empty
+   project without a video has no timeline to mark them on (the Timeline says
+   to attach a video, flow-view-timeline.js timelineDrawable), so its line
+   says that first (lane FX4). Pure. */
 const NOTE_RECORDED = "One pass through the process: the SME presses the transaction key at the start of each.";
 const NOTE_UNRECORDED = "The whole project is one transaction until you mark where each one starts on the Timeline.";
+const NOTE_UNRECORDED_NO_VIDEO = "The whole project is one transaction. To mark where each one starts, attach a video first: the Timeline then follows it.";
 const NOTE_UNRECORDED_MARKED = "One pass through the process: each starts where you marked it on the Timeline.";
 function transactionNote(session) {
   const m = (session && session.manifest) || {};
   const recorded = ((session && session.events) || []).length > 0 || !["video", "blank"].includes(m.source);
   if (recorded) return NOTE_RECORDED;
-  return AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats
-    ? NOTE_UNRECORDED : NOTE_UNRECORDED_MARKED;
+  if (!(AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats)) return NOTE_UNRECORDED_MARKED;
+  return session && session.recordingAvailable ? NOTE_UNRECORDED : NOTE_UNRECORDED_NO_VIDEO;
 }
 
 /* A3: the waste-flagged step count on the toolbar. Waste is the only per-step
@@ -2366,7 +2370,7 @@ function openIgnoredAppsDialog() {
     // the one write path (RP-04): a failed save has already been shown as an
     // error, so keep the dialog open and do not re-analyze.
     try {
-      await Session.saveAnnotationsDirect(anno, "ignored apps");
+      await Session.saveAnnotationsDirect(anno, "apps outside the process");
     } catch (_) {
       return;
     }

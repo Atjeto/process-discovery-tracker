@@ -38,8 +38,9 @@ transcript.json         its parsed segments and sync offset               transc
 ```
 
 The viewer never writes `transcript.json` itself except to set its
-`offset_ms` on Sync and to delete it on Remove transcript; attaching one runs
-`transcript_import.py`.
+`offset_ms` on Sync; attaching one runs `transcript_import.py`, and Remove
+transcript takes `transcript.json` and the copies in `transcript/` out of
+the folder (Ctrl+Z puts them back).
 
 A session can also start from a video or from nothing (`manifest.source`
 `"video"` or `"blank"`, contract C16): a folder with `manifest.json`, an
@@ -104,16 +105,17 @@ survives every re-analysis.
 |---|---|---|
 | `steps[]` | pipeline (drafts), viewer (analyst edits) | The step entities (below) |
 | `pattern_run` | viewer | The run confirmed as the reference, and the draft-fix counts (contract C3) |
+| `opened_runs[]` | viewer | The case ids of the other runs opened in Steps once the reference run was confirmed; the Checklist ticks *Review the other transactions* when every one is there |
 | `document` | viewer | The PDD's document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions, improvement, notes (C6) |
 | `marker_edits[]` | viewer | Rename, re-time, delete or insert a run marker; replayed on a derived stream, the raw marker stays |
-| `reference_maps[]` | viewer | The editable map copies and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/` |
+| `reference_maps[]` | viewer | The editable map copies and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/`. Each row keeps the signature of the maps its steps drew (`forked_from_steps`, lane FX2), so the app says when the steps changed after the copy was made |
 | `external_video` | viewer | The attached video: `{ path, offset_ms, attached_at }` |
 | `step_filters` | viewer | Apps (and window titles) left out of the analysis |
 | `excluded_ranges[]` | viewer | Time spans left out of drafting and statistics |
-| `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; its text leaves the notes out, and the step map shows a step's notes and files beside its task (C18) |
+| `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; it leaves the notes out (its text and, lane FX2, its map pictures), and the step map shows a step's notes and files beside its task (C18) |
 | `handoffs[]` | viewer | The versions handed to the developers (Export, Hand off...): `{ version, handed_off_at, by, note }`, oldest first; every PDD and Technical details workbook says which version it is (contract C20) |
 | `notes[]` | nobody now | The product edition's timestamped Flow notes; both writers seed it empty and round-trip old entries |
-| `analysis_overrides[]` | nobody now | Corrections to the waste and automation estimates; applied when an older file carries them |
+| `analysis_overrides[]` | nobody now | The product edition's corrections to the waste and automation estimates; since lane FX1 cut those estimates nothing reads them, and they round-trip |
 | `process_exclusions` | pipeline | What the self and ignored-app filter dropped; regenerated every run |
 | `calibration` | nobody (hand-edited only) | Two tuning knobs; absent means the defaults |
 | `classification_overrides[]` | nobody now | Applied when an older file carries them; classification has no editing UI (AD-16) |
@@ -150,9 +152,9 @@ A drafted step carries its identity: `draft_key`
 (`"<app>|<screen>|<commit>"`), `name_source` (`remembered` or `draft`) and
 `end_reason` (`commit`, `screen_change`, `run_end`). A merge or a split drops
 those. A merge of drafted steps then keeps `draft_keys`, the members' keys in
-order, so the merge still matches the same drafts in other runs and in saved
-processes. A step added by hand carries none of them. Drafts outside every
-run have `case_id: null`; the map and the step BPMN leave them out.
+order, so the merge still matches the same drafts in other runs. A step
+added by hand carries none of them. Drafts outside every run have
+`case_id: null`; the map and the step BPMN leave them out.
 
 A draft is named, in this order, by a step the analyst named in this session
 with the same `draft_key`, then by the remembered-names store below, then by
@@ -172,6 +174,16 @@ that carries either stays `edited` through every analysis. The viewer's
 live map and the step map draw the same edges from them
 (`shared/flow-links-golden.json` pins both).
 
+Contract C19 adds sub-processes: a step's `sub_steps` holds its sub-steps,
+the same shape, at any depth (`annotations.steps` stays the main level). A
+group made by *Group into a sub-process* carries `group: true`; a sub-step
+drafted from a recorded action carries `action_key`
+(`"<app>|<screen>|enter:<field>"` or `"<app>|<screen>|click:<control>"`)
+and no `draft_key`. A link that Group moved carries where it was, for
+Dissolve to give it back (lane FX2): `lifted_from` (the member steps it
+left) or `pointed_to` (the member it pointed at before its group). Readers
+of the flow read `to` and `when` only.
+
 ## The analyst's library
 
 A small store lives on the analyst's machine, outside any session folder,
@@ -185,6 +197,12 @@ The saved processes (`processes.json`, contract C5) left the app on
 2026-09-24 (owner: a process is recorded once); a file left there is not
 read.
 
+Beside it, in the same user data folder: `handoffs/`, where a hand-off zip
+opened with *Open a hand-off (.zip)...* is extracted and opened read only
+(contract C20), and `pdt-removed/`, where a removed screenshot, attachment,
+video copy, edited map file or transcript waits for its Undo (emptied when
+the viewer starts).
+
 It follows the annotation rules: a file that cannot be read is never
 replaced, and writes go through a temp file and a rename.
 
@@ -197,7 +215,7 @@ renderer keeps it in `viewer/state.js` (`State.getSession()`):
 
 | Field | Source | Notes |
 |---|---|---|
-| `sessionFolder` | | Resolved absolute path; the key for undo and saves |
+| `sessionFolder` | | Resolved absolute path; the key for undo and saves. The folder Windows' Extract All makes of the SME's zip resolves to the recording folder inside it (`project-folder.js`, lane FX2) |
 | `manifest` | `manifest.json` | Required: a folder without it is refused |
 | `events` | `events.jsonl` | Parsed and sorted by timestamp; a malformed line is skipped |
 | `stats`, `analysis` | `stats.json`, `analysis.json` | `null` until the session is analyzed |
@@ -208,6 +226,7 @@ renderer keeps it in `viewer/state.js` (`State.getSession()`):
 | `externalVideoOffsetMs` | `annotations.external_video.offset_ms` | Video t=0 is `manifest.started_at` plus this offset |
 | `integrity` | `session-integrity.json` | `{ missing: [...] }`: files that did not survive the copy |
 | `transcript`, `transcriptError` | `transcript.json` | The parsed transcript, or `null`; a file that exists but cannot be used is reported in one line and otherwise ignored |
+| `readOnly` | | A hand-off opened read only (contract C20): a folder under `<userData>/handoffs`, or a hand-off unzipped by hand; nothing in it is written |
 
 Every surface places transcript sentences through `viewer/transcript-model.js`,
 the one implementation of the time rule in SCHEMA.md (contract C8).
@@ -229,7 +248,9 @@ edit -> persistAnnotations(annotations, label, topics)          (session.js)
   to the session folder and cleared when another session opens.
 - Only an analysis (the pipeline) re-reads the folder; edits never reload it.
 - Renames, and the Remembered step names dialog's Rename and Forget, also
-  write the library store above, through their own IPC calls.
+  write the library store above, through their own IPC calls. Their undo
+  entry keeps the store's entry from before, so Ctrl+Z (and Ctrl+Y) put the
+  remembered name back too (lane FX2, `viewer:restoreStepName`).
 
 ## Conventions
 

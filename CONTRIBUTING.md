@@ -48,8 +48,9 @@ npm test
 
 The viewer runs the pipeline with `PDT_PYTHON` when set, else
 `viewer/python/python.exe`, else the `python` on PATH; in development it
-finds `../normalization/normalize.py`. `docs/architecture/VIEWER.md` still
-describes the product-edition viewer; read the code first.
+finds `../normalization/normalize.py`. The app has no reload key: after a
+code change, quit it and start it again. Architecture:
+[docs/architecture/VIEWER.md](docs/architecture/VIEWER.md).
 
 ### Normalization (`normalization/`)
 
@@ -105,8 +106,9 @@ node run-all.js          # every smoke in turn, then one summary line each
 ```
 
 Each smoke launches the real viewer on a throwaway profile against a temp,
-re-analyzed copy of a demo session, so it needs a Python with the pipeline
-dependencies. `e2e/session-smoke.js` holds the map connectivity pin. The
+re-analyzed copy of a demo session (or a project it makes in a temp folder),
+so it needs a Python with the pipeline dependencies.
+`e2e/session-smoke.js` holds the map connectivity pin. The
 window is 1500x950 unless `PDT_E2E_WINDOW` names another size (for example
 `1366x768`, the work laptop). CI's runner display is 1024x720 and Windows
 refuses a window larger than the display, so check small sizes before
@@ -114,8 +116,7 @@ trusting a layout change; each launch logs the size it really ran at.
 
 UI bugs are invisible to the unit suites: validate a UI change in the real
 viewer. [docs/CHIP-GUARDRAILS.md](docs/CHIP-GUARDRAILS.md) has the launch
-recipe and the hard invariants (its command list and DOM-handle map predate
-the light viewer and are being rewritten).
+recipe, the hard invariants and the DOM handles of every surface.
 
 ## Building and releasing
 
@@ -136,12 +137,17 @@ Full procedure: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md).
   test changes in the same commit as the behavior it pins; never delete a
   guard to make it pass.
 - **Shared rules, not copies.** The value-free label rules
-  (`shared/process-label-patterns.json`, `shared/screen-label-patterns.json`)
-  and the platform signatures (`shared/recognition-patterns.json`) are loaded
-  by both Python and JS; their goldens in `shared/` pin both sides. The
-  run-differences alignment is implemented in both languages and pinned by
-  `shared/run-differences-golden.json` and `shared/flow-links-golden.json`: change one side only together with
-  the other and the golden.
+  (`shared/process-label-patterns.json`, `shared/screen-label-patterns.json`),
+  the platform signatures (`shared/recognition-patterns.json`) and the
+  system names (`shared/system-names.json`) are loaded by both Python and
+  JS; the label goldens in `shared/` pin both sides. The rules written in
+  both languages are pinned by one golden each: the differences between
+  transactions (`run-differences-golden.json`), the step flow's edges
+  (`flow-links-golden.json`), the maps a project holds
+  (`sub-process-maps-golden.json`), and the signature of the steps the
+  Overview's rows were measured from (`steps-signature-golden.json`);
+  `pdd-rows-golden.json` pins the PDD's rows the Overview shows. Change one
+  side only together with the other and the golden.
 - **Raw capture data is immutable.** `events.jsonl` is append-only; every
   analyst decision is an `annotations.json` entry. Re-analysis stays
   non-destructive, and keys of cut features round-trip untouched.

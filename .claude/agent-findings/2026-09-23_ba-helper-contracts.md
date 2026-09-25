@@ -13,7 +13,8 @@ Two implementation choices refine the plan's wording (plan section 6):
   engine stays as support (shipped vocabs still enrich control names).
 - AD-8: light template is a **saved-process store** matched in the viewer by
   `draft_key` overlap (C5). `canonical_match.py`, the Process Template editor and
-  `viewer/canonical-author.js` are therefore not needed and are cut.
+  `viewer/canonical-author.js` are therefore not needed and are cut. (Lane CL
+  removed the saved-process store from the app on 2026-09-24: see C5.)
 
 ## C1. Drafted steps (pipeline output, `annotations.steps[]`, state `auto_suggested`)
 
@@ -78,6 +79,15 @@ pattern; the probe line's fallback N when stats lack `draft_summary`.
   at least twice, reads "Repeated: <name>, <n> times." and is one; the pattern run is
   compared with nothing. Steps that start at one moment keep their list order on both
   sides (the viewer no longer breaks the tie by step_id).
+- Amended by lane CC (2026-09-25): a stretch of a run left out of the analysis
+  (`annotations.excluded_ranges`, each range cut to the run's span) drafts no step, so
+  the differences say it once, first ("Part of this transaction was left out of the
+  analysis (1:10 to 1:45).", the times since the recording started), and the pattern
+  steps inside the stretch (after the pattern position of the nearest run step before
+  it that the pattern has, before that of the nearest one after it) are not Skipped.
+  One rule on both sides, pinned by the golden's cases with `excluded_ranges`
+  (`viewer/run-differences.js` `leftOutStretches`, `pdd_export.py` `left_out`). The left-out
+  line is no difference.
 
 ## C4. Remembered names (light vocab), analyst machine
 
@@ -109,9 +119,22 @@ File: `<viewer userData>/pdt-library/remembered-names.json`, written atomically
   machine drafts the same names, and a rename in run 2 still names runs 3 to N
   after re-analysis when run 1 was confirmed under the drafted name. Viewer note:
   the Rename of the Remembered step names dialog (Saved names... until lane CL)
-  renames the store and the session's drafts
-  but not its edited or confirmed steps of that key, so the next analysis gives
-  those drafts the session's name back (lane V to align).
+  renamed the store and the session's drafts
+  but not its edited or confirmed steps of that key, so the next analysis gave
+  those drafts the session's name back. Settled by lane V2: the dialog's Rename
+  renames the store, every draft of the key and every other step of the key that
+  carries the old name, at every level (`runs-model.js` `renameSavedName`), and Forget
+  gives those steps their drafted name back (`forgetSavedName`), so the session's own
+  names never bring the old one back.
+- **Amended by lane FX2 (2026-09-25).** An undo or a redo of a rename or a forget puts
+  the store's entry for the key back as it was before or after (the undo entry keeps
+  both; `viewer:restoreStepName`, `names-store.js` `restoreName`). A drafted sub-step
+  (C19) takes its name, in this order, from the project's own sub-steps with its
+  `action_key` (typed names before accepted ones, the reference transaction's first,
+  then time order; hidden ones name nothing: `sub-process-verbs.js`
+  `projectActionNames`, F1's rule), then from the store under `"action|" + action_key`,
+  then its drafted name, so Open as a sub-process drafts the same names on another
+  computer.
 - **Groupings key on identity, not on names.** The repeats (motif and bounce
   detection, section 4.1's repeated steps) and the automation groupings (segment
   signatures) key on `step_suggest.step_identity`: `draft:<draft_key>`,
@@ -197,7 +220,10 @@ parsed, derived `transcript.json` is written next to `annotations.json`:
   the video offset uses. `clock` is informational. Sync (pick a sentence, click the
   timeline moment) writes `offset_ms` into transcript.json; re-import resets it to
   null. Remove transcript deletes transcript.json only; `transcript/<original>`
-  stays.
+  stays. Amended by lane CC (2026-09-25): Remove transcript takes `transcript.json`
+  and every file in `transcript/` out of the folder, parked under
+  `<userData>/pdt-removed/` (`viewer:removeTranscript`), and its Undo puts them back
+  (`viewer:restoreTranscript`; a file of the same name attached since is kept).
 - Pulling a sentence appends it to a step's `description` or to a C6 document field;
   the analyst can edit it afterwards.
 - CLI (built in L11a, `normalization/transcript_import.py`):
@@ -311,6 +337,12 @@ application and a window title into the business system the work happened in.
   **Viewer half (V1):** when no As-Is copy is chosen, pass a bpmn-js render of
   `process_map_step.bpmn` (the same `renderEntryToPng` path the copy uses, read
   from the session folder), so the map from the runs prints like the copy.
+  Settled by V1: the cytoscape PNG is no longer passed (`dfg-viewer.exportPng` was
+  removed as unused by lane FX1). Amended by lane FX2 (2026-09-25): the pictures the
+  viewer draws for the PDD leave the steps' notes out (`refmap-ui.js` drops each
+  step's note annotation and its line from the drawing; the file is not touched),
+  since notes stay in the app; the Map, Export's map image and the BPMN file keep
+  them.
   The pipeline cannot draw the image itself (no renderer in the bundled Python).
   Without an image the PDD still fills 3.1: the map from the runs as a table (each
   step and the steps that followed it, with the number of runs), plus a line naming
@@ -325,6 +357,18 @@ application and a window title into the business system the work happened in.
   the findings and the step-based estimates nothing read; `memo_selection` still
   round-trips (C10). `analysis.json` `format` is 4, and the one check the Overview shows,
   the apps the recorder saw with less detail, is its own key, `coverage_caveat`.
+- Amended by lane CC (2026-09-25): `analysis.json` carries the rows the PDD prints in
+  its sections 5 and 6, `pdd_data` and `pdd_time`, computed by the functions the PDD
+  prints them with (`pdd_export.pdd_rows`: `data_section`, `time_section`), and the
+  Overview shows them as they are (one source; `shared/pdd-rows-golden.json`). With
+  them, `steps_signature` (`normalization/steps_signature.py`), the signature of the
+  steps they were measured from; the viewer takes the same one
+  (`viewer/rows-freshness.js`, both pinned by `shared/steps-signature-golden.json`) and
+  analyzes again as the Overview opens when the two differ. A failure writes the key
+  `null` with one `stage_errors` entry (`pdd_rows`, `steps_signature`). `format` became
+  3 then (4 since lane FX1). Lane N-P (AD-29) made the step map's words
+  "transactions": a task's documentation reads "In N of M transactions", a branch
+  "N of M transactions".
 - `process_map_step.bpmn` (written by `--mine`, the Fork source): valid BPMN 2.0
   with diagram interchange, laid out left to right and wrapped into rows when one
   row would print its labels below 8.5 pt on a landscape page (rows end where the
@@ -407,7 +451,21 @@ Everything the analyst adds lives in the session folder, so it travels with it.
   viewer's words; lane FX3), "Recorded: Nothing recorded" for a blank session, and
   points at the video time in a video session.
 - **Removal.** Removing a screenshot, note or attachment the analyst added deletes its
-  entry and its copied file; recorder screenshots are only hidden.
+  entry and its copied file; recorder screenshots are only hidden. Settled by V3-V: a
+  removed file waits in `<userData>/pdt-removed/` for its Undo, which brings it back
+  (the folder is emptied when the viewer starts). Amended by lane CC (2026-09-25): Remove
+  video and Replace take the video's copy in `video/` out the same way, and an edited
+  map's file in `derived_maps/` leaves with its row; an Undo that names a file again
+  brings it back. Amended by lane FX2 (2026-09-25): a screenshot, an attachment or a
+  video is refused before anything is copied into the folder while the project's
+  analysis runs (the entry's save would be refused, leaving an unlisted file); a Split,
+  a Merge or + Step of steps the analyst added gives steps the analyst added
+  (`manually_authored`, `analyst-content.js` `derivedState`); the implicit run reads
+  "One transaction (not marked)" everywhere in the viewer (`AC.IMPLICIT_TRANSACTION`).
+- **The video's start.** Settled by V3-V: a video project's `started_at` is the video
+  file's creation time, else its modified time (`new-project.js` `startedAtOf`); the
+  analyst is not asked (the "moment the analyst says" above was not built: nothing
+  shows a video project's time of day).
 
 ## C17. Step flow: conditions and links set on steps (owner 2026-09-24; lanes F-P and F-V)
 
@@ -513,6 +571,13 @@ map editor. The default after a step is always the next step in its transaction.
   the viewer tells a copy made before C18 by the absence of a user or manual task, the legend and
   a task's colour (`reference-maps.js` `predatesRichMap`). The session golden pins the new kinds
   (every task of the demo a `task`; `userTask` and `manualTask` 0).
+- Amended by lane FX3 (2026-09-25): a task a visible step of which is flagged as waste
+  (`flags.waste`) gets a text annotation "Waste" above it (`TextAnnotation_waste_<k>`,
+  documented "Flagged as waste: this step should not be needed.", joined by
+  `Association_waste_<k>`), in its notes' place or right of its notes, and the legend
+  ends with "Waste: a step that should not be needed" when its plane has one. The PDD's
+  pictures keep it. Lane FX2 marks the same steps on the live map: a dashed border and
+  a last line "Waste".
 - **The As-Is map in the viewer is interactive** (the illustrated map was dropped: the links
   replace it): the chosen As-Is copy renders with bpmn-js, not as a flat image, and a click on a
   task opens the step panel for the step it stands for (matched by the map's node rule on the
@@ -662,6 +727,33 @@ no separate image file per map (the owner's remark about images described today'
   differences, data and times below the main level in the PDD; sub-steps in saved processes (C5
   stays flat); merge, split and adding a moment on a sub-process; the draft-fix counter below the
   main level; sub-steps drafted from events outside the step's evidence.
+- **Settled by lanes SUB-P, SUB-V1 and SUB-V2 (2026-09-24).** Nodes are ordered by their first
+  visit at a level, with or without `sub_steps` (golden case 13); a chapter prints the reference
+  transaction's first non-empty trace; every printed step whose node has a chapter carries the
+  pointer; a sub-step's context line counts over the transactions that ran the sub-process; an
+  unreadable `--pdd-map-images` manifest warns and falls back to tables. A drafted sub-step's name
+  is the imperative of the Interactions phrase ("Click Save order", "Enter Product code"); Group
+  groups every maximal stretch of the ticked kinds, single steps included; the main level keeps
+  its confirmed rule and the levels below read confirmed only without drafts; Dissolve asks only
+  when an analyst description or flow would go; steps that start within one second keep their
+  list order below the main level. On the Map, *Open sub-process* opens its map, choosing a map
+  lets go of a Steps selection at another level, maps without a number show in the picker
+  without one, and the BPMN export analyzes first when the step map is older than the steps.
+  Later lanes changed two of these: the Timeline draws a zero-length step (lane FX2), and an
+  exported sub-process picture is named after the project, "<project> map of sub-process
+  <number>.svg" (lane FX3).
+- **Amended by lane FX2 (2026-09-25).** Group remembers where each link it moves came from, so
+  Dissolve gives it back: a link taken from a member onto the group carries `lifted_from` (the
+  member's step id; every member's when two carried the same link, kept once), and a link from
+  outside pointed at the group instead of a member carries `pointed_to` (that member's id). On
+  Dissolve, a link with `pointed_to` goes back to that member and a link with `lifted_from` back
+  to those members (else, as before, to the first or the last sub-step); both keys are then
+  dropped, and so is `pointed_to` when the analyst sends the link elsewhere
+  (`step-flow.js` `setLinkTarget`). Readers of the flow read `to` and `when` only (C17). Group
+  into a sub-process says before it acts how many steps it groups and where the same steps are
+  grouped too (`sub-process-verbs.js` `groupPromptText`). + Step at a moment a sub-process holds
+  goes into it, at any depth: the sub-step that holds the moment is split there, else a new
+  sub-step starts at it, so a sub-step gets a time as a main-level step does (`momentPlace`).
 
 - **Amended by lane MV (2026-09-24)**, for C15, C18 and C19: the Map opens on the map the PDD
   prints, the chosen As-Is copy else `process_map_step.bpmn`, drawn by bpmn-js and linked like
@@ -669,6 +761,18 @@ no separate image file per map (the owner's remark about images described today'
   transactions ran*). At a level the copy has no plane for, the step map's plane shows with one
   line saying so. A stale step map is analyzed once when the Map needs it. *Edit* keeps a copy
   only from its first change.
+- **Amended by lane FX2 (2026-09-25)**, for ADR-0019's edited copies: a new copy's
+  `reference_maps` row keeps `forked_from_steps`, the signature of the maps the steps drew when
+  it was made (`viewer/asis-freshness.js` `stepsMapSignature`: every map of `mapTree`, its boxes
+  and its lines by the live map's rule, each box's notes, files, system, hand marker, sub-process
+  and waste mark, and the first lines of the Trigger and the Result; a duplicate keeps its
+  source's). A copy is stale when the steps draw another map (`copyStale`; a copy made before
+  falls back to `forked_from_sig`, then `forked_from_hash`). While the chosen As-Is copy is
+  stale, the Map's header line says so with *Copy again*, and the Overview's Checklist lists
+  *Check the As-Is map* before the export. *Copy again* (the header, or a gallery row) makes a
+  new copy of the process map as it is now, named and kinded like the stale one, kept at its
+  first change like Edit's (leaving the editor without one keeps nothing), and then gives it the
+  stale copy's PDD role; the stale copy stays.
 
 ## C20. Hand-off versions, the read-only open and the Technical details (lane HV)
 

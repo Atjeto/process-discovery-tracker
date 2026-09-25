@@ -5,8 +5,10 @@ capture app, or a project started from a video or from nothing), runs the
 Python pipeline by itself, and shows the project in four levels: Overview,
 Timeline, Steps and Map. The analyst confirms the reference transaction,
 sets the flow where the process branches or loops, reviews the other
-transactions, writes the document and exports the PDD, the process map and
-the whole project as a zip.
+transactions, writes the document and exports the PDD, the process map, the
+Technical details and the whole project as a zip. *Hand off...* gives the
+developers a numbered version, which they open read only with *Open a
+hand-off (.zip)...*.
 
 How it is built: [docs/architecture/VIEWER.md](../docs/architecture/VIEWER.md)
 and [VIEWER-TIMELINE.md](../docs/architecture/VIEWER-TIMELINE.md). What it
@@ -16,7 +18,7 @@ does: [docs/FEATURES.md](../docs/FEATURES.md).
 
 ```
 npm install
-npm start          # the app; Ctrl+R reloads the renderer
+npm start          # the app (no reload key: after a code change, quit and start it again)
 npm test           # the unit suite (node:test), incl. the UI copy guard
 ```
 
@@ -47,7 +49,9 @@ packaged build; the shared rule files in `../shared/` or
   *Saved*), and Export, *Whole project (.zip)* makes one zip of the folder,
   next to it, to hand the project to someone.
 - On the analyst's computer (the app's user data folder): the remembered
-  step names in `pdt-library/`, and the recent list, the theme and the
+  step names in `pdt-library/`, the hand-offs opened in `handoffs/`, the
+  files removed from a project waiting for an Undo in `pdt-removed/`
+  (emptied when the app starts), and the recent list, the theme and the
   layout in the app's local storage.
 
 ## Tests

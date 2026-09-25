@@ -186,8 +186,8 @@ inductive miner, which is fast at this size. When it fails, the analysis
 prints `[normalize] WARNING: step BPMN failed: <error>` and still completes:
 the viewer's Map still draws the runs, Edit as the As-Is map says the
 analysis drew no process map, and the PDD prints the map as a table. The
-viewer's hint for a miner error: leave noisy apps out (Steps, Leave apps
-out) to cut the complexity.
+viewer's hint for a miner error: put noisy apps among the Apps outside the
+process (the Steps toolbar) to cut the complexity.
 
 ### A BPMN tool rejects the map
 
@@ -199,14 +199,25 @@ on an element order or a namespace. That is a known swap point: see
 
 ### Open project shows nothing
 
-Open the recording folder itself (Open, *Open project...*): the one that
-holds `manifest.json`. A zip made by the capture app has the recording
-folder as its root, so after Explorer's Extract All the recording is the
-folder inside the extracted one.
-A folder without it shows "Failed to load: Not a project folder (no
-manifest.json)". The viewer has no developer tools to look further. Files
-that did not survive the copy from the SME's machine are named in a warning
-on the Overview (from `session-integrity.json`).
+Open the recording folder (Open, *Open project...*): the one that holds
+`manifest.json`. A zip made by the capture app has the recording folder as
+its root, so after Explorer's Extract All the recording is the folder
+inside the extracted one; choosing the extracted folder opens it too (lane
+FX2). Any other folder without `manifest.json` says "The project did not
+open: This folder is not a project: it has no manifest.json." with what to
+open instead. The viewer has no developer tools to look further. Files that
+did not survive the copy from the SME's machine are named in a warning on
+the Overview (from `session-integrity.json`).
+
+### A zip does not open as a hand-off
+
+*Open a hand-off (.zip)...* opens only a zip that *Hand off...* made: one
+project folder whose `annotations.json` lists a version, with that
+version's PDD and Technical details beside it. Any other zip (the SME's
+recording, a whole project's zip) is refused with "This zip is not a
+hand-off.": unzip it first (right-click it, Extract All) and open its
+folder with *Open project...*. A hand-off opens read only: nothing in it
+can change, and no analysis runs.
 
 ### The analysis is stuck, or the steps and the map look out of date
 

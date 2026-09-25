@@ -131,8 +131,9 @@ The viewer says *transaction* for one pass through the process and
 - **New and Open.** The New menu starts a project **from a video** (the
   video is copied into a new folder and the timeline follows it) or an
   **empty** one; the Open menu opens a project folder (the one the SME's
-  capture app saved, or one made with New) and the recent projects, named
-  by their document title once it is written.
+  capture app saved, or one made with New; the folder Windows' Extract All
+  makes of the SME's zip opens the recording inside it) and the recent
+  projects, named by their document title once it is written.
 - **The analysis runs by itself** when a folder opens without a current one
   and after the changes that need it, with one status line and Cancel. A
   run changes the project only when it finishes, so Cancel leaves the steps
@@ -142,8 +143,10 @@ The viewer says *transaction* for one pass through the process and
 
 - **The Checklist**: the five acts (mark the transactions, confirm the
   reference transaction, review the other transactions, write the
-  document, export the PDD), each ticked once done and explained in its
-  tooltip, with one button for the next act.
+  document, export the PDD), each ticked once done (the export never: the
+  app keeps no record of it) and explained in its tooltip, with one button
+  for the next act. While the As-Is map the PDD prints was made before the
+  steps changed, it adds *Check the As-Is map*.
 - **The project line**: who recorded it, its transactions, the reference
   transaction's steps, the video and the transcript with Attach, Replace
   and Remove (each taken out with its files in the folder, and back with
@@ -170,11 +173,17 @@ The viewer says *transaction* for one pass through the process and
 
 **Timeline**
 
-- **One timeline** of the recording: transactions, activity by system,
-  idle, screenshots, the steps, the transcript and notes, on one clock (the
-  time since the recording started), each lane named in a header column at
-  its left (a key that looks like its marks, its name, a tooltip saying
-  what it shows). A video project's timeline runs on its video.
+- **One timeline** of the recording: transactions, activity by system (an
+  app among the apps outside the process hatched), idle, screenshots (the
+  recording's and the ones added at a moment), the steps (a one-click step
+  too), the transcript and notes, on one clock (the time since the
+  recording started), each lane named in a header column at its left (a key
+  that looks like its marks, its name, a tooltip saying what it shows). A
+  video project's timeline runs on its video; a project with neither a
+  recording nor a video says so, with *Attach video*. The Transaction select
+  dims the other transactions, *Lanes* picks the lanes, and the zoom has a
+  minimap. Under it, the *Raw events* drawer lists every event on the same
+  clock, with *+ step* at an event's time.
 - **The video beside it**, attached and synced with two clicks and copied
   into the folder so it travels with it; *Remove video* takes it out with
   its copy, *Replace* takes out the copy it replaces, and Ctrl+Z brings
@@ -218,20 +227,22 @@ The viewer says *transaction* for one pass through the process and
   field typed, a click; named without the values typed), in every
   transaction where it happens; *Group into a sub-process...* moves ticked
   steps, one after the other, into a new sub-process, and the same steps in
-  every transaction too. Its row's *▸ N sub-steps* opens it: a breadcrumb
+  every transaction too (it says first what it will group, and where). Its
+  row's *▸ N sub-steps* opens it: a breadcrumb
   names the way down and goes back up, and the list shows one block per
   transaction that goes through it, compared with the reference
-  transaction's. Every step verb works inside it, the flow stays inside it,
-  Confirm transaction reaches every level, and *Dissolve sub-process* undoes
-  it. The step panel, the Timeline's steps lane and the Map follow the level
-  shown.
+  transaction's. Every step verb works inside it (*+ Step* at the video's
+  playhead gives a sub-step its time), the flow stays inside it, Confirm
+  transaction reaches every level, and *Dissolve sub-process* undoes it,
+  each link back on the step it came from. The step panel, the Timeline's
+  steps lane and the Map follow the level shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
   Alt+Down), or *+ Step* at the video's playhead.
 - **Remembered step names**: a name given once names the same drafted step
   (the same screen and button) in every project; the Steps toolbar's
-  *Remembered step names...* renames or forgets one. *Apps outside the
-  process...* drops an application used during the call (Teams, Outlook)
-  from the drafts.
+  *Remembered step names...* renames or forgets one, and Ctrl+Z of a rename
+  puts the remembered name back too. *Apps outside the process...* drops an
+  application used during the call (Teams, Outlook) from the drafts.
 
 **Map**
 
@@ -252,10 +263,13 @@ The viewer says *transaction* for one pass through the process and
   transaction took.
 - **Edit as the As-Is map**: an editable BPMN copy for the PDD (and a To-Be
   copy), kept once something is changed in it: leaving the editor without a
-  change keeps nothing. An analysis never changes a copy; a copy made before
-  the step map had its colours, notes and attachments offers *Copy again*
-  for them. *Delete* takes a copy out with its file, and Ctrl+Z brings both
-  back.
+  change keeps nothing. An analysis never changes a copy. When the steps
+  change after the As-Is copy was made, the Map's line and the Checklist say
+  so, with *Copy again*: a new copy of the process map as it is now, kept at
+  its first change, which then takes the old one's place in the PDD (a copy
+  made before the step map had its colours, notes and attachments offers
+  the same for them). *Delete* takes a copy out with its file, and Ctrl+Z
+  brings both back.
 - **Boxes moved by hand**: on how the transactions ran, a dragged box stays
   where it was put (per map, on this computer), and *Reset layout*, beside
   *Fit*, puts the boxes back.
@@ -270,16 +284,19 @@ The viewer says *transaction* for one pass through the process and
 **Everywhere**
 
 - **The step panel**: from a task of the map (or a box of how the
-  transactions ran), a timeline step band or a Steps row, every occurrence of the step with its moment in a small
-  video, its screenshots, what was said and its notes, and its flow in one
-  line when one is set.
+  transactions ran), a timeline step band or a Steps row, every occurrence
+  of the step with its moment in a small video (a moment the video does not
+  cover says so), its screenshots, what was said and its notes, its flow in
+  one line when one is set, and the waste flag; its foot goes to the step in
+  Steps, or on the Timeline.
 - **Saved as you go**: every change saves itself to the project folder, and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.
 - **Export**: the PDD (with a picture of each sub-process's map in its
-  chapter), the process map as an image (SVG, the picture the PDD prints and
-  the Map shows first, of the level the Map shows) and as BPMN (one file
-  with every map), the *Technical details (.xlsx)*, and the
+  chapter; its pictures leave the steps' notes out), the process map as an
+  image (SVG, the map the Map shows first, of the level it shows, with the
+  steps' notes) and as BPMN (one file with every map), the *Technical
+  details (.xlsx)*, and the
   *Whole project (.zip)*: one zip of the folder, next to it, to hand the
   project to someone. A file is offered under the project's name (the
   document title once it is written: *Order to cash PDD.docx*, *Order to
@@ -298,7 +315,8 @@ The viewer says *transaction* for one pass through the process and
   own, opened the same way.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
   and a dark theme.
-- **An unreadable annotations file** is said in a banner, and nothing is
-  saved over it; *Restore the newest backup* puts back the newest backup
+- **An unreadable annotations file** is said in a banner, which is all the
+  page shows (nothing that reads as an empty project), and nothing is saved
+  over it; *Restore the newest backup* puts back the newest backup
   that can be read (it asks first, naming when it was saved) and keeps the
   unreadable file beside it.

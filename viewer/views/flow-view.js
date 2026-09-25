@@ -511,10 +511,9 @@ async function loadSessionIntoView(folder, opts) {
   State.setSelectedStepId(null);
   State.setMultiSelectedStepIds(new Set());
   renderStepsLevel();
-  // The Overview level (lab-phase §A5) is the default on load; it reads the
-  // freshly-loaded analysis.json blocks and (R4) renders the Evidence modules
-  // that the retired Analysis level used to own, so refreshing it here covers
-  // the what-is-left line, the session summary, the findings and the Evidence.
+  // The Overview is the default level on load; it reads the freshly loaded
+  // analysis.json (the Observations are the PDD's rows in it), so drawing it
+  // here covers the Checklist, the project line and the Observations.
   renderOverviewLevel();
   // Refresh case-scope dropdown -- clear scope if the new session no
   // longer contains the previously-selected case.

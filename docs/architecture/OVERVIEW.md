@@ -15,18 +15,22 @@ analyst / process manager.
 
 | Role | Machine | Runs |
 |---|---|---|
-| **SME** | their own work PC | the **Capture** app, while doing the process a few times, one run hotkey press per run |
+| **SME** | their own work PC | the **Capture** app, while doing the process a few times, the transaction key (or the recording bar's button) at the start of each transaction |
 | **Analyst** | their own PC | the **Viewer**, which runs **Normalization** |
+| **Developer** | their own PC | the **Viewer**, on a hand-off the analyst made, read only |
 
-The two halves never talk over a network. The hand-off is a **session
-folder**, a self-contained directory copied from the SME's PC to the
-analyst's.
+The two halves never talk over a network. What moves between them is a
+**session folder**, a self-contained directory copied from the SME's PC to
+the analyst's; the analyst hands it to the developers as numbered versions
+(a hand-off zip, contract C20).
 
-Two input modes are supported (plan D8): the recorder alone, and the recorder
-plus a video (plus, optionally, a Teams transcript). The recorder always
-runs: it is the recording when there is no video, it drafts the steps, it
-measures the timings, and it knows which field in which app was used. The
-video adds the SME's narration and what happened away from the keyboard.
+A project starts from one of three things (plan D8, reversed in part by
+AD-25 and AD-27; contract C16): a recording, which may come with a video and
+a Teams transcript; a video of the process alone; or nothing. The recorder,
+when there is one, drafts the steps, measures the timings and knows which
+field in which app was used; a video adds the SME's narration and what
+happened away from the keyboard. Without a recording the analyst adds the
+steps by hand, on the video's clock when there is a video.
 
 ## The three layers
 
@@ -51,10 +55,10 @@ video adds the SME's narration and what happened away from the keyboard.
 
 | Layer | Folder | Responsibility | Tech |
 |---|---|---|---|
-| **Capture** | [`capture/`](../../capture/) | Poll the foreground window every 5 s, record UI interactions, take screenshots, write a start and end marker per run from the run hotkey, drive OBS when configured, append to `events.jsonl`. | Electron 42 (main process) + a C# .NET 8 UI Automation recorder sidecar |
-| **Normalization** | [`normalization/`](../../normalization/) | Turn `events.jsonl` into runs (from the markers), draft each run's steps, keep the analyst's steps, compute statistics and the rows the PDD prints, mine the step-level BPMN, render the PDD. A separate CLI imports a meeting transcript. | Python with pm4py, pandas, python-docx |
-| **Viewer** | [`viewer/`](../../viewer/) | Load a session, run the pipeline, show the recording on a video-synced timeline, let the analyst confirm and edit steps, place a meeting transcript, draw the process map, fork editable maps, export the PDD. | Electron 42 + a bundled Python embeddable |
-| **Shared** | [`shared/`](../../shared/) | The data contract ([SCHEMA.md](../../shared/SCHEMA.md)) and the rule files both languages load: platform recognition, value-free labels, the run-differences golden. | JSON, Markdown |
+| **Capture** | [`capture/`](../../capture/) | Poll the foreground window every 5 s, record UI interactions, take screenshots, write a start and end marker per transaction from the transaction key and the recording bar, drive OBS when configured, append to `events.jsonl`. | Electron 42 (main process) + a C# .NET 8 UI Automation recorder sidecar |
+| **Normalization** | [`normalization/`](../../normalization/) | Turn `events.jsonl` into runs (from the markers), draft each run's steps, keep the analyst's steps, compute statistics and the rows the PDD prints, write the step-level BPMN (a plane per sub-process), render the PDD and the Technical details workbook. A separate CLI imports a meeting transcript. | Python with pm4py, pandas, python-docx; the workbook on the standard library |
+| **Viewer** | [`viewer/`](../../viewer/) | Load a project (or start one from a video or from nothing), run the pipeline, show the recording on a video-synced timeline, let the analyst confirm and edit steps and their sub-processes, place a meeting transcript, show the process map the PDD prints and edit As-Is and To-Be copies, export the PDD, hand off numbered versions, open a hand-off read only. | Electron 42 + a bundled Python embeddable |
+| **Shared** | [`shared/`](../../shared/) | The data contract ([SCHEMA.md](../../shared/SCHEMA.md)) and the files both languages load: platform recognition, value-free labels, system names, and the goldens that pin the rules written in both (the differences between transactions, the step flow's edges, the maps a project holds, the PDD's rows the Overview shows and the steps they were measured from). | JSON, Markdown |
 
 ## Key design principles
 
@@ -95,11 +99,14 @@ process-discovery-tracker/
 
 ## The data lifecycle
 
-1. **Capture.** The SME runs the tray app and presses the run hotkey at the
-   start of each run; pressing it again ends the open run and starts the
-   next. Interactions, window polls, markers and screenshots append to the
-   session folder; an OBS video is optional.
-2. **Hand-off.** The session folder is copied to the analyst's machine.
+1. **Capture.** The SME runs the tray app and presses the transaction key
+   (or the recording bar's button) at the start of each transaction;
+   pressing it again ends the open transaction and starts the next.
+   Interactions, window polls, markers and screenshots append to the
+   session folder; an OBS video is optional. (A project can also start in
+   the viewer, from a video or from nothing: contract C16.)
+2. **Copy.** The session folder is copied to the analyst's machine, or
+   zipped by the capture app's end summary and unzipped there.
    `session-integrity.json` lets the viewer flag files that did not arrive.
 3. **Open.** The viewer loads the folder. The analyst may attach a video and
    sync it to the session clock, and attach the meeting transcript (step 8).
@@ -112,11 +119,16 @@ process-discovery-tracker/
 5. **Confirm and review.** The analyst confirms the reference run, then reviews
    how each other run differs from it. Edits save to `annotations.json`;
    renames also go to the remembered-names store on the analyst's machine.
-6. **Map.** The viewer draws the process map from the runs' steps. Fork copies
-   `process_map_step.bpmn` into an editable As-Is or To-Be map under
+6. **Map.** The Map shows the map the PDD prints: `process_map_step.bpmn`,
+   or the edited As-Is copy once there is one; how the transactions ran,
+   drawn from the runs' steps, is one click away. *Edit as the As-Is map*
+   copies `process_map_step.bpmn` into an editable As-Is or To-Be map under
    `derived_maps/`.
-7. **Export.** The viewer runs the pipeline again with `--pdd-out` and the map
-   images; the PDD `.docx` is offered for saving.
+7. **Export.** The viewer runs the pipeline again with `--pdd-out` (and
+   `--tech-out` for the Technical details) and the map pictures; the file is
+   offered for saving. *Hand off...* makes the PDD and the Technical details
+   of a numbered version and zips them with the folder, next to it; a
+   developer opens that zip read only (contract C20).
 8. **Transcript (optional).** Attach transcript runs `transcript_import.py`,
    which parses a Teams `.vtt` or `.docx` file into `transcript.json`. The
    viewer places each sentence on the session clock (through the video's

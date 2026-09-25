@@ -3,7 +3,7 @@
 > Overview level. Field-level formats are in
 > [`shared/SCHEMA.md`](../../shared/SCHEMA.md); the decisions behind the
 > light version are in [ADR-0029](../adr/0029-ba-helper-refocus.md) and the
-> data contracts (C1 to C19) it points to.
+> data contracts (C1 to C20) it points to.
 
 ## Purpose and entry points
 
@@ -13,11 +13,14 @@ process map, and renders the PDD. The viewer runs it through
 [`viewer/python-runner.js`](../../viewer/python-runner.js) with the bundled
 Python; it also runs from a shell. There is no Analyze button: the viewer
 runs the pipeline by itself when a session opens without a current analysis
-(none, or one from an older pipeline), after Apps outside the process and after a time
-range is left out, inside Edit as the As-Is map, and before a PDD export
-that prints the map from the runs when that map is missing or older than
-the steps. Apply marker changes runs it on request; Help, Troubleshooting
-has Re-analyze for a stuck state.
+(none, or one from an older pipeline), after Apps outside the process,
+after a time range is left out or included again (and after an undo of
+either), as the Overview opens when the rows it shows are older than the
+steps, on the Map when the map it shows is older than the steps, inside
+Edit as the As-Is map, and before a PDD export, a map export or a hand-off
+when the step map is missing or older than the steps. Apply marker changes
+runs it on request; Help, Troubleshooting has Re-analyze for a stuck state.
+A project opened read only (a hand-off, contract C20) is never analyzed.
 
 ### `normalize.py` (contract C11)
 
@@ -85,9 +88,10 @@ The session golden. It copies each of the 10 demo sessions in
 `sessions/example-aggregate/` to a temp folder, runs `normalize.py --mine`
 there, and compares a projection with `normalization/golden/`: stable
 `stats.json` meta counts, the step count, the distinct `process_label` set,
-and the step map's task names, its tasks counted by kind (user and manual
-tasks, contract C18; none is left a plain task), and its start and end
-events with the end's name. Gateway and flow counts are left out because
+and the step map's task names, its tasks counted by kind (contract C18 as
+lane CL amended it: every task of the demo is a plain `task`, no user task
+and no manual task), and its start and end events with the end's name.
+Gateway and flow counts are left out because
 they move with the pm4py version; the viewer's e2e connectivity check pins
 the map's shape instead. Run it with a Python that has the pipeline
 dependencies (the bundled one); `--update` rewrites the goldens after an
@@ -107,7 +111,8 @@ helpers in `pipeline_stages.py`, in this order:
 1. **Exclude self and ignored apps** (`process_filter.py`). PDT's own windows,
    the `exclude_processes` lists in the session's config snapshot
    (`interactions.exclude_processes`, or a top-level one) and the analyst's
-   `step_filters` are dropped from the derived stream.
+   `step_filters` (the viewer's Apps outside the process) are dropped from
+   the derived stream.
    `events.jsonl` is never rewritten; what was dropped is recorded in
    `annotations.process_exclusions`.
 2. **Coalesce and marker edits** (`_run_coalesce`). Per-keystroke
@@ -489,8 +494,9 @@ a temporary file renamed into place.
 
 The PDD prints no analysis finding and reads no analysis stage, so a failed
 stage changes nothing in it. The notes the analyst pins to steps and moments
-(`annotations.analyst_notes`) are context in the viewer: the PDD's text
-leaves them out, while its picture of the step map shows a step's notes
+(`annotations.analyst_notes`) are context in the viewer: the PDD leaves them
+out, in its text and (lane FX2) in the map pictures the viewer draws for it,
+while the Map, Export's map image and the BPMN file show a step's notes
 beside its task (above).
 
 ## System names (`shared/system-names.json`, contract C14)
@@ -537,9 +543,10 @@ the stages apart:
   prints a time for them.
 - **Nothing recorded.** Each run's `active_ms` is `null`; `coverage_caveat`
   is `null` with no `stage_errors` entry; `case_quality` still counts the
-  runs, coverage `null`; `pdd_data` and `pdd_time` are written as the PDD prints them. The PDD says the runs were not marked (implicit run) or that
-  nothing was recorded (blank session), and points at the video time in a
-  video session.
+  runs, coverage `null`; `pdd_data` and `pdd_time` are written as the PDD
+  prints them. The PDD says "One transaction (not marked)" for the implicit
+  run (the viewer's words, lane FX3) and "Nothing recorded" for a blank
+  session, and points at the video time in a video session.
 
 What the analyst adds lives in the session folder and travels with it: the
 screenshots added by hand (`screenshots/analyst/`,
@@ -554,7 +561,7 @@ SCHEMA.md.
 | File | Role |
 |---|---|
 | `normalize.py` | CLI entry point and the thin orchestrator; re-exports the names older callers import from it. |
-| `pipeline_stages.py` | The `_run_*` stage helpers and `_init_existing_anno`, which keeps the analyst's blocks and never seeds or rewrites the keys of cut features (contract C10). Heavy optional imports (analysis, pm4py, the PDD) stay inside the stage that needs them. |
+| `pipeline_stages.py` | The `_run_*` stage helpers and `_init_existing_anno`, which keeps the analyst's blocks and never seeds or rewrites the keys of cut features (contract C10). Heavy optional imports (pm4py, the PDD, the Technical details) stay inside the stage that needs them. |
 | `session_io.py` | `load_events`, `load_manifest`, `load_annotations` (raises `AnnotationsUnreadable`), `write_annotations` and `write_json_atomic` (temp file, then `os.replace`), the screenshot hash pass, and `session_source` / `has_recording` (C16). |
 | `pipeline_config.py` | Per-session settings from `annotations.json`: the ignored apps, the excluded ranges, and the calibration block (only `coalesce_idle_ms` and `filter_browser_chrome` still apply; the old segmenter's keys are read and ignored). |
 | `process_filter.py` | Drops PDT's own windows and the excluded apps and window titles from the derived stream. |

@@ -33,8 +33,9 @@ implementation notes
   name.
 - **Differences between transactions**: every transaction other than the
   reference transaction lists how it differs from it (a skipped step, an
-  extra step, a different order), or says it has none. The PDD's
-  differences section uses the same rule.
+  extra step, a different order, a step done more often), or says it has
+  none; a step that happens only under a condition and was not done is said
+  apart, as no difference. The PDD's differences section uses the same rule.
 - **Fixes carry across transactions**: merging drafted steps in the
   reference transaction repeats the merge on the same drafts in every
   other transaction (one undo), and a draft hidden in the reference
@@ -54,9 +55,10 @@ implementation notes
   the PDD prints the flow under each step.
 - **The Overview is the home**: a Checklist of the five acts (mark the
   transactions, confirm the reference transaction, review the other
-  transactions, write the document, export the PDD) ticks each one done,
-  says in a tooltip what it means, and has one button for the next; it
-  shrinks to one line once only the export is left. The project line says
+  transactions, write the document, export the PDD) ticks each one done
+  (the export never: the app keeps no record of it), says in a tooltip what
+  it means, and has one button for the next; it shrinks to one line once
+  only the export is left. The project line says
   who recorded it, its transactions and the reference transaction's steps;
   Recent names a project by its document title.
 - **Document fields**: the Overview's document panel edits the title,
@@ -84,8 +86,9 @@ implementation notes
   on a step band on the Timeline, or a step selected in Steps, opens one
   panel beside it: the step's system and description, its flow when one is
   set, "in N of M transactions, about 8s each", and every occurrence with
-  its moment ("Transaction 1 at 0:39"), played in the panel's own small
-  video, with its screenshots and what was said. Watch in the step pane
+  its moment ("Transaction 1 · 0:39 into the recording · took 8s"), played
+  in the panel's own small video, with its screenshots and what was said.
+  Watch in the step pane
   plays the step there, beside the steps.
 - **The video travels with the project folder**: attaching a video copies
   it into the folder and stores where it is relative to the folder, so
@@ -94,8 +97,9 @@ implementation notes
 - **Projects without a recording**: the New menu starts a project from a
   video (the video is copied into a new folder and the Timeline runs on its
   length) or an empty one. Such a project is one transaction until the
-  Timeline marks where each one starts, and the map and the PDD work as for
-  a recording.
+  Timeline marks where each one starts (an empty project has a timeline
+  once a video is attached, and its Steps list says so), and the map and
+  the PDD work as for a recording.
 - **Steps added by hand**: "+ Add step" adds a step without a time after
   the selected step (Alt+Up and Alt+Down move it); on the Timeline, "+ Step"
   adds one at the video's playhead. The step pane's System field says which
@@ -111,8 +115,9 @@ implementation notes
   lists the attachments, and a step's under that step.
 - **Notes**: a note on a step (the step pane) or at a moment (right-click
   the Timeline, "Add note here"), shown in the step pane, the step panel
-  and a Notes lane on the Timeline. The PDD's text leaves notes out; its
-  picture of the step map shows a step's notes beside it.
+  and a Notes lane on the Timeline. The PDD leaves notes out, in its text
+  and in its map pictures; the Map and Export's map image and BPMN file
+  show a step's notes beside it.
 - **Saved as you go**: every change saves itself to the project folder, and
   one quiet word in the top bar says so: *Saved* (pointing at it shows the
   time and the folder), *Saving...* while a long write lasts, or *Not
@@ -167,7 +172,7 @@ implementation notes
   - A stretch left out of the analysis shows on the Timeline, hatched, and a
     click offers *Include again*; Ctrl+Z undoes either. A transaction with a
     stretch left out says so, in Steps and in the PDD, and the steps done in
-    it are not read as skipped. The findings leave it out too.
+    it are not read as skipped; its time is not counted.
   - *Remove video*, on the project line and beside Sync video, takes the
     video out with its copy in the folder; *Replace* takes out the copy it
     replaces. Attach, Replace, Sync and Remove are each undoable.
@@ -182,6 +187,27 @@ implementation notes
     opened after a change of the steps, it measures them again, saying
     "From the last analysis; refreshing" meanwhile. Typing in the document
     stops that; the next opening measures them.
+- **Hand-offs to the developers**: *Export*, *Hand off...* asks what changed
+  and makes "Order entry v2.zip" next to the project folder: the whole
+  project, with the PDD and the Technical details of that version. Each
+  hand-off gets the next number; every PDD says which version it is
+  ("Version 2, handed off" with the date and who, or "Working copy after
+  version 2") over a table of every version and what changed. Ctrl+Z takes
+  a version back, and its zip stays.
+- **A hand-off opens read only**: *Open a hand-off (.zip)...* opens the zip
+  on a developer's computer: every level, the video, the transcript, the
+  maps and the PDD and Technical details it came with can be looked at and
+  played, and nothing can change. A hand-off unzipped by hand opens read
+  only too. A newer version is a zip of its own.
+- **Technical details (.xlsx)**: a workbook for the developers' design
+  document, in every hand-off and on its own in Export: every click, entry
+  and choice of the reference transaction with the control it acted on,
+  every field with what was entered in each transaction, the values typed
+  again in another system, and the programs.
+- **The As-Is map says when the steps changed after it**: the Map and the
+  Checklist say so, and *Copy again* makes a fresh copy of the process map,
+  which takes the old copy's place in the PDD once you change something in
+  it.
 
 ### Changed
 
@@ -206,8 +232,11 @@ implementation notes
   The analyst's fields survive a re-export.
 - **The analysis runs by itself**: a project is analyzed when it opens
   without a current analysis, after Apps outside the process and after a
-  time range is left out, when the Map's picture is older than the steps,
-  when making the As-Is map and before a PDD export. One line
+  time range is left out or included again, as the Overview opens after a
+  change of the steps, when the Map's picture is older than the steps, when
+  making the As-Is map, and before a PDD export, a map export or a hand-off.
+  An analysis changes the project only when it finishes, so Cancel leaves
+  the steps and the map as they were. One line
   in the top bar says so, with Cancel; the log shows only when an analysis
   fails.
   Apply marker changes stays deliberate, and Help, Troubleshooting has
@@ -237,10 +266,10 @@ implementation notes
   rows, the step pane and the panel show the time since the recording
   started (0:39), the same pointer the PDD prints. The time of day shows
   only in the timeline's summary.
-- **The As-Is map first, and linked**: once an As-Is copy is chosen for the
-  PDD, the Map shows it first, read only and drawn as the PDD prints it,
-  with Edit and a way back to the map from the transactions. It is as
-  linked as the map from the transactions: a task opens the step panel on
+- **The As-Is map, linked**: once an As-Is copy is chosen for the PDD, the
+  Map shows it in place of the process map, read only and drawn as the PDD
+  prints it, with Edit. It is as linked as the map from the transactions:
+  a task opens the step panel on
   its step (or says that no step has its name), a file opens its
   attachment, and a note shows its whole text.
 - **Case identity is stable across re-analysis**: a confirmed or edited
@@ -255,10 +284,11 @@ implementation notes
   recorder now reaches its restart limit and reports itself dead instead
   of restarting forever unnoticed; a spawn failure is now reported and
   retried the same way a crash is.
-- **One process map**: the Map shows one left-to-right map built from the
-  transactions' steps, from a single transaction on, between a Start and
-  an End circle; a condition set in Steps labels its line, and a path set
-  in Steps that no transaction took is dashed. "Edit as the As-Is map"
+- **One process map**: one map built from the transactions' steps, from a
+  single transaction on. The Map shows it as the PDD prints it; how the
+  transactions ran, one click away, draws it left to right between a Start
+  and an End circle, where a condition set in Steps labels its line and a
+  path set in Steps that no transaction took is dashed. "Edit as the As-Is map"
   copies it into the map editor as the PDD's As-Is map, analyzing first so
   the copy carries the current step names. The PDD prints the edited As-Is
   copy when there is one, else the map from the transactions, and Export's
@@ -306,6 +336,30 @@ implementation notes
 - **Analyst work is safer on disk**: an `annotations.json` that cannot be
   read is reported, with its backups, and never overwritten; every save
   goes through a temporary file first.
+- **The edited maps' words**: the Reference maps gallery is now Edited maps,
+  and Re-fork is *Copy again*.
+- **Fixes from the validation pass** (2026-09-25):
+  - Data and outputs: marking transactions in a project made from a video
+    or from nothing keeps its steps; Transaction 1 has its active time; a
+    stretch left out no longer draws a path nobody took; the PDD's steps
+    read "Step 3.1", apart from its section numbers; the request prints
+    with its code; the Raw events use the one clock.
+  - The viewer's joins: Dissolve gives each Go to back to the step that
+    carried it; Ctrl+Z of a rename puts the remembered name back too;
+    steps you added stay Added through split and merge; nothing is copied
+    into the project while it is analyzed; an unreadable annotations file
+    shows only its banner; the step panel says when the video does not
+    cover a moment; added frames, apps left out and one-click steps show on
+    the Timeline; waste shows in the panel and on the map; sub-steps take
+    the project's own names first; Group says what it will do; the folder
+    Extract All makes opens the recording inside it; the PDD's map pictures
+    leave the notes out.
+  - Wording and polish: Help gains a Map section; a control that cannot
+    act is hidden or says why; a step with no system reads "No system
+    set"; Escape closes the menus; an unmarked project reads "One
+    transaction (not marked)" everywhere, the PDD included; exports are
+    named after the project; the capture bar shows Pause and leaves it out
+    of the time, and the name field sits above Make a zip.
 
 ### Removed
 
@@ -342,21 +396,28 @@ Preserved in full on the `product-edition` branch.
 - **The standalone findings memo document and the HTML findings report**,
   and later the PDD's findings section with the "include in PDD" ticks:
   the PDD prints no findings.
+- **The analysis layer nothing read**: the facts, the findings, and the
+  waste, time study, segment, automation and efficiency estimates.
+  `analysis.json` keeps the transaction check, the note on apps recorded
+  with less detail and the PDD's rows; projects analyzed before are
+  analyzed again as they open.
 - **The Analyze button and the More menu** (the analysis runs by itself,
   above).
 - **Clutter the UI clarity audit found**: the fact tiles and the Session
   summary panel, the shortcuts overlay, the Steps mini-timeline, the Flow
   Notes tab, the rare-path slider, the zoom readouts, the lanes nobody
   read, the marker filter, tier chips, duplicate totals, the
-  business-required split editor, and the automation Confirm and Dismiss
-  buttons.
+  business-required split editor, the automation Confirm and Dismiss
+  buttons, Scope to playhead, and an edited map's type select (one *Use in
+  PDD as* choice instead).
 - **The capture app's Live Session window and hotkey overlay** (replaced by
   the recording bar), with their counters and event feed, and the
   interaction count in the end summary.
 - **The raw events' *+ to step*** (Split, Merge and + Add step set a step's
   boundaries) and the "may change between recordings" marker on an
   interaction's identity line (a project is recorded once).
-- **The example sessions in the viewer release.**
+- **The example sessions in the viewer release**, and the old
+  `User-Guide.docx` in the build output: the in-app Help is the guide.
 
 ## [1.5.0] - 2026-07-03 — approachability redesign
 
