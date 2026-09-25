@@ -482,3 +482,20 @@ test("C19 dropDraftIdentity: a merged or split sub-step is no longer one drafted
   assert.equal(s.action_key, undefined);
   assert.equal(s.name_source, undefined);
 });
+
+
+test("propagateMergedName: a merged step's new name reaches the same merge elsewhere that kept the old name", () => {
+  const RM = require("./runs-model.js");
+  const keys = ["chrome|Salesforce|Button:search", "chrome|Salesforce|Button:open"];
+  const a = { step_id: "a", state: "edited", name: "Search + Open", draft_keys: keys.slice() };
+  const b = { step_id: "b", state: "edited", name: "Search + Open", draft_keys: keys.slice() };
+  const c = { step_id: "c", state: "edited", name: "Named by hand", draft_keys: keys.slice() };
+  const d = { step_id: "d", state: "edited", name: "Search + Open", draft_keys: [keys[1], keys[0]] };
+  const steps = [a, b, c, d];
+  a.name = "Find the customer";
+  const n = RM.propagateMergedName(steps, a, "Search + Open", "Find the customer");
+  assert.strictEqual(n, 1);
+  assert.strictEqual(b.name, "Find the customer");
+  assert.strictEqual(c.name, "Named by hand");
+  assert.strictEqual(d.name, "Search + Open");
+});

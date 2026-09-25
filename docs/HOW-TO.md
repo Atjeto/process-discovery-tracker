@@ -119,9 +119,8 @@ it is done; its button takes you to the next.
    part ends.
 3. To merge it with the next step, click *Merge with next*. To merge
    several, tick them in the list and click *Merge selected*.
-4. A merge is made in the other transactions too, but a name you then give
-   the merged step is not: give it the same name in each transaction, so the
-   map keeps one box.
+4. A merge is made in the other transactions too, and a name you then give
+   the merged step reaches them, so the map keeps one box.
 
 ### Add a screenshot, a note or a file
 

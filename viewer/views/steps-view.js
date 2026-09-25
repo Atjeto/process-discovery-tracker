@@ -1274,6 +1274,7 @@ function _applyRename(anno, step, name, found) {
   const inter = _interactionsById();
   const facts = stepFacts(step, inter);
   const hit = found || Library.activityNamed(_library(), facts.system, name);
+  const oldName = step.name;
   step.name = name;
   if (hit) Library.applyActivity(step, hit, { descriptionEmpty: facts.descriptionEmpty });
   else delete step.library_activity;
@@ -1283,7 +1284,8 @@ function _applyRename(anno, step, name, found) {
   const pl = keyed ? String(name).trim() : processLabel(name);
   if (pl) step.process_label = pl;
   const propagated = step.draft_key ? RunsModel.propagateName(anno.steps || [], step, name)
-    : step.action_key ? RunsModel.propagateActionName(anno.steps || [], step, name) : 0;
+    : step.action_key ? RunsModel.propagateActionName(anno.steps || [], step, name)
+    : RunsModel.propagateMergedName(anno.steps || [], step, oldName, name);
   let occurrences = 0;
   if (subNode) {
     occurrences = SPV.renameNode(txs, path, oldNode, name, step);

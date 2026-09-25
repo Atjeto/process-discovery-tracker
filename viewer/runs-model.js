@@ -540,6 +540,28 @@ function propagateActionName(steps, step, name) {
   return _propagate(steps, step, name, "action_key");
 }
 
+/* A merged step renamed (its screens in draft_keys, no draft_key): the
+   project's other steps with the same screens in the same order that still
+   carry its old name (a merge carried to the other transactions takes the
+   name the merge had) take the new name too, so the map keeps one box.
+   Returns how many took it. */
+function propagateMergedName(steps, step, oldName, name) {
+  const keys = step && Array.isArray(step.draft_keys) ? step.draft_keys : null;
+  const nm = typeof name === "string" ? name.trim() : "";
+  const was = typeof oldName === "string" ? oldName.trim() : "";
+  if (!keys || !keys.length || !nm || !was || nm === was) return 0;
+  const same = (k) => Array.isArray(k) && k.length === keys.length && k.every((x, i) => x === keys[i]);
+  let n = 0;
+  _walk(steps, (s) => {
+    if (s === step || s.step_id === step.step_id || s.state === "hidden") return;
+    if (!same(s.draft_keys) || String(s.name || "").trim() !== was) return;
+    s.name = nm;
+    s.process_label = nm;
+    n++;
+  });
+  return n;
+}
+
 function _propagate(steps, step, name, field) {
   const key = step && step[field];
   const nm = typeof name === "string" ? name.trim() : "";
@@ -617,6 +639,6 @@ module.exports = {
   groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
   reopenRun, canReopen,
-  probeLine, propagateName, propagateActionName, readableApp, nameSuggestions, dropDraftIdentity,
+  probeLine, propagateName, propagateActionName, propagateMergedName, readableApp, nameSuggestions, dropDraftIdentity,
   mergedDraftKeys, carriedMerges, sameKeyDraftsElsewhere, hideSteps, runCount,
 };
