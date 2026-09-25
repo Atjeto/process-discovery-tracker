@@ -31,7 +31,7 @@ const { runNormalize } = _underElectron ? require("./python-runner.js") : { runN
 const { runTranscriptImport, transcriptImportResult } = require("./python-runner.js");
 const AnnoStore = require("./annotations-store.js");
 const TranscriptStore = require("./transcript-store.js");
-const NamesStore = require("./names-store.js");
+const Library = require("./library.js");
 const VideoPath = require("./video-path.js");
 const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
@@ -41,12 +41,6 @@ const HandoffZip = require("./handoff-zip.js");
 const HandoffOpen = require("./handoff-open.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 const { clearStaged } = require("./staged-outputs.js");
-
-/* Contract C4: the remembered-names store, one per analyst machine, under the
-   viewer's userData folder (an e2e run's throwaway profile gets its own). */
-function namesStorePath() {
-  return NamesStore.namesStorePath(app.getPath("userData"));
-}
 
 /* Lane HV (contract C20): a hand-off zip opens read only, extracted under
    <userData>/handoffs (handoff-open.js), and so does a hand-off unzipped by
@@ -401,6 +395,11 @@ function loadSessionData(sessionFolder) {
   // Lane HV: a hand-off opened read only (under <userData>/handoffs, or
   // unzipped by hand).
   const readOnly = HandoffOpen.isReadOnlyProject(_userData(), root);
+  // C21: the activity library the project reads, its own library.json once
+  // its first analysis made it, else the app's ({ source, status, path,
+  // library, error }; a missing or invalid file is an empty library).
+  const library = Library.projectLibrary(root);
+  if (library.status === "invalid") console.warn("[viewer:loadSession] the library " + library.path + " is not used: " + library.error);
   // RP-04: an annotations.json that exists but cannot be read is reported
   // (annotationsError, shown as a banner naming the file and its backups),
   // never treated as absent; the writers below refuse to replace it.
@@ -466,6 +465,7 @@ function loadSessionData(sessionFolder) {
     transcript,
     transcriptError,
     readOnly,
+    library,
   };
 }
 
@@ -521,16 +521,11 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       error: e.code === "ANNOTATIONS_UNREADABLE" ? "Analysis stopped, nothing was changed: " + e.message
         : "Analysis could not start: " + e.message };
   }
-  // C4: every analysis the viewer runs drafts with the remembered names when
-  // the store exists (a missing store simply means no names yet). Analyze,
-  // the PDD export and the step-map export all re-draft, so all pass it.
-  let namesPath = null;
-  try {
-    const p = namesStorePath();
-    if (fs.existsSync(p)) namesPath = p;
-  } catch (e) {
-    console.warn("[viewer:runNormalizeExtended] the remembered names store could not be located: " + e.message);
-  }
+  // C21: every analysis gets the app's activity library when there is one;
+  // the first analysis of a project copies it into the project folder, and
+  // from then on the pipeline reads the project's copy.
+  const appLibrary = Library.appLibraryPath();
+  const libraryPath = fs.existsSync(appLibrary) ? appLibrary : null;
   _normalizeFolder = root;
   try {
     const result = await runNormalize({
@@ -545,7 +540,7 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       // documents are made for.
       techOut: opts.techOut || null,
       handoff: Number.isInteger(opts.handoff) && opts.handoff >= 1 ? opts.handoff : null,
-      namesPath,
+      libraryPath,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
     });
@@ -960,68 +955,89 @@ ipcMain.handle("viewer:restoreAnnotationsBackup", (_e, { sessionFolder, expect }
   }
 });
 
-/* --- Remembered names (C4) ---------------------------------------- */
+/* --- The activity library (contract C21) ------------------------------ */
 
-/* The analyst renamed a step that carries a draft_key: remember the name for
-   that key. Payload { draftKey, name }. Result { ok: true, path } or
-   { ok: false, code, error, path }; never throws across IPC. The write is
-   atomic and never replaces an unreadable store (names-store.js). */
-ipcMain.handle("viewer:rememberStepName", (_e, payload) => {
-  let p = null;
-  try {
-    p = namesStorePath();
-    const { draftKey, name } = payload || {};
-    const r = NamesStore.rememberName(p, draftKey, name);
-    // Lane FX2: the entry before and the one written, for the rename's undo.
-    return { ok: true, path: r.path, previous: r.previous, entry: r.entry };
-  } catch (e) {
-    console.error("[viewer:rememberStepName] not remembered:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+/* The app's library, read: { status, path, library, error } (library.js
+   readLibraryFile; a missing or invalid file reads as an empty library). */
+ipcMain.handle("viewer:readAppLibrary", () => Library.readLibraryFile(Library.appLibraryPath()));
+
+/* One project for the Library builder: its manifest.json and annotations.json
+   and nothing else. A project without annotations.json has no named step. */
+function _libraryProjectFolder(dir) {
+  const folder = ProjectFolder.resolveProjectFolder(dir).folder;
+  const manifest = JSON.parse(fs.readFileSync(path.join(folder, "manifest.json"), "utf-8").replace(/^﻿/, ""));
+  const read = AnnoStore.readAnnotationsFile(folder);
+  if (read.status === "unreadable") throw new Error("its annotations.json cannot be read (" + read.error + ")");
+  return { path: folder, manifest, annotations: read.status === "ok" ? read.annotations : { steps: [] } };
+}
+
+/* The builder's sources from the paths picked, each read by `readOne`:
+   { sources: [{ path, sessionId, manifest, annotations }], failed:
+   [{ path, error }] }. */
+async function _librarySources(paths, readOne) {
+  const sources = [], failed = [];
+  for (const p of paths) {
+    try {
+      const src = await readOne(p);
+      sources.push(Object.assign(src, { sessionId: (src.manifest && src.manifest.session_id) || null }));
+    } catch (e) {
+      failed.push({ path: p, error: (e && e.message) || String(e) });
+    }
   }
+  return { sources, failed };
+}
+
+/* Help, Build the library...: Add projects... Result as _librarySources, or
+   null when the dialog was cancelled. */
+ipcMain.handle("viewer:libraryAddProjects", async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Add projects to the library",
+    properties: ["openDirectory", "multiSelections"],
+  });
+  if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+  return _librarySources(r.filePaths, _libraryProjectFolder);
 });
 
-/* Lane FX2: Ctrl+Z (or Ctrl+Y) of a rename or a forget puts the key's entry
-   back as it was: { draftKey, entry } (null takes the key out). Result
-   { ok: true, path } or { ok: false, code, error, path }. */
-ipcMain.handle("viewer:restoreStepName", (_e, payload) => {
-  let p = null;
-  try {
-    p = namesStorePath();
-    const { draftKey, entry } = payload || {};
-    return { ok: true, path: NamesStore.restoreName(p, draftKey, entry || null).path };
-  } catch (e) {
-    console.error("[viewer:restoreStepName] not put back:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
-  }
+/* Add hand-off zips...: each zip read where it is, never extracted
+   (handoff-open.js readProjectZip). */
+ipcMain.handle("viewer:libraryAddZips", async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Add hand-off zips to the library",
+    properties: ["openFile", "multiSelections"],
+    filters: [{ name: "Hand-off (.zip)", extensions: ["zip"] }],
+  });
+  if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+  return _librarySources(r.filePaths, async (zip) => {
+    const got = await HandoffOpen.readProjectZip(zip);
+    return { path: zip, manifest: got.manifest, annotations: got.annotations || { steps: [] } };
+  });
 });
 
-/* The remembered names, for the name suggestions. Result
-   { ok: true, path, status: "absent" | "ok", names } or
-   { ok: false, path, error } (the store exists but cannot be read). */
-ipcMain.handle("viewer:readRememberedNames", () => {
-  let p = null;
+/* Save library...: the library the builder made (payload { library }),
+   checked, then written where the owner says, the app's own library file by
+   default, so he can replace it. Written whole or not at all (a temporary
+   file renamed). Result { ok: true, path }, { ok: false, cancelled: true },
+   or { ok: false, error }. */
+ipcMain.handle("viewer:saveLibrary", async (_e, payload) => {
+  const doc = payload && payload.library;
+  const bad = Library.problems(doc);
+  if (bad.length) return { ok: false, error: "The library was not saved: " + bad[0] + "." };
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: "Save the library",
+    defaultPath: Library.appLibraryPath(),
+    filters: [{ name: "Library (.json)", extensions: ["json"] }],
+  });
+  if (r.canceled || !r.filePath) return { ok: false, cancelled: true };
+  const file = path.resolve(r.filePath);
+  const tmp = path.join(path.dirname(file), "." + path.basename(file) + "." + process.pid + ".tmp");
   try {
-    p = namesStorePath();
-    const r = NamesStore.readNamesFile(p);
-    if (r.status === "unreadable") return { ok: false, path: p, error: r.error };
-    return { ok: true, path: p, status: r.status, names: r.names };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    AnnoStore.renameWithRetry(fs, tmp, file);
+    return { ok: true, path: file };
   } catch (e) {
-    return { ok: false, path: p, error: (e && e.message) || String(e) };
-  }
-});
-
-/* Forget a remembered name (the Remembered names dialog). Payload
-   { draftKey }. Result { ok: true, path, removed } or { ok: false, code,
-   error, path }; never throws across IPC. */
-ipcMain.handle("viewer:forgetStepName", (_e, payload) => {
-  let p = null;
-  try {
-    p = namesStorePath();
-    const r = NamesStore.forgetName(p, (payload || {}).draftKey);
-    return { ok: true, path: r.path, removed: r.removed, previous: r.previous };
-  } catch (e) {
-    console.error("[viewer:forgetStepName] not forgotten:", e && e.message);
-    return { ok: false, code: (e && e.code) || null, error: (e && e.message) || String(e), path: p };
+    try { fs.rmSync(tmp, { force: true }); } catch (_) { /* nothing was left */ }
+    return { ok: false, error: "The library was not saved: " + ((e && e.message) || String(e)) };
   }
 });
 

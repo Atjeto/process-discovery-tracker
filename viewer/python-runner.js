@@ -67,15 +67,16 @@ function resolveDefaultTaxonomy() {
 }
 
 /* The normalize.py command line (after the interpreter) for one run. Pure, so
-   the unit tests pin it. `namesPath` is the remembered-names store (contract
-   C4): passed as --names so drafts whose key it lists arrive named.
+   the unit tests pin it. `libraryPath` is the app's activity library
+   (contract C21): the first analysis of a project copies it into the project
+   folder, and the drafts are named from the project's copy.
    `pddMapImages` is the manifest of the sub-processes' map pictures
    (contract C19). `techOut` is the Technical details workbook and `handoff`
    the hand-off version the PDD and the workbook are made for (contract C20,
    lane HV). */
 function buildNormalizeArgs(script, opts) {
   const {
-    sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, pddMapImages, namesPath,
+    sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, pddMapImages, libraryPath,
     techOut, handoff,
   } = opts || {};
   const args = [script, sessionFolder];
@@ -87,8 +88,23 @@ function buildNormalizeArgs(script, opts) {
   if (pddMapImages) args.push("--pdd-map-images", pddMapImages);
   if (techOut) args.push("--tech-out", techOut);
   if (Number.isInteger(handoff) && handoff >= 1) args.push("--handoff", String(handoff));
-  if (namesPath) args.push("--names", namesPath);
+  if (libraryPath) args.push("--library", libraryPath);
   return args;
+}
+
+/* Whether the normalize.py at `script` takes the command line flag `flag`
+   ("--library"): its source defines it. Read once per script. The viewer
+   passes --library only to a pipeline that has it (lane LIB-V was built
+   before the pipeline's lane LIB-P was merged). */
+const _flags = new Map();
+function scriptTakesFlag(script, flag) {
+  const k = String(script) + "\n" + flag;
+  if (!_flags.has(k)) {
+    let has = false;
+    try { has = fs.readFileSync(script, "utf8").includes('"' + flag + '"'); } catch (_) { has = false; }
+    _flags.set(k, has);
+  }
+  return _flags.get(k);
 }
 
 function runNormalize(opts) {
@@ -102,7 +118,9 @@ function runNormalize(opts) {
     const python = resolvePython();
     const script = resolveNormalizeScript();
     const tax = taxonomyPath || resolveDefaultTaxonomy();
-    const args = buildNormalizeArgs(script, Object.assign({}, opts, { taxonomyPath: tax }));
+    // C21: the library goes only to a pipeline that takes it (scriptTakesFlag).
+    const libraryPath = opts && opts.libraryPath && scriptTakesFlag(script, "--library") ? opts.libraryPath : null;
+    const args = buildNormalizeArgs(script, Object.assign({}, opts, { taxonomyPath: tax, libraryPath }));
 
     const proc = spawn(python, args, {
       cwd: path.dirname(script),
@@ -221,6 +239,6 @@ function transcriptImportResult(run) {
 }
 
 module.exports = {
-  runNormalize, buildNormalizeArgs, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
+  runNormalize, buildNormalizeArgs, scriptTakesFlag, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
   resolveTranscriptScript, runTranscriptImport, transcriptImportResult,
 };

@@ -227,6 +227,36 @@ async function inspectHandoff(zipPath) {
   }
 }
 
+/* The project in a zip, read where it is and never extracted (contract C21:
+   the Library builder reads a hand-off's steps): { top, manifest,
+   annotations } from the one project folder at its root (a folder holding a
+   manifest.json; or the root itself), annotations null when it has no
+   annotations.json. Throws a HandoffOpenError with the sentence to show when
+   the zip holds no project, or more than one, or cannot be read. */
+async function readProjectZip(zipPath) {
+  const fh = await fsp.open(String(zipPath || ""), "r");
+  try {
+    const entries = await _directory(fh, (await fh.stat()).size);
+    for (const e of entries) e.safe = safeEntryName(e.name);
+    const files = entries.filter((e) => e.safe && !e.dir);
+    const tops = [...new Set(files.filter((e) => /^[^/]+\/manifest\.json$/.test(e.safe)).map((e) => e.safe.split("/")[0]))];
+    const top = files.some((e) => e.safe === "manifest.json") ? "" : tops.length === 1 ? tops[0] : null;
+    if (top === null) {
+      throw new HandoffOpenError(tops.length ? "This zip holds " + tops.length + " projects: add a zip of one project."
+        : "This zip holds no project (no manifest.json).");
+    }
+    const at = (name) => files.find((e) => e.safe === (top ? top + "/" : "") + name) || null;
+    const manifest = _json(await _readSmall(fh, at("manifest.json")));
+    if (!manifest) throw new HandoffOpenError("The project's manifest.json in this zip cannot be read.");
+    const annoEntry = at("annotations.json");
+    const annotations = annoEntry ? _json(await _readSmall(fh, annoEntry)) : null;
+    if (annoEntry && !annotations) throw new HandoffOpenError("The project's annotations.json in this zip cannot be read.");
+    return { top, manifest, annotations };
+  } finally {
+    await fh.close();
+  }
+}
+
 /* Extract every entry of the zip into `dest` (made fresh), streamed, each
    file's size and CRC checked. */
 async function _extract(zipPath, entries, dest) {
@@ -333,5 +363,5 @@ function handoffFile(folder, kind) {
 module.exports = {
   HANDOFFS, MARKER, NOT_A_HANDOFF, HandoffOpenError,
   handoffsRoot, isReadOnlyFolder, isReadOnlyProject, unzippedHandoffFiles, safeEntryName, inspectHandoff,
-  openHandoffZip, handoffFile,
+  readProjectZip, openHandoffZip, handoffFile,
 };

@@ -146,17 +146,13 @@ async function writeAnnotations(sessionFolder, annotations, what) {
   return r;
 }
 
-/* `extra` (optional) rides on the edit's undo entry: `names` (lane FX2), the
-   remembered names the edit changed, [{ key, before, after }] (each an entry
-   { name, updated_at }, or null for none), which an undo puts back to
-   `before` and a redo to `after`; `tag` (lane HV), a string that names the
-   entry for takeBackLastEdit. */
+/* `extra` (optional) rides on the edit's undo entry: `tag` (lane HV), a
+   string that names the entry for takeBackLastEdit. */
 async function saveAnnotationsWithUndo(annotations, label, extra) {
   const session = State.getSession();
   if (!session || !session.sessionFolder) return null;
   const sf = session.sessionFolder;
   const snap = snapshotAnnotations(annotations);
-  const names = extra && Array.isArray(extra.names) && extra.names.length ? extra.names : null;
   const tag = extra && typeof extra.tag === "string" && extra.tag ? extra.tag : null;
   return _serial(async () => {
     const r = await writeAnnotations(sf, annotations, label);
@@ -172,32 +168,10 @@ async function saveAnnotationsWithUndo(annotations, label, extra) {
     if (State.getSession() !== session) return r;
     const prev = _baseline !== null ? _baseline : snapshotAnnotations(session.annotations);
     State.recordEdit(Object.assign({ label: label || "edit", annotations: prev, sessionFolder: sf },
-      names ? { names } : {}, tag ? { tag } : {}));
+      tag ? { tag } : {}));
     _baseline = snap;   // this edit is now the committed state
     return r;
   });
-}
-
-/* Lane FX2: an undo (`which` "undo") or a redo of an edit that changed the
-   remembered names puts each key's entry back to what it was before the
-   edit, or after it. A key that cannot be put back is said once; the
-   project's own names are reverted either way. Then the Steps level reads
-   the names again ("names"). */
-async function _revertNames(names, which) {
-  if (!Array.isArray(names) || !names.length) return;
-  const failed = [];
-  for (const n of names) {
-    if (!n || typeof n.key !== "string" || !n.key) continue;
-    let r;
-    try { r = await Ipc.restoreStepName({ draftKey: n.key, entry: which === "undo" ? (n.before || null) : (n.after || null) }); }
-    catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
-    if (!r || !r.ok) failed.push((r && r.error) || "no reason was given");
-  }
-  if (failed.length) {
-    Dom.toast("The project's names are " + (which === "undo" ? "back" : "renamed again") + ", but the remembered name could not be " +
-      (which === "undo" ? "put back" : "renamed again") + ": " + failed[0], "error", { hold: true });
-  }
-  State.emit("names");
 }
 
 /* Lane HV: take back the project's last edit when it is still the last one
@@ -304,17 +278,14 @@ function _revert(which) {
       return;
     }
     // Push the CURRENT (pre-revert) state onto the opposite stack so the
-    // analyst can flip back (with the names it changed, lane FX2).
+    // analyst can flip back.
     const current = {
       label: popped.label,
       annotations: _baseline !== null ? _baseline : snapshotAnnotations(session.annotations),
       sessionFolder: popped.sessionFolder,
     };
-    if (popped.names) current.names = popped.names;
     if (which === "undo") State.pushRedo(current); else State.pushUndo(current);
     _baseline = snapshotAnnotations(popped.annotations);   // the reverted state is now committed
-    // Lane FX2: a rename's remembered name goes back (or forward) with it.
-    if (popped.names) await _revertNames(popped.names, which);
     applyRevertedAnnotations(popped.annotations);
     Dom.toast((which === "undo" ? "Undone: " : "Redone: ") + popped.label);
   });

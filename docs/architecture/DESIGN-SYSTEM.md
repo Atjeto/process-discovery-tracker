@@ -160,8 +160,7 @@ byte-copies) by hand in the same commit.
   look again while disabled. Link buttons (`.link-btn`) carry the small
   acts inside text (Attach, Replace, Remove; *Undo confirm* beside a
   transaction's Confirmed badge, in `--fg-3`). A quiet tool beside the main
-  work (the Steps toolbar's *Apps outside the process...* and *Remembered
-  step names...*; the Map's *Fit*, *Reset layout* and *Edited maps*, and
+  work (the Steps toolbar's *Apps outside the process...*; the Map's *Fit*, *Reset layout* and *Edited maps*, and
   the edited maps' row acts) is `.tool-btn`: 11px `--fg-2` in the text
   face on no fill inside the `--rule` border, the card's fill under the
   mouse (`.tool-btn.danger` outlined in `--bad`). Text never goes in an

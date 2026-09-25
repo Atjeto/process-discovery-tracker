@@ -54,33 +54,33 @@ function restoreAnnotationsBackup(payload) {
   return ipcRenderer.invoke("viewer:restoreAnnotationsBackup", payload);
 }
 
-/* ---- Remembered names (C4) ---- */
+/* ---- The activity library (C21) ---- */
 
-/** Remember a step name for its draft key.
- *  @param {{draftKey: string, name: string}} payload
- *  @returns {Promise<{ok: boolean, path?: string, error?: string}>} */
-function rememberStepName(payload) {
-  return ipcRenderer.invoke("viewer:rememberStepName", payload);
+/** The app's library, read (library.js readLibraryFile).
+ *  @returns {Promise<{status: string, path: string, library: object, error: (string|null)}>} */
+function readAppLibrary() {
+  return ipcRenderer.invoke("viewer:readAppLibrary");
 }
 
-/** The remembered names ({ ok, path, status, names } or { ok: false, error }).
+/** The Library builder's Add projects... and Add hand-off zips...: null when
+ *  the dialog was cancelled, else { sources: [{ path, sessionId, manifest,
+ *  annotations }], failed: [{ path, error }] }.
  *  @returns {Promise<any>} */
-function readRememberedNames() {
-  return ipcRenderer.invoke("viewer:readRememberedNames");
+function libraryAddProjects() {
+  return ipcRenderer.invoke("viewer:libraryAddProjects");
 }
 
-/** Forget a remembered name.
- *  @param {{draftKey: string}} payload
- *  @returns {Promise<{ok: boolean, removed?: boolean, previous?: object|null, path?: string, error?: string}>} */
-function forgetStepName(payload) {
-  return ipcRenderer.invoke("viewer:forgetStepName", payload);
+/** @returns {Promise<any>} */
+function libraryAddZips() {
+  return ipcRenderer.invoke("viewer:libraryAddZips");
 }
 
-/** Put a remembered name back as it was (an undo or a redo of a rename).
- *  @param {{draftKey: string, entry: ({name: string, updated_at: string}|null)}} payload
- *  @returns {Promise<{ok: boolean, path?: string, error?: string}>} */
-function restoreStepName(payload) {
-  return ipcRenderer.invoke("viewer:restoreStepName", payload);
+/** Save library...: { ok: true, path }, { ok: false, cancelled: true } or
+ *  { ok: false, error }.
+ *  @param {{library: object}} payload
+ *  @returns {Promise<any>} */
+function saveLibrary(payload) {
+  return ipcRenderer.invoke("viewer:saveLibrary", payload);
 }
 
 /* ---- Export / shell ---- */
@@ -231,7 +231,7 @@ module.exports = {
   loadSession, openSessionFolder, openHandoffDialog,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
-  rememberStepName, readRememberedNames, forgetStepName, restoreStepName,
+  readAppLibrary, libraryAddProjects, libraryAddZips, saveLibrary,
   exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip, exportHandoffZip, openHandoffFile,
   attachExternalVideo, copyVideoIn,
   importTranscript, removeTranscript, restoreTranscript, saveTranscriptSync,

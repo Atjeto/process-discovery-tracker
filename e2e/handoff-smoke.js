@@ -210,7 +210,7 @@ const EDITING = [
   ".tl-tr-sync", ".tl-tr-replace", ".tl-tr-remove", ".marker-actions", "[data-act=\"adjust\"]", "[data-act=\"delete\"]",
   "#tl-selection-case", "#tl-selection-exclude",
   "#btn-add-manual-step", "#btn-delete-selected-steps", "#btn-merge-selected", "#btn-group-selected",
-  "#btn-ignored-apps", "#btn-remembered-names", ".multi-check", "#btn-dissolve-level",
+  "#btn-ignored-apps", ".multi-check", "#btn-dissolve-level",
   "[data-act=\"confirm-run\"]", "[data-act=\"reopen-run\"]",
   "#btn-flow-only-when", "#btn-flow-go-to", "#btn-flow-remove-condition", ".flow-link-remove",
   "#btn-step-hide", "#btn-step-make-sub", "#btn-step-dissolve", "#btn-step-add-shot", "[data-shot-act]",

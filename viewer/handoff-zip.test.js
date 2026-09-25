@@ -297,3 +297,31 @@ test("an entry's name is kept inside the folder it is extracted to", () => {
     assert.equal(HO.safeEntryName(bad), null, bad);
   }
 });
+
+/* Contract C21: the Library builder reads a hand-off's steps from its zip
+   where it is (annotations.json and manifest.json only), never extracting it. */
+test("readProjectZip reads the zip's project where it is: its manifest and annotations, nothing extracted", async () => {
+  const base = tmpBase();
+  try {
+    const root = makeProject(base);
+    const zip = path.join(base, "whole.zip");
+    await require("./zip-folder.js").zipFolder(root, zip);
+    const before = fs.readdirSync(base).sort();
+    const got = await HO.readProjectZip(zip);
+    assert.equal(got.top, NAME);
+    assert.equal(got.manifest.session_id, "s-1");
+    assert.equal(got.annotations.document.title, "Order entry");
+    assert.deepEqual(fs.readdirSync(base).sort(), before, "nothing extracted");
+    const flat = rawZip(path.join(base, "flat.zip"), [["manifest.json", "{\"session_id\":\"f\"}"]]);
+    assert.deepEqual(await HO.readProjectZip(flat), { top: "", manifest: { session_id: "f" }, annotations: null },
+      "the project at the root, without annotations.json");
+    const two = rawZip(path.join(base, "two.zip"), [["a/manifest.json", "{}"], ["b/manifest.json", "{}"]]);
+    await assert.rejects(HO.readProjectZip(two), (e) => e instanceof HO.HandoffOpenError && /holds 2 projects/.test(e.message));
+    const none = rawZip(path.join(base, "none.zip"), [["notes.txt", "x"]]);
+    await assert.rejects(HO.readProjectZip(none), /holds no project/);
+    const bad = rawZip(path.join(base, "bad.zip"), [["p/manifest.json", "{}"], ["p/annotations.json", "{ not json"]]);
+    await assert.rejects(HO.readProjectZip(bad), /annotations.json in this zip cannot be read/);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

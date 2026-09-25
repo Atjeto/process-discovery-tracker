@@ -36,7 +36,10 @@ The pipeline runs with the first Python found:
 The scripts it runs (`normalize.py`, `transcript_import.py`) are found in
 `../normalization/` from source and under `resources/normalization/` in a
 packaged build; the shared rule files in `../shared/` or
-`resources/shared/`.
+`resources/shared/`; the app's activity library in
+`../library/activities.json` or `resources/library/activities.json`
+(`PDT_LIBRARY` names another file, for tests), passed to every analysis as
+`--library` (contract C21).
 
 ## Where things are kept
 
@@ -48,9 +51,9 @@ packaged build; the shared rule files in `../shared/` or
   `derived_maps/`. Every change saves itself there (the top bar says
   *Saved*), and Export, *Whole project (.zip)* makes one zip of the folder,
   next to it, to hand the project to someone.
-- On the analyst's computer (the app's user data folder): the remembered
-  step names in `pdt-library/`, the hand-offs opened in `handoffs/`, the
-  files removed from a project waiting for an Undo in `pdt-removed/`
+- On the analyst's computer (the app's user data folder): the hand-offs
+  opened in `handoffs/`, the files removed from a project waiting for an
+  Undo in `pdt-removed/`
   (emptied when the app starts), and the recent list, the theme and the
   layout in the app's local storage.
 

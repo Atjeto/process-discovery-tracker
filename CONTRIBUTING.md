@@ -61,8 +61,9 @@ viewer/python/python.exe normalization/normalize.py <session_folder> --taxonomy 
 viewer/python/python.exe normalization/transcript_import.py <session_folder> <transcript.vtt|.docx>
 ```
 
-Add `--names <path to remembered-names.json>` to draft with the remembered
-names. Stages, flags and exit codes:
+Add `--library library/activities.json` to draft with the app's activity
+library, as the viewer does (a project's first analysis copies it into the
+folder as `library.json`). Stages, flags and exit codes:
 [docs/architecture/NORMALIZATION.md](docs/architecture/NORMALIZATION.md).
 Never re-analyze `sessions/example-aggregate/` in place for a commit: copy
 the session to a temp folder first (the golden and the smokes do).

@@ -103,7 +103,7 @@ the folder.
 | `capture/` | SME side: tray app, recording bar, end summary, transaction key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
-| `e2e/` | The in-repo Playwright gate: nine smokes against the real viewer, all run by `run-all.js`. |
+| `e2e/` | The in-repo Playwright gate: ten smokes against the real viewer, all run by `run-all.js`. |
 | `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19); `pdd-rows-golden.json` (pins the PDD's rows of sections 5 and 6 that the Overview shows); `steps-signature-golden.json` (pins the signature of the steps those rows were measured from). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
@@ -150,14 +150,19 @@ the folder.
   the Confirmed badge, is the inverse. The other runs are reviewed, never
   confirmed (AD-28; `annotations.opened_runs`).
   `draft_fixes` counts its merges, splits, adds and drops: the P1 probe.
-- **Remembered step names** (C4,
-  `<viewer userData>/pdt-library/remembered-names.json`, keyed by `draft_key`): a rename is remembered and names the session's other
-  drafts of that key at once. The pipeline reads it through `--names`, after
-  the session's own names, which travel with the folder. The Remembered step
-  names dialog (Steps toolbar) renames or forgets one (every draft of its key
-  and the steps that carry the name). Ctrl+Z of a rename puts the store's
-  entry back too (lane FX2). A drafted sub-step's name is kept under
-  `action|<action_key>`; the project's own sub-step names come first.
+- **The activity library** (C21). The app ships one library of named
+  activities per system, `library/activities.json` (`PDT_LIBRARY` names
+  another, for tests); a project's first analysis copies it into the folder
+  as `library.json` and keeps it (`--library`). The step pane's name field
+  offers the activities of the step's system (`library.js` `pickerFor`): a
+  pick sets the name, the system, `library_activity` and, when the step has
+  none, the description, and the fact line shows the activity's code. Any
+  name can still be typed; a rename still names the project's other drafts
+  of its key (the session's own names). Help, *Build the library...*
+  (`views/library-builder-ui.js`) is the owner's tool: it reads projects and
+  hand-off zips, lists the named steps by system (the same screens named
+  differently side by side) and saves a new version. The remembered step
+  names (C4) are gone.
 - **Runs.** Markers only, never nested: a Start while a run is open ends
   that run first. Case ids are deterministic (C9), so analyst steps stay
   attached across re-analysis. A recording without run markers has no runs.
@@ -342,7 +347,7 @@ Session golden (`--update` only for an intended output change):
 Re-analyze a session the way the viewer does:
 
 ```
-viewer/python/python.exe normalization/normalize.py <session_folder> --taxonomy normalization/taxonomy.yaml --mine --names "<viewer userData>/pdt-library/remembered-names.json"
+viewer/python/python.exe normalization/normalize.py <session_folder> --taxonomy normalization/taxonomy.yaml --mine --library library/activities.json
 ```
 
 Import a Teams transcript (exit codes in NORMALIZATION.md):
@@ -378,9 +383,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 ## Verification
 
 - UI bugs are invisible to the unit suites: validate behaviour in the real
-  viewer. `e2e/run-all.js` runs nine smokes: `session`, `overview`, `runs`,
-  `map-slim`, `transcript`, `panel`, `companion`, `subprocess` and
-  `handoff` (each `<name>-smoke.js`; [e2e/README.md](e2e/README.md) says
+  viewer. `e2e/run-all.js` runs ten smokes: `session`, `overview`, `runs`,
+  `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`
+  and `library` (each `<name>-smoke.js`; [e2e/README.md](e2e/README.md) says
   what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles

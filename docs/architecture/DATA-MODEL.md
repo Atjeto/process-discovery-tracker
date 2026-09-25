@@ -32,6 +32,7 @@ video/                  an attached video, copied into the folder         viewer
 stats.json              statistics, the runs, draft_summary               pipeline
 analysis.json           the transaction check, the PDD's rows             pipeline
 process_map_step.bpmn   the step-level map (--mine)                       pipeline
+library.json            the project's activity library (C21)              pipeline
 normalize.log           the pipeline's log                                pipeline
 transcript/             an imported transcript file, byte for byte        transcript_import.py
 transcript.json         its parsed segments and sync offset               transcript_import.py, viewer
@@ -149,7 +150,8 @@ step also carries a value-free `process_label` (its grouping key) and
 `grain_keys` (`element`, `screen`, `app`), both recomputed on every run.
 
 A drafted step carries its identity: `draft_key`
-(`"<app>|<screen>|<commit>"`), `name_source` (`remembered` or `draft`) and
+(`"<app>|<screen>|<commit>"`), `name_source` (`remembered`, `draft`, or
+`library` for a draft named from the activity library, contract C21) and
 `end_reason` (`commit`, `screen_change`, `run_end`). A merge or a split drops
 those. A merge of drafted steps then keeps `draft_keys`, the members' keys in
 order, so the merge still matches the same drafts in other runs. A step
@@ -157,9 +159,12 @@ added by hand carries none of them. Drafts outside every run have
 `case_id: null`; the map and the step BPMN leave them out.
 
 A draft is named, in this order, by a step the analyst named in this session
-with the same `draft_key`, then by the remembered-names store below, then by
-the drafting rule. The session's own names come first, so they travel with
-the folder: the same session drafts the same names on another machine.
+with the same `draft_key`, then by the drafting rule; a run of drafts whose
+screens are an activity's in the project's library (`library.json`, contract
+C21) is one draft named from it. The names travel with the folder: the same
+session drafts the same names on another machine. A step named from the
+library (a draft, or a pick in the step pane) carries `library_activity`,
+the activity's id.
 
 Contract C16 adds keys a step may carry: `system` (set by the analyst; wins
 over the derived system), `order` (for a step without a time,
@@ -184,20 +189,20 @@ Dissolve to give it back (lane FX2): `lifted_from` (the member steps it
 left) or `pointed_to` (the member it pointed at before its group). Readers
 of the flow read `to` and `when` only.
 
-## The analyst's library
+## The activity library
 
-A small store lives on the analyst's machine, outside any session folder,
-in `<viewer userData>/pdt-library/`:
+The app ships one library of named activities per system,
+`library/activities.json` (`resources/library/activities.json` in the
+installed viewer; contract C21). A project's first analysis copies it into
+the project folder as `library.json`, and the project keeps that copy: a
+newer app library changes only the projects started after it. Help, *Build
+the library...* writes a new version of the file from the names given in
+projects and hand-offs. (The analyst's own store in
+`<viewer userData>/pdt-library/`, the remembered step names of contract C4
+and the saved processes of C5, left the app on 2026-09-25 and 2026-09-24; a
+file left there is not read.)
 
-| File | Holds | Read by |
-|---|---|---|
-| `remembered-names.json` | A name per `draft_key`, written on every rename of a drafted step and by the Remembered step names dialog in the Steps toolbar (rename, forget) | the pipeline (`--names`, on every analysis the viewer runs, after the session's own names) and the viewer |
-
-The saved processes (`processes.json`, contract C5) left the app on
-2026-09-24 (owner: a process is recorded once); a file left there is not
-read.
-
-Beside it, in the same user data folder: `handoffs/`, where a hand-off zip
+In the viewer's user data folder: `handoffs/`, where a hand-off zip
 opened with *Open a hand-off (.zip)...* is extracted and opened read only
 (contract C20), and `pdt-removed/`, where a removed screenshot, attachment,
 video copy, edited map file or transcript waits for its Undo (emptied when
@@ -227,6 +232,7 @@ renderer keeps it in `viewer/state.js` (`State.getSession()`):
 | `integrity` | `session-integrity.json` | `{ missing: [...] }`: files that did not survive the copy |
 | `transcript`, `transcriptError` | `transcript.json` | The parsed transcript, or `null`; a file that exists but cannot be used is reported in one line and otherwise ignored |
 | `readOnly` | | A hand-off opened read only (contract C20): a folder under `<userData>/handoffs`, or a hand-off unzipped by hand; nothing in it is written |
+| `library` | `library.json`, else the app's `library/activities.json` | Contract C21 (`library.js` `projectLibrary`): `{ source, status, path, library, error }`; a missing or invalid file is an empty library. The step pane's picker and the fact line's code read it |
 
 Every surface places transcript sentences through `viewer/transcript-model.js`,
 the one implementation of the time rule in SCHEMA.md (contract C8).
@@ -247,10 +253,6 @@ edit -> persistAnnotations(annotations, label, topics)          (session.js)
 - Undo and redo are in memory only: annotation snapshots, at most 50, pinned
   to the session folder and cleared when another session opens.
 - Only an analysis (the pipeline) re-reads the folder; edits never reload it.
-- Renames, and the Remembered step names dialog's Rename and Forget, also
-  write the library store above, through their own IPC calls. Their undo
-  entry keeps the store's entry from before, so Ctrl+Z (and Ctrl+Y) put the
-  remembered name back too (lane FX2, `viewer:restoreStepName`).
 
 ## Conventions
 

@@ -12,7 +12,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker } = require("./step-editor.js");
+const { describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker,
+  nameFieldHtml, activityListHtml } = require("./step-editor.js");
+const Library = require("./library.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
 // The aligned reading's "apply to all" curate form (removed with the aligned
@@ -332,4 +334,40 @@ test("lane FX3: Split needs two recorded actions; below that it says why in plai
   assert.equal(splitBlocker({ state: "manually_authored", evidence: null }), none, "a step added by hand");
   assert.equal(splitBlocker(null), none);
   for (const n of [0, 1]) assert.ok(!/interaction|≥/.test(splitBlocker(ids(n))));
+});
+
+/* ---- C21: the name field's picker --------------------------------------- */
+const LIB = { format: 1, version: "1", applications: [
+  { name: "Salesforce", activities: [
+    { id: "a1", name: "Save the order", code: "SO-01", description: "Saves <the> order.", screens: [] },
+    { id: "a2", name: "Find the customer", screens: [] }] },
+  { name: "SAP", activities: [] }] };
+
+test("C21: the name field offers the activities of the step's system as a list under it, and any name can still be typed", () => {
+  const picker = Library.pickerFor(LIB, "Salesforce", { library_activity: "a2" });
+  const html = nameFieldHtml({ name: "Salesforce - Order: Save order" }, picker);
+  assert.ok(html.includes('id="step-name" value="Salesforce - Order: Save order"'), "the name field keeps the step's name");
+  assert.ok(html.includes('role="combobox"') && html.includes('aria-controls="step-activity-list"'));
+  assert.ok(html.includes('<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="Activities of Salesforce" hidden></ul>'));
+  assert.ok(!html.includes("step-lib-note"), "no quiet line when there are activities");
+  assert.ok(/title="Pick an activity of Salesforce from the library, or type any name./.test(html));
+  assert.ok(!html.includes(" list="), "no datalist on the step pane's name: the picker is the list");
+});
+
+test("C21: with no activity for the step's system (or no system yet) the field says so in one quiet line and no list is drawn", () => {
+  const none = nameFieldHtml({ name: "Create order" }, Library.pickerFor(LIB, "SAP", {}));
+  assert.ok(none.includes('<span class="step-lib-note" id="step-lib-note">The library has no activities for SAP.</span>'));
+  assert.ok(!none.includes("step-activity-list") && !none.includes("combobox"));
+  const byHand = nameFieldHtml({ name: "Call the customer" }, Library.pickerFor(LIB, "", {}));
+  assert.ok(byHand.includes("Set the system first: the library lists activities by system."));
+  assert.ok(nameFieldHtml({ name: "x" }, null).includes('id="step-name"'), "without a picker, a plain name field");
+});
+
+test("C21: the picker's rows show the name, the code and the description, the step's activity marked, the row the keys are on lit", () => {
+  const acts = Library.pickerFor(LIB, "Salesforce", {}).activities;
+  const html = activityListHtml(acts, "a2", 0);
+  assert.ok(html.includes('<li class="step-activity active" role="option" id="step-activity-0" data-i="0" aria-selected="true" title="Saves &lt;the&gt; order.">'));
+  assert.ok(html.includes('<span class="step-activity-code">SO-01</span>') && html.includes('<span class="step-activity-desc">Saves &lt;the&gt; order.</span>'));
+  assert.ok(html.includes('<li class="step-activity current" role="option" id="step-activity-1" data-i="1" aria-selected="false">'));
+  assert.equal(activityListHtml([], null, -1), "");
 });

@@ -14,8 +14,10 @@
  * opened (annotations.opened_runs). The app counts the boundary fixes made to
  * the reference run (merge, split, add, hide); once it is confirmed, the
  * probe line is in its right-click menu. Renaming a step that carries a
- * draft_key remembers the name (main-process store, passed as --names on
- * every Analyze) and names the same-key drafts of the session at once.
+ * draft_key names the same-key drafts of the project at once. The step
+ * pane's name field offers the activities of the step's system from the
+ * project's activity library (contract C21, library.js): a pick names the
+ * step from the library.
  *
  * Lane L12b: a merge made in the pattern run carries to the same consecutive
  * drafts of the other runs (one undo), and a draft hidden there can be hidden
@@ -23,9 +25,9 @@
  * pattern run (run-differences.js, the algorithm the PDD's section 6.1
  * uses): an open run lists its differences, a run's meta counts them. Undo
  * confirm takes Confirm run back; a drafted step is hidden, never deleted (the
- * next Analyze would draft it again); the Remembered step names dialog renames
- * or forgets a remembered name. (Saved processes, contract C5, left the app on
- * 2026-09-24: a process is recorded once.)
+ * next Analyze would draft it again). (Saved processes, contract C5, left the
+ * app on 2026-09-24: a process is recorded once; the remembered step names,
+ * C4, on 2026-09-25: the activity library names steps now.)
  *
  * Contract C19 (sub-processes): a step may carry sub_steps, at any depth. The
  * list shows one level at a time (State.mapPath, a path of map nodes; [] the
@@ -40,8 +42,8 @@
  * The model is runs-model.js (pure, unit-tested); this module renders it and
  * owns the step verbs (rename / save / split / merge / hide / delete / add /
  * bulk hide or delete / confirm run / undo confirm / use as pattern / the
- * sub-process verbs) and the Apps outside the process and Remembered step
- * names dialogs.
+ * sub-process verbs, a pick from the library) and the Apps outside the
+ * process dialog.
  * Cross-surface helpers (ensureAnnoShape, persistAnnotations,
  * jumpToStepInFlow, watchStep) are injected by
  * renderer.js via initStepsView().
@@ -53,7 +55,6 @@ const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeM
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
-const Ipc = require("../ipc.js");
 const PdtSteps = require("../step-editor.js");
 const RunsModel = require("../runs-model.js");
 const RunDiff = require("../run-differences.js");
@@ -70,6 +71,7 @@ const SPM = require("../sub-process-maps.js");
 const SPV = require("../sub-process-verbs.js");
 const { processLabel, mapNodeLabel } = require("../process-map-levels.js");
 const RO = require("../read-only.js");
+const Library = require("../library.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -98,12 +100,7 @@ function _freshUi(folder) {
 }
 let _ui = _freshUi(null);
 
-/* The remembered names (C4) behind the name suggestions: read from the main
-   process once, then updated in place after each name is remembered. */
-let _remembered = {};
-let _rememberedLoad = null;
-
-/* The one datalist the step name inputs (detail and inline rename) share. */
+/* The datalist of a row's inline rename: the names used in the project. */
 const NAME_LIST_ID = "step-name-suggestions";
 
 /* The step the detail pane shows, so a redraw of the same step keeps the
@@ -293,18 +290,6 @@ function _selectAndReveal(stepId) {
   State.setSelectedStepId(stepId);
 }
 
-function _ensureRememberedLoaded() {
-  if (_rememberedLoad) return _rememberedLoad;
-  _rememberedLoad = Promise.resolve()
-    .then(() => Ipc.readRememberedNames())
-    .then((r) => {
-      if (r && r.ok) _remembered = r.names || {};
-      else if (r && r.error) console.warn("[steps] the remembered names could not be read: " + r.error);
-    })
-    .catch((e) => console.warn("[steps] the remembered names could not be read:", e && e.message));
-  return _rememberedLoad;
-}
-
 function _nameListEl() {
   let dl = document.getElementById(NAME_LIST_ID);
   if (!dl) {
@@ -315,13 +300,18 @@ function _nameListEl() {
   return dl;
 }
 
-/* Fill the shared name datalist for `step` (C4 read side): remembered names
-   of the same app, then the names already used in this session. */
-function _fillNameList(step, interactionsById) {
+/* Fill the rename datalist: the names already used in this project. */
+function _fillNameList() {
   const s = State.getSession();
-  const names = RunsModel.nameSuggestions((s && s.annotations && s.annotations.steps) || [], step,
-    _remembered, interactionsById || _interactionsById());
+  const names = RunsModel.nameSuggestions((s && s.annotations && s.annotations.steps) || []);
   _nameListEl().innerHTML = names.map((n) => '<option value="' + escapeAttr(n) + '"></option>').join("");
+}
+
+/* The project's activity library (C21): its library.json, else the app's,
+   as the project was loaded (an empty library when there is none). */
+function _library() {
+  const s = State.getSession();
+  return (s && s.library && s.library.library) || Library.emptyLibrary();
 }
 
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
@@ -399,7 +389,6 @@ function renderStepsLevel() {
   const session = State.getSession();
   if (!session || !PdtSteps) return;
   if (_ui.folder !== session.sessionFolder) _ui = _freshUi(session.sessionFolder);
-  _ensureRememberedLoaded();
   const anno = session.annotations || {};
   const allSteps = anno.steps || [];
   const interactionsById = _interactionsById();
@@ -495,7 +484,6 @@ function renderStepsLevel() {
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   if (selected) {
     if (title) title.textContent = "Selected step";
-    _fillNameList(selected, interactionsById);
     PdtSteps.renderStepDetail(detail, selected, stepDetailCallbacks(selected, interactionsById));
     // Lane HV: in a hand-off opened read only the pane's fields are read, not
     // typed in (its acts are hidden, styles.css .read-only).
@@ -871,7 +859,7 @@ function _groupBody(visible, hiddenCount, emptyText, baseline) {
     showStepContextMenu,
     {
       nameListId: NAME_LIST_ID,
-      onBeginRename: (step) => _fillNameList(step),
+      onBeginRename: () => _fillNameList(),
       baseline: baseline || null,
       // Lane HV: a hand-off opened read only renames nothing.
       readOnly: RO.isReadOnly(State.getSession()),
@@ -940,14 +928,15 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   }
   // Its inverse, Undo confirm, is beside the Confirmed badge (_addUndoConfirm).
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  // One line per run says how many names are remembered names (this
-  // computer's or this recording's own, C4), in place of a tag on every row.
+  // One line per run says how many names are remembered names (names given
+  // to the same drafted step elsewhere in this project), in place of a tag on
+  // every row.
   const saved = run.visible.filter((s) => s.name_source === "remembered" &&
     (RunsModel.DRAFT_STATES.has(s.state) || s.state === "confirmed")).length;
   if (saved) {
     const line = document.createElement("p");
     line.className = "run-names-note";
-    line.title = "These steps took the name you gave the same drafted step before: the app remembers it for the same screen and button, in this project and in every other one.";
+    line.title = "These steps took the name you gave the same drafted step in this project: the same screen and button get the same name.";
     line.textContent = "Remembered names: " + saved + " of " + _plural(n, "step", "steps");
     acts.appendChild(line);
   }
@@ -1099,7 +1088,9 @@ function stepFacts(step, interactionsById) {
   const derived = SystemNames.whereOfStep(Object.assign({}, step, { system: "" }), interactionsById, _appNames()).system;
   const drafted = StepFacts.isDraftedDescription(step.description, datas);
   return {
-    factLine: StepFacts.factLine({ system: where.system, screen: where.screen, duration: StepFacts.duration(step.time_range),
+    // C21: a step named from the library shows its code next to the system.
+    factLine: StepFacts.factLine({ system: where.system, code: Library.codeOf(_library(), step), screen: where.screen,
+      duration: StepFacts.duration(step.time_range),
       ends: StepFacts.endsAt(step, datas || []), pointer: StepFacts.pointer(step, _model().runs, origin) }),
     fields: StepFacts.typedFields(known),
     // A draft's narration is the description's hint, never its text: the PDD
@@ -1107,6 +1098,9 @@ function stepFacts(step, interactionsById) {
     description: drafted ? "" : (step.description || ""),
     descriptionHint: drafted ? String(step.description).trim() : "",
     system: where.system, derived, originMs: origin,
+    // What the step's own description is: nothing the analyst wrote (C21: a
+    // pick from the library fills it then).
+    descriptionEmpty: drafted || !String(step.description || "").trim(),
   };
 }
 
@@ -1145,8 +1139,10 @@ function stepDetailCallbacks(selected, interactionsById) {
     systemHtml: AnalystUI.systemFieldHtml(selected, facts.derived),
     extrasHtml: AnalystUI.stepExtrasHtml(selected),
     wireExtras: (host, isRendering) => AnalystUI.wireStepPane(host, selected, isRendering),
-    // C4: the name input suggests remembered and already-used names.
-    nameListId: NAME_LIST_ID,
+    // C21: the name field offers the activities of the step's system from
+    // the project's library; a pick names the step from it.
+    picker: Library.pickerFor(_library(), facts.system, selected),
+    onPickActivity: pickActivityAction,
     transcriptSaid: _transcriptSaid(selected),
     // C17: the Flow line (its condition and its links) and its edits.
     flow: _flowFor(selected),
@@ -1236,7 +1232,7 @@ function _linksDroppedText(n, several) {
     "; Ctrl+Z brings " + (n === 1 && !several ? "both" : "them") + " back.";
 }
 
-/* ===== Names: rename, remember, propagate (C4) ======================== */
+/* ===== Names: rename, the library, propagate ============================= */
 
 /* The one rename rule, for every entry point (inline rename, the detail
    form): the step becomes an analyst state and its grouping label follows the
@@ -1250,24 +1246,33 @@ function _linksDroppedText(n, several) {
    carries a draft_key, every other still-draft step with that key takes the
    name at once, at every level. C19: a drafted sub-step (action_key) is
    labelled by its name too, and its name reaches the drafted sub-steps of
-   its action_key, remembered under "action|" and the key; a sub-process's
+   its action_key; a sub-process's
    name reaches every occurrence of its node at its level, whatever their
    state, so the node and its map stay one (the level shown follows it).
-   Returns { key, propagated, occurrences } (key: the key to remember, or
-   null). */
-function _applyRename(anno, step, name) {
+   C21: a name that is an activity of the step's system in the project's
+   library (`found`, a pick; else looked up by the name) names the step from
+   the library (library.js applyActivity: its name, its system,
+   library_activity, and the activity's description when the step has none of
+   its own); any other name leaves the library. Returns { propagated,
+   occurrences, fromLibrary }. */
+function _applyRename(anno, step, name, found) {
   const loc = SPM.findStep(anno.steps || [], step.step_id);
   const path = loc ? loc.path : [];
   const oldNode = mapNodeLabel(step);
   const model = _model();
   const txs = _txs(model);
   const subNode = SPM.isSubProcessNode(txs, path, oldNode);
+  const inter = _interactionsById();
+  const facts = stepFacts(step, inter);
+  const hit = found || Library.activityNamed(_library(), facts.system, name);
   step.name = name;
+  if (hit) Library.applyActivity(step, hit, { descriptionEmpty: facts.descriptionEmpty });
+  else delete step.library_activity;
   _markEdited(step);
+  name = step.name;
   const keyed = (typeof step.draft_key === "string" && step.draft_key) || (typeof step.action_key === "string" && step.action_key);
   const pl = keyed ? String(name).trim() : processLabel(name);
   if (pl) step.process_label = pl;
-  const key = RunsModel.rememberKey(step) || null;
   const propagated = step.draft_key ? RunsModel.propagateName(anno.steps || [], step, name)
     : step.action_key ? RunsModel.propagateActionName(anno.steps || [], step, name) : 0;
   let occurrences = 0;
@@ -1279,26 +1284,7 @@ function _applyRename(anno, step, name) {
       State.setMapPath(cur);
     }
   }
-  return { key, propagated, occurrences };
-}
-
-/* Remember `name` for `key` in the main-process store. A failed write is
-   shown; the session rename is saved either way. Returns the store's answer
-   ({ ok, previous, entry }: the entry before and the one written). */
-async function _rememberName(key, name) {
-  let r;
-  try {
-    r = await Ipc.rememberStepName({ draftKey: key, name });
-  } catch (e) {
-    r = { ok: false, error: (e && e.message) || String(e) };
-  }
-  if (r && r.ok) {
-    _remembered[key] = (r.entry && typeof r.entry === "object") ? r.entry : { name, updated_at: new Date().toISOString() };
-    return r;
-  }
-  toast("The new name is saved in this project, but it could not be remembered for later analyses: " +
-    ((r && r.error) || "no reason was given"), "error");
-  return r || { ok: false };
+  return { propagated, occurrences, fromLibrary: !!hit };
 }
 
 function _renamedToast(propagated, occurrences) {
@@ -1306,13 +1292,6 @@ function _renamedToast(propagated, occurrences) {
   return propagated
     ? "Renamed. " + _plural(propagated, "matching drafted step", "matching drafted steps") + " took the name too."
     : "Renamed";
-}
-
-/* The remembered name of `key` changed in the store (the rename's undo entry
-   carries it, lane FX2): { key, before, after } from the store's answer, or
-   null when nothing was remembered. */
-function _namesChange(key, r) {
-  return r && r.ok && key ? [{ key, before: r.previous || null, after: r.entry || null }] : null;
 }
 
 async function inlineRenameStep(stepId, newName, advance) {
@@ -1332,18 +1311,37 @@ async function inlineRenameStep(stepId, newName, advance) {
   // Tab moves on to the row below, in the list the analyst sees.
   const goNext = advance === true || advance === "next";
   const next = goNext ? _nextRow(stepId) : null;
-  const { key, propagated, occurrences } = _applyRename(anno, step, newName);
-  // The name is remembered first, so the rename's undo entry carries the
-  // store's entry before it and Ctrl+Z puts it back (lane FX2).
-  const names = key ? _namesChange(key, await _rememberName(key, newName)) : null;
+  const { propagated, occurrences, fromLibrary } = _applyRename(anno, step, newName);
   let saved = true;
-  try { await persistAnnotations(anno, "rename step", undefined, names ? { names } : undefined); } catch (_) { saved = false; }   // already shown
-  if (saved && (propagated || occurrences)) toast(_renamedToast(propagated, occurrences), "success");
+  try { await persistAnnotations(anno, fromLibrary ? "name the step from the library" : "rename step"); } catch (_) { saved = false; }   // already shown
+  if (saved && fromLibrary) toast(_libraryToast(propagated, occurrences), "success");
+  else if (saved && (propagated || occurrences)) toast(_renamedToast(propagated, occurrences), "success");
   if (next) {
     State.setSelectedStepId(next.step_id);
     renderStepsLevel();
     setTimeout(() => beginRenameOnSelected(), 30);
   }
+}
+
+/* The toast after a step was named from the library. */
+function _libraryToast(propagated, occurrences) {
+  return "Named from the library." + (occurrences || propagated ? " " + _renamedToast(propagated, occurrences).replace(/^Renamed(\.| in every transaction:) ?/, "") : "");
+}
+
+/* C21: an activity picked in the step pane's name field names the step from
+   the library, even when the step already carries its name. One undoable
+   edit. */
+async function pickActivityAction(stepId, activityId) {
+  const session = State.getSession();
+  if (!session || RO.isReadOnly(session)) return;
+  const anno = ensureAnnoShape(session.annotations);
+  const step = _findStep(stepId);
+  const found = Library.findActivity(_library(), activityId);
+  if (!step || !found) return;
+  const { propagated, occurrences } = _applyRename(anno, step, found.activity.name, found);
+  let saved = true;
+  try { await persistAnnotations(anno, "name the step from the library"); } catch (_) { saved = false; }   // already shown
+  if (saved) toast(_libraryToast(propagated, occurrences), "success");
 }
 
 /* Start the inline rename of the selected step, when its row is on screen. */
@@ -2146,14 +2144,12 @@ async function openAsSubProcessAction(stepId) {
     toast("A step outside the transactions is not opened as a sub-process: bring it into a transaction first.", "error");
     return;
   }
-  await _ensureRememberedLoaded();
   const model = _model();
   const node = mapNodeLabel(loc.step);
-  // Lane FX2: the names this project's own sub-steps give their actions
-  // first, then this computer's remembered names (C4's precedence).
+  // Lane FX2: the names this project's own sub-steps give their actions.
   const pattern = RunsModel.patternRun(anno, model.runs);
   const r = SPV.openAsSubProcess(_txs(model), loc.path, loc.step, _interactionsById(),
-    { newId: cryptoRandomId, remembered: _remembered, shotTimes: _shotTimes(),
+    { newId: cryptoRandomId, shotTimes: _shotTimes(),
       projectNames: SPV.projectActionNames(anno.steps, pattern.run ? pattern.run.caseId : null) });
   // The new level shows at once, open at this step's visit.
   State.setMapPath(loc.path.concat([node]));
@@ -2384,124 +2380,6 @@ function openIgnoredAppsDialog() {
   });
 }
 
-/* ===== Remembered step names (item 8, C4; the button read Saved names...
-   until the owner's review) =====
-   The names this computer remembers for drafted steps, those whose draft key
-   occurs in this session first. Rename changes the remembered name and the
-   session's steps with that key that carry it (its drafts, and the steps
-   named with it); Forget removes it from the store and gives those steps
-   their drafted names back. Both are one undoable edit of the session: the
-   next analysis names drafts with the session's own names first (C4). */
-function openRememberedNamesDialog() {
-  if (!State.getSession()) { toast("Open a project first.", ""); return; }
-  const prior = document.getElementById("remembered-names-dialog");
-  if (prior) prior.remove();
-  const backdrop = document.createElement("div");
-  backdrop.className = "modal-backdrop";
-  backdrop.id = "remembered-names-dialog";
-  backdrop.innerHTML =
-    '<div class="modal modal-simple" role="dialog" aria-label="Remembered step names">' +
-      '<header class="modal-header"><h2>Remembered step names</h2>' +
-        '<button class="icon-btn modal-close" data-act="close" title="Close">✕</button></header>' +
-      '<div class="modal-body">' +
-        '<p class="meta rn-intro">When you rename a drafted step, the app remembers that name for the same screen and button and uses it in every project. Rename or forget one here.</p>' +
-        '<div class="rn-list"></div>' +
-      "</div>" +
-      '<div class="modal-footer"><button class="primary" data-act="close">Close</button></div>' +
-    "</div>";
-  document.body.appendChild(backdrop);
-  const list = backdrop.querySelector(".rn-list");
-  for (const b of backdrop.querySelectorAll('[data-act="close"]')) b.addEventListener("click", () => backdrop.remove());
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
-
-  let names = {};
-  async function render() {
-    let r;
-    try { r = await Ipc.readRememberedNames(); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
-    if (!backdrop.isConnected) return;
-    if (!r || !r.ok) {
-      list.innerHTML = '<p class="rn-error">' + escapeHtml("The remembered step names cannot be read: " +
-        ((r && r.error) || "no reason was given")) + "</p>";
-      return;
-    }
-    names = r.names || {};
-    _remembered = Object.assign({}, names);
-    const s = State.getSession();
-    const rows = RunsModel.rememberedNameRows(names, (s && s.annotations && s.annotations.steps) || []);
-    if (!rows.length) {
-      list.innerHTML = '<p class="meta">No names are remembered yet. When you rename a drafted step, its name is remembered.</p>';
-      return;
-    }
-    list.innerHTML = rows.map((row) =>
-      '<div class="rn-row" data-key="' + escapeAttr(row.key) + '" title="' + escapeAttr(row.key) + '">' +
-        '<div class="rn-text"><span class="rn-name">' + escapeHtml(row.name) + "</span>" +
-        '<span class="rn-where">' + escapeHtml(row.inSession
-          ? _plural(row.inSession, "step in this project", "steps in this project") : "Not in this project") + "</span></div>" +
-        '<button type="button" data-act="rename-name">Rename</button>' +
-        '<button type="button" data-act="forget-name">Forget</button>' +
-      "</div>").join("");
-    for (const rowEl of list.querySelectorAll(".rn-row")) {
-      const key = rowEl.dataset.key;
-      rowEl.querySelector('[data-act="rename-name"]').addEventListener("click", () => renameRemembered(key));
-      rowEl.querySelector('[data-act="forget-name"]').addEventListener("click", () => forgetRemembered(key));
-    }
-  }
-
-  async function renameRemembered(key) {
-    const cur = (names[key] && names[key].name) || "";
-    const next = await promptModal({ title: "Rename a remembered name", message: 'New name for "' + cur + '"',
-      defaultValue: cur, okLabel: "Rename" });
-    const nm = typeof next === "string" ? next.trim() : "";
-    if (!nm || nm === cur || !State.getSession()) return;
-    let r;
-    try { r = await Ipc.rememberStepName({ draftKey: key, name: nm }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
-    if (!r || !r.ok) { toast("The name was not renamed: " + ((r && r.error) || "no reason was given"), "error"); return; }
-    _remembered[key] = (r.entry && typeof r.entry === "object") ? r.entry : { name: nm, updated_at: new Date().toISOString() };
-    // The session's own steps with that name take the new one too: the next
-    // analysis names drafts with this session's names first (C4). Its undo
-    // puts the remembered name back too (lane FX2).
-    const anno = ensureAnnoShape(State.getSession().annotations);
-    const n = RunsModel.renameSavedName(anno.steps, key, cur, nm);
-    const undoNames = _namesChange(key, r);
-    let saved = true;
-    if (n) { try { await persistAnnotations(anno, "rename a remembered name", undefined, undoNames ? { names: undoNames } : undefined); } catch (_) { saved = false; } }   // already shown
-    if (saved) {
-      toast("Renamed" + (n ? ": " + _plural(n, "step in this project took", "steps in this project took") +
-        " the new name" : "") + ".", "success");
-    }
-    await render();
-  }
-
-  async function forgetRemembered(key) {
-    const cur = (names[key] && names[key].name) || "";
-    const ok = await confirmModal({ title: "Forget this name?", message: 'Forget "' + cur + '"?',
-      detail: "The steps of this project with this name get their drafted names back, and later analyses no longer use it. Ctrl+Z gives this project its names back and remembers the name again.",
-      okLabel: "Forget" });
-    if (!ok || !State.getSession()) return;
-    let r;
-    try { r = await Ipc.forgetStepName({ draftKey: key }); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
-    if (!r || !r.ok) { toast("The name was not forgotten: " + ((r && r.error) || "no reason was given"), "error"); return; }
-    delete _remembered[key];
-    // Otherwise the next analysis names the drafts with this session's own
-    // steps that still carry it (C4). Its undo remembers the name again
-    // (lane FX2).
-    const anno = ensureAnnoShape(State.getSession().annotations);
-    const inter = _interactionsById();
-    const n = RunsModel.forgetSavedName(anno.steps, key, cur,
-      (s) => (s.action_key ? SPV.draftedAction(s, inter).name : StepFacts.draftedName(s, StepFacts.stepDatas(s, inter))));
-    const undoNames = r.previous ? [{ key, before: r.previous, after: null }] : null;
-    let saved = true;
-    if (n) { try { await persistAnnotations(anno, "forget a remembered name", undefined, undoNames ? { names: undoNames } : undefined); } catch (_) { saved = false; } }   // already shown
-    if (saved) {
-      toast('Forgot "' + cur + '".' + (n ? " " + _plural(n, "step in this project has its drafted name",
-        "steps in this project have their drafted names") + " again." : ""), "success");
-    }
-    await render();
-  }
-
-  render();
-}
-
 /* Wire the Steps surface. deps = { ensureAnnoShape, persistAnnotations,
    jumpToStepInFlow, watchStep, analyze }. Call once at
    boot. */
@@ -2517,11 +2395,8 @@ function initStepsView(deps) {
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-group-selected")) $("#btn-group-selected").addEventListener("click", groupSelectedAction);
   if ($("#btn-ignored-apps")) $("#btn-ignored-apps").addEventListener("click", openIgnoredAppsDialog);
-  if ($("#btn-remembered-names")) $("#btn-remembered-names").addEventListener("click", openRememberedNamesDialog);
   // The divider between the transactions and the selected step.
   if ($("#steps-splitter")) PaneSplitter.wire($("#steps-splitter"));
-  // Lane FX2: an undo or a redo put a remembered name back: read them again.
-  State.subscribe("names", () => { _remembered = {}; _rememberedLoad = null; _ensureRememberedLoaded(); });
 }
 
 /* A2/A5: toggle one boolean flag on a step and persist. Shared by the step

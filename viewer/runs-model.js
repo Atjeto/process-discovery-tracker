@@ -521,7 +521,7 @@ function probeLine(stats, runs, run, record) {
   return { text, drafted, source, fixes: f, total };
 }
 
-/* ---- Names (C4) ------------------------------------------------------------ */
+/* ---- Names ------------------------------------------------------------------ */
 
 /* An analyst renamed `step` to `name`: every OTHER still-draft step of the
    session with the same draft_key takes the name at once, at every level
@@ -556,31 +556,6 @@ function _propagate(steps, step, name, field) {
   return n;
 }
 
-/* The key a step's name is remembered under (C4): its draft_key, or for a
-   drafted sub-step "action|" + its action_key (C19); "" for any other. */
-function rememberKey(step) {
-  if (!step) return "";
-  if (typeof step.draft_key === "string" && step.draft_key) return step.draft_key;
-  if (typeof step.action_key === "string" && step.action_key) return "action|" + step.action_key;
-  return "";
-}
-
-/* The C1 app of a step: the process name of its first interaction that has
-   one, lowercased, ".exe" stripped; "" when unknown. Read from the
-   interactions, never by splitting the draft_key. */
-function stepApp(step, interactionsById) {
-  const ids = (step && step.evidence && step.evidence.interaction_event_ids) || [];
-  for (const id of ids) {
-    const ev = interactionsById && interactionsById[id];
-    const p = ev && ev.data && ev.data.process_name;
-    if (typeof p === "string" && p.trim()) {
-      const a = p.trim().toLowerCase();
-      return a.endsWith(".exe") ? a.slice(0, -4) : a;
-    }
-  }
-  return "";
-}
-
 /* The readable name of an application token ("chrome", "chrome.exe",
    "EXCEL.EXE"): the recording's own name for it (stats.json meta.app_names,
    the names the PDD and the capture detail use), else the executable name without
@@ -600,12 +575,11 @@ function readableApp(app, names) {
     ? bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase() : bare;
 }
 
-/* Names to suggest while naming `step`: remembered names whose draft_key is
-   for the same app (the key starts with "<app>|"; an app is a process name,
-   which cannot contain "|"), the most recently remembered first, then the
-   names already used in this session (names the analyst gave first).
-   Case-insensitive duplicates are dropped. */
-function nameSuggestions(steps, step, remembered, interactionsById) {
+/* Names to suggest while renaming a step in its row: the names already used
+   in this project, the names the analyst gave first. Case-insensitive
+   duplicates are dropped. (The step pane's name field offers the activities
+   of the library instead: library.js pickerFor.) */
+function nameSuggestions(steps) {
   const out = [];
   const seen = new Set();
   const add = (n) => {
@@ -614,16 +588,6 @@ function nameSuggestions(steps, step, remembered, interactionsById) {
     seen.add(t.toLowerCase());
     out.push(t);
   };
-  const app = stepApp(step, interactionsById);
-  if (app && remembered && typeof remembered === "object") {
-    const prefix = app + "|";
-    const same = Object.keys(remembered)
-      .filter((key) => key.startsWith(prefix) && remembered[key] && typeof remembered[key] === "object")
-      .map((key) => remembered[key])
-      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")) ||
-        String(a.name || "").localeCompare(String(b.name || "")));
-    for (const e of same) add(e.name);
-  }
   const live = (steps || []).filter((s) => s && s.state !== "hidden");
   for (const s of live) if (ANALYST_STATES.has(s.state)) add(s.name);
   for (const s of live) if (!ANALYST_STATES.has(s.state)) add(s.name);
@@ -632,8 +596,8 @@ function nameSuggestions(steps, step, remembered, interactionsById) {
 
 /* A merged or split step is no longer one draft: drop the C1 identity
    (draft_key, name_source, end_reason) and a merge's draft_keys, so a later
-   rename is not remembered under a key that no longer describes it. A merge
-   of drafts then sets its own draft_keys (mergedDraftKeys). */
+   rename does not name the drafts of a key that no longer describes it. A
+   merge of drafts then sets its own draft_keys (mergedDraftKeys). */
 function dropDraftIdentity(step) {
   if (!step || typeof step !== "object") return step;
   delete step.draft_key;
@@ -642,73 +606,9 @@ function dropDraftIdentity(step) {
   delete step.end_reason;
   // C19: a merged or split sub-step is no longer one drafted action either.
   delete step.action_key;
+  // C21: nor is it named from the library ("A + B", "A (split 1)").
+  delete step.library_activity;
   return step;
-}
-
-/* The session's visible steps with `draftKey` that the Remembered step names
-   dialog renames or forgets with a remembered name: every draft of the key,
-   and the steps the analyst confirmed, edited or added that carry the old
-   name, at every level; a key "action|..." is a drafted sub-step's (C19,
-   rememberKey). The next analysis names a draft with this session's own
-   names first (C4), so a remembered name changed in the store only would come
-   back from them. */
-function _carriers(steps, draftKey, oldName) {
-  const old = typeof oldName === "string" ? oldName.trim() : "";
-  return visibleTree(steps).filter((s) => rememberKey(s) === draftKey &&
-    (DRAFT_STATES.has(s.state) || (old && String(s.name || "").trim() === old)));
-}
-
-/* A remembered name renamed in the Remembered step names dialog (item 8): the
-   carriers take the new name (a draft as a propagated name lands: state kept,
-   name_source "remembered"). Returns how many took it. */
-function renameSavedName(steps, draftKey, oldName, name) {
-  const nm = typeof name === "string" ? name.trim() : "";
-  if (typeof draftKey !== "string" || !draftKey || !nm) return 0;
-  const hit = _carriers(steps, draftKey, oldName);
-  for (const s of hit) {
-    s.name = nm;
-    if (DRAFT_STATES.has(s.state)) s.name_source = "remembered";
-    s.process_label = nm;
-  }
-  return hit.length;
-}
-
-/* A remembered name forgotten in the Remembered step names dialog: the
-   carriers that hold it take their drafted name back (`draftedName(step)`, ""
-   when it cannot be told, and then the step keeps its name). Returns how many
-   changed. */
-function forgetSavedName(steps, draftKey, oldName, draftedName) {
-  const old = typeof oldName === "string" ? oldName.trim() : "";
-  if (typeof draftKey !== "string" || !draftKey || !old) return 0;
-  let n = 0;
-  for (const s of _carriers(steps, draftKey, old)) {
-    const back = typeof draftedName === "function" ? String(draftedName(s) || "").trim() : "";
-    if (String(s.name || "").trim() !== old || !back) continue;
-    s.name = back;
-    if (DRAFT_STATES.has(s.state)) s.name_source = "draft";
-    s.process_label = back;
-    n++;
-  }
-  return n;
-}
-
-/* The rows of the Remembered names dialog (item 8): one per remembered name,
-   { key, name, updated_at, inSession } where inSession counts this session's
-   visible steps that carry the key. The names whose key occurs in this
-   session come first, then the others; each part by name (case does not
-   matter), then by key. */
-function rememberedNameRows(names, steps) {
-  const counts = new Map();
-  for (const s of visibleTree(steps)) {
-    const key = rememberKey(s);
-    if (key) counts.set(key, (counts.get(key) || 0) + 1);
-  }
-  const rows = Object.keys(names && typeof names === "object" ? names : {})
-    .filter((key) => names[key] && typeof names[key].name === "string" && names[key].name.trim())
-    .map((key) => ({ key, name: names[key].name.trim(), updated_at: names[key].updated_at || "", inSession: counts.get(key) || 0 }));
-  rows.sort((a, b) => (b.inSession > 0) - (a.inSession > 0) ||
-    a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  return rows;
 }
 
 module.exports = {
@@ -717,8 +617,6 @@ module.exports = {
   groupKeyOf, groupSteps, nextInGroup,
   emptyFixes, defaultPatternRun, patternRun, designatePattern, usePattern, recordFix, confirmRun,
   reopenRun, canReopen,
-  probeLine, propagateName, propagateActionName, rememberKey, stepApp, readableApp, nameSuggestions, dropDraftIdentity,
-  renameSavedName, forgetSavedName,
-  rememberedNameRows,
+  probeLine, propagateName, propagateActionName, readableApp, nameSuggestions, dropDraftIdentity,
   mergedDraftKeys, carriedMerges, sameKeyDraftsElsewhere, hideSteps, runCount,
 };

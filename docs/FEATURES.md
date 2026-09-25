@@ -238,11 +238,20 @@ The viewer says *transaction* for one pass through the process and
   steps lane and the Map follow the level shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
   Alt+Down), or *+ Step* at the video's playhead.
-- **Remembered step names**: a name given once names the same drafted step
-  (the same screen and button) in every project; the Steps toolbar's
-  *Remembered step names...* renames or forgets one, and Ctrl+Z of a rename
-  puts the remembered name back too. *Apps outside the process...* drops an
-  application used during the call (Teams, Outlook) from the drafts.
+- **Step names**: a name given to a drafted step names the same drafted
+  step (the same screen and button) in the project's other transactions at
+  once. *Apps outside the process...* drops an application used during the
+  call (Teams, Outlook) from the drafts.
+- **The activity library** (contract C21): the step pane's name offers the
+  activities of the step's system from the project's library (a step added
+  by hand picks its system first); a pick sets the name, the system and,
+  when the step has none, the description, and the fact line shows the
+  activity's code. Any name can still be typed. A project keeps the
+  library it started with (its `library.json`). Help, *Build the
+  library...* (the owner's tool) reads projects and hand-off zips, lists
+  their named steps by system with their screens and where they were
+  found, shows the same screens named differently side by side, and saves
+  the ticked ones as a new version of the library file.
 
 **Map**
 

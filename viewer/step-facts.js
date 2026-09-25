@@ -3,12 +3,10 @@
  * built from the step's structured fields and its recorded interactions,
  * never by reading the pipeline's reason sentence (companion critique,
  * section 3):
- *   factLine   "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"
+ *   factLine   "Salesforce · SO-01 · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"
  *   typedFields the fields typed in the step, (field, value) as the PDD lists them
  *   draftedNarration / isDraftedDescription  the drafting's own description,
  *              which the step pane shows as a hint, not as the description
- *   draftedName the name the drafting gives a step (the Remembered step
- *              names dialog's Forget gives it back)
  *   occurrenceLine / occurrencesLine  the step panel's rows and the line
  *              above them ("Transaction 2, again · 2:14 into the recording ·
  *              took 9s"; "This step happened 5 times: ...")
@@ -20,7 +18,7 @@
 
 "use strict";
 
-const { screenType, valueFree } = require("./process-map-levels.js");
+const { valueFree } = require("./process-map-levels.js");
 const { sinceStart } = require("./dom.js");
 
 const ELLIPSIS = String.fromCharCode(0x2026);
@@ -168,16 +166,6 @@ function endsAt(step, datas) {
   return "";
 }
 
-/* The name the drafting gives a step with a draft_key: "<screen>: <commit>",
-   or the screen alone for a step that did not end at a commit. "" when its
-   interactions are not in the session. */
-function draftedName(step, datas) {
-  if (!step || !datas || !datas.length) return "";
-  const first = datas[0];
-  const screen = _text(first.screen_id) || (_text(first.window_title) ? screenType(first.window_title) : "") || "(screen)";
-  return step.end_reason === "commit" ? screen + ": " + commitName(datas[datas.length - 1]) : screen;
-}
-
 /* ---- where a step is in the recording ------------------------------------- */
 
 /* "Transaction 1 at 0:19" (the PDD's pointer; the run's title, AD-29), or
@@ -205,11 +193,12 @@ function formatMs(ms) {
   return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
 }
 
-/* The step pane's one fact line: the system first, then the screen, the
-   time, where a draft ends and where the step is in the recording. */
+/* The step pane's one fact line: the system first, then the code of the
+   activity the step is named from (contract C21), the screen, the time,
+   where a draft ends and where the step is in the recording. */
 function factLine(parts) {
   const p = parts || {};
-  return [p.system, p.screen, p.duration, p.ends, p.pointer].filter(Boolean).join(" · ");
+  return [p.system, p.code, p.screen, p.duration, p.ends, p.pointer].filter(Boolean).join(" · ");
 }
 
 /* The step panel's rows and the line above them (the owner's review of the
@@ -315,6 +304,6 @@ function occurrencesLine(rows, runCount, playable, uncovered) {
 }
 
 module.exports = {
-  stepDatas, typedFields, draftedNarration, isDraftedDescription, commitName, endsAt, draftedName,
+  stepDatas, typedFields, draftedNarration, isDraftedDescription, commitName, endsAt,
   pointer, duration, formatMs, factLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
 };

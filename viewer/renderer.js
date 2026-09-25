@@ -44,6 +44,8 @@ const { pddExportOutcome } = require("./normalize-result.js");
 const SaveState = require("./save-state.js");
 const RO = require("./read-only.js");
 const HandoffUI = require("./views/handoff-ui.js");
+const Library = require("./library.js");
+const LibraryBuilder = require("./views/library-builder-ui.js");
 const { exportBaseName } = require("./session-summary.js");
 
 /* The name an export is offered under (lane FX3, validation pass 2, item
@@ -528,8 +530,7 @@ function applyLevel(name) {
    wrappers so hoisting order does not matter. */
 initStepsView({
   ensureAnnoShape: (a) => ensureAnnoShape(a),
-  // Lane FX2: the topics and the undo entry's extra (a rename's remembered
-  // names) pass through.
+  // The topics and the undo entry's extra (lane HV: its tag) pass through.
   persistAnnotations: (a, label, topics, extra) => persistAnnotations(a, label, topics, extra),
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   // Watch plays the step in the step panel, beside the steps (V2 item 4).
@@ -1126,6 +1127,24 @@ function _editsInReadOnly(e) {
 function openHelp(section) {
   $("#help-modal").style.display = "";
   if (section) selectHelpSection(section);
+  renderHelpLibrary();
+}
+/* C21: Help's line on the app's activity library, its version and counts
+   ("Library 1: 9 applications, 0 activities"), read again each time Help
+   opens: the builder may have replaced the file. The file and why it cannot
+   be read are its tooltip. */
+async function renderHelpLibrary() {
+  const el = $("#help-library");
+  if (!el) return;
+  let r = null;
+  try { r = await Ipc.readAppLibrary(); } catch (_) { r = null; }
+  // The counts on a line of their own, so the narrow column breaks it there.
+  const line = Library.summaryLine(r);
+  const at = line.indexOf(": ");
+  el.innerHTML = at > 0 && r && r.status === "ok"
+    ? escapeHtml(line.slice(0, at + 1)) + ' <span class="help-library-counts">' + escapeHtml(line.slice(at + 2)) + "</span>"
+    : escapeHtml(line);
+  el.title = r ? String(r.path || "") + (r.error ? ": " + r.error : "") : "";
 }
 function closeHelp() { $("#help-modal").style.display = "none"; }
 function selectHelpSection(name) {
@@ -1142,6 +1161,13 @@ document.addEventListener("click", (e) => {
   openHelp(t.dataset.helpSection || "stepsphases");
 });
 $("#btn-help-close").addEventListener("click", closeHelp);
+/* C21: Help, Build the library...: the owner's tool (views/library-builder-ui.js). */
+if ($("#btn-build-library")) {
+  $("#btn-build-library").addEventListener("click", () => {
+    closeHelp();
+    LibraryBuilder.openLibraryBuilder({ onSaved: () => renderHelpLibrary() });
+  });
+}
 /* Help, Troubleshooting: Re-analyze, the one way to run the analysis by hand
    (AD-22: it runs by itself otherwise). It asks first when the recording has
    steps, like Apply marker changes. */
@@ -1233,6 +1259,7 @@ $("#help-modal").addEventListener("click", (e) => {
 renderRecent();
 // P3.1: the version lives in Help, not in the top bar.
 $("#help-version").textContent = "Version " + require("./package.json").version;
+renderHelpLibrary();
 // The save state in the top bar: Saved, Saving... or Not saved (save-state.js).
 SaveState.mount(document.getElementById("save-state"), { subscribe: Ipc.onProjectWrite });
 

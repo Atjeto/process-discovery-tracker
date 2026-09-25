@@ -136,6 +136,10 @@ function stripLocales(appDir) {
          dev tree and the package. Without this the released app's recognition
          silently breaks while dev tests stay green. */
       path.join(PROJECT_DIR, "..", "shared"),
+      /* The app's activity library (contract C21): library.js and the
+         pipeline's --library read resources/library/activities.json, a
+         sibling of normalization/ and shared/ as in the dev tree. */
+      path.join(PROJECT_DIR, "..", "library"),
     ],
   });
 

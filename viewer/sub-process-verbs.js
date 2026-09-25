@@ -21,8 +21,9 @@
  * A drafted sub-step (one recorded action): the shape of a step plus
  * `action_key` ("<app>|<screen>|enter:<field>" or "...|click:<control>"; the
  * app and the screen from the parent's draft_key when it has one, else from
- * the action's event) and name_source "action" (or "remembered": the C4 store
- * under "action|" + action_key), state auto_suggested, no draft_key. Its name
+ * the action's event) and name_source "action" (or "remembered": a name the
+ * project's own sub-steps give that action), state auto_suggested, no
+ * draft_key. Its name
  * carries no typed value ("Enter Product code", "Click Save order"): it is
  * its map node, like a drafted step's (process-map-levels.mapNodeLabel); its
  * description is the phrase with the value (Entered "SKU-4471" into Product
@@ -185,12 +186,6 @@ function _events(step, interactionsById) {
   return ids.map((id) => interactionsById && interactionsById[id]).filter((ev) => ev && ev.timestamp);
 }
 
-/* A remembered name (C4 store shape: { key: { name } }), or "". */
-function _remembered(store, key) {
-  const e = store && typeof store === "object" ? store[key] : null;
-  return e && typeof e.name === "string" ? e.name.trim() : "";
-}
-
 /* The names this project's own sub-steps give their actions (lane FX2,
    validation pass 1: C4's name precedence, F1, for drafted sub-steps, as
    step_suggest.session_names gives drafts theirs): { action_key: name } from
@@ -224,11 +219,11 @@ function projectActionNames(steps, patternCaseId) {
  * a project without a recording).
  * @param {object} parent
  * @param {Object<string, object>} interactionsById  event_id -> interaction event
- * @param {{newId?: Function, remembered?: object, projectNames?: object, shotTimes?: Object<string, string>}} opts
+ * @param {{newId?: Function, projectNames?: object, shotTimes?: Object<string, string>}} opts
  *   projectNames: the names the project's own sub-steps give their actions
- *   (projectActionNames), which come first (C4's precedence, lane FX2);
- *   remembered: the C4 store's names; shotTimes: screenshot path -> the time
- *   it was taken (the recording's screenshot events).
+ *   (projectActionNames), which name a drafted sub-step before its drafted
+ *   name (lane FX2); shotTimes: screenshot path -> the time it was taken (the
+ *   recording's screenshot events).
  */
 function draftSubSteps(parent, interactionsById, opts) {
   const o = opts || {};
@@ -245,8 +240,7 @@ function draftSubSteps(parent, interactionsById, opts) {
     const end = isLast ? a.events[a.events.length - 1].timestamp : actions[i + 1].events[0].timestamp;
     const s0 = Date.parse(start), s1 = Date.parse(end);
     const own = o.projectNames && typeof o.projectNames[a.key] === "string" ? _t(o.projectNames[a.key]) : "";
-    const saved = own || _remembered(o.remembered, "action|" + a.key);
-    const name = saved || a.name;
+    const name = own || a.name;
     return {
       step_id: _newId(o),
       session_id: (parent && parent.session_id) || "",
@@ -268,7 +262,7 @@ function draftSubSteps(parent, interactionsById, opts) {
       flags: { waste: false },
       phase_id: null,
       action_key: a.key,
-      name_source: saved ? "remembered" : "action",
+      name_source: own ? "remembered" : "action",
       process_label: name,
     };
   });
@@ -276,8 +270,7 @@ function draftSubSteps(parent, interactionsById, opts) {
 
 /* The name and the description the drafting gives a drafted sub-step, from
    its own events: { name, description }, "" each when they cannot be told.
-   The Remembered step names dialog's Forget gives the name back; Dissolve tells a
-   description the analyst wrote from the drafted one. */
+   Dissolve tells a description the analyst wrote from the drafted one. */
 function draftedAction(step, interactionsById) {
   const events = _events(step, interactionsById);
   const key = _t(step && step.action_key);

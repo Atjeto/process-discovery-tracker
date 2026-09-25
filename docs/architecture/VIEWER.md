@@ -177,9 +177,11 @@ container. The Overview is the default on load.
   the usual widths back (`pane-splitter.js`; at 1100px wide or less the two
   stack, without it). The toolbar has *+ Add step*, the bulk Hide, Merge
   and *Group into a sub-process...* buttons (shown when two or more rows
-  are ticked), and two quiet tools, *Apps outside the process...* and
-  *Remembered step names...*. The list shows one level at a time (contract
-  C19, below).
+  are ticked), and one quiet tool, *Apps outside the process...*. The list
+  shows one level at a time (contract C19, below). The step pane's name
+  field offers the activities of the step's system from the project's
+  activity library (contract C21, `library.js`; Help, *Build the library...*,
+  makes a new one).
 - **Map** (lane MV, [`map-view.js`](../../viewer/map-view.js) decides): the
   map the PDD prints shows first, the As-Is copy chosen for the PDD, else
   `process_map_step.bpmn`, drawn by bpmn-js, read only and linked
@@ -343,14 +345,14 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `annotations-store.js` | Reading `annotations.json` (an unreadable file is reported, never treated as absent, with the newest backup that can be read), the backups `.2` to `.5`, the temp-file-then-rename write, and Restore the newest backup (`restoreNewestBackup`: the unreadable file kept as `annotations.unreadable-<time>.json`, the backup copied into place). |
-| `names-store.js` | The remembered step names, `<userData>/pdt-library/remembered-names.json` (contract C4). |
 | `transcript-store.js` | `transcript.json`: read, save the sync offset, and the files Remove transcript takes out (`transcriptFiles`: the file and the originals in `transcript/`) (C8). |
 | `analyst-files.js` | The files the analyst adds (C16): screenshots in `screenshots/analyst/`, attachments in `attachments/` (a free name when one is taken), the move of removed files and back (the video's copy in `video/` and the edited maps' files too, lane CC), the parking of a removed transcript's files for its Undo (`parkFiles`, `restoreParked`), which attachment opens. |
 | `new-project.js` | A session without a recording (C16): `manifest.json` (`session_id`, `source`, `started_at`, `label`), an empty `events.jsonl`, `annotations.json`, and for a video project the video copied into `video/` at offset 0. |
 | `video-path.js` | Pure: where an attached video is kept (copied into `video/`, stored relative to the folder) and how a stored path is found again on another machine. |
 | `project-zip.js` | Export, Whole project (.zip): where the zip goes (next to the folder, `<name>.zip`, else `<name> (2).zip` and on), one more try when a save replaced a file while the zip was made, the sentence for a failure, the size. |
 | `handoff-zip.js` | Export, Hand off... (contract C20): `<project> v<N>.zip` next to the folder (never over another zip), the folder zipped by `zip-folder.js`, then the PDD and the Technical details of the version appended at the zip's root (`appendFiles`), built as `.building` and renamed when complete. |
-| `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD and the Technical details of the version it lists last; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD and Technical details beside it) and `handoffFile` (the PDD or the workbook it came with). |
+| `library.js` | The activity library (contract C21): the app's file (`library/activities.json`, `resources/library/activities.json` in the package, `PDT_LIBRARY` for tests), reading one (a missing or invalid file is an empty library), the project's `library.json` before the app's (`projectLibrary`), the pipeline's checks mirrored (`problems`), and the pure look-ups the step pane needs (`pickerFor`, `filterActivities`, `applyActivity`, `codeOf`) and Help's line (`summaryLine`). Used by the main process and the renderer. |
+| `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD and the Technical details of the version it lists last; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD and Technical details beside it), `handoffFile` (the PDD or the workbook it came with) and `readProjectZip` (C21: a zip's project manifest and annotations, read where it is, for the Library builder). |
 | `zip-folder.js` | The zip writer (PKZIP 2.0 without ZIP64, UTF-8 names, written as `.partial` and renamed at the end): a copy of `capture/zip-folder.js`, kept identical by `project-zip.test.js`, since a packaged viewer cannot reach `capture/`. |
 | `project-folder.js` | Which folder a chosen folder opens (lane FX2): a project folder, or the one project folder inside it (the folder Windows' Extract All makes of the SME's zip); any other folder is refused with a sentence that says what to open. |
 | `staged-outputs.js` | What a stopped analysis leaves (lane FX1): the `*.pdt-staged` files `normalize.py` writes before it moves its outputs in, removed once a cancelled run's process has ended. |
@@ -369,15 +371,16 @@ their module as `<name>.test.js`.
 | `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
 | `flow-view-transcript.js` | The Transcript lane, the transcript's Sync, Attach, Replace and Remove. |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
-| `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process and Remembered step names dialogs. C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
+| `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process dialog, a pick from the library (C21: `pickActivityAction`; a name typed that is an activity of the step's system is that pick, any other name leaves the library). C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
 | `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), and the panel for an As-Is task no step stands for (`openForMissing`). |
 | `analyst-ui.js` | What the analyst adds, on screen (C16): the System field, the screenshots (Add screenshot, Use in PDD, Remove, Ctrl+V), notes on a step or a moment, attachments on a step and on the Overview. |
+| `library-builder-ui.js` | The Library builder (C21; Help, *Build the library...*), the owner's tool: Add projects... and Add hand-off zips..., the named steps by system, a row each to tick and fix (name, code, description), the same screens named differently side by side as one conflict, and Save library... (a new version, checked as the pipeline checks a library, the app's own file offered first). |
 
 **Models** (pure: no DOM, no state; the unit tests drive them)
 
 | File | Owns |
 |---|---|
-| `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, remembered-name propagation. C19: Confirm and Undo confirm (`reopenRun`) reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`, `rememberKey`). |
+| `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, a rename's propagation to the same drafts (`propagateName`), the names a row's rename suggests (`nameSuggestions`: the names used in the project). C19: Confirm and Undo confirm (`reopenRun`) reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`). |
 | `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`, `mainMapName`. |
 | `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
 | `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
@@ -389,7 +392,8 @@ their module as `<name>.test.js`.
 | `map-view.js` | Which picture the Map shows (lane MV): the map the PDD prints (the chosen As-Is copy, else `process_map_step.bpmn`; at a sub-process the copy's plane, else the step map's) or how the transactions ran, when the Map analyzes first (the step map needed and older than the steps, no analysis running or already run for that change), the line that says why a picture does not show (`WHY`), and the words of the one header line (`line`). |
 | `map-planes.js` | The maps of one BPMN file (C19): each sub-process's plane found by its path of names (`findPlane`), the path of an element's level and of a plane's root, the `Sub<n>_` prefix (`baseId`), the PDD's map pictures (`pddMaps`, the manifest `pddManifest`) and an exported image's name (`imageName`). |
 | `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, `whereOfStep`, the systems the System field offers. |
-| `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"), the fields typed, the drafted narration shown as a hint. |
+| `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · SO-01 · Account lookup · 6s · ends at Search · Transaction 1 at 0:19", the code of a step named from the library next to the system, C21), the fields typed, the drafted narration shown as a hint. |
+| `library-builder.js` | The Library builder's model (C21): the steps a project's analysts named (`namedSteps`: confirmed, edited or added by hand, with their screens), one entry per name in a system (`collect`), the rows (`rows`: the library's activities ticked, the projects' names after them, clusters of rows that share screens or a name, a conflict where the same screens carry different names), the library the ticked rows make (`buildLibrary`: a name the library has adds its screens to that activity), the version (`nextVersion`: the date and a counter). |
 | `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
 | `transcript-model.js` | The transcript's time rule (its own sync, else the video's; a sentence said before the recording reads "0:28 before") and every pick of sentences (for a step, outside the transactions, by speaker or search). |
 | `session-summary.js` | The project line's facts, the request (`requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
@@ -404,7 +408,7 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `step-editor.js` | The step rows of a run and the step pane: the fact line, Name, System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, *Open as a sub-process* (or on a sub-process *Open sub-process* and *Dissolve sub-process*, C19), the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. A double-click renames the row its first click landed on, even when that click's redraw moved the rows. |
+| `step-editor.js` | The step rows of a run and the step pane: the fact line, Name (C21: its picker, the library's activities of the step's system under the field, opened by a click, typing or Down; a click or Enter picks one; with none, one quiet line while the field has the focus), System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, *Open as a sub-process* (or on a sub-process *Open sub-process* and *Dissolve sub-process*, C19), the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. A double-click renames the row its first click landed on, even when that click's redraw moved the rows. |
 | `map-controller.js` | The Map's live map, how the transactions ran: draws the data source once it has an edge (the Start's and the End's count), its fit control, a box click to the step panel, a double-click on a sub-process's box to its map (C19). |
 | `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set (and per level, C19); a sub-process's box carries a + (a small square at its foot). |
 | `refmap-ui.js` | The Map level's picture and the edited maps (lane MV): which picture shows and when it is drawn again (`syncMapView`, the facts for `map-view.js`: the view chosen, the copy, `process_map_step.bpmn` and whether it is current, the planes each file has once drawn), its one header line and the line that says why, the Map's own analysis once per change (`mapBusy` while it runs), the step map kept current across the edited maps' own saves and the PDD's run (`keepingStepMapCurrent`); the edit act (it analyzes first when the steps changed since the map file was written, or waits for the Map's own analysis), the new copy kept at its first change and dropped when it was left unchanged, the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`; C19: a plane per path, `renderPlanesToPng`, `renderPlaneToSvg`). |
@@ -463,11 +467,13 @@ which the renderer shows.
 | Session | `viewer:openSessionFolder` | The folder picker. |
 | | `viewer:openHandoffDialog` | The file picker for a hand-off zip (C20): the chosen `.zip` path, or null. |
 | | `viewer:loadSession` | Loads a folder (below), or a hand-off zip: extracted under `<userData>/handoffs` (`handoff-open.js`) and its project loaded read only, the answer adding `openedZip` and `handoffReused`. |
-| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`, and C20's `techOut` and `handoff`; `--names` when the store exists); streams its log. |
+| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`, and C20's `techOut` and `handoff`; C21's `--library`, the app's library file, when it exists and the pipeline takes the flag); streams its log. |
 | | `viewer:cancelNormalize` | Stops the run in progress. |
 | Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back (screenshots, attachments, the video's copy, the edited maps' files). |
 | | `viewer:restoreAnnotationsBackup` | The unreadable banner's Restore the newest backup: keeps the unreadable file as `annotations.unreadable-<time>.json`, copies the newest readable backup into place (the one confirmed, else refused). |
-| Remembered step names (C4) | `viewer:rememberStepName`, `viewer:readRememberedNames`, `viewer:forgetStepName`, `viewer:restoreStepName` | Save, read, forget a name; put a key's entry back as it was, for the undo and the redo of a rename or a forget (lane FX2). |
+| The activity library (C21) | `viewer:readAppLibrary` | The app's library file, read (Help's line, the builder's start). |
+| | `viewer:libraryAddProjects`, `viewer:libraryAddZips` | The Library builder's sources: a folder or a zip dialog, then each project's `manifest.json` and `annotations.json` (a zip read where it is), and the ones that could not be read. |
+| | `viewer:saveLibrary` | The builder's library, checked again, then a save dialog on the app's library file and a temp-file-then-rename write. |
 | Export and shell | `viewer:exportFile` | A save dialog, then a copy of the given file. |
 | | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
 | | `viewer:exportProjectZip` | Zips an open project next to its folder (`project-zip.js`); refused while that project's analysis runs, one zip of a project at a time. Answers the zip's path, size and entry count. |
@@ -541,7 +547,6 @@ the bus. The topics and who listens (`renderer.js`):
 | `markers` | the Markers panel, the status line, the Overview |
 | `analysis` | the Overview |
 | `mapPath` | the Map (the step panel's *Open sub-process* on the Map) |
-| `names` | the Steps level's remembered names, read again (an undo or a redo put one back, lane FX2) |
 
 **Kept on this machine** (`localStorage`, every key starts with `pdt.`):
 
@@ -629,7 +634,11 @@ itself:
 Two runs are deliberate and ask first when the session has steps: *Apply N
 marker changes* (the status line) and *Re-analyze* (Help, Troubleshooting).
 Every analysis passes `--mine` (the PDD export's own run does not); every
-run passes `--names` when the remembered names store exists.
+run passes `--library` with the app's library file when it exists (contract
+C21: a project's first analysis copies it into the folder as
+`library.json`, and the project keeps that copy). The session the viewer
+loads carries the library the project reads (`library`: its `library.json`,
+else the app's).
 
 Runs go one at a time (`runPipeline` queues them). While one lasts the
 status line says "Updating steps and map..." with Cancel, the page stays as
@@ -650,9 +659,6 @@ Every annotation write in the renderer goes through `session.js`:
   (`opened_runs`), *Apps outside the process* (an analysis follows at once)
   and the taking back of a new map copy whose changes were all undone
   (`refmap-ui.js`).
-- An edit that changed the remembered names (a rename, a forget) keeps the
-  store's entries from before and after on its undo entry: its undo and its
-  redo put them back (`viewer:restoreStepName`) and emit `names` (lane FX2).
 - A failed write shows one error toast and rejects, so the caller's success
   message never follows an unsaved edit; the edit stays in memory and the
   next successful save writes it.
@@ -685,10 +691,9 @@ attachments; the Map `reference_maps` and the copies' files in
 without one writes nothing). Attach, Replace, Sync and Remove video write
 `external_video` through the undo stack like any edit (lane CC). Written by
 the main process directly, not through the undo stack: the transcript's
-attach and sync, and the store of remembered step names on the analyst's
-machine. (The saved
-processes of contract C5 left the app on 2026-09-24: a process is recorded
-once; a `processes.json` left in `pdt-library` is not read.)
+attach and sync. (The saved processes of contract C5 left the app on
+2026-09-24: a process is recorded once; the remembered step names of C4 on
+2026-09-25, contract C21: files left in `pdt-library` are not read.)
 
 **The save state** ([`save-state.js`](../../viewer/save-state.js),
 `#save-state` in the top bar) says whether the analyst's work reached the

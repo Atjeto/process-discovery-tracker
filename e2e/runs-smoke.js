@@ -1,6 +1,7 @@
 "use strict";
 /*
- * Runs-and-steps e2e smoke (BA helper cycle, lane L7a; contracts C1 to C4).
+ * Runs-and-steps e2e smoke (BA helper cycle, lane L7a; contracts C1 to C3;
+ * C4's remembered step names left the app with contract C21).
  *
  * Launches the REAL viewer on a throwaway profile (launchViewer) against a
  * TEMP copy of the committed demo session sess-2026-0514-0900, re-analyzed
@@ -13,13 +14,13 @@
  *     run with a status), open with its drafted steps (a row carries a chip
  *     only where it differs from its run); "Use as reference run" (the run's
  *     right-click menu) and its Ctrl+Z;
- *   - names (C4): a rename of a run-1 draft in the step pane (Enter saves it,
- *     no Save button) names the same-key drafts of the other runs at once
- *     (still drafts, name_source "remembered"; the run says in one line how
- *     many of its names are remembered names) and lands in the profile's
- *     remembered-names store; a broken store shows an error and still saves
- *     the session rename; the name box suggests the name; lane FX2: Ctrl+Z
- *     of the rename puts the store back as it was, Ctrl+Y remembers it again;
+ *   - names: a rename of a run-1 draft in the step pane (Enter saves it, no
+ *     Save button) names the same-key drafts of the other runs at once (still
+ *     drafts, name_source "remembered"; the run says in one line how many of
+ *     its names are remembered names), and no store is written in the profile
+ *     (contract C21); a rename in a row is saved; the row's rename suggests
+ *     the names used in the project; Ctrl+Z of the rename gives the drafted
+ *     names back, Ctrl+Y renames them again;
  *   - the draft-fix count (C3, pattern_run.draft_fixes in annotations.json;
  *     the list shows no live counter, P2.9): merge / split / add / hide each
  *     count on the pattern run, renames do not, and Ctrl+Z, Unhide and
@@ -33,7 +34,8 @@
  *   - Re-analyze (Help, Troubleshooting: the one analysis by hand, AD-22; its
  *     confirm dialog answered and the run awaited, never assumed): the
  *     confirmed and edited steps survive with their names, and re-drafted
- *     steps carry the remembered names (the viewer passed --names);
+ *     steps carry the names given in the project (the project's own names;
+ *     the viewer passes no --names);
  *   - item 8: a Start marker inserted from an activity band's menu lands at the
  *     clicked moment, and the Markers list shows the time since the recording
  *     started (the one clock).
@@ -48,8 +50,6 @@
  *   - Undo confirm (beside the Confirmed badge) and its Ctrl+Z;
  *   - a drafted step is hidden, never deleted (no Delete for it, the bulk
  *     button hides), and the hidden drafts survive the analysis;
- *   - the Remembered step names dialog (opened from the Steps toolbar): its
- *     order, Rename and Forget;
  *   - a SECOND temp copy of the demo, SEEDED with an extra step and a skipped
  *     step in run 4, opened in the same viewer: its transactions are compared
  *     with its own reference transaction only (saved processes, contract C5,
@@ -179,6 +179,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     process.exit(2);
   }
   const { app, profileDir } = viewer;
+  // Contract C21: the remembered step names left the app: no store is written.
   const STORE = path.join(profileDir, "pdt-library", "remembered-names.json");
   const page = await app.firstWindow();
   const pageErrors = [];
@@ -291,11 +292,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     if (!ok) await shot(page, "fail-runs-list.png");
   }
 
-  // ---- 2. a broken store: an error, and the session rename is still saved ----
+  // ---- 2. a rename in a row of run 2 is saved --------------------------------
   {
-    fs.mkdirSync(path.dirname(STORE), { recursive: true });
-    fs.writeFileSync(STORE, "{ this is not a names file");
-    const before = fs.readFileSync(STORE);
     let err = null, toast = null;
     try {
       await openRun(R2);
@@ -305,18 +303,14 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const input = row.locator(".step-name-edit");
       await input.fill(NAME_NOTEPAD, { timeout: T });
       await input.press("Enter");
-      await page.waitForFunction(() => /could not be remembered/.test((document.getElementById("toast") || {}).textContent || ""),
-        null, { timeout: T });
-      toast = await toastText();
     } catch (e) { err = errText(e); }
     const disk = await waitDisk(ANNO, (a) => stepsOf(a, R2).some((s) => s.draft_key === KEY_NOTEPAD && s.name === NAME_NOTEPAD));
     const saved = stepsOf(disk, R2).find((s) => s.draft_key === KEY_NOTEPAD) || {};
-    const storeKept = fs.readFileSync(STORE).equals(before);
-    const ok = !err && toast && toast.error && saved.name === NAME_NOTEPAD && saved.state === "edited" && storeKept;
-    record("C4: a remembered-names store that cannot be read shows an error, is left as it is, and the session rename is still saved",
-      ok, JSON.stringify({ err, toast: toast && toast.text.slice(0, 160), saved: { name: saved.name, state: saved.state }, storeKept }));
-    if (!ok) await shot(page, "fail-runs-store-error.png");
-    fs.rmSync(STORE, { force: true });
+    toast = await toastText().catch(() => null);
+    const ok = !err && saved.name === NAME_NOTEPAD && saved.state === "edited" && !(toast && toast.error) && !fs.existsSync(STORE);
+    record("a rename in a row of transaction 2 is saved (edited, its name), with no error and no remembered-names store in the profile (contract C21)",
+      ok, JSON.stringify({ err, toast: toast && toast.text.slice(0, 160), saved: { name: saved.name, state: saved.state }, store: fs.existsSync(STORE) }));
+    if (!ok) await shot(page, "fail-runs-row-rename.png");
   }
 
   // ---- 3. Use as pattern and its inverse (Ctrl+Z) ----------------------------
@@ -347,7 +341,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     if (!ok) await shot(page, "fail-runs-use-pattern.png");
   }
 
-  // ---- 4. rename a run-1 draft: remembered, and named in runs 2 to 4 at once --
+  // ---- 4. rename a run-1 draft: named in runs 2 to 4 at once -----------------
   let searchIds = {};
   {
     let err = null;
@@ -363,17 +357,15 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const disk = await waitDisk(ANNO, (a) => RUNS.slice(1).every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_SEARCH && s.name === NAME_SEARCH)));
     const per = RUNS.map((r) => stepsOf(disk, r).find((s) => s.draft_key === KEY_SEARCH) || {});
     searchIds = Object.fromEntries(RUNS.map((r, i) => [r, per[i].step_id]));
-    const store = fs.existsSync(STORE) ? readJson(STORE) : null;
-    const entry = store && store.names && store.names[KEY_SEARCH];
+    const store = fs.existsSync(STORE);
     const ok = !err && per[0].name === NAME_SEARCH && per[0].state === "edited" &&
       per.slice(1).every((s) => s.name === NAME_SEARCH && s.state === "auto_suggested" && s.name_source === "remembered") &&
-      store && store.version === 1 && entry && entry.name === NAME_SEARCH && typeof entry.updated_at === "string";
-    record("C4: renaming a run-1 draft names the same-key drafts of runs 2 to 4 at once (still drafts, name_source remembered) and writes the store in the profile",
+      store === false;
+    record("renaming a run-1 draft names the same-key drafts of runs 2 to 4 at once (still drafts, name_source remembered); no store is written in the profile (contract C21)",
       ok, JSON.stringify({ err, per: per.map((s) => [s.state, s.name, s.name_source]), store }));
 
-    // Lane FX2 (validation pass 3, F4): the rename's Ctrl+Z puts the store
-    // back as it was (the key had no entry), and Ctrl+Y remembers the name
-    // again, the entry as the rename wrote it.
+    // Lane FX2 (validation pass 3, F4): the rename's Ctrl+Z gives every
+    // transaction its drafted name back, and Ctrl+Y renames them again.
     const und = {};
     const searchName = (a, r) => (stepsOf(a, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name;
     try {
@@ -381,18 +373,14 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await page.keyboard.press("Control+z");
       const a1 = await waitDisk(ANNO, (a) => RUNS.every((r) => searchName(a, r) !== NAME_SEARCH));
       und.undoneNames = RUNS.map((r) => searchName(a1, r));
-      const s1 = await waitDisk(STORE, (st) => !!st && !(st.names || {})[KEY_SEARCH]);
-      und.undoneEntry = s1 ? (s1.names || {})[KEY_SEARCH] || null : "no store";
       await page.keyboard.press("Control+y");
       const a2 = await waitDisk(ANNO, (a) => RUNS.every((r) => searchName(a, r) === NAME_SEARCH));
       und.redoneNames = RUNS.map((r) => searchName(a2, r));
-      const s2 = await waitDisk(STORE, (st) => !!(st && (st.names || {})[KEY_SEARCH]));
-      und.redoneEntry = s2 ? (s2.names || {})[KEY_SEARCH] || null : null;
+      und.store = fs.existsSync(STORE);
     } catch (e) { und.err = errText(e); }
-    record("lane FX2: Ctrl+Z of that rename gives every transaction its drafted name back and takes the name out of the store again (it had none); Ctrl+Y renames them again and remembers the name as the rename wrote it",
-      !und.err && und.undoneNames.every((n) => n && n !== NAME_SEARCH) && und.undoneEntry === null &&
-        und.redoneNames.every((n) => n === NAME_SEARCH) && !!und.redoneEntry && und.redoneEntry.name === NAME_SEARCH &&
-        !!entry && und.redoneEntry.updated_at === entry.updated_at,
+    record("lane FX2: Ctrl+Z of that rename gives every transaction its drafted name back; Ctrl+Y renames them again (no store, contract C21)",
+      !und.err && und.undoneNames.every((n) => n && n !== NAME_SEARCH) &&
+        und.redoneNames.every((n) => n === NAME_SEARCH) && und.store === false,
       JSON.stringify(und));
 
     await openRun(R2);
@@ -400,24 +388,34 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const row2 = g2.rows.find((r) => r.id === searchIds[R2]) || {};
     const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && g2.rows.every((r) => r.tags === 0) &&
       g2.namesNote === "Remembered names: 1 of 10 steps";
-    record("C4: run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says how many names are remembered names), without a re-analysis",
+    record("run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says how many names are remembered names), without a re-analysis",
       ok2, JSON.stringify({ row2, namesNote: g2.namesNote }));
     if (!(ok && ok2)) await shot(page, "fail-runs-rename.png");
 
-    // Item 6: the name box suggests the remembered name and the session's names.
+    // Item 6: a row's rename suggests the names used in the project, the
+    // names given first; the step pane's name offers the library (C21), no
+    // datalist.
     let sugg = null;
     try {
-      await rowByName(R2, "Salesforce - Order: Save order").click({ timeout: T });
+      const rid = await rowByName(R2, "Salesforce - Order: Save order").getAttribute("data-step-id", { timeout: T });
+      await rowById(rid).click({ timeout: T });
       await page.waitForSelector("#step-name", { timeout: T });
+      const paneList = await page.evaluate(() => document.getElementById("step-name").getAttribute("list"));
+      await rowById(rid).locator(".step-name").dblclick({ timeout: T });
+      await page.waitForSelector("#step-list .step-name-edit", { timeout: T });
       sugg = await page.evaluate(() => {
-        const input = document.getElementById("step-name");
+        const input = document.querySelector("#step-list .step-name-edit");
         const dl = document.getElementById(input.getAttribute("list") || "");
         return { list: input.getAttribute("list"), options: dl ? [...dl.querySelectorAll("option")].map((o) => o.value) : null };
       });
+      sugg.paneList = paneList;
+      await page.keyboard.press("Escape");
     } catch (e) { sugg = { err: errText(e) }; }
-    const ok3 = !!(sugg && sugg.options && sugg.options[0] === NAME_SEARCH && sugg.options.includes("va01: Check document"));
-    record("item 6: the name box suggests the remembered name first (same app) and the names used in the session",
-      ok3, JSON.stringify(sugg && { list: sugg.list, first: sugg.options && sugg.options.slice(0, 4), n: sugg.options && sugg.options.length, err: sugg.err }));
+    const opts = (sugg && sugg.options) || [];
+    const ok3 = !!(sugg && !sugg.err && sugg.paneList === null && opts.includes(NAME_SEARCH) && opts.includes(NAME_NOTEPAD) &&
+      opts.includes("va01: Check document") && opts.indexOf(NAME_SEARCH) < opts.indexOf("va01: Check document"));
+    record("item 6: a row's rename suggests the names used in the project, the names given before the drafted ones; the step pane's name has no such list (it offers the library, contract C21)",
+      ok3, JSON.stringify(sugg && { list: sugg.list, paneList: sugg.paneList, first: opts.slice(0, 4), n: opts.length, err: sugg.err }));
   }
 
   // ---- 5. the draft-fix counter (C3) ------------------------------------------
@@ -764,13 +762,11 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const disk = await waitDisk(ANNO, (a) => [R3, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_EXCEL && s.name === NAME_EXCEL)));
     const per = RUNS.map((r) => stepsOf(disk, r).find((s) => s.draft_key === KEY_EXCEL) || {});
     excelIds = Object.fromEntries(RUNS.map((r, i) => [r, per[i].step_id]));
-    const store = fs.existsSync(STORE) ? readJson(STORE) : { names: {} };
     const ok = !err && per[0].state === "confirmed" && per[0].name === "Excel - Order Tracking.xlsx: Save workbook" &&
       per[1].state === "edited" && per[1].name === NAME_EXCEL &&
-      [per[2], per[3]].every((s) => s.state === "auto_suggested" && s.name === NAME_EXCEL && s.name_source === "remembered") &&
-      Object.keys(store.names).sort().join("|") === [KEY_EXCEL, KEY_SEARCH].sort().join("|");
-    record("C4: a rename in run 2 names runs 3 and 4 at once, while the confirmed pattern step keeps its name; the store holds the two keys (not the one whose write failed)",
-      ok, JSON.stringify({ err, per: per.map((s) => [s.state, s.name]), keys: Object.keys(store.names) }));
+      [per[2], per[3]].every((s) => s.state === "auto_suggested" && s.name === NAME_EXCEL && s.name_source === "remembered");
+    record("a rename in run 2 names runs 3 and 4 at once, while the confirmed pattern step keeps its name",
+      ok, JSON.stringify({ err, per: per.map((s) => [s.state, s.name]) }));
   }
 
   // ---- 8b. L12b item 5: a drafted step is hidden, never deleted --------------
@@ -855,11 +851,11 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const ok2 = redrafted.every((s) => s.state === "auto_suggested" && s.name_source === "remembered") &&
       redrafted.slice(0, 3).every((s) => s.name === NAME_SEARCH) && redrafted.slice(3).every((s) => s.name === NAME_EXCEL) &&
       summary.remembered >= 5;
-    record("after Re-analyze: re-drafted steps in runs 2 to 4 carry the remembered names with name_source remembered (the viewer passed --names)",
+    record("after Re-analyze: re-drafted steps in runs 2 to 4 carry the names given in the project with name_source remembered (the project's own names; no --names)",
       ok2, JSON.stringify({ redrafted: redrafted.map((s) => [s.state, s.name, s.name_source]), draft_summary_name_source: summary }));
 
     const np = re(R2, KEY_NOTEPAD);
-    record("after Re-analyze: the rename saved while the store was broken survived (edited, its name)",
+    record("after Re-analyze: the rename made in a row of transaction 2 survived (edited, its name)",
       np.state === "edited" && np.name === NAME_NOTEPAD, JSON.stringify([np.state, np.name]));
     if (!(ok1 && ok2)) await shot(page, "fail-runs-after-analyze.png");
 
@@ -877,64 +873,6 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const redraftedPair = disk.steps.filter((s) => s.draft_key === KEY_CHECK || s.draft_key === KEY_CREATE).length;
     record("after Re-analyze (L12b item 2): the carried merges of runs 2 to 4 survived and their drafts were not drafted again",
       carriedAfter === "1,2,1,1" && redraftedPair === 0, JSON.stringify({ carriedAfter, redraftedPair }));
-  }
-
-  // ---- 9b. L12b item 8: the Remembered step names dialog (Steps toolbar) ----
-  {
-    const OTHER_KEY = "excel|Excel - Other book.xlsx|Button:save-workbook";
-    const RENAMED = "Update the tracker";
-    let err = null, rowsBefore = null, rowsAfter = null, afterRename = null, storeRename = null, storeForget = null, afterForget = null;
-    const dialogRows = () => page.evaluate(() => [...document.querySelectorAll("#remembered-names-dialog .rn-row")].map((r) => ({
-      key: r.dataset.key, name: r.querySelector(".rn-name").textContent.trim(), where: r.querySelector(".rn-where").textContent.trim() })));
-    const rowSel = (key) => '#remembered-names-dialog .rn-row[data-key="' + key + '"]';
-    try {
-      // A name remembered in another session (its key is not in this one).
-      const store = readJson(STORE);
-      store.names[OTHER_KEY] = { name: "Save the other book", updated_at: "2026-09-01T10:00:00.000Z" };
-      fs.writeFileSync(STORE, JSON.stringify(store, null, 2));
-      await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-      await page.locator("#session-layout-steps .editor-toolbar #btn-remembered-names").click({ timeout: T });
-      await page.waitForSelector("#remembered-names-dialog .rn-row", { timeout: T });
-      rowsBefore = await dialogRows();
-      // Rename: the store, and this session's steps with that key that carry
-      // the name (its drafts, and run 2's edited step named with it).
-      await page.locator(rowSel(KEY_EXCEL) + ' [data-act="rename-name"]').click({ timeout: T });
-      await page.locator(".modal-prompt .modal-input").fill(RENAMED, { timeout: T });
-      await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
-      await waitToast(/^Renamed/);
-      afterRename = await waitDisk(ANNO, (a) => [R2, R3, R4].every((r) => stepsOf(a, r).some((s) => s.draft_key === KEY_EXCEL && s.name === RENAMED)));
-      storeRename = readJson(STORE);
-      // Forget: the store entry goes, and the steps that carry the name get
-      // their drafted names back (else the next analysis would restore it, C4).
-      await page.locator(rowSel(KEY_SEARCH) + ' [data-act="forget-name"]').click({ timeout: T });
-      await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
-      await waitToast(/^Forgot/);
-      storeForget = await waitDisk(STORE, (s) => s && s.names && !s.names[KEY_SEARCH]);
-      await page.waitForFunction(() => document.querySelectorAll("#remembered-names-dialog .rn-row").length === 2, null, { timeout: T });
-      rowsAfter = await dialogRows();
-      afterForget = await waitDisk(ANNO, (a) => RUNS.every((r) => (stepsOf(a, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name === SEARCH_DRAFTED));
-      await page.locator('#remembered-names-dialog .modal-footer [data-act="close"]').click({ timeout: T });
-    } catch (e) { err = errText(e); }
-    const excelOf = (a, r) => stepsOf(a || { steps: [] }, r).find((s) => s.draft_key === KEY_EXCEL) || {};
-    const okOrder = !err && JSON.stringify((rowsBefore || []).map((r) => [r.name, r.where])) === JSON.stringify([
-      [NAME_SEARCH, "4 steps in this project"], [NAME_EXCEL, "4 steps in this project"], ["Save the other book", "Not in this project"]]);
-    record("L12b item 8: the Remembered step names dialog lists the names whose key is in this project first, then the others",
-      okOrder, JSON.stringify({ err, rows: rowsBefore }));
-    const okRename = !err && storeRename && storeRename.names[KEY_EXCEL].name === RENAMED &&
-      [R3, R4].every((r) => excelOf(afterRename, r).state === "auto_suggested" && excelOf(afterRename, r).name === RENAMED &&
-        excelOf(afterRename, r).name_source === "remembered") &&
-      excelOf(afterRename, R2).state === "edited" && excelOf(afterRename, R2).name === RENAMED &&
-      excelOf(afterRename, R1).state === "confirmed" && excelOf(afterRename, R1).name === "Excel - Order Tracking.xlsx: Save workbook";
-    record("L12b item 8 + V2 item 9: Rename changes the remembered name and every step of this session that carries it for that key (the drafts of runs 3 and 4, run 2's edited step); run 1's confirmed step with another name keeps it",
-      okRename, JSON.stringify({ err, store: storeRename && storeRename.names[KEY_EXCEL], steps: RUNS.map((r) => [excelOf(afterRename, r).state, excelOf(afterRename, r).name]) }));
-    const okForget = !err && storeForget && !storeForget.names[KEY_SEARCH] && storeForget.names[OTHER_KEY] &&
-      JSON.stringify((rowsAfter || []).map((r) => r.name)) === JSON.stringify([RENAMED, "Save the other book"]) &&
-      RUNS.every((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name === SEARCH_DRAFTED) &&
-      [R2, R3, R4].every((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name_source === "draft");
-    record("L12b item 8 + V2 item 9: Forget removes the name from the store (the list follows), and the session's steps that carried it get their drafted name back",
-      okForget, JSON.stringify({ err, keys: storeForget && Object.keys(storeForget.names), rows: rowsAfter && rowsAfter.map((r) => r.name),
-        search: RUNS.map((r) => (stepsOf(afterForget || { steps: [] }, r).find((s) => s.draft_key === KEY_SEARCH) || {}).name) }));
-    if (!(okOrder && okRename && okForget)) await shot(page, "fail-runs-names-dialog.png");
   }
 
   // ---- 10. item 8: marker at the clicked moment; the one clock in the Markers list --

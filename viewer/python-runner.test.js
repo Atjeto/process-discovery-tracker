@@ -1,32 +1,49 @@
 "use strict";
 /*
  * The normalize.py command line the viewer builds (python-runner.js). Pins the
- * contract C4 pass-through: with a remembered-names store the run gets
- * `--names <path>`, without one it gets no --names at all. The end-to-end
- * proof (a re-drafted step arrives with the remembered name) is
- * e2e/runs-smoke.js.
+ * contract C21 pass-through: with the app's activity library the run gets
+ * `--library <path>`, without one no --library at all, and never --names
+ * (the remembered step names, C4, are gone). The end-to-end proof (a project
+ * gets library.json after its first analysis) is e2e/library-smoke.js.
  */
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildNormalizeArgs, transcriptImportResult } = require("./python-runner.js");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { buildNormalizeArgs, scriptTakesFlag, transcriptImportResult } = require("./python-runner.js");
 
-test("buildNormalizeArgs passes the remembered-names store as --names", () => {
+test("buildNormalizeArgs passes the app's library as --library", () => {
   assert.deepEqual(
-    buildNormalizeArgs("normalize.py", { sessionFolder: "S", taxonomyPath: "t.yaml", mine: true, namesPath: "N.json" }),
-    ["normalize.py", "S", "--taxonomy", "t.yaml", "--mine", "--names", "N.json"]);
+    buildNormalizeArgs("normalize.py", { sessionFolder: "S", taxonomyPath: "t.yaml", mine: true, libraryPath: "L.json" }),
+    ["normalize.py", "S", "--taxonomy", "t.yaml", "--mine", "--library", "L.json"]);
 });
 
-test("buildNormalizeArgs leaves --names out when there is no store", () => {
-  const args = buildNormalizeArgs("normalize.py", { sessionFolder: "S", namesPath: null });
+test("buildNormalizeArgs leaves --library out when there is no library, and never passes --names", () => {
+  const args = buildNormalizeArgs("normalize.py", { sessionFolder: "S", libraryPath: null, namesPath: "N.json" });
   assert.deepEqual(args, ["normalize.py", "S"]);
-  assert.ok(!args.includes("--names"));
+  assert.ok(!args.includes("--library") && !args.includes("--names"));
 });
 
-test("buildNormalizeArgs keeps the export flags and adds --names last", () => {
+test("buildNormalizeArgs keeps the export flags and adds --library last", () => {
   assert.deepEqual(
-    buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx", pddMapImage: "m.png", pddTobeImage: "t.png", namesPath: "N" }),
-    ["n.py", "S", "--pdd-out", "o.docx", "--pdd-map-image", "m.png", "--pdd-tobe-image", "t.png", "--names", "N"]);
+    buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx", pddMapImage: "m.png", pddTobeImage: "t.png", libraryPath: "L" }),
+    ["n.py", "S", "--pdd-out", "o.docx", "--pdd-map-image", "m.png", "--pdd-tobe-image", "t.png", "--library", "L"]);
+});
+
+test("scriptTakesFlag: a pipeline whose source defines --library takes it; one without it, or no script, does not", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-runner-"));
+  try {
+    const withIt = path.join(dir, "with.py"), without = path.join(dir, "without.py");
+    fs.writeFileSync(withIt, 'parser.add_argument("--library", type=str, default=None)\n');
+    fs.writeFileSync(without, 'parser.add_argument("--names", type=str, default=None)\n');
+    assert.equal(scriptTakesFlag(withIt, "--library"), true);
+    assert.equal(scriptTakesFlag(without, "--library"), false);
+    assert.equal(scriptTakesFlag(path.join(dir, "missing.py"), "--library"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("buildNormalizeArgs passes the sub-processes' map pictures as --pdd-map-images (contract C19), beside the main map's", () => {

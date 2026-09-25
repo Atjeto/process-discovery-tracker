@@ -164,12 +164,16 @@ The install is a folder. Upgrading is replacing that folder.
 | Recordings | `%APPDATA%\process-discovery-tracker-capture\sessions\` | Outside the install folder. |
 | Capture settings | `%APPDATA%\process-discovery-tracker-capture\` (`user-config.json`, `quick-config.yaml`, `recording-bar.json`) | Settings, Profile, Recording setup, the bar's place. |
 | Capture logs | `%APPDATA%\process-discovery-tracker-capture\` (`boot.log`, `app.log`) | Append-only. |
-| The analyst's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` (`remembered-names.json`) | The remembered step names. A `processes.json` there (the saved processes, removed on 2026-09-24) is not read. |
+| An older version's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` | Not read any more: the remembered step names (removed on 2026-09-25, contract C21) and the saved processes (removed on 2026-09-24). |
 | The hand-offs opened | `%APPDATA%\process-discovery-tracker-viewer\handoffs\` | One folder per hand-off zip opened, read only; the app removes none. |
 | A project YAML | Wherever `PDT_CONFIG` points | Owned by the analyst, not the install. |
 
 **What does not survive:** anything inside the unzipped folder: the bundled
-Python, the recorder, the shipped `taxonomy.yaml` and app vocabularies.
+Python, the recorder, the shipped `taxonomy.yaml` and app vocabularies, and
+the app's activity library (`resources\library\activities.json`): a library
+made with Help, *Build the library...* and saved over it is replaced by the
+one the release ships, so keep a copy and put it back after an upgrade.
+Each project keeps its own copy (`library.json` in its folder).
 
 ## Rollback
 

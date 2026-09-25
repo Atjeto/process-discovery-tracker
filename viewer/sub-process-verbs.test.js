@@ -133,10 +133,10 @@ test("C19 drafting: without a draft_key the app and the screen come from each ac
     "app|Screen | with a bar", "the commit part is cut, never a bar in the screen");
 });
 
-test("C19 drafting: a remembered name wins (the C4 store under action| and the key); a step with no recorded action drafts none", () => {
+test("C19 drafting: a name the project's own sub-steps give the action wins; a step with no recorded action drafts none", () => {
   const save = drafted("save1", "run1", "09:00:29", "09:00:37", K_SAVE, "Save order");
-  const remembered = { "action|chrome|Salesforce - Order|enter:quantity": { name: "Type the quantity", updated_at: "2026-09-24T10:00:00Z" } };
-  const q = SPV.draftSubSteps(save, INTER, { newId, remembered })[1];
+  const projectNames = { "chrome|Salesforce - Order|enter:quantity": "Type the quantity" };
+  const q = SPV.draftSubSteps(save, INTER, { newId, projectNames })[1];
   assert.deepEqual([q.name, q.name_source, q.process_label], ["Type the quantity", "remembered", "Type the quantity"]);
   const byHand = { step_id: "h", name: "Call the customer", state: "manually_authored", case_id: "run1", time_range: null,
     evidence: { interaction_event_ids: [], screenshot_refs: [] } };
@@ -423,8 +423,6 @@ test("C19 rename: a drafted sub-step's name reaches the drafted sub-steps with i
   assert.equal(RunsModel.propagateActionName(root, q1, "Type the quantity"), 1);
   assert.deepEqual([q2.name, q2.state, q2.name_source], ["Type the quantity", "auto_suggested", "remembered"]);
   assert.equal(q3.name, "Enter Quantity", "an edited sub-step keeps its name");
-  assert.equal(RunsModel.rememberKey(q1), "action|chrome|Salesforce - Order|enter:quantity");
-  assert.equal(RunsModel.rememberKey(save1), K_SAVE);
   // A group keeps drafts inside it; a rename of a draft of that key reaches them.
   const { t1, t2, t3, root: r2 } = groupFixture();
   SPV.groupInto(r2, [t1, t2, t3], [], ["check1", "create1"], { name: "G", newId });
@@ -457,15 +455,14 @@ test("C19 drafting: the rules for the kinds the demo does not record (toggles, t
     "excel|Order|click:Save");
 });
 
-test("lane FX2: Open as a sub-process names a sub-step from the project's own sub-steps of its action first, then from the remembered names", () => {
+test("lane FX2: Open as a sub-process names a sub-step from the project's own sub-steps of its action, else with its drafted name", () => {
   const save1 = drafted("save1", "run1", "09:00:29", "09:00:37", K_SAVE, "Save order");
   const save2 = drafted("save2", "run2", "09:01:52", "09:01:59", K_SAVE, "Save order");
   const save3 = drafted("save3", "run3", "09:03:31", "09:03:41", K_SAVE, "Save order");
   const root = [save1, save2];
   SPV.openAsSubProcess([[save1], [save2]], [], save1, INTER, { newId });
   // The analyst renamed transaction 1's Quantity (edited) and accepted
-  // transaction 2's Product code (confirmed); another computer remembers
-  // nothing, or something else.
+  // transaction 2's Product code (confirmed).
   save1.sub_steps[1].name = "Type the quantity";
   save1.sub_steps[1].state = "edited";
   save2.sub_steps[0].state = "confirmed";
@@ -477,11 +474,10 @@ test("lane FX2: Open as a sub-process names a sub-step from the project's own su
     "chrome|Salesforce - Order|enter:quantity": "Type the quantity",
     "chrome|Salesforce - Order|enter:product-code": "Enter the product code",
   }, "typed names, then accepted ones; a draft or a hidden sub-step names nothing");
-  const remembered = { "action|chrome|Salesforce - Order|enter:quantity": { name: "From this computer" },
-    "action|chrome|Salesforce - Order|enter:unit-price": { name: "Type the price" } };
-  const subs = SPV.draftSubSteps(save3, INTER, { newId, remembered, projectNames: names });
+  const subs = SPV.draftSubSteps(save3, INTER, { newId, projectNames: names });
+  const plain = SPV.draftSubSteps(save3, INTER, { newId });
   assert.deepEqual(subs.slice(0, 3).map((s) => [s.name, s.name_source]), [
-    ["Enter the product code", "remembered"], ["Type the quantity", "remembered"], ["Type the price", "remembered"]]);
+    ["Enter the product code", "remembered"], ["Type the quantity", "remembered"], [plain[2].name, "action"]]);
   assert.equal(subs[3].name_source, "action");
   // A typed name wins over an accepted one, and the reference transaction's
   // over another's.

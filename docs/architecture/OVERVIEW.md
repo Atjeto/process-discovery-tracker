@@ -64,15 +64,15 @@ steps by hand, on the video's clock when there is a video.
 
 - **The session folder is the only integration seam.** Capture and the
   analyst tools share no code and no live connection. Everything the pipeline
-  writes can be rebuilt from the folder, given the same taxonomy and
-  remembered-names store.
+  writes can be rebuilt from the folder, given the same taxonomy (the
+  project keeps its activity library, `library.json`, in the folder).
 - **Raw events are immutable.** `events.jsonl` is append-only. Every analyst
   decision lives in `annotations.json`, and re-analysis keeps it: steps the
   analyst confirmed, edited, added or hid survive; only the drafts are
   replaced. See [DATA-MODEL.md](./DATA-MODEL.md).
-- **The recorder drafts, the analyst decides.** Drafted steps and
-  remembered names are suggestions the analyst can see and undo; nothing is
-  applied silently.
+- **The recorder drafts, the analyst decides.** Drafted steps and the
+  names they take (the project's own names, the activity library's) are
+  suggestions the analyst can see and undo; nothing is applied silently.
 - **Measured facts render as measured.** A stage that could not run says so
   instead of showing zeros (`stage_errors`); a failed export exits non-zero
   and the viewer never opens a stale file.
@@ -112,13 +112,15 @@ process-discovery-tracker/
    sync it to the session clock, and attach the meeting transcript (step 8).
 4. **Analysis.** The viewer runs `normalize.py` by itself when a folder opens
    without a current analysis, and again when something it depends on changes,
-   with the bundled taxonomy, `--names` and `--mine`. The pipeline derives the runs from the markers,
+   with the bundled taxonomy, `--library` (the app's activity library, copied
+   into the folder at the first analysis) and `--mine`. The pipeline derives the runs from the markers,
    drafts each run's steps, merges them with the analyst's steps, and writes
    `stats.json`, `analysis.json`, `process_map_step.bpmn` and the updated
    `annotations.json` back into the folder.
 5. **Confirm and review.** The analyst confirms the reference run, then reviews
-   how each other run differs from it. Edits save to `annotations.json`;
-   renames also go to the remembered-names store on the analyst's machine.
+   how each other run differs from it. Edits save to `annotations.json`; the
+   step pane's name offers the activities of the step's system from the
+   project's library.
 6. **Map.** The Map shows the map the PDD prints: `process_map_step.bpmn`,
    or the edited As-Is copy once there is one; how the transactions ran,
    drawn from the runs' steps, is one click away. *Edit as the As-Is map*

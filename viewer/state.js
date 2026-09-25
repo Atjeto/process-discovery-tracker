@@ -24,9 +24,8 @@
  * topics it touched; every function subscribed to that topic re-runs.
  * "analysis": the project's analysis.json was read again (the Overview
  * shows its rows). "mapPath": the level the Map shows changed (contract
- * C19). "names": the remembered step names were put back by an undo or a
- * redo (lane FX2).
- * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"|"names"} ChangeTopic
+ * C19).
+ * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"} ChangeTopic
  */
 
 /**

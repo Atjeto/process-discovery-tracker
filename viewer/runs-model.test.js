@@ -300,32 +300,16 @@ test("propagateName: a step without a draft_key, or a blank name, changes nothin
   assert.equal(list[1].name, "Step b");
 });
 
-test("stepApp: the process name of the first interaction, lowercased, without .exe", () => {
-  const inter = { "a-e1": { data: { process_name: "Chrome.EXE" } }, "b-e1": { data: {} }, "b-e2": { data: { process_name: "saplogon" } } };
-  assert.equal(RM.stepApp({ evidence: { interaction_event_ids: ["a-e1"] } }, inter), "chrome");
-  assert.equal(RM.stepApp({ evidence: { interaction_event_ids: ["b-e1", "b-e2"] } }, inter), "saplogon");
-  assert.equal(RM.stepApp({ evidence: { interaction_event_ids: [] } }, inter), "");
-  assert.equal(RM.stepApp({}, inter), "");
-});
-
-test("nameSuggestions: same-app remembered names first (newest first), then the session's names, no duplicates", () => {
-  const inter = { "s-e1": { data: { process_name: "chrome.exe" } } };
-  const target = step("s", "c1", "00:00", "00:10", { evidence: { interaction_event_ids: ["s-e1"] } });
-  const remembered = {
-    [KEY]: { name: "Save the case", updated_at: "2026-09-20T10:00:00.000Z" },
-    "chrome|Other | screen|(visit)": { name: "Browse the queue", updated_at: "2026-09-21T10:00:00.000Z" },
-    "chromium|Look alike|Button:x": { name: "Not this app", updated_at: "2026-09-22T10:00:00.000Z" },
-    "excel|Book|Button:save": { name: "Save workbook", updated_at: "2026-09-22T10:00:00.000Z" },
-  };
+test("nameSuggestions: the names used in the project, the names the analyst gave first, no duplicates, no hidden step's", () => {
   const list = [
-    target,
+    step("s", "c1", "00:00", "00:10"),
     step("d1", "c1", "00:20", "00:30", { name: "Draft name" }),
     step("e1", "c2", "02:00", "02:10", { name: "Given name", state: "edited" }),
-    step("e2", "c2", "02:20", "02:30", { name: "save the case", state: "manually_authored" }),
+    step("e2", "c2", "02:20", "02:30", { name: "draft NAME", state: "manually_authored" }),
     step("h1", "c2", "02:40", "02:50", { name: "Hidden name", state: "hidden" }),
   ];
-  const got = RM.nameSuggestions(list, target, remembered, inter);
-  assert.deepEqual(got, ["Browse the queue", "Save the case", "Given name", "Step s", "Draft name"]);
+  assert.deepEqual(RM.nameSuggestions(list), ["Given name", "draft NAME", "Step s"]);
+  assert.deepEqual(RM.nameSuggestions(null), []);
 });
 
 test("dropDraftIdentity: a merged or split step loses draft_key, draft_keys, name_source and end_reason", () => {
@@ -335,6 +319,9 @@ test("dropDraftIdentity: a merged or split step loses draft_key, draft_keys, nam
   const half = { step_id: "h", draft_keys: ["a", "b"], name: "Half" };
   RM.dropDraftIdentity(half);
   assert.deepEqual(half, { step_id: "h", name: "Half" }, "a split half of a merge is no merge of drafts");
+  const named = { step_id: "n", draft_key: KEY, library_activity: "sales-create-order", name: "Create order (split 1)" };
+  RM.dropDraftIdentity(named);
+  assert.deepEqual(named, { step_id: "n", name: "Create order (split 1)" }, "C21: a split or merged step is not named from the library any more");
 });
 
 /* ---- Reopen run (item 4) ------------------------------------------------------------ */
@@ -430,53 +417,6 @@ test("sameKeyDraftsElsewhere and hideSteps: the other runs' visible drafts with 
   assert.deepEqual(RM.sameKeyDraftsElsewhere(model, "c2", ""), []);
 });
 
-test("rememberedNameRows: names whose key is in this session first, then the others, each by name", () => {
-  const names = {
-    "excel|Book|Button:save": { name: "update the tracker", updated_at: "t1" },
-    [KEY]: { name: "Save the case", updated_at: "t2" },
-    "sap|Other|(visit)": { name: "Browse", updated_at: "t3" },
-    "notepad|X|(visit)": { name: "Add a note", updated_at: "t4" },
-    "blank|X|(visit)": { name: "   ", updated_at: "t5" },
-  };
-  const list = [
-    step("a", "c1", "00:00", "00:05", { draft_key: KEY }),
-    step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "edited" }),
-    step("c", "c2", "02:10", "02:15", { draft_key: "excel|Book|Button:save" }),
-    step("h", "c2", "02:20", "02:25", { draft_key: "notepad|X|(visit)", state: "hidden" }),
-  ];
-  assert.deepEqual(RM.rememberedNameRows(names, list).map((r) => [r.name, r.inSession]), [
-    ["Save the case", 2], ["update the tracker", 1], ["Add a note", 0], ["Browse", 0]]);
-  assert.deepEqual(RM.rememberedNameRows({}, list), []);
-});
-
-test("renameSavedName: the drafts of the key and the analyst's steps that carry the old name take the new one; hidden steps and other names keep theirs", () => {
-  const list = [
-    step("a", "c1", "00:00", "00:05", { draft_key: KEY }),
-    step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "confirmed", name: "Kept" }),
-    step("c", "c2", "02:10", "02:15", { draft_key: KEY, state: "hidden", name: "Save" }),
-    step("d", "c3", "04:00", "04:05", { draft_key: KEY }),
-    step("e", "c3", "04:10", "04:15", { draft_key: "other" }),
-    step("f", "c4", "05:00", "05:05", { draft_key: KEY, state: "edited", name: "Save" }),
-  ];
-  assert.equal(RM.renameSavedName(list, KEY, "Save", " Save it "), 3);
-  assert.deepEqual(list.map((s) => [s.name, s.state, s.name_source || null]), [
-    ["Save it", "auto_suggested", "remembered"], ["Kept", "confirmed", null], ["Save", "hidden", null],
-    ["Save it", "auto_suggested", "remembered"], ["Step e", "auto_suggested", null], ["Save it", "edited", null]]);
-});
-
-test("forgetSavedName: the steps that carry the forgotten name take their drafted name back; a name that cannot be told stays", () => {
-  const list = [
-    step("a", "c1", "00:00", "00:05", { draft_key: KEY, name: "Save", name_source: "remembered" }),
-    step("b", "c2", "02:00", "02:05", { draft_key: KEY, state: "edited", name: "Save" }),
-    step("c", "c3", "04:00", "04:05", { draft_key: KEY, state: "confirmed", name: "Other name" }),
-    step("d", "c4", "05:00", "05:05", { draft_key: KEY, state: "confirmed", name: "Save" }),
-  ];
-  const drafted = (s) => (s.step_id === "d" ? "" : "Order: Save");
-  assert.equal(RM.forgetSavedName(list, KEY, "Save", drafted), 2);
-  assert.deepEqual(list.map((s) => [s.name, s.name_source || null]), [
-    ["Order: Save", "draft"], ["Order: Save", null], ["Other name", null], ["Save", null]]);
-});
-
 /* ---- Sub-processes (contract C19): every level of a transaction ----------- */
 
 /* Run c1 with a sub-process: a1 opened (two drafted sub-steps, one of which
@@ -535,18 +475,6 @@ test("C19 confirmRun and reopenRun cascade to every level of the transaction", (
   assert.equal(back.reopened, 4);
   const st2 = all();
   assert.deepEqual([st2.a3, st2.s1, st2.s2, st2.q1, st2.h1], ["auto_suggested", "auto_suggested", "edited", "auto_suggested", "auto_suggested"]);
-});
-
-test("C19 names: the Remembered step names dialog counts, renames and forgets a drafted sub-step's name (action| and its key) at every level", () => {
-  const list = nested();
-  const key = "action|chrome|Order|enter:qty";
-  const rows = RM.rememberedNameRows({ [key]: { name: "Type the quantity", updated_at: "t" } }, list);
-  assert.deepEqual(rows.map((x) => [x.key, x.inSession]), [[key, 1]]);
-  assert.equal(RM.renameSavedName(list, key, "Enter Quantity", "Type the quantity"), 1);
-  const s1 = RM.visibleTree(list).find((s) => s.step_id === "s1");
-  assert.deepEqual([s1.name, s1.name_source], ["Type the quantity", "remembered"]);
-  assert.equal(RM.forgetSavedName(list, key, "Type the quantity", () => "Enter Quantity"), 1);
-  assert.equal(s1.name, "Enter Quantity");
 });
 
 test("C19 dropDraftIdentity: a merged or split sub-step is no longer one drafted action", () => {

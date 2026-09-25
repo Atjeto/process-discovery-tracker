@@ -972,7 +972,8 @@ async function unreadableAnnotationsPin() {
   // used, with the ids its wiring and the tests use: Attach video on the
   // video band (#btn-link-recording) and the Overview's recording line
   // (#btn-attach-video); Attach transcript on the recording line; Apps outside
-  // the process and Remembered step names in the Steps toolbar; Sync video in the video pane's
+  // the process in the Steps toolbar (Remembered step names left with contract
+  // C21); Sync video in the video pane's
   // header, only while a video is attached; + Step with a video only.
   const placed = () => page.evaluate(() => {
     const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && !el.hidden);
@@ -984,7 +985,7 @@ async function unreadableAnnotationsPin() {
       attachVideo: Object.assign(at("btn-attach-video") || {}, { inLine: inside("btn-attach-video", "#ov-summary") }),
       attachTranscript: Object.assign(at("btn-attach-transcript") || {}, { inLine: inside("btn-attach-transcript", "#ov-summary") }),
       ignoredApps: Object.assign(at("btn-ignored-apps") || {}, { inSteps: inside("btn-ignored-apps", "#session-layout-steps .editor-toolbar") }),
-      savedNames: Object.assign(at("btn-remembered-names") || {}, { inSteps: inside("btn-remembered-names", "#session-layout-steps .editor-toolbar") }),
+      savedNames: document.querySelectorAll("#btn-remembered-names, #remembered-names-dialog").length,
       syncVideo: Object.assign(at("btn-sync-video") || {}, { inHeader: inside("btn-sync-video", "#video-pane .video-controls") }),
       addStep: shown(document.getElementById("btn-add-step")),
     };
@@ -996,10 +997,10 @@ async function unreadableAnnotationsPin() {
     noVideo.attachVideo.text === "Attach" && noVideo.attachVideo.inLine &&
     noVideo.attachTranscript.text === "Attach" && noVideo.attachTranscript.inLine &&
     noVideo.ignoredApps.text === "Apps outside the process..." && noVideo.ignoredApps.inSteps &&
-    noVideo.savedNames.text === "Remembered step names..." && noVideo.savedNames.inSteps &&
+    noVideo.savedNames === 0 &&
     noVideo.syncVideo.inHeader && noVideo.syncVideo.shown === false && noVideo.addStep === false &&
     !(await page.$("#cb-mine")));
-  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Apps outside the process and Remembered step names in the Steps toolbar, Sync video in the video header, hidden without a video), and the Timeline has no + Step without a video",
+  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Apps outside the process in the Steps toolbar and no Remembered step names (contract C21), Sync video in the video header, hidden without a video), and the Timeline has no + Step without a video",
     movedOk, JSON.stringify(noVideo));
 
   // --- P2.10: the Raw events drawer is Flow's only ---------------------------

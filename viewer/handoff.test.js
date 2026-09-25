@@ -72,10 +72,10 @@ test("the project's name is the one the app shows: the title, the recording's na
   assert.equal(H.projectName({ sessionFolder: folder, manifest: { engagement_name: "Default engagement", engagement_id: "default" } }), "sess-2026-0514-0900");
 });
 
-test("the analysis run for a hand-off passes the workbook and the version, --names still last", () => {
+test("the analysis run for a hand-off passes the workbook and the version, --library still last", () => {
   assert.deepEqual(
-    buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx", techOut: "t.xlsx", handoff: 2, namesPath: "N" }),
-    ["n.py", "S", "--pdd-out", "o.docx", "--tech-out", "t.xlsx", "--handoff", "2", "--names", "N"]);
+    buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx", techOut: "t.xlsx", handoff: 2, libraryPath: "L" }),
+    ["n.py", "S", "--pdd-out", "o.docx", "--tech-out", "t.xlsx", "--handoff", "2", "--library", "L"]);
   const plain = buildNormalizeArgs("n.py", { sessionFolder: "S", handoff: 0 });
   assert.ok(!plain.includes("--handoff") && !plain.includes("--tech-out"), "no version 0, no workbook asked for");
 });

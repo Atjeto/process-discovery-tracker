@@ -34,7 +34,8 @@ it). No telemetry, no update checks, no AI inside the tool.
   Save or Submit).
 - **Confirms.** The analyst confirms one transaction (the reference
   transaction), fixing names and boundaries against the video or the
-  screenshots. Names given once are remembered for later projects.
+  screenshots. The step names come from an activity library of each
+  system, built from the names given in earlier projects.
 - **Compares.** The other transactions show only their differences from the reference
   transaction.
 - **Maps.** A BPMN process map built from the transactions, with the

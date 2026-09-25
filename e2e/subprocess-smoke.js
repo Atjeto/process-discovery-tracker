@@ -14,8 +14,8 @@
  *     order, Dissolve sub-process) and one block per visit, the reference
  *     transaction's marked and the others compared with it;
  *   - a drafted sub-step renamed: the other transactions' drafts of its
- *     action take the name (still drafts, name_source remembered), and the
- *     profile's remembered names hold it under action| and its key;
+ *     action take the name (still drafts, name_source remembered), and no
+ *     remembered-names store is written (contract C21 removed it);
  *   - the breadcrumb goes up (the step it was inside selected), and the
  *     sub-process row's "▸ 6 sub-steps" opens it again;
  *   - Group into a sub-process (two consecutive main-level steps of the
@@ -151,7 +151,6 @@ const K_EXCEL = "excel|Excel - Order Tracking.xlsx|Button:save-workbook";
 const SAVE = "Salesforce" + " " + String.fromCharCode(45) + " " + "Order: Save order";
 const ACTIONS = ["Enter Product code", "Enter Quantity", "Enter Unit price", "Enter Shipping address", "Enter Delivery method", "Click Save order"];
 const RENAMED = "Type the quantity";
-const QTY_KEY = "action|chrome|Salesforce - Order|enter:quantity";
 const GROUP = "Create the sales order in SAP";
 const NOTE_LEVEL = "One block per time a transaction goes through this sub-process.";
 
@@ -183,6 +182,7 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     process.exit(2);
   }
   const { app, profileDir } = viewer;
+  // C21: the remembered step names left the app: no store is ever written.
   const STORE = path.join(profileDir, "pdt-library", "remembered-names.json");
   const page = await app.firstWindow();
   const pageErrors = [];
@@ -270,19 +270,12 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     } catch (e) { err = errText(e); }
     const disk = await waitDisk(ANNO, (a) => opened(a).every((s) => s.sub_steps[1].name === RENAMED));
     const qs = opened(disk).map((s) => ({ run: s.case_id, name: s.sub_steps[1].name, state: s.sub_steps[1].state, src: s.sub_steps[1].name_source }));
-    const store = await (async () => {
-      const deadline = Date.now() + T;
-      while (Date.now() < deadline) {
-        try { const n = readJson(STORE).names || {}; if (n[QTY_KEY]) return n[QTY_KEY].name; } catch (_) { /* not yet */ }
-        await wait(150);
-      }
-      return null;
-    })();
+    const store = fs.existsSync(STORE);
     const ref = qs.find((q) => q.run === R1) || {};
     const others = qs.filter((q) => q.run !== R1);
     const ok = !err && ref.name === RENAMED && ref.state === "edited" && others.length === 3 &&
-      others.every((q) => q.name === RENAMED && q.state === "auto_suggested" && q.src === "remembered") && store === RENAMED;
-    record("a drafted sub-step renamed: the other transactions' drafts of its action take the name (still drafts), and it is remembered under action| and its key",
+      others.every((q) => q.name === RENAMED && q.state === "auto_suggested" && q.src === "remembered") && store === false;
+    record("a drafted sub-step renamed: the other transactions' drafts of its action take the name (still drafts), and no remembered-names store is written (contract C21)",
       ok, JSON.stringify({ err, qs, store }));
   }
 

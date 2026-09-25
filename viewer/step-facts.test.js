@@ -71,16 +71,13 @@ test("the fields typed: each field once, first-typed order, its last value; secr
   ]);
 });
 
-test("where a draft ends and its drafted name come from end_reason and its interactions", () => {
+test("where a draft ends comes from end_reason and its interactions", () => {
   const datas = [{ window_title: "Salesforce" + SEP + "Order #10900" }, { meaningful_name: "Save order", name: "btn" }];
   assert.equal(SF.endsAt({ end_reason: "commit" }, datas), "ends at Save order");
   assert.equal(SF.endsAt({ end_reason: "screen_change" }, datas), "ends at a screen change");
   assert.equal(SF.endsAt({ end_reason: "run_end", case_id: "c1" }, datas), "ends with the transaction");
   assert.equal(SF.endsAt({ end_reason: "run_end", case_id: null }, datas), "");
   assert.equal(SF.endsAt({ state: "edited" }, datas), "", "a split or merged step is no longer one draft");
-  assert.equal(SF.draftedName({ end_reason: "commit" }, datas), "Salesforce" + SEP + "Order: Save order");
-  assert.equal(SF.draftedName({ end_reason: "screen_change" }, [{ screen_id: "va01", window_title: "SAP" }]), "va01");
-  assert.equal(SF.draftedName({ end_reason: "run_end" }, [{}]), "(screen)");
   assert.equal(SF.commitName({ name: "INC0010010", control_type: "Hyperlink" }), "Hyperlink", "a name that is only a record value");
   assert.equal(SF.commitName({}), "?");
 });
@@ -102,7 +99,7 @@ test("one clock: the time since the recording started, as the PDD prints it", ()
   for (const bad of ["", "1:5", "1:60", "11:02pm", "1:61:00"]) assert.equal(parseClock(bad), null, JSON.stringify(bad));
 });
 
-test("the pointer and the fact line: the system first, then the screen, the time, where it ends and where it is", () => {
+test("the pointer and the fact line: the system first, then the library code, the screen, the time, where it ends and where it is", () => {
   const origin = Date.parse("2026-05-14T09:00:00Z");
   const runs = [{ caseId: "c1", title: "Transaction 1" }];
   const step = { case_id: "c1", time_range: { start: "2026-05-14T09:00:19Z", end: "2026-05-14T09:00:25Z" } };
@@ -112,6 +109,8 @@ test("the pointer and the fact line: the system first, then the screen, the time
   assert.equal(SF.factLine({ system: "Salesforce", screen: "Account lookup", duration: "6s", ends: "ends at Search",
     pointer: "Transaction 1 at 0:19" }), "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19");
   assert.equal(SF.factLine({ system: "", screen: "", duration: "6s" }), "6s");
+  // C21: a step named from the library shows its code next to the system.
+  assert.equal(SF.factLine({ system: "Salesforce", code: "SO-01", screen: "Order", duration: "6s" }), "Salesforce · SO-01 · Order · 6s");
 });
 
 /* The step panel's rows and the line above them (the owner's review: "It

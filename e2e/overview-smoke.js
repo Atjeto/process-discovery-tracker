@@ -383,17 +383,18 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       linkRecording: at("btn-link-recording", "#video-pane #no-video"),
       syncVideo: at("btn-sync-video", "#video-pane .video-controls"),
       ignoredApps: at("btn-ignored-apps", "#session-layout-steps .editor-toolbar"),
-      savedNames: at("btn-remembered-names", "#session-layout-steps .editor-toolbar"),
+      // C21: the Remembered step names dialog is gone (the activity library names steps).
+      savedNames: !!document.getElementById("btn-remembered-names"),
       runSelect: !!(document.getElementById("case-scope") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Apps outside the process... and Remembered step names... in the Steps toolbar, the Transaction select in the Timeline's header",
+  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Apps outside the process... in the Steps toolbar (no Remembered step names..., contract C21), the Transaction select in the Timeline's header",
     !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach", where: true }) &&
       same(moved.attachTranscript, { text: "Attach", where: true }) &&
       same(moved.linkRecording, { text: "Attach video...", where: true }) &&
       same(moved.syncVideo, { text: "Sync video...", where: true }) &&
       same(moved.ignoredApps, { text: "Apps outside the process...", where: true }) &&
-      same(moved.savedNames, { text: "Remembered step names...", where: true }) && moved.runSelect),
+      moved.savedNames === false && moved.runSelect),
     JSON.stringify(moved));
 
   // (c3) "Apply N marker changes" (the one manual analysis act) and its

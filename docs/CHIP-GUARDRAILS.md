@@ -17,7 +17,7 @@ viewer/python/python.exe normalization/golden_check.py   # the session golden
 cd viewer && node --test                                  # incl. the UI copy guard
 cd capture && node --test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj   # when capture/recorder/ changed
-cd e2e && node run-all.js                                 # the nine smokes, the real viewer
+cd e2e && node run-all.js                                 # the ten smokes, the real viewer
 ```
 
 If any goes red, you broke something: fix it or revert. Never commit red,
@@ -103,7 +103,7 @@ every push.
 
 A fresh chip, even in a clean worktree, needs nothing outside the repo:
 `e2e/` bundles `playwright-core` and drives the viewer's own Electron
-(`npm install` in `viewer/` and `e2e/` once). The nine smokes are worked
+(`npm install` in `viewer/` and `e2e/` once). The ten smokes are worked
 examples; [e2e/README.md](../e2e/README.md) says what each covers.
 
 1. **Work on a temp copy, never on the committed demo.** The viewer analyzes
@@ -130,7 +130,7 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
    ```
    - **Throwaway profile.** Each launch gets its own Electron user-data
      folder (`--user-data-dir`), so no run reads or overwrites the
-     developer's remembered step names, recent list or layout; the
+     developer's recent list or layout; the
      launch fails if Electron is not on it.
    - **Window size.** The window's content is 1500x950, or what
      `PDT_E2E_WINDOW` names (`PDT_E2E_WINDOW=1366x768`); each launch logs
@@ -325,9 +325,7 @@ shown only after a failed run; `#toast`.
   sub-process..., contract C19; shown with two or more ticked rows), `#steps-summary`,
   `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`;
   lane FX3: not shown in a project without a recording, disabled with its
-  reason in a recording without a click or a field typed),
-  `#btn-remembered-names` (the dialog `#remembered-names-dialog`,
-  `[data-act="rename-name"|"forget-name"|"close"]`).
+  reason in a recording without a click or a field typed).
 - The list's title `#runs-pane-count` and the line under it that says what
   a transaction is, `#runs-pane-note` (inside a sub-process, what a block
   is).
@@ -366,7 +364,12 @@ shown only after a failed run; `#toast`.
   row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
   sub-steps", a click opens its level).
 - The step pane `#step-detail` (focus it before Ctrl+V): `.step-fact`,
-  `#step-name` (Enter or leaving it saves), `#step-system` (with
+  `#step-name` (Enter or leaving it saves; contract C21: a click, typing or
+  Down opens the library's activities of the step's system under it,
+  `#step-activity-list .step-activity` (`.step-activity-name`,
+  `.step-activity-code`, `.step-activity-desc`; `.current` the step's own,
+  `.active` the keys' row), a click or Enter picks one; with none, the quiet
+  line `#step-lib-note`, shown only while the name has the focus), `#step-system` (with
   `#step-system-list`), `#step-desc` (leaving it saves), `#step-said`,
   the Flow line `#step-flow` (contract C17: `#step-flow-line`,
   `#btn-flow-only-when`, `#btn-flow-go-to`; the condition `#step-only-when`
@@ -478,7 +481,20 @@ the transactions ran one click away):
 
 **Help** `#help-modal`: `.help-nav-item[data-section="start"|"stepsphases"|"map"|"markers"|"capture"|"handoff"|"shortcuts"|"trouble"]`,
 `.help-section[data-section]`, `#btn-help-reanalyze` (Troubleshooting),
-`#help-version`, `#btn-help-close`.
+`#help-version`, `#help-library` (contract C21: the app's library, "Library
+1: 9 applications, 0 activities", its file in the tooltip), `#btn-build-library`
+(Steps section), `#btn-help-close`.
+
+**The Library builder** `#library-builder` (contract C21, Help, Build the
+library...; `views/library-builder-ui.js`): `#lb-intro`, `#btn-lb-add-projects`
+(a folder dialog) and `#btn-lb-add-zips` (a zip dialog; stub
+`dialog.showOpenDialog` for both), `#lb-read`, the list `#lb-list` of
+`.lb-app[data-app]` sections, each of `.lb-cluster` blocks (`.conflict` with
+`.lb-conflict-note` when the same screens are named differently), each of
+`.lb-row[data-key]` rows (`.lb-tick`, `.lb-name`, `.lb-code`, `.lb-desc`,
+`.lb-meta`), `#lb-error`, `#lb-count`, `#btn-lb-save` (stub
+`dialog.showSaveDialog`; its `defaultPath` is the app's library file). The
+test library: set `PDT_LIBRARY` before the launch (`e2e/library-smoke.js`).
 
 **Dialogs:** a prompt is `.modal-backdrop.modal-prompt` (`.modal-input`,
 `.modal-ok`, `.modal-cancel`); a confirmation `.modal-backdrop.modal-confirm`
@@ -514,6 +530,11 @@ unused `dfg-viewer.js` `exportPng`, `bpmn-viewer.js` `exportSvg`,
 `asis-view.js` `hasLevel` and `modals.js` `formModal`. A run of
 `normalize.py` stages its outputs as `*.pdt-staged` and moves them in as
 its last act: a smoke that reads the outputs waits for the run to end.
+Gone since 2026-09-25 (contract C21): the remembered step names (the
+store `pdt-library/remembered-names.json`, the Remembered step names dialog
+`#btn-remembered-names` and `#remembered-names-dialog`, `--names`), and the
+datalist on the step pane's name (the library's picker took its place; a
+row's rename keeps the names used in the project).
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

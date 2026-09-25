@@ -281,44 +281,6 @@ test("an undo of Leave out of the analysis analyzes again; an undo of Remove vid
   Session.initSession({ renderSessionPills: () => {} });
 });
 
-test("lane FX2: an undo of a rename puts its remembered name back, and a redo renames it again", async () => {
-  loadFakeSession("NM1", [{ step_id: "a", name: "Open the customer record", draft_key: "k1", state: "auto_suggested" }]);
-  const calls = [];
-  const restore = Ipc.restoreStepName;
-  Ipc.restoreStepName = async (payload) => { calls.push(payload); return { ok: true }; };
-  const emitted = [];
-  const unsub = State.subscribe("names", () => emitted.push("names"));
-  try {
-    const anno = Session.ensureAnnoShape(State.getSession().annotations);
-    anno.steps[0].name = "Open the customer's record";
-    const names = [{ key: "k1", before: null, after: { name: "Open the customer's record", updated_at: "t1" } }];
-    await Session.persistAnnotations(anno, "rename step", undefined, { names });
-    await Session.performUndo();
-    assert.equal(State.getSession().annotations.steps[0].name, "Open the customer record");
-    assert.deepEqual(calls, [{ draftKey: "k1", entry: null }], "nothing was remembered for the key before: it is forgotten again");
-    await Session.performRedo();
-    assert.equal(State.getSession().annotations.steps[0].name, "Open the customer's record");
-    assert.deepEqual(calls[1], { draftKey: "k1", entry: { name: "Open the customer's record", updated_at: "t1" } });
-    await Session.performUndo();
-    assert.deepEqual(calls[2], { draftKey: "k1", entry: null }, "the redo entry carries the names too");
-    assert.deepEqual(emitted, ["names", "names", "names"], "the Steps level reads the names again each time");
-    // An edit without names never touches the store.
-    calls.length = 0;
-    await editStepNameInPlace("plain", "rename step");
-    await Session.performUndo();
-    assert.deepEqual(calls, []);
-    // A store that cannot be written is said; the project is reverted anyway.
-    Ipc.restoreStepName = async () => ({ ok: false, error: "The remembered names file cannot be read" });
-    await Session.persistAnnotations(State.getSession().annotations, "rename step", undefined, { names });
-    toasts.length = 0;
-    await Session.performUndo();
-    assert.ok(toasts.some((x) => x.kind === "error" && /remembered name could not be put back/.test(x.msg)), JSON.stringify(toasts));
-  } finally {
-    Ipc.restoreStepName = restore;
-    unsub();
-  }
-});
-
 test("recordFileAct: Remove transcript is undone and redone by its own acts, and leaves the annotations alone", async () => {
   loadFakeSession("CC3", [{ step_id: "a", name: "x" }]);
   const log = [];

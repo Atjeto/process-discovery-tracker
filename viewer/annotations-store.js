@@ -281,6 +281,7 @@ module.exports = {
   readAnnotationsFile, listAnnotationBackups, unreadableMessage, annotationsLoadError,
   newestReadableBackup, backupTime, keptName, restoreNewestBackup,
   assertWritable, writeAnnotationsFile,
-  // The same temp-then-rename step for the remembered-names store (names-store.js).
+  // The same temp-then-rename step for the activity library the Library
+  // builder saves (main.js viewer:saveLibrary, contract C21).
   renameWithRetry: _renameWithRetry,
 };

@@ -25,12 +25,20 @@ implementation notes
   ending at its commit action (a button, menu command, or link); the
   analyst confirms one transaction instead of authoring every step by
   hand, then reviews how the other transactions differ.
-- **Names are remembered**: naming a drafted step once applies that name to
-  every future draft of the same control and screen, within the project
-  and across later projects. Names given in a project travel with its
-  folder, so the project drafts the same names on another machine. The
-  Remembered step names list, in the Steps toolbar, renames or forgets a
-  name.
+- **Names travel with the project**: naming a drafted step names the same
+  drafted steps (the same control and screen) in the project's other
+  transactions at once, and every later analysis of the project drafts
+  them with that name, on any machine.
+- **The activity library** (contract C21): the app ships one library of
+  named activities per system (`library/activities.json`), and a project
+  keeps the one it started with (`library.json`, copied by its first
+  analysis). The step pane's name offers the activities of the step's
+  system: a pick sets the name, the system and, when the step has none, the
+  description, and the fact line shows the activity's code; any name can
+  still be typed. Help, *Build the library...*, the owner's tool, reads
+  projects and hand-off zips, lists their named steps by system (the same
+  screens named differently side by side), and saves the ticked ones as a
+  new version of the library.
 - **Differences between transactions**: every transaction other than the
   reference transaction lists how it differs from it (a skipped step, an
   extra step, a different order, a step done more often), or says it has
@@ -243,7 +251,7 @@ implementation notes
   Re-analyze.
 - **One top bar and no More menu**: New and Open are two menus; the video
   and transcript actions sit on the project line, Apps outside the process
-  and Remembered step names in the Steps toolbar. Flow is now called the Timeline.
+  in the Steps toolbar. Flow is now called the Timeline.
 - **Observations instead of findings** on the Overview, measured from the
   recording, and one source with the PDD: *Data* and *Applications and
   time* are the rows the PDD prints in its sections 5 and 6, under its
@@ -345,7 +353,7 @@ implementation notes
     read "Step 3.1", apart from its section numbers; the request prints
     with its code; the Raw events use the one clock.
   - The viewer's joins: Dissolve gives each Go to back to the step that
-    carried it; Ctrl+Z of a rename puts the remembered name back too;
+    carried it;
     steps you added stay Added through split and merge; nothing is copied
     into the project while it is analyzed; an unreadable annotations file
     shows only its banner; the step panel says when the video does not
@@ -373,9 +381,13 @@ Preserved in full on the `product-edition` branch.
   processes**: a process is recorded once, and comparing recordings is the
   product line.
 - **The in-app vocabulary discovery workbench** ("Discover from window"
-  and the App Library match workbench), replaced by remembered names
+  and the App Library match workbench), replaced by the activity library
   (above); the shipped application vocabularies still enrich control
   names as before.
+- **Remembered step names** (the store on the analyst's computer, its
+  dialog in the Steps toolbar and `normalize.py --names`): the activity
+  library names steps across projects now, and a project's own names still
+  name its drafts.
 - **Structural PII masking and the data-posture setting.** For internal
   use, real example values make a better PDD; password redaction at
   capture time is unchanged.

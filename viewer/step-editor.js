@@ -8,6 +8,8 @@
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
   // A step's time on screen ("42s", "2:17", "1h04"), the fact line's too.
   const { duration: stepDuration } = require("./step-facts.js");
+  // C21: the activities the name field's picker keeps as the analyst types.
+  const { filterActivities } = require("./library.js");
   // One composed human identity line per element (App Library pass, R1). Reused
   // here for the step-detail interaction rows so a control with no accessible
   // name reads as `<ControlType> · "<best identity>" · <window>` with the
@@ -72,7 +74,8 @@
      A row: the multi-select tick (shown on hover or once ticked), the name
      (double-click to rename, with the shared name suggestions), the waste
      tag, the state chip and the duration (the run says in one line which
-     names are remembered names). P1.9: a row carries a chip only
+     names are remembered names: names given to the same drafted step
+     elsewhere in the project). P1.9: a row carries a chip only
      where it differs from its run: `opts.baseline` is the chip class the run's
      status stands for ("draft" or "confirmed"), and a row whose chip is that
      class shows none (the run's own status says it). Without a baseline (the
@@ -191,7 +194,7 @@
     input.type = "text";
     input.value = original;
     input.className = "step-name-edit";
-    // C4: suggest remembered names and the names already used in the session.
+    // The names already used in the project.
     if (nameListId) input.setAttribute("list", nameListId);
     nameEl.textContent = "";
     nameEl.appendChild(input);
@@ -261,8 +264,10 @@
          next, Merge selected (on a sub-process one line saying why neither
          applies), Delete (added steps only).
      Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the fact
-     line, the fields, the description and its hint, and (C16) the System
-     field and the screenshots, notes and attachments (views/analyst-ui.js). */
+     line, the fields, the description and its hint, (C16) the System field
+     and the screenshots, notes and attachments (views/analyst-ui.js), and
+     (C21) the name field's picker: `picker` (library.js pickerFor) and
+     onPickActivity(stepId, activityId). */
   function renderStepDetail(host, step, callbacks) {
     _rendering = true;
     try { _renderStepDetail(host, step, callbacks || {}); } finally { _rendering = false; }
@@ -293,8 +298,6 @@
       ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
       : "";
     const fact = callbacks.factLine || "";
-    // C4: the name input suggests remembered and already-used names.
-    const nameList = callbacks.nameListId ? ` list="${escapeAttr(callbacks.nameListId)}"` : "";
     const isHidden = step.state === "hidden";
     // Item 5 (L12b): a drafted step is hidden, never deleted (the next Analyze
     // would draft it again; a hidden one stays out). Only a step the analyst
@@ -323,7 +326,7 @@
             ${mergeSelectedBtn}`;
     host.innerHTML = `
       ${fact ? `<p class="step-fact">${escapeHtml(fact)}</p>` : ""}
-      <label>Name <input type="text" id="step-name" value="${escapeAttr(step.name)}"${nameList} title="Saved when you press Enter or leave the field"></label>
+      ${nameFieldHtml(step, callbacks.picker)}
       ${callbacks.systemHtml || ""}
       ${stepFieldsHtml(callbacks.fields)}
       <label>Description <textarea id="step-desc" placeholder="${escapeAttr(hint)}" title="Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
@@ -360,7 +363,11 @@
       if (!v) { nameEl.value = step.name || ""; return; }
       if (v !== String(step.name || "").trim() && callbacks.onRename) callbacks.onRename(step.step_id, v);
     };
+    // C21: the picker takes its keys first (Up, Down, Enter on a row, Escape
+    // on an open list).
+    const picker = wireNamePicker(nameEl, step, callbacks);
     nameEl.addEventListener("keydown", (e) => {
+      if (picker && picker.onKey(e)) return;
       if (e.key === "Enter") { e.preventDefault(); commitName(); }
       else if (e.key === "Escape") { e.preventDefault(); nameEl.value = step.name || ""; }
     });
@@ -417,6 +424,113 @@
       watchEl.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       watchEl.disabled = !(step.time_range && step.time_range.start);
     }
+  }
+
+  /* C21: the name field and its picker. The field offers the activities of
+     the step's system from the project's library (`picker`, library.js
+     pickerFor): a list under the field, opened by a click in it, by typing
+     (then it keeps the activities whose name or code holds the text) or by
+     the Down key; Up and Down move through it, Enter or a click picks one,
+     Escape closes it. Any name can still be typed. With no activity for the
+     step's system (or no system yet, on a step added by hand) the field says
+     so in one quiet line while it has the focus (styles.css), and no list
+     opens. */
+  function nameFieldHtml(step, picker) {
+    const acts = picker && Array.isArray(picker.activities) ? picker.activities : [];
+    const note = picker && picker.note ? `<span class="step-lib-note" id="step-lib-note">${escapeHtml(picker.note)}</span>` : "";
+    const title = acts.length
+      ? "Pick an activity of " + picker.system + " from the library, or type any name. Saved when you press Enter or leave the field"
+      : "Saved when you press Enter or leave the field";
+    const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="step-activity-list"` : "";
+    return `<div class="step-name-field">` +
+      `<label>Name${note}<input type="text" id="step-name" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}"></label>` +
+      (acts.length ? `<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="${escapeAttr("Activities of " + picker.system)}" hidden></ul>` : "") +
+      `</div>`;
+  }
+
+  /* The picker's rows: an activity's name, its code and its description; the
+     one the step is named from (`current`) marked, the one the keys are on
+     (`active`, an index) lit. */
+  function activityListHtml(activities, current, active) {
+    return (activities || []).map((a, i) =>
+      `<li class="step-activity${a.id === current ? " current" : ""}${i === active ? " active" : ""}" role="option" id="step-activity-${i}" data-i="${i}" aria-selected="${i === active}"` +
+        (a.description ? ` title="${escapeAttr(a.description)}"` : "") + ">" +
+        `<span class="step-activity-name">${escapeHtml(a.name)}</span>` +
+        (a.code ? `<span class="step-activity-code">${escapeHtml(a.code)}</span>` : "") +
+        (a.description ? `<span class="step-activity-desc">${escapeHtml(a.description)}</span>` : "") +
+      "</li>").join("");
+  }
+
+  /* Wire the picker of the name field just drawn: { onKey(e) } (true when the
+     key was the picker's), or null when there is no list. A pick (a row
+     clicked, Enter on the row the keys are on, or Enter on a name typed that
+     is an activity's) keeps the focus in the field and calls
+     onPickActivity. */
+  function wireNamePicker(nameEl, step, callbacks) {
+    const picker = callbacks.picker;
+    const list = document.getElementById("step-activity-list");
+    if (!picker || !list || !(picker.activities || []).length) return null;
+    let shown = [], active = -1, typed = false;
+    const close = () => {
+      list.hidden = true;
+      list.innerHTML = "";
+      active = -1;
+      nameEl.setAttribute("aria-expanded", "false");
+      nameEl.removeAttribute("aria-activedescendant");
+    };
+    const draw = () => {
+      shown = filterActivities(picker.activities, typed ? nameEl.value : "");
+      if (!shown.length || nameEl.readOnly) { close(); return; }
+      if (active >= shown.length) active = shown.length - 1;
+      list.innerHTML = activityListHtml(shown, picker.current, active);
+      list.hidden = false;
+      nameEl.setAttribute("aria-expanded", "true");
+      const lit = active >= 0 ? list.querySelector(".step-activity.active") : null;
+      if (lit) {
+        nameEl.setAttribute("aria-activedescendant", lit.id);
+        lit.scrollIntoView({ block: "nearest" });
+      } else {
+        nameEl.removeAttribute("aria-activedescendant");
+      }
+    };
+    const pick = (a) => {
+      if (!a || nameEl.readOnly) return;
+      nameEl.value = a.name;
+      close();
+      if (callbacks.onPickActivity) callbacks.onPickActivity(step.step_id, a.id);
+    };
+    nameEl.addEventListener("click", () => { if (list.hidden) { typed = false; active = -1; draw(); } });
+    nameEl.addEventListener("input", () => { typed = true; active = -1; draw(); });
+    nameEl.addEventListener("blur", close);
+    // A click on a row picks it; the field keeps the focus meanwhile.
+    list.addEventListener("mousedown", (e) => e.preventDefault());
+    list.addEventListener("click", (e) => {
+      const li = e.target && e.target.closest ? e.target.closest(".step-activity") : null;
+      if (li) pick(shown[Number(li.dataset.i)]);
+    });
+    // A name typed that is an activity's (case does not matter) is that pick.
+    const typedActivity = () => {
+      const t = nameEl.value.trim().toLowerCase();
+      return t ? picker.activities.find((a) => a.name.trim().toLowerCase() === t) || null : null;
+    };
+    return {
+      onKey(e) {
+        if (nameEl.readOnly) return false;
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          if (list.hidden) draw();
+          if (!shown.length || list.hidden) return true;
+          const n = shown.length;
+          active = e.key === "ArrowDown" ? (active + 1) % n : (active <= 0 ? n - 1 : active - 1);
+          draw();
+          return true;
+        }
+        if (e.key === "Enter" && !list.hidden && active >= 0) { e.preventDefault(); pick(shown[active]); return true; }
+        if (e.key === "Enter" && typedActivity()) { e.preventDefault(); pick(typedActivity()); return true; }
+        if (e.key === "Escape" && !list.hidden) { e.preventDefault(); close(); return true; }
+        return false;
+      },
+    };
   }
 
   /* C17: the Flow line, under the description. The default after a step is
@@ -816,5 +930,6 @@
   module.exports = {
     renderStepList, renderStepDetail,
     describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker,
+    nameFieldHtml, activityListHtml,
   };
 })();
