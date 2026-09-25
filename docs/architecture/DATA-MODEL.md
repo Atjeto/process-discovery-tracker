@@ -30,7 +30,7 @@ screenshots/analyst/    screenshots the analyst adds by hand (C16)        viewer
 attachments/            files the analyst attaches (C16)                  viewer
 video/                  an attached video, copied into the folder         viewer
 stats.json              statistics, the runs, draft_summary               pipeline
-analysis.json           facts, findings, analysis, stage_errors           pipeline
+analysis.json           the transaction check, the PDD's rows             pipeline
 process_map_step.bpmn   the step-level map (--mine)                       pipeline
 normalize.log           the pipeline's log                                pipeline
 transcript/             an imported transcript file, byte for byte        transcript_import.py
@@ -83,7 +83,9 @@ The pipeline derives the runs:
 - A run's `case_id` is deterministic: `uuid5` of the session id and the start
   marker's event id (contract C9). Re-analyzing the same recording gives the
   same ids, so the analyst's steps stay attached to their runs; a preserved
-  step whose run disappeared moves to the run that contains it in time.
+  step whose run disappeared moves to the run that holds its start (lane
+  FX1: even when it runs on past that run's end), and in a project without
+  a recording a step without a time joins the first run.
 - Every activity and interaction gets `case_ids`: `[]` outside any run, or
   the one open run's id.
 - A recording with no markers has no runs. A missed marker is added by hand

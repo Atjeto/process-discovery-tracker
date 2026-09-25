@@ -196,13 +196,6 @@ function _rootFor(path) {
   return id ? _viewer.get("canvas").findRoot(id + "_plane") || null : null;
 }
 
-/* Whether the map drawn has a plane for the map at `path`: true or false;
-   null while no map is drawn. */
-function hasLevel(path) {
-  if (!_viewer || !_ready) return null;
-  return !!_rootFor(path);
-}
-
 /* bpmn-js names the main map's crumb above a plane by the process's id when
    the process has no name ("Process_1"): it reads the main map's name. */
 function _nameCrumbs() {
@@ -324,4 +317,4 @@ async function draw(host, xml, path) {
   return true;
 }
 
-module.exports = { draw, clear, drawnIn, fit, hideNote, configure, hasLevel, showLevel, definitions };
+module.exports = { draw, clear, drawnIn, fit, hideNote, configure, showLevel, definitions };

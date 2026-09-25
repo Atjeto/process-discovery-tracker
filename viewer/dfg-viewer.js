@@ -522,17 +522,5 @@
     return true;
   }
 
-  /* Rasterise the current Flow diagram to a PNG data URL, on a light
-     background (a document expects light). Returns null when no graph is
-     rendered. */
-  function exportPng() {
-    if (!cy) return null;
-    try {
-      return cy.png({ output: "base64uri", bg: "#faf8f4", full: true, scale: 2 });
-    } catch (e) {
-      return null;
-    }
-  }
-
-  module.exports = { render, clear, fit, resize, selectNode, exportPng, layoutSaved, resetLayout };
+  module.exports = { render, clear, fit, resize, selectNode, layoutSaved, resetLayout };
 })();

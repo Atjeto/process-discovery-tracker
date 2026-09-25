@@ -25,7 +25,7 @@ const UNREADABLE_LINE = "[normalize] ERROR: C:\\s\\annotations.json exists but c
   "the previous versions next to it as annotations.json.2 to annotations.json.5; copy the newest good " +
   "one over annotations.json, then analyze again.";
 const EXPORT_LINE = "[normalize] ERROR: PDD export to C:\\t\\pdt-export-1.docx failed: PermissionError: " +
-  "[Errno 13] Permission denied. The analysis outputs were written; the PDD was not.";
+  "[Errno 13] Permission denied. Nothing in the project was changed.";
 
 test("exit code 2 shows the pipeline's ERROR line and says nothing was changed", () => {
   const r = R.resultFromRunnerError(runnerError(2,
@@ -45,7 +45,11 @@ test("exit code 3 is an export failure with the pipeline's reason", () => {
   assert.equal(r.ok, false);
   assert.equal(r.code, 3);
   assert.match(r.error, /^Export failed: PDD export to .* failed: PermissionError/);
-  assert.ok(r.error.includes("the PDD was not"), r.error);
+  assert.ok(r.error.endsWith("Nothing in the project was changed."), r.error);
+  assert.equal((r.error.match(/Nothing in the project was changed/g) || []).length, 1, "said once");
+  // Lane FX1: an older pipeline's line says nothing of the project: the viewer says it.
+  const older = R.resultFromRunnerError(runnerError(3, "[normalize] ERROR: PDD export failed: OSError\n"));
+  assert.equal(older.error, "Export failed: PDD export failed: OSError Nothing in the project was changed.");
 });
 
 test("an older pipeline without an ERROR line still fails with its last stderr line", () => {
@@ -106,14 +110,15 @@ test("analysisNeed: a recording with no stats.json or no analysis.json has no an
 
 test("analysisNeed (V2 item 10): the format number the pipeline writes tells an older analysis, not the keys it has", () => {
   const current = { stats: { meta: {} }, analysis: { format: R.ANALYSIS_FORMAT } };
-  assert.equal(R.ANALYSIS_FORMAT, 3, "3 since the Overview reads the PDD's rows of sections 5 and 6 (pdd_data, pdd_time)");
+  assert.equal(R.ANALYSIS_FORMAT, 4, "4 since the analysis nobody read is cut and the capture detail is its own key (lane FX1)");
   assert.equal(R.analysisNeed(current), null, "control: today's analysis needs no run");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: R.ANALYSIS_FORMAT + 1 } }), null, "a newer one is read as it is");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 1 } }), "stale");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 2 } }), "stale", "an analysis without the PDD's rows is analyzed again");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 3 } }), "stale", "lane FX1: one without coverage_caveat too");
   assert.equal(R.analysisNeed({ stats: { meta: { draft_summary: { runs: 4 } } },
     analysis: { case_quality: { mode: "markers" }, stage_errors: [] } }), "stale", "every key of today, but no format: an older pipeline");
-  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: "3" } }), null, "read as a number");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: "4" } }), null, "read as a number");
 });
 
 test("analysisNeed: the pipeline writes the same format number the viewer reads", () => {

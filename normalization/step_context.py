@@ -255,6 +255,20 @@ def step_sort_key(step: dict) -> tuple[int, float]:
     return untimed_key(step)
 
 
+def fmt_ms(ms: Any) -> str:
+    """A duration in the reader's words: "12s", "3m 40s", "1h 12m" (0 for a
+    missing value). The PDD's times and the step map's documentation."""
+    ms = ms or 0
+    s = int(round(ms / 1000.0))
+    if s < 60:
+        return f"{s}s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m}m {s:02d}s" if s else f"{m}m"
+    h, m = divmod(m, 60)
+    return f"{h}h {m:02d}m"
+
+
 def clock(ms: Any) -> str:
     """A position in a recording or a video: "0:19", "12:05", "1:02:03"."""
     if (isinstance(ms, bool) or not isinstance(ms, (int, float))

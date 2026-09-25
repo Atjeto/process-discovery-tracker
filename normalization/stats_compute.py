@@ -7,31 +7,43 @@ Computes the standard set the aggregate viewer renders:
   - Trace variants ranked by frequency
   - App outliers (apps appearing in <5% of cases)
   - Rework loops (activity revisited within a case)
+
+The stretches the analyst left out of the analysis (annotations.json
+`excluded_ranges`) are cut out of the recorded activity rows first, each row
+losing exactly the part inside a stretch (clip_excluded), and only then are
+the rows merged into activity occurrences: a stretch takes out its own time,
+never a whole merged occurrence that starts inside it.
 """
 
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from statistics import mean, median
 from typing import Any
 
 from _dt import parse_ts as _parse_ts  # public re-export
-from analysis_common import step_group_label
-from facts import _active_duration_ms, _idle_intervals
 from step_context import step_duration_ms, untimed_key
 
 
-def _filter_excluded(
-    events: list[dict[str, Any]],
-    excluded_ranges: list[dict[str, Any]] | None,
-) -> list[dict[str, Any]]:
-    """Drop events whose timestamp falls inside any excluded range
-    (annotations.json `excluded_ranges`, set from the viewer's timeline
-    selection). Statistics skip these so a lunch break or an unrelated
-    detour in a long passive recording doesn't distort the numbers."""
+def step_group_label(step: dict[str, Any]) -> str:
+    """Display name for a grouped step. A template-matched step already
+    carries a value-free canonical name; an auto step's name embeds the
+    case's values ("Search — CUST-10852"), so fall back to the value-free
+    `process_label` ("Search") instead so the group reads as one thing."""
+    if step.get("canonical_step_id"):
+        return step.get("name") or step.get("process_label") or "(unnamed step)"
+    return step.get("process_label") or step.get("name") or "(unnamed step)"
+
+
+def _excluded_spans(excluded_ranges: list[dict[str, Any]] | None) -> list[tuple[datetime, datetime]]:
+    """The readable stretches of annotations.json `excluded_ranges` as
+    (start, end) datetimes; a range that cannot be read, or ends before it
+    starts, is left out."""
     ranges: list[tuple[datetime, datetime]] = []
     for r in excluded_ranges or []:
+        if not isinstance(r, dict):
+            continue
         start, end = r.get("start"), r.get("end")
         if not start or not end:
             continue
@@ -41,6 +53,18 @@ def _filter_excluded(
             continue
         if b >= a:
             ranges.append((a, b))
+    return ranges
+
+
+def _filter_excluded(
+    events: list[dict[str, Any]],
+    excluded_ranges: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Drop events whose timestamp falls inside any excluded range
+    (annotations.json `excluded_ranges`, set from the viewer's timeline
+    selection). The checks that read single moments (the transaction check,
+    the capture detail) skip these, as the drafting does."""
+    ranges = _excluded_spans(excluded_ranges)
     if not ranges:
         return events
     kept = []
@@ -54,6 +78,67 @@ def _filter_excluded(
             continue
         kept.append(ev)
     return kept
+
+
+def _iso(t: datetime) -> str:
+    """An ISO timestamp in the recorder's form (UTC, "Z")."""
+    return t.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def clip_excluded(
+    events: list[dict[str, Any]],
+    excluded_ranges: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """The event stream with the stretches left out of the analysis cut out
+    of its activity rows: a row inside a stretch is dropped, a row across a
+    stretch's start or end loses the part inside it, and a row around a
+    stretch becomes two rows, before and after it. Each part keeps the row's
+    data with its own timestamp and duration. A row whose time cannot be read
+    stays as it is (it cannot be placed), and every other event passes
+    through: the idle events keep their pairs. Without a stretch the stream
+    is returned as it is."""
+    ranges = sorted(_excluded_spans(excluded_ranges))
+    if not ranges:
+        return events
+    out: list[dict[str, Any]] = []
+    for ev in events:
+        if not isinstance(ev, dict) or ev.get("type") != "activity":
+            out.append(ev)
+            continue
+        data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        start = _safe_parse(ev.get("timestamp"))
+        if start is None:
+            out.append(ev)
+            continue
+        dur = _duration_ms(data)
+        end = start + timedelta(milliseconds=dur)
+        if dur <= 0:
+            if not any(a <= start <= b for a, b in ranges):
+                out.append(ev)
+            continue
+        pieces = [(start, end)]
+        for a, b in ranges:
+            nxt = []
+            for lo, hi in pieces:
+                if b <= lo or a >= hi:
+                    nxt.append((lo, hi))
+                    continue
+                if lo < a:
+                    nxt.append((lo, a))
+                if b < hi:
+                    nxt.append((b, hi))
+            pieces = nxt
+        if pieces == [(start, end)]:
+            out.append(ev)
+            continue
+        for i, (lo, hi) in enumerate(pieces):
+            piece = dict(ev)
+            piece["timestamp"] = ev.get("timestamp") if lo == start else _iso(lo)
+            piece["data"] = {**data, "duration_ms": (hi - lo).total_seconds() * 1000.0}
+            if i and isinstance(ev.get("event_id"), str):
+                piece["event_id"] = f"{ev['event_id']}#{i + 1}"
+            out.append(piece)
+    return out
 
 
 def _percentile(values: list[float], pct: float) -> float:
@@ -78,6 +163,12 @@ def _num(x: Any) -> float:
     return x if x > 0 else 0
 
 
+def _duration_ms(data: dict) -> float:
+    """An activity row's measured duration_ms, 0 for a missing, negative or
+    non-numeric one."""
+    return float(_num((data or {}).get("duration_ms")))
+
+
 def _safe_parse(ts: Any) -> datetime | None:
     """Parse a timestamp, tolerating a corrupt/non-ISO value (returns None)."""
     if not ts:
@@ -86,6 +177,39 @@ def _safe_parse(ts: Any) -> datetime | None:
         return _parse_ts(ts)
     except (ValueError, TypeError):
         return None
+
+
+def _idle_intervals(events: list[dict[str, Any]]) -> list[tuple[datetime, datetime]]:
+    """The idle intervals the recorder measured: paired idle_start/idle_end
+    system events, as (start, end) datetimes, in time order."""
+    intervals = []
+    open_start = None
+    for ev in events or []:
+        if not isinstance(ev, dict) or ev.get("type") != "system":
+            continue
+        kind = (ev.get("data") or {}).get("kind") if isinstance(ev.get("data"), dict) else None
+        if kind == "idle_start":
+            open_start = _safe_parse(ev.get("timestamp"))
+        elif kind == "idle_end":
+            end = _safe_parse(ev.get("timestamp"))
+            if open_start is not None and end is not None and end > open_start:
+                intervals.append((open_start, end))
+            open_start = None
+    return sorted(intervals)
+
+
+def _active_ms(lo: datetime, hi: datetime, idle: list[tuple[datetime, datetime]]) -> float:
+    """The time between `lo` and `hi` that is not idle, in ms."""
+    if hi <= lo:
+        return 0.0
+    ms = (hi - lo).total_seconds() * 1000.0
+    for i0, i1 in idle:
+        if i0 >= hi:
+            break
+        a, b = max(lo, i0), min(hi, i1)
+        if b > a:
+            ms -= (b - a).total_seconds() * 1000.0
+    return max(0.0, ms)
 
 
 def activity_stats(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -120,30 +244,56 @@ def case_stats(
 ) -> list[dict[str, Any]]:
     """Per-case duration -- both wall-clock and active (§5.4).
 
-    Active time is measured the way facts measures it (RP-07): each
-    foreground run stamped to the case, minus the idle time the recorder
-    measured inside it, limited to the case's own start/end span. So a run's
-    active time never counts idle time and never exceeds its elapsed time.
+    A transaction's active time is the recorded foreground time inside its
+    span: every activity row counts by its overlap with the transaction,
+    clipped to the transaction's start and end (a transaction left open runs
+    to the end of the recording), minus the idle time the recorder measured
+    in that overlap. So a stretch in front that starts a moment before the
+    transaction's start marker (the capture app writes the first stretch's
+    start just before its Transaction 1 marker) counts from the marker on,
+    a stretch across the boundary of two transactions counts in each for its
+    part, and a transaction's active time never counts idle time and never
+    exceeds its elapsed time. A row whose time cannot be read, and every row
+    of a transaction whose span cannot be read, count by the transaction
+    their start was filed under (`case_ids`), as far as they are known.
+
+    `events` are the recorded rows themselves (not merged into occurrences:
+    merging stamps a row's time at the first row it holds), with the
+    stretches left out of the analysis already cut out (clip_excluded).
 
     In a session without a recording (`recorded` False: a video or blank
     session, contract C16) nothing measured the foreground, so `active_ms`
     is None, never a measured 0. The implicit run of such a session carries
     `implicit: True` (case_assignment.add_implicit_run)."""
-    windows = {cid: (_safe_parse(meta.get("start_ts")), _safe_parse(meta.get("end_ts")))
-               for cid, meta in cases.items()}
     idle = _idle_intervals(events)
-    active_by_case: dict[str, float] = defaultdict(float)
-    for ev in events:
-        if ev.get("type") != "activity":
-            continue
-        cids = ev["data"].get("case_ids") or []
-        for cid in cids:
-            active_by_case[cid] += _active_duration_ms(ev, idle, windows.get(cid))
+    rows_in = [ev for ev in events or []
+               if isinstance(ev, dict) and ev.get("type") == "activity"
+               and isinstance(ev.get("data"), dict)]
+    spans = []          # (start, end, case_ids) of the rows whose time can be read
+    unplaced = []       # the rows whose time cannot be read
+    for ev in rows_in:
+        start = _safe_parse(ev.get("timestamp"))
+        dur = _duration_ms(ev["data"])
+        if start is None:
+            unplaced.append(ev)
+        elif dur > 0:
+            spans.append((start, start + timedelta(milliseconds=dur),
+                          ev["data"].get("case_ids") or []))
 
     rows = []
     for cid, meta in cases.items():
-        start, end = windows[cid]
+        start, end = _safe_parse(meta.get("start_ts")), _safe_parse(meta.get("end_ts"))
         wall = int((end - start).total_seconds() * 1000) if (start and end and end >= start) else None
+        span_known = start is not None and (meta.get("end_ts") is None or end is not None)
+        active = 0.0
+        for a, b, cids in spans:
+            if span_known:
+                active += _active_ms(max(a, start), min(b, end) if end is not None else b, idle)
+            elif cid in cids:
+                active += _active_ms(a, b, idle)
+        for ev in unplaced:
+            if cid in (ev["data"].get("case_ids") or []):
+                active += _duration_ms(ev["data"])
         row = {
             "case_id": cid,
             "label": meta.get("label"),
@@ -151,7 +301,7 @@ def case_stats(
             "start_ts": meta.get("start_ts"),
             "end_ts": meta.get("end_ts"),
             "wall_clock_ms": wall,
-            "active_ms": round(active_by_case.get(cid, 0)) if recorded else None,
+            "active_ms": round(active) if recorded else None,
             "end_reason": meta.get("end_reason"),
         }
         if meta.get("implicit"):
@@ -317,15 +467,22 @@ def compute_all(
     steps: list[dict[str, Any]] | None = None,
     recorded: bool = True,
 ) -> dict[str, Any]:
-    """Every statistic of stats.json. `recorded` is False for a session
-    without a recording (C16): the runs' active time is then None."""
-    events = _filter_excluded(events, excluded_ranges)
+    """Every statistic of stats.json. `events` is the classified event
+    stream as recorded (one activity row per foreground stretch, not merged):
+    the stretches left out (`excluded_ranges`) are cut out of its rows first
+    (clip_excluded), then the rows are merged into activity occurrences for
+    the activity statistics, while the transactions' active time reads the
+    rows themselves (case_stats). `recorded` is False for a session without a
+    recording (C16): the runs' active time is then None."""
+    from classification import collapse_activity_occurrences
+    rows = clip_excluded(events, excluded_ranges)
+    occurrences = collapse_activity_occurrences(rows)
     return {
-        "activity_stats": activity_stats(events),
-        "case_stats": case_stats(events, cases, recorded=recorded),
-        "trace_variants": trace_variants(events, cases),
+        "activity_stats": activity_stats(occurrences),
+        "case_stats": case_stats(rows, cases, recorded=recorded),
+        "trace_variants": trace_variants(occurrences, cases),
         "step_variants": step_variants(steps or []),
         "step_stats": step_stats(steps or []),
-        "app_outliers": app_outliers(events, cases),
-        "rework_loops": rework_loops(events),
+        "app_outliers": app_outliers(occurrences, cases),
+        "rework_loops": rework_loops(occurrences),
     }

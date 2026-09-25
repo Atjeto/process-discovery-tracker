@@ -15,14 +15,21 @@ Output goes into <session_folder>/ alongside the raw data. Re-runnable
 against an updated taxonomy without recapture (§6.3) -- raw events.jsonl
 is never modified.
 
+A run changes the project folder only when it succeeds: annotations.json,
+stats.json, analysis.json and process_map_step.bpmn are staged beside their
+names and moved into place together as the run's very last act
+(session_io.Staging). A run that fails, or that the viewer stops (Cancel
+kills the process), leaves every one of them as it was; the next run removes
+what a stopped run staged. normalize.log records every run.
+
 Exit codes (contract C13). Codes 1 to 3 below report the error as one stderr
 line starting with "[normalize] ERROR:"; an unexpected crash also exits 1,
-with a Python traceback.
+with a Python traceback. Only 0 changes the project's outputs.
     0  success
     1  usage error, or the folder is not a session folder
     2  annotations.json exists but cannot be read; nothing was written
-    3  a requested export (--pdd-out) failed; the analysis outputs were
-       written, the export was not
+    3  a requested export (--pdd-out) failed; nothing in the project was
+       changed and the export was not written
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ from process_filter import filter_excluded
 from session_io import (
     _coerce_event_shape, load_events, load_manifest, load_annotations,
     write_annotations, compute_screenshot_hashes, AnnotationsUnreadable,
-    has_recording,
+    has_recording, Staging, clear_staged,
 )
 from marker_edits import apply_marker_edits
 from pipeline_config import (
@@ -120,6 +127,44 @@ def normalize(
     # events.jsonl and no recording to measure.
     recorded = has_recording(manifest)
 
+    # What a stopped run staged is not the project's: it goes before this
+    # run stages its own outputs.
+    if clear_staged(session_folder):
+        print("[normalize] removed the outputs a stopped run had staged")
+    staging = Staging(session_folder)
+    try:
+        result = _normalize_staged(
+            session_folder, annotations, manifest, worker_id, recorded, staging,
+            taxonomy_path=taxonomy_path, mine=mine, pdd_out=pdd_out,
+            pdd_map_image=pdd_map_image, pdd_tobe_image=pdd_tobe_image,
+            names_path=names_path, pdd_map_images=pdd_map_images)
+    except BaseException:
+        staging.discard()
+        raise
+    # The run's last act: its outputs replace the project's together.
+    staging.commit()
+    print("[normalize] moved the outputs into the project folder")
+    return result
+
+
+def _normalize_staged(
+    session_folder: Path,
+    annotations: dict[str, Any],
+    manifest: dict[str, Any],
+    worker_id: str,
+    recorded: bool,
+    staging: Staging,
+    *,
+    taxonomy_path: str | None,
+    mine: bool,
+    pdd_out: str | None,
+    pdd_map_image: str | None,
+    pdd_tobe_image: str | None,
+    names_path: str | None,
+    pdd_map_images: str | None,
+) -> dict[str, Any]:
+    """The pipeline's stages, each output staged (normalize() commits them)."""
+    events_file = session_folder / "events.jsonl"
     raw, dropped_lines = load_events(events_file)
     print(f"[normalize] loaded {len(raw)} raw events")
     if dropped_lines:
@@ -154,33 +199,32 @@ def normalize(
     # Step drafting (the C1 rule), then persist annotations.
     merged_steps, total_interactions, draft_summary = _run_step_segmentation(
         with_cases, cases, existing_anno, session_id_str, cal, session_folder,
-        names_path=names_path)
+        names_path=names_path, recorded=recorded, staging=staging)
 
-    # Taxonomy classification + analyst overrides + the two collapses.
-    classified, collapsed, log_events, taxonomy, taxonomy_report = (
+    # Taxonomy classification + analyst overrides + the per-window collapse.
+    classified, collapsed, taxonomy, taxonomy_report = (
         _run_classification(with_cases, annotations, taxonomy_path))
 
     # Statistics summary + stats.json.
     summary, stats_path = _run_stats(
-        session_folder, log_events, cases, existing_anno, taxonomy,
+        session_folder, classified, cases, existing_anno, taxonomy,
         taxonomy_path, taxonomy_report, worker_id, raw, dropped_lines,
         collapsed, total_interactions, edits_applied, merged_steps,
         coalesced, vocab_summary, draft_summary=draft_summary,
-        recorded=recorded)
+        recorded=recorded, staging=staging)
 
-    # Analysis layer (ADR-0008), best-effort -- never blocks the pipeline.
-    # Phase A (LAB-PHASE-SPEC §A1-§A3): cases feed the additive
-    # case_quality / facts / findings blocks.
+    # analysis.json: the transaction check, the capture detail, the PDD's
+    # rows of sections 5 and 6 and the steps they were measured from.
     analysis_result = _run_analysis(
         session_folder, classified, existing_anno, summary, manifest,
-        cases=cases, recorded=recorded)
+        cases=cases, recorded=recorded, staging=staging)
 
     # The step-level BPMN (--mine) + the requested PDD export. A failed PDD
-    # export raises ExportFailed after every analysis output is written.
+    # export raises ExportFailed, and the run then commits nothing.
     _run_mining_exports(
         session_folder, existing_anno, mine, summary, manifest,
         analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
-        events=classified, pdd_map_images=pdd_map_images)
+        events=classified, pdd_map_images=pdd_map_images, staging=staging)
 
     return {
         "session_folder": str(session_folder),

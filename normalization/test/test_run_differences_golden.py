@@ -29,12 +29,13 @@ GOLDEN = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
 
 def test_the_golden_covers_every_kind_of_difference_and_key():
     assert GOLDEN["version"] == 1
-    # Six cases, and two since the stretches left out of the analysis joined
-    # the rule (lane CC).
-    assert 4 <= len(GOLDEN["cases"]) <= 8
+    # Six cases, two since the stretches left out of the analysis joined the
+    # rule (lane CC), five since the Steps level and the PDD share it whole
+    # (lane FX1).
+    assert 8 <= len(GOLDEN["cases"]) <= 16
     lines = [line for c in GOLDEN["cases"] for line in c["expected"]]
     keys = [k for c in GOLDEN["cases"] for k in c["run_keys"]]
-    for prefix in ("Extra step: ", "Skipped: ", "Different order: ",
+    for prefix in ("Extra step: ", "Skipped: ", "Different order: ", "Not done: ", "Repeated: ",
                    "Part of this run was left out of the analysis ("):
         assert any(line.startswith(prefix) for line in lines), prefix
     for prefix in ("draft:", "merge:", "label:"):
@@ -53,12 +54,40 @@ def _case_left_out(case):
     return stretches, _parse_ts(case["origin"])
 
 
+def _in_order(steps):
+    """The steps in the PDD's order of a transaction (pdd_export._start_key):
+    a start time first, then `order`, then neither; steps that start at one
+    moment keep their list order."""
+    return sorted(steps, key=pdd_export._start_key)
+
+
 @pytest.mark.parametrize("case", GOLDEN["cases"], ids=[c["name"] for c in GOLDEN["cases"]])
 def test_golden_case(case):
-    units = pdd_export._collapse_merged(case["pattern"], case["run"])
+    pattern, run = _in_order(case["pattern"]), _in_order(case["run"])
+    units = pdd_export._collapse_merged(pattern, run)
     assert [pdd_export._align_key(u) for u in units] == case["run_keys"]
     stretches, origin = _case_left_out(case)
-    assert pdd_export._differences(case["pattern"], case["run"], stretches, origin) == case["expected"]
+    assert pdd_export._differences(pattern, run, stretches, origin) == case["expected"]
+    if "count" in case:
+        assert pdd_export.difference_count(pattern, run, stretches) == case["count"]
+
+
+@pytest.mark.parametrize("case", GOLDEN["reference_cases"],
+                         ids=[c["name"] for c in GOLDEN["reference_cases"]])
+def test_golden_reference_case(case, tmp_path):
+    """The default reference transaction (lane FX1): the PDD's choice, as
+    the viewer's runs-model.js patternRun makes it."""
+    rows = [{"case_id": r["case_id"], "label": None, "parent_case_id": None,
+             "start_ts": r["start"], "end_ts": None} for r in case["runs"]]
+    steps = [{"step_id": f"{r['case_id']}-{i}", "case_id": r["case_id"], "name": f"Step {i}",
+              "state": st["state"], "time_range": None, "order": i + 1}
+             for r in case["runs"] for i, st in enumerate(r["steps"])]
+    anno = {"steps": steps}
+    if case["pattern_run"]:
+        anno["pattern_run"] = {"case_id": case["pattern_run"]}
+    s = pdd_export._Session(tmp_path, anno, {"case_stats": rows}, {}, [])
+    got = s.runs[s.pattern_index]["case_id"] if s.pattern_index is not None else None
+    assert got == case["expected"]
 
 
 def test_the_left_out_line_in_the_documents_words_and_its_times():

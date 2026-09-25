@@ -1,7 +1,7 @@
 /*
  * Unit tests for run-differences.js: the differences review's algorithm, the
  * viewer half of the one normalization/pdd_export.py writes into the PDD's
- * section 6.1.
+ * section 4.1.
  *
  * The seam guard is shared/run-differences-golden.json: this file and
  * normalization/test/test_run_differences_golden.py assert the same cases
@@ -18,6 +18,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const fs = require("node:fs");
 const RD = require("./run-differences.js");
+const RM = require("./runs-model.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "run-differences-golden.json"), "utf-8"));
 
@@ -25,11 +26,13 @@ const GOLDEN = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "
 
 test("golden: the fixture covers every kind of difference and every kind of key", () => {
   assert.equal(GOLDEN.version, 1);
-  // Six cases, and two since the stretches left out of the analysis joined the rule (lane CC).
-  assert.ok(GOLDEN.cases.length >= 4 && GOLDEN.cases.length <= 8, "4 to 8 cases");
+  // Six cases, two since the stretches left out of the analysis joined the
+  // rule (lane CC), five since Steps and the PDD share it whole (lane FX1).
+  assert.ok(GOLDEN.cases.length >= 8 && GOLDEN.cases.length <= 16, "8 to 16 cases");
   const lines = GOLDEN.cases.flatMap((c) => c.expected);
   const keys = GOLDEN.cases.flatMap((c) => c.run_keys);
-  for (const prefix of ["Extra step: ", "Skipped: ", "Different order: ", "Part of this run was left out of the analysis ("]) {
+  for (const prefix of ["Extra step: ", "Skipped: ", "Different order: ", "Not done: ", "Repeated: ",
+    "Part of this run was left out of the analysis ("]) {
     assert.ok(lines.some((l) => l.startsWith(prefix)), "a case expects a line starting " + JSON.stringify(prefix));
   }
   for (const prefix of ["draft:", "merge:", "label:"]) {
@@ -46,12 +49,43 @@ function caseOpts(c) {
   return { leftOut: RD.leftOutStretches(c.excluded_ranges, span), originMs: Date.parse(c.origin) };
 }
 
+/* A list of steps in the order of a transaction, as the Steps level has it
+   (runs-model byStart: steps that start at one moment keep their list order). */
+const inOrder = (steps) => steps.slice().sort(RM.byStart);
+
 for (const c of GOLDEN.cases) {
   test("golden: " + c.name, () => {
-    assert.deepEqual(RD.collapseToReference(c.pattern, c.run).map(RD.alignKey), c.run_keys, "alignment keys after folding");
-    assert.deepEqual(RD.differences(c.pattern, c.run, caseOpts(c)).map((d) => d.text), c.expected, "difference lines");
+    const pattern = inOrder(c.pattern), run = inOrder(c.run);
+    assert.deepEqual(RD.collapseToReference(pattern, run).map(RD.alignKey), c.run_keys, "alignment keys after folding");
+    const diffs = RD.differences(pattern, run, caseOpts(c));
+    assert.deepEqual(diffs.map((d) => d.text), c.expected, "difference lines");
+    if ("count" in c) assert.equal(RD.differenceCount(diffs), c.count, "the differences counted");
   });
 }
+
+/* Lane FX1: the default reference transaction, the PDD's rule
+   (pdd_export._Session._pick_pattern). */
+for (const c of GOLDEN.reference_cases) {
+  test("golden reference: " + c.name, () => {
+    const stats = { case_stats: c.runs.map((r) => ({ case_id: r.case_id, label: null, parent_case_id: null,
+      start_ts: r.start, end_ts: null })) };
+    const steps = c.runs.flatMap((r) => r.steps.map((st, i) => ({ step_id: r.case_id + "-" + i, case_id: r.case_id,
+      name: "Step " + i, state: st.state, time_range: null, order: i + 1 })));
+    const anno = c.pattern_run ? { steps, pattern_run: { case_id: c.pattern_run } } : { steps };
+    const got = RM.patternRun(anno, RM.buildRuns(stats, steps).runs).run;
+    assert.equal(got ? got.caseId : null, c.expected);
+  });
+}
+
+test("the lines that are said about the comparison are not differences: the left-out line and a Not done line", () => {
+  const ref = [{ name: "Find", draft_key: "f" }, { name: "Send", draft_key: "s", only_when: "asked" }];
+  const diffs = RD.differences(ref, [{ name: "Find", draft_key: "f" }, { name: "Log", draft_key: "l" }],
+    { leftOut: [{ startMs: at("09:00:00"), endMs: at("09:00:05") }], originMs: at("08:59:00") });
+  assert.deepEqual(diffs.map((d) => [d.kind, RD.isDifference(d)]),
+    [["left_out", false], ["extra", true], ["not_done", false]]);
+  assert.equal(RD.differenceCount(diffs), 1);
+  assert.equal(diffs[2].text, "Not done: Send (only when asked).");
+});
 
 /* ---- the stretches left out of the analysis ------------------------------------------ */
 
@@ -190,10 +224,12 @@ test("differences: the Steps level's words (AD-29) name a run a transaction; the
   ], "without the words: the shared golden's and the PDD's lines");
 });
 
-test("differences: a step repeated within a run counts once; an empty run skips every step", () => {
+test("differences: a step done again reads Repeated at its first time, once; an empty run skips every step", () => {
   const ref = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" })];
   const run = [P("Find", { draft_key: "f" }), P("Save", { draft_key: "s" }), P("Find again", { draft_key: "f" })];
-  assert.deepEqual(RD.differences(ref, run), []);
+  assert.deepEqual(RD.differences(ref, run).map((d) => [d.kind, d.text]),
+    [["repeated", "Repeated: Find, 2 times."]], "lane FX1: rework is a difference, in Steps as in the PDD");
+  assert.deepEqual(RD.differences(run, run), [], "done as often as in the reference: no line");
   assert.deepEqual(RD.differences(ref, []).map((d) => d.text),
     ["Skipped: Find (step 1 of the pattern run).", "Skipped: Save (step 2 of the pattern run)."]);
   assert.deepEqual(RD.differences([], [P("  ")]).map((d) => d.text), ["Extra step: (unnamed step) (at the start of the run)."]);

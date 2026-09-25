@@ -1,6 +1,7 @@
 # ADR-0008: Build the Analysis Layer Now
 
 **Status:** Accepted
+**Note (2026-09-25):** Superseded in the light version by lane FX1 (the coordinator's call on the 2.0.0 validation reports): the analysis layer this built (waste classification, time study, automation scoring, the efficiency ratio) and the facts and findings built on it are cut, because no screen and no document read them. The product edition keeps them (branch `product-edition`).
 **Date:** 2026-05-17
 **Deciders:** Project owner
 **Supersedes:** the analysis-layer deferral in [ADR-0006](0006-backlog-sequencing.md)

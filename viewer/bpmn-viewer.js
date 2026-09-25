@@ -212,16 +212,6 @@
     } catch (_) { return true; }
   }
 
-  /* Export the rendered diagram as SVG (Figma / Lucidchart / browser
-     all import SVG). bpmn-js's saveSVG returns a Promise<{ svg }>. */
-  async function exportSvg() {
-    if (!viewer) return null;
-    try {
-      const { svg } = await viewer.saveSVG();
-      return svg || null;
-    } catch (_) { return null; }
-  }
-
   /* ADR-0019: serialise the CURRENT diagram (including the analyst's edits)
      as BPMN 2.0 XML. */
   async function exportXml() {
@@ -232,5 +222,5 @@
     } catch (_) { return null; }
   }
 
-  module.exports = { render, fit, flush, changed, unbindKeys, exportSvg, exportXml, createDelayedWrite };
+  module.exports = { render, fit, flush, changed, unbindKeys, exportXml, createDelayedWrite };
 })();

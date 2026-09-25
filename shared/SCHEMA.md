@@ -303,8 +303,11 @@ instrument:
 ```
 
 - The default pattern run is the first run by start time with at least one
-  step; it is computed, not stored, until the analyst makes a change that
-  needs the record. The analyst can pick another run.
+  visible step (a run whose every step is hidden is passed over, in the
+  viewer and in the PDD alike: lane FX1, pinned by the `reference_cases` of
+  `shared/run-differences-golden.json`); it is computed, not stored, until
+  the analyst makes a change that needs the record. The analyst can pick
+  another run.
 - "Confirm transaction" turns that run's remaining `auto_suggested` steps
   into `confirmed` and sets `confirmed_at`. "Undo confirm" (a link beside
   the Confirmed badge; it read "Reopen transaction" before lane CL) is the
@@ -499,12 +502,12 @@ first match wins.
 
 ### Analysis override (`analysis_overrides[]`)
 
-The analyst's corrections to the step-based estimates
-([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md)). No viewer
-surface writes them anymore: the business-required split editor and the
-automation Confirm and Dismiss buttons are cut. The analysis stage still
-applies the entries an older file carries while it recomputes; corrections
-live here, **not** in `analysis.json`, which is regenerated on every run.
+The analyst's corrections to the step-based estimates of the product
+edition ([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md)). No
+viewer surface writes them: the business-required split editor and the
+automation Confirm and Dismiss buttons are cut, and since lane FX1 cut the
+step-based estimates nothing reads them either. An older file's entries
+round-trip untouched (C10). The shape they had:
 
 ```json
 {
@@ -542,10 +545,17 @@ A `step_id` entry wins over a `process_label` entry for waste.
 ### Excluded range (`excluded_ranges[]`)
 
 Time spans the analyst left out of the analysis on the timeline (a lunch
-break, an unrelated detour). Drafting, `stats.json` and the measurements of
-`analysis.json` (the run check, the step-based blocks, the facts and the
-findings) skip every event whose `timestamp` falls inside one on the next
-run; `events.jsonl` is untouched. The viewer draws each on the Timeline and
+break, an unrelated detour). Drafting and the checks of `analysis.json` (the
+transaction check, the capture detail) skip every event whose `timestamp`
+falls inside one on the next run; `stats.json` cuts each stretch out of the
+recorded activity rows before it merges them, so a transaction loses exactly
+the stretch's time (lane FX1: dropping a merged row that starts inside the
+stretch took out more); `events.jsonl` is untouched. A stretch cuts its
+transaction's trace on both maps (lane FX1): no line joins the step before
+it to the step after it, and none runs from the start into the first step
+after a stretch that opens the transaction (or from the last step before a
+stretch that closes it into the end), the rule of `step_flow.py` and
+`viewer/process-map-levels.js` pinned by `shared/flow-links-golden.json`. The viewer draws each on the Timeline and
 offers *Include again* (the entry removed, the analysis run again). A run
 with a stretch left out (each range cut to its span) says so once, first,
 in the Steps level's differences and the PDD's 4.1 ("Part of this
@@ -677,7 +687,6 @@ delete.
   },
   "state": "auto_suggested|confirmed|edited|manually_authored|hidden",
   "_prev_state": "hidden steps only: the state before hiding",
-  "suggestion_reason": "string, drafted steps only: why the rule ended the step",
   "canonical_step_id": null,
   "flags": { "waste": false },
   "phase_id": null
@@ -695,11 +704,13 @@ other change to a draft does.
   added without a playhead. Such a step carries **`order`**, a number the
   viewer sets, unique within its run. The steps of a run are in time order
   (the start time), then the steps without a time in `order`, then any step
-  with neither, in the list's order. The stats, the differences, the map
-  (`process_map_step.bpmn`), the PDD and the viewer use that one order. A
-  step without a time has no duration: the timed figures (step stats, the
-  step-based analysis, the PDD's times, the map's average time) leave it
-  out, and nothing prints a time for it. A time range the viewer writes is
+  with neither, in the list's order; steps that start at one moment keep
+  their list order (lane FX1: the viewer once broke that tie by `step_id`,
+  so Steps and the PDD could number such steps apart). The stats, the
+  differences, the map (`process_map_step.bpmn`), the PDD and the viewer use
+  that one order. A step without a time has no duration: the timed figures
+  (step stats, the PDD's times, the map's average time) leave it out, and
+  nothing prints a time for it. A time range the viewer writes is
   read as measured, so it is written only when the analyst placed the step
   on the clock.
 - **`system`**: the business system, set by the analyst (for a step added
@@ -867,7 +878,15 @@ key in the differences view and in the PDD's section 4.1:
 `"merge:"` plus the keys as a JSON array. A step with `draft_key` aligns as
 `"draft:<draft_key>"`, any other step as `"label:<process_label>"`.
 `shared/run-differences-golden.json` pins that one rule for both the viewer
-(`run-differences.js`) and the PDD (`pdd_export.py`). A step added by hand
+(`run-differences.js`) and the PDD (`pdd_export.py`), with the lines it
+writes (lane FX1: one rule for Steps and 4.1): an extra step, a step in
+another order, a skipped reference step; a reference step that happens
+only under a condition (`only_when`) reads "Not done: <name> (only when
+<condition>)." and is no difference; a step done more often than in the
+reference, at least twice, reads "Repeated: <name>, <n> times.". A
+transaction's head in Steps counts its differences, which are exactly the
+lines listed as differences (a stretch left out and a Not done line are
+said apart, above them). A step added by hand
 carries none of these fields.
 
 **`process_label`** is recomputed on every run. A step with a `draft_key` is
@@ -1016,8 +1035,11 @@ without a recording:
   `started_at`. It contains every step, one without a time included: a
   preserved step whose `case_id` is not a current run joins it. A start
   marker inserted by hand (`marker_edits`) replaces it, exactly as in a
-  recording, and the steps then move to the run that contains their time.
-  A recording keeps the marker rule (no start marker, no runs).
+  recording, and the steps then move: a step with a time to the run that
+  holds its start, a step without a time to the first run (lane FX1: before,
+  a step without a time, or one that crossed the new boundary, fell outside
+  every transaction, where no act could bring it back). A recording keeps
+  the marker rule (no start marker, no runs).
 - **Nothing recorded.** No foreground time was measured: each run's
   `active_ms` is `null` in `stats.json`, and the analysis stages that
   measure the recording are `null` in `analysis.json` without a
@@ -1055,14 +1077,20 @@ is a one-element list.
 `label` is an optional name for the recording, typed in the capture app's
 end summary ("Name this recording"); absent until set. The viewer's Recent
 list names a session by its document title (`annotations.document.title`),
-else this label, else the request code and the folder name.
+else this label, else the request code and the folder name (the folder name
+alone when the capture app's default code was left, lane FX1).
 
 `engagement_name` is the request name typed in the capture app's Recording
 setup (AD-30), lifted out of `config` to the top level at session creation
 so lists can show it without reading the nested config; `null` when never
 set. Older sessions carry it inside `config.engagement_name`, and consumers
-fall back to that. The PDD's Document control prints it as the Request
-(else `engagement_id`), unless it is the capture app's default.
+fall back to that. The PDD's Document control prints the Request as the
+viewer's project line names it: the name and the code, "Invoice intake
+review (REQ-2026-042)", else the one that was set (lane FX1: the code was
+dropped). The capture app's defaults (the name "Default engagement", the
+code "default") are no request: the PDD prints no Request row, and the
+viewer never shows them, the project line naming the project by its folder
+(lane FX1).
 
 `purpose` is always `"process"`. The field is kept so the shape stays
 stable. Before ADR-0029 a session could also be `"app_prep"` (an App
@@ -1167,100 +1195,31 @@ transcript can be previewed before it is written into the session.
 
 ## analysis.json
 
-Measured facts and the step-based estimates, written by the analysis stage
-([ADR-0008](../docs/adr/0008-build-the-analysis-layer.md)). Absent on
-sessions analyzed before the stage existed. Every step-based figure is a
-provisional estimate: `meta.provisional` is always `true` and
-`meta.heuristic_version` names the classifier generation.
-
-The three **measured blocks** (`case_quality`, `facts`, `findings`; lab-phase
-spec sections A1 to A3) need no runs and no steps, so the file is written for
-a session without steps too (the step-based blocks are empty there).
+What the viewer and the PDD read of the analysis, written by every run of
+`normalize.py`: the transaction check, the apps the recorder saw with less
+detail, the rows the PDD prints in its sections 5 and 6, and the steps those
+rows were measured from. Absent on a project that was never analyzed. Lane
+FX1 cut the analysis layer of the product edition that nothing read (the
+facts, the findings and their detectors, the waste, time study, segments,
+automation and efficiency blocks, and the PDD's findings selection
+`pdd_findings`), and raised `format` to 4: the viewer analyzes an older file
+again as the project opens. The keys of an older file are not read.
 
 ```json
 {
-  "meta": { "heuristic_version": 2, "generated_at": "ISO 8601",
-            "session_id": "uuid", "step_count": 0, "provisional": true },
-  "waste_classification": [
-    { "step_id": "uuid", "name": "string", "elapsed_ms": 0,
-      "va_ms": 0, "bnva_ms": 0, "nva_ms": 0,
-      "waste_types": ["waiting | motion | rework | overprocessing"],
-      "cross_app_transfers": 0 }
-  ],
-  "time_study": [
-    { "step_id": "uuid", "canonical_step_id": null,
-      "name": "string", "instances": 1,
-      "cycle_ms": { "mean": 0, "min": 0, "max": 0, "stdev": 0,
-                    "p25": 0, "p50": 0, "p75": 0, "p95": 0 },
-      "active_ms": 0, "waiting_ms": 0, "switching_ms": 0 }
-  ],
-  "segments": [
-    { "segment_id": "stable hash plus case and start",
-      "signature": "12-hex-chars",
-      "app": "salesforce.exe",
-      "case_id": "uuid or null",
-      "start": "ISO 8601", "end": "ISO 8601",
-      "elapsed_ms": 0,
-      "interaction_count": 0,
-      "step_ids": ["uuid"],
-      "step_labels": ["Search", "Copy", "Paste"],
-      "label": "Search → Copy → Paste in Salesforce" }
-  ],
-  "automation_candidates": [
-    { "segment_signature": "12-hex-chars",
-      "label": "Search → Copy → Paste in Salesforce",
-      "app": "salesforce.exe",
-      "apps": ["salesforce.exe"],
-      "step_labels": ["Search", "Copy", "Paste"],
-      "case_ids": ["uuid", "uuid"],
-      "instance_count": 4,
-      "total_elapsed_ms": 134000,
-      "mean_elapsed_ms": 33500,
-      "instances": [
-        { "segment_id": "...", "case_id": "uuid",
-          "start": "ISO 8601", "end": "ISO 8601",
-          "elapsed_ms": 0, "interaction_count": 0, "step_ids": ["uuid"] }
-      ],
-      "scores": { "confidence": 1.0, "volume": 134000 },
-      "automatable_fraction": 0.7,
-      "rank_score": 93800.0,
-      "rank": 1,
-      "estimated_savings_ms": null,
-      "automation_confirmed": null,
-      "data_sufficiency": "single_instance | multi_instance" }
-  ],
-  "efficiency": {
-    "process_efficiency_ratio": 0.0,
-    "total_va_ms": 0, "total_bnva_ms": 0, "total_nva_ms": 0,
-    "total_elapsed_ms": 0,
-    "per_step": [ { "step_id": "uuid", "ratio": 0.0 } ]
-  },
-  "stage_errors": [],
+  "meta": { "generated_at": "ISO 8601", "session_id": "uuid", "step_count": 0 },
   "case_quality": {
     "mode": "markers | implicit | unsegmented",
     "case_count": 0,
     "coverage": 0.0,
     "tier2_unlocked": false
   },
-  "facts": {
-    "active_ms": 0, "idle_ms": 0, "session_span_ms": 0,
-    "top_apps": [ { "app": "chrome.exe", "ms": 0, "share": 0.31 } ],
-    "app_switches": 0, "switches_per_hour": 0.0,
-    "longest_focus_ms": 0,
-    "rekey_count": 0,
-    "repeated_sequence_count": 0,
-    "app_time_source": "activity | interactions | none"
+  "coverage_caveat": {
+    "claim": "The recorder saw less detail in 1 of 3 apps: Citrix (a remote/terminal window: only the screen image crosses it).",
+    "flagged_apps": [ { "app": "citrix.exe", "trust": "wall | basic | minimal | low-confidence",
+                        "why": "plain words", "mean_confidence": 0.2 } ],
+    "total_apps": 3
   },
-  "findings": [
-    { "id": "screen_time_sink-3fa2b1c0d4e5",
-      "detector": "screen_time_sink | fragmentation | waiting | repetition | backtracking | rekey_transfer | coverage_caveat",
-      "claim": "templated sentence, measured numbers, never normative",
-      "evidence": { "step_ids": ["uuid"], "event_ids": ["uuid"],
-                    "screenshot_refs": ["screenshots/shot_01.png"] },
-      "tier": 1,
-      "confidence_note": "how the number was measured and its limits" }
-  ],
-  "pdd_findings": { "eligible": ["finding id"], "default": ["finding id"] },
   "pdd_data": {
     "heading": "Data",
     "note": "a sentence printed in place of the table, or null",
@@ -1282,41 +1241,26 @@ a session without steps too (the step-based blocks are empty there).
       "rows": [["Salesforce", "Account lookup, Order", "Search, Save order", "14s"]]
     }
   },
-  "format": 3
+  "steps_signature": "hex",
+  "stage_errors": [],
+  "format": 4
 }
 ```
 
-**Measured blocks** (computed by `case_quality.py`, `facts.py`,
-`findings.py` and `motifs.py`):
-
-- **`case_quality`**: the gate for run-based surfaces. `mode` is `markers`
-  when the session has runs from markers, `implicit` when its one run is the
-  implicit run of a session without a recording (C16), else `unsegmented`;
-  `coverage` is the fraction of interaction events inside a run (`null` in a
-  session without a recording, which has none to count); `tier2_unlocked`
-  is `mode != "unsegmented" AND coverage >= 0.7 AND case_count >= 2` (one
-  run has nothing to compare against). Run-based figures (cycle times,
-  variants, per-run comparison) must not render as established facts while
-  it is false.
-- **`facts`**: direct measurements over the derived stream, no estimates:
-  foreground time, measured idle, top apps by share, switch rate, the
-  longest unbroken same-app stretch, values re-keyed across two or more apps
-  (value equality), and the count of distinct repeated step-label sequences.
-  `app_time_source` records where the app-time numbers came from:
-  `activity` (measured foreground durations), `interactions` (estimated from
-  interaction timestamps when the capture is too old to emit activity
-  durations, capture v0.9.0), or `none` (no usable signal; consumers render
-  "not available from this recording", never a confident 0).
-- **`findings[]`**: the detector library's claims. Claims are comparative or
-  factual; each carries its evidence (numbers plus `step_ids`, `event_ids`
-  and up to two `screenshot_refs` from the finding's own time window) and a
-  `confidence_note` stating the measurement's limits. `tier` is 1 for
-  detectors that need no runs, 2 for run-based ones (`repetition`). Ids are
-  stable across re-runs (detector plus a content hash). The viewer's
-  Overview reads one of them, `coverage_caveat` (a warning line); its
-  re-keyed data are the PDD's (`pdd_data` below). The PDD prints none. The
-  measured blocks, like the step-based ones, read the derived stream without
-  the stretches the analyst left out (`annotations.excluded_ranges`).
+- **`case_quality`** (`case_quality.py`): the gate for run-based surfaces
+  (the Map's lock, the Checklist). `mode` is `markers` when the session has
+  runs from markers, `implicit` when its one run is the implicit run of a
+  session without a recording (C16), else `unsegmented`; `coverage` is the
+  fraction of interaction events inside a run (`null` in a session without
+  a recording, which has none to count); `tier2_unlocked` is `mode !=
+  "unsegmented" AND coverage >= 0.7 AND case_count >= 2`.
+- **`coverage_caveat`** (`capture_detail.py`): the apps whose interactions
+  the recorder saw with less detail (a remote or terminal framework, a
+  reduced `coverage_hint`, or a mean `confidence` below one half), or `null`
+  when every app was recorded in full detail or nothing was recorded. The
+  viewer's Overview shows its `claim` as a warning on the project line. The
+  claim names apps by their readable names (`stats.json` `meta.app_names`);
+  `trust` keeps the machine's word for tooling.
 - **`pdd_data`** and **`pdd_time`** (lane CC, one source): the rows the PDD
   prints in its section 5 (Data) and section 6 (Applications and time),
   computed by `pdd_export.data_section` and `time_section`, the functions
@@ -1344,41 +1288,14 @@ a session without steps too (the step-based blocks are empty there).
   `shared/steps-signature-golden.json`. A failure writes `null` with one
   `stage_errors` entry (`steps_signature`); an analysis without the key reads
   as older than the steps.
-- **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`, 3
-  since `pdd_data` and `pdd_time`); the viewer analyzes a project again as
-  it opens when the number is missing or lower
-  (`normalize-result.js` `analysisNeed`).
-- **`pdd_findings`**: the findings the PDD's former findings section could
-  print (`eligible`) and printed by default (`default`), for the "include in
-  PDD" ticks. The section and the ticks are cut; the key is still written
-  and nothing reads it.
+- **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`: 3
+  since `pdd_data` and `pdd_time`, 4 since lane FX1's cut and
+  `coverage_caveat`); the viewer analyzes a project again as it opens when
+  the number is missing or lower (`normalize-result.js` `analysisNeed`).
 
-`waste_classification` has one entry per step. `time_study` has one entry
-per *logical* step: instances are grouped by `step_group_key`
-(`canonical_step_id`, which is always `null` now, then `process_label`, then
-`step_id`), so repeated work collapses to one entry with `instances = N`
-([ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)).
-`bnva_ms` is `0` until the analyst sets it through `analysis_overrides[]`.
-
-`segments` and `automation_candidates` are **segment-grained**
-([ADR-0016](../docs/adr/0016-segment-level-automation-candidacy.md)): the
-unit is a coherent stretch of work (consecutive same-app, same-run
-interactions, bounded by an app or run switch or a long idle gap), not a
-single click. `segments` lists every detected segment; `automation_candidates`
-pools them by `segment_signature` (a stable hash of the app and the ordered
-`step_labels`), so a pattern repeated four times is one row with
-`instance_count: 4`. Labels name the application by its readable name
-(`stats.json` `meta.app_names`). A pattern seen once is reported with
-`data_sufficiency: "single_instance"`: one observation cannot show
-repeatability. Candidates are ordered multi-instance first, then by
-`rank_score = instance_count x mean_elapsed_ms x automatable_fraction`, with
-a flat `automatable_fraction` of `0.7`. `rank` is the 1-based position among
-multi-instance candidates (`null` for single-instance rows, whose
-`rank_score` is `0`). `automation_confirmed` carries the verdict of an older
-`analysis_overrides[]` entry. `estimated_savings_ms` is always `null`: the
-savings estimate went with the EUR-ROI layer, and the business-case formula
-lives in the owner's QB app (ADR-0029 D3). The findings detectors read the
-step-based blocks; the viewer and the PDD do not.
+The transaction check and the capture detail read the derived stream
+without the stretches the analyst left out (`annotations.excluded_ranges`),
+as the drafting and the statistics do.
 
 **`stage_errors`** (contract C12, RP-10): always present, empty when every
 stage ran. When a stage fails, its own output key is written `null` (never
@@ -1386,34 +1303,22 @@ stage ran. When a stage fails, its own output key is written `null` (never
 names it:
 
 ```json
-"stage_errors": [ { "stage": "facts", "error": "KeyError: 'duration_ms'" } ]
+"stage_errors": [ { "stage": "case_quality", "error": "KeyError: 'start_ts'" } ]
 ```
 
-The stages that can fail independently: each step-based block
-(`waste_classification`, `time_study`, `segments`, `automation_candidates`,
-and `efficiency`, which does not run without the waste split);
-`step_analysis`, when the whole step-based layer fails and its blocks go
-`null` together; `case_quality`; `motifs` (the repeated-sequence input to
-`facts`); `facts`; `findings`, which does not run when `step_analysis`,
-`motifs`, `facts`, `time_study`, `segments` or `automation_candidates`
-failed, since its detectors read all of them and a partial run would
-under-report; `pdd_findings`; `pdd_rows` (`pdd_data` and `pdd_time`
-together); and `steps_signature`. The viewer's Overview shows a failed stage as "this check could
-not run on this recording", never as a measured negative. The PDD reads no
+The stages that can fail independently: `case_quality`, `coverage_caveat`,
+`pdd_rows` (`pdd_data` and `pdd_time` together) and `steps_signature`. The
+viewer's Overview shows a failed transaction check as "this check could not
+run on this recording", never as a measured negative. The PDD reads no
 analysis stage: it prints sections 5 and 6 with the functions that wrote
 `pdd_data` and `pdd_time`.
 
 **Nothing recorded (C16).** A session without a recording
 (`manifest.source` `"video"` or `"blank"`) has nothing for the measurements
-of the recording to measure. There, the step-based block
-(`waste_classification`, `time_study`, `segments`, `automation_candidates`,
-`efficiency`), `facts`, `findings` and `pdd_findings` are `null` **without**
-a `stage_errors` entry, since nothing failed; `case_quality` still counts the
-runs, and `pdd_data` and `pdd_time` are written as the PDD prints them there
-too. A renderer tells the two apart by `stage_errors`: `null` with an entry
-is "this check could not run", `null` without one is "nothing was recorded".
-In every session the step-based block leaves out the steps without a time
-range: they have no time to measure.
+of the recording to measure: `case_quality` still counts the runs, with
+`coverage` `null`, `coverage_caveat` is `null` without a `stage_errors`
+entry (nothing failed), and `pdd_data` and `pdd_time` are written as the PDD
+prints them there too.
 
 ## Invariants
 
@@ -1428,12 +1333,17 @@ range: they have no time to measure.
 
 ## Post-normalization artifacts
 
-`normalize.py` writes these into the session folder:
+`normalize.py` writes these into the session folder, all at once: each is
+staged beside its name as `<name>.pdt-staged` and moved into place as the
+run's very last act (`session_io.Staging`), so a run that fails, or that the
+viewer stops (Cancel kills the process), leaves every one of them as it was
+(lane FX1). What a stopped run staged is removed by the viewer as the
+process ends and by the next run as it starts.
 
 | File | Contents |
 |---|---|
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings, pdd_data, pdd_time, steps_signature, format }` |
+| `analysis.json` | `{ meta, case_quality, coverage_caveat, pdd_data, pdd_time, steps_signature, stage_errors, format }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
 | `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below), one plane per sub-process (C19). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
@@ -1551,7 +1461,7 @@ that map prints as a table.
 | 0 | Success. |
 | 1 | Usage error (bad arguments), or the folder is not a project folder. |
 | 2 | `annotations.json` exists but cannot be parsed; nothing was written. |
-| 3 | A requested export (`--pdd-out`) failed; the analysis outputs (stats, analysis, step BPMN) were already written, the export was not. |
+| 3 | A requested export (`--pdd-out`) failed; nothing in the project was changed (lane FX1: the outputs are moved in only when the whole run succeeds), and the export was not written. |
 
 Every error (codes 1 to 3) is one stderr line starting `[normalize] ERROR:`;
 an unexpected crash also exits 1, with a Python traceback. The viewer treats
@@ -1621,8 +1531,10 @@ covering the whole session instead (see manifest.json `source`).
 - A run's `case_id` is `uuid5(<fixed namespace>, "<session_id>:<start marker
   event_id>")` (C9), so re-analyzing the same recording yields the same ids.
   On re-analysis a preserved analyst step whose `case_id` is no longer a run
-  moves to the run whose span contains it; a step no run contains gets
-  `case_id: null`.
+  moves to the run that holds its start, even when it runs on past that
+  run's end (lane FX1); a step whose start no run holds gets `case_id:
+  null`. A step without a time joins the first run in a session without a
+  recording (C16), and no run in a recording.
 
 After normalization every activity and interaction event in the derived
 stream carries `case_ids`:
@@ -1682,7 +1594,7 @@ field") instead of the signature's default.
 | Top-level key | Shape | What it is for |
 |---|---|---|
 | `activity_stats` | `[{ activity_label, frequency, frequency_pct, total_duration_ms, mean_ms, median_ms, p90_ms, p99_ms }]` | Per-activity roll-ups across the session. |
-| `case_stats` | `[{ case_id, label, parent_case_id, start_ts, end_ts, wall_clock_ms, active_ms, end_reason, implicit? }]` | One row per run, in start order. `parent_case_id` is always `null` now. `active_ms` is foreground time inside the run minus the idle time the recorder measured (RP-07); `null` in a session without a recording (C16). `end_reason` is the end marker's `reason`, `auto_close_for_sibling` when the next start ended the run, or `null`. `implicit: true` marks the implicit run of a session without a recording (C16; the key is absent on every other row): its `label`, `end_ts`, `wall_clock_ms` and `end_reason` are `null`. The viewer's runs come from here. |
+| `case_stats` | `[{ case_id, label, parent_case_id, start_ts, end_ts, wall_clock_ms, active_ms, end_reason, implicit? }]` | One row per run, in start order. `parent_case_id` is always `null` now. `active_ms` is foreground time inside the run minus the idle time the recorder measured (RP-07): every recorded activity row counts by its overlap with the run's span, clipped to it (lane FX1: the capture app writes the first stretch a moment before its Transaction 1 marker, and a stretch can cross two runs), without the stretches left out of the analysis; `null` in a session without a recording (C16). `end_reason` is the end marker's `reason`, `auto_close_for_sibling` when the next start ended the run, or `null`. `implicit: true` marks the implicit run of a session without a recording (C16; the key is absent on every other row): its `label`, `end_ts`, `wall_clock_ms` and `end_reason` are `null`. The viewer's runs come from here. |
 | `trace_variants` | `[{ variant: ["A", "B", "C"], frequency, length }]` | Distinct activity sequences per run, most frequent first. |
 | `step_variants` | `[{ variant: ["Step A", "Step B"], frequency, length }]` | Distinct step sequences per run, each element the value-free `process_label` ([ADR-0013](../docs/adr/0013-value-free-grouping-and-map-readability.md)), in the run's step order (time, then `order`, C16). Built from the visible steps; empty until the session has steps. |
 | `step_stats` | `[{ step_name, frequency, frequency_pct, total_duration_ms, mean_ms, median_ms, p90_ms, p99_ms }]` | Per-step duration distribution, keyed on `process_label`, so a step seen in N runs is one row with `frequency = N`. Visible steps with a time range only (a step without one is left out, C16). |
@@ -1708,7 +1620,7 @@ field") instead of the signature's default.
 | `draft_summary` | The drafting rule's own structure-only numbers (the P1 probe instrument), counted on the fresh drafts before the merge with the analyst's steps: `{ runs, steps_per_run, out_of_run_steps, end_reason: {commit, screen_change, run_end}, name_source: {remembered, draft}, commit_identity: {automation_id, name, class_name, "?"} }`. `steps_per_run` follows run start order. On a session with no runs, `runs` is 0 and every draft counts in `out_of_run_steps`. The [P1 draft-probe runbook](../docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md) reads it. |
 | `app_vocabularies`, `app_vocabulary_matches`, `app_vocabulary_hits_by_id` | Vocabularies loaded, interactions matched, hits per vocabulary. |
 | `vocab_coverage` | Per app `{ total_interactions, enriched, coverage_pct }`: how much of each app's interactions a vocabulary could name. The viewer does not show it. |
-| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`): the `shared/system-names.json` rule for that application alone (a rule without a title: "SAP", "Excel", "Google Chrome"), else a vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name; never an invented product name. The viewer, the findings and the automation-candidate labels read application names through it. The PDD and the step map name the business system through `app_names.system_name`, which also applies the title rules (a Chrome window on Salesforce is "Salesforce"; C14). |
+| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`): the `shared/system-names.json` rule for that application alone (a rule without a title: "SAP", "Excel", "Google Chrome"), else a vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name; never an invented product name. The viewer and the capture detail (`analysis.json` `coverage_caveat`) read application names through it. The PDD and the step map name the business system through `app_names.system_name`, which also applies the title rules (a Chrome window on Salesforce is "Salesforce"; C14). |
 | `annotations_present`, `session_folder`, `worker_id` | Bookkeeping. |
 
 `canonical_process_id`, `canonical_version`, `drift_count`, `phase_count`,

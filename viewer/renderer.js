@@ -34,6 +34,7 @@ const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText,
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, mapNodeLabel, flowEdges } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
+const RunDiff = require("./run-differences.js");
 const SystemNames = require("./system-names.js");
 const RefmapUI = require("./refmap-ui.js");
 const SPM = require("./sub-process-maps.js");
@@ -228,8 +229,13 @@ function _sessionMapData() {
   if (lock) return { emptyMessage: lock };
   const lv = _mapLevel();
   const traces = lv.path.length ? (lv.map ? lv.map.traces : []) : lv.runs.map((r) => r.visible);
+  // Lane FX1: at the main level a stretch left out of the analysis cuts its
+  // transaction's trace, as it cuts the step BPMN's (step_flow).
+  const excluded = (sess.annotations && sess.annotations.excluded_ranges) || [];
+  const leftOut = lv.path.length ? undefined
+    : lv.runs.map((r) => RunDiff.leftOutStretches(excluded, { startMs: r.startMs, endMs: r.endMs }));
   return {
-    dfg: buildAnnotationDfg(traces),
+    dfg: buildAnnotationDfg(traces, { leftOut }),
     // AD-28: each box names the system its step happened in, under its name.
     nodeSystems: _nodeSystems(sess, traces),
     // §B2: the map is TIME-weighted: edge thickness carries the time that

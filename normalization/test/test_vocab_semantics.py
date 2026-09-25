@@ -8,7 +8,8 @@ The contract under test (LAB-PHASE-SPEC §C1):
     means reaches the derived stream as data.vocab_semantics on matched
     interactions;
   * completion=true closes a step in step_suggest (boundary hint);
-  * carries_value=true admits short values into facts.rekey_details.
+  * carries_value=true admits short values into the PDD's re-keyed data
+    (pdd_export._rekey_value, the one consumer left of the rekey field set).
 
 Run with:
     pytest normalization/test/test_vocab_semantics.py
@@ -23,7 +24,7 @@ NORM_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(NORM_DIR))
 
 import app_vocab        # noqa: E402
-import facts            # noqa: E402
+import pdd_export       # noqa: E402
 from step_suggest import auto_suggest_steps  # noqa: E402
 
 
@@ -176,16 +177,11 @@ def test_short_value_rekey_needs_vocab_vouching():
     # "K42" is 3 chars: below REKEY_MIN_LEN, above REKEY_MIN_LEN_VOCAB.
     evs = [_typed("alpha.exe", "cc-a", "K42", "e1"),
            _typed("beta.exe", "cc-b", "K42", "e2")]
-    # Unvouched: too short, no rekey row.
-    assert facts.rekey_details([dict(e, data=dict(e["data"])) for e in evs]) == []
-    # Vouched by the vocab: the same typings are a rekey row, and the row
-    # names the vocab fields involved.
+    # Unvouched: too short, the value is not compared.
+    assert [pdd_export._rekey_value(dict(e["data"]), "K42") for e in evs] == ["", ""]
+    # Vouched by the vocab: the same typings are compared as re-keyed data.
     enriched, _ = app_vocab.enrich_events(evs, [vocab])
-    rows = facts.rekey_details(enriched)
-    assert len(rows) == 1
-    assert rows[0]["value"] == "K42"
-    assert rows[0]["apps"] == ["alpha.exe", "beta.exe"]
-    assert rows[0]["fields"] == ["Cost center (A)", "Cost center (B)"]
+    assert [pdd_export._rekey_value(e["data"], "K42") for e in enriched] == ["K42", "K42"]
 
 
 def test_rekey_classic_threshold_unchanged_without_vocab():
@@ -193,7 +189,6 @@ def test_rekey_classic_threshold_unchanged_without_vocab():
            _typed("beta.exe", "f2", "ACC-2231", "e2"),
            _typed("alpha.exe", "f3", "K42", "e3"),
            _typed("beta.exe", "f4", "K42", "e4")]
-    rows = facts.rekey_details(evs)
-    assert [r["value"] for r in rows] == ["ACC-2231"]
-    # Raw-id fallback labels still populate the field set.
-    assert rows[0]["fields"] == ["f1", "f2"]
+    kept = [e["data"]["value"] for e in evs
+            if pdd_export._rekey_value(e["data"], e["data"]["value"])]
+    assert kept == ["ACC-2231", "ACC-2231"]

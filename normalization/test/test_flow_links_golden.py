@@ -21,6 +21,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import step_flow  # noqa: E402
+from _dt import parse_ts_or_none  # noqa: E402
 
 GOLDEN_PATH = Path(__file__).resolve().parent.parent.parent / "shared" / "flow-links-golden.json"
 GOLDEN = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
@@ -49,6 +50,17 @@ def _transactions(case):
     return out
 
 
+def _left_out(case):
+    """Each transaction's stretches left out of the analysis (lane FX1): the
+    case's excluded ranges cut to that transaction's span; None for a case
+    without them."""
+    if "excluded_ranges" not in case:
+        return None
+    return [step_flow.left_out_stretches(case["excluded_ranges"], parse_ts_or_none(span["start"]),
+                                         parse_ts_or_none(span.get("end")))
+            for span in case["run_spans"]]
+
+
 def _projected(edges):
     return sorted(((_NAMES.get(e["from"], e["from"]), _NAMES.get(e["to"], e["to"]),
                     e["label"], e["observed"]) for e in edges), key=str)
@@ -56,7 +68,7 @@ def _projected(edges):
 
 @pytest.mark.parametrize("case", GOLDEN["cases"], ids=[c["name"] for c in GOLDEN["cases"]])
 def test_golden_case(case):
-    edges = step_flow.flow_edges(_transactions(case))
+    edges = step_flow.flow_edges(_transactions(case), _left_out(case))
     expected = sorted(((e["from"], e["to"], e["label"], e["observed"])
                        for e in case["expected_edges"]), key=str)
     assert _projected(edges) == expected
@@ -77,6 +89,32 @@ def test_the_golden_covers_every_declaration():
     assert any(any(s.get("state") == "hidden" for s in t)
                for c in GOLDEN["cases"] for t in c["transactions"])
     assert any(len(c["transactions"]) >= 2 for c in GOLDEN["cases"])
+    # Lane FX1: stretches left out at a transaction's start, between two
+    # steps and after its last step.
+    assert sum(1 for c in GOLDEN["cases"] if "excluded_ranges" in c) >= 2
+
+
+def test_the_cuts_change_the_map_only_where_they_drop_an_edge():
+    """The step BPMN is drawn from the cut edges only when the cuts change
+    the map (step_flow.cuts_change_map): a stretch whose edge another
+    transaction also takes changes nothing."""
+    at = lambda hms: parse_ts_or_none(f"2026-05-14T09:{hms}Z")  # noqa: E731
+    tx = [[{"step_id": f"t{t}{n}", "name": n, "time_range": {"start": f"2026-05-14T09:0{t}:{s}Z"}}
+           for n, s in (("A", "10"), ("B", "20"), ("C", "30"))] for t in (0, 1)]
+    across_b_c = [[], [(at("01:25"), at("01:26"))]]
+    assert not step_flow.cuts_change_map(tx, across_b_c)       # transaction 1 takes B to C
+    before_a = [[(at("00:01"), at("00:05"))], [(at("01:01"), at("01:05"))]]
+    assert step_flow.cuts_change_map(tx, before_a)             # nobody starts at A any more
+    assert not step_flow.cuts_change_map(tx, [[], []])
+
+
+def test_the_stretches_are_placed_as_the_differences_place_them():
+    at = lambda hms: parse_ts_or_none(f"2026-05-14T09:{hms}Z")  # noqa: E731
+    starts = [at("00:10"), at("00:20"), None]                  # the last step has no time
+    assert step_flow.cut_positions(starts, [(at("00:15"), at("00:16"))]) == [1]
+    assert step_flow.cut_positions(starts, [(at("00:05"), at("00:06")),
+                                            (at("00:30"), at("00:31"))]) == [0, 2]
+    assert step_flow.cut_positions(starts, None) == []
 
 
 def test_each_edge_counts_the_transactions_that_took_it():

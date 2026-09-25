@@ -272,19 +272,6 @@ def _screenshots_between(index: tuple[list[datetime], list[str]],
     return paths[lo:hi]
 
 
-def _draft_reason(n: int, screen: str, end_reason: str, label: str,
-                  case_id: str | None) -> str:
-    """One line telling the analyst why these interactions form one draft."""
-    what = f"Drafted from {n} interaction{'' if n == 1 else 's'} on {screen}"
-    if end_reason == END_COMMIT:
-        return f'{what}; ended at the commit "{label}".'
-    if end_reason == END_SCREEN_CHANGE:
-        return f"{what}; ended because the next interaction was on another screen."
-    if case_id is None:
-        return f"{what}; ended at the last interaction outside a run."
-    return f"{what}; ended at the end of the run."
-
-
 def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
                 case_id: str | None, session_id: str,
                 remembered: dict[str, str],
@@ -318,8 +305,6 @@ def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
             "manual_notes": "",
         },
         "state": "auto_suggested",
-        "suggestion_reason": _draft_reason(len(stretch), screen, end_reason,
-                                           label, case_id),
         "canonical_step_id": None,
         "flags": _aggregate_vocab_flags(stretch),
         "phase_id": None,
@@ -844,22 +829,29 @@ def _inherit_step_identity(fresh: list, existing: list, preserved: list) -> list
 PRESERVED_STATES = ("manually_authored", "edited", "confirmed", "hidden")
 
 
-def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
+def restamp_preserved_case_ids(steps: list, cases: dict, recorded: bool = True) -> int:
     """Contract C9 (RP-01): give every preserved analyst step whose `case_id`
     is not a current case id (a legacy random id, an id from a removed run, or
-    no id at all) the run whose span contains the step's time range, or
-    `case_id: None` when no run contains it. Steps whose case_id is current are
-    left alone. Returns how many steps were restamped.
+    no id at all) the run that holds the step's start, or `case_id: None`
+    when no run holds it. A step that runs on past the run's end still
+    belongs to the run it started in (lane FX1: a step across the start of a
+    run marked later stays in the run it began in). Steps whose case_id is
+    current are left alone. Returns how many steps were restamped.
 
     `cases` is collect_cases() output. A run left open (no end marker) spans
-    to the end of the recording. When nested runs both contain the step, the
+    to the end of the recording. When nested runs both hold the step, the
     outermost wins, matching auto_suggest_steps, which files steps under the
-    outermost case. Among containing sibling runs (a zero-length step on the
-    boundary), the one that opened last wins.
+    outermost case. Among sibling runs that both hold it (a step that starts
+    on the boundary), the one that opened last wins.
 
     The implicit run of a session without a recording (contract C16,
     case_assignment.add_implicit_run) covers the whole session, so it
-    contains every step, one without a time included.
+    holds every step, one without a time included. When start markers
+    replace it (`recorded` False and no implicit run), a step without a time
+    whose run is gone joins the first run (by start, then case id): it has no
+    time to place it, and no act brings a step without a time into a
+    transaction afterwards (lane FX1). In a recording, a step without a time
+    whose run is gone belongs to no run.
 
     Contract C19: then every sub-step takes its parent's case_id, at every
     depth, whatever the parent's state (the count leaves sub-steps out)."""
@@ -871,8 +863,13 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
         start = _parse_ts_or_none(c.get("start_ts"))
         end = _parse_ts_or_none(c.get("end_ts"))
         if start is None or (c.get("end_ts") is not None and end is None):
-            continue    # a run whose span cannot be read contains nothing
+            continue    # a run whose span cannot be read holds nothing
         spans.append((cid, c.get("parent_case_id"), start, end))
+    # The first run, for the steps without a time of a session without a
+    # recording: the viewer's order of the runs (start, then case id).
+    tops = sorted(((start, cid) for cid, parent, start, _end in spans if not parent),
+                  key=lambda t: (t[0], str(t[1])))
+    first_run = tops[0][1] if tops else None
     restamped = 0
     for s in steps or []:
         cid_now = s.get("case_id")
@@ -884,13 +881,20 @@ def restamp_preserved_case_ids(steps: list, cases: dict) -> int:
             s["case_id"] = implicit
             continue
         bounds = _step_bounds(s)
-        containing = [] if bounds is None else [
-            (cid, parent, start) for cid, parent, start, end in spans
-            if start <= bounds[0] and (end is None or bounds[1] <= end)
-        ]
-        ids = {cid for cid, _p, _s in containing}
-        outermost = [c for c in containing if c[1] not in ids]
-        new_cid = max(outermost, key=lambda c: c[2])[0] if outermost else None
+        if bounds is None:
+            timed = _parse_ts_or_none((s.get("time_range") or {}).get("start")
+                                      if isinstance(s.get("time_range"), dict) else None)
+            start_at = timed
+        else:
+            start_at = bounds[0]
+        if start_at is None:
+            new_cid = None if recorded else first_run
+        else:
+            holding = [(cid, parent, start) for cid, parent, start, end in spans
+                       if start <= start_at and (end is None or start_at <= end)]
+            ids = {cid for cid, _p, _s in holding}
+            outermost = [c for c in holding if c[1] not in ids]
+            new_cid = max(outermost, key=lambda c: c[2])[0] if outermost else None
         if new_cid != cid_now:
             restamped += 1
         s["case_id"] = new_cid

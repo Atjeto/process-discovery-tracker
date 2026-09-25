@@ -11,8 +11,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   buildAnnotationDfg, flowEdges, mapNodeLabel, processLabel,
-  resolveStepGrainKeys, screenType, START, END,
+  resolveStepGrainKeys, screenType, START, END, cutPositions,
 } = require("./process-map-levels.js");
+const RD = require("./run-differences.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "process-label-golden.json"), "utf8"));
@@ -237,7 +238,7 @@ function flowRuns(transactions) {
     const ids = new Map(tx.map((s, i) => [s.name, "t" + t + "s" + i]));
     return tx.map((s, i) => Object.assign({
       step_id: "t" + t + "s" + i, name: s.name, process_label: s.name, case_id: "t" + t,
-      state: s.state || "manually_authored", time_range: null, order: i + 1,
+      state: s.state || "manually_authored", time_range: s.time_range || null, order: i + 1,
     }, s.only_when ? { only_when: s.only_when } : {},
     s.links ? { links: s.links.map((l) => ({ to: l.to === "end" ? "end" : (ids.get(l.to) || l.to), when: l.when })) } : {}));
   });
@@ -252,13 +253,36 @@ function goldenEdges(dfg) {
     .sort((a, b) => (a.from + ">" + a.to).localeCompare(b.from + ">" + b.to));
 }
 
+/* A case's stretches left out of the analysis (lane FX1): its excluded
+   ranges cut to each transaction's span; none for a case without them. */
+function flowLeftOut(c) {
+  if (!c.excluded_ranges) return undefined;
+  return { leftOut: c.run_spans.map((span) => RD.leftOutStretches(c.excluded_ranges,
+    { startMs: Date.parse(span.start), endMs: span.end ? Date.parse(span.end) : null })) };
+}
+
 test("C17: the map's edges match every case of the shared flow-links golden (the pipeline's step BPMN pins the same file)", () => {
   assert.ok(FLOW_GOLDEN.cases.length >= 7, "precondition: the golden has its cases");
+  assert.ok(FLOW_GOLDEN.cases.filter((c) => c.excluded_ranges).length >= 2, "precondition: the cases of lane FX1's cuts");
   for (const c of FLOW_GOLDEN.cases) {
     const want = c.expected_edges.slice()
       .sort((a, b) => (a.from + ">" + a.to).localeCompare(b.from + ">" + b.to));
-    assert.deepEqual(goldenEdges(buildAnnotationDfg(flowRuns(c.transactions))), want, c.name);
+    assert.deepEqual(goldenEdges(buildAnnotationDfg(flowRuns(c.transactions), flowLeftOut(c))), want, c.name);
   }
+});
+
+test("lane FX1: a stretch left out at a run's start leaves its first step without a start, and cutPositions places stretches as the differences do", () => {
+  const T = (s) => "2026-05-14T09:" + s + "Z";
+  const at = (t) => ({ start: T(t), end: T(t) });
+  const run = [{ step_id: "x", name: "Enter", time_range: at("01:40") }, { step_id: "y", name: "Send", time_range: at("01:50") }];
+  const dfg = buildAnnotationDfg([run], { leftOut: [[{ startMs: Date.parse(T("01:00")), endMs: Date.parse(T("01:35")) }]] });
+  assert.deepEqual(dfg.start_edges, [], "no start edge into the step after the stretch");
+  assert.deepEqual(dfg.start_activities, {}, "the run does not start there");
+  assert.deepEqual(dfg.end_edges.map((e) => e.source), ["Send"]);
+  const steps = [{ time_range: at("00:10") }, { time_range: at("00:20") }, { time_range: null }];
+  assert.deepEqual(cutPositions(steps, [{ startMs: Date.parse(T("00:15")) }]), [1]);
+  assert.deepEqual(cutPositions(steps, [{ startMs: Date.parse(T("00:05")) }, { startMs: Date.parse(T("00:30")) }]), [0, 2]);
+  assert.deepEqual(cutPositions(steps, undefined), []);
 });
 
 test("C17: a plain run starts at START and ends at END; its step edges are unchanged", () => {

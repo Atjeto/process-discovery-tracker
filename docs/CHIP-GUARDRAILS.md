@@ -316,8 +316,12 @@ shown only after a failed run; `#toast`.
   `.run-status`; on the open, confirmed reference transaction Undo confirm
   in the head, right after the status: `.run-row [data-act="reopen-run"]`
   (`.run-undo-confirm`); `.run-actions [data-act="confirm-run"]`;
-  `.run-diffs li[data-kind]`; `.run-names-note` ("Remembered names: N of M
-  steps"); `.run-show-hidden`.
+  `.run-diffs li[data-kind]` (the differences, `extra`, `order`, `skipped`,
+  `repeated`: exactly what the head's count counts) and above them
+  `.run-notes li[data-kind]` (said apart, no difference: `left_out`, a
+  stretch left out of the analysis, and `not_done`, a step that happens
+  only under a condition and was not done; lane FX1); `.run-names-note`
+  ("Remembered names: N of M steps"); `.run-show-hidden`.
 - The step rows `.step-row[data-step-id]` (double-click renames the row its
   first click landed on; right-click opens `#step-ctx-menu`). A sub-process
   row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
@@ -455,7 +459,14 @@ identity line's marker (the ⚠ and ? glyphs, `.si-marker`, `.si-idrow`: a
 project is recorded once); the Observations' *Data typed twice* and *Where
 the time goes* (`data-module="retyped"`, `table.ov-time`, `.ov-retyped`),
 now the PDD's own rows; *Exclude from analysis* on the selection card, now
-*Leave out of the analysis* (same id).
+*Leave out of the analysis* (same id). Gone since 2026-09-25 (lane FX1): the
+analysis layer nothing read (`analysis.json` `facts`, `findings`,
+`pdd_findings` and the step-based blocks; the coverage warning reads
+`coverage_caveat`, format 4), a draft's `suggestion_reason`, and the
+unused `dfg-viewer.js` `exportPng`, `bpmn-viewer.js` `exportSvg`,
+`asis-view.js` `hasLevel` and `modals.js` `formModal`. A run of
+`normalize.py` stages its outputs as `*.pdt-staged` and moves them in as
+its last act: a smoke that reads the outputs waits for the run to end.
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

@@ -110,7 +110,10 @@ def test_the_end_of_the_run_closes_the_last_step():
     assert steps[0]["end_reason"] == "run_end"
 
 
-def test_the_suggestion_reason_says_why_the_draft_ended():
+def test_a_draft_says_why_it_ended_in_its_end_reason_only():
+    """The end_reason says why the rule ended a draft; the viewer words it
+    (step-facts.js endsAt). The sentence the pipeline once wrote beside it
+    (suggestion_reason) had no reader and is no longer written (lane FX1)."""
     events = [
         _ev("e1", 1, "value_changed", aid="a", name="A", value="1"),
         _ev("e2", 2, "invoked", ct="Button", aid="find", name="Find"),
@@ -118,14 +121,11 @@ def test_the_suggestion_reason_says_why_the_draft_ended():
         _ev("e4", 4, "value_changed", aid="b", name="B", value="3", window="CRM - Home"),
         _ev("o1", 5, "value_changed", aid="c", name="C", value="4", case=None),
     ]
-    reasons = {tuple(_ids(s)): s["suggestion_reason"] for s in auto_suggest_steps(events)}
-    assert reasons[("e1", "e2")] == (
-        'Drafted from 2 interactions on CRM - Orders; ended at the commit "Find".')
-    assert reasons[("e3",)] == ("Drafted from 1 interaction on CRM - Orders; "
-                                "ended because the next interaction was on another screen.")
-    assert reasons[("e4",)] == "Drafted from 1 interaction on CRM - Home; ended at the end of the run."
-    assert reasons[("o1",)] == ("Drafted from 1 interaction on CRM - Orders; "
-                                "ended at the last interaction outside a run.")
+    drafts = auto_suggest_steps(events)
+    reasons = {tuple(_ids(s)): s["end_reason"] for s in drafts}
+    assert reasons == {("e1", "e2"): "commit", ("e3",): "screen_change",
+                       ("e4",): "run_end", ("o1",): "run_end"}
+    assert not any("suggestion_reason" in s for s in drafts)
 
 
 def test_a_single_interaction_is_a_step_and_nothing_is_dropped():
@@ -299,7 +299,7 @@ def test_a_record_value_in_the_commit_control_stays_out_of_the_name_and_key():
         assert [d["draft_key"] for d in merged] == [key, key], label
         assert [d["name"] for d in merged] == [name, name], label
         for d in merged:
-            for field in ("name", "draft_key", "suggestion_reason", "process_label"):
+            for field in ("name", "draft_key", "process_label"):
                 assert "INC00100" not in d[field], (label, field)
         by_id = {e["event_id"]: e for e in events}
         identity = draft_summary(drafts, {}, by_id)["commit_identity"]
@@ -309,8 +309,8 @@ def test_a_record_value_in_the_commit_control_stays_out_of_the_name_and_key():
 def test_names_keys_and_reasons_never_carry_a_typed_value():
     """The old names embedded the value ("Find - <value>", "Enter <value> in
     Customer"). The typed value below reaches the step (its description
-    narrates it, so the fixture is not vacuous) but never a name, a key, a
-    reason or a process label."""
+    narrates it, so the fixture is not vacuous) but never a name, a key or a
+    process label."""
     secret = "Quux-4711-ZEBRA-typed"
     events = [
         _ev("e1", 1, "value_changed", aid="customer", name="Customer", value=secret),
@@ -323,7 +323,7 @@ def test_names_keys_and_reasons_never_carry_a_typed_value():
     assert len(steps) == 3
     assert any(secret in s["description"] for s in steps)
     for s in steps:
-        for field in ("name", "draft_key", "suggestion_reason", "process_label"):
+        for field in ("name", "draft_key", "process_label"):
             assert secret not in s[field], f"typed value leaked into {field}"
 
 

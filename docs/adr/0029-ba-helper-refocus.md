@@ -185,8 +185,9 @@ Removed from `master` (preserved in full on `product-edition`):
 - **Exports**: the standalone findings memo (`.docx`), the HTML findings
   report, and their CLI flags. The memo's findings first moved into the
   PDD's section 1; AD-24 then cut that section, so the PDD prints no
-  findings. `normalization/memo_export.py` keeps the helpers the PDD still
-  uses (the run rows).
+  findings. `normalization/memo_export.py` kept the helpers the PDD still
+  used (the run rows) until lane FX1 (2026-09-25) moved them into
+  `pdd_export.py` and cut the rest of the analysis layer nothing read.
 - **Capture**: cross-machine sync markers, app-vocabulary prep sessions, the
   worker close-out wizard's observed-value questions (`self_annotations`,
   `manifest.worker_review`), and the label picker. The recorder's own

@@ -37,6 +37,7 @@ const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
 const ProjectZip = require("./project-zip.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
+const { clearStaged } = require("./staged-outputs.js");
 
 /* Contract C4: the remembered-names store, one per analyst machine, under the
    viewer's userData folder (an e2e run's throwaway profile gets its own). */
@@ -453,10 +454,17 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       onProc: (h) => { _normalizeHandle = h; },
     });
     if (result && result.cancelled) {
+      // Lane FX1: the killed run moved nothing into the project (normalize.py
+      // does that as its very last act), so its outputs are as they were;
+      // what it staged goes too, and the project is exactly as before.
+      clearStaged(root);
       return { ok: false, cancelled: true, error: "Analysis cancelled by user." };
     }
     return { ok: true, ...result };
   } catch (e) {
+    // A run stopped from outside (a signal) leaves its staged files as a
+    // cancelled one does; a run that failed removed its own.
+    if (e && e.signal) clearStaged(root);
     return resultFromRunnerError(e);
   } finally {
     _normalizeHandle = null;

@@ -238,9 +238,11 @@ the folder.
   `transcript.json`. A sentence is placed through its own sync, else the
   attached video's; added to a description or a document field, it reaches
   the PDD.
-- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 3 now):
-  the viewer analyzes a folder on open when it is missing or lower. 3 added
-  `pdd_data` and `pdd_time`, the rows the PDD prints in sections 5 and 6,
+- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 4 now):
+  the viewer analyzes a folder on open when it is missing or lower. 4 cut
+  the analysis layer nothing read (facts, findings, the step-based
+  estimates, `pdd_findings`) and gave the Overview's one check its own key,
+  `coverage_caveat` (lane FX1). 3 added `pdd_data` and `pdd_time`, the rows the PDD prints in sections 5 and 6,
   which the Overview's Observations show as they are (one source, pinned by
   `shared/pdd-rows-golden.json`), and `steps_signature`, the steps they were
   measured from: as the Overview opens, rows older than the steps are
@@ -255,7 +257,10 @@ the folder.
 - **Honest failures.** A failed stage writes its key as `null` plus one
   `stage_errors` entry (C12), shown as "could not run", never as zero.
   `normalize.py` exits (C13) 0, 1 usage or crash, 2 unreadable
-  `annotations.json` (nothing written), 3 a failed export.
+  `annotations.json` (nothing written), 3 a failed export. A run changes the
+  project only when it succeeds: its outputs are staged as `*.pdt-staged` and
+  moved in as its last act, so a failed or cancelled run leaves them as they
+  were (lane FX1).
 - **Shared rules.** `process_label` and the screen string strip case values
   (`shared/*-label-patterns.json`, loaded by Python and JS); interactions
   are typed by platform signatures (`shared/recognition-patterns.json`,

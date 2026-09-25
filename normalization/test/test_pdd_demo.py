@@ -1,11 +1,13 @@
-"""The demo recording through the pipeline and into the PDD (lane LUX-P).
+"""The demo recording through the pipeline and into the PDD.
 
-The document no longer prints the analysis findings (its former section 1 is
-cut), whatever the analyst ticked. analysis.json keeps `pdd_findings` exactly
-as before, because the viewer still reads it (its "include in PDD" boxes;
-the viewer lane removes both). This runs the pipeline on a temp copy of the
-committed demo recording the way the viewer's export does (the bundled
-taxonomy, the PDD written by the same run) and reads the document back.
+The document prints no analysis finding (its former section 1 was cut by
+lane LUX-P), and since lane FX1 the pipeline computes none either: the
+analysis layer nobody read (the facts, the findings, the step analysis and
+the PDD's findings selection) is cut from analysis.json. A key the viewer of
+the product edition wrote for it (`memo_selection`) still round-trips (C10).
+This runs the pipeline on a temp copy of the committed demo recording the
+way the viewer's export does (the bundled taxonomy, the PDD written by the
+same run) and reads the document back.
 
 The pipeline imports pandas and pm4py and the PDD needs python-docx, so this
 module skips where they are absent and runs under the full-deps gate.
@@ -31,6 +33,10 @@ TAXONOMY = NORMALIZATION / "taxonomy.yaml"
 
 _DEPS_OK = all(importlib.util.find_spec(m) is not None for m in ("pandas", "pm4py", "docx"))
 pytestmark = pytest.mark.skipif(not _DEPS_OK, reason="pipeline deps (pandas/pm4py/python-docx) not installed")
+
+# The analysis.json keys of the cut layer: none is written any more.
+CUT_KEYS = ("facts", "findings", "pdd_findings", "waste_classification", "time_study",
+            "segments", "automation_candidates", "efficiency")
 
 
 @pytest.fixture(autouse=True)
@@ -67,33 +73,25 @@ def _text(docx: Path) -> str:
     return "\n".join([p.text for p in doc.paragraphs] + rows)
 
 
-def test_the_pdd_prints_no_finding_and_pdd_findings_is_still_written(tmp_path):
+def test_the_demo_pdd_prints_no_finding_and_the_analysis_writes_none(tmp_path):
     folder = _copy_demo(tmp_path / "demo")
     analysis = _analyze_and_export(folder, tmp_path / "pdd.docx")
-    ticks = analysis["pdd_findings"]
-    claims = {f["id"]: f["claim"] for f in analysis["findings"]}
-    detector = {f["id"]: f["detector"] for f in analysis["findings"]}
-    assert ticks["default"], "the demo has findings the viewer offers"
-    # AD-20 still holds for the viewer's boxes: repeated sequences are not offered.
-    assert "repetition" in detector.values()
-    assert all(detector[i] != "repetition" for i in ticks["eligible"])
+    for key in CUT_KEYS:
+        assert key not in analysis, key
+    assert analysis["case_quality"]["case_count"] == 4
+    assert analysis["pdd_data"] and analysis["pdd_time"]
+    assert analysis["stage_errors"] == []
     text = _text(tmp_path / "pdd.docx")
-    for fid in ticks["eligible"]:
-        assert claims[fid] not in text, claims[fid]
-    assert "Findings" not in text
+    for word in ("Findings", "What the recording measured", "To say more"):
+        assert word not in text, word
 
 
-def test_a_selection_neither_prints_findings_nor_moves_the_default(tmp_path):
+def test_a_legacy_memo_selection_round_trips_and_prints_nothing(tmp_path):
     folder = _copy_demo(tmp_path / "demo")
-    default = _analyze_and_export(folder, tmp_path / "first.docx")["pdd_findings"]["default"]
-    assert len(default) >= 2
     anno = json.loads((folder / "annotations.json").read_text(encoding="utf-8"))
-    anno["memo_selection"] = default[1:]
+    anno["memo_selection"] = ["screen_time_sink-0123456789ab"]
     (folder / "annotations.json").write_text(json.dumps(anno, indent=2), encoding="utf-8")
-    analysis = _analyze_and_export(folder, tmp_path / "second.docx")
-    claims = {f["id"]: f["claim"] for f in analysis["findings"]}
-    assert analysis["pdd_findings"]["default"] == default     # the selection does not move the default
+    _analyze_and_export(folder, tmp_path / "pdd.docx")
     after = json.loads((folder / "annotations.json").read_text(encoding="utf-8"))
-    assert after["memo_selection"] == default[1:]             # C10: the key round-trips
-    text = _text(tmp_path / "second.docx")
-    assert not any(claims[i] in text for i in default)
+    assert after["memo_selection"] == ["screen_time_sink-0123456789ab"]   # C10
+    assert "screen_time_sink" not in _text(tmp_path / "pdd.docx")

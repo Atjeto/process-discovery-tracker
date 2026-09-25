@@ -34,7 +34,6 @@ from coalesce import coalesce_typing_bursts
 from classification import (
     classify_events,
     collapse_adjacent,
-    collapse_activity_occurrences,
     load_taxonomy,
 )
 from classification_overrides import apply_classification_overrides
@@ -45,7 +44,7 @@ from step_suggest import (
 import app_vocab
 from app_names import build_app_names
 import stats_compute as stats
-from session_io import write_annotations, compute_screenshot_hashes, has_recording
+from session_io import write_annotations, compute_screenshot_hashes, has_recording, Staging
 from marker_edits import apply_marker_edits
 from pipeline_config import (
     _step_ignored_processes, _excluded_ranges, _step_calibration_kwargs,
@@ -56,8 +55,8 @@ logger = logging.getLogger(__name__)
 
 
 class ExportFailed(Exception):
-    """A requested export failed after the analysis outputs were written.
-    Contract C13 exit code 3 (RP-09)."""
+    """A requested export failed; the run commits nothing, so the project
+    stays as it was. Contract C13 exit code 3 (RP-09)."""
 
 
 def _session_start(manifest: dict | None, events: list[dict[str, Any]]) -> str | None:
@@ -118,7 +117,7 @@ def _run_case_assignment(
         vocab_summary = {"matched": 0, "total": 0, "vocabs_loaded": [],
                          "vocabs_hit": {}, "coverage": {}}
     # DA gap 3: the readable name of every recorded executable, for the
-    # findings claims and the PDD (stats.json meta.app_names).
+    # PDD, the capture detail and the step map (stats.json meta.app_names).
     vocab_summary["app_names"] = build_app_names(with_cases, vocabs)
     return with_cases, cases, vocab_summary
 
@@ -150,12 +149,17 @@ def _run_step_segmentation(
     cal: dict,
     session_folder: Path,
     names_path: str | None = None,
+    recorded: bool = True,
+    staging: Staging | None = None,
 ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     """Step drafting (the C1 rule), then persist annotations. Returns
     (merged_steps, total_interactions, draft_summary). A draft takes the name
     the analyst gave to a step with its draft_key in this session first, then
     the one in `names_path`, the optional remembered-names store (C4, the
-    `--names` flag)."""
+    `--names` flag). `recorded` is False for a session without a recording
+    (C16): its steps without a time whose transaction is gone join the first
+    transaction. With a `staging`, annotations.json is staged and committed
+    with the run (session_io.Staging)."""
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
     # ADR-0024: event_id -> interaction, so _merge_steps can resolve each step's
     # grain_keys (the view-time roll-up containment keys) from its evidence.
@@ -177,12 +181,12 @@ def _run_step_segmentation(
                                 interactions_by_id)
     # RP-01 / C9: a preserved analyst step keeps its case_id only while that
     # run still exists; otherwise it moves to the run containing it in time.
-    restamped = restamp_preserved_case_ids(merged_steps, cases)
+    restamped = restamp_preserved_case_ids(merged_steps, cases, recorded=recorded)
     if restamped:
         print(f"[normalize] moved {restamped} analyst step(s) to the run "
-              f"that contains them (their previous run id no longer exists)")
+              f"that holds them (their previous run id no longer exists)")
     existing_anno["steps"] = merged_steps
-    write_annotations(session_folder, existing_anno)
+    write_annotations(session_folder, existing_anno, staging)
     print(f"[normalize] drafted {len(auto_steps)} step(s) "
           f"({len(merged_steps)} total after merge)")
     return merged_steps, total_interactions, summary
@@ -192,9 +196,12 @@ def _run_classification(
     with_cases: list[dict[str, Any]],
     annotations: dict,
     taxonomy_path: str | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict, list]:
-    """Taxonomy classification + analyst overrides + the two collapses. Returns
-    (classified, collapsed, log_events, taxonomy, taxonomy_report)."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict, list]:
+    """Taxonomy classification + analyst overrides + the per-window collapse.
+    Returns (classified, collapsed, taxonomy, taxonomy_report). The
+    statistics merge the classified rows into activity occurrences
+    themselves, once the stretches left out of the analysis are cut out of
+    them (stats_compute.compute_all)."""
     taxonomy = load_taxonomy(taxonomy_path) if taxonomy_path else {"rules": []}
     print(f"[normalize] taxonomy: {len(taxonomy.get('rules', []))} rules")
 
@@ -211,17 +218,12 @@ def _run_classification(
     classified, overrides_applied = apply_classification_overrides(classified, annotations)
     if overrides_applied:
         print(f"[normalize] applied {overrides_applied} classification override(s) from annotations.json")
+    # `collapsed` keeps the per-window rows (the collapsed_activity_count in
+    # stats.json meta). See design §7.1.
     collapsed = collapse_adjacent(classified)
     print(f"[normalize] collapsed: {sum(1 for e in classified if e.get('type') == 'activity')} -> "
           f"{sum(1 for e in collapsed if e.get('type') == 'activity')} activity events")
-
-    # `collapsed` keeps the per-window rows (the collapsed_activity_count in
-    # stats.json meta); the statistics read `log_events`, which collapses
-    # further to one row per activity occurrence. See design §7.1.
-    log_events = collapse_activity_occurrences(classified)
-    print(f"[normalize] event-log occurrences: "
-          f"{sum(1 for e in log_events if e.get('type') == 'activity')} activity events")
-    return classified, collapsed, log_events, taxonomy, taxonomy_report
+    return classified, collapsed, taxonomy, taxonomy_report
 
 
 def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
@@ -236,23 +238,16 @@ def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
 # analysis outputs changes, so the viewer knows an older analysis for what it
 # is (viewer/normalize-result.js ANALYSIS_FORMAT reads the same number).
 # 3: `pdd_data` and `pdd_time`, the rows of the PDD's sections 5 and 6 the
-# Overview shows (lane CC).
-ANALYSIS_FORMAT = 3
-
-# The analysis.json keys the step-grained analysis layer (analysis.run_analysis)
-# writes. When the layer fails as a whole, each is written as null (C12).
-_STEP_ANALYSIS_KEYS = ("waste_classification", "time_study", "segments",
-                       "automation_candidates", "efficiency")
-
-# The stages the findings detectors read. If one of them failed, the findings
-# would silently miss checks, so the findings stage does not run (C12).
-_FINDINGS_INPUT_STAGES = ("step_analysis", "motifs", "facts", "time_study",
-                          "segments", "automation_candidates")
+# Overview shows (lane CC). 4: the analysis layer nobody read is cut (the
+# facts, the findings, the step analysis, `pdd_findings`), and the one check
+# the Overview shows, the apps the recorder saw with less detail, is its own
+# key, `coverage_caveat` (lane FX1).
+ANALYSIS_FORMAT = 4
 
 
 def _run_stats(
     session_folder: Path,
-    log_events: list[dict[str, Any]],
+    classified: list[dict[str, Any]],
     cases: list[dict[str, Any]],
     existing_anno: dict,
     taxonomy: dict,
@@ -269,13 +264,18 @@ def _run_stats(
     vocab_summary: dict,
     draft_summary: dict | None = None,
     recorded: bool = True,
+    staging: Staging | None = None,
 ) -> tuple[dict[str, Any], Path]:
     """Compute the statistics summary and write stats.json. Returns
-    (summary, stats_path). `draft_summary` is the structure-only numbers of
-    this analyze's drafts (step_suggest.draft_summary), counts only.
-    `recorded` is False for a session without a recording (C16)."""
+    (summary, stats_path). `classified` is the classified event stream as
+    recorded, one activity row per foreground stretch: the statistics cut the
+    stretches left out of the analysis out of its rows before they merge
+    them (stats_compute.compute_all). `draft_summary` is the structure-only
+    numbers of this analyze's drafts (step_suggest.draft_summary), counts
+    only. `recorded` is False for a session without a recording (C16). With
+    a `staging`, stats.json is staged and committed with the run."""
     summary = stats.compute_all(
-        log_events, cases,
+        classified, cases,
         excluded_ranges=_excluded_ranges(existing_anno),
         steps=_visible_steps(existing_anno),
         recorded=recorded,
@@ -293,7 +293,8 @@ def _run_stats(
         "collapsed_activity_count": sum(1 for e in collapsed if e.get("type") == "activity"),
         "interaction_count": total_interactions,
         "case_count": len(cases),
-        "annotations_present": (session_folder / "annotations.json").exists(),
+        "annotations_present": ((session_folder / "annotations.json").exists()
+                                or (staging is not None and "annotations.json" in staging.names())),
         "marker_edits_applied": edits_applied,
         "step_count": len(merged_steps),
         "step_state_breakdown": {
@@ -313,9 +314,13 @@ def _run_stats(
     }
 
     stats_path = session_folder / "stats.json"
-    with open(stats_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2)
-    print(f"[normalize] wrote {stats_path}")
+    if staging is not None:
+        staging.write_json("stats.json", summary)
+        print(f"[normalize] staged {stats_path}")
+    else:
+        with open(stats_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        print(f"[normalize] wrote {stats_path}")
     return summary, stats_path
 
 
@@ -327,32 +332,37 @@ def _run_analysis(
     manifest: dict,
     cases: Any = None,
     recorded: bool = True,
+    staging: Staging | None = None,
 ) -> Any:
-    """Analysis layer (ADR-0008 / IMPROVEMENTS.md Cluster N). Heuristic
-    IE/CI findings -- waste classification, time study, automation
-    candidates, the process-efficiency ratio -- written to
-    analysis.json. Best-effort, never blocks the pipeline. Returns the
-    analysis result (or None).
+    """analysis.json: what the viewer and the PDD read of the analysis.
 
-    Phase A (honesty redesign, LAB-PHASE-SPEC §A1-§A3) adds the Tier-1
-    measured blocks -- `case_quality`, `facts`, `findings` -- as additive
-    keys on the same file. Tier 1 needs no case boundaries and no steps,
-    so analysis.json now writes for a stepless session too (the classic
-    step-grained blocks stay empty there).
+      case_quality     the transaction check (case_quality.py): how the
+                       transactions were found, how many, the share of the
+                       recorded actions inside them. The Map and the
+                       Checklist read it.
+      coverage_caveat  the apps the recorder saw with less detail
+                       (capture_detail.py), or null; the Overview's project
+                       line warns with its claim.
+      pdd_data,        the rows the PDD prints in sections 5 and 6
+      pdd_time         (pdd_export.pdd_rows), which the Overview shows as
+                       they are.
+      steps_signature  the steps those rows were measured from.
+      meta, stage_errors, format.
+
+    The analysis layer of the product edition (the facts, the findings, the
+    waste, time study, segments, automation and efficiency blocks, and the
+    PDD's findings selection) is cut: nothing read it (lane FX1).
 
     Stage failures (contract C12, RP-10): a stage that fails leaves its
-    output key null, never [] or zeros, and adds one
-    {"stage", "error"} entry to `stage_errors`, which is always written
-    (empty when every stage ran). Hidden steps are left out (RP-06).
-
-    The step-based block is timed statistics, so it leaves out the steps
-    without a time range (contract C16). A session without a recording
-    (`recorded` False: a video or blank session, C16) has nothing for the
-    measurements of the recording to measure: the step-based block,
-    `facts`, `findings` and `pdd_findings` are written null with no
-    stage_errors entry, because nothing failed. A renderer says that
-    nothing was recorded. `case_quality` still counts the runs (the
-    implicit run, or the runs marked by hand), with coverage null."""
+    output key null, never [] or zeros, and adds one {"stage", "error"} entry
+    to `stage_errors`, which is always written (empty when every stage ran).
+    Hidden steps are left out (RP-06). The stretches the analyst left out of
+    the analysis (excluded_ranges) are left out of the transaction check and
+    of the capture detail, as they are of the drafting and the statistics.
+    A session without a recording (`recorded` False: a video or blank
+    session, C16) has nothing recorded: `case_quality` still counts its
+    transactions, with coverage null, and `coverage_caveat` is null. With a
+    `staging`, analysis.json is staged and committed with the run."""
     stage_errors: list[dict[str, str]] = []
 
     def _failed(stage: str, error: str) -> None:
@@ -362,44 +372,14 @@ def _run_analysis(
     # The PDD's sections 5 and 6 read the same stream the PDD does (a step
     # the analyst kept inside a stretch left out keeps its fields).
     pdd_events = classified
-    # The stretches the analyst left out of the analysis (excluded_ranges)
-    # are left out of every measurement here too, as they are of the drafting
-    # and the statistics: the run check, the step-based blocks, the facts and
-    # the findings read the stream without them.
     classified = stats._filter_excluded(classified, _excluded_ranges(existing_anno))
 
     steps = _visible_steps(existing_anno)
-    timed = [s for s in steps if step_duration_ms(s) is not None]
-    analysis_result = None
-    if recorded:
-        try:
-            from analysis import run_analysis
-            analysis_result = run_analysis(
-                events=classified,
-                steps=timed,
-                stats=summary,
-                manifest=manifest,
-                annotations=existing_anno,
-            )
-            meta = analysis_result.get("meta") if isinstance(analysis_result, dict) else None
-            if isinstance(meta, dict):
-                meta["step_count"] = len(steps)     # every visible step, timed or not
-        except Exception as e:  # noqa: BLE001 (recorded as a stage error)
-            _failed("step_analysis", f"{type(e).__name__}: {e}")
-    if analysis_result is None:
-        # The classic layer failed entirely (or the session has no
-        # recording, so it did not run); the rest of the file is still
-        # written, on a minimal shell, rather than losing the whole file.
-        analysis_result = {"meta": {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "session_id": (manifest or {}).get("session_id", ""),
-            "step_count": len(steps),
-            "provisional": True,
-        }}
-        analysis_result.update({key: None for key in _STEP_ANALYSIS_KEYS})
-    # Sub-stage failures inside the classic layer (analysis.run_analysis).
-    stage_errors.extend(analysis_result.pop("stage_errors", None) or [])
-
+    analysis_result: dict[str, Any] = {"meta": {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "session_id": (manifest or {}).get("session_id", ""),
+        "step_count": len(steps),
+    }}
     try:
         from case_quality import compute_case_quality
         analysis_result["case_quality"] = compute_case_quality(
@@ -413,6 +393,13 @@ def _run_analysis(
     except Exception as e:  # noqa: BLE001 -- recorded as a stage error
         analysis_result["case_quality"] = None
         _failed("case_quality", f"{type(e).__name__}: {e}")
+    try:
+        from capture_detail import coverage_caveat
+        analysis_result["coverage_caveat"] = coverage_caveat(
+            classified, ((summary or {}).get("meta") or {}).get("app_names"))
+    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
+        analysis_result["coverage_caveat"] = None
+        _failed("coverage_caveat", f"{type(e).__name__}: {e}")
     # The rows the PDD prints in section 5 (Data) and section 6 (Applications
     # and time), computed by the function the PDD prints them with, from the
     # inputs it reads: the Overview shows exactly these (one source). Written
@@ -435,92 +422,27 @@ def _run_analysis(
     except Exception as e:  # noqa: BLE001 (recorded as a stage error)
         analysis_result["steps_signature"] = None
         _failed("steps_signature", f"{type(e).__name__}: {e}")
-    if not recorded:
-        for key in ("facts", "findings", "pdd_findings"):
-            analysis_result[key] = None
-        print("[normalize] nothing recorded: the measurements of the "
-              "recording are written as null")
-        return _write_analysis(session_folder, analysis_result, stage_errors)
-    motifs: list | None = None
-    bounces: list | None = None
-    try:
-        from motifs import find_motifs, find_bounces, maximal_motifs
-        # The maximal filter keeps the repeated-sequence count honest --
-        # the raw sliding window counts every overlapping sub-window.
-        motifs = maximal_motifs(find_motifs(steps))
-        bounces = find_bounces(steps)
-    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
-        motifs = bounces = None
-        _failed("motifs", f"{type(e).__name__}: {e}")
-    try:
-        from facts import compute_facts
-        facts = compute_facts(classified, motifs or [])
-        if motifs is None:
-            # The repeated-sequence count comes from motif mining, which failed.
-            facts["repeated_sequence_count"] = None
-        analysis_result["facts"] = facts
-    except Exception as e:  # noqa: BLE001 -- recorded as a stage error
-        analysis_result["facts"] = None
-        _failed("facts", f"{type(e).__name__}: {e}")
-
-    failed_inputs = [s for s in _FINDINGS_INPUT_STAGES
-                     if any(err["stage"] == s for err in stage_errors)]
-    if failed_inputs:
-        analysis_result["findings"] = None
-        _failed("findings", "not run: depends on failed stage(s) "
-                + ", ".join(failed_inputs))
-    else:
-        try:
-            from findings import detect_findings
-            detector_errors: list[str] = []
-            found = detect_findings(
-                classified, steps,
-                analysis_result.get("facts"),
-                case_quality=analysis_result.get("case_quality"),
-                analysis_blocks=analysis_result,
-                bounces=bounces,
-                errors=detector_errors,
-                app_names=((summary or {}).get("meta") or {}).get("app_names"))
-            if detector_errors:
-                # A detector that could not run makes the list incomplete; an
-                # incomplete list must not read as "nothing else stood out".
-                analysis_result["findings"] = None
-                _failed("findings", "; ".join(detector_errors))
-            else:
-                analysis_result["findings"] = found
-                if found:
-                    # ASCII-only: the bundled embeddable's console codepage
-                    # mangles non-ASCII in print output (it lands in
-                    # normalize.log too).
-                    print(f"[normalize] {len(found)} finding(s) detected (lab-phase A3)")
-        except Exception as e:  # noqa: BLE001 -- recorded as a stage error
-            analysis_result["findings"] = None
-            _failed("findings", f"{type(e).__name__}: {e}")
-    # F2: the findings the PDD's former section 1 could print and printed by
-    # default, for the viewer's "include in PDD" boxes. The PDD prints no
-    # finding since lane LUX-P; this stays until the viewer lane removes the
-    # boxes.
-    try:
-        from memo_export import pdd_findings
-        analysis_result["pdd_findings"] = pdd_findings(analysis_result, summary)
-    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
-        analysis_result["pdd_findings"] = None
-        _failed("pdd_findings", f"{type(e).__name__}: {e}")
-    return _write_analysis(session_folder, analysis_result, stage_errors)
+    return _write_analysis(session_folder, analysis_result, stage_errors, staging)
 
 
 def _write_analysis(session_folder: Path, analysis_result: dict,
-                    stage_errors: list[dict[str, str]]) -> dict:
+                    stage_errors: list[dict[str, str]],
+                    staging: Staging | None = None) -> dict:
     """Write analysis.json with its stage_errors and the format number the
     viewer checks (normalize-result.js analysisNeed analyzes a recording again
-    when it finds an older layout); returns the result."""
+    when it finds an older layout); returns the result. With a `staging`, the
+    file is staged and committed with the run."""
     analysis_result["stage_errors"] = stage_errors
     analysis_result["format"] = ANALYSIS_FORMAT
     try:
         analysis_path = session_folder / "analysis.json"
-        with open(analysis_path, "w", encoding="utf-8") as f:
-            json.dump(analysis_result, f, indent=2)
-        print(f"[normalize] wrote {analysis_path}")
+        if staging is not None:
+            staging.write_json("analysis.json", analysis_result)
+            print(f"[normalize] staged {analysis_path}")
+        else:
+            with open(analysis_path, "w", encoding="utf-8") as f:
+                json.dump(analysis_result, f, indent=2)
+            print(f"[normalize] wrote {analysis_path}")
     except Exception as e:
         print(f"[normalize] WARNING: analysis write failed: {e}")
     return analysis_result
@@ -538,13 +460,16 @@ def _run_mining_exports(
     pdd_tobe_image: str | None = None,
     events: list[dict[str, Any]] | None = None,
     pdd_map_images: str | None = None,
+    staging: Staging | None = None,
 ) -> None:
     """The step-level observed-flow BPMN (when `mine` is set) plus the
     requested PDD export. The BPMN keeps its best-effort try/except. A
-    requested PDD export that fails raises ExportFailed (C13 exit code 3); it
-    runs last, so every analysis output is already written. `events` is the
-    derived event stream the PDD reads the entered fields from.
-    `pdd_map_images` is the manifest of the maps' pictures (contract C19)."""
+    requested PDD export that fails raises ExportFailed (C13 exit code 3):
+    the run then commits nothing, so the project stays as it was. `events` is
+    the derived event stream the PDD reads the entered fields from.
+    `pdd_map_images` is the manifest of the maps' pictures (contract C19).
+    With a `staging`, the step BPMN is staged and committed with the run."""
+    map_written = False
     if mine:
         # Step observed-flow BPMN: the ACTUAL annotated step flow mined into
         # BPMN (the Process-diagram counterpart of the step Flow diagram).
@@ -568,11 +493,18 @@ def _run_mining_exports(
                 run_order = [r.get("case_id") for r in sorted(
                     (r for r in rows if r.get("case_id") and not r.get("parent_case_id")),
                     key=lambda r: (str(r.get("start_ts") or ""), str(r.get("case_id"))))]
+                # Each transaction's span, where the stretches left out of
+                # the analysis cut its trace (step_flow.left_out_stretches).
+                run_spans = {r.get("case_id"): (r.get("start_ts"), r.get("end_ts"))
+                             for r in rows if r.get("case_id")}
+                final = session_folder / "process_map_step.bpmn"
+                out = staging.path(final.name) if staging is not None else final
                 if bpmn_observed.write_observed_bpmn(
-                        existing_anno,
-                        str(session_folder / "process_map_step.bpmn"),
-                        context=context, implicit_runs=implicit, run_order=run_order):
-                    print(f"[normalize] wrote {session_folder / 'process_map_step.bpmn'}")
+                        existing_anno, str(out),
+                        context=context, implicit_runs=implicit, run_order=run_order,
+                        run_spans=run_spans):
+                    map_written = True
+                    print(f"[normalize] {'staged' if staging is not None else 'wrote'} {final}")
         except Exception as e:
             print(f"[normalize] WARNING: step BPMN failed: {e}")
 
@@ -592,6 +524,7 @@ def _run_mining_exports(
                 tobe_map_image=pdd_tobe_image,
                 events=events,
                 map_images=pdd_map_images,
+                map_file=map_written or None,
             )
         except Exception as e:  # noqa: BLE001 -- any failure fails the export
             # The traceback goes to normalize.log only (INFO is below the
@@ -599,5 +532,5 @@ def _run_mining_exports(
             logger.info("PDD export traceback", exc_info=True)
             raise ExportFailed(
                 f"PDD export to {pdd_out} failed: {type(e).__name__}: {e}. "
-                "The analysis outputs were written; the PDD was not.") from e
+                "Nothing in the project was changed.") from e
         print(f"[normalize] wrote PDD: {pdd_out}")

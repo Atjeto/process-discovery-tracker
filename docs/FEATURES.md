@@ -65,10 +65,12 @@ The Python pipeline the viewer runs by itself; see
   Salesforce), from one rule list shared with the viewer; a system set by
   hand wins.
 - **Statistics and observations.** Times per run and per step, the variants
-  of the runs, the data typed again in another system, and how much of each
-  application the recorder could see; the rows the PDD prints in its
+  of the runs, the data typed again in another system, and the applications
+  the recorder saw with less detail; the rows the PDD prints in its
   sections 5 and 6, written into `analysis.json` for the viewer's Overview.
-  A stretch the analyst left out of the analysis is left out of all of them.
+  A transaction's active time is the recorded foreground time inside it. A
+  stretch the analyst left out of the analysis is left out of all of them,
+  exactly its own time.
   A check that could not run says so, never shows zero.
 - **The step map.** A BPMN 2.0 file of the transactions' steps
   (`process_map_step.bpmn`) that prints legibly: left to right, wrapped into
@@ -88,8 +90,10 @@ The Python pipeline the viewer runs by itself; see
   time, "in N of M transactions", "Transaction 1 at 0:19", "Only when" its
   condition, its description, the fields it entered, its screenshots and
   attachments, a waste flag, and where the process goes after it besides
-  the next step); variations (a transaction with a stretch left out of the
-  analysis says so, and the steps done in it are not read as skipped),
+  the next step), each step headed "Step 2: <name>" so its number never
+  reads as a section's; variations (the lines the Steps level lists: extra,
+  reordered, skipped and repeated steps, a conditional step not done, and a
+  stretch left out of the analysis),
   business rules and exceptions; one data
   table; applications and time; improvement and automation scope with the
   To-Be map; notes; attachments. The analyst's fields survive every
@@ -113,8 +117,9 @@ The viewer says *transaction* for one pass through the process and
   capture app saved, or one made with New) and the recent projects, named
   by their document title once it is written.
 - **The analysis runs by itself** when a folder opens without a current one
-  and after the changes that need it, with one status line and Cancel. The
-  log shows only when a run fails.
+  and after the changes that need it, with one status line and Cancel. A
+  run changes the project only when it finishes, so Cancel leaves the steps
+  and the map as they were. The log shows only when a run fails.
 
 **Overview**
 
@@ -175,7 +180,10 @@ The viewer says *transaction* for one pass through the process and
   the Confirmed badge, takes it back. A merge carries to the same drafts of the other
   transactions; a hidden draft can be hidden in every transaction.
 - **The other transactions are reviewed, not confirmed**: each lists its
-  extra, skipped and reordered steps against the reference transaction.
+  extra, skipped, reordered and repeated steps against the reference
+  transaction, and its head counts them; a step that happens only under a
+  condition and was not done is said apart, as no difference (the PDD's
+  4.1 lists the same lines).
 - **The step pane**: a fact line led by the system, Name, System, the fields
   typed, Description (with what was said during the step), the Flow line,
   Waste, Watch and Hide; screenshots (a video frame, a pasted image or a

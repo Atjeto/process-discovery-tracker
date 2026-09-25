@@ -7,7 +7,8 @@ in the reader's order:
 
   1. Document control: the process, the project folder (a developer's way
      into the recording), who recorded it, the transactions, whether a video
-     is attached, and the request when the capture app set one (AD-30).
+     is attached, and the request when the capture app set one (AD-30): its
+     name and its code, "Invoice intake review (REQ-2026-042)".
   2. Purpose and scope: the analyst's document fields (annotations.document,
      contract C6): purpose, scope, trigger, result and key contacts.
   3. As-Is process: the systems the process runs through, the As-Is map on
@@ -17,17 +18,19 @@ in the reader's order:
      the recording ("Transaction 1 at 0:19", and the video time when the
      video's start is known); its description (C7) is its text. The flow
      the analyst set on it (C17) prints under it: "Only when" its condition,
-     and where the process goes after it besides the next step. Contract
-     C19: a step that is a sub-process points at its chapter ("Sub-process:
-     see 3.3."), and after 3.2 each sub-process with a number has one
-     (3.3 on, depth first): its map on a page of its own, then the steps of
-     the reference transaction's first visit, numbered "2.1", "2.2" and
-     pointing at deeper chapters in turn.
+     and where the process goes after it besides the next step. A step's
+     heading reads "Step 2: <name>", so a step's number never reads as a
+     section's (lane FX1). Contract C19: a step that is a sub-process points
+     at its chapter ("Sub-process: see section 3.3."), and after 3.2 each
+     sub-process with a number has one (3.3 on, depth first): its map on a
+     page of its own, then the steps of the reference transaction's first
+     visit, "Step 2.1", "Step 2.2", pointing at deeper chapters in turn.
   4. Variations, rules and exceptions: how each other transaction differed
-     from the reference transaction (aligned by draft key; the rule is
-     pinned with the viewer by shared/run-differences-golden.json), steps
-     repeated within a transaction, then the business rules and the
-     exceptions.
+     from the reference transaction (aligned by draft key: extra steps,
+     another order, skipped steps, steps done more often than the reference
+     did them, and a conditional step not done; the rule is pinned with the
+     viewer's Steps by shared/run-differences-golden.json), then the
+     business rules and the exceptions.
   5. Data: every field entered, with its system and screen, its step and an
      example value. Re-keyed data (a value typed again in another system in
      the same transaction) is marked and stated as a requirement.
@@ -92,13 +95,11 @@ except ImportError:
     Pt = Inches = RGBColor = None
 
 from _dt import parse_ts_or_none as _parse_ts
-from facts import _NOISE_VALUES, REKEY_MIN_LEN, REKEY_MIN_LEN_VOCAB
-from findings import _fmt_ms as _fmt_duration
-from memo_export import run_rows
 from session_io import has_recording, session_source
-from step_context import (StepContext, clock, has_video, step_duration_ms, step_start,
-                          step_system, untimed_key, video_start)
-from step_flow import END, START, condition_of, links_of, node_of
+from step_context import (StepContext, clock, fmt_ms as _fmt_duration, has_video,
+                          step_duration_ms, step_start, step_system, untimed_key, video_start)
+from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
+                       node_of)
 from step_suggest import is_drafted_description, step_identity
 from sub_process_maps import map_tree
 
@@ -106,6 +107,15 @@ logger = logging.getLogger(__name__)
 
 # Interaction kinds that put a typed value into a field.
 _TYPED_KINDS = ("value_changed", "text_changed")
+# Literal junk an old recorder emits as a typed "value": never a business
+# value, so it is neither printed nor compared as re-keyed data.
+_NOISE_VALUES = frozenset({"null", "(null)", "undefined", "(undefined)"})
+# The shortest typed value compared as re-keyed data: below it, equal values
+# are noise (single digits, "OK"). A field whose vocabulary entry declares
+# `carries_value: true` is a known business-value carrier, so its values
+# count from REKEY_MIN_LEN_VOCAB characters.
+REKEY_MIN_LEN = 4
+REKEY_MIN_LEN_VOCAB = 2
 # A field value longer than this is cut in the document.
 _VALUE_MAX = 200
 # The line under the times of the transactions (AD-28).
@@ -118,6 +128,10 @@ _WALKTHROUGH = ("The transactions were recorded during a walkthrough, with "
 _DEFAULT_LABEL_WORDS = ("transaction", "run")
 # The step context line's separator (a middle dot, as the viewer's fact line).
 _SEP = " · "
+# The capture app's defaults for the request (capture/config.js): a
+# recording made without setting one prints no request.
+DEFAULT_REQUEST_NAME = "Default engagement"
+DEFAULT_REQUEST_CODE = "default"
 
 
 def write_pdd(
@@ -132,6 +146,7 @@ def write_pdd(
     tobe_map_image: str | Path | None = None,
     events: list[dict] | None = None,
     map_images: str | Path | None = None,
+    map_file: bool | None = None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
     steps' systems, screens and entered fields are read from; without it the
@@ -142,13 +157,18 @@ def write_pdd(
     `map_images` (contract C19, the `--pdd-map-images` manifest) names a
     picture per map, {"maps": [{"path": [<node>, ...], "png": "<file>"}]}:
     the main map's (path []) wins over `process_map_image`, and each
-    sub-process's chapter prints its own (_read_map_images)."""
+    sub-process's chapter prints its own (_read_map_images). `map_file`
+    says whether the project holds process_map_step.bpmn (the run that
+    writes the PDD may have written it too, not yet in place); None looks in
+    the folder."""
     if Document is None:
         raise RuntimeError(
             "python-docx is not installed. Add `python-docx>=1.1.0` to "
             "normalization/requirements.txt and reinstall."
         )
     s = _Session(session_folder, annotations, stats, manifest, events, map_images)
+    if map_file is not None:
+        s.map_file = bool(map_file)
     doc = Document()
     s.portrait = _page_of(doc.sections[0])
     notes = bool(s.field("notes"))
@@ -170,9 +190,12 @@ def write_pdd(
 
 def _time_key(ts):
     """A sort key for an ISO timestamp: parsed, so "…21Z" sorts before
-    "…21.5Z"; an unreadable one sorts last."""
+    "…21.5Z"; an unreadable one sorts last. Two equal times are equal keys:
+    the sort keeps their list order, as the viewer's does (runs-model.js
+    byStart), so steps that start at one moment are numbered alike in the
+    PDD and in Steps."""
     t = _parse_ts(ts)
-    return (t is None, t.timestamp() if t else 0.0, str(ts or ""))
+    return (t is None, t.timestamp() if t else 0.0)
 
 
 def _start_key(step):
@@ -182,6 +205,15 @@ def _start_key(step):
     if step_start(step) is not None:
         return _time_key(step["time_range"].get("start"))
     return (True, *untimed_key(step))
+
+
+def run_rows(stats: dict | None) -> list[dict]:
+    """The recording's transactions: the top-level marked cases in
+    stats.case_stats, in start order. Section 6.1 and every count of the
+    transactions read these rows."""
+    rows = [r for r in (stats or {}).get("case_stats") or []
+            if isinstance(r, dict) and r.get("case_id") and not r.get("parent_case_id")]
+    return sorted(rows, key=lambda r: str(r.get("start_ts") or ""))
 
 
 def _key_list(value):
@@ -423,6 +455,7 @@ class _Session:
             if lv.number is not None:
                 self.chapters[tuple(lv.path)] = 3 + len(self.chapters)
         self.map_images = _read_map_images(map_images)
+        self.map_file = (self.folder / "process_map_step.bpmn").exists()
 
     def _pick_pattern(self):
         """C3: the run the analyst chose, when it names a recorded run; else
@@ -451,16 +484,20 @@ class _Session:
         return value.strip() if isinstance(value, str) else ""
 
     def request(self) -> str:
-        """The capture's request (its engagement, AD-30), only when one was
-        set: its name, else its code; the capture app's defaults print
-        nothing."""
+        """The capture's request (its engagement, AD-30), as the viewer's
+        project line names it (session-summary.js requestOf): its name and
+        its code, "Invoice intake review (REQ-2026-042)", the name or the
+        code alone, or "" when the capture app's defaults were left (the name
+        "Default engagement", the code "default")."""
         config = self.manifest.get("config")
         config = config if isinstance(config, dict) else {}
         name = _text_of(self.manifest.get("engagement_name")) or _text_of(config.get("engagement_name"))
-        if name and name != "Default engagement":
-            return name
+        name = "" if name == DEFAULT_REQUEST_NAME else name
         code = _text_of(self.manifest.get("engagement_id"))
-        return code if code and code != "default" else ""
+        code = "" if code == DEFAULT_REQUEST_CODE else code
+        if name and code and name != code:
+            return f"{name} ({code})"
+        return name or code
 
     def run_label(self, index) -> str:
         """"Transaction 2: Refund", or "Transaction 2" when the run has no
@@ -840,7 +877,7 @@ def _duration(ms) -> str:
 
 
 def _fmt_ms(ms):
-    """A duration in the findings' format ("46s", "1m 07s"). A non-numeric
+    """A duration ("46s", "1m 07s", step_context.fmt_ms). A non-numeric
     value (hand-edited annotations, odd analysis) is "-"."""
     if not _num(ms):
         return "-"
@@ -967,7 +1004,10 @@ def _flow_rows(s) -> list[tuple[str, str]]:
     of the runs, in the order the reference run (then the others) first did
     it, the steps that came next, each with the number of transactions in
     which it did ("Save (3 of 4 transactions)"). A step repeated back to
-    back counts once, as on the map."""
+    back counts once, as on the map. A stretch left out of the analysis cuts
+    the transaction's trace, as on the map (step_flow): no step follows
+    another across it, and a stretch that opens (closes) the transaction
+    leaves out its path from the start (to the end)."""
     runs = len(s.runs)
     names: dict[str, str] = {"start": "Start", "end": "End"}
     order: dict[str, None] = {"start": None}
@@ -975,18 +1015,24 @@ def _flow_rows(s) -> list[tuple[str, str]]:
     ordered_runs = ([s.pattern_index] if s.pattern_index is not None else []) + [
         i for i in range(runs) if i != s.pattern_index]
     for i in ordered_runs:
-        keys = []
-        for unit in s.units[i]:
-            key = _align_key(unit)
-            names.setdefault(key, _step_name(unit))
-            if not keys or keys[-1] != key:
-                keys.append(key)
-        if not keys:
+        units = s.units[i]
+        if not units:
             continue
-        path = ["start"] + keys + ["end"]
-        for a, b in zip(path, path[1:]):
-            order.setdefault(a, None)
-            follows.setdefault(a, {}).setdefault(b, set()).add(i)
+        n = len(units)
+        cuts = cut_positions([step_start(_members(u)[0]) for u in units], s.left_out(i))
+        bounds = [0] + [c for c in cuts if 0 < c < n] + [n]
+        for part, (lo, hi) in enumerate(zip(bounds, bounds[1:])):
+            keys = []
+            for unit in units[lo:hi]:
+                key = _align_key(unit)
+                names.setdefault(key, _step_name(unit))
+                if not keys or keys[-1] != key:
+                    keys.append(key)
+            path = ((["start"] if part == 0 and 0 not in cuts else []) + keys
+                    + (["end"] if hi == n and n not in cuts else []))
+            for a, b in zip(path, path[1:]):
+                order.setdefault(a, None)
+                follows.setdefault(a, {}).setdefault(b, set()).add(i)
     rows = []
     for key in order:
         nexts = follows.get(key)
@@ -1021,7 +1067,7 @@ def _write_as_is(doc, s, process_map_image):
             _table(doc, ("Step", "Followed by"), rows, widths=(2.4, 3.6))
         else:
             doc.add_paragraph(_no_map_reason(s))
-        if (s.folder / "process_map_step.bpmn").exists():
+        if s.map_file:
             doc.add_paragraph("The map file is process_map_step.bpmn in the project folder.")
     _write_steps(doc, s)
     _write_sub_processes(doc, s)
@@ -1199,24 +1245,31 @@ def _link_lines(s, step, number, steps, level=None) -> list[str]:
             continue
         verb = ("goes back to" if n <= number
                 else "goes on to" if n == number + 1 else "skips to")
-        shown = f"{level.number}.{n}" if sub else str(n)
-        target = f"Then {verb} step {shown}, {_step_name(steps[n - 1])}"
+        target = f"Then {verb} step {_step_number(n, level)}, {_step_name(steps[n - 1])}"
         lines.append(f"{target}, when {_sentence(when)}" if when else f"{target}.")
     return lines
 
 
+def _step_number(number, level=None) -> str:
+    """A step's number as the document prints it: "2" at the main level,
+    "<the sub-process's number>.<number>" ("2.1") in a sub-process's
+    chapter (contract C19). It always follows the word "step" ("Step 2.1:
+    ...", "goes back to step 2.1"), so it never reads as the number of a
+    section (lane FX1)."""
+    sub = level is not None and bool(level.path)
+    return f"{level.number}.{number}" if sub else str(number)
+
+
 def _write_step(doc, s, step, number, steps, level=None):
-    """One printed step: its heading, its context line, "Only when" its
-    condition, its description when the analyst wrote it, the fields it
-    entered, its attachments, its screenshots, the waste flag and its flow
-    (C17). Contract C19: `level` is the map it is drawn in; in a
-    sub-process's chapter it is numbered "<chapter number>.<number>". A
+    """One printed step: its heading ("Step 2: <name>"), its context line,
+    "Only when" its condition, its description when the analyst wrote it,
+    the fields it entered, its attachments, its screenshots, the waste flag
+    and its flow (C17). Contract C19: `level` is the map it is drawn in; in a
+    sub-process's chapter it is numbered "Step <chapter number>.<number>". A
     group of steps (`group: true`) prints no fields and no screenshot: its
     chapter prints its steps with theirs. A step whose map node has a
-    chapter ends with the line that points at it."""
-    sub = level is not None and bool(level.path)
-    label = f"{level.number}.{number}" if sub else f"{number}."
-    doc.add_heading(f"{label} {_step_name(step)}", level=3)
+    chapter ends with the line that points at its section."""
+    doc.add_heading(f"Step {_step_number(number, level)}: {_step_name(step)}", level=3)
     context = s.context_line(step, level)
     if context:
         _small(doc, context)
@@ -1246,7 +1299,7 @@ def _write_step(doc, s, step, number, steps, level=None):
     # C19: the chapter of the sub-process the step stands for.
     chapter = s.chapters.get(tuple((level.path if level is not None else []) + [node_of(step)]))
     if chapter is not None:
-        doc.add_paragraph(f"Sub-process: see 3.{chapter}.")
+        doc.add_paragraph(f"Sub-process: see section 3.{chapter}.")
 
 
 def _safe_path(folder, ref):
@@ -1371,33 +1424,10 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
     return out
 
 
-def _left_out_stretches(ranges, start, end) -> list[tuple]:
-    """The stretches of one run left out of the analysis: each excluded range
-    (annotations.excluded_ranges, {"start", "end"} ISO) cut to the run's
-    span (`start`, `end` datetimes; `end` None for a run left open), in time
-    order, overlapping ones joined; a range outside the span, or one that
-    cannot be read, is dropped, and without a `start` nothing is placed.
-    [(start, end)]. The rule of viewer/run-differences.js leftOutStretches,
-    pinned with it by shared/run-differences-golden.json."""
-    if start is None:
-        return []
-    cut = []
-    for r in ranges if isinstance(ranges, list) else []:
-        if not isinstance(r, dict):
-            continue
-        a, b = _parse_ts(r.get("start")), _parse_ts(r.get("end"))
-        if a is None or b is None or b < a:
-            continue
-        s, e = max(a, start), (min(b, end) if end is not None else b)
-        if e > s:
-            cut.append((s, e))
-    out: list[list] = []
-    for s, e in sorted(cut):
-        if out and s <= out[-1][1]:
-            out[-1][1] = max(out[-1][1], e)
-        else:
-            out.append([s, e])
-    return [(s, e) for s, e in out]
+# The stretches of one run left out of the analysis: step_flow's rule, the
+# one viewer/run-differences.js leftOutStretches follows (pinned together by
+# shared/run-differences-golden.json). The map cuts its traces at them too.
+_left_out_stretches = left_out_stretches
 
 
 def _left_out_text(stretches, origin, unit="run") -> str:
@@ -1445,33 +1475,87 @@ def _inside_stretches(units, ref_index, ref_length, stretches) -> set:
     return inside
 
 
-def _difference_items(pattern_steps, run_steps, left_out=None) -> list[tuple]:
-    """The differences of a run from the pattern run, as
-    (kind, key, unit, previous unit or None, index in the pattern run or None)
-    with kind "extra", "order" or "skipped": extra steps and steps in a
-    different order, in the run's order, then the pattern steps the run
-    skipped. Steps are matched by their align key, after the run's stretches
-    that spell a merged pattern step are folded (_collapse_merged); a step
-    repeated within a run counts once here. `left_out`: the run's stretches
-    left out of the analysis (_left_out_stretches); the pattern steps inside
-    them are not skipped (_inside_stretches)."""
+# The kinds of difference lines that are differences: the Steps level counts
+# them in a transaction's head, and the Checklist names a transaction that
+# has one. A stretch left out ("left_out") and a conditional step not done
+# ("not_done") are said, and are no difference.
+COUNTED_KINDS = ("extra", "order", "skipped", "repeated")
+
+
+def _condition_of_key(steps, key) -> str:
+    """The condition (C17 `only_when`, one line) of the first of `steps`
+    with the align key `key` that carries one, or ""."""
+    for step in steps:
+        if isinstance(step, dict) and _align_key(step) == key:
+            cond = condition_of(step)
+            if cond:
+                return cond
+    return ""
+
+
+def _difference_items(pattern_steps, run_steps, left_out=None) -> list[dict]:
+    """The differences of a run from the pattern run, one dict each: {"kind",
+    "key", "step", "prev", "index", "condition", "times"}, kind one of
+      "extra"     a step of the run the pattern lacks (`prev`: the unit
+                  before it, None at the start of the run);
+      "order"     a step both have, outside a longest common order;
+      "skipped"   a pattern step the run lacks (`index`: its place in the
+                  pattern run);
+      "not_done"  a pattern step the run lacks that happens only under a
+                  condition (C17 `only_when`, `condition`): not a difference;
+      "repeated"  a step the run does more often than the pattern run, at
+                  least twice (`times`: how often), at its first time;
+    in that order: extra and order in the run's order, then skipped and
+    not_done in the pattern's order, then repeated in the run's order. Steps
+    are matched by their align key, after the run's stretches that spell a
+    merged pattern step are folded (_collapse_merged). `left_out`: the run's
+    stretches left out of the analysis (_left_out_stretches); the pattern
+    steps inside them are neither skipped nor not done (_inside_stretches).
+    viewer/run-differences.js differences, pinned with it by
+    shared/run-differences-golden.json."""
     units = _collapse_merged(pattern_steps, run_steps)
     pat, run = _first_occurrences(pattern_steps), _first_occurrences(units)
     pat_keys, run_keys = [k for k, _s, _i in pat], [k for k, _s, _i in run]
     in_order = _common_order(pat_keys, run_keys)
     inside = (_inside_stretches(units, {k: i for k, _s, i in pat}, len(pattern_steps), left_out)
               if left_out else set())
+    pat_count = Counter(_align_key(st) for st in pattern_steps)
+    run_count = Counter(_align_key(u) for u in units)
+
+    def item(kind, key, step, prev=None, index=None, condition="", times=0):
+        return {"kind": kind, "key": key, "step": step, "prev": prev, "index": index,
+                "condition": condition, "times": times}
+
     items = []
     for key, step, i in run:
         prev = units[i - 1] if i else None
         if key not in pat_keys:
-            items.append(("extra", key, step, prev, None))
+            items.append(item("extra", key, step, prev))
         elif key not in in_order:
-            items.append(("order", key, step, prev, None))
+            items.append(item("order", key, step, prev))
     for key, step, i in pat:
-        if key not in run_keys and i not in inside:
-            items.append(("skipped", key, step, None, i))
+        if key in run_keys or i in inside:
+            continue
+        condition = _condition_of_key(pattern_steps, key)
+        items.append(item("not_done", key, step, index=i, condition=condition) if condition
+                     else item("skipped", key, step, index=i))
+    for key, step, _i in run:
+        n = run_count[key]
+        if n >= 2 and n > pat_count.get(key, 0):
+            items.append(item("repeated", key, step, times=n))
     return items
+
+
+def difference_count(pattern_steps, run_steps, left_out=None) -> int:
+    """How many differences a run has from the pattern run: its difference
+    items of the COUNTED_KINDS (viewer/run-differences.js differenceCount)."""
+    return sum(1 for it in _difference_items(pattern_steps, run_steps, left_out)
+               if it["kind"] in COUNTED_KINDS)
+
+
+def _clause(condition: str) -> str:
+    """An analyst's condition inside a sentence: no full stop at its end."""
+    return condition.rstrip().rstrip(".").rstrip()
 
 
 def _differences(pattern_steps, run_steps, left_out=None, origin=None) -> list[str]:
@@ -1480,53 +1564,64 @@ def _differences(pattern_steps, run_steps, left_out=None, origin=None) -> list[s
     any: the viewer's differences review (viewer/run-differences.js) builds the
     same lines; both are pinned by shared/run-differences-golden.json, so
     their wording changes only together with the viewer's and the golden's.
-    The document does not print these lines: it words the differences for
-    its reader (_variation_lines)."""
+    The document words the same items for its reader (_variation_lines)."""
     out = [_left_out_text(left_out, origin)] if left_out else []
-    for kind, _key, step, prev, index in _difference_items(pattern_steps, run_steps, left_out):
+    for it in _difference_items(pattern_steps, run_steps, left_out):
+        kind, step, prev = it["kind"], it["step"], it["prev"]
         where = f"after {_step_name(prev)}" if prev is not None else "at the start of the run"
         if kind == "extra":
             out.append(f"Extra step: {_step_name(step)} ({where}).")
         elif kind == "order":
             out.append(f"Different order: {_step_name(step)} (in this run {where}).")
+        elif kind == "skipped":
+            out.append(f"Skipped: {_step_name(step)} (step {it['index'] + 1} of the pattern run).")
+        elif kind == "not_done":
+            out.append(f"Not done: {_step_name(step)} (only when {_clause(it['condition'])}).")
         else:
-            out.append(f"Skipped: {_step_name(step)} (step {index + 1} of the pattern run).")
+            out.append(f"Repeated: {_step_name(step)}, {it['times']} times.")
     return out
 
 
 def _variation_lines(s, run_index) -> list[str]:
     """The document's lines for one run: first, once, the part of it left
     out of the analysis (annotations.excluded_ranges, cut to its span), then
-    its differences from the reference transaction (each extra step with its
-    system, in how many transactions it happened and what was done; each
-    skipped step with how many transactions did it; a reference step inside
-    a stretch left out is not skipped), then the steps it repeated."""
+    its differences from the reference transaction (_difference_items, the
+    rule the Steps level follows): each extra step with its system, in how
+    many transactions it happened and what was done; each step in another
+    order; each skipped step with how many transactions did it; a step that
+    happens only under a condition the transaction did not do, with the
+    condition (no difference); each step it did more often than the
+    reference transaction, with how often. A reference step inside a stretch
+    left out is neither skipped nor not done. The reference transaction is
+    compared with nothing: it says only its stretches left out."""
     m = len(s.runs)
     stretches = s.left_out(run_index)
     lines = [_left_out_text(stretches, s.recording_start, "transaction")] if stretches else []
-    if run_index != s.pattern_index:
-        pattern = s.run_steps(s.pattern_index)
-        for kind, key, step, prev, _index in _difference_items(pattern, s.run_steps(run_index), stretches):
-            name = _step_name(step)
-            if kind == "extra":
-                where = (f" after {_step_name(prev)}" if prev is not None
-                         else " at the start of the transaction")
-                system = s.system_of(step)
-                shown = f"{name} ({system})" if system and system.lower() not in name.lower() else name
-                line = (f"Extra step{where}: {shown}, in {s.key_runs.get(key) or 1} "
-                        f"of {m} transactions.")
-                done = s.what_was_done(step)
-                lines.append(f"{line} {done}" if done else line)
-            elif kind == "order":
-                after = f"after {_step_name(prev)}" if prev is not None else "first"
-                lines.append(f"Different order: {name}, done {after} in this transaction.")
-            else:
-                lines.append(f"Skipped: {name} (done in {s.key_runs.get(key) or 0} "
-                             f"of {m} transactions).")
-    counts = Counter(_align_key(u) for u in s.units[run_index])
-    for key, unit, _i in _first_occurrences(s.units[run_index]):
-        if counts[key] > 1:
-            lines.append(f"Repeated: {_step_name(unit)}, {counts[key]} times.")
+    if run_index == s.pattern_index:
+        return lines
+    pattern = s.run_steps(s.pattern_index)
+    for it in _difference_items(pattern, s.run_steps(run_index), stretches):
+        kind, key, step, prev = it["kind"], it["key"], it["step"], it["prev"]
+        name = _step_name(step)
+        if kind == "extra":
+            where = (f" after {_step_name(prev)}" if prev is not None
+                     else " at the start of the transaction")
+            system = s.system_of(step)
+            shown = f"{name} ({system})" if system and system.lower() not in name.lower() else name
+            line = (f"Extra step{where}: {shown}, in {s.key_runs.get(key) or 1} "
+                    f"of {m} transactions.")
+            done = s.what_was_done(step)
+            lines.append(f"{line} {done}" if done else line)
+        elif kind == "order":
+            after = f"after {_step_name(prev)}" if prev is not None else "first"
+            lines.append(f"Different order: {name}, done {after} in this transaction.")
+        elif kind == "skipped":
+            lines.append(f"Skipped: {name} (done in {s.key_runs.get(key) or 0} "
+                         f"of {m} transactions).")
+        elif kind == "not_done":
+            lines.append(f"Not done: {name} (only when {_clause(it['condition'])}).")
+        else:
+            lines.append(f"Repeated: {name}, {it['times']} times.")
     return lines
 
 
@@ -1537,12 +1632,9 @@ def _write_variations(doc, s):
         doc.add_paragraph("Transactions were not marked in this recording, so there "
                           "are no transactions to compare.")
     elif s.implicit:
-        # C16: one implicit run covers the session; only its repeats show.
+        # C16: one implicit run covers the session: nothing to compare.
         doc.add_paragraph("Transactions were not marked in this project, so there "
                           "are no transactions to compare.")
-        if s.pattern_index is not None:
-            for line in _variation_lines(s, s.pattern_index):
-                doc.add_paragraph(line, style="List Bullet")
     elif s.pattern_index is None:
         doc.add_paragraph("None of the recorded transactions has steps, so the "
                           "transactions cannot be compared.")
@@ -1576,8 +1668,8 @@ def _write_variations(doc, s):
 
 def _rekey_value(data, value) -> str:
     """The value as re-keying compares it, or "" when it does not count: a
-    secret, a noise literal, or shorter than the re-key minimum (facts.py;
-    a vocabulary that vouches for the field lowers it)."""
+    secret, a noise literal, or shorter than the re-key minimum
+    (REKEY_MIN_LEN; a vocabulary that vouches for the field lowers it)."""
     if not isinstance(data, dict) or data.get("kind") not in _TYPED_KINDS:
         return ""
     if data.get("value_redacted") is True or value.lower() in _NOISE_VALUES:

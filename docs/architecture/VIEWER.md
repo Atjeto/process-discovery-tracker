@@ -310,7 +310,7 @@ their module as `<name>.test.js`.
 | `state.js` | The central store, the topic bus, the undo and redo stacks (section 6). |
 | `session.js` | Annotation saves with undo, `persistAnnotations`, undo and redo in place, `ensureAnnoShape` (section 9); `setBeforeWrite`, awaited before every write (the Overview's rows refresh stops there). |
 | `dom.js` | `$`, `$$`, escaping, `formatDuration`, the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
-| `modals.js` | `promptModal`, `confirmModal`, `formModal`: themed dialogs. |
+| `modals.js` | `promptModal`, `confirmModal`: themed dialogs. |
 | `theme.js` | The light and dark theme, its persistence, the per-app band colours and the map's colour snapshot. |
 | `recent.js` | The recent projects (`pdt.recentSessions`): the list on the empty state; the Open menu reads it too. |
 | `layout-controls.js` | The Timeline's resize handles and video modes (expanded, full screen); wires itself when required. |
@@ -383,7 +383,7 @@ their module as `<name>.test.js`.
 | `map-controller.js` | The Map's live map, how the transactions ran: draws the data source once it has an edge (the Start's and the End's count), its fit control, a box click to the step panel, a double-click on a sub-process's box to its map (C19). |
 | `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set (and per level, C19); a sub-process's box carries a + (a small square at its foot). |
 | `refmap-ui.js` | The Map level's picture and the edited maps (lane MV): which picture shows and when it is drawn again (`syncMapView`, the facts for `map-view.js`: the view chosen, the copy, `process_map_step.bpmn` and whether it is current, the planes each file has once drawn), its one header line and the line that says why, the Map's own analysis once per change (`mapBusy` while it runs), the step map kept current across the edited maps' own saves and the PDD's run (`keepingStepMapCurrent`); the edit act (it analyzes first when the steps changed since the map file was written, or waits for the Map's own analysis), the new copy kept at its first change and dropped when it was left unchanged, the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`; C19: a plane per path, `renderPlanesToPng`, `renderPlaneToSvg`). |
-| `asis-view.js` | The map the PDD prints on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, each exclusive gateway with its marker as the modeler draws it, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`). C19: the plane of a level (`hasLevel`, `showLevel`, each plane fitted the first time; the drawn file's `definitions` for the planes it has), bpmn-js's own drill down told to the Map (`configure`'s `onLevel`), the main map's crumb named. |
+| `asis-view.js` | The map the PDD prints on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, each exclusive gateway with its marker as the modeler draws it, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`). C19: the plane of a level (`showLevel`, each plane fitted the first time; the drawn file's `definitions` for the planes it has), bpmn-js's own drill down told to the Map (`configure`'s `onLevel`), the main map's crumb named. |
 | `bpmn-viewer.js` | The bpmn-js modeler in the editor overlay: a copy opens on its own saved layout, a new one from its XML before its file exists (`xml`, lane MV); each edit, undo and redo is heard first (`onChange`: a new copy is kept then), written back after a short delay and reported to the save state; `flush` writes a waiting edit when the editor closes or another map opens; `changed` tells whether the map differs from the one opened. |
 
 ## 4. The module graph
@@ -563,8 +563,9 @@ itself:
 - **On open**, when `normalize-result.analysisNeed(session)` says so: no
   `stats.json` or `analysis.json`, or an `analysis.json` whose `format` is
   missing or lower than `ANALYSIS_FORMAT` (the number
-  `normalization/pipeline_stages.py` writes, 3 now: the Overview's
-  Observations read `pdd_data` and `pdd_time`). Once per folder in a
+  `normalization/pipeline_stages.py` writes, 4 now: the Overview's
+  Observations read `pdd_data` and `pdd_time`, and its project line the
+  `coverage_caveat`, lane FX1). Once per folder in a
   window, never from an analysis's own reload, and not while
   `annotations.json` cannot be read.
 - **As the Overview opens**, when its rows are older than the steps (lane

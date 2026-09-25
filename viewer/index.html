@@ -353,7 +353,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </div>
           <div class="event-table-scroll">
             <table class="event-table" id="event-table">
-              <thead><tr><th>time</th><th>type</th><th>label / app</th><th>detail</th><th>dur</th><th>actions</th></tr></thead>
+              <thead><tr><th title="Time since the recording started">time</th><th>type</th><th>label / app</th><th>detail</th><th>dur</th><th>actions</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -463,7 +463,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Fixes that carry to the other transactions</h3>
           <p>A merge in the reference transaction is also made in the other transactions wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every transaction. Splits and added steps are made in each transaction that needs them.</p>
           <h3>Differences between transactions</h3>
-          <p>Every other transaction is compared with the reference transaction step by step, the way the PDD compares them: an open transaction lists its extra steps (and where they happen), its skipped steps and the steps done in a different order, and first, when part of it was left out of the analysis, which part. The other transactions are not confirmed: once each has been opened, the Overview's Checklist ticks <em>Review the other transactions</em>.</p>
+          <p>Every other transaction is compared with the reference transaction step by step, the way the PDD compares them: an open transaction lists its extra steps (and where they happen), its skipped steps, the steps done in a different order and the steps done more often than in the reference transaction, and its line counts them. Said apart, above them: when part of it was left out of the analysis, which part, and a step that happens only under a condition (<em>Only when</em>) and was not done, which is no difference. The other transactions are not confirmed: once each has been opened, the Overview's Checklist ticks <em>Review the other transactions</em>.</p>
           <h3>Sub-processes</h3>
           <p>A step can hold steps of its own: a <strong>sub-process</strong>. <em>Open as a sub-process</em>, in the step pane, gives a step one step per action recorded in it (a field typed, a click); <em>Group into a sub-process</em>, in the Steps toolbar once two or more steps one after the other are ticked, moves them into a new one. Either is made in every transaction. The <em>&#9656; N sub-steps</em> button on its row opens it, one block per transaction that goes through it, and the line above the list goes back up. <em>Dissolve sub-process</em> undoes it, and Ctrl+Z undoes that. Confirm transaction confirms every level.</p>
           <h3>The flow of the steps</h3>
@@ -538,7 +538,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Click a step band on the timeline to open the step panel beside it.</li>
             <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>
             <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>fit</em>, puts the boxes back where the map lays them out.</li>
-            <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>.</li>
+            <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>. An update changes the project only when it finishes, so Cancel leaves the steps and the map as they were.</li>
           </ul>
         </section>
 

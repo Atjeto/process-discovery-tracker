@@ -257,6 +257,18 @@ def test_document_control_names_the_folder_the_sme_the_video_and_the_request():
                     "1. Document control")
     assert "Request | Order desk review" in rows
     assert not any(r.startswith("Project | ") for r in rows)
+    # Lane FX1 (report 3, F23): the request's name and its code, as the
+    # viewer's project line names it (session-summary.js requestOf).
+    manifest["engagement_id"] = "REQ-2026-042"
+    rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                    "1. Document control")
+    assert "Request | Order desk review (REQ-2026-042)" in rows
+    # The capture app's default name is never printed (report 1, item 6).
+    manifest["engagement_name"] = "Default engagement"
+    rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                    "1. Document control")
+    assert "Request | REQ-2026-042" in rows
+    assert not any("Default engagement" in r for r in rows)
 
 
 def test_document_fields_replace_their_gaps():
@@ -356,6 +368,8 @@ def _word_states():
     def open_reference_2(m, a, s):
         a["pattern_run"] = {"case_id": R2}
         a["steps"].append(_step("b5", R2, "Look up the order", FIND, 90, []))   # a repeat
+        # A stretch of the reference transaction left out: its block says so.
+        a["excluded_ranges"] = [{"start": _ts(95), "end": _ts(99), "reason": "manual"}]
         s["case_stats"][1]["wall_clock_ms"] = None
 
     def no_runs(m, a, s):
@@ -451,7 +465,7 @@ def test_the_reference_run_is_the_detailed_process():
     assert steps[:2] == ["The process runs through Contoso CRM, Outlook and Excel.",
                          "The steps as done in Transaction 1: Order 1, the reference transaction."]
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"]
+        "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Mail - Compose: Send"]
     assert not any("not confirmed yet" in t for t in steps)
 
 
@@ -464,10 +478,10 @@ def test_a_chosen_reference_run_and_its_draft_status_line():
     assert steps[1] == "The steps as done in Transaction 2: Order 2, the reference transaction."
     assert steps[2] == "3 of these 3 steps are drafts not confirmed yet."
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Look up the order", "2. Sheet - Log: Save", "3. CRM - Orders: Save"]
+        "Step 1: Look up the order", "Step 2: Sheet - Log: Save", "Step 3: CRM - Orders: Save"]
     # The time is counted from the start of the recording, not of the run:
     # run 2's first step is 1:01 in, not 0:01.
-    assert steps[steps.index("1. Look up the order") + 1].endswith("Transaction 2 at 1:01")
+    assert steps[steps.index("Step 1: Look up the order") + 1].endswith("Transaction 2 at 1:01")
 
 
 def test_without_a_valid_choice_the_first_run_with_steps_is_the_reference():
@@ -502,10 +516,10 @@ def test_without_runs_every_visible_step_is_listed_in_time_order():
     assert steps[1] == ("Transactions were not marked in this recording, so every "
                         "step is listed in time order.")
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send",
-        "4. Look up the order", "5. Sheet - Log: Save", "6. CRM - Orders: Save"]
+        "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Mail - Compose: Send",
+        "Step 4: Look up the order", "Step 5: Sheet - Log: Save", "Step 6: CRM - Orders: Save"]
     # A step outside every run is placed by its time in the recording.
-    assert steps[steps.index("1. Look up the order") + 1] == (
+    assert steps[steps.index("Step 1: Look up the order") + 1] == (
         "Contoso CRM, Orders \u00b7 2s \u00b7 0:01 into the recording")
     assert _section(blocks, "4.1 Differences between transactions") == [
         "Transactions were not marked in this recording, so there are no transactions "
@@ -520,10 +534,10 @@ def test_each_step_carries_its_system_time_runs_and_place_in_the_recording():
         return
     steps = _section(_rendered(), "3.2 Process steps")
     line = lambda heading: steps[steps.index(heading) + 1]  # noqa: E731
-    assert line("1. Look up the order") == (
+    assert line("Step 1: Look up the order") == (
         "Contoso CRM, Orders \u00b7 2s on average \u00b7 in 2 of 2 transactions \u00b7 "
         "Transaction 1 at 0:01")
-    assert line("3. Mail - Compose: Send") == (
+    assert line("Step 3: Mail - Compose: Send") == (
         "Outlook, Order confirmation \u00b7 2s on average \u00b7 in 1 of 2 transactions \u00b7 "
         "Transaction 1 at 0:10")
 
@@ -535,7 +549,7 @@ def test_the_video_time_joins_the_place_when_the_video_is_synced():
     annotations["external_video"] = {"path": "D:/call.mp4", "offset_ms": -90000}
     steps = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                      "3.2 Process steps")
-    assert steps[steps.index("1. Look up the order") + 1].endswith(
+    assert steps[steps.index("Step 1: Look up the order") + 1].endswith(
         "Transaction 1 at 0:01 (video 1:31)")
 
 
@@ -543,9 +557,9 @@ def test_a_step_shows_its_description_field_names_and_waste_flag():
     if not _HAVE_DOCX:
         return
     steps = _section(_rendered(), "3.2 Process steps")
-    i = steps.index("1. Look up the order")
+    i = steps.index("Step 1: Look up the order")
     assert steps[i + 2:i + 4] == ["Search the order by its number.", "Fields: Order number."]
-    j = steps.index("3. Mail - Compose: Send")
+    j = steps.index("Step 3: Mail - Compose: Send")
     assert steps[j + 2:j + 4] == ["Fields: To, Subject, Password.", "Flagged as waste."]
     # The values live in the data table, not under the steps.
     assert not any("customer@example.com" in t for t in steps)
@@ -573,13 +587,13 @@ def test_a_step_description_shows_only_when_the_analyst_wrote_it():
     steps["a3"]["description"] = narration("a3") + " Ana: then I send it."  # edited
     body = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                     "3.2 Process steps")
-    assert body[body.index("2. CRM - Orders: Save") + 2] == "3. Mail - Compose: Send"
+    assert body[body.index("Step 2: CRM - Orders: Save") + 2] == "Step 3: Mail - Compose: Send"
     assert "Clicked Save." not in body
-    assert body[body.index("3. Mail - Compose: Send") + 2] == (
+    assert body[body.index("Step 3: Mail - Compose: Send") + 2] == (
         narration("a3") + " Ana: then I send it.")
     no_events = _section(_blocks_of(manifest, annotations, stats, analysis, None),
                          "3.2 Process steps")
-    assert no_events[no_events.index("2. CRM - Orders: Save") + 2] == "Clicked Save."
+    assert no_events[no_events.index("Step 2: CRM - Orders: Save") + 2] == "Clicked Save."
 
 
 def test_hidden_steps_never_appear():
@@ -618,7 +632,7 @@ def test_a_step_prints_the_flow_set_on_it():
         return
     _blocks_, steps = _steps_section(_with_flow)
     one, two, three = (steps.index(h) for h in (
-        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"))
+        "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Mail - Compose: Send"))
     assert steps[one + 2:two] == [
         "Search the order by its number.", "Fields: Order number.",
         "Then skips to step 3, Mail - Compose: Send, when the order is a repeat."]
@@ -701,15 +715,43 @@ def test_an_order_change_a_repeat_and_a_run_without_differences():
     ]
 
 
-def test_a_repeat_in_the_reference_run_is_listed_under_it():
+def test_a_repeat_counts_against_the_reference_transaction():
+    """Lane FX1, one rule with the Steps level (shared/run-differences-golden.json):
+    a step done again is a difference when a transaction does it more often
+    than the reference transaction. The reference transaction is compared
+    with nothing, so its own repeat is not listed in 4.1 (3.2 prints its
+    steps, the repeat among them)."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
     annotations["steps"].append(_step("a4", R1, "Look up the order", FIND, 20, []))
     diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                      "4.1 Differences between transactions")
-    assert diffs[:2] == ["Transaction 1: Order 1 (the reference transaction)",
-                         "Repeated: Look up the order, 2 times."]
+    assert diffs[0] == "Transaction 2: Order 2"
+    assert not any(line.startswith("Repeated: ") for line in diffs), diffs
+    # Transaction 2 looks the order up three times: more often than the reference.
+    annotations["steps"] += [_step("b6", R2, "Look up the order", FIND, 100, []),
+                             _step("b7", R2, "Look up the order", FIND, 105, [])]
+    diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "4.1 Differences between transactions")
+    assert diffs[-1] == "Repeated: Look up the order, 3 times."
+
+
+def test_a_conditional_step_a_transaction_did_not_do_reads_not_done():
+    """Lane FX1 (report 2, item 13): the reference transaction's Send happens
+    only when the customer asks for it; transaction 2 did not send it, which
+    the flow already explains, so the line says Not done with the condition
+    in place of Skipped."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    for st in annotations["steps"]:
+        if st["step_id"] == "a3":
+            st["only_when"] = "the customer asks for a confirmation."
+    diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "4.1 Differences between transactions")
+    assert "Not done: Mail - Compose: Send (only when the customer asks for a confirmation)." in diffs
+    assert not any(line.startswith("Skipped: ") for line in diffs), diffs
 
 
 def test_a_merged_reference_step_matches_the_same_drafts_in_another_run():
@@ -739,7 +781,7 @@ def test_a_merged_reference_step_matches_the_same_drafts_in_another_run():
     steps_text = _section(blocks, "3.2 Process steps")
     # The merged step happened in both runs: run 2's two drafts count as one
     # occurrence of 4s (2s each), run 1's merged step took 2s.
-    assert steps_text[steps_text.index("1. Look up and save the order") + 1].startswith(
+    assert steps_text[steps_text.index("Step 1: Look up and save the order") + 1].startswith(
         "Contoso CRM, Orders \u00b7 3s on average \u00b7 in 2 of 2 transactions")
 
 
@@ -1027,7 +1069,7 @@ def test_legacy_keys_neither_group_nor_drop_steps():
     text = _all_text(blocks)
     assert "Legacy work item" not in text and "Legacy phase" not in text
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Look up the order", "2. CRM - Orders: Save", "3. Mail - Compose: Send"]
+        "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Mail - Compose: Send"]
 
 
 def test_write_pdd_works_without_analysis_or_events():
@@ -1127,7 +1169,7 @@ def test_the_system_set_on_a_step_wins_in_its_line_and_the_data_table():
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
     steps = _section(blocks, "3.2 Process steps")
     assert steps[0] == "The process runs through Order desk, Contoso CRM, Outlook and Excel."
-    assert steps[steps.index("1. Look up the order") + 1].startswith("Order desk, Orders \u00b7 ")
+    assert steps[steps.index("Step 1: Look up the order") + 1].startswith("Order desk, Orders \u00b7 ")
     data = _section(blocks, "5. Data")
     assert data[1].startswith("Order number | Order desk, Orders | Look up the order | ORD-1")
     apps = _section(blocks, "6.2 Time in each application")
@@ -1146,8 +1188,8 @@ def test_a_step_without_a_time_says_no_time():
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
     steps = _section(blocks, "3.2 Process steps")
     # After the timed steps of its run.
-    assert [t for k, t in blocks if k == "Heading 3"][-1] == "4. Phone the customer"
-    assert steps[steps.index("4. Phone the customer") + 1] == (
+    assert [t for k, t in blocks if k == "Heading 3"][-1] == "Step 4: Phone the customer"
+    assert steps[steps.index("Step 4: Phone the customer") + 1] == (
         "Phone \u00b7 in 1 of 2 transactions")
     apps = _section(blocks, "6.2 Time in each application")
     assert "Phone | Not recorded | Phone the customer | Not measured" in apps
@@ -1212,7 +1254,7 @@ def test_attachments_are_listed_in_a_last_section_and_under_their_step():
     headings = [t for k, t in blocks if k == "Heading 3"]
     steps = _section(blocks, "3.2 Process steps")
     first = steps[steps.index(headings[0]):steps.index(headings[1])]
-    assert first[0] == "1. Look up the order" and "Attachments: form.docx." in first
+    assert first[0] == "Step 1: Look up the order" and "Attachments: form.docx." in first
     assert sum(t.startswith("Attachments:") for t in steps) == 1
     assert _section(blocks, "8. Attachments") == [
         "The files are in the project folder's attachments folder.",
@@ -1290,10 +1332,35 @@ def test_each_numbered_sub_process_has_a_chapter_after_the_steps_depth_first():
     blocks = _blocks_of(*_sub_session())
     assert _numbered(blocks) == OUTLINE[:_CHAPTERS_AT] + _CHAPTERS + OUTLINE[_CHAPTERS_AT:]
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Look up the order", "2. CRM - Orders: Save", "3. Tell the customer",
-        "2.1 Enter the order number", "2.2 Check stock", "2.3 Click Save",
-        "2.2.1 Open the stock list", "2.2.2 Read the stock",
-        "3.1 Mail - Compose: Send"]
+        "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Tell the customer",
+        "Step 2.1: Enter the order number", "Step 2.2: Check stock", "Step 2.3: Click Save",
+        "Step 2.2.1: Open the stock list", "Step 2.2.2: Read the stock",
+        "Step 3.1: Mail - Compose: Send"]
+
+
+def test_no_step_number_reads_as_a_section_number():
+    """Lane FX1 (report 2, item 9; report 3, F10): chapter 3 numbers its
+    sections 3.1 to 3.5 and a sub-process numbers its steps 3.1, 3.2...: a
+    step's number always follows the word Step (and step in a flow line), and
+    a pointer names its section, so no heading or line reads a step's number
+    where a section's stands."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _sub_session()
+    save = next(s for s in annotations["steps"] if s["step_id"] == "a2")
+    check = next(s for s in save["sub_steps"] if s["step_id"] == "s2")
+    check["links"] = [{"to": "s1", "when": "the stock is missing"}]
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    sections = {t.split(" ", 1)[0] for t in _numbered(blocks)}
+    assert {"3.1", "3.3", "3.4", "3.5"} <= sections
+    steps = [t for k, t in blocks if k == "Heading 3"]
+    assert steps and all(t.startswith("Step ") for t in steps), steps
+    assert not any(t.split(" ", 1)[0].rstrip(".") in sections for t in steps)
+    assert "Step 3.1: Mail - Compose: Send" in steps       # the step 3.1 beside section 3.1
+    pointers = [t for _k, t in blocks if t.startswith("Sub-process: see")]
+    assert pointers and all(re.fullmatch(r"Sub-process: see section 3\.\d+\.", t) for t in pointers)
+    flows = [t for _k, t in blocks if t.startswith("Then ")]
+    assert flows and all(re.search(r" step \d+(\.\d+)*, ", t) for t in flows), flows
 
 
 def test_a_step_that_is_a_sub_process_points_at_its_chapter():
@@ -1301,17 +1368,17 @@ def test_a_step_that_is_a_sub_process_points_at_its_chapter():
         return
     blocks = _blocks_of(*_sub_session())
     steps = _section(blocks, "3.2 Process steps")
-    two, three = steps.index("2. CRM - Orders: Save"), steps.index("3. Tell the customer")
-    assert steps[three - 1] == "Sub-process: see 3.3."
-    assert steps[-1] == "Sub-process: see 3.5."
+    two, three = steps.index("Step 2: CRM - Orders: Save"), steps.index("Step 3: Tell the customer")
+    assert steps[three - 1] == "Sub-process: see section 3.3."
+    assert steps[-1] == "Sub-process: see section 3.5."
     assert sum(t.startswith("Sub-process:") for t in steps) == 2
     # The rest of step 2's block is as before: its context line.
     assert steps[two + 1].startswith("Contoso CRM, Orders")
     chapter = _section(blocks, _CHAPTERS[0])
-    check, save = chapter.index("2.2 Check stock"), chapter.index("2.3 Click Save")
+    check, save = chapter.index("Step 2.2: Check stock"), chapter.index("Step 2.3: Click Save")
     assert chapter[check + 1:save] == [
         "under 1s on average · in 1 of 2 transactions · Transaction 1 at 0:04",
-        "Sub-process: see 3.4."]
+        "Sub-process: see section 3.4."]
     assert not any(t.startswith("Sub-process:") for t in _section(blocks, _CHAPTERS[1]))
 
 
@@ -1333,12 +1400,12 @@ def test_a_chapter_prints_its_map_then_the_reference_transactions_first_visit():
         "Check stock | Click Save (1 of 2 transactions)",
         "Click Save | End (2 of 2 transactions)",
         "2 of these 3 steps are drafts not confirmed yet."]
-    one = chapter.index("2.1 Enter the order number")
+    one = chapter.index("Step 2.1: Enter the order number")
     assert chapter[one + 1:one + 3] == [
         "Contoso CRM, Orders · under 1s on average · in 2 of 2 transactions "
         "· Transaction 1 at 0:04",
         "Fields: Order number."]
-    save = chapter.index("2.3 Click Save")
+    save = chapter.index("Step 2.3: Click Save")
     assert chapter[save + 1].startswith("Contoso CRM, Orders · ")
     assert chapter[save + 2:] == ["The sub-process ends here when the order is on hold."]
     deeper = _section(blocks, _CHAPTERS[1])
@@ -1348,7 +1415,7 @@ def test_a_chapter_prints_its_map_then_the_reference_transactions_first_visit():
                           "Open the stock list | Read the stock (1 of 1 transaction)",
                           "Read the stock | End (1 of 1 transaction)"]
     # A step added by hand without a time prints no time and no place.
-    first = deeper.index("2.2.1 Open the stock list")
+    first = deeper.index("Step 2.2.1: Open the stock list")
     assert deeper[first + 1] == "in 1 of 1 transaction"
 
 
@@ -1362,7 +1429,7 @@ def test_a_link_inside_a_chapter_is_numbered_as_the_chapter_numbers_it():
     a2["sub_steps"][0]["links"] = [{"to": "s3", "when": "nothing to check"}]
     chapter = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                        _CHAPTERS[0])
-    check = chapter.index("2.2 Check stock")
+    check = chapter.index("Step 2.2: Check stock")
     assert chapter[check - 1] == "Then skips to step 2.3, Click Save, when nothing to check."
     assert chapter[-2:] == ["Then goes back to step 2.1, Enter the order number, "
                             "when the number is wrong.", "The sub-process ends here."]
@@ -1386,17 +1453,17 @@ def test_a_group_prints_its_name_line_description_flow_and_pointer_not_its_membe
         blocks = _blocks(doc)
         pictures = len(doc.inline_shapes)
     steps = _section(blocks, "3.2 Process steps")
-    at = steps.index("3. Tell the customer")
+    at = steps.index("Step 3: Tell the customer")
     assert steps[at + 1:] == [
         "Outlook, Order confirmation · 2s on average · in 1 of 2 transactions "
         "· Transaction 1 at 0:10",
         "Only when the customer asked for a mail.",
         "Tell the customer the order is booked.",
         "Then goes back to step 1, Look up the order, when the order changes.",
-        "Sub-process: see 3.5."]
+        "Sub-process: see section 3.5."]
     # Its member prints in its chapter, the screenshot with it: one picture.
     chapter = _section(blocks, _CHAPTERS[2])
-    send = chapter.index("3.1 Mail - Compose: Send")
+    send = chapter.index("Step 3.1: Mail - Compose: Send")
     assert chapter[send + 1:] == [
         "Outlook, Order confirmation · 2s on average · in 1 of 1 transaction "
         "· Transaction 1 at 0:10",
@@ -1412,7 +1479,7 @@ def test_a_sub_process_the_reference_did_not_open_points_at_a_chapter_without_it
         return
     blocks = _blocks_of(*_sub_session(open_run_1=False))
     steps = _section(blocks, "3.2 Process steps")
-    assert steps[steps.index("3. Tell the customer") - 1] == "Sub-process: see 3.3."
+    assert steps[steps.index("Step 3: Tell the customer") - 1] == "Sub-process: see section 3.3."
     assert _section(blocks, "3.3 Sub-process 2: CRM - Orders: Save") == [
         "Each step and the steps that followed it in the transactions:",
         "Step | Followed by",
@@ -1450,7 +1517,7 @@ def test_what_the_analyst_adds_by_step_id_prints_at_every_level():
         shas = _pictures(doc)
     assert shas == [hashlib.sha1(two).hexdigest()]
     deeper = _section(blocks, _CHAPTERS[1])
-    first = deeper.index("2.2.1 Open the stock list")
+    first = deeper.index("Step 2.2.1: Open the stock list")
     assert deeper[first + 2] == "Attachments: Stock sheet."
     assert _section(blocks, "8. Attachments")[-1] == "Stock sheet | stock.xlsx"
 

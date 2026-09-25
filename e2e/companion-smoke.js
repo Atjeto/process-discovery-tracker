@@ -431,7 +431,8 @@ function zipFiles(buf) {
     const media = new Set(Object.keys(files).filter((n) => n.startsWith("word/media/")).map((n) => sha1(files[n])));
     const shots = (await session()).anno.analyst_screenshots;
     const hashOf = (x) => sha1(fs.readFileSync(path.join(BLANK, "screenshots", "analyst", x.file)));
-    g.order = ORDERED.map((n, k) => xml.indexOf(">" + (k + 1) + ". " + n + "<"));
+    // Lane FX1: a step's heading reads "Step N: <name>" (its number never reads as a section's).
+    g.order = ORDERED.map((n, k) => xml.indexOf(">Step " + (k + 1) + ": " + n + "<"));
     g.systems = ["Outlook", "SAP"].map((x) => xml.includes(x));
     g.attach = ["Attachments", "Example order email", "order-email.txt", "input.csv"].map((x) => xml.includes(x));
     g.chosen = media.has(hashOf(shots.find((x) => x.id === c.pastedId)));

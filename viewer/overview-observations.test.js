@@ -178,10 +178,15 @@ test("the home is the Checklist, the project line, the document, then the Observ
   }
 });
 
-test("the coverage finding is a warning on the project line, not an observation", () => {
-  const cov = { id: "cov-1", detector: "coverage_caveat", claim: "The recorder saw less detail in 1 of 3 apps: Citrix (a remote window).", evidence: {} };
-  const html = overviewHtml(session({ analysis: Object.assign({}, session().analysis, { findings: [cov] }) }));
+test("the capture detail (analysis.json coverage_caveat) is a warning on the project line, not an observation", () => {
+  const cov = { claim: "The recorder saw less detail in 1 of 3 apps: Citrix (a remote window).",
+    flagged_apps: [{ app: "citrix.exe", trust: "wall" }], total_apps: 3 };
+  const html = overviewHtml(session({ analysis: Object.assign({}, session().analysis, { coverage_caveat: cov }) }));
   const summary = html.slice(html.indexOf('id="ov-summary"'), html.indexOf('id="ov-doc"'));
   assert.ok(summary.includes("⚠ The recorder saw less detail in 1 of 3 apps: Citrix (a remote window)."));
   assert.equal((html.match(/The recorder saw less detail/g) || []).length, 1);
+  // Lane FX1: the findings list that once held it is cut; an old one is not read.
+  const legacy = { id: "cov-1", detector: "coverage_caveat", claim: cov.claim, evidence: {} };
+  const old = overviewHtml(session({ analysis: Object.assign({}, session().analysis, { findings: [legacy] }) }));
+  assert.ok(!old.includes("The recorder saw less detail"));
 });

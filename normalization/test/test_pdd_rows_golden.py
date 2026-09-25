@@ -128,7 +128,8 @@ def test_the_pdd_prints_the_golden_rows_cell_by_cell(case, tmp_path):
 def test_an_analysis_writes_into_analysis_json_the_rows_its_pdd_prints(tmp_path):
     """The demo through the pipeline the way the viewer's export runs it: the
     rows in analysis.json are the tables and sentences of the PDD it wrote,
-    and the format number says so (3)."""
+    and the format number says so (3 added the rows; 4, lane FX1, cut the
+    analysis nobody read)."""
     import normalize as normalize_mod
     import pipeline_stages
     folder = tmp_path / "s"
@@ -138,7 +139,7 @@ def test_an_analysis_writes_into_analysis_json_the_rows_its_pdd_prints(tmp_path)
     out = tmp_path / "pdd.docx"
     normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True, pdd_out=str(out))
     analysis = json.loads((folder / "analysis.json").read_text(encoding="utf-8"))
-    assert analysis["format"] == pipeline_stages.ANALYSIS_FORMAT == 3
+    assert analysis["format"] == pipeline_stages.ANALYSIS_FORMAT == 4
     assert analysis["stage_errors"] == []
     d, t = analysis["pdd_data"], analysis["pdd_time"]
     tables, paras = _tables(out), _paragraphs(out)

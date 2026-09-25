@@ -28,8 +28,8 @@ itself. The platform recognition labels (shared/recognition-patterns.json)
 name control types, not applications, so they are not a source.
 
 The pipeline stores the per-application map as stats.json `meta.app_names`;
-the findings claims and the PDD read it through `display_name` and
-`system_name`.
+the capture detail (capture_detail.py) and the PDD read it through
+`display_name` and `system_name`.
 
 Pure stdlib.
 """

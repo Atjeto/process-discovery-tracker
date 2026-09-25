@@ -258,3 +258,107 @@ def test_case_stats_tolerates_corrupt_timestamps():
     assert len(rows) == 1
     assert rows[0]["wall_clock_ms"] is None
     assert rows[0]["active_ms"] == 0
+
+
+# --- The group label (moved from the cut analysis layer) ----------------
+
+def test_step_group_label_prefers_a_canonical_name_then_the_process_label():
+    from stats_compute import step_group_label
+    assert step_group_label({"name": "Search — CUST-1", "process_label": "Search"}) == "Search"
+    assert step_group_label({"canonical_step_id": "c1", "name": "Review — Final",
+                             "process_label": "Review"}) == "Review — Final"
+    assert step_group_label({"name": "Plain"}) == "Plain"
+    assert step_group_label({"step_id": "s1"}) == "(unnamed step)"
+
+
+# --- Lane FX1: a transaction's active time is the overlap of the rows ------
+# with its span (item 3), and a stretch left out takes out exactly its own
+# time, cut out of the rows before they merge (item 4).
+
+T = "2026-05-14T09:{}Z"
+
+
+def _row(ts, ms, label="A", cids=None, app="crm.exe"):
+    return {"type": "activity", "timestamp": ts,
+            "data": {"activity_label": label, "app": app, "duration_ms": ms,
+                     "case_ids": list(cids or [])}}
+
+
+def _case(start, end=None, label="Transaction 1"):
+    return {"label": label, "parent_case_id": None, "start_ts": start, "end_ts": end,
+            "end_reason": None}
+
+
+def test_a_stretch_that_starts_before_the_first_marker_counts_from_the_marker():
+    """F2: the capture app writes the first foreground stretch with a start a
+    moment before its Transaction 1 marker, so the case assignment files it
+    under no transaction. Its overlap with the transaction still counts."""
+    events = [_row(T.format("00:00.000"), 18829)]          # stamped to no case
+    cases = {"t1": _case(T.format("00:00.070"), T.format("00:20.000"))}
+    row = case_stats(events, cases)[0]
+    assert row["active_ms"] == 18759                         # clipped at the marker
+    assert row["active_ms"] <= row["wall_clock_ms"]
+
+
+def test_a_stretch_across_two_transactions_counts_in_each_for_its_part():
+    events = [_row(T.format("00:00"), 30000, cids=["t1"])]
+    cases = {"t1": _case(T.format("00:00"), T.format("00:10")),
+             "t2": _case(T.format("00:10"), T.format("00:40"), label="Transaction 2")}
+    rows = {r["case_id"]: r["active_ms"] for r in case_stats(events, cases)}
+    assert rows == {"t1": 10000, "t2": 20000}
+
+
+def test_an_open_transaction_runs_to_the_end_and_idle_time_is_left_out():
+    events = [
+        _row(T.format("01:00"), 60000),
+        {"type": "system", "timestamp": T.format("01:10"), "data": {"kind": "idle_start"}},
+        {"type": "system", "timestamp": T.format("01:25"), "data": {"kind": "idle_end"}},
+    ]
+    cases = {"t1": _case(T.format("01:05"))}                 # no end marker
+    assert case_stats(events, cases)[0]["active_ms"] == 55000 - 15000
+
+
+def test_a_row_whose_time_cannot_be_read_counts_where_it_was_filed():
+    events = [{"type": "activity", "timestamp": "not a time",
+               "data": {"activity_label": "A", "duration_ms": 4000, "case_ids": ["t1"]}}]
+    cases = {"t1": _case(T.format("00:00"), T.format("00:10")),
+             "t2": _case(T.format("00:10"), T.format("00:20"), label="Transaction 2")}
+    rows = {r["case_id"]: r["active_ms"] for r in case_stats(events, cases)}
+    assert rows == {"t1": 4000, "t2": 0}
+
+
+def test_clip_excluded_cuts_the_stretch_out_of_each_row():
+    from stats_compute import clip_excluded
+    rows = [_row(T.format("00:00"), 10000),                  # across the start: shortened
+            _row(T.format("00:12"), 2000),                   # inside: dropped
+            _row(T.format("00:18"), 10000),                  # across the end: moved and shortened
+            _row(T.format("01:00"), 60000)]                  # around a second stretch: split
+    marker = {"type": "marker", "timestamp": T.format("00:15"), "data": {"marker_type": "end"}}
+    ranges = [{"start": T.format("00:05"), "end": T.format("00:20")},
+              {"start": T.format("01:20"), "end": T.format("01:30")}]
+    out = clip_excluded(rows + [marker], ranges)
+    acts = [(e["timestamp"], e["data"]["duration_ms"]) for e in out if e["type"] == "activity"]
+    assert acts == [(T.format("00:00"), 5000.0),
+                    ("2026-05-14T09:00:20Z", 8000.0),
+                    (T.format("01:00"), 20000.0),
+                    ("2026-05-14T09:01:30Z", 30000.0)]
+    assert marker in out                                     # other events pass through
+    assert clip_excluded(rows, None) is rows
+
+
+def test_a_stretch_left_out_takes_out_its_own_time_not_a_merged_occurrence():
+    """Report 2, item 4: two rows of one application, 8 s and 11.5 s, merge
+    into one occurrence stamped at the first; a stretch of 7.9 s from just
+    before the first row used to drop the whole occurrence (19.5 s)."""
+    events = [_row("2026-05-14T09:03:23Z", 8000, cids=["t3"]),
+              _row("2026-05-14T09:03:31Z", 11500, cids=["t3"]),
+              _row("2026-05-14T09:03:45Z", 20400, cids=["t3"])]
+    cases = {"t3": _case("2026-05-14T09:03:22Z", "2026-05-14T09:04:10Z", label="Transaction 3")}
+    whole = compute_all(events, cases)["case_stats"][0]["active_ms"]
+    assert whole == 39900
+    left = [{"start": "2026-05-14T09:03:22.200Z", "end": "2026-05-14T09:03:30.100Z"}]
+    cut = compute_all(events, cases, excluded_ranges=left)["case_stats"][0]["active_ms"]
+    assert whole - cut == 7100            # the stretch's overlap with the rows, and no more
+    # The occurrences are merged after the cut: the remaining part of the
+    # first row and the next rows still read as one occurrence of A.
+    assert compute_all(events, cases, excluded_ranges=left)["activity_stats"][0]["frequency"] == 1

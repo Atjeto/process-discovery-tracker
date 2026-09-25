@@ -83,15 +83,16 @@ function _placeKey(s) {
   return typeof o === "number" && Number.isFinite(o) ? [1, o] : [2, 0];
 }
 
-/* The order of a run's steps: the steps with a time in time order (step_id
-   breaks a tie), then the steps without one by their `order`, then any step
-   with neither in list order (the sort is stable). */
+/* The order of a run's steps: the steps with a time in time order, then the
+   steps without one by their `order`, then any step with neither. Steps that
+   start at one moment keep their list order (the sort is stable), as the
+   PDD's do (pdd_export._start_key; lane FX1: a tie once went by step_id, so
+   Steps and the PDD could number two such steps apart). */
 function byStart(a, b) {
   const x = _placeKey(a), y = _placeKey(b);
   if (x[0] !== y[0]) return x[0] - y[0];
   if (x[1] !== y[1]) return x[1] < y[1] ? -1 : 1;
-  if (x[0] !== 0) return 0;
-  return String((a && a.step_id) || "").localeCompare(String((b && b.step_id) || ""));
+  return 0;
 }
 
 /* Contract C19: a step may carry sub_steps (a sub-process), each the shape
@@ -219,17 +220,20 @@ function buildRuns(stats, steps) {
   return { runs, outside };
 }
 
-/* The run that contains a time range (C9's rule, used for a step the viewer
-   creates): start and end inside the run's span; a run left open spans to
-   the end of the recording. When two runs contain it, the one that opened
-   last wins. Returns the run or null. */
-function runForRange(runs, startMs, endMs) {
+/* The run that holds a step's start (C9's rule as lane FX1 amended it, the
+   pipeline's restamp_preserved_case_ids; used for a step the viewer
+   creates): the step's start inside the run's span, whatever its end; a run
+   left open spans to the end of the recording. When two runs hold it (a
+   start on their boundary), the one that opened last wins. A step that runs
+   on past the run's end still belongs to the run it started in, so a
+   caller's third argument (the step's end) is not read. Returns the run or
+   null. */
+function runForRange(runs, startMs) {
   if (!Number.isFinite(startMs)) return null;
-  const end = Number.isFinite(endMs) ? endMs : startMs;
   let best = null;
   for (const r of runs || []) {
     if (!Number.isFinite(r.startMs) || r.startMs > startMs) continue;
-    if (r.endMs != null && end > r.endMs) continue;
+    if (r.endMs != null && startMs > r.endMs) continue;
     if (!best || r.startMs >= best.startMs) best = r;
   }
   return best;
@@ -277,9 +281,12 @@ function _fixes(raw) {
   return f;
 }
 
-/* The first run by start time that has at least one step. */
+/* The first run by start time that has at least one visible step: a run
+   whose every step is hidden is passed over, as the PDD passes it over
+   (pdd_export._Session._pick_pattern; lane FX1, pinned by the
+   reference_cases of shared/run-differences-golden.json). */
 function defaultPatternRun(runs) {
-  return (runs || []).find((r) => r.members && r.members.length > 0) || null;
+  return (runs || []).find((r) => (r.members || []).some((s) => s && s.state !== "hidden")) || null;
 }
 
 /* { run, record }: the stored pattern run when its case_id is a current run,
@@ -576,7 +583,7 @@ function stepApp(step, interactionsById) {
 
 /* The readable name of an application token ("chrome", "chrome.exe",
    "EXCEL.EXE"): the recording's own name for it (stats.json meta.app_names,
-   the names the findings and the PDD use), else the executable name without
+   the names the PDD and the capture detail use), else the executable name without
    its extension, capitalized when it is a machine token. Mirrors
    normalization/app_names.display_name. Used by the Steps level. */
 function readableApp(app, names) {

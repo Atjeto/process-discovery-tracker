@@ -104,6 +104,37 @@ function record(name, ok, detail) {
   console.log(`[${ok ? " OK " : "FAIL"}] ${name}` + (detail ? "  — " + detail : ""));
 }
 
+/* The tasks a step BPMN's start event leads to, through its gateways (lane
+   FX1), or null when the file cannot be read. */
+function bpmnFirstTasks(file) {
+  let xml;
+  try { xml = fs.readFileSync(file, "utf-8"); } catch (_) { return null; }
+  const proc = (/<bpmn:process[\s\S]*?<\/bpmn:process>/.exec(xml) || [""])[0];
+  const kinds = {}, names = {}, out = {};
+  for (const m of proc.matchAll(/<bpmn:(\w+)\s([^>]*?)\/?>/g)) {
+    const id = (/\bid="([^"]+)"/.exec(m[2]) || [])[1];
+    if (!id) continue;
+    kinds[id] = m[1];
+    const nm = /\bname="([^"]*)"/.exec(m[2]);
+    if (nm) names[id] = nm[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+    if (m[1] === "sequenceFlow") {
+      const s = (/\bsourceRef="([^"]+)"/.exec(m[2]) || [])[1], t = (/\btargetRef="([^"]+)"/.exec(m[2]) || [])[1];
+      (out[s] = out[s] || []).push(t);
+    }
+  }
+  const start = Object.keys(kinds).find((id) => kinds[id] === "startEvent");
+  if (!start) return null;
+  const todo = (out[start] || []).slice(), seen = new Set(), tasks = [];
+  while (todo.length) {
+    const n = todo.pop();
+    if (seen.has(n)) continue;
+    seen.add(n);
+    if (/Gateway$/.test(kinds[n] || "")) todo.push(...(out[n] || []));
+    else if (/^(task|userTask|manualTask|subProcess)$/.test(kinds[n] || "")) tasks.push(names[n]);
+  }
+  return tasks;
+}
+
 async function shot(page, name) {
   const p = path.join(OUT, name);
   await page.screenshot({ path: p, fullPage: true }).catch((e) => console.log("shot fail", name, e.message));
@@ -704,7 +735,7 @@ async function unreadableAnnotationsPin() {
     };
   }).catch((e) => ({ err: e.message }));
   const apps = timeGoes && timeGoes.tables && timeGoes.tables[1] ? timeGoes.tables[1].slice(1) : [];
-  const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.format === 3 && timeGoes.want &&
+  const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.format === 4 && timeGoes.want &&
     JSON.stringify(timeGoes.tables) === JSON.stringify(timeGoes.want) && timeGoes.tables[0].length === 5 &&
     JSON.stringify(timeGoes.tables[1][0]) === JSON.stringify(["System", "Screens", "Steps", "Time per transaction"]) &&
     apps.some((r) => r[0] === "Salesforce") && !apps.some((r) => /Chrome/.test(r[0])) &&
@@ -883,6 +914,20 @@ async function unreadableAnnotationsPin() {
     flowGeom && !flowGeom.err && flowGeom.open && flowGeom.flowBottom <= flowGeom.rawTop);
   record("P2.10: the Raw events drawer shows on Flow only; opened there it sits below the Flow layout",
     drawerOk, JSON.stringify({ shownOn: drawerOn, flowGeom }));
+  // Lane FX1 (report 1, item 7): the one clock. Each row's time is the time
+  // since the recording started (m:ss), never the time of day.
+  const rawTimes = await page.evaluate(() => {
+    const s = require("./state.js").getSession();
+    const origin = Date.parse(s.manifest.started_at);
+    const since = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
+    const rows = [...document.querySelectorAll("#event-table tbody tr")].slice(0, 40);
+    const evs = (s.events || []).slice(0, rows.length);
+    return { shown: rows.map((r) => (r.querySelector(".t-time") || {}).textContent || ""), want: evs.map((e) => since(e.timestamp)) };
+  }).catch((e) => ({ err: String(e.message).split("\n")[0] }));
+  record("lane FX1: the Raw events rows read the time since the recording started (m:ss), as every other time in the viewer",
+    !!(rawTimes && !rawTimes.err && rawTimes.shown.length >= 5 && rawTimes.shown.every((t) => /^\d+:\d{2}$/.test(t)) &&
+      JSON.stringify(rawTimes.shown) === JSON.stringify(rawTimes.want)),
+    JSON.stringify(rawTimes && { shown: (rawTimes.shown || []).slice(0, 6), want: (rawTimes.want || []).slice(0, 6), err: rawTimes.err }));
   if (!drawerOk) await shot(page, "fail-raw-events-flow-only.png");
   const mapBtn = await page.$('.view-mode-btn[data-level="map"]');
 
@@ -1109,11 +1154,17 @@ async function unreadableAnnotationsPin() {
             ref: b.dataset.ref, loaded: (b.querySelector("img") || {}).naturalWidth > 0,
             stamp: ((b.querySelector(".stamp") || {}).textContent || "").trim() })),
           wantStamps: (step.evidence.screenshot_refs || []).map((r) => (at[r] ? local(at[r]) : "")),
-          // Where the draft ends, as the pipeline's reason names its commit
-          // (the viewer builds it from end_reason and the last interaction).
+          // Where the draft ends: its commit, named as the drafting names it
+          // (step_suggest._commit_label: the vocabulary's name, else the
+          // control's name, else its type), from the step's last interaction.
+          // (The pipeline's suggestion_reason had no reader and is cut, lane FX1.)
           wantEnds: (() => {
-            const r = /; ended at the commit "(.+)"\.$/.exec(step.suggestion_reason || "");
-            return step.end_reason === "commit" && r ? "ends at " + r[1] : null;
+            if (step.end_reason !== "commit") return null;
+            const ids = (step.evidence && step.evidence.interaction_event_ids) || [];
+            const last = (s.events || []).find((e) => e.type === "interaction" && e.event_id === ids[ids.length - 1]);
+            const d = (last && last.data) || {};
+            const label = String(d.meaningful_name || d.name || d.control_type || "").trim();
+            return label ? "ends at " + label : null;
           })(),
           fields: [...document.querySelectorAll("#step-detail .step-fields dt")].length,
           saveButton: !!document.getElementById("btn-step-save"),
@@ -1735,10 +1786,33 @@ async function unreadableAnnotationsPin() {
         require("./state.js").setSelectedStepId(first ? first.step_id : null);
       }, RUN.caseId);
       await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-      await page.waitForSelector("#step-list .run-group.open .run-diffs li", { timeout: T });
-      lo.diffs = await page.evaluate(() => [...document.querySelectorAll("#step-list .run-group.open .run-diffs li")]
-        .map((li) => ({ kind: li.dataset.kind, text: li.textContent })));
+      // Lane FX1: the left-out line is said above the differences, in its own
+      // list, so the head counts only the differences.
+      await page.waitForSelector("#step-list .run-group.open .run-notes li", { timeout: T });
+      lo.diffs = await page.evaluate(() => [...document.querySelectorAll(
+        "#step-list .run-group.open .run-notes li, #step-list .run-group.open .run-diffs li")]
+        .map((li) => ({ kind: li.dataset.kind, text: li.textContent, list: li.parentElement.className })));
       lo.openRun = await page.evaluate(() => (document.querySelector("#step-list .run-group.open .run-title") || {}).textContent);
+      lo.head = await page.evaluate(() => ((document.querySelector("#step-list .run-group.open .run-meta") || {}).textContent || "").trim());
+      // Lane FX1 (report 2, item 3): the stretch opens transaction 2, so its
+      // trace is cut there: neither the live map nor the step BPMN draws a
+      // path from the start straight into the step after the stretch.
+      lo.after = await page.evaluate((cid) => {
+        const s = require("./state.js").getSession();
+        const RM = require("./runs-model.js"), PML = require("./process-map-levels.js");
+        const runs = RM.buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
+        const r = runs.find((x) => x.caseId === cid);
+        const firsts = runs.filter((x) => x !== r && x.visible.length).map((x) => PML.mapNodeLabel(x.visible[0]));
+        return { first: r && r.visible.length ? PML.mapNodeLabel(r.visible[0]) : null, others: firsts };
+      }, RUN.caseId);
+      await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
+      await showRuns(page);
+      lo.liveStarts = await page.evaluate(() => {
+        const cy = (document.getElementById("session-map-dfg-host") || {}).__cy;
+        return cy ? cy.edges().filter((e) => e.source().data("role") === "start-event").map((e) => e.target().id()) : null;
+      });
+      lo.bpmnStarts = bpmnFirstTasks(path.join(SESSION, "process_map_step.bpmn"));
+      await shot(page, "fx1-left-out-live-map.png");
       // Include again, from the band's own menu.
       await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
       await page.locator("#timeline .tl-left-out").click({ timeout: T });
@@ -1784,6 +1858,18 @@ async function unreadableAnnotationsPin() {
         lo.diffs.filter((d) => d.kind === "left_out").length === 1 &&
         !((lo.target && lo.target.names) || []).some((n) => skipped.some((t) => t.startsWith("Skipped: " + n + " (")))),
       JSON.stringify({ want, diffs: lo.diffs, inStretch: lo.target && lo.target.names }));
+    const A = lo.after || {};
+    const cutOk = !!(!lo.err && A.first && !A.others.includes(A.first) && Array.isArray(lo.liveStarts) && lo.liveStarts.length &&
+      !lo.liveStarts.includes(A.first) && Array.isArray(lo.bpmnStarts) && lo.bpmnStarts.length && !lo.bpmnStarts.includes(A.first));
+    record("lane FX1: a stretch left out at a transaction's start cuts its trace: neither the live map nor the step BPMN draws a path from the start into the step after the stretch",
+      cutOk, JSON.stringify({ after: A, liveStarts: lo.liveStarts, bpmnStarts: lo.bpmnStarts }));
+    const notes = (lo.diffs || []).filter((d) => d.list === "run-notes");
+    const counted = (lo.diffs || []).filter((d) => d.list === "run-diffs");
+    const headN = /· (\d+) differences?$/.exec(lo.head || "");
+    record("lane FX1: the transaction's head counts exactly its difference lines; the left-out line is said apart, above them",
+      !!(!lo.err && notes.length === 1 && notes[0].kind === "left_out" && counted.every((d) => d.kind !== "left_out") &&
+        (headN ? Number(headN[1]) === counted.length : / · no differences$/.test(lo.head || "") && counted.length === 0)),
+      JSON.stringify({ head: lo.head, diffs: lo.diffs }));
     record("lane CC: a click on the band offers Include again, which takes the stretch out of excluded_ranges and drafts its steps again; Ctrl+Z leaves it out again and Ctrl+Y includes it again, each analyzed",
       !!(!lo.err && Array.isArray(lo.menu) && lo.menu[0] === "Include again" &&
         lo.included && lo.included.ranges.length === 0 && !lo.included.band && lo.included.run2.steps === B.run2.steps &&

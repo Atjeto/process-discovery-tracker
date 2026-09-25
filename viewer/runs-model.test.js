@@ -110,14 +110,15 @@ test("stepChip: Draft, Confirmed, Edited, Added, Hidden", () => {
 
 /* ---- containment and groups ------------------------------------------------ */
 
-test("runForRange: the run whose span holds the range; an open run spans to the end", () => {
+test("runForRange: the run that holds the start (C9 as lane FX1 amended it); an open run spans to the end", () => {
   const { runs } = RM.buildRuns(STATS, steps());
   const at = (a, b) => { const r = RM.runForRange(runs, Date.parse(T(a)), Date.parse(T(b))); return r && r.caseId; };
   assert.equal(at("00:05", "00:06"), "c1");
-  assert.equal(at("02:59", "03:00"), "c2", "the end is inclusive");
+  assert.equal(at("03:00", "03:01"), "c2", "the end is inclusive");
   assert.equal(at("01:10", "01:20"), null, "between runs");
-  assert.equal(at("00:50", "01:10"), null, "crossing a run's end");
+  assert.equal(at("00:50", "01:10"), "c1", "across a run's end: the run it started in");
   assert.equal(at("09:00", "09:30"), "c3", "an open run");
+  assert.equal(RM.runForRange(runs, NaN), null, "no start: no run");
 });
 
 test("groupSteps and nextInGroup: the next row stays in the run and skips hidden steps unless they show", () => {
@@ -143,6 +144,18 @@ test("patternRun: the default is the first run with a step; a stored case_id win
   const anno = { pattern_run: { case_id: "c2", confirmed_at: null, draft_fixes: RM.emptyFixes() } };
   assert.equal(RM.patternRun(anno, m2.runs).run.caseId, "c2");
   assert.equal(RM.patternRun({ pattern_run: { case_id: "gone" } }, m2.runs).run.caseId, "c1");
+  // Lane FX1: a run whose every step is hidden is passed over, as the PDD does.
+  const hiddenFirst = steps().map((s) => (s.case_id === "c1" ? Object.assign({}, s, { state: "hidden" }) : s));
+  assert.equal(RM.patternRun({}, RM.buildRuns(STATS, hiddenFirst).runs).run.caseId, "c2");
+});
+
+test("byStart: steps that start at one moment keep their list order (lane FX1), whatever their ids", () => {
+  const at = { start: T("00:10"), end: T("00:10") };
+  const list = [{ step_id: "z", time_range: at }, { step_id: "a", time_range: at }, { step_id: "m", time_range: { start: T("00:05") } }];
+  assert.deepEqual(list.slice().sort(RM.byStart).map((s) => s.step_id), ["m", "z", "a"]);
+  const { runs } = RM.buildRuns(STATS, [{ step_id: "z", case_id: "c1", time_range: at, state: "auto_suggested" },
+    { step_id: "a", case_id: "c1", time_range: at, state: "auto_suggested" }]);
+  assert.deepEqual(runs.find((r) => r.caseId === "c1").members.map((s) => s.step_id), ["z", "a"]);
 });
 
 test("recordFix: counts only on the unconfirmed pattern run, creates the record on the first fix", () => {

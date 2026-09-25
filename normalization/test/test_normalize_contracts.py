@@ -2,7 +2,8 @@
 helper lane L4): deterministic case ids and restamped analyst steps (RP-01,
 C9), the preserved `confirmed` state (C2), hidden steps kept out of the stats
 and the analysis (RP-06), stage failures recorded as null plus stage_errors
-(RP-10, C12), and the exit codes 1 to 3 (RP-04, RP-09, C13).
+(RP-10, C12), the exit codes 1 to 3 (RP-04, RP-09, C13), and the run that
+changes nothing unless it finishes (lane FX1).
 
 The session is built in pytest's tmp_path, never in sessions/. The pipeline
 imports pandas and pm4py, so this module skips where they are absent (bare
@@ -18,6 +19,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -135,7 +137,7 @@ def test_the_same_events_normalized_twice_give_identical_case_ids(tmp_path):
     # Every analysis stage ran, so C12's stage_errors is written empty.
     analysis = _read(session, "analysis.json")
     assert analysis["stage_errors"] == []
-    assert analysis["facts"] is not None and analysis["findings"] is not None
+    assert analysis["case_quality"] is not None and analysis["pdd_data"] is not None
 
 
 def test_a_preserved_step_with_a_legacy_case_id_moves_to_the_run_containing_it(tmp_path):
@@ -216,15 +218,36 @@ def test_the_step_state_breakdown_counts_confirmed_and_hidden_steps(tmp_path):
         "confirmed": 1, "hidden": 1}
 
 
-def test_readable_app_names_reach_the_stats_and_the_claims(tmp_path):
+def test_readable_app_names_reach_the_stats_and_the_capture_detail(tmp_path):
     """DA gap 3 wiring: the pipeline names crm.exe from its window title
-    ("CRM - Orders") and the findings claims use that name."""
+    ("CRM - Orders"), and the one check the Overview shows (the apps the
+    recorder saw with less detail) uses that name."""
     session = _make_session(tmp_path / "s")
+    events = [json.loads(line) for line in
+              (session / "events.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    for ev in events:
+        if ev["type"] == "interaction":
+            ev["data"]["confidence"] = 0.2           # weak field identification
+    (session / "events.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
     normalize_mod.normalize(session)
     assert _read(session, "stats.json")["meta"]["app_names"] == {"crm.exe": "CRM"}
-    claims = [f["claim"] for f in _read(session, "analysis.json")["findings"]]
-    assert any(c.startswith("CRM takes") for c in claims)
-    assert not any("crm.exe" in c for c in claims)
+    caveat = _read(session, "analysis.json")["coverage_caveat"]
+    assert caveat["claim"].startswith("The recorder saw less detail in 1 of 1 apps: CRM (")
+    assert "crm.exe" not in caveat["claim"]
+
+
+def test_analysis_json_holds_what_the_viewer_and_the_pdd_read(tmp_path):
+    """Lane FX1: the analysis layer nobody read is cut. analysis.json holds
+    the transaction check, the capture detail, the PDD's rows of sections 5
+    and 6, the steps they were measured from, and its format (4)."""
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session)
+    analysis = _read(session, "analysis.json")
+    assert set(analysis) == {"meta", "case_quality", "coverage_caveat", "pdd_data", "pdd_time",
+                             "steps_signature", "stage_errors", "format"}
+    assert analysis["format"] == pipeline_stages.ANALYSIS_FORMAT == 4
+    assert analysis["coverage_caveat"] is None and analysis["stage_errors"] == []
 
 
 # ---- RP-10 / C12 --------------------------------------------------------------
@@ -236,56 +259,131 @@ def _analysis_inputs(tmp_path):
     return session, events, _read(session, "annotations.json")
 
 
-def test_a_failed_facts_stage_is_null_and_named_in_stage_errors(tmp_path, monkeypatch):
+def test_a_failed_capture_detail_is_null_and_named_in_stage_errors(tmp_path, monkeypatch):
     session, events, anno = _analysis_inputs(tmp_path)
-    import facts as facts_mod
+    import capture_detail
 
     def boom(*_a, **_k):
-        raise KeyError("duration_ms")
-    monkeypatch.setattr(facts_mod, "compute_facts", boom)
+        raise KeyError("process_name")
+    monkeypatch.setattr(capture_detail, "coverage_caveat", boom)
     result = pipeline_stages._run_analysis(
         session, events, anno, {}, {"session_id": SESSION_ID}, cases={})
-    assert result.get("facts", "MISSING") is None
-    assert {"stage": "facts", "error": "KeyError: 'duration_ms'"} in result["stage_errors"]
-    # The findings read the facts, so they could not run either.
-    assert result["findings"] is None
-    assert any(e["stage"] == "findings" and "facts" in e["error"]
-               for e in result["stage_errors"])
+    assert result.get("coverage_caveat", "MISSING") is None
+    assert result["stage_errors"] == [
+        {"stage": "coverage_caveat", "error": "KeyError: 'process_name'"}]
+    assert result["case_quality"] is not None              # the others still ran
     assert _read(session, "analysis.json") == json.loads(json.dumps(result))
 
 
-def test_a_failed_findings_stage_is_null_and_named_in_stage_errors(tmp_path, monkeypatch):
+def test_a_failed_case_check_is_null_and_named_in_stage_errors(tmp_path, monkeypatch):
     session, events, anno = _analysis_inputs(tmp_path)
-    import findings as findings_mod
+    import case_quality
 
     def boom(*_a, **_k):
-        raise RuntimeError("detector table broke")
-    monkeypatch.setattr(findings_mod, "detect_findings", boom)
+        raise ValueError("bad cases")
+    monkeypatch.setattr(case_quality, "compute_case_quality", boom)
     result = pipeline_stages._run_analysis(
         session, events, anno, {}, {"session_id": SESSION_ID}, cases={})
-    assert result.get("findings", "MISSING") is None
-    assert result["stage_errors"] == [
-        {"stage": "findings", "error": "RuntimeError: detector table broke"}]
-    assert result["facts"] is not None                     # facts still measured
+    assert result.get("case_quality", "MISSING") is None
+    assert result["stage_errors"] == [{"stage": "case_quality", "error": "ValueError: bad cases"}]
 
 
-def test_one_failed_detector_fails_the_findings_stage(tmp_path, monkeypatch):
-    """A detector that raises used to vanish silently, so a missing finding
-    read as "nothing stood out". Now the findings stage is marked failed."""
-    session, events, anno = _analysis_inputs(tmp_path)
-    import findings as findings_mod
+# ---- Lane FX1 (report 3, F4): a run that does not finish changes nothing ------
+
+OUTPUTS = ("annotations.json", "stats.json", "analysis.json", "process_map_step.bpmn")
+
+
+def _snapshot(folder: Path) -> dict:
+    """Every file of the project folder but the run's log: name -> bytes."""
+    return {p.name: p.read_bytes() for p in sorted(folder.iterdir())
+            if p.is_file() and not p.name.startswith("normalize.log")}
+
+
+def test_a_run_that_fails_leaves_every_output_as_it_was(tmp_path, monkeypatch):
+    session = _make_session(tmp_path / "s")
+    normalize_mod.normalize(session, mine=True)
+    anno = _read(session, "annotations.json")
+    anno["steps"][0]["state"] = "hidden"                    # the next run would change the outputs
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    before = _snapshot(session)
+    assert set(OUTPUTS) <= set(before)
 
     def boom(*_a, **_k):
-        raise ZeroDivisionError("division by zero")
-    monkeypatch.setattr(findings_mod, "_detect_fragmentation", boom)
-    result = pipeline_stages._run_analysis(
-        session, events, anno, {}, {"session_id": SESSION_ID}, cases={})
-    assert result["findings"] is None
-    assert result["stage_errors"] == [{
-        "stage": "findings",
-        "error": "fragmentation: ZeroDivisionError: division by zero"}]
+        raise RuntimeError("the map could not be laid out")
+    # The last stage fails, after every other output was staged.
+    monkeypatch.setattr(pipeline_stages, "_run_mining_exports", boom)
+    monkeypatch.setattr(normalize_mod, "_run_mining_exports", boom)
+    with pytest.raises(RuntimeError):
+        normalize_mod.normalize(session, mine=True)
+    assert _snapshot(session) == before, "a failed run changed the project"
 
 
+def test_a_failed_pdd_export_exits_3_and_changes_nothing(tmp_path):
+    session = _make_session(tmp_path / "s")
+    _run_cli(session, "--mine")                              # a project analyzed before
+    before = _snapshot(session)
+    pdd_out = tmp_path / "missing-folder" / "pdd.docx"    # the save must fail
+
+    proc = _run_cli(session, "--mine", "--pdd-out", pdd_out)
+
+    assert proc.returncode == 3, proc.stdout[-2000:] + proc.stderr[-2000:]
+    errors = _error_lines(proc)
+    assert len(errors) == 1 and "PDD export" in errors[0] and str(pdd_out) in errors[0]
+    assert "Nothing in the project was changed." in errors[0]
+    assert _snapshot(session) == before, "a failed export changed the project"
+    assert not pdd_out.exists()
+
+
+_STOP_BEFORE_COMMIT = r"""
+import pathlib, sys, time
+sys.path.insert(0, sys.argv[1])
+import session_io
+flag = pathlib.Path(sys.argv[2])
+def stop_here(self):
+    flag.write_text("staged", encoding="utf-8")
+    time.sleep(600)                                   # killed here, as Cancel kills it
+session_io.Staging.commit = stop_here
+import normalize
+sys.argv = ["normalize.py", sys.argv[3], "--mine"]
+normalize.main()
+"""
+
+
+def test_a_run_stopped_before_its_commit_leaves_every_output_as_it_was(tmp_path):
+    """The viewer's Cancel kills normalize.py (python-runner.js: SIGTERM,
+    then SIGKILL; on Windows both end the process at once, so nothing runs
+    after). A run killed at its last moment, every output staged and none
+    committed, leaves the project as it was; the next run removes what it
+    staged and commits its own."""
+    session = _make_session(tmp_path / "s")
+    _run_cli(session, "--mine")
+    anno = _read(session, "annotations.json")
+    anno["steps"][0]["state"] = "hidden"
+    (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
+    before = _snapshot(session)
+    flag = tmp_path / "staged.flag"
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _STOP_BEFORE_COMMIT, str(NORMALIZATION), str(flag), str(session)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(NORMALIZATION.parent))
+    try:
+        deadline = time.monotonic() + 120
+        while not flag.exists():
+            assert proc.poll() is None, "the run ended before it reached its commit"
+            assert time.monotonic() < deadline, "the run never reached its commit"
+            time.sleep(0.1)
+        staged = sorted(p.name for p in session.glob("*.pdt-staged"))
+        assert staged == sorted(f"{name}.pdt-staged" for name in OUTPUTS), staged
+    finally:
+        proc.kill()
+        proc.wait(timeout=30)
+    after = {k: v for k, v in _snapshot(session).items() if not k.endswith(".pdt-staged")}
+    assert after == before, "a stopped run changed an output"
+
+    proc = _run_cli(session, "--mine")
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert not list(session.glob("*.pdt-staged")), "the next run left the staged files"
+    hidden = [s for s in _read(session, "annotations.json")["steps"] if s["state"] == "hidden"]
+    assert len(hidden) == 1                                  # the next run committed its own
 # ---- C13 exit codes (RP-04, RP-09) and the CLI surface (C11) -------------------
 
 def test_an_unreadable_annotations_file_exits_2_and_nothing_is_written(tmp_path):
@@ -304,20 +402,6 @@ def test_an_unreadable_annotations_file_exits_2_and_nothing_is_written(tmp_path)
     errors = _error_lines(proc)
     assert len(errors) == 1
     assert "annotations.json" in errors[0] and "annotations.json.2" in errors[0]
-
-
-def test_a_failed_pdd_export_exits_3_after_writing_the_analysis(tmp_path):
-    session = _make_session(tmp_path / "s")
-    pdd_out = tmp_path / "missing-folder" / "pdd.docx"    # the save must fail
-
-    proc = _run_cli(session, "--pdd-out", pdd_out)
-
-    assert proc.returncode == 3, proc.stdout[-2000:] + proc.stderr[-2000:]
-    errors = _error_lines(proc)
-    assert len(errors) == 1 and "PDD export" in errors[0] and str(pdd_out) in errors[0]
-    for name in ("annotations.json", "stats.json", "analysis.json"):
-        assert (session / name).exists(), f"{name} was not written"
-    assert not pdd_out.exists()
 
 
 def test_the_removed_step_bpmn_flag_is_a_usage_error_not_exit_2(tmp_path):

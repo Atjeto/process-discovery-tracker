@@ -49,7 +49,7 @@ from pm4py.objects.log.obj import Event, EventLog, Trace
 
 import step_flow
 from _dt import parse_ts as _parse_ts  # public re-export
-from step_context import step_duration_ms, step_sort_key, step_system
+from step_context import fmt_ms, step_duration_ms, step_sort_key, step_system
 
 
 def _start_key(step: dict[str, Any]) -> tuple[int, float]:
@@ -93,6 +93,35 @@ def _transactions(anno: dict[str, Any], run_order: Any = None) -> list[list[dict
     rest = sorted((c for c in by_case if c not in first),
                   key=lambda c: (min(step_sort_key(s) for s in by_case[c]), str(c)))
     return [by_case[c] for c in first + rest]
+
+
+def _left_out(anno: dict[str, Any], transactions: list[list[dict[str, Any]]],
+              run_spans: Any) -> list[list[tuple]]:
+    """Each transaction's stretches left out of the analysis
+    (annotations.excluded_ranges cut to its span, step_flow.left_out_stretches),
+    in the order of `transactions`; `run_spans` is {case id: (start, end)}
+    (ISO, end None for a transaction left open). [] for a transaction whose
+    span is not given."""
+    ranges = anno.get("excluded_ranges")
+    spans = run_spans if isinstance(run_spans, dict) else {}
+    out: list[list[tuple]] = []
+    for steps in transactions:
+        span = spans.get(steps[0].get("case_id")) if steps else None
+        if not ranges or not isinstance(span, (list, tuple)) or len(span) != 2:
+            out.append([])
+            continue
+        start = _parse_or_none(span[0])
+        end = _parse_or_none(span[1])
+        out.append(step_flow.left_out_stretches(ranges, start, end))
+    return out
+
+
+def _parse_or_none(ts: Any):
+    """An ISO timestamp as a datetime, or None."""
+    try:
+        return _parse_ts(ts) if isinstance(ts, str) and ts else None
+    except (ValueError, TypeError):
+        return None
 
 
 def _collapse(labels):
@@ -191,8 +220,7 @@ def _document_field(anno: dict[str, Any], key: str) -> str:
 
 
 def _duration(ms: float) -> str:
-    from findings import _fmt_ms
-    return "under 1s" if ms < 500 else _fmt_ms(ms)
+    return "under 1s" if ms < 500 else fmt_ms(ms)
 
 
 def _analyst_description(step: dict[str, Any], context: Any) -> str:
@@ -893,6 +921,7 @@ def write_observed_bpmn(
     context: Any = None,
     implicit_runs: Any = (),
     run_order: Any = None,
+    run_spans: Any = None,
 ) -> bool:
     """Mine the observed step flow into BPMN and write it (with layout).
 
@@ -936,6 +965,14 @@ def write_observed_bpmn(
     are joined in. Each link to the end ends at an end event of its own,
     named by its `when` (C18, _arcs).
 
+    A stretch left out of the analysis (annotations.excluded_ranges) cuts
+    the trace of the transaction it falls in (lane FX1, step_flow's rule):
+    `run_spans` ({case id: (start, end)}, the transactions' spans in
+    stats.json) place the stretches. When the cuts change the map, a whole
+    trace would draw a path no transaction took (the start straight into
+    the first step after a stretch that opens a transaction), so the map is
+    drawn from the cut edges (_flow_bpmn), as for a flow the analyst set.
+
     Contract C19: a step that carries `sub_steps` is a sub-process. Its node
     is a collapsed bpmn:subProcess in place of its task, holding its own map
     (sub_process_maps.map_tree), drawn in a plane of its own, at any depth
@@ -948,8 +985,10 @@ def write_observed_bpmn(
     if len(log) == 0:
         return False
     transactions = _transactions(anno, run_order)
-    edges = step_flow.flow_edges(transactions)
-    declared = step_flow.changes_map(edges)
+    left_out = _left_out(anno, transactions, run_spans)
+    edges = step_flow.flow_edges(transactions, left_out)
+    declared = (step_flow.changes_map(edges)
+                or step_flow.cuts_change_map(transactions, left_out))
     flow_names = None
     documentation: dict[int, str] = {}
     early_ends: set[int] = set()

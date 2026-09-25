@@ -17,7 +17,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { $, $$, escapeHtml, formatDuration, toast, placeMenu } = require("../dom.js");
+const { $, $$, escapeHtml, formatDuration, toast, placeMenu, sinceStart, recordingStartMs } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const SaveState = require("../save-state.js");
@@ -1007,7 +1007,8 @@ async function queueCaseFromSelection() {
 
 /* H6: Leave out of the analysis: the current timeline range goes into
    annotations.json.excluded_ranges; the analysis skips every event inside it
-   when it drafts the steps and computes the statistics and the findings.
+   when it drafts the steps, and the statistics cut its time out of the
+   activity rows (lane FX1).
    Lets the analyst cut a lunch break or an unrelated detour out of a
    recording without touching the raw event log. The steps depend on it, so
    the analysis runs by itself right after (AD-22), as it does after Apps
@@ -1134,6 +1135,10 @@ function renderEventTable() {
   const tbody = $("#event-table tbody");
   tbody.innerHTML = "";
   let count = 0;
+  // The one clock (AD-26): the time since the recording started, as every
+  // other time in the viewer reads (lane FX1: this table once printed the
+  // time of day).
+  const origin = recordingStartMs(State.getSession());
   for (const ev of State.getSession().events) {
     if (ev.type === "activity" && !showAct) continue;
     if (ev.type === "marker" && !showMark) continue;
@@ -1162,12 +1167,7 @@ function renderEventTable() {
       c.textContent = text || "";
       return c;
     };
-    const t = new Date(ev.timestamp);
-    tr.appendChild(td("t-time",
-      String(t.getHours()).padStart(2, "0") + ":" +
-      String(t.getMinutes()).padStart(2, "0") + ":" +
-      String(t.getSeconds()).padStart(2, "0") + "." +
-      String(t.getMilliseconds()).padStart(3, "0")));
+    tr.appendChild(td("t-time", sinceStart(ev.timestamp, origin)));
     tr.appendChild(td("t-type", ev.type));
     tr.appendChild(td("", lbl));
     tr.appendChild(td("", detail));

@@ -5,8 +5,8 @@ The viewer's Timeline draws each stretch and offers Include again; here, the
 pipeline's half: the transaction with a stretch left out says so once in the
 PDD's 4.1, and the reference steps done in the stretch are not printed as
 Skipped (the rule shared with the viewer, shared/run-differences-golden.json);
-and the findings stage reads the stream without the stretch, as the drafting
-and the statistics do.
+the time tables lose the stretch's own time (lane FX1), and the step map
+cuts the transaction's trace at the stretch (lane FX1, step_flow).
 
 Runs the pipeline on a temp copy of the committed demo, so it needs pandas,
 pm4py and python-docx: it skips where they are absent and runs under the
@@ -114,20 +114,78 @@ def test_a_transaction_with_a_stretch_left_out_says_so_once_and_skips_nothing_in
     assert any("Account lookup: Search" in line for line in unaware if line.startswith("Skipped: ")), unaware
 
 
-def test_the_findings_read_the_stream_without_the_stretch_left_out(tmp_path):
-    """The Notepad lookup in Transaction 2 (09:02:10 to 09:02:14) is where the
-    product code is typed a third time; left out, the re-keyed finding no
-    longer counts Notepad among the applications it was typed into."""
+def _stats(folder: Path) -> dict:
+    return json.loads((folder / "stats.json").read_text(encoding="utf-8"))
+
+
+def test_a_stretch_left_out_takes_its_own_time_out_of_the_transaction(tmp_path):
+    """Report 2, item 4 (lane FX1): the time tables lose the stretch's time,
+    not the whole rows that start in it. Transaction 2 (09:01:46 to
+    09:02:39) has its first rows at 09:01:46 (5.8 s), 09:01:52 (9.1 s) and
+    09:02:01 (8.9 s); a stretch from 09:01:45 to 09:02:07 covers 20.9 s of
+    them (the third row keeps its last 2.9 s). The whole rows would be 23.8 s."""
     import normalize as normalize_mod
     folder = _demo(tmp_path / "s")
     normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)
-
-    def rekey_apps():
-        a = json.loads((folder / "analysis.json").read_text(encoding="utf-8"))
-        f = next(x for x in a["findings"] if x["detector"] == "rekey_transfer")
-        return {app.lower() for v in f["evidence"]["values"] for app in v["apps"]}
-
-    assert "notepad.exe" in rekey_apps(), "control: the lookup counts before"
-    _leave_out(folder, "2026-05-14T09:02:09Z", "2026-05-14T09:02:15Z")
+    run2 = lambda stats: next(r for r in stats["case_stats"] if r["label"] == "Order #10901")  # noqa: E731
+    before = run2(_stats(folder))["active_ms"]
+    _leave_out(folder, "2026-05-14T09:01:45Z", "2026-05-14T09:02:07Z")
     normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)
-    assert "notepad.exe" not in rekey_apps()
+    after = run2(_stats(folder))["active_ms"]
+    assert before - after == 20900, (before, after)
+    # The wall clock is the transaction's, whatever is left out of it.
+    assert run2(_stats(folder))["wall_clock_ms"] == 53000
+
+
+def _first_tasks(bpmn: Path) -> set[str]:
+    """The tasks the step map's start event leads to, through gateways."""
+    import xml.etree.ElementTree as ET
+    ns = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
+    process = ET.parse(bpmn).getroot().find(f"{ns}process")
+    kinds = {el.get("id"): el.tag.split("}", 1)[-1] for el in process}
+    names = {el.get("id"): el.get("name") for el in process}
+    out: dict[str, list[str]] = {}
+    for el in process:
+        if el.tag == f"{ns}sequenceFlow":
+            out.setdefault(el.get("sourceRef"), []).append(el.get("targetRef"))
+    start = next(i for i, k in kinds.items() if k == "startEvent")
+    todo, seen, tasks = list(out.get(start, [])), set(), set()
+    while todo:
+        node = todo.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        if kinds.get(node, "").endswith("Gateway"):
+            todo.extend(out.get(node, []))
+        elif kinds.get(node) in ("task", "userTask", "manualTask", "subProcess"):
+            tasks.add(names[node])
+    return tasks
+
+
+def test_a_stretch_left_out_at_a_transactions_start_draws_no_path_from_the_start(tmp_path):
+    """Report 2, item 3 (lane FX1): with the first steps of transaction 2 left
+    out, its trace is cut at the stretch, so the step map draws no path from
+    the start straight into the step after the stretch: every transaction
+    that starts does so at the same first step, as before."""
+    import normalize as normalize_mod
+    folder = _demo(tmp_path / "s")
+    normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)
+    first_before = _first_tasks(folder / "process_map_step.bpmn")
+    assert len(first_before) == 1, first_before                    # control
+    _leave_out(folder, "2026-05-14T09:01:45Z", "2026-05-14T09:02:07Z")
+    normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)
+    anno = json.loads((folder / "annotations.json").read_text(encoding="utf-8"))
+    stats = _stats(folder)
+    run2 = next(r["case_id"] for r in stats["case_stats"] if r["label"] == "Order #10901")
+    after_stretch = min((s for s in anno["steps"] if s.get("case_id") == run2
+                         and s.get("state") != "hidden"),
+                        key=lambda s: s["time_range"]["start"])["name"]
+    assert after_stretch not in first_before, "control: the step after the stretch is not a first step"
+    assert _first_tasks(folder / "process_map_step.bpmn") == first_before
+    # The PDD's table of the map (3.1 without a picture) cuts it too.
+    import pdd_export
+    events, _ = normalize_mod.load_events(folder / "events.jsonl")
+    s = pdd_export._Session(folder, anno, stats,
+                            json.loads((folder / "manifest.json").read_text(encoding="utf-8")), events)
+    start_row = dict(pdd_export._flow_rows(s))["Start"]
+    assert after_stretch not in start_row, start_row

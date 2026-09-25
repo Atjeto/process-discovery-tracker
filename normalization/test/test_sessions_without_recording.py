@@ -350,11 +350,13 @@ def test_a_video_session_without_markers_is_one_implicit_run(tmp_path):
     analysis = _read(session, "analysis.json")
     assert analysis["case_quality"] == {"mode": "implicit", "case_count": 1,
                                         "coverage": None, "tier2_unlocked": False}
-    # Nothing was recorded: the measurements of the recording are null, and
-    # not failures (no stage_errors entry).
+    # Nothing was recorded: no app was recorded with less detail, and that
+    # is no failure (no stage_errors entry). The analysis layer nobody read
+    # is cut (lane FX1).
+    assert analysis["coverage_caveat"] is None
     for key in ("facts", "findings", "pdd_findings", "waste_classification",
                 "time_study", "segments", "automation_candidates", "efficiency"):
-        assert analysis[key] is None, key
+        assert key not in analysis, key
     assert analysis["stage_errors"] == []
 
     # The id is the same on every analysis.
@@ -375,10 +377,10 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
 
     blocks = _pdd(pdd)
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Open the order", "2. Check the stock", "3. Confirm the order"]
-    assert _under(blocks, "1. Open the order") == [
+        "Step 1: Open the order", "Step 2: Check the stock", "Step 3: Confirm the order"]
+    assert _under(blocks, "Step 1: Open the order") == [
         "30s on average · video 0:10", "Open the order from the customer's mail."]
-    assert _under(blocks, "2. Check the stock") == ["SAP · 30s on average · video 1:00"]
+    assert _under(blocks, "Step 2: Check the stock") == ["SAP · 30s on average · video 1:00"]
     control = _section(blocks, "1. Document control")
     assert "Transactions recorded | Not marked" in control and "Video | Attached" in control
     assert _section(blocks, "4.1 Differences between transactions") == [
@@ -418,8 +420,8 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
 
     blocks = _pdd(pdd)
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. Open the order", "2. Check the stock"]
-    assert _under(blocks, "2. Check the stock")[0] == (
+        "Step 1: Open the order", "Step 2: Check the stock"]
+    assert _under(blocks, "Step 2: Check the stock")[0] == (
         "SAP · 30s on average · in 1 of 2 transactions · Transaction 1, video 1:00")
     assert _section(blocks, "6.1 Time per transaction")[:3] == [
         "Transaction | Steps | Active time | Elapsed time",
@@ -427,6 +429,42 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
         "Transaction 2: Order 2 | 1 | Not recorded | "
         "Not measured: the transaction was not ended"]
     _assert_no_zero_timing(_text(blocks))
+
+
+def test_marking_the_transactions_keeps_every_step_in_a_transaction(tmp_path):
+    """Report 3, F1 (lane FX1): the analyst worked in the implicit run, adding
+    steps without a time and a timed step, then marked the transactions. The
+    steps without a time join the first transaction (in their order), and a
+    timed step across the new boundary joins the transaction that holds its
+    start; none is left outside the transactions, so the map and the PDD
+    keep them."""
+    session = _video_session(tmp_path / "video", markers=True)
+    anno = _read(session, "annotations.json")
+    rid = implicit_id(VIDEO_SID)
+    anno["steps"] += [
+        _hand_step("u2", "Send the confirmation", case_id=rid, time_range=None, order=2),
+        _hand_step("u1", "Check the customer", case_id=rid, time_range=None, order=1),
+        _hand_step("x1", "Open the order email", case_id=rid,
+                   time_range={"start": "2026-09-24T10:01:45Z", "end": "2026-09-24T10:01:55Z"}),
+    ]
+    _write(session, "annotations.json", anno)
+    pdd = tmp_path / "video.docx"
+    proc = _normalize_cli(session, pdd)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+
+    run1 = str(uuid.uuid5(CASE_NS, f"{VIDEO_SID}:insert-m1"))
+    run2 = str(uuid.uuid5(CASE_NS, f"{VIDEO_SID}:insert-m2"))
+    steps = {s["step_id"]: s["case_id"] for s in _read(session, "annotations.json")["steps"]}
+    assert steps == {"v1": run1, "v2": run1, "x1": run1, "u1": run1, "u2": run1, "v3": run2}
+    # On the map: the steps without a time follow the timed ones of run 1.
+    bpmn = session / "process_map_step.bpmn"
+    assert _reaches(bpmn, "Open the order email", "Check the customer")
+    assert _reaches(bpmn, "Check the customer", "Send the confirmation")
+    # In the PDD: transaction 1 is the reference transaction; all its steps print.
+    blocks = _pdd(pdd)
+    assert [t for k, t in blocks if k == "Heading 3"] == [
+        "Step 1: Open the order", "Step 2: Check the stock", "Step 3: Open the order email",
+        "Step 4: Check the customer", "Step 5: Send the confirmation"]
 
 
 # ---- the blank session: steps without times ------------------------------------
@@ -461,7 +499,7 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
 
     blocks = _pdd(pdd)
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        f"{i}. {name}" for i, name in enumerate(order, start=1)]
+        f"Step {i}: {name}" for i, name in enumerate(order, start=1)]
     control = _section(blocks, "1. Document control")
     assert "Recorded | Nothing recorded" in control
     assert "Transactions recorded | Not marked" in control
@@ -486,15 +524,15 @@ def test_the_blank_pdd_prints_the_chosen_screenshots_and_the_attachments(tmp_pat
     blocks = _pdd(pdd)
 
     # Step 1 lists its attachment by label; it has no screenshot.
-    assert _under(blocks, "1. Receive the request") == ["Attachments: Input spreadsheet."]
+    assert _under(blocks, "Step 1: Receive the request") == ["Attachments: Input spreadsheet."]
     # Step 2: the system, then only the screenshot chosen for the PDD.
-    assert _under(blocks, "2. Log it in SAP") == [
+    assert _under(blocks, "Step 2: Log it in SAP") == [
         "SAP", "pic:" + sha["screenshots/analyst/shot-a.png"]]
     # Step 3: no choice, so its analyst screenshot counts like a recorder one.
-    assert _under(blocks, "3. Check the stock") == [
+    assert _under(blocks, "Step 3: Check the stock") == [
         "pic:" + sha["screenshots/analyst/shot-c.png"]]
     # Step 4: the hidden recorder screenshot is never printed.
-    assert _under(blocks, "4. Reply to the customer") == [
+    assert _under(blocks, "Step 4: Reply to the customer") == [
         "pic:" + sha["screenshots/rec-2.png"]]
     pictures = [t for k, t in blocks if k == "pic"]
     assert sha["screenshots/analyst/shot-b.png"] not in pictures
@@ -615,8 +653,8 @@ def test_a_step_without_a_time_in_a_marked_run_of_a_recording(tmp_path):
     assert not _reaches(bpmn, "Phone the customer", "CRM | Orders: Find")
     blocks = _pdd(pdd)
     assert [t for k, t in blocks if k == "Heading 3"] == [
-        "1. CRM | Orders: Find", "2. CRM | Orders: Save", "3. Phone the customer"]
-    assert _under(blocks, "3. Phone the customer") == ["Phone · in 1 of 2 transactions"]
+        "Step 1: CRM | Orders: Find", "Step 2: CRM | Orders: Save", "Step 3: Phone the customer"]
+    assert _under(blocks, "Step 3: Phone the customer") == ["Phone · in 1 of 2 transactions"]
     assert _section(blocks, "4.1 Differences between transactions") == [
         "Transaction 2: Order b",
         "Skipped: Phone the customer (done in 1 of 2 transactions)."]
@@ -637,5 +675,5 @@ def test_a_recorder_session_without_markers_still_has_no_runs(tmp_path):
     assert _read(session, "annotations.json")["steps"][0]["case_id"] is None
     analysis = _read(session, "analysis.json")
     assert analysis["case_quality"]["mode"] == "unsegmented"
-    assert analysis["facts"] is not None and analysis["findings"] == []
+    assert analysis["coverage_caveat"] is None and "findings" not in analysis
     assert not (session / "process_map_step.bpmn").exists()

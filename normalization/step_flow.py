@@ -38,6 +38,18 @@ declares nothing, and a link to it, to its own step or to a step no
 transaction holds draws nothing. A condition or a `when` is one line
 (whitespace collapsed); an empty `when` is an edge without a label.
 
+A stretch of a transaction left out of the analysis (annotations
+`excluded_ranges`, cut to the transaction's span: left_out_stretches) cuts
+its trace (lane FX1): the steps done in it were not drafted, so the step
+before it and the step after it were not done one after the other. It falls
+between the steps as the differences place it (a step is before it when it
+starts before the stretch starts; a step without a time is after it:
+cut_positions), and no edge crosses it: not from the step before to the step
+after, not from the start into the first step after a stretch that opens the
+transaction, not from the last step before a stretch that closes it into the
+end. The rules above hold inside each part; a step next to a cut has no
+previous step (or no step after it) on that side.
+
 Pure: no pm4py, so the golden runs on any Python.
 """
 
@@ -45,7 +57,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from step_context import step_sort_key
+from _dt import parse_ts_or_none as _parse_ts
+from step_context import step_sort_key, step_start
 
 # The map's start and end, as edge ends. A step name never holds this control
 # character (the viewer's map keys its edges with the same one).
@@ -101,13 +114,54 @@ def declares_flow(step: Any) -> bool:
     return bool(condition_of(step)) or (isinstance(links, list) and len(links) > 0)
 
 
-def _visits(steps: Any) -> list[tuple[str, list[dict]]]:
-    """A transaction's visible steps in the map's order, as visits: (node,
-    steps) for each stretch of consecutive steps with one node."""
-    visible = [s for s in steps or [] if isinstance(s, dict) and s.get("state") != "hidden"]
-    visible.sort(key=step_sort_key)
+def left_out_stretches(ranges: Any, start: Any, end: Any) -> list[tuple]:
+    """The stretches of one transaction left out of the analysis: each
+    excluded range (annotations.excluded_ranges, {"start", "end"} ISO) cut to
+    the transaction's span (`start`, `end` datetimes; `end` None for a
+    transaction left open), in time order, overlapping ones joined; a range
+    outside the span, or one that cannot be read, is dropped, and without a
+    `start` nothing is placed. [(start, end)]. The rule of
+    viewer/run-differences.js leftOutStretches, pinned with it by
+    shared/run-differences-golden.json."""
+    if start is None:
+        return []
+    cut = []
+    for r in ranges if isinstance(ranges, list) else []:
+        if not isinstance(r, dict):
+            continue
+        a, b = _parse_ts(r.get("start")), _parse_ts(r.get("end"))
+        if a is None or b is None or b < a:
+            continue
+        s, e = max(a, start), (min(b, end) if end is not None else b)
+        if e > s:
+            cut.append((s, e))
+    out: list[list] = []
+    for s, e in sorted(cut):
+        if out and s <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return [(s, e) for s, e in out]
+
+
+def cut_positions(starts: list, stretches: Any) -> list[int]:
+    """Where the stretches left out fall among a transaction's steps, given
+    the steps' start times in the map's order (None for a step without a
+    time): for each stretch, how many steps start before it starts (a step
+    without a time is after every stretch), sorted, each position once. The
+    placement rule of the differences (pdd_export._inside_stretches,
+    viewer/run-differences.js)."""
+    positions = set()
+    for s, _e in stretches or []:
+        positions.add(sum(1 for t in starts if t is not None and t < s))
+    return sorted(positions)
+
+
+def _visit_list(steps: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Steps (in the map's order) as visits: (node, steps) for each stretch
+    of consecutive steps with one node."""
     visits: list[tuple[str, list[dict]]] = []
-    for step in visible:
+    for step in steps:
         node = node_of(step)
         if visits and visits[-1][0] == node:
             visits[-1][1].append(step)
@@ -116,9 +170,50 @@ def _visits(steps: Any) -> list[tuple[str, list[dict]]]:
     return visits
 
 
-def flow_edges(transactions: Any) -> list[dict]:
+def _visible(steps: Any) -> list[dict]:
+    """A transaction's visible steps in the map's order."""
+    visible = [s for s in steps or [] if isinstance(s, dict) and s.get("state") != "hidden"]
+    visible.sort(key=step_sort_key)
+    return visible
+
+
+def _visits(steps: Any) -> list[tuple[str, list[dict]]]:
+    """A transaction's visible steps in the map's order, as visits: (node,
+    steps) for each stretch of consecutive steps with one node."""
+    return _visit_list(_visible(steps))
+
+
+def _paths(steps: Any, stretches: Any) -> list[list[tuple[str, Any]]]:
+    """A transaction's trace as the map draws it: its visible steps in the
+    map's order, cut where a stretch was left out (cut_positions), each part
+    a list of (node, steps) visits; the first part opens with (START, None)
+    unless a stretch comes before every step, and the last part closes with
+    (END, None) unless a stretch comes after every step. [] for a
+    transaction with no visible step."""
+    visible = _visible(steps)
+    if not visible:
+        return []
+    n = len(visible)
+    cuts = cut_positions([step_start(s) for s in visible], stretches)
+    bounds = [0] + [c for c in cuts if 0 < c < n] + [n]
+    parts = [_visit_list(visible[a:b]) for a, b in zip(bounds, bounds[1:])]
+    out: list[list[tuple[str, Any]]] = []
+    for k, visits in enumerate(parts):
+        path: list[tuple[str, Any]] = []
+        if k == 0 and 0 not in cuts:
+            path.append((START, None))
+        path.extend(visits)
+        if k == len(parts) - 1 and n not in cuts:
+            path.append((END, None))
+        out.append(path)
+    return out
+
+
+def flow_edges(transactions: Any, left_out: Any = None) -> list[dict]:
     """The step map's edges (the rule in the module docstring) of
-    `transactions`, a list of step lists in transaction order.
+    `transactions`, a list of step lists in transaction order. `left_out`,
+    when given, is each transaction's stretches left out of the analysis
+    (left_out_stretches), in the same order: they cut its trace.
 
     Each edge is {"from", "to", "label", "labels", "observed",
     "transactions"}: the ends are nodes, START or END; label is the declared
@@ -128,18 +223,24 @@ def flow_edges(transactions: Any) -> list[dict]:
     at least one transaction took the edge; transactions is how many did.
     The observed edges come first, in transaction order, then the declared
     ones in step order."""
-    runs = [v for v in (_visits(steps) for steps in transactions or []) if v]
+    cuts = list(left_out) if isinstance(left_out, (list, tuple)) else []
+    runs = []
+    for t, steps in enumerate(transactions or []):
+        paths = _paths(steps, cuts[t] if t < len(cuts) else None)
+        if paths:
+            runs.append((t, paths))
     node_by_id: dict[str, str] = {}
     conditions: dict[str, list[str]] = {}
-    for visits in runs:
-        for node, steps in visits:
-            for step in steps:
-                sid = step.get("step_id")
-                if isinstance(sid, str) and sid:
-                    node_by_id.setdefault(sid, node)
-                cond = condition_of(step)
-                if cond and cond not in conditions.setdefault(node, []):
-                    conditions[node].append(cond)
+    for _t, paths in runs:
+        for path in paths:
+            for node, steps in path:
+                for step in steps or []:
+                    sid = step.get("step_id")
+                    if isinstance(sid, str) and sid:
+                        node_by_id.setdefault(sid, node)
+                    cond = condition_of(step)
+                    if cond and cond not in conditions.setdefault(node, []):
+                        conditions[node].append(cond)
 
     edges: dict[tuple[str, str], dict] = {}
 
@@ -150,27 +251,46 @@ def flow_edges(transactions: Any) -> list[dict]:
         if label and label not in edge["labels"]:
             edge["labels"].append(label)
 
-    paths = [[START] + [node for node, _steps in visits] + [END] for visits in runs]
-    for t, path in enumerate(paths):
-        for a, b in zip(path, path[1:]):
-            add(a, b, taken_in=t)
-    for visits, path in zip(runs, paths):
-        for i, (node, steps) in enumerate(visits, start=1):
-            prev, after = path[i - 1], path[i + 1]
-            for cond in conditions.get(node, []):
-                add(prev, node, cond)
-                if after != prev:
-                    add(prev, after, OTHERWISE)
-            for step in steps:
-                own = step.get("step_id")
-                for to, when in links_of(step):
-                    target = END if to == "end" else (None if to == own else node_by_id.get(to))
-                    if target is not None:
-                        add(node, target, when or None)
+    for t, paths in runs:
+        for path in paths:
+            nodes = [node for node, _steps in path]
+            for a, b in zip(nodes, nodes[1:]):
+                add(a, b, taken_in=t)
+    for _t, paths in runs:
+        for path in paths:
+            for i, (node, steps) in enumerate(path):
+                if steps is None:
+                    continue
+                prev = path[i - 1][0] if i > 0 else None
+                after = path[i + 1][0] if i + 1 < len(path) else None
+                if prev is not None:
+                    for cond in conditions.get(node, []):
+                        add(prev, node, cond)
+                        if after is not None and after != prev:
+                            add(prev, after, OTHERWISE)
+                for step in steps:
+                    own = step.get("step_id")
+                    for to, when in links_of(step):
+                        target = END if to == "end" else (None if to == own else node_by_id.get(to))
+                        if target is not None:
+                            add(node, target, when or None)
     return [{"from": e["from"], "to": e["to"],
              "label": " or ".join(e["labels"]) or None, "labels": list(e["labels"]),
              "observed": bool(e["taken"]), "transactions": len(e["taken"])}
             for e in edges.values()]
+
+
+def cuts_change_map(transactions: Any, left_out: Any) -> bool:
+    """True when the stretches left out change the map: the edges with the
+    traces cut there differ from the edges of the whole traces. The traces
+    then cannot be mined or chained whole (that would draw a path no
+    transaction took), so the step map is drawn from the cut edges."""
+    if not any(left_out or []):
+        return False
+
+    def shape(edges):
+        return {(e["from"], e["to"]): (e["observed"], e["label"]) for e in edges}
+    return shape(flow_edges(transactions, left_out)) != shape(flow_edges(transactions))
 
 
 def changes_map(edges: list[dict]) -> bool:

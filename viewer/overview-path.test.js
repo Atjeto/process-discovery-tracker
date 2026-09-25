@@ -125,6 +125,43 @@ test("the line says how many other runs differ from the reference run", () => {
   assert.ok(!/Confirm/.test(act), "the review act asks for no Confirm");
 });
 
+test("lane FX1: Review points at a transaction that differs, and the sentence is about the one it opens", () => {
+  const sess = session({});
+  // Transaction 2 does what the reference transaction does; transaction 3 differs.
+  const keyOf = { c: "a", d: "b" };
+  for (const s of sess.annotations.steps) if (keyOf[s.step_id]) s.draft_key = "app|screen|Button:" + keyOf[s.step_id];
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  confirmRun(sess, "c1");
+  let st = pathState(sess);
+  assert.equal(st.differing, 1);
+  assert.equal(st.nextOther.caseId, "c3", "the transaction that differs, before the one that does not");
+  assert.equal(st.nextDiffers, true);
+  let html = overviewHtml(sess);
+  assert.ok(html.includes(">Review transaction 3 in Steps</button>"), html.slice(0, 600));
+  assert.ok(html.includes('<div class="ov-next-say">1 transaction differs from the reference transaction.</div>'));
+  openRuns(sess, "c3");
+  st = pathState(sess);
+  assert.equal(st.nextOther.caseId, "c2");
+  assert.equal(st.nextDiffers, false);
+  html = overviewHtml(sess);
+  assert.ok(html.includes(">Review transaction 2 in Steps</button>"));
+  assert.ok(html.includes('<div class="ov-next-say">Transaction 2 does not differ from the reference transaction.</div>'));
+});
+
+test("lane FX1: a step that happens only under a condition and was not done is no difference for the Checklist", () => {
+  const sess = session({});
+  const keyOf = { c: "a" };
+  for (const s of sess.annotations.steps) if (keyOf[s.step_id]) s.draft_key = "app|screen|Button:" + keyOf[s.step_id];
+  sess.annotations.steps = sess.annotations.steps.filter((s) => s.step_id !== "d" && s.case_id !== "c3");
+  sess.stats.case_stats = sess.stats.case_stats.slice(0, 2);
+  sess.annotations.steps.find((s) => s.step_id === "b").only_when = "the customer asks";
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  confirmRun(sess, "c1");
+  const st = pathState(sess);
+  assert.equal(st.differing, 0, "transaction 2 did not do b, which happens only when the customer asks");
+  assert.ok(overviewHtml(sess).includes('<div class="ov-next-say">No other transaction differs from the reference transaction.</div>'));
+});
+
 test("the reference run follows 'Use as reference run': run 1 is then one of the other runs", () => {
   const sess = session({});
   confirmRun(sess, "c2");
@@ -256,6 +293,22 @@ test("the project line: name, who recorded it, the transactions and the referenc
   assert.ok(!html.includes("0s ·") && !/ · \d+m\d+s · /.test(html), "no recording length");
   sess.annotations.pattern_run = { case_id: "c2", confirmed_at: null };
   assert.ok(overviewHtml(sess).includes('<span data-summary="steps">2 steps in transaction 2</span>'), "the reference transaction, whichever it is");
+});
+
+test("lane FX1: the capture app's default request never names the project: the folder's name does", () => {
+  const sess = session({ sessionFolder: "D:/SME/20260925-085516",
+    manifest: { engagement_id: "default", engagement_name: "Default engagement" } });
+  let html = overviewHtml(sess);
+  assert.ok(html.includes('<strong class="ov-summary-name">20260925-085516</strong>'), html.slice(0, 900));
+  assert.ok(!html.includes("Default engagement") && !/>default</.test(html));
+  delete sess.stats;                                 // before the analysis: the same name
+  html = overviewHtml(sess);
+  assert.ok(html.includes('<strong class="ov-summary-name">20260925-085516</strong>'));
+  const win = session({ sessionFolder: ["C:", "Users", "sme", "20260925-085517"].join(String.fromCharCode(92)),
+    manifest: { engagement_id: "default" } });
+  assert.ok(overviewHtml(win).includes('<strong class="ov-summary-name">20260925-085517</strong>'), "a Windows path");
+  const coded = session({ manifest: { engagement_id: "REQ-2026-042", config: { engagement_name: "Default engagement" } } });
+  assert.ok(overviewHtml(coded).includes('<strong class="ov-summary-name">REQ-2026-042</strong>'));
 });
 
 test("the project line names the SME when the capture app's Profile recorded a name, else the Windows login", () => {

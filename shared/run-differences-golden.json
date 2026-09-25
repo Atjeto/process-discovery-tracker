@@ -1,5 +1,5 @@
 {
-  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 4.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, the difference lines, and the stretches of a run left out of the analysis. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). A case with `excluded_ranges` also gives `run_span` (the run's start and end) and `origin` (when the recording started): each range is cut to the run's span, the pattern steps inside a stretch are not Skipped, and the run says once, first, that part of it was left out, with the times since the recording started. Change a case only together with both implementations.",
+  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 4.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, the difference lines, and the stretches of a run left out of the analysis. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). A case with `excluded_ranges` also gives `run_span` (the run's start and end) and `origin` (when the recording started): each range is cut to the run's span, the pattern steps inside a stretch are not Skipped, and the run says once, first, that part of it was left out, with the times since the recording started. Lane FX1 made it one rule for the Steps level and the PDD's section 4.1: a pattern step the run lacks that happens only under a condition (only_when, contract C17) reads \"Not done: <name> (only when <condition>).\" and is no difference; a step the run does more often than the pattern run, at least twice, reads \"Repeated: <name>, <n> times.\" at its first time, after the skipped steps; `count` is how many lines are differences (the left-out line and a Not done line are not). Before the rule runs, each side sorts `pattern` and `run` by its own order of steps (a start time first, then `order`, then neither), and steps that start at one moment keep their list order (the viewer once broke the tie by step_id). `reference_cases` pin the default reference transaction on both sides: the analyst's choice (`pattern_run`) while it names a transaction, else the first transaction by start that has a visible step; a transaction whose every step is hidden is passed over. Change a case only together with both implementations.",
   "version": 1,
   "cases": [
     {
@@ -185,6 +185,176 @@
       "expected": [
         "Part of this run was left out of the analysis (10:00 to 10:30 and 11:50 to 12:00)."
       ]
+    },
+    {
+      "name": "a conditional step the run did not do is not a difference",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send", "only_when": "the customer asked for a confirmation." }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:crm|Orders|Button:save"
+      ],
+      "expected": [
+        "Not done: Send the confirmation (only when the customer asked for a confirmation)."
+      ],
+      "count": 0
+    },
+    {
+      "name": "steps done again in the run are repeated, at their first time, after the skipped steps",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Check the order", "draft_key": "sap|va01|MenuItem:check" },
+        { "name": "Create the order", "draft_key": "sap|va01|Button:create" },
+        { "name": "Print the order", "draft_key": "sap|va01|Button:print" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "va01: Check", "draft_key": "sap|va01|MenuItem:check" },
+        { "name": "va01: Create", "draft_key": "sap|va01|Button:create" },
+        { "name": "va01: Check", "draft_key": "sap|va01|MenuItem:check" },
+        { "name": "va01: Create", "draft_key": "sap|va01|Button:create" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:sap|va01|MenuItem:check",
+        "draft:sap|va01|Button:create",
+        "draft:sap|va01|MenuItem:check",
+        "draft:sap|va01|Button:create",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": [
+        "Skipped: Print the order (step 4 of the pattern run).",
+        "Repeated: va01: Check, 2 times.",
+        "Repeated: va01: Create, 2 times."
+      ],
+      "count": 3
+    },
+    {
+      "name": "a step done as often as in the pattern run is not repeated; more often is, and an extra step done twice is extra and repeated",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Check the order", "draft_key": "sap|va01|MenuItem:check" },
+        { "name": "Look up the order again", "draft_key": "crm|Orders|Button:find" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "va01: Check", "draft_key": "sap|va01|MenuItem:check" },
+        { "name": "Log book: Save", "draft_key": "excel|Log book|Button:save" },
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Log book: Save", "draft_key": "excel|Log book|Button:save" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:sap|va01|MenuItem:check",
+        "draft:excel|Log book|Button:save",
+        "draft:crm|Orders|Button:find",
+        "draft:excel|Log book|Button:save"
+      ],
+      "expected": [
+        "Extra step: Log book: Save (after va01: Check).",
+        "Repeated: Log book: Save, 2 times."
+      ],
+      "count": 2
+    },
+    {
+      "name": "steps that start at one moment keep their list order on both sides",
+      "pattern": [
+        { "step_id": "s2", "name": "Save the order", "draft_key": "crm|Orders|Button:save", "time_range": { "start": "2026-05-14T09:00:00Z", "end": "2026-05-14T09:00:00Z" } },
+        { "step_id": "s1", "name": "Look up the order", "draft_key": "crm|Orders|Button:find", "time_range": { "start": "2026-05-14T09:00:00Z", "end": "2026-05-14T09:00:00Z" } }
+      ],
+      "run": [
+        { "step_id": "r2", "name": "Orders: Save", "draft_key": "crm|Orders|Button:save", "time_range": { "start": "2026-05-14T09:10:05Z", "end": "2026-05-14T09:10:06Z" } },
+        { "step_id": "r1", "name": "Orders: Find", "draft_key": "crm|Orders|Button:find", "time_range": { "start": "2026-05-14T09:10:00Z", "end": "2026-05-14T09:10:01Z" } }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:crm|Orders|Button:save"
+      ],
+      "expected": [
+        "Different order: Orders: Save (in this run after Orders: Find)."
+      ],
+      "count": 1
+    },
+    {
+      "name": "a conditional pattern step inside a stretch left out is neither skipped nor not done",
+      "origin": "2026-05-14T09:00:00Z",
+      "run_span": { "start": "2026-05-14T09:01:00Z", "end": "2026-05-14T09:03:00Z" },
+      "excluded_ranges": [
+        { "start": "2026-05-14T09:01:10Z", "end": "2026-05-14T09:01:45Z", "reason": "manual" }
+      ],
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Check the customer", "draft_key": "crm|Customer|Button:check", "only_when": "the customer is new" },
+        { "name": "Save the order", "draft_key": "crm|Orders|Button:save" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find", "time_range": { "start": "2026-05-14T09:01:02Z", "end": "2026-05-14T09:01:05Z" } },
+        { "name": "Orders: Save", "draft_key": "crm|Orders|Button:save", "time_range": { "start": "2026-05-14T09:01:50Z", "end": "2026-05-14T09:01:55Z" } }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:crm|Orders|Button:save"
+      ],
+      "expected": [
+        "Part of this run was left out of the analysis (1:10 to 1:45)."
+      ],
+      "count": 0
+    }
+  ],
+  "reference_cases": [
+    {
+      "name": "the first transaction with a visible step; one whose every step is hidden is passed over",
+      "pattern_run": null,
+      "runs": [
+        { "case_id": "c1", "start": "2026-05-14T09:00:00Z", "steps": [ { "state": "hidden" }, { "state": "hidden" } ] },
+        { "case_id": "c2", "start": "2026-05-14T09:05:00Z", "steps": [ { "state": "auto_suggested" } ] },
+        { "case_id": "c3", "start": "2026-05-14T09:10:00Z", "steps": [ { "state": "confirmed" } ] }
+      ],
+      "expected": "c2"
+    },
+    {
+      "name": "a transaction without steps is passed over too",
+      "pattern_run": null,
+      "runs": [
+        { "case_id": "c1", "start": "2026-05-14T09:00:00Z", "steps": [] },
+        { "case_id": "c2", "start": "2026-05-14T09:05:00Z", "steps": [ { "state": "manually_authored" } ] }
+      ],
+      "expected": "c2"
+    },
+    {
+      "name": "the analyst's choice wins while it names a transaction",
+      "pattern_run": "c3",
+      "runs": [
+        { "case_id": "c1", "start": "2026-05-14T09:00:00Z", "steps": [ { "state": "auto_suggested" } ] },
+        { "case_id": "c3", "start": "2026-05-14T09:10:00Z", "steps": [ { "state": "hidden" } ] }
+      ],
+      "expected": "c3"
+    },
+    {
+      "name": "a choice that names no transaction falls back to the rule",
+      "pattern_run": "gone",
+      "runs": [
+        { "case_id": "c1", "start": "2026-05-14T09:00:00Z", "steps": [ { "state": "hidden" } ] },
+        { "case_id": "c2", "start": "2026-05-14T09:05:00Z", "steps": [ { "state": "edited" } ] }
+      ],
+      "expected": "c2"
+    },
+    {
+      "name": "no transaction has a visible step: there is no reference transaction",
+      "pattern_run": null,
+      "runs": [
+        { "case_id": "c1", "start": "2026-05-14T09:00:00Z", "steps": [ { "state": "hidden" } ] }
+      ],
+      "expected": null
     }
   ]
 }

@@ -23,9 +23,10 @@ notes, the Markers panel, the screenshot stamps and the transcript rows, as m:ss
 h:mm:ss from an hour. The origin is `manifest.started_at`, else the first
 event (`dom.recordingStartMs`); `chooseTicks(start, end, count, origin)`
 counts its ticks from it. The step pane, the step panel and the PDD's
-pointers ("Transaction 1 at 0:19") use the same clock. The time of day
-shows in one place only: the summary line above the timeline, "Recorded
-<date> <time> · <length>".
+pointers ("Transaction 1 at 0:19") use the same clock, and so do the Raw
+events rows below the Timeline (lane FX1). The time of day shows in one
+place only: the summary line above the timeline, "Recorded <date> <time> ·
+<length>".
 
 ## The span
 

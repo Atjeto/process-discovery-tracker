@@ -2,7 +2,7 @@
  * run-differences.js: how a run differs from its reference (the pattern run),
  * in the Steps level's differences review. It is the
  * viewer half of ONE algorithm: normalization/pdd_export.py implements the
- * same rules for the PDD's section 6.1, and shared/run-differences-golden.json
+ * same rules for the PDD's section 4.1, and shared/run-differences-golden.json
  * pins both (run-differences.test.js here, test_run_differences_golden.py
  * there). Change one side only together with the other and the golden.
  *
@@ -30,8 +30,16 @@
  * reference lacks is an "Extra step" (where it sits: after the step before
  * it, or at the start of the run); every step both have that is outside a
  * longest common order is a "Different order"; every reference step whose key
- * the run lacks is "Skipped" (with its number in the reference). A key that
- * repeats within a list counts at its first occurrence only.
+ * the run lacks is "Skipped" (with its number in the reference), unless it
+ * happens only under a condition (C17 only_when, on a reference step with
+ * that key): then it reads "Not done: <name> (only when <condition>)." and
+ * is no difference (lane FX1); last, every step the run does more often than
+ * the reference, at least twice, is "Repeated: <name>, <n> times." at its
+ * first time (lane FX1: rework reads the same in Steps and in the PDD).
+ * Otherwise a key that repeats within a list counts at its first occurrence
+ * only. differenceCount counts the differences: the left-out line and a Not
+ * done line are not ones, so a transaction's head counts exactly the lines
+ * the Steps level lists as its differences.
  *
  * A stretch of the run left out of the analysis (annotations.excluded_ranges,
  * cut to the run's span: leftOutStretches) drafts no step, so the reference
@@ -54,8 +62,9 @@ const { processLabel } = require("./process-map-levels.js");
 const PATTERN_REFERENCE = "the pattern run";
 /* The Steps level's words (AD-29): the run the others are compared with, and
    what a run is called in a line ("at the start of the transaction", "in
-   this transaction after ..."). The shared golden and the PDD still print
-   PATTERN_REFERENCE and "run" (the defaults below). */
+   this transaction after ..."). The shared golden (with pdd_export._differences,
+   its pipeline half) keeps PATTERN_REFERENCE and "run" (the defaults below);
+   the PDD words the same items for its reader (pdd_export._variation_lines). */
 const REFERENCE_RUN = "the reference transaction";
 const RUN_UNIT = "transaction";
 
@@ -277,17 +286,48 @@ function commonOrder(a, b) {
   return keys;
 }
 
+/* The C17 condition (one line) of the first reference step with the key
+   `key` that has one, "" when none (pdd_export._condition_of_key). */
+function _conditionOf(refSteps, key) {
+  for (const s of refSteps) {
+    if (!s || typeof s !== "object" || alignKey(s) !== key) continue;
+    const c = typeof s.only_when === "string" ? s.only_when.replace(/\s+/g, " ").trim() : "";
+    if (c) return c;
+  }
+  return "";
+}
+
+/* An analyst's condition inside a sentence: no full stop at its end
+   (pdd_export._clause). */
+function _clause(c) {
+  return String(c || "").replace(/\s+$/, "").replace(/\.+$/, "").replace(/\s+$/, "");
+}
+
+/* How many times each alignment key occurs in `steps`. */
+function _keyCounts(steps) {
+  const m = new Map();
+  for (const s of steps || []) { const k = alignKey(s); m.set(k, (m.get(k) || 0) + 1); }
+  return m;
+}
+
+/* The kinds of line that are differences (pdd_export.COUNTED_KINDS). */
+const COUNTED = new Set(["extra", "order", "skipped", "repeated"]);
+
 /* The differences of a run from its reference, each as
-     { kind: "left_out" | "extra" | "order" | "skipped", name?, where?, number?, text }
+     { kind: "left_out" | "extra" | "order" | "skipped" | "not_done" | "repeated",
+       name?, where?, number?, condition?, times?, text }
    in the PDD's order: the one line on the stretches left out (when the run
    has any), the run's extra and reordered steps in run order, then the
-   reference steps the run skipped. `text` is the line pdd_export writes;
-   opts.reference names the reference in a Skipped line ("the pattern run" by
+   reference steps the run skipped or did not do (a step that happens only
+   under a condition), then the steps the run did more often than the
+   reference, in run order. `text` is the line pdd_export._differences
+   writes; opts.reference names the reference in a Skipped line ("the pattern run" by
    default; the Steps level passes REFERENCE_RUN) and opts.unit what a run is
    called in the other lines ("run" by default; the Steps level passes
    RUN_UNIT). opts.leftOut: the run's stretches left out of the analysis
    (leftOutStretches), opts.originMs when the recording started. Both lists
-   are the visible steps in time order. */
+   are the visible steps in the order of a transaction (runs-model byStart:
+   steps that start at one moment keep their list order). */
 function differences(refSteps, runSteps, opts) {
   const reference = (opts && opts.reference) || PATTERN_REFERENCE;
   const unit = (opts && opts.unit) || "run";
@@ -319,19 +359,40 @@ function differences(refSteps, runSteps, opts) {
   for (const { key, step, index } of pat) {
     if (runSet.has(key) || inside.has(index)) continue;
     const name = stepName(step);
-    out.push({ kind: "skipped", name, number: index + 1,
-      text: "Skipped: " + name + " (step " + (index + 1) + " of " + reference + ")." });
+    const condition = _conditionOf(ref, key);
+    if (condition) {
+      out.push({ kind: "not_done", name, number: index + 1, condition,
+        text: "Not done: " + name + " (only when " + _clause(condition) + ")." });
+    } else {
+      out.push({ kind: "skipped", name, number: index + 1,
+        text: "Skipped: " + name + " (step " + (index + 1) + " of " + reference + ")." });
+    }
+  }
+  const patCount = _keyCounts(ref), runCount = _keyCounts(units);
+  for (const { key, step } of run) {
+    const n = runCount.get(key) || 0;
+    if (n >= 2 && n > (patCount.get(key) || 0)) {
+      const name = stepName(step);
+      out.push({ kind: "repeated", name, times: n, text: "Repeated: " + name + ", " + n + " times." });
+    }
   }
   return out;
 }
 
-/* How many of `diffs` are differences (the left-out line is not one). */
+/* How many of `diffs` are differences: the left-out line and a Not done line
+   are not (pdd_export.difference_count). */
 function differenceCount(diffs) {
-  return (Array.isArray(diffs) ? diffs : []).filter((d) => d && d.kind !== "left_out").length;
+  return (Array.isArray(diffs) ? diffs : []).filter((d) => d && COUNTED.has(d.kind)).length;
+}
+
+/* Whether a line of `differences` is a difference (else it is said about
+   the comparison: the left-out line, a Not done line). */
+function isDifference(d) {
+  return !!(d && COUNTED.has(d.kind));
 }
 
 module.exports = {
   PATTERN_REFERENCE, REFERENCE_RUN, RUN_UNIT,
   stepKeys, mergeKey, alignKey, stepName, collapseToReference, firstOccurrences, commonOrder, differences,
-  leftOutStretches, leftOutText, differenceCount, isoMs: _ms,
+  leftOutStretches, leftOutText, differenceCount, isDifference, isoMs: _ms,
 };

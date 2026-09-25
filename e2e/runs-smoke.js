@@ -648,9 +648,11 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   // ---- 7b. L12b item 3: the differences review against the pattern run ------
   // The demo's own variants: run 2 visits Notepad (renamed in check 2) between
   // its two carried merges, run 3 never sends the confirmation, run 4 matches.
+  // Lane FX1: run 2 does the merged step twice, so it reads Repeated in Steps
+  // as in the PDD's 4.1, and the head counts it.
   {
     const WANT = {
-      [R2]: ["Extra step: " + NAME_NOTEPAD + " (after " + MERGED + ")."],
+      [R2]: ["Extra step: " + NAME_NOTEPAD + " (after " + MERGED + ").", "Repeated: " + MERGED + ", 2 times."],
       [R3]: ["Skipped: Outlook - Order confirmation: Send (step 6 of the reference transaction)."],
       [R4]: [],
     };
@@ -667,8 +669,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const st = await runsState();
     const metas = RUNS.map((r) => metaDiffs((st.find((g) => g.caseId === r) || {}).meta));
     const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
-      metas.join() === ",1 difference,1 difference,no differences";
-    record("L12b item 3: each other transaction lists its differences from the confirmed reference transaction (2: an extra step, 3: a skipped step, 4: none) and its line counts them",
+      metas.join() === ",2 differences,1 difference,no differences";
+    record("L12b item 3: each other transaction lists its differences from the confirmed reference transaction (2: an extra step and a repeated one, 3: a skipped step, 4: none) and its line counts them",
       ok, JSON.stringify({ err, seen: [R2, R3, R4].map((r) => seen[r]), metas }));
     if (!ok) await shot(page, "fail-runs-differences.png");
     // AD-28: only the reference run is confirmed; opening another run is its
@@ -1011,13 +1013,14 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     } catch (e) { err = errText(e); }
     const metas = (x) => RUNS.map((r) => metaDiffs(((x || []).find((g) => g.caseId === r) || {}).meta));
     const WANT = {
-      [R2]: ["Extra step: Notepad - Internal mappings.txt (after va01: Create sales order)."],
+      [R2]: ["Extra step: Notepad - Internal mappings.txt (after va01: Create sales order).",
+        "Repeated: va01: Check document, 2 times.", "Repeated: va01: Create sales order, 2 times."],
       [R3]: ["Skipped: Outlook - Order confirmation: Send (step 7 of the reference transaction)."],
       [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
         "Skipped: Salesforce - Order: Save order (step 3 of the reference transaction)."],
     };
     const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
-      metas(st).join() === ",1 difference,1 difference,2 differences" &&
+      metas(st).join() === ",3 differences,1 difference,2 differences" &&
       shown && !shown.text && shown.acts === 0 &&
       fs.readFileSync(path.join(S2, "annotations.json"), "utf-8") === before;
     record("L12b item 3 (C5 removed): a second copy of the demo (seeded with an extra and a skipped step) compares its transactions with its own reference transaction, names no saved process and offers no act for one; opening it changes no file",

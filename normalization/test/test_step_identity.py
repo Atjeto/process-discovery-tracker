@@ -211,3 +211,62 @@ def test_without_the_implicit_run_a_step_without_a_time_is_in_no_run():
     untimed["case_id"], untimed["time_range"] = "gone", None
     restamp_preserved_case_ids([untimed], cases)
     assert untimed["case_id"] is None
+
+
+# --- Lane FX1 (report 3, F1): marking the transactions of a project without a
+# recording keeps every step in a transaction -------------------------------
+
+def test_a_step_across_a_runs_end_joins_the_run_that_holds_its_start():
+    """C9 as lane FX1 amended it: a preserved step whose run is gone joins the
+    run that holds its start, even when it runs on past that run's end (a
+    Start marked later inside it); a step whose start no run holds is in none."""
+    from step_suggest import restamp_preserved_case_ids
+    cases = {
+        "run-1": _run("run-1", "2026-05-18T09:00:05Z", "2026-05-18T09:00:14Z"),
+        "run-2": _run("run-2", "2026-05-18T09:00:14Z", None),
+    }
+    across = _timed("M1", "edited", "gone", "2026-05-18T09:00:05Z", "2026-05-18T09:00:16Z")
+    on_boundary = _timed("M2", "manually_authored", "gone",
+                         "2026-05-18T09:00:14Z", "2026-05-18T09:00:15Z")
+    before = _timed("M3", "manually_authored", "gone",
+                    "2026-05-18T09:00:01Z", "2026-05-18T09:00:03Z")
+    restamp_preserved_case_ids([across, on_boundary, before], cases)
+    assert across["case_id"] == "run-1"
+    assert on_boundary["case_id"] == "run-2"          # the run that opened last
+    assert before["case_id"] is None
+
+
+def test_marked_runs_of_a_project_without_a_recording_take_its_steps_without_a_time():
+    """C16 as lane FX1 amended it: when start markers replace the implicit run
+    of a video or blank project, its steps without a time join the first run
+    (by start), whatever their previous id (the implicit run's, or none: a
+    step an earlier analysis left outside); a recording keeps C9's rule."""
+    from step_suggest import restamp_preserved_case_ids
+    cases = {
+        "late": _run("late", "2026-05-18T09:00:20Z", None),
+        "early": _run("early", "2026-05-18T09:00:02Z", "2026-05-18T09:00:20Z"),
+    }
+    implicit_was = _step("M1", "manually_authored", [])
+    implicit_was["case_id"], implicit_was["time_range"], implicit_was["order"] = "implicit-id", None, 1
+    outside_was = _step("M2", "edited", [])
+    outside_was["case_id"], outside_was["time_range"], outside_was["order"] = None, None, 2
+    kept = _step("M3", "manually_authored", [])
+    kept["case_id"], kept["time_range"], kept["order"] = "late", None, 1
+    moved = restamp_preserved_case_ids([implicit_was, outside_was, kept], cases, recorded=False)
+    assert [s["case_id"] for s in (implicit_was, outside_was, kept)] == ["early", "early", "late"]
+    assert moved == 2
+    # A recording: a step without a time whose run is gone stays in no run.
+    rec = _step("M4", "manually_authored", [])
+    rec["case_id"], rec["time_range"] = "gone", None
+    restamp_preserved_case_ids([rec], cases)
+    assert rec["case_id"] is None
+
+
+def test_the_sub_steps_follow_their_parent_into_the_run_that_holds_its_start():
+    from step_suggest import restamp_preserved_case_ids
+    cases = {"run-1": _run("run-1", "2026-05-18T09:00:05Z", "2026-05-18T09:00:14Z")}
+    parent = _timed("P1", "edited", "gone", "2026-05-18T09:00:06Z", "2026-05-18T09:00:30Z")
+    parent["sub_steps"] = [{"step_id": "S1", "name": "Inside", "state": "manually_authored",
+                            "case_id": "gone", "time_range": None}]
+    restamp_preserved_case_ids([parent], cases, recorded=False)
+    assert parent["case_id"] == "run-1" and parent["sub_steps"][0]["case_id"] == "run-1"

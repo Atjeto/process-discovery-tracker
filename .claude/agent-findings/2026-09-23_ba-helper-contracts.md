@@ -68,6 +68,16 @@ pattern; the probe line's fallback N when stats lack `draft_summary`.
   confirming it (merge, split, add, drop; renames are not counted). This is the P1
   draft-quality probe instrument: a structure-only number the owner can report.
 - The pipeline preserves this key verbatim and never regenerates it.
+- Amended by lane FX1 (2026-09-25): the default pattern run is the first run by start that
+  has at least one visible step, on both sides (a run whose every step is hidden is passed
+  over; `viewer/runs-model.js` defaultPatternRun and `pdd_export._Session._pick_pattern`,
+  pinned by the `reference_cases` of `shared/run-differences-golden.json`). The Steps level
+  and the PDD's 4.1 compare the runs by one rule, pinned by the same golden: a pattern step
+  a run lacks that carries `only_when` (C17) reads "Not done: <name> (only when
+  <condition>)." and is no difference; a step a run does more often than the pattern run,
+  at least twice, reads "Repeated: <name>, <n> times." and is one; the pattern run is
+  compared with nothing. Steps that start at one moment keep their list order on both
+  sides (the viewer no longer breaks the tie by step_id).
 
 ## C4. Remembered names (light vocab), analyst machine
 
@@ -211,6 +221,10 @@ marker event_id>")` (synthetic inserted markers use their `insert-<edit_id>` eve
 id). On re-normalization, a preserved analyst step whose `case_id` is not among the
 current case ids is restamped by time containment (the run whose span contains the
 step's time range); a step contained by no run gets `case_id: null`.
+Amended by lane FX1 (2026-09-25, report 3 F1): the run that holds the step's start, even
+when the step runs on past that run's end (a Start marked later inside it); a step whose
+start no run holds gets `case_id: null`. The viewer's runForRange (a step it creates) uses
+the same rule.
 
 ## C10. Legacy keys
 
@@ -239,10 +253,17 @@ keys of cut features. Old annotations.json files load without error.
 | 0 | Success |
 | 1 | Usage error, not a session folder, or an unexpected crash |
 | 2 | annotations.json exists but cannot be parsed; nothing was written. The message names the file and the viewer's backups (annotations.json.2 to .5) |
-| 3 | A requested export (for example `--pdd-out`) failed; the analysis outputs were written, the export was not |
+| 3 | A requested export (for example `--pdd-out`) failed; the export was not written. Amended by lane FX1: nothing in the project was changed either |
 
 Errors go to stderr as one line starting with `[normalize] ERROR:`. The viewer
 treats any non-zero exit as a failure and never opens a stale export file.
+
+Amended by lane FX1 (2026-09-25, report 3 F4): a run changes the project only when it
+succeeds. Every output (`annotations.json`, `stats.json`, `analysis.json`,
+`process_map_step.bpmn`) is staged as `<name>.pdt-staged` and moved into place together as
+the run's very last act (`session_io.Staging`); a run that fails removes what it staged,
+and a run the viewer's Cancel kills moves nothing (the viewer's `staged-outputs.js` and the
+next run remove what it staged). So Cancel leaves the steps and the map as they were.
 
 ## C11. CLI surface after the cycle (`normalization/normalize.py`)
 
@@ -299,7 +320,11 @@ application and a window title into the business system the work happened in.
   or "To-Be process map" (the e2e smokes read it).
 - The PDD prints no analysis finding (its former section 1 is cut). analysis.json
   keeps `pdd_findings` and annotations keep `memo_selection` exactly as before
-  (C10) until the viewer lane removes the "include in PDD" boxes.
+  (C10) until the viewer lane removes the "include in PDD" boxes. Amended by lane FX1
+  (2026-09-25): the boxes went with lane V1, so `pdd_findings` is cut, with the facts,
+  the findings and the step-based estimates nothing read; `memo_selection` still
+  round-trips (C10). `analysis.json` `format` is 4, and the one check the Overview shows,
+  the apps the recorder saw with less detail, is its own key, `coverage_caveat`.
 - `process_map_step.bpmn` (written by `--mine`, the Fork source): valid BPMN 2.0
   with diagram interchange, laid out left to right and wrapped into rows when one
   row would print its labels below 8.5 pt on a landscape page (rows end where the
@@ -332,7 +357,11 @@ Everything the analyst adds lives in the session folder, so it travels with it.
   null); `analysis.case_quality.mode` is `"implicit"`. It contains every step: a
   preserved step whose `case_id` is not a current run (null included) joins it, a step
   without a time too. When start markers replace it, preserved steps move by time
-  containment (C9), and a step without a time then belongs to no run.
+  containment (C9), and a step without a time then belongs to no run. Amended by lane
+  FX1 (2026-09-25, report 3 F1): a timed step moves to the run that holds its start (C9 as
+  amended), and a step without a time joins the first run (by start, then case id), in a
+  session without a recording; none falls outside the transactions, where no act brings a
+  step without a time back.
 - **Steps without times.** A hand-added step may have `time_range: null` (blank
   sessions, or a step added without a playhead). Such steps order by `order` (an
   integer, set by the viewer, unique within the run); a step with a time orders by
@@ -372,7 +401,8 @@ Everything the analyst adds lives in the session folder, so it travels with it.
   `case_stats.active_ms` is null, and `analysis.json` writes the step-based block,
   `facts`, `findings` and `pdd_findings` as null with no `stage_errors` entry (nothing
   failed; C12's null with an entry still means "could not run"); `case_quality` still
-  counts the runs, coverage null. The PDD says "Runs were not marked in this session"
+  counts the runs, coverage null. (Lane FX1 cut those keys; `coverage_caveat` is null
+  there.) The PDD says "Runs were not marked in this session"
   for the implicit run, "Runs recorded: Not marked", "Recorded: Nothing recorded" for
   a blank session, and points at the video time in a video session.
 - **Removal.** Removing a screenshot, note or attachment the analyst added deletes its
@@ -401,6 +431,14 @@ map editor. The default after a step is always the next step in its transaction.
      edge that coincides with an observed one is one edge, observed, carrying the declared
      label. The same declaration from several transactions is one edge. Different labels on
      one edge are joined with " or " in step order.
+  Amended by lane FX1 (2026-09-25, report 2 item 3): a stretch of a transaction left out of
+  the analysis (`excluded_ranges` cut to its span) cuts its trace: no edge joins the step
+  before it to the step after it, no start edge runs into the first step after a stretch
+  that opens the transaction, and no end edge leaves the last step before one that closes
+  it; a step next to a cut has no previous step (or none after it) there. A stretch falls
+  among the steps as the differences place it (before a step that starts after it starts;
+  a step without a time is after it). The golden's cases with `excluded_ranges` pin it;
+  the step BPMN is drawn from the cut edges when the cuts change the map.
   Settled by F-P (five golden cases added, the " or " order among them): consecutive steps
   with one node are one visit, so "previous step" and "the step after" are the neighbouring
   visits; a path around a step that sits between two visits of one node is not drawn (it
@@ -612,7 +650,10 @@ no separate image file per map (the owner's remark about images described today'
   `{"maps": [{"path": [<node>, ...], "png": "<file>"}]}`; `--pdd-map-image` stays for the main
   map, and a manifest entry with path `[]` wins over it. The viewer renders one PNG per numbered
   map for the PDD (the chosen As-Is copy's plane when it has one, else the step BPMN's plane;
-  `saveSVG` serializes the active root) and passes the manifest.
+  `saveSVG` serializes the active root) and passes the manifest. Amended by lane FX1
+  (2026-09-25, report 2 item 9, report 3 F10): a step's heading reads "Step 2: <name>" and a
+  sub-step's "Step 3.2: <name>", and a pointer reads "Sub-process: see section 3.<k>.", so a
+  step's number never reads as a section's (flow lines already say "step 3.2").
 - **Exports.** *Process map (image)* saves the map the Map level shows (the main map unless another
   is chosen); *Process map (BPMN)* saves the one file with every plane. Exports analyze first when
   annotations.json is newer than `process_map_step.bpmn`, as *Edit as the As-Is map* does.

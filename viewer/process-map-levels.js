@@ -182,6 +182,32 @@ function stepLinks(step) {
     .filter((l) => l && typeof l.to === "string" && l.to.trim());
 }
 
+/* An ISO time in ms, NaN when it cannot be read. A time without a zone is
+   read as UTC, as the pipeline's parser reads it (_dt.parse_ts; the rule of
+   run-differences.js isoMs, which requires this module). */
+function _isoMs(iso) {
+  if (typeof iso !== "string" || !iso.trim()) return NaN;
+  const s = iso.trim();
+  const zoned = /T.*([zZ]|[+-]\d{2}:?\d{2})$/.test(s) || !s.includes("T");
+  const t = Date.parse(zoned ? s : s + "Z");
+  return Number.isFinite(t) ? t : NaN;
+}
+
+/* Where the stretches left out of the analysis fall among a run's steps (in
+   the map's order): for each stretch ({ startMs }), how many steps start
+   before it starts; a step without a time is after every stretch. Sorted,
+   each position once. The placement rule of the differences
+   (run-differences.js) and of the pipeline (step_flow.cut_positions). */
+function cutPositions(steps, stretches) {
+  const starts = (steps || []).map((st) => _isoMs(st && st.time_range && st.time_range.start));
+  const at = new Set();
+  for (const s of Array.isArray(stretches) ? stretches : []) {
+    if (!s || !Number.isFinite(s.startMs)) continue;
+    at.add(starts.filter((t) => Number.isFinite(t) && t < s.startMs).length);
+  }
+  return [...at].sort((a, b) => a - b);
+}
+
 /**
  * The process map of a session: one trace per run, plus the step flow the
  * analyst set (contract C17).
@@ -189,6 +215,14 @@ function stepLinks(step) {
  * @param {Array<Array>} runs  one array of steps per run (a run's steps, in any
  *   order; hidden steps are left out here too). Steps outside every run are
  *   not passed: the map shows the runs.
+ * @param {Object} [opts]  opts.leftOut: each run's stretches left out of the
+ *   analysis ([{ startMs, endMs }], run-differences.js leftOutStretches), in
+ *   the order of `runs`. A stretch cuts its run's trace (lane FX1, the rule
+ *   shared/flow-links-golden.json pins with the pipeline's step_flow): no edge
+ *   crosses it, not from the step before it to the step after it, not from
+ *   START into the first step after a stretch that opens the run, not from
+ *   the last step before a stretch that closes it into END; a step next to a
+ *   cut has no previous step (or no step after it) on that side.
  * @returns {{edges: Array, start_activities: Object, end_activities: Object,
  *   start_edges: Array, end_edges: Array}}
  *   edges join two steps; start_edges leave the START node ({ target }) and
@@ -200,7 +234,8 @@ function stepLinks(step) {
  *   conditional step, several joined with " or " in step order; null when
  *   none).
  */
-function buildAnnotationDfg(runs) {
+function buildAnnotationDfg(runs, opts) {
+  const leftOut = (opts && Array.isArray(opts.leftOut)) ? opts.leftOut : [];
   // (from, to) -> the edge's record; `order` keeps the first-seen order.
   const byFrom = new Map();
   const order = [];
@@ -222,16 +257,12 @@ function buildAnnotationDfg(runs) {
   const startAct = {};
   const endAct = {};
 
-  // Each run's visible steps in order, as visits: consecutive steps with the
-  // same node are one visit, which keeps its ENTRY time so the edges can
-  // accumulate transition time (§B2).
-  const runVisits = [];
-  for (const run of runs || []) {
-    const steps = (Array.isArray(run) ? run : [])
-      .filter((st) => st && st.state !== "hidden")
-      .map((st, i) => ({ st, i }))
-      .sort(_byOrder)
-      .map((x) => x.st);
+  // Each run's visible steps in order, cut where a stretch was left out, as
+  // parts of visits: consecutive steps with the same node are one visit,
+  // which keeps its ENTRY time so the edges can accumulate transition time
+  // (§B2). A part opens at START only when no stretch comes before the run's
+  // first step, and closes at END only when none comes after its last.
+  const toVisits = (steps) => {
     const visits = [];
     for (const st of steps) {
       const node = mapNodeLabel(st);
@@ -239,33 +270,58 @@ function buildAnnotationDfg(runs) {
       if (last && last.node === node) last.steps.push(st);
       else visits.push({ node, entry: _stepStart(st), steps: [st] });
     }
-    if (visits.length) runVisits.push(visits);
-  }
-
-  // C17 rule 1, the observed edges: consecutive visits of each run, start to
-  // the first and the last to end.
-  for (const visits of runVisits) {
-    const first = visits[0].node, last = visits[visits.length - 1].node;
-    startAct[first] = (startAct[first] || 0) + 1;
-    endAct[last] = (endAct[last] || 0) + 1;
-    const s = edge(START, first);
-    s.observed = true;
-    s.freq += 1;
-    for (let i = 0; i < visits.length - 1; i++) {
-      const cur = edge(visits[i].node, visits[i + 1].node);
-      cur.observed = true;
-      cur.freq += 1;
-      // §B2 time-weighted edges: the time that flows along A->B is
-      // entering A -> entering B (A's dwell, trailing gap included), so
-      // a thick edge reads "this hand-off carried the time". Summed over
-      // every traversal; a missing timestamp contributes 0, never a guess.
-      const a = visits[i].entry;
-      const b = visits[i + 1].entry;
-      if (a && b && b > a) cur.ms += (b - a);
+    return visits;
+  };
+  const runParts = [];
+  (runs || []).forEach((run, r) => {
+    const steps = (Array.isArray(run) ? run : [])
+      .filter((st) => st && st.state !== "hidden")
+      .map((st, i) => ({ st, i }))
+      .sort(_byOrder)
+      .map((x) => x.st);
+    if (!steps.length) return;
+    const n = steps.length;
+    const cuts = cutPositions(steps, leftOut[r]);
+    const bounds = [0, ...cuts.filter((c) => c > 0 && c < n), n];
+    const parts = [];
+    for (let k = 0; k < bounds.length - 1; k++) {
+      parts.push({ visits: toVisits(steps.slice(bounds[k], bounds[k + 1])),
+        start: k === 0 && !cuts.includes(0), end: k === bounds.length - 2 && !cuts.includes(n) });
     }
-    const e = edge(last, END);
-    e.observed = true;
-    e.freq += 1;
+    runParts.push(parts);
+  });
+
+  // C17 rule 1, the observed edges: consecutive visits of each part, start
+  // to the first and the last to end where the part holds them.
+  for (const parts of runParts) {
+    for (const part of parts) {
+      const visits = part.visits;
+      const first = visits[0].node, last = visits[visits.length - 1].node;
+      if (part.start) {
+        startAct[first] = (startAct[first] || 0) + 1;
+        const s = edge(START, first);
+        s.observed = true;
+        s.freq += 1;
+      }
+      for (let i = 0; i < visits.length - 1; i++) {
+        const cur = edge(visits[i].node, visits[i + 1].node);
+        cur.observed = true;
+        cur.freq += 1;
+        // §B2 time-weighted edges: the time that flows along A->B is
+        // entering A -> entering B (A's dwell, trailing gap included), so
+        // a thick edge reads "this hand-off carried the time". Summed over
+        // every traversal; a missing timestamp contributes 0, never a guess.
+        const a = visits[i].entry;
+        const b = visits[i + 1].entry;
+        if (a && b && b > a) cur.ms += (b - a);
+      }
+      if (part.end) {
+        endAct[last] = (endAct[last] || 0) + 1;
+        const e = edge(last, END);
+        e.observed = true;
+        e.freq += 1;
+      }
+    }
   }
 
   // C17 rule 2: a step's condition makes its node conditional in every run
@@ -274,44 +330,52 @@ function buildAnnotationDfg(runs) {
   // step_flow.flow_edges); a hidden or unknown step draws nothing.
   const conditions = new Map();
   const nodeOf = new Map();
-  for (const visits of runVisits) {
-    for (const v of visits) {
-      for (const st of v.steps) {
-        if (typeof st.step_id === "string" && st.step_id && !nodeOf.has(st.step_id)) nodeOf.set(st.step_id, v.node);
-        const c = _line(st.only_when);
-        if (!c) continue;
-        const list = conditions.get(v.node) || [];
-        if (!list.includes(c)) list.push(c);
-        conditions.set(v.node, list);
+  for (const parts of runParts) {
+    for (const part of parts) {
+      for (const v of part.visits) {
+        for (const st of v.steps) {
+          if (typeof st.step_id === "string" && st.step_id && !nodeOf.has(st.step_id)) nodeOf.set(st.step_id, v.node);
+          const c = _line(st.only_when);
+          if (!c) continue;
+          const list = conditions.get(v.node) || [];
+          if (!list.includes(c)) list.push(c);
+          conditions.set(v.node, list);
+        }
       }
     }
   }
 
   // The declarations, walked in step order so the labels of one edge join
   // in step order (rule 4).
-  for (const visits of runVisits) {
-    visits.forEach((v, i) => {
-      const conds = conditions.get(v.node);
-      if (conds) {
-        // The edge entering the step from its previous step carries the
-        // condition, and a path around it reads "otherwise".
-        const prev = i > 0 ? visits[i - 1].node : START;
-        const next = i < visits.length - 1 ? visits[i + 1].node : END;
-        const into = edge(prev, v.node);
-        for (const c of conds) addLabel(into, c);
-        if (prev !== next) addLabel(edge(prev, next), OTHERWISE);
-      }
-      // Rule 3: a link goes from the step to its target, or to the end.
-      for (const st of v.steps) {
-        for (const l of stepLinks(st)) {
-          const id = l.to.trim();
-          if (id === st.step_id) continue;   // a link never points at its own step
-          const to = id === "end" ? END : nodeOf.get(id);
-          if (!to) continue;
-          addLabel(edge(v.node, to), l.when);
+  for (const parts of runParts) {
+    for (const part of parts) {
+      const visits = part.visits;
+      visits.forEach((v, i) => {
+        const conds = conditions.get(v.node);
+        if (conds) {
+          // The edge entering the step from its previous step carries the
+          // condition, and a path around it reads "otherwise"; next to a
+          // cut there is no previous step (or no step after it) there.
+          const prev = i > 0 ? visits[i - 1].node : part.start ? START : null;
+          const next = i < visits.length - 1 ? visits[i + 1].node : part.end ? END : null;
+          if (prev !== null) {
+            const into = edge(prev, v.node);
+            for (const c of conds) addLabel(into, c);
+            if (next !== null && prev !== next) addLabel(edge(prev, next), OTHERWISE);
+          }
         }
-      }
-    });
+        // Rule 3: a link goes from the step to its target, or to the end.
+        for (const st of v.steps) {
+          for (const l of stepLinks(st)) {
+            const id = l.to.trim();
+            if (id === st.step_id) continue;   // a link never points at its own step
+            const to = id === "end" ? END : nodeOf.get(id);
+            if (!to) continue;
+            addLabel(edge(v.node, to), l.when);
+          }
+        }
+      });
+    }
   }
 
   const edges = [], startEdges = [], endEdges = [];
@@ -342,7 +406,7 @@ function flowEdges(dfg) {
 }
 
 module.exports = {
-  buildAnnotationDfg, flowEdges, stepLinks, mapNodeLabel, processLabel,
+  buildAnnotationDfg, flowEdges, stepLinks, mapNodeLabel, processLabel, cutPositions,
   START, END, OTHERWISE,
   // Used by the Steps level (steps-view.js): the value-free screen label and
   // the view-time fallback for a step's screen / app keys.

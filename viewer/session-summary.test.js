@@ -190,5 +190,25 @@ test("recentLabel is the document title once written, else the recording's label
   assert.equal(recentLabel(sess, "sess-1"), "Tuesday call");
   sess.annotations.document.title = "Order intake: e-mail to sales order";
   assert.equal(recentLabel(sess, "sess-1"), "Order intake: e-mail to sales order");
-  assert.equal(recentLabel({ manifest: {} }, "sess-2"), "sess-2 · sess-2");
+  assert.equal(recentLabel({ manifest: {} }, "sess-2"), "sess-2", "no request: the folder's name once");
+  assert.equal(recentLabel({ manifest: { engagement_id: "default" } }, "sess-3"), "sess-3",
+    "lane FX1: the capture app's default code is no request");
+});
+
+test("lane FX1: the capture app's default request never names a project", () => {
+  const sess = sampleSession();
+  sess.manifest.engagement_id = "default";
+  sess.manifest.engagement_name = "Default engagement";
+  const s = computeSummary(sess);
+  assert.equal(s.engagement, null);
+  assert.equal(s.engagementName, null);
+  const { projectName, requestName, requestCode } = SessionSummary;
+  assert.equal(projectName(sess.manifest, "20260925-085516"), "20260925-085516");
+  assert.equal(projectName({}, ""), "This project");
+  assert.equal(projectName({ engagement_id: "REQ-2026-042", engagement_name: "Invoice intake review" }, "f"),
+    "Invoice intake review");
+  assert.equal(projectName({ engagement_id: "REQ-2026-042", config: { engagement_name: "Default engagement" } }, "f"),
+    "REQ-2026-042");
+  assert.equal(requestName({ config: { engagement_name: " Order intake " } }), "Order intake");
+  assert.equal(requestCode({ engagement_id: " default " }), null);
 });

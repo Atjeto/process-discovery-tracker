@@ -40,10 +40,20 @@ python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
 Exit codes (contract C13): **0** success; **1** a usage error or a folder
 that is not a project folder (an unexpected crash also exits 1, with a
 traceback); **2** `annotations.json` exists but cannot be read, and nothing
-was written, `normalize.log` included; **3** a requested export failed after
-every analysis output was written. Errors are one stderr line starting
+was written, `normalize.log` included; **3** a requested export failed, and
+nothing in the project was changed. Errors are one stderr line starting
 `[normalize] ERROR:`. The viewer treats any non-zero exit as a failure and
 never opens a stale export.
+
+A run changes the project only when it succeeds (lane FX1): every output
+(`annotations.json`, `stats.json`, `analysis.json`,
+`process_map_step.bpmn`) is staged beside its name as `<name>.pdt-staged`
+(`session_io.Staging`) and moved into place together as the run's very last
+act, `analysis.json` last. A run that fails removes what it staged; a run the
+viewer stops (Cancel kills the process, so nothing runs after) moves
+nothing, and the viewer (`viewer/staged-outputs.js`) and the next run remove
+what it staged. So Cancel leaves the steps and the map exactly as they
+were. Only `normalize.log` records every run.
 
 Flags removed with their features: `--canonical`, `--phase-bpmn-out`,
 `--step-csv-out`, `--memo-out`, `--bootstrap-vocab-out`, `--vocab-id`,
@@ -137,8 +147,10 @@ helpers in `pipeline_stages.py`, in this order:
    every depth, gets its `process_label` by the main level's rule (a
    drafted sub-step's `action_key` counts like a `draft_key`).
    `restamp_preserved_case_ids` (C9) moves a preserved step whose run no
-   longer exists to the run that contains it in time, then gives every
-   sub-step its parent's `case_id`. A group of steps (C19) is a preserved
+   longer exists to the run that holds its start (lane FX1: even when the
+   step runs on past that run's end), a step without a time in a session
+   without a recording to the first run (C16), then gives every sub-step its
+   parent's `case_id`. A group of steps (C19) is a preserved
    step whose span and evidence are its members', so the fresh drafts of
    the grouped interactions are dropped. The merged steps are written to
    `annotations.json` here. The statistics and the analysis read the main
@@ -146,29 +158,31 @@ helpers in `pipeline_stages.py`, in this order:
    (below).
 5. **Classification** (`_run_classification`). Taxonomy rules
    (`classification.py`) plus any `classification_overrides` an older file
-   carries, then two collapses: adjacent identical activity events, and one
-   row per activity occurrence for the statistics. Classification is an
+   carries, then the collapse of adjacent identical activity events (the
+   `collapsed_activity_count` in `stats.json` meta). Classification is an
    internal engine with no editing UI (AD-16): drafting does not use it; the
-   analysis stages do.
+   activity statistics do.
 6. **Statistics** (`_run_stats`). `stats.json`: activity, run, step, variant,
    outlier and rework statistics plus `meta`, including
    `step_state_breakdown`, `draft_summary` and `app_names`. The step
    variants use every visible (not hidden) step; the step durations use the
-   visible steps that have a time. The events inside a stretch the analyst
-   left out of the analysis (`annotations.excluded_ranges`) are skipped here,
-   as in step drafting.
-7. **Analysis** (`_run_analysis`). `analysis.json`: the measured blocks
-   (`case_quality`, `facts`, `findings`) and the step-based estimates (waste,
-   time study, segments, automation candidates, efficiency) over the visible
-   steps that have a time ([ADR-0008](../adr/0008-build-the-analysis-layer.md),
-   [ADR-0016](../adr/0016-segment-level-automation-candidacy.md)). A stage that
-   fails writes its key as `null` and one entry in `stage_errors` (contract
-   C12); the findings stage does not run when one of its inputs failed. Every
-   measurement here (the run check, the step-based blocks, the facts and the
-   findings) reads the derived stream without the stretches left out of the
-   analysis (lane CC). In a session without a recording the measurements are
-   `null` with no entry: nothing failed, nothing was recorded. The viewer's
-   Overview reads one finding (the coverage caveat); the PDD prints none.
+   visible steps that have a time. A stretch the analyst left out of the
+   analysis (`annotations.excluded_ranges`) is cut out of the recorded
+   activity rows first (`stats_compute.clip_excluded`: a row loses exactly
+   the part inside it), and only then are the rows merged into one row per
+   activity occurrence for the activity statistics (lane FX1). A run's active
+   time counts every activity row by its overlap with the run's span, clipped
+   to it, less the measured idle time (lane FX1: the capture app writes the
+   first stretch a moment before its Transaction 1 marker, so filing a row
+   under the run open at its start lost it).
+7. **Analysis** (`_run_analysis`). `analysis.json`: what the viewer and
+   the PDD read. The transaction check (`case_quality.py`, the Map's lock and
+   the Checklist) and the apps the recorder saw with less detail
+   (`capture_detail.py`, `coverage_caveat`, the warning on the Overview's
+   project line) read the derived stream without the stretches left out of
+   the analysis. A stage that fails writes its key as `null` and one entry in
+   `stage_errors` (contract C12). Lane FX1 cut the analysis layer nothing read
+   (the facts, the findings, the step-based estimates and `pdd_findings`).
    Then `pdd_export.pdd_rows` writes `pdd_data` and `pdd_time`: the rows the
    PDD prints in its sections 5 and 6, computed by the functions it prints
    them with (`data_section`, `time_section`) from the inputs it reads (the
@@ -179,13 +193,14 @@ helpers in `pipeline_stages.py`, in this order:
    viewer takes the same signature of the steps it has and, as the Overview
    opens, analyzes again when the two differ (pinned by
    `shared/steps-signature-golden.json`). `format` is
-   `pipeline_stages.ANALYSIS_FORMAT`, 3: the viewer analyzes a project again
+   `pipeline_stages.ANALYSIS_FORMAT`, 4: the viewer analyzes a project again
    as it opens when its `analysis.json` carries a lower one.
 8. **Step map and PDD** (`_run_mining_exports`). With `--mine`,
    `bpmn_observed.py` writes `process_map_step.bpmn` from the visible steps
    that belong to a run (below). With `--pdd-out`, `pdd_export.write_pdd`
-   renders the PDD; a failure raises after every analysis output is written
-   (exit 3).
+   renders the PDD; a failure raises, and the run commits nothing (exit 3).
+9. **Commit** (`normalize.normalize`). The staged outputs move into place
+   together, the run's last act.
 
 **Gone from the pipeline** ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
 the event-log export (`events.xes`, `events.csv`), the activity-level
@@ -193,8 +208,12 @@ the event-log export (`events.xes`, `events.csv`), the activity-level
 (the viewer draws its map from the steps and no longer reads them); nested
 runs; anchor-based case detection; suggested markers and anchor candidates;
 canonical matching and drift markers; phases; PII masking; the EUR-ROI stage;
-the PDD's findings section. Older session folders may still hold the removed
-files; nothing reads them.
+the PDD's findings section; and (lane FX1) the analysis layer nothing read:
+the facts, the findings detectors, the waste, time study, segments,
+automation and efficiency estimates, the repeated-sequence motifs, the
+findings memo model and `pdd_findings`, and the drafts' `suggestion_reason`.
+Older session folders may still hold the removed files and keys; nothing
+reads them.
 
 ## The step map (`process_map_step.bpmn`, contracts C15, C17, C18, C19)
 
@@ -218,6 +237,19 @@ exclusive gateway goes after a step with several ways out and before a
 step with several ways in; each label (a condition, "otherwise", a link's
 `when`) names its flow, cut after a whole word within 48 characters and
 whole in the flow's documentation.
+
+**A stretch left out of the analysis (lane FX1).** A stretch the analyst
+left out (`annotations.excluded_ranges`, cut to a transaction's span with
+`step_flow.left_out_stretches`) cuts that transaction's trace: no edge joins
+the step before it to the step after it, none runs from the start into the
+first step after a stretch that opens the transaction, and none from the
+last step before a stretch that closes it into the end
+(`step_flow.cut_positions` places a stretch among the steps as the
+differences do). The steps done in it were not drafted, so a whole trace
+would draw a path no transaction took. When the cuts change the map
+(`step_flow.cuts_change_map`), it is drawn from the cut edges, as for a flow
+the analyst set; the viewer's live map cuts its traces by the same rule, and
+the PDD's table of the map (3.1 without a picture) too.
 
 `mining.export_bpmn` writes valid BPMN 2.0 with diagram interchange and its
 own pure-Python layout: left to right, wrapped into rows when one row would
@@ -317,8 +349,9 @@ gaps. The sections, in the reader's order:
 1. **Document control.** The process (the document title), the project
    folder, when it was recorded and by whom (the SME's profile name, else
    the Windows login), the transactions recorded, whether a video is
-   attached, the request when one was set (AD-30), the date generated,
-   "Draft".
+   attached, the request when one was set (AD-30: its name and its code,
+   "Invoice intake review (REQ-2026-042)", the capture app's defaults never
+   printed), the date generated, "Draft".
 2. **Purpose and scope.** 2.1 Purpose, 2.2 Scope, 2.3 Trigger, 2.4 Result,
    2.5 Key contacts.
 3. **As-Is process.** 3.1 the As-Is map: the picture passed with
@@ -326,19 +359,21 @@ gaps. The sections, in the reader's order:
    the steps that followed it, with the number of runs) and a line naming
    `process_map_step.bpmn`. 3.2 the steps of the reference run: first the
    systems the process runs through, then one heading per step with its
-   context line, "Only when ..." when the step has a condition (C17), its
+   context line (the heading reads "Step N: <name>": lane FX1, so a step's
+   number never reads as a section's), "Only when ..." when the step has a
+   condition (C17), its
    description (C7: the analyst's text; a draft's generated narration is
    left out), the fields it entered, its attachments, its screenshots, the
    waste flag, and one line per link: "Then goes back to step N, <name>,
    when ...", "Then goes on to step N ...", "Then skips to step N ..." or
    "The process ends here when ...". A step whose map node is a
-   sub-process (C19) ends with "Sub-process: see 3.<k>.". After 3.2, one
+   sub-process (C19) ends with "Sub-process: see section 3.<k>.". After 3.2, one
    section per sub-process map with a number, depth first: "3.<k>
    Sub-process <number>: <name>", its map on a page of its own (its picture
    from `--pdd-map-images`, alternative text "As-Is process map,
    sub-process <number>", else the table 3.1 falls back to, counted over
    the transactions that ran it), then the steps of the reference
-   transaction's first visit, numbered "<number>.<i>" and printed like
+   transaction's first visit, headed "Step <number>.<i>: <name>" and printed like
    3.2's, a link numbered as the chapter numbers it and an end reading
    "The sub-process ends here ...". A group of steps (C19) prints its name,
    its line, its condition, its description when written, its attachments,
@@ -347,9 +382,15 @@ gaps. The sections, in the reader's order:
 4. **Variations, rules and exceptions** (sections 4 to 9 read the main
    level only). 4.1 how each other run differed
    from the reference run (extra steps with their system, where and in how
-   many runs; skipped steps; a different order; steps repeated within a
-   run), aligned by draft key, merge key, else label: the rule the viewer's
-   differences view uses, pinned by `shared/run-differences-golden.json`. A
+   many runs; a different order; skipped steps; a step that happens only
+   under a condition (C17) and was not done, "Not done: <name> (only when
+   <condition>).", which is no difference; a step done more often than in
+   the reference run, "Repeated: <name>, <n> times."), aligned by draft key,
+   merge key, else label: the rule the viewer's Steps level uses (lane FX1:
+   one rule, with the same default reference transaction and the same order
+   of steps that start at one moment), pinned by
+   `shared/run-differences-golden.json`. The reference run is compared with
+   nothing: it says only its stretches left out. A
    run with a stretch left out of the analysis (each excluded range cut to
    its span) says so first, once: "Part of this transaction was left out of
    the analysis (m:ss to m:ss).", and the reference steps inside the
@@ -361,7 +402,8 @@ gaps. The sections, in the reader's order:
    step, an example value and a Re-keyed mark; below it, one sentence per
    field whose value is typed in one system and typed again in another in
    the same run, with the number of runs that did it (`data_section`).
-6. **Applications and time.** 6.1 each run's steps, active time and elapsed
+6. **Applications and time.** 6.1 each run's steps, active time (the
+   recorded foreground time inside its span, `stats.json`) and elapsed
    time, with a line saying the runs were recorded as a walkthrough, so the
    times show the recording, not the usual handling time. 6.2 per system:
    its screens, its steps and its time per run (`time_section`). Sections 5
@@ -428,15 +470,16 @@ the stages apart:
   `case_id` `uuid5(<C9 namespace>, "<session_id>:implicit-run")`), and every
   step belongs to it. `stats.json` marks its row `implicit: true`;
   `analysis.case_quality.mode` is `"implicit"`. A start marker inserted by
-  hand replaces it, exactly as in a recording.
+  hand replaces it, exactly as in a recording; its steps then move to the
+  run that holds their start, and a step without a time to the first run
+  (lane FX1), so none falls outside the transactions.
 - **Steps without a time.** A step the analyst added may have
   `time_range: null` and an `order`. Every stage orders a run's steps by
   time, then by `order`; the timed figures leave such steps out, and nothing
   prints a time for them.
-- **Nothing recorded.** Each run's `active_ms` is `null`; the step-based
-  block, `facts`, `findings` and `pdd_findings` are `null` with no
-  `stage_errors` entry; `case_quality` still counts the runs, coverage
-  `null`; `pdd_data` and `pdd_time` are written as the PDD prints them. The PDD says the runs were not marked (implicit run) or that
+- **Nothing recorded.** Each run's `active_ms` is `null`; `coverage_caveat`
+  is `null` with no `stage_errors` entry; `case_quality` still counts the
+  runs, coverage `null`; `pdd_data` and `pdd_time` are written as the PDD prints them. The PDD says the runs were not marked (implicit run) or that
   nothing was recorded (blank session), and points at the video time in a
   video session.
 
@@ -467,15 +510,14 @@ SCHEMA.md.
 | `step_suggest.py` | The drafting rule, `session_names()`, `load_remembered_names()`, `draft_summary()`, `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
 | `classification.py`, `classification_overrides.py` | Taxonomy classification and the override replay; internal only. |
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
-| `case_quality.py`, `motifs.py`, `facts.py`, `findings.py` | The measured blocks of `analysis.json`: run coverage, repeated sequences, direct measurements, and the findings detectors with their evidence. |
-| `analysis*.py` | The step-based estimates: waste, time study, segments, automation candidates (ranked by `instance_count x mean_elapsed_ms x 0.7`), efficiency. |
+| `case_quality.py` | The transaction check of `analysis.json`: how the runs were found, how many, and the share of the recorded actions inside them. |
+| `capture_detail.py` | `coverage_caveat` of `analysis.json`: the apps the recorder saw with less detail, with one plain claim the Overview shows. |
 | `mining.py` | pm4py's inductive miner and the pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
 | `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
 | `pdd_export.py` | The PDD (above), and `pdd_rows` (the rows of its sections 5 and 6 the analysis writes into `analysis.json`). |
 | `steps_signature.py` | `steps_signature`: the signature of the steps the rows were measured from, written into `analysis.json`; the viewer's `rows-freshness.js` takes the same one (lane CC). |
-| `memo_export.py` | What is left of the findings memo: `run_rows` (the runs the PDD's tables read), the "could not run" wording, and `pdd_findings` (still written to `analysis.json`; nothing reads it). No memo document is written. |
 | `transcript_import.py` | The transcript parser and its CLI (above). |
 | `golden_check.py` | The session golden (above). |
 | `_dt.py`, `log_setup.py` | One ISO 8601 timestamp parser for every module; the rolling `normalize.log`. |

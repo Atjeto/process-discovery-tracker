@@ -161,11 +161,95 @@ def _unreadable_message(path: Path, reason: str) -> str:
             "over annotations.json, then analyze again.")
 
 
-def write_annotations(session_folder: Path, anno: dict) -> None:
+def write_annotations(session_folder: Path, anno: dict, staging: "Staging | None" = None) -> None:
     """Write annotations.json atomically (RP-04), through write_json_atomic,
-    so a crash or a cancelled run never leaves a truncated file behind."""
+    so a crash or a cancelled run never leaves a truncated file behind. With
+    a `staging`, the file is only staged: it replaces annotations.json when
+    the run commits."""
     anno["last_modified"] = datetime.now(timezone.utc).isoformat()
-    write_json_atomic(session_folder / "annotations.json", anno)
+    if staging is not None:
+        staging.write_json("annotations.json", anno)
+    else:
+        write_json_atomic(session_folder / "annotations.json", anno)
+
+
+# The suffix of an output staged by a run that has not committed yet (see
+# Staging). The viewer removes files with it after it stops a run.
+STAGED_SUFFIX = ".pdt-staged"
+# The order a commit moves the outputs into place: analysis.json, which
+# says the project is analyzed (its `format`), comes last.
+_COMMIT_ORDER = ("stats.json", "process_map_step.bpmn", "annotations.json", "analysis.json")
+
+
+class Staging:
+    """The outputs of one run, moved into place together when it ends.
+
+    Each output is written beside its final name, as `<name>.pdt-staged`,
+    and nothing in the project folder changes until commit() moves every
+    staged file onto its name (os.replace, the outputs in _COMMIT_ORDER,
+    analysis.json last). The pipeline commits as its very last act, so a run
+    that fails, or that the viewer stops (it kills the process: on Windows
+    nothing runs after that), leaves every output as it was: annotations.json,
+    stats.json, analysis.json and process_map_step.bpmn. discard() removes
+    the staged files of a run that failed; clear_staged() removes the ones a
+    stopped run left, before the next run stages its own."""
+
+    def __init__(self, folder: Path | str):
+        self.folder = Path(folder)
+        self._staged: dict[str, Path] = {}
+
+    def path(self, name: str) -> Path:
+        """The staged file of the output `name` (its final name in the
+        folder); the output is committed with the run."""
+        staged = self.folder / (name + STAGED_SUFFIX)
+        self._staged[name] = staged
+        return staged
+
+    def write_json(self, name: str, obj: Any) -> Path:
+        """Stage `obj` as the JSON output `name`, flushed to disk."""
+        staged = self.path(name)
+        with open(staged, "w", encoding="utf-8") as f:
+            json.dump(obj, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        return staged
+
+    def names(self) -> list[str]:
+        """The outputs staged so far and still on disk, in commit order."""
+        rank = {n: i for i, n in enumerate(_COMMIT_ORDER)}
+        present = [n for n, p in self._staged.items() if p.exists()]
+        return sorted(present, key=lambda n: (rank.get(n, len(rank)), n))
+
+    def commit(self) -> None:
+        """Move every staged output onto its name."""
+        for name in self.names():
+            os.replace(self._staged[name], self.folder / name)
+        self._staged.clear()
+
+    def discard(self) -> None:
+        """Remove the staged outputs: the project keeps the ones it had."""
+        for staged in self._staged.values():
+            try:
+                staged.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logger.warning("the staged output %s could not be removed: %s", staged, exc)
+        self._staged.clear()
+
+
+def clear_staged(folder: Path | str) -> int:
+    """Remove the outputs a run staged and never committed (it was stopped
+    before its end). Returns how many were removed."""
+    removed = 0
+    for staged in Path(folder).glob("*" + STAGED_SUFFIX):
+        try:
+            staged.unlink()
+            removed += 1
+        except OSError as exc:
+            logger.warning("a staged output left by a stopped run could not be removed: %s: %s",
+                           staged, exc)
+    return removed
 
 
 def write_json_atomic(target: Path, obj: Any) -> None:

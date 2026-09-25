@@ -7,9 +7,11 @@
  * normalize.py exit codes (C13):
  *   0  success
  *   2  annotations.json exists but cannot be read; nothing was written
- *   3  a requested export (the PDD) failed; the analysis outputs were
- *      written, the export was not
- * Any non-zero exit is a failure. The pipeline states the reason as one
+ *   3  a requested export (the PDD) failed; nothing in the project was
+ *      changed (lane FX1: a run moves its outputs into the project folder
+ *      only as its last act, once everything succeeded), and the export was
+ *      not written
+ * Any non-zero exit is a failure, and leaves the project as it was. The pipeline states the reason as one
  * stderr line starting with "[normalize] ERROR:"; that line is what the
  * analyst sees (older pipelines print none, so the last stderr line stands
  * in for it).
@@ -43,7 +45,7 @@ function describeNormalizeFailure(code, stderr) {
   }
   if (code === 3) {
     return "Export failed: " + (reason || "the export could not be written.") +
-      (reason && /analysis outputs were written/i.test(reason) ? "" : " The analysis itself was updated.");
+      (reason && /nothing in the project was changed/i.test(reason) ? "" : " Nothing in the project was changed.");
   }
   return "Analysis failed (exit code " + code + "): " + (reason || _lastLine(stderr) || "no error message was given.");
 }
@@ -84,9 +86,11 @@ function pddExportOutcome(result, file) {
 /* The analysis.json format this viewer reads: the number the pipeline writes
    as analysis.json `format` (normalization/pipeline_stages.py
    ANALYSIS_FORMAT; V2 item 10). 3: the Overview's Data and Applications and
-   time read the PDD's rows (`pdd_data`, `pdd_time`; lane CC), so an older
+   time read the PDD's rows (`pdd_data`, `pdd_time`; lane CC). 4: the
+   project line's warning on the apps recorded with less detail reads
+   `coverage_caveat` (the findings that held it are cut, lane FX1). An older
    analysis is analyzed again as the project opens. */
-const ANALYSIS_FORMAT = 3;
+const ANALYSIS_FORMAT = 4;
 
 /* Whether a recording needs an analysis as it opens (AD-22): "missing" when
    it has none (no stats.json or no analysis.json), "stale" when its analysis

@@ -220,8 +220,11 @@ const PATH_STAGES = [
                runs are not confirmed).
      document: every document field that fills a PDD placeholder is written.
    `ready`: every stage before the export is done (the line shrinks).
-   `nextOther` is the first other run not opened yet, `differing` how many of
-   the other runs differ from the reference run. */
+   `nextOther` is the other run to review next: the first not opened yet
+   that differs from the reference run, else the first not opened yet (lane
+   FX1: the button never points at a transaction with no difference while
+   one that differs waits); `nextDiffers` whether it differs, `differing`
+   how many of the other runs differ from the reference run. */
 function pathState(sess) {
   const anno = (sess && sess.annotations) || {};
   const runs = RunsModel.buildRuns(sess && sess.stats, anno.steps || []).runs;
@@ -229,13 +232,17 @@ function pathState(sess) {
   const patternId = pattern.run ? pattern.run.caseId : null;
   const opened = new Set(Array.isArray(anno.opened_runs) ? anno.opened_runs : []);
   const others = runs.filter((r) => r.caseId !== patternId);
-  const nextOther = others.find((r) => !opened.has(r.caseId)) || null;
   // Compared as Steps compares them: a reference step inside a stretch left
-  // out of the analysis is not a difference, nor is the left-out line.
+  // out of the analysis is not a difference, nor is the left-out line, nor a
+  // step that happens only under a condition and was not done.
   const excluded = Array.isArray(anno.excluded_ranges) ? anno.excluded_ranges : [];
-  const differing = pattern.run
-    ? others.filter((r) => RunDiff.differenceCount(RunDiff.differences(pattern.run.visible, r.visible,
-      { leftOut: RunDiff.leftOutStretches(excluded, { startMs: r.startMs, endMs: r.endMs }) })) > 0).length : 0;
+  const differs = new Set(pattern.run ? others.filter((r) => RunDiff.differenceCount(RunDiff.differences(
+    pattern.run.visible, r.visible,
+    { leftOut: RunDiff.leftOutStretches(excluded, { startMs: r.startMs, endMs: r.endMs }) })) > 0)
+    .map((r) => r.caseId) : []);
+  const unopened = others.filter((r) => !opened.has(r.caseId));
+  const nextOther = unopened.find((r) => differs.has(r.caseId)) || unopened[0] || null;
+  const differing = differs.size;
   const doc = documentStatus(anno.document);
   const done = {
     runs: runs.length > 0,
@@ -245,7 +252,8 @@ function pathState(sess) {
     export: false,
   };
   const next = PATH_STAGES.find((st) => !done[st.key]).key;
-  return { done, next, ready: next === "export", runs, pattern: pattern.run, nextOther, differing, doc };
+  return { done, next, ready: next === "export", runs, pattern: pattern.run, nextOther,
+    nextDiffers: !!(nextOther && differs.has(nextOther.caseId)), differing, doc };
 }
 
 /* The one button for the next act: its text and, where the text alone does
@@ -259,11 +267,13 @@ function _nextAct(state) {
       return { button: state.pattern ? "Confirm " + state.pattern.title.toLowerCase() + " in Steps" : "Open the transactions in Steps",
         title: "Check the reference transaction's drafted steps, fix their boundaries and names, then click Confirm transaction." };
     case "review":
+      // The sentence is about the transaction the button opens (lane FX1).
       return { button: "Review " + state.nextOther.title.toLowerCase() + " in Steps",
         title: "Open the transaction to see how it differs from the reference transaction. The other transactions are not confirmed.",
-        say: state.differing
-          ? _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction."
-          : "No other transaction differs from the reference transaction." };
+        say: !state.differing ? "No other transaction differs from the reference transaction."
+          : state.nextDiffers
+            ? _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction."
+            : state.nextOther.title + " does not differ from the reference transaction." };
     case "document":
       return { button: "Write the document",
         title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: you write them, and the PDD prints them in place of its placeholders." };
@@ -385,8 +395,10 @@ function _summaryLine(sess, state) {
   const s = SessionSummary.computeSummary(sess);
   const m = (sess && sess.manifest) || {};
   const docTitle = _docValue(((sess && sess.annotations) || {}).document, "title").trim();
-  const project = s ? (s.engagementName || s.engagement)
-    : (m.engagement_name || (m.config && m.config.engagement_name) || m.engagement_id || "This project");
+  // The request's name or code, else the folder's name; never the capture
+  // app's default request ("Default engagement", lane FX1).
+  const folderName = String((sess && sess.sessionFolder) || "").split(/[\\/]/).filter(Boolean).pop() || "";
+  const project = SessionSummary.projectName(m, folderName);
   const login = s ? s.worker : ((m.config && m.config.worker && m.config.worker.id) || "");
   const sme = SessionSummary.smeName(m) || login;
   // The analyst-given name (manifest.label: a project made in the viewer, C16) before the project.
@@ -416,7 +428,8 @@ function _summaryLine(sess, state) {
 /* The warning lines, each only when there is something to say: the marker
    problems (with their fixes), files missing from the copy, the run check
    that could not run (C12: said, never shown as a measured negative), and the
-   apps the recorder saw with less detail (the coverage finding). */
+   apps the recorder saw with less detail (analysis.json `coverage_caveat`,
+   capture_detail.py; the findings that once held it are cut, lane FX1). */
 function _summaryWarnings(sess) {
   const out = [];
   const problems = SessionSummary.detectMarkerProblems((sess && sess.events) || []);
@@ -461,8 +474,8 @@ function _summaryWarnings(sess) {
         "; if it fails again, the analysis log names the problem.") + "</div>" + _technicalDetail(err));
     }
   }
-  const coverage = (Array.isArray(analysis.findings) ? analysis.findings : [])
-    .find((f) => f && f.detector === "coverage_caveat" && typeof f.claim === "string");
+  const coverage = analysis.coverage_caveat && typeof analysis.coverage_caveat.claim === "string"
+    ? analysis.coverage_caveat : null;
   if (coverage) {
     out.push('<div class="summary-problem ov-coverage"><span class="p-text">⚠ ' + escapeHtml(coverage.claim) + "</span></div>");
   }

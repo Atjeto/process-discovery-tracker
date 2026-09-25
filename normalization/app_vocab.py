@@ -118,7 +118,7 @@ def load_vocabularies(extra_dirs: list[str] | None = None) -> list[dict[str, Any
 # stream as data.vocab_semantics, where two consumers read it:
 #   completion      -> a step-boundary hint in step_suggest (a step ends when
 #                      the control completes the unit of work),
-#   carries_value   -> widens the rekey detector's field set (facts.rekey_details).
+#   carries_value   -> widens the re-keyed data's field set (pdd_export._rekey_value).
 # verb / object / case_id_source / means are authored meaning, carried along.
 
 SEMANTIC_FIELDS = (

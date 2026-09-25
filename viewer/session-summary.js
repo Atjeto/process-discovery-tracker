@@ -31,13 +31,15 @@ function computeSummary(session) {
   const events = Array.isArray(session.events) ? session.events : [];
   const manifest = session.manifest || {};
   return {
-    engagement: manifest.engagement_id || "-",
+    /* The request code entered at setup (AD-30), null when the capture
+       app's default was left (lane FX1: it is never shown as a name). */
+    engagement: requestCode(manifest),
     /* D4: the request name entered at setup (AD-30). Prefer the top-level
        field (new sessions) and fall back to the config snapshot (sessions
        captured before the field was lifted out of config). Null when never
-       set. */
-    engagementName: manifest.engagement_name
-      || (manifest.config && manifest.config.engagement_name) || null,
+       set, and when the capture app's default name was left ("Default
+       engagement", lane FX1), as requestOf. */
+    engagementName: requestName(manifest),
     worker:
       meta.worker_id ||
       (manifest.config && manifest.config.worker && manifest.config.worker.id) ||
@@ -61,32 +63,62 @@ function smeName(manifest) {
   return name && name.toLowerCase() !== login.toLowerCase() ? name : null;
 }
 
+/* The capture app's defaults for the request (capture/config.js): a
+   recording made without setting one shows no request, and never the
+   default's name (lane FX1). */
+const DEFAULT_REQUEST_NAME = "Default engagement";
+const DEFAULT_REQUEST_CODE = "default";
+
+function _text(v) { return typeof v === "string" ? v.trim() : ""; }
+
+/* The request name set in the capture app's Recording setup (the top-level
+   field, else the config snapshot), or null when none was set or the
+   default was left. */
+function requestName(manifest) {
+  const m = manifest || {};
+  const name = _text(m.engagement_name) || _text(m.config && m.config.engagement_name);
+  return name && name !== DEFAULT_REQUEST_NAME ? name : null;
+}
+
+/* The request code set in the capture app's Recording setup, or null when
+   none was set or the default was left. */
+function requestCode(manifest) {
+  const code = _text((manifest || {}).engagement_id);
+  return code && code !== DEFAULT_REQUEST_CODE ? code : null;
+}
+
 /* The capture's request (AD-30): the engagement set in the capture app's
    Recording setup, shown as its Request code and Request name so that
    "project" only ever means what the analyst opens. "Order intake (ENG-7)",
    the name or the code alone, or null when the capture app's defaults were
-   left (the PDD's Request row follows the same rule). */
+   left (the PDD's Request row follows the same rule, pdd_export request). */
 function requestOf(manifest) {
-  const m = manifest || {};
-  const text = (v) => (typeof v === "string" ? v.trim() : "");
-  const setName = text(m.engagement_name) || text(m.config && m.config.engagement_name);
-  const name = setName === "Default engagement" ? "" : setName;
-  const code = text(m.engagement_id) === "default" ? "" : text(m.engagement_id);
+  const name = requestName(manifest) || "";
+  const code = requestCode(manifest) || "";
   if (name && code && name !== code) return name + " (" + code + ")";
   return name || code || null;
 }
 
+/* The name a project goes by before the document names it: the request's
+   name, else its code, else the project folder's name (`folderName`), else
+   "This project"; never the capture app's defaults (lane FX1). */
+function projectName(manifest, folderName) {
+  return requestName(manifest) || requestCode(manifest) || _text(folderName) || "This project";
+}
+
 /* The Recents entry's name: the document title once it is written, else the
    name given at the end of the recording (manifest.label), else the request
-   code (AD-30) and the folder name. `folderName` is the session folder's
-   last part. */
+   code (AD-30) and the folder name, else the folder name alone (the capture
+   app's default code is no request, lane FX1). `folderName` is the session
+   folder's last part. */
 function recentLabel(session, folderName) {
   const doc = session && session.annotations && session.annotations.document;
   const title = doc && typeof doc.title === "string" ? doc.title.trim() : "";
   if (title) return title;
   const m = (session && session.manifest) || {};
   if (typeof m.label === "string" && m.label.trim()) return m.label.trim();
-  return (m.engagement_id || folderName) + " · " + folderName;
+  const code = requestCode(m);
+  return code ? code + " · " + folderName : folderName;
 }
 
 /* Walk the marker stream and flag the three problems an analyst inherits
@@ -145,6 +177,9 @@ module.exports = {
   computeSummary,
   smeName,
   requestOf,
+  requestName,
+  requestCode,
+  projectName,
   recentLabel,
   detectMarkerProblems,
 };

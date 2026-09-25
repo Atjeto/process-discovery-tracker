@@ -45,14 +45,14 @@ video adds the SME's narration and what happened away from the keyboard.
                                           | NORMALIZATION (Python)      |
                                           |  runs from the markers,     |
                                           |  drafted steps, statistics, |
-                                          |  findings, step BPMN, PDD   |
+                                          |  checks, step BPMN, PDD     |
                                           +-----------------------------+
 ```
 
 | Layer | Folder | Responsibility | Tech |
 |---|---|---|---|
 | **Capture** | [`capture/`](../../capture/) | Poll the foreground window every 5 s, record UI interactions, take screenshots, write a start and end marker per run from the run hotkey, drive OBS when configured, append to `events.jsonl`. | Electron 42 (main process) + a C# .NET 8 UI Automation recorder sidecar |
-| **Normalization** | [`normalization/`](../../normalization/) | Turn `events.jsonl` into runs (from the markers), draft each run's steps, keep the analyst's steps, compute statistics and findings, mine the step-level BPMN, render the PDD. A separate CLI imports a meeting transcript. | Python with pm4py, pandas, python-docx |
+| **Normalization** | [`normalization/`](../../normalization/) | Turn `events.jsonl` into runs (from the markers), draft each run's steps, keep the analyst's steps, compute statistics and the rows the PDD prints, mine the step-level BPMN, render the PDD. A separate CLI imports a meeting transcript. | Python with pm4py, pandas, python-docx |
 | **Viewer** | [`viewer/`](../../viewer/) | Load a session, run the pipeline, show the recording on a video-synced timeline, let the analyst confirm and edit steps, place a meeting transcript, draw the process map, fork editable maps, export the PDD. | Electron 42 + a bundled Python embeddable |
 | **Shared** | [`shared/`](../../shared/) | The data contract ([SCHEMA.md](../../shared/SCHEMA.md)) and the rule files both languages load: platform recognition, value-free labels, the run-differences golden. | JSON, Markdown |
 

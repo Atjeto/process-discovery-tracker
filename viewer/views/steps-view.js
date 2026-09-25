@@ -355,12 +355,40 @@ function _runDiffs(ref, run) {
   return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT, leftOut, originMs });
 }
 
-/* A run's meta, its differences counted (not the left-out line), for a run
-   compared with the reference. */
+/* A run's meta, its differences counted (not the left-out line, nor a Not
+   done line), for a run compared with the reference. */
 function _diffMeta(diffs, compared) {
   if (!diffs || !compared) return "";
   const n = RunDiff.differenceCount(diffs);
   return " · " + (n ? _plural(n, "difference", "differences") : "no differences");
+}
+
+/* The tooltip of the lines said about a comparison that are no differences. */
+const NOTES_TITLE = "No differences: a part left out of the analysis (the Timeline shows it), " +
+  "or a step that happens only under a condition and was not done";
+
+/* A transaction's lines under its head, after `after` in `body`: the lines
+   said about the comparison (a stretch left out, a conditional step not
+   done) in `.run-notes`, then its differences in `.run-diffs`, so the count
+   in the head is the number of `.run-diffs` lines (lane FX1). */
+function _appendDiffLists(body, after, diffs, diffTitle) {
+  let anchor = after;
+  const parts = [["run-notes", diffs.filter((d) => !RunDiff.isDifference(d)), NOTES_TITLE],
+    ["run-diffs", diffs.filter((d) => RunDiff.isDifference(d)), diffTitle]];
+  for (const [cls, items, title] of parts) {
+    if (!items.length) continue;
+    const list = document.createElement("ul");
+    list.className = cls;
+    list.title = title;
+    for (const d of items) {
+      const li = document.createElement("li");
+      li.dataset.kind = d.kind;
+      li.textContent = d.text;
+      list.appendChild(li);
+    }
+    body.insertBefore(list, anchor.nextSibling);
+    anchor = list;
+  }
 }
 
 /* ===== The Steps level ================================================== */
@@ -590,7 +618,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
     ? RunDiff.differences(refVisit.visible, c.visible, { reference: RunDiff.REFERENCE_RUN, unit: RunDiff.RUN_UNIT }) : null;
   const dur = _visitDuration(c);
   const meta = _plural(n, "step", "steps") + (dur != null ? " · " + formatDuration(dur) : "") +
-    (diffs ? " · " + (diffs.length ? _plural(diffs.length, "difference", "differences") : "no differences") : "");
+    _diffMeta(diffs, !!diffs);
   const status = !isRef ? null : !n ? "empty" : confirmed ? "confirmed" : "draft";
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title + (c.index ? ", again" : "")) + "</span>" +
@@ -614,18 +642,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
       () => confirmRunAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  if (diffs && diffs.length) {
-    const list = document.createElement("ul");
-    list.className = "run-diffs";
-    list.title = "How this visit differs from the reference transaction's";
-    for (const d of diffs) {
-      const li = document.createElement("li");
-      li.dataset.kind = d.kind;
-      li.textContent = d.text;
-      list.appendChild(li);
-    }
-    body.insertBefore(list, acts.nextSibling);
-  }
+  if (diffs && diffs.length) _appendDiffLists(body, acts, diffs, "How this visit differs from the reference transaction's");
   g.appendChild(body);
   return g;
 }
@@ -918,20 +935,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
     line.textContent = "Remembered names: " + saved + " of " + _plural(n, "step", "steps");
     acts.appendChild(line);
   }
-  const after = acts;
-  if (diffs && diffs.length) {
-    const list = document.createElement("ul");
-    list.className = "run-diffs";
-    list.title = isPattern ? "The part of this transaction left out of the analysis: the Timeline shows it"
-      : "How this transaction differs from the reference transaction";
-    for (const d of diffs) {
-      const li = document.createElement("li");
-      li.dataset.kind = d.kind;
-      li.textContent = d.text;
-      list.appendChild(li);
-    }
-    body.insertBefore(list, after.nextSibling);
-  }
+  if (diffs && diffs.length) _appendDiffLists(body, acts, diffs, "How this transaction differs from the reference transaction");
   g.appendChild(body);
   return g;
 }

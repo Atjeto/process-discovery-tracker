@@ -161,8 +161,10 @@ so a failed stage never changes the document.
 ### The PDD export failed
 
 `normalize.py` exits 3 with one line: `PDD export to <path> failed: <error>.
-The analysis outputs were written; the PDD was not.` The viewer shows that
-sentence and never opens an earlier document; the traceback is in
+Nothing in the project was changed.` The run moves its outputs into the
+project folder only when all of it succeeded, so a failed export leaves the
+steps and the map as they were. The viewer shows that sentence and never
+opens an earlier document; the traceback is in
 `normalize.log`. Saving the exported file is a separate step: "the document
 could not be saved" comes with the reason Windows gave, for example a file
 of that name open in Word.

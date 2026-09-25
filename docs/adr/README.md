@@ -25,7 +25,7 @@ distinct branch — see [CONTRIBUTING](../../CONTRIBUTING.md)).
 | 0005 | Capture app tech-debt remediation (C1 to C8) | Accepted |
 | 0006 | Sequencing the improvements backlog | Accepted |
 | 0007 | Activity-event granularity: title in the run key | Accepted |
-| 0008 | Build the analysis layer now | Accepted |
+| 0008 | Build the analysis layer now | Superseded (2026-09-25, lane FX1: the analysis layer nothing read is cut from the light version; the product edition keeps it) |
 | 0009 | Normalization redesign (v0.13) | Superseded in part (canonical/template matching further cut by ADR-0029) |
 | 0010 | UX overhaul: viewer interaction model + recorder usability | Accepted |
 | 0011 | Platform/framework recognition layer | Accepted |
@@ -33,7 +33,7 @@ distinct branch — see [CONTRIBUTING](../../CONTRIBUTING.md)).
 | 0013 | Value-free step grouping (`process_label`) & map readability | Accepted |
 | 0014 | Distribution model: GitHub Releases + electron-packager | Accepted |
 | 0015 | Intra-session repetition alignment: curate one, propagate | Superseded by ADR-0029 (the alignment engine removed in L7b; runs are compared by draft key, contract C3) |
-| 0016 | Segment-level automation candidacy | Narrowed by ADR-0029 (the EUR-ROI extension cut; segment-grain candidacy stays) |
+| 0016 | Segment-level automation candidacy | Superseded (narrowed by ADR-0029, then cut with the analysis layer on 2026-09-25, lane FX1) |
 | 0017 | Suggested markers: change-point detection | Superseded by ADR-0029 (cut) |
 | 0018 | Anchor candidates: transaction-ID auto-extraction | Superseded by ADR-0029 (cut) |
 | 0019 | Reference Maps: decoupled, editable BPMN copies | Accepted |

@@ -1,6 +1,6 @@
 """Consistency guard for the parse_ts family.
 
-The six per-module ``parse_ts`` / ``_parse_ts`` symbols are now thin
+The per-module ``parse_ts`` / ``_parse_ts`` symbols are now thin
 re-exports of three modes in :mod:`_dt` (``parse_ts`` / ``parse_ts_or_none`` /
 ``parse_ts_or_epoch``). This test still pins the family contract -- a valid
 timestamp, INCLUDING a zone-less one, must come back tz-AWARE so events from
@@ -29,7 +29,6 @@ _SPECS = [
     ("_dt", "parse_ts"),
     ("_dt", "parse_ts_or_none"),
     ("_dt", "parse_ts_or_epoch"),
-    ("analysis_common", "parse_ts"),
     ("bpmn_observed", "_parse_ts"),
     ("case_assignment", "_parse_ts"),
     ("coalesce", "_parse_ts"),

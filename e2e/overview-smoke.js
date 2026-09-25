@@ -359,7 +359,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     JSON.stringify(obs && { title: obs.title, who: obs.who, modules: obs.modules, titles: obs.titles, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
   const A = obs && obs.analysis;
   record("(c) Data shows analysis.json's pdd_data cell by cell (the PDD's section 5: Field, System and screen, Step, Example value, Re-keyed), then its Re-keyed data sentences",
-    !!(A && A.format === 3 && A.pdd_data && obs.dataTables && obs.dataTables.length === 1 &&
+    !!(A && A.format === 4 && A.pdd_data && obs.dataTables && obs.dataTables.length === 1 &&
       same(obs.dataTables[0], [A.pdd_data.header].concat(A.pdd_data.rows)) &&
       same(obs.dataTables[0][0], ["Field", "System and screen", "Step", "Example value", "Re-keyed"]) &&
       same(obs.rekeyed, A.pdd_data.rekeyed) && A.pdd_data.rekeyed.length === 2),
@@ -1269,13 +1269,25 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page3.waitForFunction(() => /Steps and map updated/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: 180000 });
     fail.recovered = await statusNow(page3);
-    // (g4) Cancel.
+    // (g4) Cancel. Lane FX1 (report 3, F4): the run moves its outputs into
+    // the project only as its last act, so a cancelled one leaves every
+    // output byte for byte as it was, and no file of its own behind.
+    const OUTPUTS = ["annotations.json", "stats.json", "analysis.json", "process_map_step.bpmn"];
+    const snapshot = () => Object.fromEntries(OUTPUTS.map((n) => {
+      try { return [n, fs.readFileSync(path.join(SESSION_RAW, n)).toString("base64")]; } catch (_) { return [n, null]; }
+    }));
+    fail.before = snapshot();
     await reanalyze();
     await page3.waitForSelector("#btn-cancel-normalize", { state: "visible", timeout: T });
     await page3.locator("#btn-cancel-normalize").click({ timeout: T });
     await page3.waitForFunction(() => /Update cancelled/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: 60000 });
     fail.cancelled = await statusNow(page3);
+    fail.toast = await page3.evaluate(() => ((document.getElementById("toast") || {}).textContent || "").trim());
+    const after = snapshot();
+    fail.unchanged = OUTPUTS.filter((n) => fail.before[n] !== null && after[n] === fail.before[n]);
+    fail.changed = OUTPUTS.filter((n) => after[n] !== fail.before[n]);
+    fail.staged = fs.readdirSync(SESSION_RAW).filter((n) => n.endsWith(".pdt-staged"));
   } catch (e) {
     logActionError("(g3) the log on failure", e);
     fail.err = String(e.message).split("\n")[0];
@@ -1290,6 +1302,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   record("(g4) Cancel in the status line stops the analysis: the status line goes, no log (nothing failed)",
     !!(!fail.err && fail.cancelled && fail.cancelled.status === "" && fail.cancelled.log === "none"),
     JSON.stringify(fail.cancelled));
+  record("(g4) lane FX1: the toast's claim is true: after Cancel, annotations.json, stats.json, analysis.json and process_map_step.bpmn are byte for byte as they were, and the run left no file",
+    !!(!fail.err && /as they were/.test(fail.toast || "") && Array.isArray(fail.unchanged) && fail.unchanged.length === 4 &&
+      fail.changed.length === 0 && fail.staged.length === 0),
+    JSON.stringify({ toast: fail.toast, unchanged: fail.unchanged, changed: fail.changed, staged: fail.staged, err: fail.err }));
 
   await close3();
 
