@@ -469,6 +469,7 @@ function renderStepsLevel() {
   const multi = State.getMultiSelectedStepIds();
   for (const id of [...multi]) if (!visibleIds.has(id)) multi.delete(id);
   syncMultiSelectButtons();
+  _syncAppsOutside(session);
 
   const pc = $("#runs-pane-count");
   if (pc) pc.textContent = String(model.runs.length);
@@ -1514,7 +1515,9 @@ async function splitStep(stepId) {
   const s = loc.step;
   if (SPM.isSubProcess(s)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
   const ids = (s.evidence || {}).interaction_event_ids || [];   // a step may lack evidence
-  if (ids.length < 2) { toast("Need ≥2 interactions to split", "error"); return; }
+  // Lane FX3 (validation pass 3, F16): why it cannot, in the analyst's words.
+  const why = PdtSteps.splitBlocker(s);
+  if (why) { toast(why, "error"); return; }
   // A2: split at the analyst-picked boundary (split AFTER index i -> first
   // chunk is [0..i]) when one is set for THIS step; else the midpoint.
   let mid;
@@ -1529,7 +1532,10 @@ async function splitStep(stepId) {
   const interMap = Object.fromEntries(State.getSession().events.filter(e => e.type === "interaction").map(e => [e.event_id, e]));
   const firstEvents = firstIds.map(id => interMap[id]).filter(Boolean);
   const secondEvents = secondIds.map(id => interMap[id]).filter(Boolean);
-  if (!firstEvents.length || !secondEvents.length) { toast("Could not split step", "error"); return; }
+  if (!firstEvents.length || !secondEvents.length) {
+    toast("This step could not be split: the actions recorded in it are not in this project.", "error");
+    return;
+  }
   if (_counts(s)) RunsModel.recordFix(anno, _model().runs, s.case_id, "split");
   // G-4: splitting an already-split step must not stack suffixes
   // ("X (split 1) (split 1)") — strip any existing artifact first.
@@ -2284,11 +2290,27 @@ function distinctSessionApps() {
     .sort((a, b) => b.count - a.count);
 }
 
+/* Lane FX3 (validation pass 3, F16): Apps outside the process leaves out
+   the apps whose clicks and typing were recorded. A project without a
+   recording (C16) has none, so it is not offered there; a recording without
+   one click or field typed offers it disabled, with the reason. */
+const NO_APPS = "No clicks or typing were recorded in this project, so there is no app to leave out.";
+const APPS_TITLE = "Pick the apps that are not part of the process, for example Teams or Outlook used during the call, " +
+  "or the recorder itself. Their clicks and typing are left out of the steps and the map, and the project is analyzed again.";
+function _syncAppsOutside(session) {
+  const btn = $("#btn-ignored-apps");
+  if (!btn) return;
+  const apps = distinctSessionApps().length > 0;
+  btn.style.display = apps || AC.hasRecording(session) ? "" : "none";
+  btn.disabled = !apps;
+  btn.title = apps ? APPS_TITLE : NO_APPS;
+}
+
 function openIgnoredAppsDialog() {
   if (!State.getSession()) { toast("Open a project first.", ""); return; }
   const apps = distinctSessionApps();
   if (!apps.length) {
-    toast("No interaction data in this project: nothing to filter.", "");
+    toast(NO_APPS, "");
     return;
   }
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -2610,10 +2632,14 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Open sub-process", () => openSubProcessAction(stepId));
     addItem("Dissolve sub-process", () => dissolveStepAction(stepId));
   } else {
-    addItem("Split at interaction…", () => {
-      renderStepsLevel();
-      toast("Click the scissors on an interaction, then Split", "success");
-    });
+    // Lane FX3 (F16): offered only on a step with two recorded actions to
+    // split between, in the analyst's words.
+    if (!PdtSteps.splitBlocker(step)) {
+      addItem("Split at a recorded action…", () => {
+        renderStepsLevel();
+        toast("In the step pane's More, click the scissors after the action where the first part ends, then Split.", "success");
+      });
+    }
     addItem("Merge with next", () => mergeStepWithNext(stepId));
   }
   // P0.1: the selection-aware merge is a distinct item, shown only when a
@@ -2657,10 +2683,12 @@ function showStepContextMenu(stepId, x, y) {
     document.removeEventListener("mousedown", dismiss, true);
     document.removeEventListener("keydown", dismiss, true);
   };
-  setTimeout(() => {
-    document.addEventListener("mousedown", dismiss, true);
-    document.addEventListener("keydown", dismiss, true);
-  }, 0);
+  // At once, as the transaction menu does (_runMenu): the right-click's own
+  // mousedown came before its contextmenu event, and an Escape pressed right
+  // away must close the menu (lane FX3: armed a moment later, an early
+  // Escape left it open over the list).
+  document.addEventListener("mousedown", dismiss, true);
+  document.addEventListener("keydown", dismiss, true);
   renderStepsLevel();   // reflect the new selection immediately
 }
 

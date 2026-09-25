@@ -23,16 +23,18 @@ The SME's tray app; see [architecture/CAPTURE.md](architecture/CAPTURE.md).
   to Ctrl+Alt and the SME is told.
 - **The recording bar.** A small strip that stays on top without taking the
   keyboard focus and stays out of shared screens and screenshots: the state,
-  the transaction in progress, the elapsed time, Next transaction (with
-  named transactions when they are set up), Pause and Stop.
+  the transaction in progress, the time recorded (the pauses left out; while
+  paused, the pause's length beside Paused), Next transaction (with named
+  transactions when they are set up), Pause and Stop.
 - **What it records.** The foreground window every 5 s, the clicks and
   typing through a C# UI Automation sidecar (password fields are never
   recorded), a start and an end marker per transaction, screenshots on an
   app switch, at a transaction's start and end, after a long idle stretch
   and by hand, and optionally an OBS video.
 - **The end summary.** After Stop: where the recording is, its
-  transactions and length, a warning when no transaction was marked, and
-  *Make a zip for the analyst* (nothing is sent from the app).
+  transactions and the time recorded (a pause said beside it), a warning
+  when no transaction was marked, an optional name for the recording, and
+  under it *Make a zip for the analyst* (nothing is sent from the app).
 - **Trustworthy recordings.** The sidecar is restarted a few times per
   recording and then reported dead; a silent recorder is flagged within
   minutes; a lost write, a program the recorder cannot see and failing
@@ -81,8 +83,9 @@ The Python pipeline the viewer runs by itself; see
   trigger, the main end after the result and each early end after its
   condition, plain tasks for the steps done in a system and manual tasks
   (the hand marker) for the steps done outside every system, each step's
-  notes beside it, its attachments as files under it, and a colour per
-  system with a legend that also says what the hand means. Task names stay
+  notes beside it, a *Waste* note beside a step flagged as waste, its
+  attachments as files under it, and a colour per system with a legend that
+  also says what the hand and the Waste note mean. Task names stay
   the step names, so a BPMN tool imports them clean.
 - **The PDD (.docx).** Tool-neutral, in the reader's order: document
   control; purpose, scope, trigger, result and contacts; the As-Is map and
@@ -154,7 +157,8 @@ The viewer says *transaction* for one pass through the process and
   *Add to* a field; a sentence said before the recording started reads
   "0:28 before".
 - **Observations** ("Measured from the recording. The PDD prints them in
-  sections 5 and 6."): *Data*, every field entered with its system, its
+  sections 5 and 6.", or "Measured from the steps you added." in a project
+  without a recording): *Data*, every field entered with its system, its
   step and an example value, and the *Re-keyed data* (a value typed again
   in another system); *Applications and time*, the time of each
   transaction and each system's screens, steps and time per transaction.
@@ -254,7 +258,7 @@ The viewer says *transaction* for one pass through the process and
   back.
 - **Boxes moved by hand**: on how the transactions ran, a dragged box stays
   where it was put (per map, on this computer), and *Reset layout*, beside
-  fit, puts the boxes back.
+  *Fit*, puts the boxes back.
 - **A map per sub-process**: with a sub-process in the project, *Map:
   <name>* picks the map shown, the main process or any sub-process (each
   with its number, as the PDD numbers its chapter), and Steps shows the same
@@ -277,7 +281,9 @@ The viewer says *transaction* for one pass through the process and
   the Map shows first, of the level the Map shows) and as BPMN (one file
   with every map), the *Technical details (.xlsx)*, and the
   *Whole project (.zip)*: one zip of the folder, next to it, to hand the
-  project to someone. Every export opens its folder with the file selected.
+  project to someone. A file is offered under the project's name (the
+  document title once it is written: *Order to cash PDD.docx*, *Order to
+  cash map.svg*), and every export opens its folder with the file selected.
 - **Hand off to the developers**: *Export*, *Hand off...* asks what changed
   in this version and makes *<project> v2.zip* next to the project folder:
   the whole project, with the PDD and the Technical details of version 2 at

@@ -123,10 +123,15 @@ function freshSession() {
   return null;
 }
 
+/* Lane FX3: the page's console warnings (cytoscape once printed three on
+   every draw of the live map). */
+const WARNS = [];
+
 async function open(folder, errs) {
   const v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + folder], cwd: VIEWER });
   const page = await v.app.firstWindow();
   page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+  page.on("console", (m) => { if (m.type() === "warning") WARNS.push(m.text()); });
   page.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
   await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
   return { v, page };
@@ -319,6 +324,69 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       mapRows.every((r) => /^Transaction \d(, again)? · \d+:\d{2} into the recording · took \d+s$/.test(r.at)) &&
       mapRows[0].id === SAVE.step_id),
     JSON.stringify(map.err || { explain: fromMap.st.explain, fromRows: lineFromRows(fromMap.st, 4), rows: mapRows.map((r) => [r.at, r.play, r.nocover]), cue: fromMap.cue }));
+
+  // (c4) Lane FX3. With the step panel open beside it, Fit keeps how the
+  // transactions ran readable (validation pass 2, item 17; pass 3, F24): never
+  // below the zoom where its 11 px text reads about 10 px, its start in view.
+  // No cytoscape warning is printed on its draws (item 23). In the dark
+  // theme a box flagged as waste has its dashes in the muted text colour, not
+  // the faint hairline. The Map's picture (bpmn-js) breaks the names between
+  // words, never inside one (F26).
+  let c4 = {};
+  try {
+    await page.locator("#btn-session-map-zoom-fit").click({ timeout: T });
+    await wait(400);
+    c4.fit = await page.evaluate(() => {
+      const host = document.getElementById("session-map-dfg-host");
+      const cy = host.__cy, r = host.getBoundingClientRect();
+      const start = cy.nodes().filter((x) => x.data("role") === "start-event")[0];
+      const p = start ? start.renderedPosition() : null;
+      return { zoom: Math.round(cy.zoom() * 1000) / 1000, min: require("./dfg-viewer.js").MIN_READABLE_ZOOM,
+        panel: !document.getElementById("step-panel").hidden, hostW: Math.round(r.width),
+        startInView: !!p && p.x >= 0 && p.x <= r.width && p.y >= 0 && p.y <= r.height };
+    });
+    c4.warns = WARNS.filter((w) => /wheel sensitivity|is deprecated for/.test(w));
+    c4.waste = await page.evaluate(async (id) => {
+      const State = require("./state.js");
+      const Theme = require("./theme.js");
+      const steps = State.getSession().annotations.steps.filter((x) => x.name === id && x.state !== "hidden");
+      const was = steps.map((x) => x.flags);
+      Theme.setTheme("dark");
+      steps.forEach((x) => { x.flags = Object.assign({}, x.flags || {}, { waste: true }); });
+      State.emit("steps");
+      await new Promise((r) => setTimeout(r, 900));
+      const n = document.getElementById("session-map-dfg-host").__cy.getElementById(id);
+      const out = { style: n.style("border-style"), color: n.style("border-color"), fg3: Theme.dfgStyleTokens().fg3 };
+      steps.forEach((x, i) => { x.flags = was[i]; });
+      Theme.setTheme("light");
+      State.emit("steps");
+      await new Promise((r) => setTimeout(r, 900));
+      return out;
+    }, SAVE.name);
+    await page.locator("#btn-map-show-map").click({ timeout: T });
+    await page.waitForSelector("#map-asis-canvas .djs-container > svg", { timeout: T });
+    await wait(1000);
+    c4.labels = await page.evaluate(() => {
+      const host = document.getElementById("map-asis-canvas");
+      const reg = host.__bpmnViewer.get("elementRegistry");
+      const out = [];
+      for (const el of reg.filter((e) => /^bpmn:(Task|ManualTask|SubProcess)$/.test(e.type))) {
+        const name = (el.businessObject.name || "").trim();
+        const words = new Set(name.split(/\s+/).filter(Boolean));
+        const g = host.querySelector('.djs-element[data-element-id="' + el.id + '"]');
+        const lines = g ? [...g.querySelectorAll("text tspan")].map((t) => t.textContent.trim()).filter(Boolean) : [];
+        out.push({ name, lines: lines.length, cut: lines.flatMap((l) => l.split(/\s+/)).filter((w) => !words.has(w)) });
+      }
+      return out;
+    });
+    await showRuns(page);
+  } catch (e) { c4.err = errText(e); }
+  const hex = (c) => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c || ""); return m ? "rgb(" + [1, 2, 3].map((i) => parseInt(m[i], 16)).join(",") + ")" : ""; };
+  record("(c4) lane FX3: with the step panel open, Fit keeps how the transactions ran readable (zoom at least the readable minimum, its start in view); no cytoscape warning on its draws; a waste box's dashes in the muted text colour in the dark theme; the Map's picture breaks every name between words",
+    !c4.err && c4.fit.panel && c4.fit.zoom >= c4.fit.min - 0.001 && c4.fit.startInView && c4.warns.length === 0 &&
+      c4.waste.style === "dashed" && c4.waste.color.replace(/\s+/g, "") === hex(c4.waste.fg3) &&
+      c4.labels.length > 0 && c4.labels.every((l) => l.lines > 0 && l.cut.length === 0),
+    JSON.stringify(c4.err || { fit: c4.fit, warns: c4.warns, waste: c4.waste, cut: c4.labels.filter((l) => l.cut.length) }));
 
   // (g2) A step done twice in one transaction: va01's Check document (the
   // demo's order is checked again in its second transaction).
@@ -542,6 +610,11 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       suggested: path.basename((await v.app.evaluate(() => global.__pdtSaveDefault)) || ""),
       revealed: path.resolve((await v.app.evaluate(() => global.__pdtRevealed)) || ".").toLowerCase() === path.resolve(svgOut).toLowerCase(),
       level: await page.evaluate(() => require("./state.js").getLevel()),
+      // Lane FX3: offered under the project's name, then the map's kind.
+      base: await page.evaluate(() => {
+        const s = require("./state.js").getSession();
+        return require("./session-summary.js").exportBaseName(s, require("path").basename(s.sessionFolder));
+      }),
     };
   });
 
@@ -652,7 +725,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   });
   const im = asis.image || {};
   record("(f1) C18 + AD-32: Export, Process map (image), with no As-Is copy, saves the step BPMN drawn by bpmn-js (the PDD's picture, its note, file and legend on it), not the live map, and the level stays",
-    !failed.f1 && im.bpmnJs && !im.liveMap && im.note && im.file && im.legend && im.suggested === "process-map.svg" && im.revealed && im.level === "steps",
+    !failed.f1 && im.bpmnJs && !im.liveMap && im.note && im.file && im.legend && !!im.base && im.suggested === im.base + " map.svg" && im.revealed && im.level === "steps",
     JSON.stringify(failed.f1 || im));
   const tk = asis.task || {};
   const saveRow = ((tk.st && tk.st.rows) || []).find((r) => r.id === SAVE.step_id) || {};

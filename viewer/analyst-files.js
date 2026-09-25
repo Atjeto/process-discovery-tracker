@@ -234,7 +234,39 @@ function attachmentTarget(root, file, exists) {
   return { ok: true, path: full, open: OPENS.has(path.extname(name).toLowerCase()) };
 }
 
+/* The files the analyst added to the folder at `root` that `anno` lists no
+   entry for (lane FX3, validation pass 3, F27): after Restore the newest
+   backup, a file attached or a screenshot added since that backup is still
+   in the folder, and nothing in the app showed it. { attachments,
+   screenshots }: file names in attachments/ and screenshots/analyst/, in
+   name order (a name is compared without its case, as Windows reads it). */
+function unlistedFiles(root, anno, fs = nodeFs) {
+  const named = new Set([...namedFiles(anno)].map((rel) => rel.toLowerCase()));
+  const list = (dir) => {
+    let entries = [];
+    try { entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true }); }
+    catch (e) { if (e && e.code === "ENOENT") return []; throw e; }
+    return entries.filter((d) => d.isFile() && !named.has((dir + "/" + d.name).toLowerCase()))
+      .map((d) => d.name).sort((a, b) => a.localeCompare(b));
+  };
+  return { attachments: list(ATTACH_DIR), screenshots: list(SHOTS_DIR) };
+}
+
+/* List the attachments `files` again on the project (no step), as Attach
+   file lists one (views/analyst-ui.js attachFile): { id, file, label,
+   step_id: null, added_at }. The safe way back for a file the restored
+   annotations do not name: it shows under the document's attachments,
+   where Remove takes it out (with Undo); nothing is deleted. Returns the
+   entries added (they are appended to anno.attachments). */
+function relistAttachments(anno, files, { newId, nowIso }) {
+  if (!Array.isArray(anno.attachments)) anno.attachments = [];
+  const added = (files || []).map((file) => ({ id: newId(), file, label: file, step_id: null, added_at: nowIso }));
+  anno.attachments.push(...added);
+  return added;
+}
+
 module.exports = {
   SHOTS_DIR, ATTACH_DIR, VIDEO_DIR, MAPS_DIR, fileName, namedFiles, isVideoCopy, freeName, imageKind,
   writeScreenshot, copyAttachment, moveRemoved, parkFiles, restoreParked, attachmentTarget,
+  unlistedFiles, relistAttachments,
 };

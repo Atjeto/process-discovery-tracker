@@ -575,6 +575,11 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     docProbe.line = await lineState();
     docProbe.summaryName = await page.evaluate(() =>
       ((document.querySelector("#ov-summary .ov-summary-name") || {}).textContent || "").trim());
+    // Lane FX3 (validation pass 3, F23): the capture's request shows on the
+    // project line (here its code alone, demo-order-processing), not only in
+    // its tooltip, now that the document title names the project.
+    docProbe.request = await page.evaluate(() =>
+      ((document.querySelector('#ov-summary [data-summary="request"]') || {}).textContent || "").trim());
     // The Recents entry is named by the document title once it is written.
     await page.locator("#btn-recent-menu").click({ timeout: T });
     docProbe.recent = await page.evaluate(() => ({
@@ -604,6 +609,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     docProbe.summaryName === "E2E order intake" && !!docProbe.recent &&
       docProbe.recent.heading === "Recent projects" && docProbe.recent.first === "E2E order intake",
     JSON.stringify({ summaryName: docProbe.summaryName, recent: docProbe.recent }));
+  record("lane FX3: the capture's request shows on the project line beside the title that names the project (Request: its code), not only in the tooltip",
+    docProbe.request === "Request: demo-order-processing", JSON.stringify({ request: docProbe.request }));
 
   // The export renders the maps chosen for the PDD off screen and hands the
   // pipeline an image; record both, so the embed is pinned too (AD-28).
@@ -821,13 +828,19 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     mapExport.svgIsBpmnDrawing = /<svg[\s>]/.test(svg.text) && /djs-/.test(svg.text) && !/Flow diagram \(DFG\)/.test(svg.text);
     mapExport.labels = await page.evaluate(() => ["btn-session-map-svg", "btn-session-step-bpmn"]
       .map((id) => ((document.getElementById(id) || {}).textContent || "").trim()));
+    // Lane FX3: offered under the project's name (the document title here).
+    mapExport.base = await page.evaluate(() => {
+      const s = require("./state.js").getSession();
+      return require("./session-summary.js").exportBaseName(s, require("path").basename(s.sessionFolder));
+    });
   } catch (e) {
     logActionError("P2.12 map exports", e);
     mapExport.err = String(e.message).split("\n")[0];
   }
   record("P2.12 + AD-29: with an As-Is copy chosen, Export > Process map (BPMN) saves that copy and Process map (image) draws it; each opens its folder at the file",
-    !!(!mapExport.err && mapExport.asIsFile && mapExport.bpmnIsTheCopy && mapExport.bpmnSuggested === "as-is-map.bpmn" &&
-      mapExport.svgIsBpmnDrawing && mapExport.svgSuggested === "as-is-map.svg" &&
+    !!(!mapExport.err && mapExport.asIsFile && mapExport.bpmnIsTheCopy && mapExport.base === "E2E order intake" &&
+      mapExport.bpmnSuggested === "E2E order intake As-Is map.bpmn" &&
+      mapExport.svgIsBpmnDrawing && mapExport.svgSuggested === "E2E order intake As-Is map.svg" &&
       mapExport.bpmnRevealed && mapExport.svgRevealed &&
       JSON.stringify(mapExport.labels) === '["Process map (image)","Process map (BPMN)"]'),
     JSON.stringify(mapExport));

@@ -41,7 +41,9 @@ folder:
   recording. One small frameless strip, always on top: the state
   (Recording, Paused, Not recording), the transaction in progress
   ("Transaction 2", or "between transactions" after End transaction), the
-  elapsed time (m:ss, h:mm:ss from an hour), Next transaction with its key,
+  elapsed time (m:ss, h:mm:ss from an hour: the time recorded, the pauses
+  left out; while paused, the pause's own length beside Paused, and the time
+  paused in all in the bar's tooltip), Next transaction with its key,
   a caret with the named transactions when they are set up, Pause or
   Resume, and Stop with an inline confirm (Keep recording, Stop
   recording). A problem line appears under it only when clicks and
@@ -64,9 +66,10 @@ folder:
   app is in this document instead.
 - **The end summary** (`end-summary-window.js`), the one screen after Stop:
   "Recording saved", the transactions and the duration in one line ("3
-  transactions, 12:04"), a warning when no transaction was marked, the
-  folder, **Make a zip for the analyst**, **Show the folder**, an optional
-  "Name this recording", and Done. No counts of clicks, events or
+  transactions, 12:04", the time recorded; after a pause "(paused 0:04, not
+  counted)"), a warning when no transaction was marked, an optional "Name
+  this recording" (above the zip, so the zip carries it), the folder,
+  **Make a zip for the analyst**, **Show the folder**, and Done. No counts of clicks, events or
   screenshots. One window per recording, so a summary still open from an
   earlier recording keeps its unsaved name.
 - **Toasts**, only for something the SME should act on or tell the analyst:

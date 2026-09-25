@@ -221,6 +221,19 @@
     input.addEventListener("blur", () => commit("stay"));
   }
 
+  /* Why Split cannot act on a step, in the analyst's words, or "" when it
+     can (lane FX3, validation pass 3, F16): Split cuts a step between two
+     of its recorded actions (a click, a field typed), so it needs two. The
+     step pane offers it disabled with this reason; the step menu leaves it
+     out; its key says it. */
+  function splitBlocker(step) {
+    const n = ((step && step.evidence && step.evidence.interaction_event_ids) || []).length;
+    if (n >= 2) return "";
+    return n === 1
+      ? "Only one action (a click, a field typed) was recorded in this step, so it cannot be split."
+      : "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it.";
+  }
+
   /* The fields typed in the step, as a compact list: [{ field, value }]. */
   function stepFieldsHtml(fields) {
     if (!Array.isArray(fields) || !fields.length) return "";
@@ -269,8 +282,8 @@
     const _hasSplitPoint = splitAfterIndex !== null;
     const splitBtnLabel = _hasSplitPoint ? "Split here" : "Split";
     const splitBtnTitle = _hasSplitPoint
-      ? "Split this step after interaction #" + (splitAfterIndex + 1)
-      : "Split this step in two. Click the scissors on an interaction to choose where; otherwise it splits at the midpoint.";
+      ? "Split this step after action " + (splitAfterIndex + 1)
+      : "Split this step in two. Click the scissors after an action to choose where; otherwise it splits at the midpoint.";
     // P0.1: merge is the inverse of split, shown right beside it. "Merge with
     // next" always merges this step + the following one; the count-labelled
     // "Merge N selected" appears only when 2+ steps are ticked, so one button
@@ -302,9 +315,10 @@
       : callbacks.canOpenAsSub
         ? `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click), in every transaction where it happens, and show them">Open as a sub-process</button>`
         : "";
+    const splitWhy = sub ? "" : splitBlocker(step);
     const moreActs = sub
       ? `<p class="step-sub-note" id="step-sub-note">A sub-process is not split or merged: dissolve it first, or work on its steps inside.</p>`
-      : `<button id="btn-step-split" title="${escapeAttr(splitBtnTitle)}">${splitBtnLabel}</button>
+      : `<button id="btn-step-split" title="${escapeAttr(splitWhy || splitBtnTitle)}"${splitWhy ? " disabled" : ""}>${splitBtnLabel}</button>
             <button id="btn-step-merge" title="Merge this step with the next step of its transaction (the inverse of Split)">Merge with next</button>
             ${mergeSelectedBtn}`;
     host.innerHTML = `
@@ -765,7 +779,9 @@
   }
 
   function renderInteractionList(events, total, opts) {
-    if (!total) return `<p class="meta">No interactions recorded for this step.</p>`;
+    // Lane FX3 (validation pass 3, F16): the analyst's words, "action" (a
+    // click, a field typed), as Split and Open as a sub-process say it.
+    if (!total) return `<p class="meta">No action was recorded in this step.</p>`;
     opts = opts || {};
     // A2: when splittable, every interaction except the last carries a
     // scissors control that picks the boundary the Split action cuts at.
@@ -775,7 +791,7 @@
       const t = sinceStart(ev.timestamp, opts.originMs);
       const isBoundary = splittable && splitAfter === i;
       const splitBtn = (splittable && i < events.length - 1)
-        ? `<button type="button" class="si-split-btn${isBoundary ? " active" : ""}" data-after="${i}" tabindex="-1" title="Split the step here, after this interaction">&#9988;</button>`
+        ? `<button type="button" class="si-split-btn${isBoundary ? " active" : ""}" data-after="${i}" tabindex="-1" title="Split the step here, after this action">&#9988;</button>`
         : "";
       return `<li class="step-interaction ${siKindClass(ev)}${isBoundary ? " split-boundary" : ""}" data-idx="${i}">` +
         `<span class="si-body">` +
@@ -787,11 +803,11 @@
     const missing = total - events.length;
     if (missing > 0) {
       rows.push(`<li class="step-interaction">` +
-        `<span class="si-text meta">${missing} interaction(s) not found in this project</span>` +
+        `<span class="si-text meta">${missing === 1 ? "1 recorded action is" : missing + " recorded actions are"} not in this project</span>` +
         `</li>`);
     }
     return `<details class="step-interactions"${total <= 15 ? " open" : ""}>` +
-      `<summary>Interactions (${total})</summary>` +
+      `<summary>Recorded actions (${total})</summary>` +
       interactionLegendHtml(events) +
       `<ol class="step-interaction-list">${rows.join("")}</ol>` +
       `</details>`;
@@ -799,6 +815,6 @@
 
   module.exports = {
     renderStepList, renderStepDetail,
-    describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml,
+    describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker,
   };
 })();

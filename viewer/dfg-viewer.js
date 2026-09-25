@@ -65,6 +65,67 @@
     // The text, its padding and border, and a little air around it.
     return { width: Math.ceil(w) + 18, height: 26 };
   }
+  /* A box's size is its label's (lane FX3): cytoscape's own `width: label`
+     is deprecated and warns on every draw, so the label is laid out here the
+     way cytoscape lays it out (its lines, each wrapped between words at
+     BOX_TEXT_MAX, measured in the box's font) and the size given as a
+     number. BOX_FONT and BOX_TEXT_MAX are the node style's font-size and
+     text-max-width below. */
+  const BOX_FONT = 11;
+  const BOX_TEXT_MAX = 130;
+  const _boxSizes = new Map();
+  function _textWidth(text) {
+    try {
+      if (!_measure) _measure = document.createElement("canvas").getContext("2d");
+      _measure.font = "normal normal " + BOX_FONT + "px " + FONT_FAMILY;
+      return Math.ceil(_measure.measureText(String(text)).width);
+    } catch (_) {
+      return Math.ceil(String(text).length * BOX_FONT * 0.56);
+    }
+  }
+  function _boxLabelSize(label) {
+    const key = String(label == null ? "" : label);
+    if (_boxSizes.has(key)) return _boxSizes.get(key);
+    const lines = [];
+    for (const line of key.split("\n")) {
+      if (_textWidth(line) <= BOX_TEXT_MAX) { lines.push(line); continue; }
+      // cytoscape's wrap: words joined while the line fits, each word with
+      // the space after it.
+      let sub = "";
+      const re = /[\s\u200b]+|$/g;
+      let at = 0, m;
+      while ((m = re.exec(line)) !== null) {
+        const word = line.slice(at, m.index);
+        at = m.index + m[0].length;
+        const test = sub.length === 0 ? word : sub + word + m[0];
+        if (_textWidth(test) <= BOX_TEXT_MAX) sub += word + m[0];
+        else { if (sub) lines.push(sub); sub = word + m[0]; }
+        if (m[0] === "") break;
+      }
+      if (!/^[\s\u200b]*$/.test(sub)) lines.push(sub);
+    }
+    const size = { width: Math.max(1, ...lines.map(_textWidth)), height: Math.max(1, lines.length) * BOX_FONT };
+    _boxSizes.set(key, size);
+    return size;
+  }
+
+  /* Lane FX3 (validation pass 2, item 17; pass 3, F24): the map is fitted
+     only down to a zoom where its 11 px text still reads (about 10 px on
+     screen, the size of the smallest text around it). A map too wide for
+     that (a long row, beside the step panel) shows its start, level with
+     its middle, and pans for the rest. */
+  const MIN_READABLE_ZOOM = 0.9;
+  function _fitReadable(c) {
+    if (!c) return;
+    try {
+      c.fit(undefined, 24);
+      if (c.zoom() >= MIN_READABLE_ZOOM) return;
+      const bb = c.elements().boundingBox();
+      c.zoom(MIN_READABLE_ZOOM);
+      c.pan({ x: 24 - bb.x1 * MIN_READABLE_ZOOM, y: (c.height() - bb.h * MIN_READABLE_ZOOM) / 2 - bb.y1 * MIN_READABLE_ZOOM });
+    } catch (_) { /* the map is gone */ }
+  }
+
   const EPS = 0.001;
   const noZero = (x) => (Math.abs(x) < EPS ? (x < 0 ? -EPS : EPS) : x);
 
@@ -273,14 +334,13 @@
     cy = cytoscape({
       container: host,
       elements,
-      wheelSensitivity: 0.2,
       style: [
         {
           selector: "node",
           style: {
             label: "data(label)",
             "font-family": '"Plus Jakarta Sans", -apple-system, "Segoe UI", system-ui, sans-serif',
-            "font-size": 11,
+            "font-size": BOX_FONT,
             // Colours come from theme.js (PdtTheme.dfgStyleTokens) -- cytoscape
             // renders to a <canvas> and cannot read CSS vars, so the active
             // theme's token snapshot is read fresh on each render().
@@ -288,14 +348,16 @@
             "text-valign": "center",
             "text-halign": "center",
             "text-wrap": "wrap",
-            "text-max-width": 130,
+            "text-max-width": BOX_TEXT_MAX,
             shape: "round-rectangle",
             "background-color": tok.bg2,
             "border-color": tok.rule,
             "border-width": 1,
             padding: "10px",
-            width: "label",
-            height: "label",
+            // Lane FX3: the label's own size (_boxLabelSize), not the
+            // deprecated "label" value.
+            width: (ele) => _boxLabelSize(ele.data("label")).width,
+            height: (ele) => _boxLabelSize(ele.data("label")).height,
           },
         },
         {
@@ -333,7 +395,14 @@
           // Lane FX2: a box flagged as waste: its border dashed, its last
           // line the word Waste.
           selector: "node[?waste]",
-          style: { "border-style": "dashed", "border-width": 1.5 },
+          style: { "border-style": "dashed", "border-width": 2 },
+        },
+        {
+          // Lane FX3: the dashes in the muted text colour, not the faint
+          // hairline (about 1.3:1 on the box in the dark theme; now 5:1, and
+          // 3.2:1 in the light one). A first or last step keeps its colour.
+          selector: 'node[?waste][role = "activity"]',
+          style: { "border-color": tok.fg3 },
         },
         {
           // C17: the process's start and end, small circles named beside them.
@@ -503,7 +572,7 @@
 
     setTimeout(() => {
       _restoreLayout(cy);   // re-apply any saved drags over the fresh dagre layout
-      try { cy.fit(undefined, 24); } catch (_) {}
+      _fitReadable(cy);
     }, 50);
   }
 
@@ -517,7 +586,7 @@
     }
   }
 
-  function fit() { if (cy) { try { cy.fit(undefined, 24); } catch (_) {} } }
+  function fit() { _fitReadable(cy); }
 
   /* The host changed size (the step panel opened or closed beside it). */
   function resize() { if (cy) { try { cy.resize(); } catch (_) {} } }
@@ -535,5 +604,5 @@
     return true;
   }
 
-  module.exports = { render, clear, fit, resize, selectNode, layoutSaved, resetLayout };
+  module.exports = { render, clear, fit, resize, selectNode, layoutSaved, resetLayout, MIN_READABLE_ZOOM };
 })();

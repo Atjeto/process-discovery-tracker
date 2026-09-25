@@ -92,6 +92,14 @@ test("a changed step is the analyst's; the implicit run id and the System choice
   assert.deepEqual(AC.systemChoices(["SAP", "Phone"], ["Salesforce", "sap", "Excel"]), ["SAP", "Phone", "Salesforce", "Excel"]);
 });
 
+test("lane FX3: a project holds a recording unless it was made from a video or from nothing, with no events", () => {
+  assert.equal(AC.hasRecording({ manifest: { session_id: "s" }, events: [{ type: "activity" }] }), true);
+  assert.equal(AC.hasRecording({ manifest: {}, events: [] }), true, "a capture app's recording, even an empty one");
+  assert.equal(AC.hasRecording({ manifest: { source: "video" }, events: [] }), false);
+  assert.equal(AC.hasRecording({ manifest: { source: "blank" } }), false);
+  assert.equal(AC.hasRecording({ manifest: { source: "blank" }, events: [{ type: "marker" }] }), true);
+});
+
 test("lane FX2: the Timeline's screenshots are the recording's and the ones the analyst added with a moment, in time order", () => {
   const ev = (ts, kind, p) => ({ type: "system", timestamp: ts, data: { kind, path: p } });
   const events = [

@@ -1273,3 +1273,99 @@ def test_the_rich_map_is_written_the_same_way_every_time():
             assert write_observed_bpmn(_rich_anno(), p, context=_plain_context()) is True
         first, second = (Path(p).read_text(encoding="utf-8") for p in paths)
     assert first == second
+
+
+# ---- lane FX3: the waste flag on the step map ---------------------------------------
+
+_WASTE_DOC = "Flagged as waste: this step should not be needed."
+_LEGEND_WASTE = "Waste: a step that should not be needed"
+
+
+def _waste_marks(root):
+    """{task name: (mark, association)} of the Waste marks joined to a task."""
+    process = _process(root)
+    by_id = {el.get("id"): el for el in process}
+    out = {}
+    for assoc in process.findall(f"{_BPMN}association"):
+        mark = by_id[assoc.get("targetRef")]
+        if mark.get("id").startswith("TextAnnotation_waste_"):
+            out[by_id[assoc.get("sourceRef")].get("name")] = (mark, assoc)
+    return out
+
+
+def test_a_step_flagged_as_waste_marks_its_task_and_the_legend_says_what_the_mark_means():
+    """Lane FX3, the live map's rule (process-map-levels.wasteNodes): a task a
+    visible step of which is flagged as waste carries a small text
+    annotation "Waste" (its documentation says what it means), joined by an
+    association; the legend's last line explains it. A hidden step marks
+    nothing, and a map without a flag has no such line."""
+    anno = _rich_anno()
+    anno["steps"][2]["flags"] = {"waste": True}          # Book the order
+    root = _written(anno, context=_plain_context())
+    _assert_valid_bpmn(root)
+    marks = _waste_marks(root)
+    assert set(marks) == {"Book the order"}
+    mark, assoc = marks["Book the order"]
+    assert (mark.get("id"), assoc.get("id")) == ("TextAnnotation_waste_1", "Association_waste_1")
+    assert (_text(mark), _text(mark, "documentation")) == ("Waste", _WASTE_DOC)
+    assert assoc.get("associationDirection") == "None"
+    assert _text(_annotations(root)[1]).split("\n")[-1] == _LEGEND_WASTE
+    # The mark sits above its task, the association rising from the task's
+    # top into the mark's lower hook; both have a place on the diagram.
+    shapes, edges = _di_shapes(root), _di_edges(root)
+    tx, ty, tw, _th = _bounds(shapes[assoc.get("sourceRef")])
+    mx, my, mw, mh = _bounds(shapes[mark.get("id")])
+    assert my + mh < ty and mx < tx + tw
+    (x1, y1), (x2, y2) = _points(edges[assoc.get("id")])
+    assert (y1, y2) == (ty, my + mh) and tx < x1 < tx + tw and mx < x2 < mx + mw
+    # A hidden step marks nothing; without a flag, no mark and no legend line.
+    anno["steps"][2]["state"] = "hidden"
+    anno["steps"][2]["flags"] = {"waste": True}
+    anno["steps"][3]["flags"] = {"waste": False}
+    root = _written(anno, context=_plain_context())
+    assert _waste_marks(root) == {}
+    assert _LEGEND_WASTE not in (_text(_annotations(root)[1]) or "")
+
+
+def test_a_waste_mark_beside_a_note_keeps_the_map_valid_and_nothing_overlaps():
+    """The Waste mark of a task with notes sits right of the note, level
+    with its bottom: the rich maps stay valid BPMN, and no line crosses a
+    box, no two boxes overlap and every label stays clear (lane FX3)."""
+    for anno in (_rich_anno(), _mined_rich_anno()):
+        for s in anno["steps"]:
+            if s["name"] in ("Check the customer", "Search", "Escalate"):
+                s["flags"] = {"waste": True}
+        root = _written(anno, context=_plain_context())
+        _assert_valid_bpmn(root)
+        _well_formed(root)
+        marks = _waste_marks(root)
+        assert marks
+        shapes = _di_shapes(root)
+        notes = {_text(n): n for n in _process(root).findall(f"{_BPMN}textAnnotation")
+                 if not n.get("id").startswith("TextAnnotation_waste_")}
+        for name, (mark, assoc) in marks.items():
+            joined = [a for a in _process(root).findall(f"{_BPMN}association")
+                      if a.get("sourceRef") == assoc.get("sourceRef") and a is not assoc]
+            if joined:
+                note_box = _bounds(shapes[joined[0].get("targetRef")])
+                mark_box = _bounds(shapes[mark.get("id")])
+                assert mark_box[0] >= note_box[0] + note_box[2]
+                assert mark_box[1] + mark_box[3] == note_box[1] + note_box[3]
+        assert notes
+        _assert_readable(root, min_label_w=84)
+
+
+def test_the_waste_mark_is_written_the_same_way_every_time():
+    anno = _rich_anno()
+    anno["steps"][1]["flags"] = {"waste": True}
+    with tempfile.TemporaryDirectory() as d:
+        paths = [os.path.join(d, f"step{i}.bpmn") for i in range(2)]
+        for p in paths:
+            assert write_observed_bpmn(json_copy(anno), p, context=_plain_context()) is True
+        first, second = (Path(p).read_text(encoding="utf-8") for p in paths)
+    assert first == second and "TextAnnotation_waste_1" in first
+
+
+def json_copy(value):
+    import json
+    return json.loads(json.dumps(value))

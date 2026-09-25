@@ -119,6 +119,23 @@ function displayName(session, folderName) {
   return title || label || projectName(m, folderName);
 }
 
+/* The name an exported file goes by, before its kind ("Order to cash" in
+   "Order to cash PDD.docx", "Order to cash map.svg"; lane FX3, validation
+   pass 2, item 20): the document title once it is written, else the name
+   given at the end of the recording (manifest.label), else the project's
+   name (projectName: the request's name or code, else the folder's name).
+   Made fit for a file name on Windows: the characters a name cannot hold
+   (\ / : * ? " < > | and control characters) become spaces, a dot or a
+   space cannot end it, and it is cut at 80 characters; "Process" when
+   nothing is left. `folderName` is the session folder's last part. */
+const _NOT_IN_FILE_NAMES = /[\\/:*?"<>|\u0000-\u001f]+/g;
+function exportBaseName(session, folderName) {
+  const raw = displayName(session, folderName);
+  const name = String(raw).replace(_NOT_IN_FILE_NAMES, " ").replace(/\s+/g, " ").trim()
+    .slice(0, 80).replace(/[. ]+$/, "");
+  return name || "Process";
+}
+
 /* The Recents entry's name: the document title once it is written, else the
    name given at the end of the recording (manifest.label), else the request
    code (AD-30) and the folder name, else the folder name alone (the capture
@@ -192,6 +209,7 @@ module.exports = {
   requestOf,
   requestName,
   requestCode,
+  exportBaseName,
   projectName,
   displayName,
   recentLabel,

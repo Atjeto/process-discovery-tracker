@@ -42,6 +42,7 @@ const AsIsFresh = require("./asis-freshness.js");
 const RO = require("./read-only.js");
 const { toast, escapeHtml } = require("./dom.js");
 const { confirmModal } = require("./modals.js");
+const { TextWrapModule } = require("./bpmn-text-wrap.js");
 
 let _deps = {};
 let _editingId = null;
@@ -156,15 +157,33 @@ function driftFor(map) {
    in the orange of the screen's next act; a new copy once one is. */
 const FORK_ASIS = "Edit as the As-Is map";
 const FORK_AGAIN = "Edit a new copy";
+/* Lane FX3 (validation pass 3, F16): while the Map withholds the process map
+   (overview-view.mapLockHtml: no transaction marked, not analyzed yet, a
+   failed check), or no transaction has a step, there is no map to copy: the
+   act is disabled with the reason in its title, and says it at once if it is
+   reached, with no analysis. */
+const WITHHELD_TO_EDIT = "No map to edit yet: the process map is not shown for this project, and the Map says why.";
+const NO_STEPS_TO_EDIT = "No map to edit yet: add steps in Steps to build the map.";
+function _hasSteps() {
+  return !_deps.hasSteps || !!_deps.hasSteps();
+}
+/* Why the act cannot copy the map now, or "". The lock is required lazily:
+   the Overview requires this module. */
+function _forkBlocker(s) {
+  if (!s) return "";
+  if (require("./views/overview-view.js").mapLockHtml(s.analysis)) return WITHHELD_TO_EDIT;
+  return _hasSteps() ? "" : NO_STEPS_TO_EDIT;
+}
 function syncForkButton() {
   const btn = $("btn-fork-refmap");
   if (!btn || _forking) return;
   const done = !!_asIsMap(session());
-  btn.disabled = false;
+  const why = _forkBlocker(session());
+  btn.disabled = !!why;
   btn.removeAttribute("aria-busy");
   btn.textContent = done ? FORK_AGAIN : FORK_ASIS;
   btn.classList.toggle("primary", !done);
-  btn.title = done
+  btn.title = why ? why : done
     ? "Copy the process map into the editor again, for example to start over. The As-Is map chosen for the PDD stays as it is. A copy you leave unchanged is not kept."
     : "Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it. A copy you leave unchanged is not kept.";
 }
@@ -394,17 +413,17 @@ function rowHtml(m, s) {
   const pddOpt = (val, lbl) =>
     '<option value="' + val + '"' + (((m.pdd_role || "") === val) ? " selected" : "") + ">" + lbl + "</option>";
   const actions = missing
-    ? '<button class="icon-btn xs danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Remove entry</button>'
+    ? '<button type="button" class="tool-btn danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Remove entry</button>'
     : (
       '<label class="refmap-bar-lbl">Use in PDD as ' +
         '<select class="map-status-select" data-rm-pdd="' + esc(m.map_id) + '">' +
           pddOpt("", "None") + pddOpt("as_is", "As-Is map") + pddOpt("to_be", "To-Be map") +
         "</select></label>" +
-      '<button class="icon-btn xs" data-rm-act="edit" data-rm-id="' + esc(m.map_id) + '">Edit</button>' +
-      (stale ? '<button class="icon-btn xs" data-rm-act="refork" data-rm-id="' + esc(m.map_id) +
+      '<button type="button" class="tool-btn" data-rm-act="edit" data-rm-id="' + esc(m.map_id) + '">Edit</button>' +
+      (stale ? '<button type="button" class="tool-btn" data-rm-act="refork" data-rm-id="' + esc(m.map_id) +
         '" title="' + esc(RECOPY_TITLE) + '">Copy again</button>' : "") +
-      '<button class="icon-btn xs" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '" title="Copy this map, for example to start the To-Be map from it">Duplicate</button>' +
-      '<button class="icon-btn xs danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Delete</button>'
+      '<button type="button" class="tool-btn" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '" title="Copy this map, for example to start the To-Be map from it">Duplicate</button>' +
+      '<button type="button" class="tool-btn danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Delete</button>'
     );
   return (
     '<li class="refmap-row' + (missing ? " missing" : "") + '">' +
@@ -506,12 +525,10 @@ async function onFork(like) {
   // Lane HV: no map is copied or edited in a hand-off opened read only.
   if (RO.isReadOnly(s)) return;
   if (_forking) return;
-  // The Map's lock (overview-view.mapLockHtml, required lazily: the Overview
-  // requires this module): no runs marked, not analyzed, or a failed check.
-  if (require("./views/overview-view.js").mapLockHtml(s.analysis)) {
-    toast("No map to edit yet: the process map is not shown for this project, and the Map says why.", "error");
-    return;
-  }
+  // The Map's lock (no runs marked, not analyzed, or a failed check) or, lane
+  // FX3, no step: no map to copy, said at once, with no analysis.
+  const why = _forkBlocker(s);
+  if (why) { toast(why, "error"); return; }
   const fs = require("node:fs");
   // The Map's own update of the process map runs: the copy waits for it.
   if (_analysis) {
@@ -771,7 +788,8 @@ function _drawPlanes(xml, paths, opts) {
     const host = document.createElement("div");
     host.style.cssText = "position:absolute;left:-99999px;top:-99999px;width:1600px;height:1200px;";
     document.body.appendChild(host);
-    const v = new BpmnJS({ container: host });
+    // Lane FX3: names break between words, as on the Map (bpmn-text-wrap.js).
+    const v = new BpmnJS({ container: host, additionalModules: [TextWrapModule] });
     v.importXML(xml)
       .then(async () => {
         const canvas = v.get("canvas");
@@ -857,7 +875,7 @@ function _showGallery(show) {
 
 /* ---- init --------------------------------------------------------------- */
 /* deps = { renderLiveMap, renderMap, liveMap, sourceBpmnPath, analyze,
-   analysisBusy, mapPath, onAsIsLevel, mainMapName } (renderer.js);
+   analysisBusy, mapPath, onAsIsLevel, mainMapName, hasSteps } (renderer.js);
    renderLiveMap draws the live map, renderMap the whole Map level while it
    shows; liveMap says whether the live map draws ({ locked, drawable });
    analyze resolves true when the session was analyzed and reloaded, and

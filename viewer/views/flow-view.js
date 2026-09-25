@@ -45,7 +45,7 @@ const {
 const Timeline = require("./flow-view-timeline.js");
 const {
   renderTimeline, renderTimelineSummary, restoreTimelineForCurrent,
-  maybeAutoScrollToFirstCase, _wireTimelineScrollPersist, setLaneToggle,
+  maybeAutoScrollToFirstCase, _wireTimelineScrollPersist, setLaneToggle, timelineDrawable,
 } = Timeline;
 const Transcript = require("./flow-view-transcript.js");
 const AnalystUI = require("./analyst-ui.js");
@@ -475,6 +475,10 @@ async function loadSessionIntoView(folder, opts) {
   // survives. When a recording IS linked, behaviour is unchanged.
   const workspace = document.getElementById("lower-workspace");
   const pane = document.getElementById("video-pane");
+  // Lane FX3 (validation pass 3, F16): a project with no recording and no
+  // video draws no timeline; the line in its place carries Attach video, so
+  // the video band (a second Attach video) is not shown.
+  if (workspace) workspace.classList.toggle("no-timeline", !timelineDrawable(State.getSession()));
   if (State.getSession().recordingAvailable && State.getSession().recordingPath) {
     video.src = "file:///" + State.getSession().recordingPath.replace(/\\/g, "/");
     video.style.display = "";
@@ -499,6 +503,7 @@ async function loadSessionIntoView(folder, opts) {
 
   renderTimeline();
   renderEventTable();
+  syncRawEventsShown();
   renderScreenshots();
   renderMarkersList();
   renderTimelineSummary();
@@ -638,7 +643,27 @@ async function restoreNewestBackup() {
     return;
   }
   await loadSessionIntoView(sess.sessionFolder);
-  toast("Restored the backup saved " + when + ". The file that could not be read is kept as " + r.keptAs + ".", "success");
+  toast("Restored the backup saved " + when + ". The file that could not be read is kept as " + r.keptAs + "." +
+    restoredFilesLine(r.listed, r.screenshots), "success");
+}
+
+/* What Restore the newest backup did with the files added after that backup
+   (lane FX3, validation pass 3, F27): the attachments are listed again under
+   the document's attachments on the Overview; screenshots stay in the
+   folder. "" when there were none. Pure. */
+function restoredFilesLine(listed, screenshots) {
+  const files = Array.isArray(listed) ? listed : [];
+  const shots = Array.isArray(screenshots) ? screenshots : [];
+  let out = "";
+  if (files.length) {
+    out += " " + (files.length === 1 ? "A file attached after that backup is" : files.length + " files attached after that backup are") +
+      " listed again with the document's attachments on the Overview: " + files.join(", ") + ".";
+  }
+  if (shots.length) {
+    out += " " + (shots.length === 1 ? "A screenshot added after that backup stays" : shots.length + " screenshots added after that backup stay") +
+      " in the project's screenshots/analyst folder, on no step.";
+  }
+  return out;
 }
 
 /* Wire the video element's listeners ONCE. loadSessionIntoView runs on every
@@ -649,9 +674,10 @@ async function restoreNewestBackup() {
   const video = document.getElementById("video");
   if (!video) return;
   video.addEventListener("timeupdate", positionPlayhead);
-  // A video without a length in its file (a recorded .webm) reports Infinity.
-  video.addEventListener("loadedmetadata", () =>
-    setVideoOverlay(isFinite(video.duration) ? `${formatDuration(video.duration * 1000)} loaded` : "loaded"));
+  // Lane FX3 (validation pass 2, item 19): once the video is loaded its
+  // corner says nothing ("loading..." goes); the playback time shows there
+  // while it plays (positionPlayhead). An empty overlay is not drawn.
+  video.addEventListener("loadedmetadata", () => setVideoOverlay(""));
   // C16: a video project's Timeline runs on its video's length.
   const lengthKnown = () => {
     if (Video.noteVideoLength(video)) { renderTimeline(); renderTimelineSummary(); positionPlayhead(); }
@@ -1189,6 +1215,17 @@ function showCaseContextMenu(x, y, c) {
 
 /* ============ Event table ========================================= */
 
+/* The Raw events drawer (the machine layer, P2.10) shows on the Timeline
+   only, and (lane FX3, validation pass 3, F16) only when the project has
+   events: a project made from a video or from nothing has none, and an
+   empty table with its filters said nothing. */
+function syncRawEventsShown() {
+  const host = document.querySelector(".event-table-host");
+  if (!host) return;
+  const sess = State.getSession();
+  host.style.display = State.getLevel() === "flow" && sess && (sess.events || []).length ? "" : "none";
+}
+
 function renderEventTable() {
   const filter = ($("#event-filter").value || "").toLowerCase();
   const showAct = $("#cb-show-activity").checked;
@@ -1354,4 +1391,7 @@ module.exports = {
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).
   queueSyntheticMarker, queueMarkerDelete,
+  // Lane FX3: the Raw events drawer's rule (renderer.js applyLevel), and
+  // what a restored backup says about the files added after it.
+  syncRawEventsShown, restoredFilesLine,
 };

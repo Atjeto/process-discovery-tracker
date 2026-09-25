@@ -792,17 +792,24 @@ const lockProbe = () => {
   if (!(locked && locked.cta)) await shot(page2, "fail-map-slim-locked.png");
   await shot(page2, "map-slim-locked.png");
 
-  // The edit act on a withheld map makes no copy and says why.
-  await page2.click("#btn-fork-refmap").catch((e) => console.log("fork", e.message));
+  // The edit act on a withheld map makes no copy and says why. Lane FX3
+  // (validation pass 3, F16): it cannot act, so it is disabled with the
+  // reason in its title, and a click does nothing.
+  const forkLocked = await page2.evaluate(() => {
+    const b = document.getElementById("btn-fork-refmap");
+    return { disabled: b.disabled, title: b.title };
+  }).catch((e) => ({ err: e.message }));
+  await page2.click("#btn-fork-refmap", { force: true, timeout: 5000 }).catch((e) => console.log("fork", e.message));
   await wait(700);
-  const forkLocked = await page2.evaluate(() => ({
+  Object.assign(forkLocked, await page2.evaluate(() => ({
     toast: ((document.getElementById("toast") || {}).textContent || "").trim(),
     maps: ((require("./state.js").getSession().annotations || {}).reference_maps || []).length,
     editor: getComputedStyle(document.getElementById("refmap-editor-overlay")).display !== "none",
-  })).catch((e) => ({ err: e.message }));
-  record("(f2) the edit act on a withheld map makes no copy and says why",
-    !!(forkLocked && !forkLocked.err && /^No map to edit yet/.test(forkLocked.toast) && forkLocked.maps === 0 &&
-      !forkLocked.editor), JSON.stringify(forkLocked));
+  })).catch((e) => ({ err: e.message })));
+  record("(f2) the edit act on a withheld map makes no copy and says why (lane FX3: disabled, the reason in its title)",
+    !!(forkLocked && !forkLocked.err && forkLocked.disabled &&
+      forkLocked.title === "No map to edit yet: the process map is not shown for this project, and the Map says why." &&
+      forkLocked.maps === 0 && !forkLocked.editor), JSON.stringify(forkLocked));
 
   // The lock's call to action lands on Flow with the Markers panel showing.
   await page2.click('#session-map-dfg-host [data-map-cta="mark-runs"]').catch((e) => console.log("cta", e.message));

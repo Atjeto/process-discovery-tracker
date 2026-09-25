@@ -49,10 +49,10 @@ test("the facts are no longer shown on the Overview, so a failed facts stage cla
 const NO_ENTRIES = { heading: "Data", note: "No field entries were recorded in the steps of this process.",
   header: ["Field", "System and screen", "Step", "Example value", "Re-keyed"], rows: [], rekeyed: [] };
 const TIMES = { heading: "Applications and time",
-  per_transaction: { heading: "Time per transaction", note: "Transactions were not marked in this project, so there is no time per transaction.",
+  per_transaction: { heading: "Time per transaction", note: "One transaction (not marked), so there is no time per transaction.",
     header: ["Transaction", "Steps", "Active time", "Elapsed time"], rows: [], after: null },
   per_application: { heading: "Time in each application", note: null, header: ["System", "Screens", "Steps"],
-    rows: [["Phone", "Not recorded", "Call the customer"]] } };
+    rows: [["Phone", "", "Call the customer"]] } };
 
 test("a failed rows stage makes Data and Applications and time say they could not run, never an empty table", () => {
   const out = html({ case_quality: CQ, facts: FACTS, findings: [], pdd_data: null, pdd_time: null,
@@ -66,7 +66,7 @@ test("a failed rows stage makes Data and Applications and time say they could no
 test("control: rows that ran and found no field entry say the PDD's own sentence, not that the check could not run", () => {
   const out = html({ case_quality: CQ, facts: FACTS, findings: [], pdd_data: NO_ENTRIES, pdd_time: TIMES, stage_errors: [] });
   assert.ok(out.includes("No field entries were recorded in the steps of this process."));
-  assert.ok(out.includes("Transactions were not marked in this project, so there is no time per transaction."));
+  assert.ok(out.includes("One transaction (not marked), so there is no time per transaction."));
   assert.ok(!out.includes(STAGE_NOT_RUN));
   // A failed findings stage no longer touches the Observations: they read the PDD's rows.
   const findingsFailed = html({ case_quality: CQ, facts: FACTS, findings: null, pdd_data: NO_ENTRIES, pdd_time: TIMES,

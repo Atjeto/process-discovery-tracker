@@ -52,6 +52,32 @@ test("bar: paused says Paused and offers Resume", () => {
   assert.strictEqual(m.pauseLabel, "Resume");
 });
 
+test("lane FX3: the bar's clock is the time recorded; while paused, the pause's length shows beside Paused, and the time paused in all is in the tooltip", () => {
+  const paused = G.barModel({ status: { ...RECORDING, paused: true, elapsedMs: 65000, pausedMs: 6000, currentPauseMs: 3000 } });
+  assert.strictEqual(paused.stateText, "Paused", "the tray's line keeps its word");
+  assert.strictEqual(paused.pauseNow, "0:03");
+  assert.strictEqual(paused.elapsed, "1:05");
+  assert.strictEqual(paused.paused, "paused 0:06");
+  assert.strictEqual(paused.title, "Paused: Transaction 2, 1:05 (paused 0:06)");
+  const after = G.barModel({ status: { ...RECORDING, elapsedMs: 70000, pausedMs: 6000, currentPauseMs: 0 } });
+  assert.strictEqual(after.stateText, "Recording");
+  assert.strictEqual(after.pauseNow, "");
+  assert.strictEqual(after.title, "Recording: Transaction 2, 1:10 (paused 0:06)");
+  // No pause (or under a second): nothing said.
+  assert.strictEqual(G.barModel({ status: RECORDING }).paused, "");
+  assert.strictEqual(G.barModel({ status: { ...RECORDING, pausedMs: 400 } }).paused, "");
+  assert.strictEqual(G.barModel({ status: { ...RECORDING, paused: true, currentPauseMs: 400 } }).pauseNow, "");
+  assert.strictEqual(G.barModel({ status: { tracking: false, pausedMs: 6000 } }).paused, "");
+  assert.strictEqual(G.trayStatusLine({ ...RECORDING, paused: true, currentPauseMs: 3000 }), "Paused: Transaction 2");
+});
+
+test("lane FX3: the end summary's duration is the time recorded; a pause is said beside it", () => {
+  assert.strictEqual(G.summaryModel({ runs: 4, durationMs: 77000, pausedMs: 6000 }).headline,
+    "4 transactions, 1:17 (paused 0:06, not counted)");
+  assert.strictEqual(G.summaryModel({ runs: 4, durationMs: 77000, pausedMs: 0 }).headline, "4 transactions, 1:17");
+  assert.strictEqual(G.pausedText(3723000), "paused 1:02:03");
+});
+
 test("bar: after End transaction the bar says between transactions", () => {
   const m = G.barModel({ status: { ...RECORDING, openMarkers: [], markerDepth: 0 } });
   assert.strictEqual(m.runText, "between transactions");
@@ -134,10 +160,12 @@ test("toasts: programs by a plain name", () => {
 test("every sentence the SME reads here is free of machine words, the retired run and dash punctuation", () => {
   const texts = [];
   for (const status of [RECORDING, { ...RECORDING, paused: true }, { tracking: false },
-    { ...RECORDING, openMarkers: [] }, { ...RECORDING, recorder_state: "dead" }]) {
+    { ...RECORDING, openMarkers: [] }, { ...RECORDING, recorder_state: "dead" },
+    { ...RECORDING, paused: true, pausedMs: 6000 }]) {
     const m = G.barModel({ status, hotkey: "Control+Shift+S", namedRuns: true });
-    texts.push(m.stateText, m.runText, m.pauseLabel, m.title, m.problem || "", G.trayStatusLine(status));
+    texts.push(m.stateText, m.runText, m.pauseLabel, m.title, m.problem || "", m.paused, m.pauseNow, G.trayStatusLine(status));
   }
+  texts.push(G.summaryModel({ runs: 2, durationMs: 5000, pausedMs: 4000 }).headline);
   const s0 = G.summaryModel({ runs: 0, durationMs: 5000, sessionFolder: "D:\\r\\default\\x", hotkey: "Control+Shift+S" });
   const s1 = G.summaryModel({ runs: 0, durationMs: 5000 });
   const s3 = G.summaryModel({ runs: 3, durationMs: 5000 });

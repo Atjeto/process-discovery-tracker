@@ -274,6 +274,76 @@ function zipFiles(buf) {
       a2.map === "No steps yet: add steps in Steps to build the map." && !/marked|reference/i.test(a2.guide + " " + a2.map),
     JSON.stringify(a2));
 
+  // (a3) Lane FX3 (validation pass 3, F16, F22): a project with no recording
+  // and no video, before its first step. The Timeline offers no control that
+  // needs a drawn timeline (the Transaction select, Lanes, the zoom, the video
+  // band with a second Attach video, the gallery, Raw events), and its Markers
+  // tab says what makes a timeline; the Observations say they are measured
+  // from the steps added, and an item opened says its one sentence once;
+  // Apps outside the process is not offered; Edit as the As-Is map is
+  // disabled with its reason, and Export's map image says why at once, with
+  // no analysis and no file.
+  let a3 = {};
+  try {
+    await level("flow");
+    a3.tl = await page.evaluate(() => {
+      const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+      return {
+        controls: ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in", "video-pane", "btn-open-gallery"]
+          .filter((id) => shown(document.getElementById(id))),
+        raw: shown(document.querySelector(".event-table-host")),
+        attach: [...document.querySelectorAll("#session-layout-flow button")].filter((b) => shown(b) && /Attach video/.test(b.textContent)).length,
+        markers: ((document.getElementById("markers-list") || {}).textContent || "").trim(),
+      };
+    });
+    await level("overview");
+    a3.obs = await page.evaluate(async () => {
+      const who = ((document.querySelector("#ov-observations .ov-block-who") || {}).textContent || "").trim();
+      const d = document.querySelector('#ov-observations details[data-module="data"]');
+      const note = "No field entries were recorded in the steps of this process.";
+      const take = d.querySelector(".analysis-module-takeaway");
+      const closed = !d.open && take.textContent.trim() === note && getComputedStyle(take).visibility !== "hidden";
+      d.open = true;
+      await new Promise((r) => setTimeout(r, 150));
+      const opened = [...d.querySelectorAll(".analysis-module-takeaway, .ov-rows-note")]
+        .filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden" && el.textContent.trim() === note).length;
+      d.open = false;
+      return { who, closed, opened };
+    });
+    await level("steps");
+    a3.apps = await page.evaluate(() => {
+      const b = document.getElementById("btn-ignored-apps");
+      return !!b && b.getClientRects().length > 0 && getComputedStyle(b).display !== "none";
+    });
+    await level("map");
+    a3.fork = await page.evaluate(() => { const b = document.getElementById("btn-fork-refmap"); return { disabled: b.disabled, title: b.title }; });
+    const svgOut = path.join(TMP, "no-steps.svg");
+    await stubSave(svgOut);
+    await page.evaluate(() => {
+      window.__fx3Pills = [];
+      const h = document.getElementById("session-pills");
+      window.__fx3Obs = new MutationObserver(() => window.__fx3Pills.push(h.textContent));
+      window.__fx3Obs.observe(h, { childList: true, subtree: true, characterData: true });
+    });
+    await page.click("#btn-session-export-menu");
+    await page.click("#btn-session-map-svg");
+    await page.waitForFunction(() => /No process map to export/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    await wait(600);
+    a3.svg = await page.evaluate(() => {
+      window.__fx3Obs.disconnect();
+      return { toast: (document.getElementById("toast").textContent || "").trim(), pills: window.__fx3Pills.join("|") };
+    });
+    a3.svgFile = fs.existsSync(svgOut);
+  } catch (e) { a3.err = errText(e); }
+  record("(a3) lane FX3: no recording and no video: the Timeline offers none of the controls a drawn timeline needs (one Attach video, no Raw events), its Markers tab says a video makes one; the Observations are measured from the steps you added, a sentence read once when opened; no Apps outside the process; Edit as the As-Is map disabled with its reason, and the map image export says why at once, with no analysis and no file",
+    !a3.err && a3.tl.controls.length === 0 && !a3.tl.raw && a3.tl.attach === 1 &&
+      /once a video is attached/.test(a3.tl.markers) && !/right-click the timeline/.test(a3.tl.markers) &&
+      a3.obs.who === "Measured from the steps you added. The PDD prints them in sections 5 and 6." &&
+      a3.obs.closed === true && a3.obs.opened === 1 && !a3.apps &&
+      a3.fork.disabled && a3.fork.title === "No map to edit yet: add steps in Steps to build the map." &&
+      a3.svg.toast === "No process map to export: the transactions have no steps yet." && !/Updating/.test(a3.svg.pills) && !a3.svgFile,
+    JSON.stringify(a3));
+
   // (b) Four steps added by hand, two systems, one moved down.
   const NAMES = ["Receive the order email", "Check the customer", "Enter the sales order", "Send the confirmation"];
   let b = {};
@@ -311,6 +381,44 @@ function zipFiles(buf) {
       JSON.stringify(b.list) === JSON.stringify(ORDERED),
     JSON.stringify(b));
 
+  // (b2) Lane FX3 (validation pass 3, F16): Split on a step added by hand
+  // (no recorded action to split between) says why, in the analyst's words:
+  // disabled in the step pane with the reason, left out of the step menu,
+  // and its key S says the same; never "interactions". Edit as the As-Is map
+  // acts again once there are steps.
+  let b2 = {};
+  try {
+    const s = await session();
+    const id = s.anno.steps.find((x) => x.name === NAMES[0]).step_id;
+    await selectStep(id);
+    b2.btn = await page.evaluate(() => {
+      const d = document.querySelector("#step-detail .step-detail-more");
+      if (d) d.open = true;
+      const b = document.getElementById("btn-step-split");
+      return b ? { disabled: b.disabled, title: b.title } : null;
+    });
+    await page.locator('#step-list .step-row[data-step-id="' + id + '"] .step-name').click({ button: "right", timeout: T });
+    await page.waitForSelector("#step-ctx-menu", { timeout: T });
+    b2.menu = await page.evaluate(() => [...document.querySelectorAll("#step-ctx-menu > div")].map((x) => (x.textContent || "").trim()).filter(Boolean));
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#step-ctx-menu", { state: "detached", timeout: T });
+    await page.locator('#step-list .step-row[data-step-id="' + id + '"] .step-name').click({ timeout: T });
+    await page.keyboard.press("s");
+    await page.waitForFunction(() => /cannot be split/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+    b2.toast = await page.evaluate(() => (document.getElementById("toast").textContent || "").trim());
+    await level("map");
+    b2.fork = await page.evaluate(() => !document.getElementById("btn-fork-refmap").disabled);
+    await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(),
+      null, { timeout: 180000 });
+    await level("steps");
+  } catch (e) { b2.err = errText(e); }
+  record("(b2) lane FX3: Split on a step added by hand is disabled with the reason in plain words, is not in the step menu, and S says why; Edit as the As-Is map acts once there are steps",
+    !b2.err && !!b2.btn && b2.btn.disabled &&
+      b2.btn.title === "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it." &&
+      b2.menu.length > 0 && !b2.menu.some((t) => /Split/.test(t)) && b2.toast.startsWith("No action (a click, a field typed) was recorded in this step") &&
+      !/interaction|\u2265/.test(b2.toast + b2.btn.title) && b2.fork,
+    JSON.stringify(b2));
+
   // (c) A screenshot from a file, one pasted; the pasted one for the PDD.
   let c = {};
   let s0 = await session();
@@ -343,11 +451,11 @@ function zipFiles(buf) {
         shots: r.querySelectorAll(".sp-shot").length } : null;
     }, stepId(NAMES[0]));
   } catch (e) { c.err = errText(e); }
-  record("(c) Add screenshot from a file and by Ctrl+V in the step pane: two analyst screenshots on the step (files in screenshots/analyst/); Use in PDD marks the pasted one; the step panel's row reads \"Transaction 1 · no time in the recording\" under \"This step happened once in transaction 1.\", no play, its screenshots under a Screenshots lead",
+  record("(c) Add screenshot from a file and by Ctrl+V in the step pane: two analyst screenshots on the step (files in screenshots/analyst/); Use in PDD marks the pasted one; the step panel's row reads \"Transaction 1 · no time\" (lane FX3: nothing recorded) under \"This step happened once in transaction 1.\", no play, its screenshots under a Screenshots lead",
     !c.err && c.shots.length === 2 && c.shots.every((x) => x.exists && x.onStep) &&
       JSON.stringify(c.shots.map((x) => x.source)) === '["file","paste"]' && c.cards.length === 2 && c.cards.every((x) => x.loaded) &&
       c.cards.find((x) => x.ref === c.pastedId).pdd === "In the PDD" &&
-      !!c.panel && c.panel.explain === "This step happened once in transaction 1." && c.panel.at === "Transaction 1 · no time in the recording" &&
+      !!c.panel && c.panel.explain === "This step happened once in transaction 1." && c.panel.at === "Transaction 1 · no time" &&
       !c.panel.play && JSON.stringify(c.panel.leads) === '["Screenshots"]' && c.panel.shots === 2,
     JSON.stringify(c));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-steps.png") }).catch(() => {});
@@ -475,8 +583,10 @@ function zipFiles(buf) {
   // line saying the step has no time, never the moment the previous step's
   // video was left at; A frame of the video waits, with the reason, until the
   // analyst plays the video to the step's moment, then takes that frame.
+  // Lane FX3 (F22): the project has no recording, so the time the step has
+  // not is the video's.
   let w = {};
-  const UNTIMED = "This step has no time in the recording: play the video to its moment, then Add screenshot takes that frame.";
+  const UNTIMED = "This step has no time in the video: play the video to its moment, then Add screenshot takes that frame.";
   const spVideo = () => page.evaluate(() => {
     const vd = document.getElementById("sp-video"), note = document.getElementById("sp-video-note");
     return { t: vd.currentTime, hidden: vd.hidden, note: note && !note.hidden ? (note.textContent || "").trim() : "",
@@ -501,7 +611,7 @@ function zipFiles(buf) {
     w.next = await spVideo();
     w.before = await shotCount();
     await shotMenu("video_frame");
-    await page.waitForFunction(() => /no time in the recording: play the step panel's video/.test((document.getElementById("toast") || {}).textContent || ""),
+    await page.waitForFunction(() => /no time in the video: play the step panel's video/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: T });
     w.refused = { toast: await page.evaluate(() => document.getElementById("toast").textContent), count: await shotCount() };
     w.playedTo = await seekPanel(6);
@@ -512,9 +622,9 @@ function zipFiles(buf) {
       atSec: (Date.parse(shot.at) - Date.parse(readJson(path.join(BLANK, "manifest.json")).started_at)) / 1000,
       file: fs.existsSync(path.join(BLANK, "screenshots", "analyst", shot.file)) };
   } catch (x) { w.err = errText(x); }
-  record("(w) lane FX2: a step without a time, in a project with a video: the step panel shows the video's start (not 0:12, where the previous step's video was left) with one line saying the step has no time, and no play; A frame of the video is refused, with the reason, until the video is played to the step's moment, then saves that frame",
+  record("(w) lane FX2: a step without a time, in a project with a video: the step panel shows the video's start (not 0:12, where the previous step's video was left) with one line saying the step has no time in the video (lane FX3: never in the recording, which this project has not), and no play; A frame of the video is refused, with the reason, until the video is played to the step's moment, then saves that frame",
     !w.err && Math.abs(w.movedTo - 12) < 0.3 && w.next.t === 0 && !w.next.hidden && w.next.note === UNTIMED && !w.next.play &&
-      /^This step has no time in the recording: play the step panel's video to its moment first, then add the frame\./.test(w.refused.toast) &&
+      /^This step has no time in the video: play the step panel's video to its moment first, then add the frame\./.test(w.refused.toast) &&
       w.refused.count === w.before && Math.abs(w.playedTo - 6) < 0.3 &&
       w.shot.source === "video_frame" && w.shot.onStep && w.shot.file && Math.abs(w.shot.atSec - 6) < 0.5,
     JSON.stringify(w));
@@ -589,6 +699,36 @@ function zipFiles(buf) {
     !h.err && h.panelBefore === true && !!h.panelAfter && h.panelAfter.hidden === true && h.panelAfter.level === "steps",
     JSON.stringify({ before: h.panelBefore, after: h.panelAfter }));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-video.png") }).catch(() => {});
+
+  // (h3) Lane FX3: a project made from a video draws its Timeline with its
+  // controls but has no Raw events drawer (it has no events); its video
+  // never says "loaded"; and a video playing on the Timeline stops when the
+  // level changes (validation pass 3, F25), so it never plays on elsewhere.
+  let h3 = {};
+  try {
+    await level("flow");
+    h3.state = await page.evaluate(() => {
+      const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+      return {
+        controls: ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"].filter((id) => shown(document.getElementById(id))).length,
+        raw: shown(document.querySelector(".event-table-host")),
+        overlay: (document.getElementById("video-overlay").textContent || "").trim(),
+      };
+    });
+    await page.evaluate(async () => {
+      const v = document.getElementById("video");
+      v.muted = true;
+      await v.play();
+    });
+    await wait(700);
+    h3.playing = await page.evaluate(() => !document.getElementById("video").paused);
+    await level("overview");
+    h3.pausedOnOverview = await page.evaluate(() => document.getElementById("video").paused);
+    await level("flow");
+  } catch (x) { h3.err = errText(x); }
+  record("(h3) lane FX3: a video project's Timeline has its controls and no Raw events (no events), its video never says loaded, and the video stops when the level changes",
+    !h3.err && h3.state.controls === 5 && !h3.state.raw && !/loaded/.test(h3.state.overlay) && h3.playing && h3.pausedOnOverview,
+    JSON.stringify(h3));
 
   // (i) Two transactions marked by right-click, applied.
   // A point on the Timeline's background at `frac` of its width: in the low

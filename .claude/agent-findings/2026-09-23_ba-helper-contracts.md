@@ -402,9 +402,10 @@ Everything the analyst adds lives in the session folder, so it travels with it.
   `facts`, `findings` and `pdd_findings` as null with no `stage_errors` entry (nothing
   failed; C12's null with an entry still means "could not run"); `case_quality` still
   counts the runs, coverage null. (Lane FX1 cut those keys; `coverage_caveat` is null
-  there.) The PDD says "Runs were not marked in this session"
-  for the implicit run, "Runs recorded: Not marked", "Recorded: Nothing recorded" for
-  a blank session, and points at the video time in a video session.
+  there.) The PDD says "One transaction (not marked)" for the implicit run
+  (Document control's "Transactions recorded" and sections 3.2, 4.1 and 6.1, the
+  viewer's words; lane FX3), "Recorded: Nothing recorded" for a blank session, and
+  points at the video time in a video session.
 - **Removal.** Removing a screenshot, note or attachment the analyst added deletes its
   entry and its copied file; recorder screenshots are only hidden.
 

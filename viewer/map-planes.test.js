@@ -165,10 +165,10 @@ test("C19: the manifest names each picture drawn by its map's path; a map withou
   assert.deepEqual(P.pddManifest(null), { maps: [] });
 });
 
-test("an exported map image is named after its map: the main map as before, a sub-process's with its number", () => {
-  assert.equal(P.imageName("process-map", { path: [], number: null }), "process-map.svg");
-  assert.equal(P.imageName("as-is-map", null), "as-is-map.svg");
-  assert.equal(P.imageName("process-map", { path: ["B", "b1"], number: "2.1" }), "process-map-sub-process-2.1.svg");
-  assert.equal(P.imageName("as-is-map", { path: ["D"], number: null }), "as-is-map-sub-process.svg",
+test("an exported map image is named after its map: the main map by its name, a sub-process's with its number (lane FX3)", () => {
+  assert.equal(P.imageName("Order to cash map", { path: [], number: null }), "Order to cash map.svg");
+  assert.equal(P.imageName("Order to cash As-Is map", null), "Order to cash As-Is map.svg");
+  assert.equal(P.imageName("Order to cash map", { path: ["B", "b1"], number: "2.1" }), "Order to cash map of sub-process 2.1.svg");
+  assert.equal(P.imageName("Order to cash As-Is map", { path: ["D"], number: null }), "Order to cash As-Is map of a sub-process.svg",
     "a map the reference transaction does not reach has no number");
 });

@@ -182,6 +182,10 @@ async function unreadableAnnotationsPin() {
   const truncated = good.slice(0, Math.floor(good.length / 2));
   fs.writeFileSync(path.join(dir, "annotations.json"), truncated);
   fs.writeFileSync(path.join(dir, "annotations.json.2"), good);
+  // Lane FX3 (validation pass 3, F27): a file attached after that backup,
+  // which the backup names no entry for.
+  fs.mkdirSync(path.join(dir, "attachments"));
+  fs.writeFileSync(path.join(dir, "attachments", "sop.txt"), "the SOP, attached after the backup");
   const files = () => fs.readdirSync(dir).filter((n) => n.startsWith("annotations.json")).sort();
   const filesBefore = files();
   const untouched = () =>
@@ -309,15 +313,29 @@ async function unreadableAnnotationsPin() {
     try { parsed = JSON.parse(fs.readFileSync(path.join(dir, "annotations.json"), "utf-8")); } catch (_) { /* reported below */ }
     restore.readable = !!(parsed && Array.isArray(parsed.steps));
     restore.toast = ((await p.$eval("#toast", (el) => el.textContent || "").catch(() => "")) || "").trim();
+    // Lane FX3: the file attached after the backup is listed again on the
+    // project (never deleted unseen), and the toast says so.
+    restore.relisted = ((parsed && parsed.attachments) || []).filter((a) => a && a.file === "sop.txt")
+      .map((a) => ({ label: a.label, step: a.step_id }));
+    restore.fileKept = fs.existsSync(path.join(dir, "attachments", "sop.txt"));
     // The project opened with its annotations analyzes by itself (it has no
     // analysis yet): let that end before the window closes.
     await p.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 }).catch(() => {});
+    await p.locator('.view-mode-btn[data-level="overview"]').click({ timeout: T }).catch(() => {});
+    await p.waitForSelector("#ov-attach", { timeout: T }).catch(() => {});
+    restore.onOverview = await p.evaluate(() => [...document.querySelectorAll("#ov-attach .att-row")]
+      .map((r) => ((r.querySelector(".att-label-input") || {}).value || r.textContent || "").trim()));
   } catch (e) { logActionError("CC restore the newest backup", e); restore.err = String(e.message).split("\n")[0]; }
   record("lane CC: Restore the newest backup (the banner's act) asks first naming the backup and its time, keeps the unreadable file as annotations.unreadable-<time>.json and opens the project again with the backup",
     !!(!restore.err && restore.button === "Restore the newest backup" &&
       /Restore the newest backup\?/.test(restore.confirm || "") && /Put back the backup saved .+ \(annotations\.json\.2\)/.test(restore.confirm || "") &&
       restore.keptIsTheBrokenFile && restore.readable && /^Restored the backup saved /.test(restore.toast || "")),
     JSON.stringify(restore));
+  record("lane FX3: a file attached after the restored backup is listed again with the document's attachments (its file kept), and the toast names it",
+    !!(!restore.err && JSON.stringify(restore.relisted) === '[{"label":"sop.txt","step":null}]' && restore.fileKept &&
+      /A file attached after that backup is listed again with the document's attachments on the Overview: sop\.txt\./.test(restore.toast || "") &&
+      (restore.onOverview || []).some((t) => /sop\.txt/.test(t))),
+    JSON.stringify({ relisted: restore.relisted, fileKept: restore.fileKept, toast: restore.toast, onOverview: restore.onOverview }));
   if (restore.err || !restore.readable) await shot(p, "fail-cc-restore-backup.png");
 
   // The refused save logs one console error by design ("[session]
@@ -541,6 +559,78 @@ async function unreadableAnnotationsPin() {
     !menus.err && JSON.stringify(menus.afterNew) === '["new-menu-popup"]' && JSON.stringify(menus.afterOpen) === '["recent-menu-popup"]' &&
       JSON.stringify(menus.afterExport) === '["session-export-popup"]' && JSON.stringify(menus.afterOutside) === "[]",
     JSON.stringify(menus));
+
+  // Lane FX3 (validation pass 3, F21): Escape closes New, Open and Export,
+  // and the keyboard goes back to the menu's button.
+  const escMenus = {};
+  try {
+    const shownPopups = () => page.evaluate(() => ["new-menu-popup", "recent-menu-popup", "session-export-popup"]
+      .filter((id) => { const el = document.getElementById(id); return !!el && getComputedStyle(el).display !== "none"; }));
+    for (const [btn, popup] of [["btn-new-menu", "new-menu-popup"], ["btn-recent-menu", "recent-menu-popup"], ["btn-session-export-menu", "session-export-popup"]]) {
+      await page.locator("#" + btn).click({ timeout: 15000 });
+      const open = await shownPopups();
+      await page.keyboard.press("Escape");
+      await wait(150);
+      escMenus[btn] = { open: JSON.stringify(open) === JSON.stringify([popup]), after: await shownPopups(),
+        focus: await page.evaluate(() => (document.activeElement || {}).id || "") };
+    }
+  } catch (e) { logActionError("FX3 Escape closes the menus", e); escMenus.err = String(e.message).split("\n")[0]; }
+  record("lane FX3: Escape closes the New, Open and Export menus, the keyboard back on the menu's button",
+    !escMenus.err && ["btn-new-menu", "btn-recent-menu", "btn-session-export-menu"].every((b) =>
+      escMenus[b] && escMenus[b].open && escMenus[b].after.length === 0 && escMenus[b].focus === b),
+    JSON.stringify(escMenus));
+
+  // Lane FX3 (validation pass 3, F13): Help has a Map section: the two views,
+  // the picker, the As-Is and To-Be maps, Edited maps and the two map exports.
+  const helpMap = {};
+  try {
+    await page.locator("#btn-help").click({ timeout: 15000 });
+    await page.locator('.help-nav-item[data-section="map"]').click({ timeout: 15000 });
+    helpMap.state = await page.evaluate(() => {
+      const sec = document.querySelector('.help-section[data-section="map"]');
+      return { nav: [...document.querySelectorAll(".help-nav-item")].map((b) => b.dataset.section),
+        shown: !!sec && sec.classList.contains("active") && sec.getClientRects().length > 0,
+        heads: sec ? [...sec.querySelectorAll("h3")].map((h) => h.textContent.trim()) : [],
+        text: sec ? sec.textContent.replace(/\s+/g, " ") : "" };
+    });
+    await page.keyboard.press("Escape");
+  } catch (e) { logActionError("FX3 Help Map", e); helpMap.err = String(e.message).split("\n")[0]; }
+  const hm = helpMap.state || {};
+  record("lane FX3: Help has a Map section after Steps: what the Map shows and how the transactions ran, the picker for sub-processes, Edit as the As-Is map and the To-Be map, Edited maps, and the image and BPMN exports",
+    !helpMap.err && JSON.stringify(hm.nav) === JSON.stringify(["start", "stepsphases", "map", "markers", "capture", "shortcuts", "trouble"]) &&
+      hm.shown && JSON.stringify(hm.heads) === JSON.stringify(["What the Map shows", "Sub-processes", "Your As-Is and To-Be maps", "Exporting the map"]) &&
+      ["Show how the transactions ran", "Map:", "Edit as the As-Is map", "Edit a new copy", "To-Be map", "Edited maps", "Copy again",
+        "Process map (image)", "Process map (BPMN)"].every((w) => (hm.text || "").includes(w)),
+    JSON.stringify({ err: helpMap.err, nav: hm.nav, shown: hm.shown, heads: hm.heads }));
+
+  // Lane FX3 (validation pass 3, F20): the Markers panel says why the
+  // capture app ended a transaction by itself in plain words, never its code.
+  // The demo's markers carry no reason, so two are given one on the page (the
+  // recording's file is not touched) and the list is drawn again.
+  const reasons = {};
+  try {
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: 15000 });
+    await page.locator('.anno-tab[data-anno="markers"]').click({ timeout: 15000 });
+    reasons.rows = await page.evaluate(() => {
+      const ends = require("./state.js").getSession().events.filter((e) => e.type === "marker" && e.data && e.data.marker_type === "end");
+      const was = ends.slice(0, 3).map((e) => e.data.reason);
+      ends[0].data.reason = "auto_close_for_sibling";
+      ends[1].data.reason = "auto_end_idle";
+      ends[2].data.reason = "some_future_code";
+      require("./views/flow-view-markers.js").renderMarkersList();
+      const rows = [...document.querySelectorAll("#markers-list .marker-row.end .lbl")].slice(0, 3).map((x) => x.textContent.replace(/\s+/g, " ").trim());
+      ends.slice(0, 3).forEach((e, i) => { if (was[i] === undefined) delete e.data.reason; else e.data.reason = was[i]; });
+      require("./views/flow-view-markers.js").renderMarkersList();
+      return rows;
+    });
+    await page.locator('.anno-tab[data-anno="screens"]').click({ timeout: 15000 });
+    await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 15000 });
+    await page.mouse.move(2, 600);
+    await wait(500);   // the level buttons' colour transition ends before the next check reads them
+  } catch (e) { logActionError("FX3 marker reasons", e); reasons.err = String(e.message).split("\n")[0]; }
+  record("lane FX3: the Markers panel says why a transaction ended by itself in plain words (the next transaction started, after a long idle stretch), never a raw code",
+    !reasons.err && JSON.stringify(reasons.rows) === JSON.stringify(["End (the next transaction started)", "End (after a long idle stretch)", "End"]),
+    JSON.stringify(reasons));
 
   // F3: the active level button stays legible under the mouse (the global
   // button hover used to give it a light background under near-white text).
@@ -1384,9 +1474,18 @@ async function unreadableAnnotationsPin() {
     // .icon-btn.xs 22px icon-SQUARE, which clipped the labels and made the red
     // Delete overlap Duplicate. A button is clipped when its content overflows
     // its box (scrollWidth > clientWidth). Pin zero-clipped so it can't regress.
+    // Lane FX3: they are text tools now (.tool-btn), in the text face.
     const clipped = await page.evaluate(() => {
-      const sels = [".refmap-row-actions .icon-btn", "#btn-fork-refmap", "#btn-toggle-refmaps"];
+      const sels = [".refmap-row-actions button", "#btn-fork-refmap", "#btn-toggle-refmaps",
+        "#btn-session-map-zoom-fit"];
       const bad = [];
+      const rows = document.querySelectorAll(".refmap-row-actions button");
+      if (!rows.length) bad.push("no row button to check");
+      document.querySelectorAll(".refmap-row-actions button, #btn-toggle-refmaps, #btn-session-map-zoom-fit, #btn-session-map-reset-layout")
+        .forEach((b) => {
+          if (b.classList.contains("icon-btn")) bad.push((b.textContent || "").trim() + " is in an icon square");
+          if (/mono/i.test(getComputedStyle(b).fontFamily)) bad.push((b.textContent || "").trim() + " in the monospace face");
+        });
       sels.forEach((sel) => document.querySelectorAll(sel).forEach((b) => {
         if (b.scrollWidth > b.clientWidth + 1) bad.push((b.textContent || "").trim() + " (" + b.clientWidth + "<" + b.scrollWidth + ")");
       }));

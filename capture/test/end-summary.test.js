@@ -27,6 +27,19 @@ test("the summary offers the hand-off: Show the folder, Make a zip for the analy
   assert.ok(!/https?:|mailto:|fetch\(|WebSocket/.test(PAGE), "nothing is sent from the summary");
 });
 
+test("lane FX3: the name comes before Make a zip, so a name typed there is in the zip", () => {
+  const name = PAGE.indexOf('<input id="name"'), zip = PAGE.indexOf('id="btn-zip"');
+  assert.ok(name > 0 && zip > 0 && name < zip, "the name field is above the zip button");
+  assert.ok(PAGE.indexOf("Name this recording (optional)") < zip);
+  // The zip saves the name first (as before), so the zip carries it.
+  assert.match(PAGE, /await saveName\(\);\s*const r = await ipcRenderer\.invoke\("pdt:zipFolder", S\.folder\);/);
+});
+
+test("lane FX3: a pause is said in the summary, and the time left out of the duration", () => {
+  const html = buildSummaryHtml(summaryModel({ runs: 4, durationMs: 77000, pausedMs: 6200, sessionFolder: "D:\\r\\default\\x" }));
+  assert.ok(scriptOf(html).includes("4 transactions, 1:17 (paused 0:06, not counted)"));
+});
+
 test("the no-transaction warning reaches the page; a recording with transactions has none", () => {
   const noRun = summaryModel({ runs: 0, durationMs: 5000, sessionFolder: "D:\\r\\default\\x", hotkey: "Control+Shift+S" });
   const html = buildSummaryHtml(noRun);

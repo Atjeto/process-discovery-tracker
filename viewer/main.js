@@ -933,7 +933,27 @@ ipcMain.handle("viewer:restoreAnnotationsBackup", (_e, { sessionFolder, expect }
     const busy = _refuseWhileAnalyzing(root);
     if (busy) return w.end(busy);
     const r = AnnoStore.restoreNewestBackup(root, { expect: typeof expect === "string" ? expect : null });
-    return w.end({ ok: true, backup: r.backup, mtimeMs: r.mtimeMs, keptAs: r.keptAs });
+    // Lane FX3 (validation pass 3, F27): a file attached after that backup is
+    // still in attachments/, named by no entry: it is listed again on the
+    // project (the safe way: shown, removable, never deleted unseen). A
+    // screenshot added since is only counted: it belongs to no step now.
+    let listed = [], screenshots = [];
+    try {
+      const read = AnnoStore.readAnnotationsFile(root);
+      if (read.status === "ok") {
+        const left = AnalystFiles.unlistedFiles(root, read.annotations);
+        screenshots = left.screenshots;
+        if (left.attachments.length) {
+          AnalystFiles.relistAttachments(read.annotations, left.attachments,
+            { newId: () => require("node:crypto").randomUUID(), nowIso: new Date().toISOString() });
+          AnnoStore.writeAnnotationsFile(root, read.annotations);
+          listed = left.attachments;
+        }
+      }
+    } catch (e) {
+      console.error("[viewer:restoreAnnotationsBackup] the files added since the backup were not listed:", e && e.message);
+    }
+    return w.end({ ok: true, backup: r.backup, mtimeMs: r.mtimeMs, keptAs: r.keptAs, listed, screenshots });
   } catch (e) {
     console.error("[viewer:restoreAnnotationsBackup] not restored:", e && e.message);
     return w.end({ ok: false, error: (e && e.message) || String(e) }, e);

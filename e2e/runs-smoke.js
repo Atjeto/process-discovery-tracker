@@ -1182,6 +1182,26 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       record("Steps divider (a " + g0.win + " px window, the panes stacked): no divider, each pane as wide as the level, and a remembered share does not apply",
         ok, JSON.stringify({ err: errStacked, stacked: at(g0), shown: g0.shown, withShare: at(g1) }));
       if (!ok) await shot(page, "fail-runs-divider-stacked.png");
+      // Lane FX3 (validation pass 3, F24): stacked, the two panes share the
+      // window's height, so the pane of the step a click selects is on
+      // screen (its name at least) beside the row clicked, the level not
+      // scrolled; at 1024 px it once sat below the fold.
+      let fold = null, errFold = null;
+      try {
+        await page.locator("#step-list .run-group.open .step-row").nth(1).click({ timeout: T });
+        await page.waitForSelector("#step-name", { timeout: T });
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        fold = await page.evaluate(() => {
+          const H = window.innerHeight;
+          const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom)]; };
+          return { H, name: box(document.getElementById("step-name")), row: box(document.querySelector("#step-list .step-row.selected")),
+            scrolled: document.getElementById("view-session").scrollTop };
+        });
+      } catch (e) { errFold = errText(e); }
+      const okFold = !errFold && !!fold && fold.name[0] >= 0 && fold.name[1] <= fold.H && fold.row[0] >= 0 && fold.row[1] <= fold.H && fold.scrolled === 0;
+      record("lane FX3: stacked (a " + g0.win + " px window), the selected step's pane is on screen beside the row clicked, the level not scrolled",
+        okFold, JSON.stringify({ err: errFold, fold }));
+      if (!okFold) await shot(page, "fail-runs-stacked-fold.png");
     }
   }
 

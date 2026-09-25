@@ -31,6 +31,7 @@ const Links = require("./asis-links.js");
 const SPM = require("./sub-process-maps.js");
 const Planes = require("./map-planes.js");
 const { toast } = require("./dom.js");
+const { TextWrapModule } = require("./bpmn-text-wrap.js");
 
 let _viewer = null;     // the navigated viewer on screen
 let _host = null;       // its host (#map-asis-canvas)
@@ -289,7 +290,8 @@ async function draw(host, xml, path) {
   const mount = document.createElement("div");
   mount.className = "map-asis-mount";
   host.appendChild(mount);
-  const v = new Viewer({ container: mount });
+  // Lane FX3: names break between words (bpmn-text-wrap.js).
+  const v = new Viewer({ container: mount, additionalModules: [TextWrapModule] });
   _viewer = v;
   try {
     await v.importXML(xml);

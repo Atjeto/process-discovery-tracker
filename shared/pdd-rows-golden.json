@@ -305,7 +305,7 @@
           "heading": "Applications and time",
           "per_transaction": {
             "heading": "Time per transaction",
-            "note": "Transactions were not marked in this project, so there is no time per transaction.",
+            "note": "One transaction (not marked), so there is no time per transaction.",
             "header": ["Transaction", "Steps", "Active time", "Elapsed time"],
             "rows": [],
             "after": null
@@ -315,8 +315,8 @@
             "note": null,
             "header": ["System", "Screens", "Steps"],
             "rows": [
-              ["Phone", "Not recorded", "Call the customer"],
-              ["Not recorded", "Not recorded", "Write the call note"]
+              ["Phone", "", "Call the customer"],
+              ["No system set", "", "Write the call note"]
             ]
           }
         }

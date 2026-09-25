@@ -144,7 +144,8 @@ byte-copies) by hand in the same commit.
   inside an `--accent` border.
 - **Who fills a block**: one short line beside an Overview block's title
   (`.ov-block-who`, 11px `--fg-3`): "Measured from the recording" for the
-  Observations, "You write these. The PDD prints them." for the Document.
+  Observations (in a project without a recording, "Measured from the steps
+  you added"), "You write these. The PDD prints them." for the Document.
 - **An empty field looks empty**: a document field's placeholder (its
   question) is light and italic (a mix of `--fg-3` and `--fg-4`, about 3:1
   on the field), well apart from written text.
@@ -160,8 +161,11 @@ byte-copies) by hand in the same commit.
   acts inside text (Attach, Replace, Remove; *Undo confirm* beside a
   transaction's Confirmed badge, in `--fg-3`). A quiet tool beside the main
   work (the Steps toolbar's *Apps outside the process...* and *Remembered
-  step names...*) is `.tool-btn`: 11px `--fg-2` on no fill inside the
-  `--rule` border, the card's fill under the mouse.
+  step names...*; the Map's *Fit*, *Reset layout* and *Edited maps*, and
+  the edited maps' row acts) is `.tool-btn`: 11px `--fg-2` in the text
+  face on no fill inside the `--rule` border, the card's fill under the
+  mouse (`.tool-btn.danger` outlined in `--bad`). Text never goes in an
+  `.icon-btn`, a glyph's square in the mono face.
 - **The top bar and the level buttons**: the top bar is white with a soft
   shadow; a level button is transparent until hovered (`--bg-3`); the
   active level is filled with `--accent`, and keeps its colours under the

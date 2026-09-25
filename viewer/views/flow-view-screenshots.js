@@ -64,8 +64,13 @@ function renderScreenshots() {
   const shots = timelineScreenshots();
   // Stash for the gallery (P2.7).
   _allScreenshots = shots;
+  // Lane FX3 (validation pass 3, F16): the gallery is offered only when it
+  // has a screenshot to show.
+  const gallery = document.getElementById("btn-open-gallery");
+  const bar = gallery && gallery.closest(".screens-toolbar");
+  if (bar || gallery) (bar || gallery).style.display = shots.length ? "" : "none";
   if (!shots.length) {
-    host.innerHTML = '<p class="hint">No screenshots captured in this project.</p>';
+    host.innerHTML = '<p class="hint">No screenshots in this project yet.</p>';
     return;
   }
   const origin = recordingStartMs(State.getSession());

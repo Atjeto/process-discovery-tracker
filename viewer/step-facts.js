@@ -232,14 +232,18 @@ function _numberList(ns) {
    0:39 into the recording · took 8s". `again`: an earlier row is in the same
    transaction ("Transaction 2, again"). A step outside every transaction
    reads "Outside the transactions", one added by hand "no time in the
-   recording". `run` as runs-model.buildRuns returns it, or null. */
-function occurrenceLine(step, run, again, originMs) {
+   recording". `run` as runs-model.buildRuns returns it, or null. Lane FX3
+   (validation pass 3, F22): `clock` names what the time is in, "recording"
+   (the default), "video" in a project made from a video, or "" in a project
+   with neither, where a step added by hand reads "no time". */
+function occurrenceLine(step, run, again, originMs, clock) {
   const tr = step && step.time_range;
   const at = sinceStart(tr && tr.start, originMs);
   const took = duration(tr);
+  const noun = clock === undefined || clock === null ? "recording" : String(clock);
   return [
     run ? run.title + (again ? ", again" : "") : "Outside the transactions",
-    at ? at + " into the recording" : "no time in the recording",
+    at ? at + (noun ? " into the " + noun : "") : noun ? "no time in the " + noun : "no time",
     took ? "took " + took : "",
   ].filter(Boolean).join(" · ");
 }

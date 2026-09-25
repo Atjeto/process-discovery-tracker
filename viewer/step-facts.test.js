@@ -128,6 +128,11 @@ test("a row of the step panel reads what it is: the transaction (again for a sec
   assert.equal(SF.occurrenceLine(step(19, 25), null, false, origin), "Outside the transactions · 0:19 into the recording · took 6s");
   assert.equal(SF.occurrenceLine(step(65, null), run(1), false, origin), "Transaction 1 · 1:05 into the recording", "an open step has no length");
   assert.equal(SF.occurrenceLine({ time_range: null }, run(3), false, origin), "Transaction 3 · no time in the recording", "a step added by hand");
+  // Lane FX3 (validation pass 3, F22): a project made from a video reads its
+  // video's time; one with neither a recording nor a video, no time.
+  assert.equal(SF.occurrenceLine(step(39, 47), run(1), false, origin, "video"), "Transaction 1 · 0:39 into the video · took 8s");
+  assert.equal(SF.occurrenceLine({ time_range: null }, run(1), false, origin, "video"), "Transaction 1 · no time in the video");
+  assert.equal(SF.occurrenceLine({ time_range: null }, run(1), false, origin, ""), "Transaction 1 · no time");
 });
 
 test("the line above the rows is built from them: how many times, in which transactions, and what a row's play does", () => {

@@ -382,17 +382,19 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
         "30s on average · video 0:10", "Open the order from the customer's mail."]
     assert _under(blocks, "Step 2: Check the stock") == ["SAP · 30s on average · video 1:00"]
     control = _section(blocks, "1. Document control")
-    assert "Transactions recorded | Not marked" in control and "Video | Attached" in control
+    # Lane FX3: the implicit transaction reads as the viewer names it.
+    assert ("Transactions recorded | One transaction (not marked)" in control
+            and "Video | Attached" in control)
     assert _section(blocks, "4.1 Differences between transactions") == [
-        "Transactions were not marked in this project, so there are no transactions "
-        "to compare."]
+        "One transaction (not marked), so there are no transactions to compare."]
     assert _section(blocks, "6.1 Time per transaction") == [
-        "Transactions were not marked in this project, so there is no time per "
-        "transaction."]
+        "One transaction (not marked), so there is no time per transaction."]
+    # Lane FX3: steps with no system read "No system set", never "Not
+    # recorded" as if it were a system, and no screen leaves its cell empty.
     assert _section(blocks, "6.2 Time in each application") == [
         "System | Screens | Steps | Time",
-        "Not recorded | Not recorded | Open the order, Confirm the order | 50s",
-        "SAP | Not recorded | Check the stock | 30s"]
+        "No system set |  | Open the order, Confirm the order | 50s",
+        "SAP |  | Check the stock | 30s"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -502,16 +504,16 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
         f"Step {i}: {name}" for i, name in enumerate(order, start=1)]
     control = _section(blocks, "1. Document control")
     assert "Recorded | Nothing recorded" in control
-    assert "Transactions recorded | Not marked" in control
+    assert "Transactions recorded | One transaction (not marked)" in control
     steps_text = _section(blocks, "3.2 Process steps")
     assert steps_text[:2] == [
         "The process runs through SAP.",
-        "Transactions were not marked in this project, so every step is listed in order."]
+        "One transaction (not marked), so every step is listed in order."]
     assert _section(blocks, "6.2 Time in each application") == [
         "System | Screens | Steps",
-        "Not recorded | Not recorded | Receive the request, Check the stock, "
+        "No system set |  | Receive the request, Check the stock, "
         "Reply to the customer",
-        "SAP | Not recorded | Log it in SAP"]
+        "SAP |  | Log it in SAP"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -570,8 +572,7 @@ def test_a_new_blank_session_without_steps_analyzes_and_exports(tmp_path):
     assert _section(blocks, "3.2 Process steps") == [
         "No steps have been added to this project yet."]
     assert _section(blocks, "4.1 Differences between transactions") == [
-        "Transactions were not marked in this project, so there are no transactions "
-        "to compare."]
+        "One transaction (not marked), so there are no transactions to compare."]
     assert _section(blocks, "6.2 Time in each application") == [
         "No steps have been added to this project yet."]
 

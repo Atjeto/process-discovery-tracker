@@ -25,7 +25,7 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING, syncRawEventsShown } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
@@ -44,6 +44,15 @@ const { pddExportOutcome } = require("./normalize-result.js");
 const SaveState = require("./save-state.js");
 const RO = require("./read-only.js");
 const HandoffUI = require("./views/handoff-ui.js");
+const { exportBaseName } = require("./session-summary.js");
+
+/* The name an export is offered under (lane FX3, validation pass 2, item
+   20): the project's name, then the file's kind ("Order to cash PDD.docx",
+   "Order to cash map.svg"), never a generic "process.pdd.docx". */
+function _exportName(sess, kind) {
+  const folder = sess && sess.sessionFolder ? path.basename(sess.sessionFolder) : "";
+  return exportBaseName(sess, folder) + " " + kind;
+}
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -451,6 +460,13 @@ function applyLevel(name) {
     : null;
   // Now safe to swap visibility.
   State.setLevel(name);
+  // Lane FX3 (validation pass 3, F25): the Timeline's video stops when the
+  // level changes (a click on a step band plays it), so it never plays on,
+  // with its sound, on a level that does not show it.
+  if (prev && prev !== name) {
+    const video = document.getElementById("video");
+    if (video && !video.paused) video.pause();
+  }
   // The step panel closes on the Overview; elsewhere its foot follows.
   StepPanel.onLevel(name);
   // (The run select dims the other runs on the timeline and changes nothing
@@ -460,9 +476,9 @@ function applyLevel(name) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
   }
-  // P2.10: the Raw events drawer (the machine layer) shows on Flow only.
-  const rawEvents = document.querySelector(".event-table-host");
-  if (rawEvents) rawEvents.style.display = name === "flow" ? "" : "none";
+  // P2.10: the Raw events drawer (the machine layer) shows on Flow only;
+  // lane FX3: only when the project has events.
+  syncRawEventsShown();
   // Arrival reveal: switching TO Steps with a surviving selection (e.g. after
   // a "Jump to in Flow" round-trip) should scroll that row back into view. This
   // is an arrival, not an incidental re-render, so it is gated by a one-shot
@@ -537,7 +553,7 @@ async function exportArtifact(kind) {
   if (kind === "step-bpmn") {
     const asIs = _chosenAsIsMap();
     if (asIs) {
-      const out = await Ipc.exportFile({ sourcePath: asIs.path, suggestedName: "as-is-map.bpmn" });
+      const out = await Ipc.exportFile({ sourcePath: asIs.path, suggestedName: _exportName(target, "As-Is map.bpmn") });
       if (out) {
         await Ipc.revealFile(out);
         toast("Exported: " + path.basename(out), "success");
@@ -545,6 +561,8 @@ async function exportArtifact(kind) {
       return;
     }
     const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
+    // Lane FX3: no step, no map: said at once, with no analysis.
+    if (!_hasMapSteps()) { toast(NO_MAP_TO_EXPORT, "error"); return; }
     // C19: the file holds every map (a plane per sub-process), so it is
     // analyzed first when the steps are newer than it or it is missing, as
     // Edit as the As-Is map does.
@@ -552,10 +570,10 @@ async function exportArtifact(kind) {
       if (!(await analyzeSession())) return;   // the analysis said why
     }
     if (!fs.existsSync(sourcePath)) {
-      toast("No process map to export: the transactions have no steps yet.", "error");
+      toast(NO_MAP_TO_EXPORT, "error");
       return;
     }
-    const out = await Ipc.exportFile({ sourcePath, suggestedName: "process-map.bpmn" });
+    const out = await Ipc.exportFile({ sourcePath, suggestedName: _exportName(target, "map.bpmn") });
     if (out) {
       await Ipc.revealFile(out);
       toast("Exported: " + path.basename(out), "success");
@@ -571,7 +589,7 @@ async function exportArtifact(kind) {
     if (made.message) toast(made.message, "error");
     return;
   }
-  await _offerExport(tmpPath, "process." + kind + ".docx");
+  await _offerExport(tmpPath, _exportName(target, "PDD.docx"));
 }
 
 /* Offer a document an export wrote to a temp path: the save dialog, then its
@@ -770,7 +788,17 @@ RefmapUI.initRefmapUI({
   mapPath: () => (State.getSession() ? _mapLevel().path : []),
   onAsIsLevel: (names) => _onAsIsLevel(names),
   mainMapName: () => SPM.mainMapName((State.getSession() || {}).annotations),
+  // Lane FX3: without a step there is no process map to copy.
+  hasSteps: () => _hasMapSteps(),
 });
+
+/* Lane FX3 (validation pass 3, F16): whether a transaction has a visible
+   step, so there is a process map to draw, copy or export. Without one the
+   map's acts say why at once, with no analysis. */
+function _hasMapSteps() {
+  return !!State.getSession() && _mapLevel().runs.some((r) => r.visible.length > 0);
+}
+const NO_MAP_TO_EXPORT = "No process map to export: the transactions have no steps yet.";
 
 /* ============ Exports ============================================= */
 
@@ -862,7 +890,7 @@ async function exportMapSvg() {
     const level = shown();
     const r = await RefmapUI.renderPlaneToSvg(_readMapFile(asIs.path), level.path);
     if (r.svg) {
-      await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName("as-is-map", level) }));
+      await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName(_exportName(sess, "As-Is map"), level) }));
       return;
     }
     if (!r.missing) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
@@ -871,16 +899,22 @@ async function exportMapSvg() {
     toast("No process map to export: the Map says why.", "error");
     return;
   }
+  // Lane FX3 (validation pass 3, F16): no step, no map: said at once, never
+  // an analysis that ends without a word.
+  if (!_hasMapSteps()) { toast(NO_MAP_TO_EXPORT, "error"); return; }
   const src = _stepBpmnPath();
   if (RefmapUI.needsAnalyze(sess, src)) {
-    if (!(await analyzeSession())) return;   // the analysis said why
+    if (!(await analyzeSession())) {
+      toast("The process map could not be updated, so it was not exported.", "error");
+      return;
+    }
   }
   const xml = _readMapFile(src);
-  if (!xml) { toast("No process map to export: the transactions have no steps yet.", "error"); return; }
+  if (!xml) { toast(NO_MAP_TO_EXPORT, "error"); return; }
   const level = shown();
   const r = await RefmapUI.renderPlaneToSvg(xml, level.path);
   if (!r.svg) { toast("The process map could not be drawn as an image.", "error"); return; }
-  await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName("process-map", level) }));
+  await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName(_exportName(sess, "map"), level) }));
 }
 
 /* PDD export (the Export menu, and the Overview's last act). Its maps are
@@ -1283,7 +1317,23 @@ function toggleRecentMenu(force) {
   document.addEventListener("click", (e) => {
     if (!popup.contains(e.target) && !btn.contains(e.target)) toggleRecentMenu(false);
   });
+  // Lane FX3 (validation pass 3, F21): Escape closes it, as it closes the
+  // Map's picker, and the keyboard goes back to its button.
+  closeOnEscape(btn, popup, () => toggleRecentMenu(false));
 })();
+
+/* Escape closes an open menu of the top bar (New, Open, Export) and gives
+   the keyboard back to its button. Captured, so the menu closes before any
+   other key handler reads the Escape (the help modal's, the Timeline's). */
+function closeOnEscape(btn, popup, close) {
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || popup.style.display === "none") return;
+    close();
+    e.stopPropagation();
+    e.preventDefault();
+    try { btn.focus(); } catch (_) { /* the button left the page */ }
+  }, true);
+}
 
 /* Generic dropdown menu (button + popup), used by the New and Export menus.
    Mirrors wireRecentMenu: the button toggles the popup (closing the bar's
@@ -1305,6 +1355,8 @@ function wireDropdownMenu(btnId, popupId) {
   document.addEventListener("click", (e) => {
     if (!popup.contains(e.target) && !btn.contains(e.target)) toggle(false);
   });
+  // Lane FX3 (F21): Escape closes it.
+  closeOnEscape(btn, popup, () => toggle(false));
 }
 wireDropdownMenu("btn-new-menu", "new-menu-popup");
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");

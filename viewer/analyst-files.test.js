@@ -161,3 +161,25 @@ test("Remove transcript parks its files together, and its Undo puts them back; a
   assert.throws(() => AF.parkFiles(root, files, hold, "../x"), /bad parking tag/);
   assert.deepEqual(AF.parkFiles(root, ["../manifest.json", "C:/x"], hold, "t3").errors.length, 2, "never outside the folder");
 });
+
+test("lane FX3: after a backup is restored, the files it names no entry for are found, and the attachments are listed again", () => {
+  const root = tmp("orphans");
+  fs.mkdirSync(path.join(root, "attachments"));
+  fs.mkdirSync(path.join(root, "screenshots", "analyst"), { recursive: true });
+  for (const f of ["sop.txt", "Order email.msg", "b.pdf"]) fs.writeFileSync(path.join(root, "attachments", f), "x");
+  fs.mkdirSync(path.join(root, "attachments", "a folder"));
+  for (const f of ["s1.png", "s2.png"]) fs.writeFileSync(path.join(root, "screenshots", "analyst", f), "x");
+  const anno = { attachments: [{ id: "a1", file: "ORDER EMAIL.msg", label: "Order email", step_id: null }],
+    analyst_screenshots: [{ id: "s1", file: "s1.png", step_id: "x" }] };
+  const left = AF.unlistedFiles(root, anno);
+  assert.deepEqual(left, { attachments: ["b.pdf", "sop.txt"], screenshots: ["s2.png"] },
+    "a name is compared without its case; a folder is no file");
+  const added = AF.relistAttachments(anno, left.attachments, { newId: (() => { let n = 0; return () => "new-" + (++n); })(), nowIso: t0 });
+  assert.deepEqual(added, [
+    { id: "new-1", file: "b.pdf", label: "b.pdf", step_id: null, added_at: t0 },
+    { id: "new-2", file: "sop.txt", label: "sop.txt", step_id: null, added_at: t0 }]);
+  assert.equal(anno.attachments.length, 3);
+  assert.deepEqual(AF.unlistedFiles(root, anno).attachments, [], "listed again, nothing is left over");
+  assert.ok(fs.existsSync(path.join(root, "attachments", "sop.txt")), "no file is deleted");
+  assert.deepEqual(AF.unlistedFiles(tmp("none"), {}), { attachments: [], screenshots: [] }, "no folders, nothing to list");
+});

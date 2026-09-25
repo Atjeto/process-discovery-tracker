@@ -454,3 +454,32 @@ def test_a_hidden_sub_process_has_no_plane_and_hidden_sub_steps_are_not_drawn():
                                                                       "Click Save"}
     assert len(_planes(root)) == 2
     assert _text(check, "documentation").startswith("CRM. In 1 of 2 transactions")
+
+
+def test_a_waste_flag_on_a_sub_step_marks_its_task_on_its_plane():
+    """Lane FX3: the Waste mark of a sub-step is drawn on the sub-process's
+    plane, its ids prefixed like every id there; the plane's legend says what
+    the mark means, and the main plane, with no flag, does not."""
+    anno = _anno()
+    check_a = next(s for s in anno["steps"] if s["step_id"] == "A-c")
+    check_a["sub_steps"][0]["flags"] = {"waste": True}          # Enter customer
+    root = _written(anno)
+    main = _main(root)
+    check = _child(main, "Check the order")
+    marks = [el for el in check if _tag(el) == "textAnnotation" and "TextAnnotation_waste_" in el.get("id")]
+    assert [(el.get("id"), _text(el), _text(el, "documentation")) for el in marks] == [
+        ("Sub1_TextAnnotation_waste_1", "Waste", "Flagged as waste: this step should not be needed.")]
+    tasks = {el.get("id"): el.get("name") for el in check if _tag(el) in _TASKS}
+    assoc = [el for el in check if _tag(el) == "association" and el.get("id").startswith("Sub1_Association_waste_")]
+    assert [(a.get("id"), tasks[a.get("sourceRef")], a.get("targetRef")) for a in assoc] == [
+        ("Sub1_Association_waste_1", "Enter customer", "Sub1_TextAnnotation_waste_1")]
+    plane = _planes(root)[check.get("id")]
+    assert {"Sub1_TextAnnotation_waste_1", "Sub1_Association_waste_1"} <= _drawn(plane)
+
+    def legend(container):
+        found = [el for el in container if _tag(el) == "textAnnotation"
+                 and el.get("id").endswith("TextAnnotation_legend")]
+        return _text(found[0]) if found else ""
+    assert legend(check).split("\n")[-1] == "Waste: a step that should not be needed"
+    assert "Waste" not in legend(main)
+    assert not [el for el in main if _tag(el) == "textAnnotation" and "waste" in el.get("id")]

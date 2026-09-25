@@ -77,24 +77,38 @@ function problemText(status) {
   return null;
 }
 
+/* The time paused, from a second on: "paused 0:06" (lane FX3, validation
+   pass 3, F17). The elapsed time beside it leaves it out. */
+function pausedText(ms) {
+  return Number.isFinite(ms) && ms >= 1000 ? "paused " + formatElapsed(ms) : "";
+}
+
 /* Everything the recording bar paints, from one status snapshot, the run
    key actually registered (hotkey: an Electron accelerator, or empty when
-   the key could not be registered) and whether named runs are set up. */
+   the key could not be registered) and whether named runs are set up. The
+   elapsed time is the time recorded (the pauses left out); while paused,
+   the pause's own length shows beside Paused (pauseNow, "0:03"), and the
+   time paused in all is in the bar's tooltip (lane FX3, F17). */
 function barModel({ status, hotkey, namedRuns } = {}) {
   const state = recordingState(status);
   const stateText = state === "idle" ? "Not recording" : state === "paused" ? "Paused" : "Recording";
   const run = runText(status);
   const elapsed = state === "idle" ? "" : formatElapsed(status && status.elapsedMs);
+  const pausedLine = state === "idle" ? "" : pausedText(status && status.pausedMs);
+  const current = status && status.currentPauseMs;
+  const pauseNow = state === "paused" && Number.isFinite(current) && current >= 1000 ? formatElapsed(current) : "";
   return {
     state,
     stateText,
     runText: run,
     elapsed,
+    paused: pausedLine,
+    pauseNow,
     key: formatHotkey(hotkey),
     problem: problemText(status),
     pauseLabel: state === "paused" ? "Resume" : "Pause",
     namedRuns: !!namedRuns && state !== "idle",
-    title: state === "idle" ? stateText : stateText + ": " + run + ", " + elapsed,
+    title: state === "idle" ? stateText : stateText + ": " + run + ", " + elapsed + (pausedLine ? " (" + pausedLine + ")" : ""),
   };
 }
 
@@ -111,14 +125,17 @@ function trayStatusLine(status) {
 /* The end summary: transactions and duration in one line ("4 transactions,
    0:11"), where the folder is, and a warning when no transaction was
    marked. No counts of clicks, events or screenshots: the SME acts on none
-   of them. */
-function summaryModel({ runs, durationMs, sessionFolder, hotkey } = {}) {
+   of them. Lane FX3 (F17): the duration is the time recorded, and a pause
+   is said beside it ("4 transactions, 1:17 (paused 0:06, not counted)"). */
+function summaryModel({ runs, durationMs, pausedMs, sessionFolder, hotkey } = {}) {
   const n = Number.isFinite(runs) && runs > 0 ? runs : 0;
   const key = formatHotkey(hotkey);
   const folder = sessionFolder || "";
   const base = folder.split(/[\\/]/).filter(Boolean).pop() || "";
+  const paused = pausedText(pausedMs);
   return {
-    headline: (n === 1 ? "1 transaction" : n + " transactions") + ", " + formatElapsed(durationMs),
+    headline: (n === 1 ? "1 transaction" : n + " transactions") + ", " + formatElapsed(durationMs) +
+      (paused ? " (" + paused + ", not counted)" : ""),
     folder,
     zipName: base ? base + ".zip" : "",
     warning: n > 0 ? null
@@ -152,6 +169,7 @@ module.exports = {
   runText,
   problemText,
   barModel,
+  pausedText,
   trayStatusLine,
   summaryModel,
   friendlyAppName,

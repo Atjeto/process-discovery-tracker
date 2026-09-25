@@ -1470,9 +1470,17 @@ the boxes, the lines and the other names.
   system and later keep the default look. One text annotation,
   `TextAnnotation_legend`, names the colours: "Colour by system", then one
   line per system ("SAP: orange", or "no colour"), and, when a task of its
-  map is a manual task, a last line "Hand icon: done outside the systems"
-  (lane CL). A map with neither a system nor a manual task has no legend;
-  a map of manual tasks only has that one line.
+  map is a manual task, a line "Hand icon: done outside the systems"
+  (lane CL), and, when a task of its map has the Waste mark, a last line
+  "Waste: a step that should not be needed" (lane FX3). A map with neither
+  a system, a manual task nor a Waste mark has no legend; a map of manual
+  tasks only has that one line.
+- **Waste** (lane FX3). A task a visible step of which is flagged as waste
+  (`flags.waste`, the live map's rule) has a small text annotation above
+  it, `TextAnnotation_waste_<k>` with the text "Waste" and the
+  documentation "Flagged as waste: this step should not be needed.",
+  joined by `Association_waste_<k>`: in its notes' place, or right of its
+  notes. The PDD's pictures keep it (only the notes are left out).
 - **Notes** (C18). The notes on a task's steps (`analyst_notes` with that
   `step_id`) are one text annotation above the task, joined by an
   association: one note per line, cut after a whole word within 90

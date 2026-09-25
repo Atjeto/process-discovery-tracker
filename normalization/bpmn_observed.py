@@ -548,6 +548,9 @@ _LEGEND_TITLE = "Colour by system"
 _UNCOLOURED = "no colour"
 # The legend's last line where its map has a manual task (lane CL).
 _LEGEND_MANUAL = "Hand icon: done outside the systems"
+# Lane FX3: a task a step of which is flagged as waste gets a small text
+# annotation (mining._WASTE_TEXT, "Waste"), and the legend says what it means.
+_LEGEND_WASTE = "Waste: a step that should not be needed"
 # The longest text a note shows on the map (about five lines of the note,
 # mining._NOTE_W wide); the whole notes are the annotation's documentation.
 _NOTE_MAX = 90
@@ -697,20 +700,32 @@ def _colour(palette: dict, systems: list[str]) -> None:
             palette[system] = _PALETTE[len(palette)]
 
 
+def _wasted(steps: list[dict[str, Any]]) -> bool:
+    """True when a visible step of `steps` is flagged as waste: the rule of
+    the live map's boxes (viewer/process-map-levels.js wasteNodes, lane FX2):
+    a hidden step marks nothing."""
+    return any(s.get("state") != "hidden" and isinstance(s.get("flags"), dict)
+               and s["flags"].get("waste") is True for s in steps)
+
+
 def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[str, Any]]],
                node_system: dict[str, str], systems: list[str], palette: dict,
                context: Any, used: set) -> dict[str, Any]:
     """_map_extras for one map: `by_label` its steps by task label (the
     reference transaction's first), `node_system` each label's system,
     `systems` the systems its legend names, in order, and `palette` their
-    colours. The legend's last line says what the hand marker means when
-    one of its tasks is a manual task (_LEGEND_MANUAL); a map with neither a
-    system nor a manual task has no legend."""
+    colours. The legend's last lines say what the hand marker means when
+    one of its tasks is a manual task (_LEGEND_MANUAL), and what the Waste
+    mark means when one of its tasks has it (_LEGEND_WASTE, lane FX3); a map
+    with neither a system, a manual task nor a waste mark has no legend.
+    `waste` holds the tasks a step of which is flagged as waste (_wasted),
+    each of them, as the live map marks its box (lane FX3)."""
     from pm4py.objects.bpmn.obj import BPMN
     task_tags: dict[int, str] = {}
     colours: dict[int, tuple[str, str]] = {}
     notes: dict[int, tuple[str, str | None]] = {}
     data: dict[int, list[tuple[str, str, str]]] = {}
+    waste: set[int] = set()
     done: set[str] = set()
     for node in model.get_nodes():
         label = node.get_name() if isinstance(node, BPMN.Activity) else None
@@ -721,6 +736,8 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
                                else "task")
         if node_system[label] in palette:
             colours[id(node)] = palette[node_system[label]][1:]
+        if _wasted(steps):
+            waste.add(id(node))
         if label in done:
             continue
         done.add(label)
@@ -738,9 +755,11 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
             for system in systems]
     if "manualTask" in task_tags.values():
         lines.append(_LEGEND_MANUAL)
+    if waste:
+        lines.append(_LEGEND_WASTE)
     legend = "\n".join(lines) or None
     return {"task_tags": task_tags, "colours": colours, "notes": notes, "data": data,
-            "legend": legend}
+            "legend": legend, "waste": waste}
 
 
 # ---- contract C19: a map per sub-process, each a plane of the one file ----------

@@ -435,8 +435,8 @@ def test_the_document_says_transaction_and_project_never_run_or_session():
             "None of the recorded transactions has steps, so the transactions cannot be compared.",
             "No steps have been recorded for this project yet.",
             "No steps have been recorded for this transaction yet.",
-            "Transactions were not marked in this project, so every step is listed in order.",
-            "Transactions recorded | Not marked",
+            "One transaction (not marked), so every step is listed in order.",
+            "Transactions recorded | One transaction (not marked)",
             "No steps have been added to this project yet.",
             "Transactions were not marked in this recording, so there is no map.",
             "None of the transactions has steps, so there is no map.",
@@ -971,6 +971,24 @@ def test_the_map_pictures_carry_their_alternative_text():
         assert "Proposed To-Be process, drawn by the analyst." in texts
 
 
+def test_a_steps_screenshots_carry_its_number_and_name_as_their_alternative_text():
+    """Lane FX3: a screenshot printed under a step says which step it shows
+    (a screen reader, or a picture copied out of the document), as the map
+    pictures name their map."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "screenshots").mkdir()
+        for name in ("s1.png", "s2.png"):
+            (Path(tmp) / "screenshots" / name).write_bytes(_make_png())
+        annotations["steps"][0]["evidence"]["screenshot_refs"] = ["screenshots/s1.png"]
+        annotations["steps"][3]["evidence"]["screenshot_refs"] = ["screenshots/s2.png"]
+        doc = _render(tmp, manifest, annotations, stats, analysis, events)
+        assert _descr(doc) == ["Screenshot of step 1: Look up the order",
+                               "Screenshot of step 3: Mail - Compose: Send"]
+
+
 def test_without_a_map_picture_the_map_from_the_runs_is_a_table():
     """The viewer passes a picture of the map; without one (a command line
     export) the section still shows the map from the runs: each step and
@@ -1194,7 +1212,9 @@ def test_a_step_without_a_time_says_no_time():
     assert steps[steps.index("Step 4: Phone the customer") + 1] == (
         "Phone \u00b7 in 1 of 2 transactions")
     apps = _section(blocks, "6.2 Time in each application")
-    assert "Phone | Not recorded | Phone the customer | Not measured" in apps
+    # Lane FX3: a step with no screen leaves the Screens cell empty, never
+    # "Not recorded".
+    assert "Phone |  | Phone the customer | Not measured" in apps
 
 
 def test_the_screenshot_the_analyst_chose_is_the_one_printed():

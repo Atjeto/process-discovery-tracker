@@ -41,6 +41,15 @@ function derivedState(sources) {
    pipeline, in the Observations and the PDD). */
 const IMPLICIT_TRANSACTION = "One transaction (not marked)";
 
+/* Whether the project holds a recording (C16): a capture app's recording
+   does; a project made in the viewer from a video or from nothing
+   (manifest.source "video" or "blank", with no events) does not, and says
+   nothing is "recorded" (lane FX3, validation pass 3, F22). */
+function hasRecording(sess) {
+  const m = (sess && sess.manifest) || {};
+  return ((sess && sess.events) || []).length > 0 || !["video", "blank"].includes(m.source);
+}
+
 /* The case_id of the session's implicit run (C16: a video or blank session
    with no run marked), or null. */
 function implicitRunId(stats) {
@@ -173,6 +182,6 @@ function systemChoices(own, shared) {
 }
 
 module.exports = {
-  hasTime, markEdited, derivedState, implicitRunId, IMPLICIT_TRANSACTION, placeUntimed, moveUntimed,
+  hasTime, markEdited, derivedState, hasRecording, implicitRunId, IMPLICIT_TRANSACTION, placeUntimed, moveUntimed,
   stepShots, hiddenShotCount, timelineShots, notesForStep, momentNotes, systemChoices,
 };

@@ -12,7 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml } = require("./step-editor.js");
+const { describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker } = require("./step-editor.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
 // The aligned reading's "apply to all" curate form (removed with the aligned
@@ -174,9 +174,10 @@ test("describeInteraction: an unknown kind degrades to a humanized fallback", ()
 
 /* ---- renderInteractionList ----------------------------------------- */
 
-test("renderInteractionList: no interactions yields a plain note", () => {
+test("renderInteractionList: no interactions yields a plain note (lane FX3: in the analyst's words)", () => {
   const html = renderInteractionList([], 0);
-  assert.ok(html.includes("No interactions"));
+  assert.ok(html.includes("No action was recorded in this step."));
+  assert.ok(!/interaction/i.test(html));
   assert.ok(!html.includes("<details"));
 });
 
@@ -186,7 +187,7 @@ test("renderInteractionList: lists every interaction with the claimed count", ()
     inter({ kind: "invoked", control_type: "Button", name: "Save" }),
   ];
   const html = renderInteractionList(events, 2);
-  assert.ok(html.includes("Interactions (2)"));
+  assert.ok(html.includes("Recorded actions (2)"));
   assert.ok(html.includes("Clicked Open"));
   assert.ok(html.includes("Clicked Save"));
 });
@@ -208,7 +209,7 @@ test("renderInteractionList: a big step's list is collapsed by default", () => {
 test("renderInteractionList: unresolved ids surface as a missing-count note", () => {
   const events = [inter({ kind: "invoked", control_type: "Button", name: "X" })];
   const html = renderInteractionList(events, 3);
-  assert.ok(html.includes("2 interaction(s) not found"));
+  assert.ok(html.includes("2 recorded actions are not in this project"));
 });
 
 /* ---- A1: interaction kind colour-coding ---------------------------- */
@@ -317,4 +318,18 @@ test("the fields typed show as a compact list of field and value, escaped", () =
   assert.ok(html.includes('<span class="step-fields-title">Fields typed</span>'));
   assert.ok(html.includes('<dt title="Quantity">Quantity</dt><dd title="29">29</dd>'));
   assert.ok(html.includes("&lt;b&gt;") && html.includes("a &amp; b"), "escaped");
+});
+
+/* Lane FX3 (validation pass 3, F16): Split says why it cannot act, in the
+   analyst's words (never "Need 2 interactions"). */
+test("lane FX3: Split needs two recorded actions; below that it says why in plain words", () => {
+  const ids = (n) => ({ evidence: { interaction_event_ids: Array.from({ length: n }, (_, i) => "e" + i) } });
+  assert.equal(splitBlocker(ids(2)), "");
+  assert.equal(splitBlocker(ids(7)), "");
+  assert.equal(splitBlocker(ids(1)), "Only one action (a click, a field typed) was recorded in this step, so it cannot be split.");
+  const none = "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it.";
+  assert.equal(splitBlocker(ids(0)), none);
+  assert.equal(splitBlocker({ state: "manually_authored", evidence: null }), none, "a step added by hand");
+  assert.equal(splitBlocker(null), none);
+  for (const n of [0, 1]) assert.ok(!/interaction|≥/.test(splitBlocker(ids(n))));
 });

@@ -20,7 +20,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { overviewHtml } = require("./views/overview-view.js");
-const { observationsHtml, dataItem, timeItem, rowsTableHtml, OBSERVATIONS_WHO } = require("./views/analysis-view.js");
+const { observationsHtml, dataItem, timeItem, rowsTableHtml, OBSERVATIONS_WHO, OBSERVATIONS_WHO_ADDED, NO_SYSTEM } =
+  require("./views/analysis-view.js");
 
 const GOLDEN = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "shared", "pdd-rows-golden.json"), "utf-8"));
 
@@ -103,7 +104,36 @@ test("the takeaways: the first re-keyed sentence (and how many more), the system
   assert.equal(none.takeaway, FULL.pdd_data.rows.length + " fields entered, none re-keyed");
   const hand = GOLDEN.cases[1].expected;
   assert.equal(dataItem({ pdd_data: hand.pdd_data }).takeaway, hand.pdd_data.note);
-  assert.equal(timeItem({ pdd_time: hand.pdd_time }).takeaway, "2 systems, no time measured");
+  // Lane FX3: the steps with no system set are no system.
+  assert.equal(timeItem({ pdd_time: hand.pdd_time }).takeaway, "1 system, no time measured");
+});
+
+test("lane FX3: the one line never names the steps with no system set as a system", () => {
+  const app = (rows, timed) => ({ pdd_time: { heading: "Applications and time",
+    per_transaction: { heading: "Time per transaction", note: "x" },
+    per_application: { heading: "Time in each application", note: null,
+      header: timed ? ["System", "Screens", "Steps", "Time"] : ["System", "Screens", "Steps"], rows } } });
+  assert.equal(NO_SYSTEM, "No system set");
+  assert.equal(timeItem(app([[NO_SYSTEM, "", "Open the order email", "27s"], ["SAP", "", "Book it", "10s"]], true)).takeaway,
+    "Most time in steps with no system set: 27s");
+  assert.equal(timeItem(app([["SAP", "", "Book it", "30s"], [NO_SYSTEM, "", "Call", "10s"]], true)).takeaway,
+    "Most time in SAP: 30s");
+  assert.equal(timeItem(app([[NO_SYSTEM, "", "Call"]], false)).takeaway, "No system set on the steps, no time measured");
+  assert.equal(timeItem(app([["SAP", "", "Book it"], ["Phone", "", "Call"], [NO_SYSTEM, "", "File"]], false)).takeaway,
+    "2 systems, no time measured");
+});
+
+test("lane FX3: a project without a recording says the Observations are measured from the steps added, never from the recording", () => {
+  const analysis = { pdd_data: FULL.pdd_data, pdd_time: FULL.pdd_time };
+  for (const source of ["video", "blank"]) {
+    const html = observationsHtml({ analysis, manifest: { source }, events: [] });
+    assert.ok(html.includes('<div class="ov-block-who">' + OBSERVATIONS_WHO_ADDED + "</div>"), source);
+    assert.ok(!html.includes("from the recording"), source);
+  }
+  assert.equal(OBSERVATIONS_WHO_ADDED, "Measured from the steps you added. The PDD prints them in sections 5 and 6.");
+  // A recording (the capture app's, or a folder with events) keeps its words.
+  const recorded = observationsHtml({ analysis, manifest: { session_id: "s" }, events: [{ type: "activity" }] });
+  assert.ok(recorded.includes('<div class="ov-block-who">' + OBSERVATIONS_WHO + "</div>"));
 });
 
 test("a failed rows stage says the check could not run, never an empty table (C12)", () => {

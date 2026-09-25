@@ -978,6 +978,7 @@ async function endSessionNow(opts) {
       sessionFolder: oldFolder,
       runs: finalStatus.startMarkerCount,
       durationMs: finalStatus.elapsedMs,
+      pausedMs: finalStatus.pausedMs,
     });
   }
   return oldFolder;
@@ -1074,6 +1075,8 @@ function currentStatus() {
     markerDepth: s.markerDepth,
     runCount: s.startMarkerCount,
     elapsedMs: s.elapsedMs,
+    pausedMs: s.pausedMs,
+    currentPauseMs: s.currentPauseMs,
     screenshotsEnabled: !!(config && config.screenshots && config.screenshots.enabled),
     recorder_state: recorderStateLabel(s.paused),
     recorder_silent: !!(deadMan && deadMan.isSilent()),

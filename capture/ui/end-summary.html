@@ -67,6 +67,11 @@
 <div class="headline" id="headline"></div>
 <div class="warning" id="warning" hidden></div>
 
+<!-- Lane FX3 (validation pass 3, F18): the name comes before the zip, so a
+     name typed here is in the zip the analyst gets. -->
+<label class="lbl" for="name">Name this recording (optional)</label>
+<input id="name" placeholder="e.g. Order entry with Sam" autocomplete="off" />
+
 <div class="lbl">Saved in this folder</div>
 <div class="folder" id="folder"></div>
 <div class="actions">
@@ -74,9 +79,6 @@
   <button id="btn-show">Show the folder</button>
 </div>
 <div class="note" id="note">The zip is saved next to the folder, for you to send to the analyst. Nothing is sent from here.</div>
-
-<label class="lbl" for="name">Name this recording (optional)</label>
-<input id="name" placeholder="e.g. Order entry with Sam" autocomplete="off" />
 
 <div class="footer"><button id="btn-done">Done</button></div>
 

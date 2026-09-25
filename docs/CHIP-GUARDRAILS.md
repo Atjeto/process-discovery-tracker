@@ -186,6 +186,8 @@ others):
   `data-state="saved"|"saving"|"failed"|"readonly"`, its text *Saved*,
   *Saving...*, *Not saved* or (a hand-off opened read only) *Read only*,
   the time, the folder, the reason or the version in its `title`.
+- New, Open and Export each close on Escape (the keyboard back on the
+  menu's button).
 - Export: `#btn-session-export-menu` opens `#session-export-popup`:
   `#btn-session-pdd`, `#btn-session-tech` (Technical details (.xlsx),
   contract C20), `#btn-session-map-svg`, `#btn-session-step-bpmn`,
@@ -263,7 +265,10 @@ shown only after a failed run; `#toast`.
 - Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
   `#btn-add-step` (only with a video), `#btn-lanes` opening `#lanes-popup`
   (`input[data-lane="idle"|"screenshots"|"cases"|"steps"|"transcript"|"notes"]`),
-  `#btn-zoom-out`, `#btn-zoom-reset`, `#btn-zoom-in`.
+  `#btn-zoom-out`, `#btn-zoom-reset`, `#btn-zoom-in`. Lane FX3: a project
+  with no recording and no video draws no timeline, so `#case-scope`,
+  `#lanes-menu` and the zoom buttons are not shown there, nor the video
+  band (`#lower-workspace.no-timeline`): `#tl-empty` carries Attach video.
 - The timeline `#timeline` inside `#timeline-scroll`; `#timeline-minimap`
   (only while zoomed); the legend `#timeline-legend` (`#legend-apps`).
 - The lanes' header column `#tl-lane-names` (hidden when nothing is drawn):
@@ -306,13 +311,16 @@ shown only after a failed run; `#toast`.
   .marker-row` with `[data-act="adjust"|"delete"]` (double-click a Start to
   rename it).
 - Raw events: `.event-table-host` (a `<details>`, shown on the Timeline
-  only), `#event-table`, `#event-filter`.
+  only, and only when the project has events), `#event-table`,
+  `#event-filter`.
 
 **Steps** (`#session-layout-steps`, `views/steps-view.js`):
 - Toolbar: `#btn-add-manual-step`, `#btn-delete-selected-steps`,
   `#btn-merge-selected` and `#btn-group-selected` (Group into a
   sub-process..., contract C19; shown with two or more ticked rows), `#steps-summary`,
-  `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`),
+  `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`;
+  lane FX3: not shown in a project without a recording, disabled with its
+  reason in a recording without a click or a field typed),
   `#btn-remembered-names` (the dialog `#remembered-names-dialog`,
   `[data-act="rename-name"|"forget-name"|"close"]`).
 - The list's title `#runs-pane-count` and the line under it that says what
@@ -372,7 +380,9 @@ shown only after a failed run; `#toast`.
   with `[data-shot-act="pdd"|"remove"]`, and `[data-shot-act="unhide"]`);
   `#step-notes-sect` (`#btn-step-add-note`, `.step-note [data-note-act="edit"|"delete"]`);
   `#step-atts-sect` (`#btn-step-attach`, `[data-att-act]`); under
-  `.step-detail-more` (a `<details>`): `#btn-step-jump`, `#btn-step-split`,
+  `.step-detail-more` (a `<details>`): `#btn-step-jump`, `#btn-step-split`
+  (disabled with its reason on a step with fewer than two recorded actions,
+  lane FX3),
   `#btn-step-merge`, `#btn-step-merge-selected`, `#btn-step-delete` (added
   steps only).
 
@@ -437,7 +447,9 @@ the transactions ran one click away):
   `.djs-overlays[data-container-id="<id>"] .bjs-drilldown`. Wait for the
   canvas with `.djs-container > svg`: the arrows' icons are svgs that come
   first in the page.
-- The edit act `#btn-fork-refmap`: the editor opens on a new copy, kept at
+- The edit act `#btn-fork-refmap` (disabled with its reason in its title
+  while the Map withholds the process map or no transaction has a visible
+  step, lane FX3): the editor opens on a new copy, kept at
   its first change (a change in the map, its name or its role; a smoke that
   needs the copy makes one, for example moves `TextAnnotation_legend` with
   `modeling.moveElements`, and waits for the 600 ms delayed write); closed
@@ -455,7 +467,7 @@ the transactions ran one click away):
   (and `Control+Y`) undoes (redoes) a map edit there; the viewer's own
   shortcuts do nothing underneath.
 
-**Help** `#help-modal`: `.help-nav-item[data-section="start"|"stepsphases"|"markers"|"capture"|"handoff"|"shortcuts"|"trouble"]`,
+**Help** `#help-modal`: `.help-nav-item[data-section="start"|"stepsphases"|"map"|"markers"|"capture"|"handoff"|"shortcuts"|"trouble"]`,
 `.help-section[data-section]`, `#btn-help-reanalyze` (Troubleshooting),
 `#help-version`, `#btn-help-close`.
 

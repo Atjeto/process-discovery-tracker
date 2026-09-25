@@ -400,6 +400,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   background: var(--bg-2); box-shadow: var(--shadow); background-image: none;
 }
 .lower-workspace.no-recording .annotations-pane { flex: 1 1 auto; min-height: 200px; }
+/* Lane FX3: no recording and no video, so no timeline: the line in the
+   timeline's place carries Attach video, and the video band (a second one)
+   goes. */
+.lower-workspace.no-timeline .video-pane { display: none; }
 .video-pane.no-recording .video-controls,
 .video-pane.no-recording .video-overlay,
 .video-pane.no-recording video { display: none; }
@@ -414,6 +418,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .video-overlay { position: absolute; top: 46px; left: 8px; padding: 4px 10px;
   background: rgba(0, 0, 0, 0.55); border-radius: 4px; font-family: var(--font-mono);
   font-size: 11px; color: rgba(255, 255, 255, 0.82); pointer-events: none; z-index: 2; }
+.video-overlay:empty { display: none; }
 
 /* Video header bar with mode controls */
 .video-controls { display: flex; align-items: center; justify-content: space-between;
@@ -705,10 +710,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 /* DFG zoom controls */
 .map-zoom { display: flex; align-items: center; gap: 4px; margin-left: auto;
   color: var(--fg-3); font-size: 10px; flex-shrink: 0; white-space: nowrap; }
-.map-zoom .icon-btn.xs { padding: 2px 8px; font-size: 11px; min-width: 22px;
-  width: auto; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
-/* Reset layout (lane CC) shows beside fit only once a box was dragged. */
-.map-zoom .icon-btn.xs[hidden] { display: none; }
+.map-zoom .tool-btn { padding: 2px 8px; }
+/* Reset layout (lane CC) shows beside Fit only once a box was dragged. */
+.map-zoom .tool-btn[hidden] { display: none; }
 
 .map-host { position: relative; background: var(--bg-3); border-radius: var(--radius-sm);
   border: 1px solid var(--rule); height: 420px; min-height: 180px;
@@ -1016,6 +1020,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   background: color-mix(in srgb, var(--accent) 12%, transparent); overflow-wrap: anywhere; }
 .ov-summary-line { font-size: 12px; color: var(--fg-2); line-height: 1.5; }
 .ov-summary-name { color: var(--fg); font-weight: 600; }
+/* The request's code beside the request's name (lane FX3). */
+.ov-summary-code { color: var(--fg-2); }
 .ov-summary-warn { display: flex; flex-direction: column; gap: 6px; }
 .ov-section {
   background: var(--bg-2); border-radius: var(--radius);
@@ -1043,6 +1049,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .ov-observations { display: flex; flex-direction: column; gap: 8px; }
 .ov-observations .ov-section-title { margin-bottom: 2px; }
 .ov-obs-item { box-shadow: none; border: 1px solid var(--rule-soft); }
+/* An item's one line stands for it while it is closed; opened, its body
+   says it (lane FX3: a sentence that is the whole item was printed twice). */
+.ov-obs-item[open] .analysis-module-takeaway { visibility: hidden; }
 /* A value longer than the item is wide (one long word) scrolls inside it. */
 .ov-obs-item .analysis-module-body { overflow-x: auto; }
 .ov-rows-title { font-size: 12px; font-weight: 600; color: var(--fg); margin: 12px 0 4px; }
@@ -1120,12 +1129,14 @@ details.analysis-module { padding: 0; }
   padding: 0;
 }
 .editor-toolbar .hint { font-size: 11px; color: var(--fg-3); margin: 0; }
-/* The Steps level's two tools (the apps outside the process, the remembered
-   step names): quiet beside the main work, a smaller word in --fg-2 on no
-   fill inside the --rule border, the card's fill and the text colour under
-   the mouse. */
-.editor-toolbar .tool-btn { padding: 4px 10px; font-size: 11px; color: var(--fg-2); background: transparent; }
-.editor-toolbar .tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2); }
+/* A quiet text tool beside the main work (the Steps level's two tools, the
+   apps outside the process and the remembered step names; lane FX3: the
+   Map's Fit, Reset layout and Edited maps, and the edited maps' row acts):
+   a smaller word in --fg-2, in the text face, on no fill inside the --rule
+   border, the card's fill and the text colour under the mouse. Text never
+   goes in an .icon-btn, a glyph's square. */
+button.tool-btn { padding: 4px 10px; font-size: 11px; color: var(--fg-2); background: transparent; }
+button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2); }
 .editor-toolbar .link-help {
   color: var(--accent-2); text-decoration: none; border-bottom: 1px dotted var(--accent-2);
 }
@@ -1166,6 +1177,13 @@ details.analysis-module { padding: 0; }
   /* Stacked, each pane takes the whole width: no divider, and the list's
      share does not apply. */
   .editor-split > .pane-splitter { display: none; }
+  /* Lane FX3 (validation pass 3, F24): the two halves share the window's
+     height, so the selected step's pane is on screen beside the list (at
+     1024 px it sat below the fold, and selecting a step showed nothing).
+     The level takes the height it is given (the Raw events drawer that once
+     followed it shows on the Timeline only), and each pane scrolls inside. */
+  .session-layout-stepsphases { min-height: 0; }
+  #step-list { min-height: 0; }
 }
 /* The run select in the Timeline's header: it dims the other runs on the
    timeline. */
@@ -2250,21 +2268,12 @@ button.danger:disabled {
 .refmap-bar-lbl { font-size: 11px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; }
 /* F3: a destructive text button is outlined in the error colour, so its label
    stays legible at rest (it was dark orange text on a red fill: button.danger
-   filled it and this rule coloured the text). The fill comes on hover. */
-.icon-btn.danger { background: transparent; border-color: var(--bad); color: var(--bad); }
-.icon-btn.danger:hover:not(:disabled) { background: var(--bad); border-color: var(--bad); color: #fff; }
-/* These refmap buttons carry multi-word TEXT labels (Edit / Duplicate / Delete /
-   Copy again / Remove entry in the rows; Edited maps in the toolbar), not single
-   glyphs, but they reuse the shared .icon-btn.xs, which is a fixed 22px icon
-   SQUARE (width:height:22px; padding:0). The labels overflow that box and
-   adjacent buttons collide. Restore auto sizing while keeping the compact 11px
-   font. Scoped by selector so the genuine single-glyph .xs buttons (the marker
-   row's move and delete) are unaffected. */
-.refmap-row-actions .icon-btn.xs,
-#btn-toggle-refmaps.icon-btn.xs {
-  width: auto; height: auto; min-width: 0;
-  padding: 3px 8px; line-height: 1.4;
-}
+   filled it and this rule coloured the text). The fill comes on hover. The
+   edited maps' row acts and Edited maps are text tools (.tool-btn, lane
+   FX3), no longer text squeezed into the 22px glyph square of .icon-btn.xs. */
+.tool-btn.danger { background: transparent; border-color: var(--bad); color: var(--bad); }
+.tool-btn.danger:hover:not(:disabled) { background: var(--bad); border-color: var(--bad); color: #fff; }
+.refmap-row-actions .tool-btn { padding: 3px 8px; line-height: 1.4; }
 
 /* Editor overlay — full-screen, decoupled editable BPMN. */
 .refmap-editor-overlay { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,0.45); display: flex; padding: 24px; }

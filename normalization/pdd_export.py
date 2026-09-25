@@ -133,6 +133,14 @@ _WALKTHROUGH = ("The transactions were recorded during a walkthrough, with "
 _DEFAULT_LABEL_WORDS = ("transaction", "run")
 # The step context line's separator (a middle dot, as the viewer's fact line).
 _SEP = " · "
+# A project without start markers (C16): its one implicit transaction, in the
+# words the viewer's Checklist, project line and Timeline use for it
+# (viewer/analyst-content.js IMPLICIT_TRANSACTION, lane FX3).
+_IMPLICIT = "One transaction (not marked)"
+# The System cell of section 6.2 for the steps that have no system (lane FX3):
+# never "Not recorded", which read as the name of a system. The Overview
+# reads this cell to leave the row out of its one line (analysis-view.js).
+NO_SYSTEM = "No system set"
 # The capture app's defaults for the request (capture/config.js): a
 # recording made without setting one prints no request.
 DEFAULT_REQUEST_NAME = "Default engagement"
@@ -964,7 +972,7 @@ def _write_document_control(doc, s):
         ("Project folder", s.folder.resolve().name or "Not recorded"),
         ("Recorded", recorded),
         ("Recorded by", s.recorded_by or "Not recorded"),
-        ("Transactions recorded", "Not marked" if s.implicit else str(len(s.runs))),
+        ("Transactions recorded", _IMPLICIT if s.implicit else str(len(s.runs))),
         ("Video", "Attached" if s.has_video else "None"),
     ]
     # AD-30: the capture's engagement is the Request; "project" is only
@@ -1122,8 +1130,7 @@ def _write_steps(doc, s):
         if s.implicit:
             # C16: one implicit run holds every step; the order is the time,
             # then `order` for the steps added without a time.
-            doc.add_paragraph("Transactions were not marked in this project, so "
-                              "every step is listed in order.")
+            doc.add_paragraph(f"{_IMPLICIT}, so every step is listed in order.")
         else:
             doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
                               "the reference transaction.")
@@ -1309,8 +1316,11 @@ def _write_step(doc, s, step, number, steps, level=None):
     attached = s.step_attachments(step)
     if attached:
         doc.add_paragraph("Attachments: " + ", ".join(attached) + ".")
+    # Lane FX3: each screenshot's alternative text names its step, as the
+    # map pictures' name their map.
+    alt = f"Screenshot of step {_step_number(number, level)}: {_step_name(step)}"
     for ref in [] if group else s.screenshots(step):
-        _embed_screenshot(doc, s.folder, ref, step)
+        _embed_screenshot(doc, s.folder, ref, step, alt)
     if (step.get("flags") or {}).get("waste") is True:
         p = doc.add_paragraph("Flagged as waste.")
         for run in p.runs:
@@ -1339,7 +1349,9 @@ def _safe_path(folder, ref):
     return full
 
 
-def _embed_screenshot(doc, folder, ref, step):
+def _embed_screenshot(doc, folder, ref, step, alt=""):
+    """One screenshot under its step, `alt` its alternative text (the step's
+    number and name, lane FX3)."""
     full = _safe_path(folder, ref)
     if full is None:
         logger.warning("pdd_export: skipping out-of-folder screenshot ref %r for step %s",
@@ -1347,10 +1359,13 @@ def _embed_screenshot(doc, folder, ref, step):
         return
     if full.exists() and Inches is not None:
         try:
-            doc.add_picture(str(full), width=Inches(4.5))
+            shape = doc.add_picture(str(full), width=Inches(4.5))
         except (FileNotFoundError, OSError, ValueError) as exc:
             logger.warning("pdd_export: skipping screenshot %s for step %s: %s",
                            ref, step.get("step_id", "?"), exc)
+            return
+        if alt:
+            shape._inline.docPr.set("descr", alt)
 
 
 # ---- 4. Variations, rules and exceptions ------------------------------------------
@@ -1655,8 +1670,7 @@ def _write_variations(doc, s):
                           "are no transactions to compare.")
     elif s.implicit:
         # C16: one implicit run covers the session: nothing to compare.
-        doc.add_paragraph("Transactions were not marked in this project, so there "
-                          "are no transactions to compare.")
+        doc.add_paragraph(f"{_IMPLICIT}, so there are no transactions to compare.")
     elif s.pattern_index is None:
         doc.add_paragraph("None of the recorded transactions has steps, so the "
                           "transactions cannot be compared.")
@@ -1833,8 +1847,7 @@ def time_section(s) -> dict:
         per_tx["note"] = ("Transactions were not marked in this recording, so there "
                           "is no time per transaction.")
     elif s.implicit:
-        per_tx["note"] = ("Transactions were not marked in this project, so there "
-                          "is no time per transaction.")
+        per_tx["note"] = f"{_IMPLICIT}, so there is no time per transaction."
     else:
         for i, run in enumerate(s.runs):
             wall, active = run.get("wall_clock_ms"), run.get("active_ms")
@@ -1850,7 +1863,7 @@ def time_section(s) -> dict:
     units = s.run_units() if s.runs else s.steps
     per: dict[str, dict] = {}
     for unit in units:
-        system = s.system_of(unit) or "Not recorded"
+        system = s.system_of(unit) or NO_SYSTEM
         row = per.setdefault(system, {"screens": {}, "steps": {}, "ms": 0.0, "timed": False})
         screen = s.ctx.where(_members(unit)[0])[1]
         if screen:
@@ -1872,7 +1885,7 @@ def time_section(s) -> dict:
             return _duration(row["ms"] / runs) if runs else _duration(row["ms"])
 
         ordered = sorted(per.items(), key=lambda kv: -kv[1]["ms"])
-        rows = [[system, ", ".join(row["screens"]) or "Not recorded",
+        rows = [[system, ", ".join(row["screens"]),
                  ", ".join(row["steps"].values())] for system, row in ordered]
         if any(row["timed"] for row in per.values()):
             per_app["header"].append("Time per transaction" if runs and not s.implicit else "Time")

@@ -212,3 +212,19 @@ test("lane FX1: the capture app's default request never names a project", () => 
   assert.equal(requestName({ config: { engagement_name: " Order intake " } }), "Order intake");
   assert.equal(requestCode({ engagement_id: " default " }), null);
 });
+
+test("lane FX3: an export is named after the project: the document title, the recording's name, the request, the folder", () => {
+  const { exportBaseName } = SessionSummary;
+  const titled = { annotations: { document: { title: " Order to cash " } }, manifest: { label: "Orders with Sam" } };
+  assert.equal(exportBaseName(titled, "20260925-085516"), "Order to cash");
+  assert.equal(exportBaseName({ manifest: { label: "Orders with Sam" } }, "f"), "Orders with Sam");
+  assert.equal(exportBaseName({ manifest: { engagement_id: "REQ-2026-042", engagement_name: "Invoice intake review" } }, "f"),
+    "Invoice intake review");
+  assert.equal(exportBaseName({ manifest: { engagement_id: "default", engagement_name: "Default engagement" } }, "20260925-085516"),
+    "20260925-085516", "never the capture app's defaults");
+  // Fit for a file name on Windows: no \ / : * ? " < > |, no dot or space at its end, at most 80 characters.
+  const odd = { annotations: { document: { title: 'Orders: "A/B" \\ C*D? <E> | F.. ' } } };
+  assert.equal(exportBaseName(odd, "f"), "Orders A B C D E F");
+  assert.equal(exportBaseName({ annotations: { document: { title: "x".repeat(120) } } }, "f").length, 80);
+  assert.equal(exportBaseName({ annotations: { document: { title: " ... " } } }, ""), "Process");
+});

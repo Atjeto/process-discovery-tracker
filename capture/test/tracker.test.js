@@ -173,6 +173,34 @@ test("pause and resume update status and emit system events", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("lane FX3: the elapsed time leaves the pauses out; the time paused is counted, an ongoing pause too", async () => {
+  const { dir, file } = tmpEvents();
+  const realNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+  try {
+    const t = startTracker({ sessionId: "s", eventsFile: file });
+    now += 10000;
+    t.pause();
+    now += 6000;
+    let s = t.getStatus();
+    assert.strictEqual(s.pausedMs, 6000, "an ongoing pause counts");
+    assert.strictEqual(s.currentPauseMs, 6000, "the pause in progress, from its start");
+    assert.strictEqual(s.elapsedMs, 10000, "the clock stands still while paused");
+    t.resume();
+    now += 4000;
+    s = t.getStatus();
+    assert.deepStrictEqual([s.elapsedMs, s.pausedMs, s.currentPauseMs], [14000, 6000, 0]);
+    t.pause();
+    now += 1000;
+    const end = await t.stop();
+    assert.deepStrictEqual([end.elapsedMs, end.pausedMs], [14000, 7000], "a pause the stop ends is counted");
+  } finally {
+    Date.now = realNow;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Title-grained activity runs (ADR-0007) -------------------------
 
 test("normalizeTitle strips the unread-count prefix and browser suffix", () => {

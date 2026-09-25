@@ -349,6 +349,24 @@ test("lane FX1: the capture app's default request never names the project: the f
   assert.ok(overviewHtml(coded).includes('<strong class="ov-summary-name">REQ-2026-042</strong>'));
 });
 
+test("lane FX3: the capture's request shows on the project line, its code next to its name, never only in the tooltip", () => {
+  // The request names the project: its code beside its name.
+  let html = overviewHtml(session({}));
+  assert.ok(html.includes('<strong class="ov-summary-name">Order intake</strong> <span class="ov-summary-code" data-summary="request">(eng-1)</span>'), html.slice(0, 900));
+  // The document title (or the recording's name) names the project: the request is a part of its own.
+  const titled = session({});
+  titled.annotations.document = { title: "Supplier invoices" };
+  html = overviewHtml(titled);
+  assert.ok(html.includes('<strong class="ov-summary-name">Supplier invoices</strong> · <span data-summary="request">Request: Order intake (eng-1)</span>'), html.slice(0, 900));
+  const named = overviewHtml(session({ manifest: { engagement_id: "REQ-2026-042", engagement_name: "Invoice intake review", label: "Invoices with Sam" } }));
+  assert.ok(named.includes('<strong class="ov-summary-name">Invoices with Sam</strong> · <span data-summary="request">Request: Invoice intake review (REQ-2026-042)</span>'));
+  // A code alone names the project and is not repeated; the defaults show nothing.
+  const coded = overviewHtml(session({ manifest: { engagement_id: "REQ-2026-042" } }));
+  assert.ok(coded.includes('<strong class="ov-summary-name">REQ-2026-042</strong>') && !coded.includes('data-summary="request"'));
+  const defaults = overviewHtml(session({ manifest: { engagement_id: "default", engagement_name: "Default engagement" } }));
+  assert.ok(!defaults.includes('data-summary="request"'));
+});
+
 test("the project line names the SME when the capture app's Profile recorded a name, else the Windows login", () => {
   const sess = session({ manifest: { engagement_id: "eng-1", engagement_name: "Order intake",
     config: { worker: { id: "w1", name: "Ana Novak" } } } });

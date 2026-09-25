@@ -430,7 +430,19 @@ function _summaryLine(sess, state) {
   const folderName = String((sess && sess.sessionFolder) || "").split(/[\\/]/).filter(Boolean).pop() || "";
   const login = s ? s.worker : ((m.config && m.config.worker && m.config.worker.id) || "");
   const sme = SessionSummary.smeName(m) || login;
-  const parts = ['<strong class="ov-summary-name">' + escapeHtml(SessionSummary.displayName(sess, folderName)) + "</strong>"];
+  const shown = SessionSummary.displayName(sess, folderName);
+  // AD-30, lane FX3 (validation pass 3, F23): the capture's request shows on
+  // the line, its code next to its name: beside the name when the request
+  // names the project, else as a part of its own once the document title or
+  // the recording's name names it. Never the capture app's defaults.
+  const reqName = SessionSummary.requestName(m);
+  const reqCode = SessionSummary.requestCode(m);
+  const reqText = SessionSummary.requestOf(m);
+  const namesProject = !!reqText && (shown === reqName || shown === reqCode);
+  const parts = ['<strong class="ov-summary-name">' + escapeHtml(shown) + "</strong>" +
+    (namesProject && shown === reqName && reqCode && reqCode !== reqName
+      ? ' <span class="ov-summary-code" data-summary="request">(' + escapeHtml(reqCode) + ")</span>" : "")];
+  if (reqText && !namesProject) parts.push('<span data-summary="request">Request: ' + escapeHtml(reqText) + "</span>");
   // A project made from a video or from nothing (C16) was not recorded by anyone.
   if (sme && !["video", "blank"].includes(m.source)) parts.push("recorded by " + escapeHtml(sme));
   if (state) {

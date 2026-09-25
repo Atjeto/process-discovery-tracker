@@ -306,16 +306,16 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <div class="project-menu-popup map-picker-popup" id="map-picker-popup" role="group" aria-label="Maps" style="display:none"></div>
               </div>
               <div class="map-zoom" id="session-map-zoom" style="display:none">
-                <button class="icon-btn xs" id="btn-session-map-zoom-fit" title="Fit the whole map in view (scroll to zoom, drag to pan)">fit</button>
+                <button class="tool-btn" id="btn-session-map-zoom-fit" type="button" title="Fit the map in view, never so small that its names cannot be read (scroll to zoom, drag to pan)">Fit</button>
                 <!-- Shown only while how the transactions ran shows with boxes moved by hand (map-controller.js). -->
-                <button class="icon-btn xs" id="btn-session-map-reset-layout" type="button" hidden title="Put the boxes you moved back where the map lays them out">Reset layout</button>
+                <button class="tool-btn" id="btn-session-map-reset-layout" type="button" hidden title="Put the boxes you moved back where the map lays them out">Reset layout</button>
               </div>
               <div class="refmap-tools">
                 <!-- The Map's one act (refmap-ui.js syncForkButton sets its
                      label and style): a copy of the process map in the editor,
                      chosen as the PDD's As-Is map when none is chosen yet. -->
                 <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it. A copy you leave unchanged is not kept.">Edit as the As-Is map</button>
-                <button class="icon-btn xs" id="btn-toggle-refmaps" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the project again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
+                <button class="tool-btn" id="btn-toggle-refmaps" type="button" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the project again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
               </div>
             </div>
             <!-- Lane MV: the one line that says which map shows (refmap-ui.js
@@ -427,6 +427,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <nav class="help-nav">
         <button class="help-nav-item active" data-section="start">Getting started</button>
         <button class="help-nav-item" data-section="stepsphases">Steps</button>
+        <button class="help-nav-item" data-section="map">Map</button>
         <button class="help-nav-item" data-section="markers">Markers</button>
         <button class="help-nav-item" data-section="capture">Recording keys</button>
         <button class="help-nav-item" data-section="handoff">Hand-offs</button>
@@ -438,7 +439,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
         <section class="help-section active" data-section="start">
           <h3>What is a transaction?</h3>
-          <p>A <strong>transaction</strong> is one pass through the process: one order entered, one request handled. The SME records the process a few times and presses the transaction key (or the recording bar's button) at the start of each transaction. A project made from a video, or an empty one, is one transaction until you mark where each one starts on the Timeline.</p>
+          <p>A <strong>transaction</strong> is one pass through the process: one order entered, one ticket handled. The SME records the process a few times and presses the transaction key (or the recording bar's button) at the start of each transaction. A project made from a video, or an empty one, is one transaction until you mark where each one starts on the Timeline.</p>
           <h3>From a recording to the PDD</h3>
           <p>The SME sends you a zip of the recording (the capture app's end summary makes it). Unzip it (right-click it, <em>Extract All</em>), then open the folder with <em>Open project</em>: the folder <em>Extract All</em> makes opens too, since it holds the recording folder. You confirm the first transaction's drafted steps, review how the other transactions differ, write the document and export the PDD. The Overview's <em>Checklist</em> ticks what is done, with one button for the next act.</p>
           <ol class="help-steps">
@@ -506,7 +507,22 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Hide step</strong>: takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
           <h3>Waste</h3>
-          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step. Branches and exceptions are not flags: the map and the differences between the transactions show them.</p>
+          <p>Flag a step as <strong>Waste</strong> when it should not be needed (rework, duplicate effort). The PDD prints the flag with the step, and the maps mark it: a dashed box on how the transactions ran, a <em>Waste</em> note beside its task on the process map. Branches and exceptions are not flags: the map and the differences between the transactions show them.</p>
+        </section>
+
+        <section class="help-section" data-section="map">
+          <h3>What the Map shows</h3>
+          <p>The Map shows the map the PDD prints: your As-Is map when you made one, else the <strong>process map</strong> the app draws from the reference transaction and the others, a box per step in its system's colour, with its notes and files beside it. The line above the map says which one shows. <em>Show how the transactions ran</em> draws the map from the transactions as they ran: hover a line for how often it was taken and its time; a dashed line is a path set in Steps that no transaction took. Click a box for the step panel. <em>Fit</em> fits the map in view, and <em>Reset layout</em> puts back the boxes you dragged.</p>
+          <h3>Sub-processes</h3>
+          <p>When a step holds a sub-process, <em>Map:</em> above the map chooses the main process or a sub-process; its number is its chapter in the PDD, and Steps shows the same level. On the process map, the arrow on a sub-process opens its map; on how the transactions ran, a double-click on a box marked + does.</p>
+          <h3>Your As-Is and To-Be maps</h3>
+          <ul class="help-list">
+            <li><strong>Edit as the As-Is map</strong> copies the process map into the editor, and the PDD prints the copy in its place. Change it there (Ctrl+Z and Ctrl+Y undo and redo in the editor); it is kept once you change something, and analyzing the project again never changes it. When the steps change after it was made, the Map says so, with <em>Copy again</em>.</li>
+            <li><strong>Edit a new copy</strong>, once the As-Is map exists, starts another copy: choose <em>To-Be map</em> in <em>Use in PDD as</em>, and the PDD prints it under its improvement scope.</li>
+            <li><strong>Edited maps</strong> lists your copies: <em>Edit</em>, <em>Use in PDD as</em> (None, As-Is map, To-Be map), <em>Duplicate</em>, <em>Copy again</em> and <em>Delete</em> (Ctrl+Z brings a copy back).</li>
+          </ul>
+          <h3>Exporting the map</h3>
+          <p><em>Export</em>, <em>Process map (image)</em> saves the map the Map shows as an SVG image, for Figma, Lucidchart or a browser. <em>Process map (BPMN)</em> saves it as a BPMN 2.0 file, with every sub-process, for ADONIS, Bizagi or Camunda. Both keep the steps' notes, which the PDD's pictures leave out.</p>
         </section>
 
         <section class="help-section" data-section="markers">
@@ -567,7 +583,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>
             <li>Click a step band on the timeline to open the step panel beside it.</li>
             <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>
-            <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>fit</em>, puts the boxes back where the map lays them out.</li>
+            <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>Fit</em>, puts the boxes back where the map lays them out.</li>
             <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>. An update changes the project only when it finishes, so Cancel leaves the steps and the map as they were.</li>
           </ul>
         </section>

@@ -133,7 +133,8 @@ container. The Overview is the default on load.
   transcript" while one is attached); the Observations
   ([`views/analysis-view.js`](../../viewer/views/analysis-view.js),
   "Measured from the recording. The PDD prints them in sections 5 and 6.",
-  lane CC): *Data* (the PDD's section 5: every field entered with its
+  in a project without a recording "Measured from the steps you added.",
+  lane CC; an item's one line shows while it is closed, lane FX3): *Data* (the PDD's section 5: every field entered with its
   system and screen, its step, an example value and how it is re-keyed, then
   the Re-keyed data sentences) and *Applications and time* (section 6: Time
   per transaction and Time in each application). Both are the rows the
@@ -218,7 +219,7 @@ container. The Overview is the default on load.
   draws that level from its traces; a sub-process's box carries a + (a click
   opens the panel at that level, a double-click its map), and dragged
   layouts are kept per level. Once a box of the live map was dragged,
-  *Reset layout* shows beside fit (`#btn-session-map-reset-layout`, lane
+  *Reset layout* shows beside *Fit* (`#btn-session-map-reset-layout`, lane
   CC): it forgets the arrangement kept for that level and draws the map
   laid out again. bpmn-js's own drill down (its arrow, its
   breadcrumbs) moves `State.mapPath` and the picker with it; a plane the
@@ -377,7 +378,7 @@ their module as `<name>.test.js`.
 | `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"), the fields typed, the drafted narration shown as a hint. |
 | `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
 | `transcript-model.js` | The transcript's time rule (its own sync, else the video's; a sentence said before the recording reads "0:28 before") and every pick of sentences (for a step, outside the transactions, by speaker or search). |
-| `session-summary.js` | The project line's facts, the request (`requestOf`, AD-30), the name in Recents, the marker problems. |
+| `session-summary.js` | The project line's facts, the request (`requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
 | `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`); whether a copy is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its colours, notes and attachments (C18). |
 | `case-scope.js` | The Transaction select's options ("Transaction 1 · Order #10900"), escaped. |
 | `recognition.js` | Platform recognition of an interaction (ADR-0011), for the step pane's interaction list. |
@@ -394,6 +395,7 @@ their module as `<name>.test.js`.
 | `refmap-ui.js` | The Map level's picture and the edited maps (lane MV): which picture shows and when it is drawn again (`syncMapView`, the facts for `map-view.js`: the view chosen, the copy, `process_map_step.bpmn` and whether it is current, the planes each file has once drawn), its one header line and the line that says why, the Map's own analysis once per change (`mapBusy` while it runs), the step map kept current across the edited maps' own saves and the PDD's run (`keepingStepMapCurrent`); the edit act (it analyzes first when the steps changed since the map file was written, or waits for the Map's own analysis), the new copy kept at its first change and dropped when it was left unchanged, the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`; C19: a plane per path, `renderPlanesToPng`, `renderPlaneToSvg`). |
 | `asis-view.js` | The map the PDD prints on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, each exclusive gateway with its marker as the modeler draws it, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`). C19: the plane of a level (`showLevel`, each plane fitted the first time; the drawn file's `definitions` for the planes it has), bpmn-js's own drill down told to the Map (`configure`'s `onLevel`), the main map's crumb named. |
 | `bpmn-viewer.js` | The bpmn-js modeler in the editor overlay: a copy opens on its own saved layout, a new one from its XML before its file exists (`xml`, lane MV); each edit, undo and redo is heard first (`onChange`: a new copy is kept then), written back after a short delay and reported to the save state; `flush` writes a waiting edit when the editor closes or another map opens; `changed` tells whether the map differs from the one opened. |
+| `bpmn-text-wrap.js` | A bpmn-js module (lane FX3) given to every bpmn-js the viewer creates (the Map's picture, the editor, the PDD's and Export's pictures): each name is wrapped between words in its own font and box before diagram-js lays it out, so a word that fits a line is never cut in two (`wrapLines`, `innerWidth`). Only the text drawn changes, never the diagram's file. |
 
 ## 4. The module graph
 
@@ -692,7 +694,11 @@ The Export menu's items live in `renderer.js`; the PDD and the BPMN file
 share `exportArtifact` with the Overview's last act. Every export ends the
 same way: its folder opens in Explorer with the file selected
 (`viewer:revealFile`), and a toast names the file. The analyst stays on the
-level they are on.
+level they are on. A file is offered under the project's name and its kind
+(`session-summary.exportBaseName`, lane FX3): the document title once it is
+written, else the recording's name (`manifest.label`), else the request,
+else the folder's name, made fit for a Windows file name: *Order to cash
+PDD.docx*, *Order to cash map.bpmn*, *Order to cash As-Is map.bpmn*.
 
 - **PDD (.docx).** The maps are drawn off screen by bpmn-js
   (`RefmapUI.renderPddMaps`): the As-Is copy chosen for the PDD and the
@@ -712,8 +718,8 @@ level they are on.
   copy, else in `process_map_step.bpmn` (analyzed first when it is missing
   or older than the steps), drawn off screen by the PDD's renderer
   (`RefmapUI.renderPlaneToSvg`) and saved as SVG, offered as
-  `process-map.svg` or `as-is-map.svg`, with `-sub-process-<number>` for a
-  sub-process's. While the Map says why it draws no map, nothing is saved
+  `<project> map.svg` or `<project> As-Is map.svg`, and a sub-process's as
+  `<project> map of sub-process <number>.svg` (`map-planes.imageName`). While the Map says why it draws no map, nothing is saved
   and the toast says so.
 - **Process map (BPMN).** The chosen As-Is copy, else
   `process_map_step.bpmn` (analyzed first when it is missing or older than

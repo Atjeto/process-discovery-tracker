@@ -123,14 +123,15 @@ function pddManifest(pictures) {
   };
 }
 
-/* The file name an exported map image is offered under: `base` ("process-map",
-   "as-is-map") for the main map, and for a sub-process's map its number when
-   it has one ("process-map-sub-process-2.4.svg"). */
+/* The file name an exported map image is offered under: `base` (lane FX3:
+   the project's name and the map's kind, "Order to cash map", "Order to
+   cash As-Is map") for the main map, and for a sub-process's map its number
+   when it has one ("Order to cash map of sub-process 2.4.svg"). */
 function imageName(base, level) {
   const path = (level && level.path) || [];
   if (!path.length) return base + ".svg";
   const n = level && level.number != null ? String(level.number) : "";
-  return base + "-sub-process" + (n ? "-" + n : "") + ".svg";
+  return base + (n ? " of sub-process " + n : " of a sub-process") + ".svg";
 }
 
 module.exports = {

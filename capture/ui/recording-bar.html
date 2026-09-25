@@ -50,6 +50,7 @@
   .status .state { color: var(--fg); font-weight: 600; }
   .status .run { color: var(--fg); }
   .status .time { font-family: var(--font-mono); font-size: 11px; }
+  .status .pause-now { font-family: var(--font-mono); font-size: 11px; color: var(--warn-fg); }
   .status .sep { color: var(--fg-3); margin: 0 4px; }
 
   .controls { display: flex; gap: 6px; flex: 0 0 auto; }
@@ -138,7 +139,10 @@ function paint(next) {
     status.innerHTML = '<span class="state">' + esc(view.stateText || "Not recording") + '</span>';
   } else {
     status.innerHTML =
+      // Lane FX3: while paused, how long ("Paused 0:03"); the clock after
+      // the transaction is the time recorded, the pauses left out.
       '<span class="state">' + esc(view.stateText) + '</span>' +
+      (view.pauseNow ? ' <span class="pause-now">' + esc(view.pauseNow) + '</span>' : '') +
       '<span class="sep">&middot;</span><span class="run">' + esc(view.runText) + '</span>' +
       '<span class="sep">&middot;</span><span class="time">' + esc(view.elapsed) + '</span>';
   }

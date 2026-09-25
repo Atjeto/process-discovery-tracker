@@ -48,6 +48,7 @@ const StepFlow = require("../step-flow.js");
 const Video = require("./flow-view-video.js");
 const AnalystUI = require("./analyst-ui.js");
 const SPM = require("../sub-process-maps.js");
+const AC = require("../analyst-content.js");
 
 /* { label, path, focusId }: the map box shown, the level it is at (C19, []
    the main level) and the occurrence the foot's act and a play act on; null
@@ -177,6 +178,22 @@ function _moment(step) {
   return StepFacts.videoMoment(step, Date.parse(Video.videoStartTs()), _lengthMs());
 }
 
+/* What a moment's time is in (lane FX3, F22): the recording, else the
+   video of a project made without one, else nothing (a project with
+   neither has no clock). */
+function _clockNoun() {
+  const s = _session();
+  if (!s || AC.hasRecording(s)) return "recording";
+  return s.recordingAvailable ? "video" : "";
+}
+
+/* "This step has no time in the recording", or "in the video" in a project
+   made from one (lane FX3, F22): the lead of the two lines below that need a
+   video, so never a project with no clock. */
+function _noTime() {
+  return "This step has no time in the " + (_clockNoun() || "video");
+}
+
 /* One row: what it is ("Transaction 2, again · 2:14 into the recording ·
    took 9s"), its play button, then its screenshots, what was said and its
    notes, each under a small lead. `again`: an earlier row is in the same
@@ -196,7 +213,7 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
       (m && m.kind === "covered" ? '<button type="button" class="sp-play" title="Play this occurrence in the video above">▶</button>' : "") +
-      '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin)) + "</span>" +
+      '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun())) + "</span>" +
       (waste ? '<span class="step-tag-waste sp-waste-tag" title="Flagged as waste: this step should not be needed">Waste</span>' : "") +
     "</div>" +
     (m && m.kind === "outside" ? '<p class="sp-nocover">' + escapeHtml(StepFacts.NOT_COVERED) + "</p>" : "") +
@@ -288,7 +305,7 @@ function render() {
   const note = $("sp-video-note");
   if (note) {
     const text = !fm ? "" : fm.kind === "outside" ? StepFacts.NOT_COVERED + "."
-      : fm.kind === "untimed" ? UNTIMED_NOTE : "";
+      : fm.kind === "untimed" ? _noTime() + UNTIMED_NOTE : "";
     note.textContent = text;
     note.hidden = !text;
   }
@@ -317,8 +334,9 @@ function render() {
   if (_state.focusId !== _cuedId) _cue(_state.focusId);
 }
 
-/* The line under the panel's video for a step without a time (lane FX2). */
-const UNTIMED_NOTE = "This step has no time in the recording: play the video to its moment, then Add screenshot takes that frame.";
+/* The line under the panel's video for a step without a time (lane FX2),
+   after _noTime(). */
+const UNTIMED_NOTE = ": play the video to its moment, then Add screenshot takes that frame.";
 
 /* The panel's video at a row's start, paused: the panel opens with its video
    at the row it highlights, not where the video last stopped. Before the
@@ -366,7 +384,7 @@ function frameSource(stepId) {
     video.getAttribute("src") === src);
   if (shown && (m.kind === "covered" || _moved)) return { video, src };
   if (m.kind === "covered") return { at: m.at, src };
-  return { why: "This step has no time in the recording: play the step panel's video to its moment first, then add the frame." };
+  return { why: _noTime() + ": play the step panel's video to its moment first, then add the frame." };
 }
 
 function _show(open) {

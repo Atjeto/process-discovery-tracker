@@ -661,10 +661,27 @@ function stepsForLevel(session) {
   return { steps: SPM.levelVisits(txs, path).flatMap((v) => v.visible), name: SPM.nodeName(txs, path, ref) };
 }
 
+/* Lane FX3 (validation pass 3, F16): the header's controls act on a drawn
+   timeline (the Transaction select dims transactions on it, Lanes picks its
+   lanes, the zoom zooms it). A project with no recording and no video has
+   none, so they are not offered there; the line in its place says how to
+   get one (Attach video). */
+const HEADER_CONTROLS = ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"];
+function timelineDrawable(sess) {
+  return !!sess && (((sess.events || []).length > 0) || !!sess.recordingAvailable);
+}
+function _syncHeaderControls(drawable) {
+  for (const id of HEADER_CONTROLS) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = drawable ? "" : "none";
+  }
+}
+
 function renderTimeline() {
   const host = $("#timeline");
   host.innerHTML = "";
   const evs = State.getSession().events;
+  _syncHeaderControls(timelineDrawable(State.getSession()));
   // C16: the notes pinned to a moment; the Lanes menu lists their lane only
   // while there are some.
   const allNotes = AC.momentNotes((State.getSession().annotations || {}).analyst_notes);
@@ -1308,4 +1325,5 @@ module.exports = {
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
   caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES, stepsForLevel,
   leftOutBands, leftOutTitle, leftOutLabel, LEFT_OUT_LABEL, appLeftOut, appLeftOutTitle, stepBandSpan,
+  timelineDrawable,
 };

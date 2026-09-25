@@ -37,12 +37,29 @@ function effectiveLabel(markerEvent) {
 
 const APPLY_NOTE = "it applies to the transactions when you click Apply marker changes";
 
+/* Why the capture app ended a transaction by itself, in plain words (lane
+   FX3, validation pass 3, F20): the next transaction started (the SME's key
+   or Next transaction ends the open one first), or a long idle stretch
+   ended it. A reason the app does not know is not shown: never a raw code. */
+const END_REASONS = {
+  auto_close_for_sibling: "the next transaction started",
+  auto_end_idle: "after a long idle stretch",
+};
+function markerReasonText(reason) {
+  return (typeof reason === "string" && END_REASONS[reason]) || "";
+}
+
 function renderMarkersList() {
   const host = $("#markers-list");
   host.innerHTML = "";
   const all = MarkerEdits.sessionMarkerView(State.getSession());
   if (!all.length) {
-    host.innerHTML = '<p class="hint">No markers yet. To mark a transaction, right-click the timeline where it starts and choose Start a transaction here.</p>';
+    // Lane FX3 (validation pass 3, F16): a project with no recording and no
+    // video has no timeline to right-click: it says what makes one.
+    const sess = State.getSession();
+    host.innerHTML = ((sess.events || []).length || sess.recordingAvailable)
+      ? '<p class="hint">No markers yet. To mark a transaction, right-click the timeline where it starts and choose Start a transaction here.</p>'
+      : '<p class="hint">No markers. Transactions are marked on the timeline, which a project without a recording has once a video is attached.</p>';
     return;
   }
   // Story order: by the time shown (moves applied), the time since the
@@ -58,6 +75,7 @@ function renderMarkersList() {
     row.dataset.markerKey = m.key;
     // An End carries no label: it says what it is. A Start without one too.
     const lbl = m.label || (m.markerType === "end" ? "End" : "Start");
+    const why = markerReasonText(m.reason);
     const notes =
       (m.inserted ? ' <span class="meta">· added</span>' : (m.edited ? ' <span class="meta">· edited</span>' : "")) +
       (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
@@ -66,7 +84,7 @@ function renderMarkersList() {
       '<span class="ts">' + escapeHtml(sinceStart(m.timestamp, origin)) + '</span>' +
       '<span class="dir">' + (m.markerType === "start" ? "▶" : "■") + '</span>' +
       '<span class="lbl">' + escapeHtml(lbl) +
-        (m.reason ? ' <span class="meta">(' + escapeHtml(m.reason) + ')</span>' : '') +
+        (why ? ' <span class="meta">(' + escapeHtml(why) + ')</span>' : '') +
         notes +
       '</span>' +
       '<span class="marker-actions">' +
@@ -208,5 +226,5 @@ async function renameMarker(m, newLabel) {
 }
 
 module.exports = {
-  effectiveLabel, renderMarkersList, sinceStartToIso,
+  effectiveLabel, renderMarkersList, sinceStartToIso, markerReasonText,
 };

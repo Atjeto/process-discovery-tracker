@@ -291,8 +291,14 @@ and the other names. What a BPMN tool receives besides the shapes:
   later keep the default look. One text annotation, `TextAnnotation_legend`,
   lists them: "Colour by system", then one line per system ("SAP: orange",
   "no colour" past the palette), then "Hand icon: done outside the
-  systems" when a task of the map is a manual task. It sits inside the map
-  where there is room, else beside or under it.
+  systems" when a task of the map is a manual task, then "Waste: a step
+  that should not be needed" when a task has the Waste mark. It sits inside
+  the map where there is room, else beside or under it.
+- **Waste** (lane FX3): a task a visible step of which is flagged as waste
+  has a text annotation "Waste" above it (`TextAnnotation_waste_<k>`, its
+  documentation "Flagged as waste: this step should not be needed.",
+  joined by `Association_waste_<k>`), in its notes' place or right of its
+  notes.
 - **Notes** (C18): the analyst's notes on a task's steps (`analyst_notes`
   with a `step_id`) are one text annotation above the task, joined by an
   association: one note per line, the text cut after a whole word within 90

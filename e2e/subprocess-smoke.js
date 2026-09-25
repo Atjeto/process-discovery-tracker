@@ -563,6 +563,11 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     return {
       suggested: path.basename((await app.evaluate(() => global.__pdtSaveDefault)) || ""),
       revealed: path.resolve((await app.evaluate(() => global.__pdtRevealed)) || ".").toLowerCase() === path.resolve(out).toLowerCase(),
+      // Lane FX3: exports are offered under the project's name.
+      base: await page.evaluate(() => {
+        const s = require("./state.js").getSession();
+        return require("./session-summary.js").exportBaseName(s, require("path").basename(s.sessionFolder));
+      }),
     };
   };
   const TMP_OUT = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-subproc-out-"));
@@ -643,8 +648,8 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     const ids = [...svg.matchAll(/data-element-id="([^"]+)"/g)].map((m) => m[1]);
     const sub = ids.filter((i) => /^Sub\d+_/.test(i));
     const ok = !err && /created with bpmn-js/.test(svg) && sub.length > 0 && ids.every((i) => /^Sub\d+_/.test(i)) &&
-      r.suggested === "process-map-sub-process-3.svg" && r.revealed;
-    record("Export, Process map (image), with Save order chosen, saves its plane of the step BPMN (only that plane's elements), offered as process-map-sub-process-3.svg, and opens its folder at the file",
+      !!r.base && r.suggested === r.base + " map of sub-process 3.svg" && r.revealed;
+    record("Export, Process map (image), with Save order chosen, saves its plane of the step BPMN (only that plane's elements), offered as \"<project> map of sub-process 3.svg\", and opens its folder at the file",
       ok, JSON.stringify({ err, r, ids: ids.length, sub: sub.length, sample: ids.slice(0, 3) }));
   }
   {
@@ -711,9 +716,9 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     if (!okPlane) await shot(page, "fail-subproc-map-asis.png");
     const okDrill = !err && up && JSON.stringify(up.path) === "[]" && up.root && !/_plane$/.test(up.root.id) &&
       down && JSON.stringify(down.path) === JSON.stringify([GROUP]) && down.root && down.root.name === GROUP &&
-      r && r.suggested === "as-is-map-sub-process-3.svg" && r.revealed && /created with bpmn-js/.test(svg) &&
+      r && !!r.base && r.suggested === r.base + " As-Is map of sub-process 3.svg" && r.revealed && /created with bpmn-js/.test(svg) &&
       [...svg.matchAll(/data-element-id="([^"]+)"/g)].every((m) => /^Sub\d+_/.test(m[1]));
-    record("bpmn-js's own drill down (a crumb up, the arrow on the group) keeps the picker and the level in step; the image export then saves the As-Is copy's plane (as-is-map-sub-process-3.svg)",
+    record("bpmn-js's own drill down (a crumb up, the arrow on the group) keeps the picker and the level in step; the image export then saves the As-Is copy's plane (<project> As-Is map of sub-process 3.svg)",
       okDrill, JSON.stringify({ err, up: up && { path: up.path, root: up.root }, down: down && { path: down.path, root: down.root }, r }));
   }
   {

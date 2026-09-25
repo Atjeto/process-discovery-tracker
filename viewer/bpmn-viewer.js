@@ -28,6 +28,7 @@
   let opened = null;     // the map on screen as it was opened, as the editor writes it (changed())
   const fs = require("node:fs");
   const path = require("node:path");
+  const { TextWrapModule } = require("./bpmn-text-wrap.js");
   const SAVE_DELAY_MS = 600;
 
   /* The delayed write of an edited map: `write` runs `delayMs` after the
@@ -119,7 +120,8 @@
       try { viewer.destroy(); } catch (_) {}
       viewer = null;
     }
-    const v = viewer = new BpmnJS({ container: host });
+    // Lane FX3: names break between words (bpmn-text-wrap.js).
+    const v = viewer = new BpmnJS({ container: host, additionalModules: [TextWrapModule] });
     try {
       const result = await viewer.importXML(xml);
       const warnings = (result && result.warnings) || [];

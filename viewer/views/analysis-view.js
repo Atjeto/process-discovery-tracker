@@ -25,6 +25,7 @@
 "use strict";
 
 const { escapeHtml, escapeAttr } = require("../dom.js");
+const AC = require("../analyst-content.js");
 
 const STAGE_NOT_RUN = "This check could not run on this recording";
 const NOT_YET = "Not measured in this project's analysis yet: the project is analyzed again as it opens.";
@@ -108,6 +109,11 @@ function dataItem(analysis) {
   };
 }
 
+/* The System cell of the PDD's 6.2 for the steps that have no system
+   (normalization/pdd_export.py NO_SYSTEM, lane FX3): a row of steps, not a
+   system, so the one line never names it as one. */
+const NO_SYSTEM = "No system set";
+
 /* Section 6, Applications and time: the time per transaction, then the time
    in each application. */
 function timeItem(analysis) {
@@ -120,12 +126,14 @@ function timeItem(analysis) {
   const app = t.per_application || {};
   const appRows = Array.isArray(app.rows) ? app.rows : [];
   const timed = Array.isArray(app.header) && app.header.length === 4;
+  const systems = appRows.filter((r) => r[0] !== NO_SYSTEM).length;
   let takeaway;
   if (app.note) takeaway = app.note;
   else if (timed && appRows.length) {
-    takeaway = "Most time in " + appRows[0][0] + ": " + appRows[0][3] +
-      (app.header[3] === "Time per transaction" ? " per transaction" : "");
-  } else takeaway = appRows.length + (appRows.length === 1 ? " system" : " systems") + ", no time measured";
+    takeaway = "Most time in " + (appRows[0][0] === NO_SYSTEM ? "steps with no system set" : appRows[0][0]) +
+      ": " + appRows[0][3] + (app.header[3] === "Time per transaction" ? " per transaction" : "");
+  } else if (!systems) takeaway = "No system set on the steps, no time measured";
+  else takeaway = systems + (systems === 1 ? " system" : " systems") + ", no time measured";
   const txBody = tx.note ? _note(tx.note)
     : rowsTableHtml(tx.header, tx.rows, [1, 2, 3]) + (tx.after ? '<p class="ov-rows-after">' + escapeHtml(tx.after) + "</p>" : "");
   const appBody = app.note ? _note(app.note) : rowsTableHtml(app.header, appRows, timed ? [3] : []);
@@ -140,19 +148,28 @@ function timeItem(analysis) {
 /* ---- The block ------------------------------------------------------------- */
 
 /* Who fills the Observations, beside their title (AD-29): nobody types them,
-   and the PDD prints the same rows. */
+   and the PDD prints the same rows. Lane FX3 (validation pass 3, F22): a
+   project without a recording (C16) measures them from the steps added to
+   it, never "from the recording". */
 const OBSERVATIONS_WHO = "Measured from the recording. The PDD prints them in sections 5 and 6.";
+const OBSERVATIONS_WHO_ADDED = "Measured from the steps you added. The PDD prints them in sections 5 and 6.";
+
+function observationsWho(sess) {
+  return AC.hasRecording(sess) ? OBSERVATIONS_WHO : OBSERVATIONS_WHO_ADDED;
+}
 
 /* The Observations block of the Overview for one session. `rowsLine`: the
    quiet line on the rows' age (rows-freshness.js freshnessLine), "" while
    they are current; overview-view.js updates it in place. Pure (no DOM, no
-   State): the unit tests render fixture sessions through it. */
+   State): the unit tests render fixture sessions through it. An item's one
+   line shows while it is closed (styles.css): opened, its body says it, so
+   a sentence that is the whole item is read once (lane FX3, F22). */
 function observationsHtml(sess, rowsLine) {
   if (!sess) return "";
   const line = rowsLine || "";
   return '<section class="ov-section ov-observations" id="ov-observations">' +
     '<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
-      '<div class="ov-block-who">' + escapeHtml(OBSERVATIONS_WHO) + "</div>" +
+      '<div class="ov-block-who">' + escapeHtml(observationsWho(sess)) + "</div>" +
       '<div class="ov-rows-freshness" id="ov-rows-freshness"' + (line ? "" : " hidden") + ">" +
         escapeHtml(line) + "</div></div>" +
     _moduleShell("data", dataItem(sess.analysis)) +
@@ -168,4 +185,5 @@ function wireObservations(host) {
   });
 }
 
-module.exports = { observationsHtml, wireObservations, dataItem, timeItem, rowsTableHtml, OBSERVATIONS_WHO };
+module.exports = { observationsHtml, wireObservations, dataItem, timeItem, rowsTableHtml, OBSERVATIONS_WHO,
+  OBSERVATIONS_WHO_ADDED, NO_SYSTEM };

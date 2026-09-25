@@ -95,6 +95,11 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
 
   let paused = false;
   let stopped = false;
+  /* Lane FX3 (validation pass 3, F17): the time the recording was paused,
+     left out of its elapsed time (the bar's clock, the end summary). */
+  let pausedTotalMs = 0;
+  let pausedSinceMs = null;
+  const pausedNowMs = () => pausedTotalMs + (paused && pausedSinceMs != null ? Date.now() - pausedSinceMs : 0);
   let currentRun = null; // { app, title, _normTitle, pid, bounds, _startMs, timestamp }
   let pollHandle = null;
   let markerStack = []; // for tray/status only; case IDs are derived in normalization
@@ -446,7 +451,11 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
       writeErrorCount,
       droppedEventCount,
       sessionStartMs,
-      elapsedMs: Date.now() - sessionStartMs,
+      // The time recorded: since the start, less the time paused.
+      elapsedMs: Date.now() - sessionStartMs - pausedNowMs(),
+      pausedMs: pausedNowMs(),
+      // The pause in progress, from its start (0 while recording).
+      currentPauseMs: paused && pausedSinceMs != null ? Date.now() - pausedSinceMs : 0,
       lastInteractionMs,
       recentEvents: recentEvents.slice(),
     };
@@ -469,12 +478,15 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   function pause() {
     if (paused) return;
     paused = true;
-    closeRun(Date.now());
+    pausedSinceMs = Date.now();
+    closeRun(pausedSinceMs);
     fireSystem("paused");
   }
 
   function resume() {
     if (!paused) return;
+    if (pausedSinceMs != null) pausedTotalMs += Date.now() - pausedSinceMs;
+    pausedSinceMs = null;
     paused = false;
     fireSystem("resumed");
   }
