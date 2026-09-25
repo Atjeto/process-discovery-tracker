@@ -69,6 +69,7 @@ const PaneSplitter = require("../pane-splitter.js");
 const SPM = require("../sub-process-maps.js");
 const SPV = require("../sub-process-verbs.js");
 const { processLabel, mapNodeLabel } = require("../process-map-levels.js");
+const RO = require("../read-only.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -265,7 +266,8 @@ function _openGroup(key) {
 function _markOpened(caseId) {
   const s = State.getSession();
   const anno = s && s.annotations;
-  if (!anno || typeof caseId !== "string" || caseId === OUTSIDE) return;
+  // Lane HV: a hand-off opened read only records nothing, not even this.
+  if (!anno || typeof caseId !== "string" || caseId === OUTSIDE || RO.isReadOnly(s)) return;
   const model = _model();
   const p = RunsModel.patternRun(anno, model.runs);
   if (!p.record || !p.record.confirmed_at) return;
@@ -494,6 +496,9 @@ function renderStepsLevel() {
     if (title) title.textContent = "Selected step";
     _fillNameList(selected, interactionsById);
     PdtSteps.renderStepDetail(detail, selected, stepDetailCallbacks(selected, interactionsById));
+    // Lane HV: in a hand-off opened read only the pane's fields are read, not
+    // typed in (its acts are hidden, styles.css .read-only).
+    if (RO.isReadOnly(session)) RO.lockInputs(detail);
     _detailStepId = selected.step_id;
     const el = typing && document.getElementById(typing.id);
     if (el) {
@@ -656,7 +661,9 @@ function renderLevelGuide(host, model, pattern, containers, open, path) {
   const c = containers.find((x) => x.key === open) || null;
   const isRef = !!(c && c === _refVisit(containers, pattern));
   const head = c ? c.run.title + (c.index ? ", again" : "") : _levelName(model, pattern, path);
-  const paras = c ? [GUIDE_LEVEL].concat(isRef && !RunsModel.patternConfirmed(pattern.record, c.run) ? [GUIDE_LEVEL_REF] : [])
+  const ro = RO.isReadOnly(State.getSession());
+  const paras = c ? (ro ? [GUIDE_READ_ONLY[GUIDE_LEVEL]]
+    : [GUIDE_LEVEL].concat(isRef && !RunsModel.patternConfirmed(pattern.record, c.run) ? [GUIDE_LEVEL_REF] : []))
     : ["Pick a transaction on the left to see its steps in this sub-process."];
   if (title) title.textContent = head;
   host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
@@ -861,6 +868,8 @@ function _groupBody(visible, hiddenCount, emptyText, baseline) {
       nameListId: NAME_LIST_ID,
       onBeginRename: (step) => _fillNameList(step),
       baseline: baseline || null,
+      // Lane HV: a hand-off opened read only renames nothing.
+      readOnly: RO.isReadOnly(State.getSession()),
       // C19: a sub-process row opens its level ("▸ N sub-steps").
       subSteps: (step) => (SPM.isSubProcess(step) ? step.sub_steps.filter((x) => x && x.state !== "hidden").length : null),
       onOpenSub: (step) => openSubProcessAction(step.step_id),
@@ -890,17 +899,19 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   // lives in the run's right-click menu, as the probe line of the confirmed
   // reference run does.
   const status = !isPattern ? null : !run.visible.length ? "empty" : reads ? "confirmed" : "draft";
-  const canUsePattern = !isPattern && run.members.length > 0;
+  // Lane HV: a hand-off opened read only offers none of the run's acts.
+  const ro = RO.isReadOnly(State.getSession());
+  const canUsePattern = !ro && !isPattern && run.members.length > 0;
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
     _badges(isPattern, status) +
     '<span class="run-meta">' + escapeHtml(meta) + "</span>", canUsePattern ? OTHER_RUN_TITLE : "");
   _wireHead(g, run.caseId);
-  if (isOpen && isPattern && RunsModel.canReopen(run, rec, isPattern)) {
+  if (!ro && isOpen && isPattern && RunsModel.canReopen(run, rec, isPattern)) {
     _addUndoConfirm(g, UNDO_CONFIRM_TITLE, () => reopenRunAction(run.caseId));
   }
-  if (canUsePattern || (isPattern && patternConfirmed)) {
+  if (canUsePattern || (!ro && isPattern && patternConfirmed)) {
     g.querySelector(".run-row").addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -915,7 +926,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
     run.hiddenCount ? "Every step of this transaction is hidden." : recorded ? "No steps in this transaction."
       : "No steps yet: + Add step adds one after the selected step.", status || run.status);
   const acts = body.querySelector(".run-actions");
-  const canConfirm = isPattern && !reads && run.visible.length > 0;
+  const canConfirm = !ro && isPattern && !reads && run.visible.length > 0;
   const buttons = [];
   if (canConfirm) {
     buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
@@ -1006,6 +1017,16 @@ const GUIDE_FIRST_STEP = "Add the first step with + Add step.";
 const GUIDE_OUTSIDE =
   "These steps fall outside every marked transaction. To bring them into a transaction, right-click the " +
   "Timeline where it starts, choose Start a transaction here, and click Apply marker changes.";
+/* Lane HV: the guides of a hand-off opened read only, which say what shows
+   and never what to change. */
+const GUIDE_READ_ONLY = {
+  [GUIDE_PATTERN]: "This is the reference transaction. It was not confirmed when this version was handed off.",
+  [GUIDE_CARRY]: "",
+  [GUIDE_OTHER]: "This transaction is compared with the reference transaction: its differences are listed on the left.",
+  [GUIDE_FIRST_STEP]: "This transaction has no steps.",
+  [GUIDE_OUTSIDE]: "These steps fall outside every marked transaction.",
+  [GUIDE_LEVEL]: "The steps of this sub-process in this transaction.",
+};
 
 function renderRunGuide(host, model, pattern, ref) {
   if (!host) return;
@@ -1033,6 +1054,8 @@ function renderRunGuide(host, model, pattern, ref) {
     paras = [model.runs.length ? "Pick a transaction on the left to see its steps." : "Pick a step on the left."];
   }
   if (title) title.textContent = head || "Steps";
+  // Lane HV: a hand-off opened read only is looked at, not worked on.
+  if (RO.isReadOnly(State.getSession())) paras = paras.map((p) => (p in GUIDE_READ_ONLY ? GUIDE_READ_ONLY[p] : p)).filter(Boolean);
   host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
     "<p" + (i ? ' class="meta"' : "") + ">" + escapeHtml(p) + "</p>").join("") + "</div>";
 }
@@ -1545,7 +1568,7 @@ async function splitStep(stepId) {
    interaction-count midpoint. A new step belongs to the run that contains
    it; on the pattern run the split and the add are counted fixes. */
 async function addStepAtTimestamp(tsISO) {
-  if (!State.getSession()) return;
+  if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
   const t = new Date(tsISO).getTime();
   if (!isFinite(t)) { toast("Couldn't read the playhead position", "error"); return; }
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -1861,7 +1884,7 @@ function _removalSplit(ids) {
    selected step, or at the end; its `order` places it among the run's steps
    without a time. The Timeline's + Step places one at the video playhead. */
 async function addManualStep() {
-  if (!State.getSession()) return;
+  if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
   const name = await promptModal({ title: "Add step", message: "Name this step", placeholder: "For example: Search customer in CRM", okLabel: "Add step" });
   if (!name || !name.trim() || !State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
@@ -2538,6 +2561,9 @@ function showRunContextMenu(caseId, x, y) {
     run: () => usePatternAction(caseId) }], x, y);
 }
 
+/* Lane HV: the step menu's items a hand-off opened read only keeps. */
+const READ_ONLY_ITEMS = new Set(["Open sub-process", "Show on timeline", "Watch"]);
+
 /* A5: right-click context menu for a step, from its list row. Mirrors the
    inline-styled menu pattern used by the Flow timeline (flow-view.js
    showMarkerInsertMenu) for visual consistency. The step is revealed first
@@ -2557,7 +2583,11 @@ function showStepContextMenu(stepId, x, y) {
     "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
     "box-shadow:var(--shadow);font:13px var(--font-ui);min-width:210px;cursor:default;user-select:none;";
 
+  // Lane HV: in a hand-off opened read only, only the items that look at
+  // the step are offered.
+  const ro = RO.isReadOnly(session);
   function addItem(label, handler) {
+    if (ro && !READ_ONLY_ITEMS.has(label)) return;
     const item = document.createElement("div");
     item.textContent = label;
     item.style.cssText = "padding:6px 14px;cursor:pointer;";
@@ -2567,6 +2597,7 @@ function showStepContextMenu(stepId, x, y) {
     menu.appendChild(item);
   }
   function addSep() {
+    if (ro) return;
     const sep = document.createElement("div");
     sep.style.cssText = "height:1px;margin:4px 0;background:var(--rule);";
     menu.appendChild(sep);

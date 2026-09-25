@@ -19,6 +19,7 @@
 8. [The automatic analysis](#8-the-automatic-analysis)
 9. [Edits, undo and saving](#9-edits-undo-and-saving)
 10. [Exports](#10-exports)
+11. [A hand-off opened read only](#11-a-hand-off-opened-read-only-contract-c20)
 
 ## 1. Process model
 
@@ -90,8 +91,9 @@ one menu closes the others.
 
 - **New** (`#btn-new-menu`): *New project from a video...* and *New empty
   project...* (contract C16).
-- **Open** (`#btn-recent-menu`): *Open project...* (a recorder's folder or a
-  project made with New), then the recent projects.
+- **Open** (`#btn-recent-menu`): *Open project...* (a recorder's folder or
+  a project made with New), *Open a hand-off (.zip)...* (a hand-off, opened
+  read only: section 11), then the recent projects.
 - **The status line** (`#session-pills`): "Updating steps and map..." with
   Cancel while the pipeline runs; else, when marker changes wait, the one
   call to action *Apply N marker changes*; else nothing.
@@ -99,8 +101,10 @@ one menu closes the others.
   and the folder in its tooltip), *Saving...* while a write lasts, *Not
   saved* in the error colour (what was not saved and why in its tooltip)
   until a later save succeeds (section 9).
-- **Export**: *PDD (.docx)*, *Process map (image)*, *Process map (BPMN)*,
-  *Whole project (.zip)* (section 10).
+- **Export**: *PDD (.docx)*, *Technical details (.xlsx)*, *Process map
+  (image)*, *Process map (BPMN)*, *Hand off...*, *Whole project (.zip)*
+  (section 10); in a hand-off opened read only, *PDD of this version*,
+  *Technical details of this version* and the two map exports (section 11).
 
 **The four levels** are `.view-mode-btn[data-level]` buttons; each shows one
 container. The Overview is the default on load.
@@ -310,7 +314,9 @@ their module as `<name>.test.js`.
 | `state.js` | The central store, the topic bus, the undo and redo stacks (section 6). |
 | `session.js` | Annotation saves with undo, `persistAnnotations`, undo and redo in place, `ensureAnnoShape` (section 9); `setBeforeWrite`, awaited before every write (the Overview's rows refresh stops there). |
 | `dom.js` | `$`, `$$`, escaping, `formatDuration`, the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
-| `modals.js` | `promptModal`, `confirmModal`: themed dialogs. |
+| `modals.js` | `promptModal` (`required`: OK waits for some text), `confirmModal`: themed dialogs. |
+| `handoff.js` | Pure (contract C20): the versions of `annotations.handoffs` (`entries`, `latest`, `nextVersion`, `newEntry`), the one line a version says (`handedOffLine`, the PDD's words; `readOnlyLine`), the project's name as the app shows it and made safe for Windows, and the hand-off's file names. |
+| `read-only.js` | A hand-off opened read only (C20): `isReadOnly(session)`, the check every verb reachable without a control makes, and `lockInputs` (the step pane's and the document's fields read only). |
 | `theme.js` | The light and dark theme, its persistence, the per-app band colours and the map's colour snapshot. |
 | `recent.js` | The recent projects (`pdt.recentSessions`): the list on the empty state; the Open menu reads it too. |
 | `layout-controls.js` | The Timeline's resize handles and video modes (expanded, full screen); wires itself when required. |
@@ -330,13 +336,16 @@ their module as `<name>.test.js`.
 | `new-project.js` | A session without a recording (C16): `manifest.json` (`session_id`, `source`, `started_at`, `label`), an empty `events.jsonl`, `annotations.json`, and for a video project the video copied into `video/` at offset 0. |
 | `video-path.js` | Pure: where an attached video is kept (copied into `video/`, stored relative to the folder) and how a stored path is found again on another machine. |
 | `project-zip.js` | Export, Whole project (.zip): where the zip goes (next to the folder, `<name>.zip`, else `<name> (2).zip` and on), one more try when a save replaced a file while the zip was made, the sentence for a failure, the size. |
+| `handoff-zip.js` | Export, Hand off... (contract C20): `<project> v<N>.zip` next to the folder (never over another zip), the folder zipped by `zip-folder.js`, then the PDD and the Technical details of the version appended at the zip's root (`appendFiles`), built as `.building` and renamed when complete. |
+| `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD and the Technical details of the version it lists last; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD and Technical details beside it) and `handoffFile` (the PDD or the workbook it came with). |
 | `zip-folder.js` | The zip writer (PKZIP 2.0 without ZIP64, UTF-8 names, written as `.partial` and renamed at the end): a copy of `capture/zip-folder.js`, kept identical by `project-zip.test.js`, since a packaged viewer cannot reach `capture/`. |
 
 **Views** (`views/`)
 
 | File | Owns |
 |---|---|
-| `overview-view.js` | The Overview: the Checklist (`pathState`), the project line, the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), the note shown while the analysis is missing, and the rows' refresh as it opens (`refreshRowsIfOlder`, `stopRowsRefresh`; lane CC). |
+| `overview-view.js` | The Overview: the Checklist (`pathState`), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), the note shown while the analysis is missing, and the rows' refresh as it opens (`refreshRowsIfOlder`, `stopRowsRefresh`; lane CC). |
+| `handoff-ui.js` | Export, Hand off... (contract C20): the dialog, the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
 | `analysis-view.js` | The Overview's Observations: Data and Applications and time, the PDD's rows of sections 5 and 6 from `analysis.json` (`dataItem`, `timeItem`, `rowsTableHtml`). |
 | `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running; `cancelAnalysisQuietly` for the Overview's rows refresh), New project from a video and New empty project, the Transaction select, range selection and its card (Insert transaction from selection; Leave out of the analysis, and Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
 | `flow-view-timeline.js` | The timeline: the lane stack, the stretches left out of the analysis drawn hatched over the Systems lane (`leftOutBands`), the minimap, the lanes menu, zoom and scroll persistence, the summary line. |
@@ -433,8 +442,9 @@ which the renderer shows.
 | Group | Channel | Does |
 |---|---|---|
 | Session | `viewer:openSessionFolder` | The folder picker. |
-| | `viewer:loadSession` | Loads a folder (below). |
-| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`; `--names` when the store exists); streams its log. |
+| | `viewer:openHandoffDialog` | The file picker for a hand-off zip (C20): the chosen `.zip` path, or null. |
+| | `viewer:loadSession` | Loads a folder (below), or a hand-off zip: extracted under `<userData>/handoffs` (`handoff-open.js`) and its project loaded read only, the answer adding `openedZip` and `handoffReused`. |
+| Analysis | `viewer:runNormalizeExtended` | Runs `normalize.py` (`mine`, `pddOut`, `pddMapImage`, `pddTobeImage`, `pddMapImages`, and C20's `techOut` and `handoff`; `--names` when the store exists); streams its log. |
 | | `viewer:cancelNormalize` | Stops the run in progress. |
 | Annotations | `viewer:saveAnnotations` | The backup copies, then the atomic write; moves removed analyst files out and back (screenshots, attachments, the video's copy, the edited maps' files). |
 | | `viewer:restoreAnnotationsBackup` | The unreadable banner's Restore the newest backup: keeps the unreadable file as `annotations.unreadable-<time>.json`, copies the newest readable backup into place (the one confirmed, else refused). |
@@ -442,6 +452,8 @@ which the renderer shows.
 | Export and shell | `viewer:exportFile` | A save dialog, then a copy of the given file. |
 | | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
 | | `viewer:exportProjectZip` | Zips an open project next to its folder (`project-zip.js`); refused while that project's analysis runs, one zip of a project at a time. Answers the zip's path, size and entry count. |
+| | `viewer:exportHandoffZip` | Contract C20: the hand-off's zip next to the folder, with the PDD and the Technical details passed at its root (`handoff-zip.js`); the same refusals as the Whole project zip, and a project opened read only. |
+| | `viewer:openHandoffFile` | Contract C20: in a hand-off opened read only, opens the PDD (`kind` "pdd") or the Technical details ("tech") it came with. |
 | | `viewer:revealFile` | Shows a file in its folder (Explorer, the file selected). |
 | | `viewer:openExternal` | Opens a screenshot, after the path checks (section 1). |
 | Video | `viewer:attachExternalVideo` | The video file picker. |
@@ -469,8 +481,13 @@ channel, phase: "end", ok, error, code }`, `channel` one of `annotations`,
 ```
 { sessionFolder, manifest, events, stats, analysis, annotations,
   annotationsError, obsSync, recordingPath, recordingAvailable,
-  externalVideoOffsetMs, integrity, transcript, transcriptError }
+  externalVideoOffsetMs, integrity, transcript, transcriptError, readOnly }
 ```
+
+`readOnly` (contract C20) is true for a folder under `<userData>/handoffs`,
+where a hand-off opens: every handler that writes a project folder, or runs
+the analysis, refuses such a folder first (`_refuseReadOnly`), before any
+dialog and before the save state hears of a write.
 
 `events` are sorted by time (malformed lines skipped). The video is the
 analyst's attached one when its stored path resolves on this machine, else
@@ -666,6 +683,8 @@ editor's delayed write from `bpmn-viewer.js`). The rules:
   the project opens.
 - Opening another project starts over; a report for another folder changes
   nothing.
+- A hand-off opened read only reads *Read only*, its version in the
+  tooltip, and no report changes that (contract C20).
 
 ## 10. Exports
 
@@ -699,6 +718,30 @@ level they are on.
 - **Process map (BPMN).** The chosen As-Is copy, else
   `process_map_step.bpmn` (analyzed first when it is missing or older than
   the steps): one file with every map.
+- **Technical details (.xlsx)** (`exportTechDetails`, contract C20). The
+  pipeline writes the workbook (`--tech-out`) to a temp path in one run, as
+  the PDD does, and it is offered as `technical-details.xlsx`. The PDD and
+  the workbook share `writeDocuments`: the maps drawn first for the PDD,
+  one run, each file offered only when this run wrote it.
+- **Hand off...** (`views/handoff-ui.js`, contract C20). One dialog, "What
+  changed in this version?" (filled with "First hand-off" for version 1; OK
+  waits for a note). The entry `{ version, handed_off_at, by (the Windows
+  user), note }` goes into `annotations.handoffs` as one undoable edit
+  ("Hand off version N (the zip file stays)"), the step map kept current
+  (`keepingStepMapCurrent`); then `writeDocuments` makes the PDD and the
+  Technical details for the version (`--handoff N`: the analysis first when
+  the step map is older than the steps, as for the PDD), and the main
+  process writes `<project> v<N>.zip` next to the folder
+  (`viewer:exportHandoffZip`): the folder, and at the zip's root
+  `<project> v<N> PDD.docx` and `<project> v<N> Technical details.xlsx`.
+  `<project>` is the name the Overview shows (`session-summary.js
+  displayName`), made safe for a file name. A zip is never written over
+  another (" (2)" and on). Explorer opens at the zip, and the toast says
+  that Ctrl+Z takes the version back while the zip stays. A hand-off that
+  does not finish takes its entry back at once (`session.js
+  takeBackLastEdit`, or an edit of its own when another edit came after
+  it), so no version is recorded without its zip. Export pulses while it
+  is made, and its item reads "Handing off...".
 - **Whole project (.zip)** (`exportProjectZip`). The main process zips the
   project folder next to it (`viewer:exportProjectZip`, `project-zip.js`):
   `<name>.zip`, or `<name> (2).zip` when that name is taken, so an earlier
@@ -707,3 +750,58 @@ level they are on.
   and its item reads "Making the zip..."; the toast gives the zip's size. A
   project whose analysis is running is refused (the pipeline replaces files
   through temporary ones), and so is a second zip of the same project.
+
+## 11. A hand-off opened read only (contract C20)
+
+The owner: a developer builds from a hand-off and adds nothing to it; the
+analyst's project is where changes are made. *Open a hand-off (.zip)...*
+(`#btn-open-handoff` in the Open menu, `#btn-open-handoff-hero` on the page
+shown while no project is open) asks for the zip with a file dialog
+(`viewer:openHandoffDialog`; Windows' folder dialog, the one *Open
+project...* shows, lists folders only): `viewer:loadSession` extracts it
+under `<userData>/handoffs/<project> v<N>/` (`handoff-open.js`), or finds
+where the same zip was extracted before, and loads its project folder with
+`readOnly: true`. A newer version
+is a zip, and a folder, of its own: it just opens, and nothing compares it
+with another. A zip that is no hand-off (the SME's recording) is refused
+with a sentence saying to unzip it first. A hand-off unzipped by hand
+(Extract All, then Open project on its folder) opens read only too: its PDD
+and Technical details of the version the project lists last lie beside the
+project folder (`handoff-open.js isReadOnlyProject`, the rule main refuses
+writes by).
+
+Everything can be looked at and played: every level, the step panel, the
+video, the transcript, the maps (the Map shows the map the hand-off came
+with), and the PDD and the Technical details it came with (Export, *PDD of
+this version*, *Technical details of this version*, opened in their
+programs). Nothing can change:
+
+- **No editing control.** The page carries `.app.read-only`
+  (`flow-view.js loadSessionIntoView`), and the rules in `styles.css`, beside
+  the unreadable-annotations page's (lane FX2), hide every control that
+  changes the project on every level: the Checklist, the project line's
+  Attach, Replace and Remove, the Steps toolbar, the ticks, Confirm
+  transaction and Undo confirm, the step pane's acts, the Timeline's + Step,
+  Sync, the transcript lane's acts and the markers' Move and Delete, the
+  Map's Edit as the As-Is map, Edited maps and Copy again, Help's
+  Re-analyze, and the Export items that write. The step pane's fields and
+  the document's are read only (`read-only.js lockInputs`: a dashed edge, no
+  fill); the document's line names the empty fields ("Not written: ...")
+  and says the analyst wrote them.
+- **No verb without a control.** The shortcuts that edit (Ctrl+Z, Ctrl+Y,
+  Ctrl+Enter, Alt+Up and Alt+Down, Enter, N, S and M in Steps, S on the
+  Timeline) do nothing (`renderer.js _editsInReadOnly`); a double-click
+  renames nothing; the right-click menus keep only the ways to look (a
+  step: Open sub-process, Show on timeline, Watch; the Timeline: Jump to
+  step here; a stretch left out: Go to its start); opening a transaction
+  records nothing (`opened_runs`); a paste adds no screenshot.
+- **No save, no analysis.** `session.js writeAnnotations` refuses a
+  read-only project before the main process (so no Undo entry is ever
+  recorded), the analysis never starts (on open, on the Map, as the
+  Overview opens, from a verb: `analyzeSession`, `runPipeline`), and the
+  main process refuses every write into a folder under `<userData>/handoffs`
+  (section 5), so a control that slips through changes nothing.
+- **The project line** (`#ov-handoff`, the Overview's first line) reads
+  "Version 2, handed off 2026-09-25 by rasha · Read only", what changed in
+  its tooltip; the top bar's save state reads *Read only*, and the Recent
+  list names the entry "<name> · version 2, read only".

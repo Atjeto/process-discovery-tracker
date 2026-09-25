@@ -70,10 +70,13 @@ function resolveDefaultTaxonomy() {
    the unit tests pin it. `namesPath` is the remembered-names store (contract
    C4): passed as --names so drafts whose key it lists arrive named.
    `pddMapImages` is the manifest of the sub-processes' map pictures
-   (contract C19). */
+   (contract C19). `techOut` is the Technical details workbook and `handoff`
+   the hand-off version the PDD and the workbook are made for (contract C20,
+   lane HV). */
 function buildNormalizeArgs(script, opts) {
   const {
     sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, pddMapImages, namesPath,
+    techOut, handoff,
   } = opts || {};
   const args = [script, sessionFolder];
   if (taxonomyPath) args.push("--taxonomy", taxonomyPath);
@@ -82,6 +85,8 @@ function buildNormalizeArgs(script, opts) {
   if (pddMapImage) args.push("--pdd-map-image", pddMapImage);
   if (pddTobeImage) args.push("--pdd-tobe-image", pddTobeImage);
   if (pddMapImages) args.push("--pdd-map-images", pddMapImages);
+  if (techOut) args.push("--tech-out", techOut);
+  if (Number.isInteger(handoff) && handoff >= 1) args.push("--handoff", String(handoff));
   if (namesPath) args.push("--names", namesPath);
   return args;
 }

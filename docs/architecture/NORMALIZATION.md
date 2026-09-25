@@ -25,6 +25,7 @@ has Re-analyze for a stuck state.
 python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
     [--pdd-out <path.docx>] [--pdd-map-image <path.png>] [--pdd-map-images <maps.json>]
     [--pdd-tobe-image <path.png>] [--names <remembered-names.json>]
+    [--tech-out <path.xlsx>] [--handoff <N>]
 ```
 
 | Flag | Effect |
@@ -36,6 +37,8 @@ python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
 | `--pdd-map-images` | Contract C19: a manifest of the maps' pictures, `{"maps": [{"path": [<node>, ...], "png": "<file>"}]}` (a relative file is read from the manifest's folder). Path `[]` is the main map's picture and wins over `--pdd-map-image`; any other path is a sub-process's map, printed in its chapter. An entry whose file is missing is left out, and that map prints as a table; an unreadable manifest gives a warning and no pictures. The viewer renders one picture per numbered map. |
 | `--pdd-tobe-image` | A picture of the To-Be map, printed as section 7.1. The viewer passes the copy chosen as To-Be. |
 | `--names` | The remembered-names store (contract C4). A draft whose `draft_key` the session's own analyst steps do not name takes the store's name. A missing or unreadable file prints one warning and drafting goes on without it. The viewer passes it on every run when the store exists. |
+| `--tech-out` | Contract C20: write the Technical details workbook (`.xlsx`) to this path (`tech_details.py`, below): the reference transaction's recorded controls, the data fields per transaction, the re-keyed values and the applications. A requested export like the PDD: a failure exits 3 and changes nothing. The viewer passes it for Export, Technical details (.xlsx) and for a hand-off. |
+| `--handoff` | Contract C20: the hand-off version (an entry of `annotations.handoffs`) the PDD and the Technical details are made for: they read "Version N, handed off <date> by <name>". Without it (or for a version the project does not hold) they are a working copy: "Working copy after version N", or "Working copy, not handed off yet". A value below 1 is a usage error. The viewer passes it only for Export, Hand off... |
 
 Exit codes (contract C13): **0** success; **1** a usage error or a folder
 that is not a project folder (an unexpected crash also exits 1, with a
@@ -195,10 +198,13 @@ helpers in `pipeline_stages.py`, in this order:
    `shared/steps-signature-golden.json`). `format` is
    `pipeline_stages.ANALYSIS_FORMAT`, 4: the viewer analyzes a project again
    as it opens when its `analysis.json` carries a lower one.
-8. **Step map and PDD** (`_run_mining_exports`). With `--mine`,
-   `bpmn_observed.py` writes `process_map_step.bpmn` from the visible steps
-   that belong to a run (below). With `--pdd-out`, `pdd_export.write_pdd`
-   renders the PDD; a failure raises, and the run commits nothing (exit 3).
+8. **Step map, PDD and Technical details** (`_run_mining_exports`). With
+   `--mine`, `bpmn_observed.py` writes `process_map_step.bpmn` from the
+   visible steps that belong to a run (below). With `--pdd-out`,
+   `pdd_export.write_pdd` renders the PDD, and with `--tech-out`,
+   `tech_details.write_tech_details` writes the workbook, both for the
+   `--handoff` version when one is given; a failure of either raises, and
+   the run commits nothing (exit 3).
 9. **Commit** (`normalize.normalize`). The staged outputs move into place
    together, the run's last act.
 
@@ -351,7 +357,12 @@ gaps. The sections, in the reader's order:
    the Windows login), the transactions recorded, whether a video is
    attached, the request when one was set (AD-30: its name and its code,
    "Invoice intake review (REQ-2026-042)", the capture app's defaults never
-   printed), the date generated, "Draft".
+   printed), the date generated, and its version (contract C20,
+   `handoff_versions.py`): "Version N, handed off <date> by <name>" when it
+   is made for a hand-off (`--handoff`), else "Working copy after version N",
+   or "Working copy, not handed off yet"; then, once the project was handed
+   off, a Version history table (version, date, by, what changed) from
+   `annotations.handoffs`.
 2. **Purpose and scope.** 2.1 Purpose, 2.2 Scope, 2.3 Trigger, 2.4 Result,
    2.5 Key contacts.
 3. **As-Is process.** 3.1 the As-Is map: the picture passed with
@@ -428,6 +439,47 @@ prints no time, never a zero.
 screenshots, then the ones the analyst added to it), never one taken off the
 step (`step.hidden_screenshots`). A path outside the session folder is never
 embedded.
+
+## The Technical details (`tech_details.py`, contract C20)
+
+A workbook for the developers who build from the PDD (their Solution Design
+Document is written outside the app), written with `--tech-out` and put in
+every hand-off zip. It reads what the PDD reads, through `pdd_export`'s
+session, so its step numbers, its fields and its re-keying are the PDD's.
+Its sheets:
+
+- **About**: the project, the version line (the PDD's), the reference
+  transaction, one line on each sheet and on the recorder's words (identity
+  source, confidence, coverage).
+- **Steps and controls**: one row per recorded interaction of the reference
+  transaction (the steps 3.2 prints, hidden ones and the interactions of a
+  hidden sub-step left out), in step order: the PDD's step number and name
+  ("Step 3", and "Step 3.2" for a sub-step its chapter prints), the action
+  (Click, Type, Select, Toggle, Focus) and its value (a password field reads
+  "(not recorded: secret field)"), the control type, automation id, name and
+  class name, the identity source and confidence, the window title, the
+  program (`process_name`) and the system (the step's own system first, else
+  `shared/system-names.json`).
+- **Data fields**: one row per field typed or chosen in a step, the rows
+  of the PDD's data table (a field in a step, aligned across the
+  transactions by the step's draft key), with the field's automation id,
+  control type, system and screen and step, then one column per transaction
+  holding what was entered there (and one for the steps outside the
+  transactions when they entered a field).
+- **Re-keyed values**: the PDD's re-keyed pairs (`pdd_export.rekey_pairs`,
+  the rule 5 prints), as the source system and field, the target system and
+  field, the values so typed again, and in how many transactions.
+- **Applications**: one row per program and system the recorded
+  interactions ran in: the recorder's `coverage_hint` (rich, basic,
+  minimal), whether an interaction came through a remote or terminal
+  surface (`capture_detail`'s rule), and the number of the process's steps
+  there.
+
+`xlsx_writer.py` writes it with the standard library (the bundled Python has
+no spreadsheet library, and none is added): the package parts Excel needs,
+inline strings and numbers, a bold header row on a light grey fill (a
+two-format `styles.xml`), the header frozen and fixed column widths, through
+a temporary file renamed into place.
 
 The PDD prints no analysis finding and reads no analysis stage, so a failed
 stage changes nothing in it. The notes the analyst pins to steps and moments
@@ -517,6 +569,9 @@ SCHEMA.md.
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
 | `pdd_export.py` | The PDD (above), and `pdd_rows` (the rows of its sections 5 and 6 the analysis writes into `analysis.json`). |
+| `handoff_versions.py` | Contract C20, pure: the one line on a document's version (`version_line`: made for a hand-off, or a working copy) and the version history rows, from `annotations.handoffs`. The PDD and the Technical details read it. |
+| `tech_details.py` | Contract C20: the Technical details workbook (above), its sheets as plain rows. |
+| `xlsx_writer.py` | A minimal `.xlsx` writer on `zipfile` (above). |
 | `steps_signature.py` | `steps_signature`: the signature of the steps the rows were measured from, written into `analysis.json`; the viewer's `rows-freshness.js` takes the same one (lane CC). |
 | `transcript_import.py` | The transcript parser and its CLI (above). |
 | `golden_check.py` | The session golden (above). |
@@ -561,7 +616,8 @@ Rationale: [ADR-0011](../adr/0011-platform-recognition-layer.md).
 
 Written into the session folder: `stats.json`, `analysis.json`, the updated
 `annotations.json`, `process_map_step.bpmn` (with `--mine`) and
-`normalize.log`. The PDD goes to the `--pdd-out` path. `transcript_import.py`
+`normalize.log`. The PDD goes to the `--pdd-out` path, the Technical details
+to the `--tech-out` path. `transcript_import.py`
 writes `transcript.json` and the `transcript/` copy. Re-running is
 non-destructive; `stats.json.meta.normalization_run_at` tells a consumer when
 the outputs were made. Field-level detail:

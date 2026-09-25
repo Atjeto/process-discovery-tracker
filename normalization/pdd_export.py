@@ -8,7 +8,11 @@ in the reader's order:
   1. Document control: the process, the project folder (a developer's way
      into the recording), who recorded it, the transactions, whether a video
      is attached, and the request when the capture app set one (AD-30): its
-     name and its code, "Invoice intake review (REQ-2026-042)".
+     name and its code, "Invoice intake review (REQ-2026-042)". Its version
+     (contract C20): "Version 2, handed off 2026-09-25 by rasha" when it is
+     made for a hand-off, else "Working copy after version 2" (or "Working
+     copy, not handed off yet"), then the version history table when the
+     project was handed off (handoff_versions).
   2. Purpose and scope: the analyst's document fields (annotations.document,
      contract C6): purpose, scope, trigger, result and key contacts.
   3. As-Is process: the systems the process runs through, the As-Is map on
@@ -95,6 +99,7 @@ except ImportError:
     Pt = Inches = RGBColor = None
 
 from _dt import parse_ts_or_none as _parse_ts
+from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from session_io import has_recording, session_source
 from step_context import (StepContext, clock, fmt_ms as _fmt_duration, has_video,
                           step_duration_ms, step_start, step_system, untimed_key, video_start)
@@ -147,6 +152,7 @@ def write_pdd(
     events: list[dict] | None = None,
     map_images: str | Path | None = None,
     map_file: bool | None = None,
+    handoff: int | None = None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
     steps' systems, screens and entered fields are read from; without it the
@@ -160,13 +166,16 @@ def write_pdd(
     sub-process's chapter prints its own (_read_map_images). `map_file`
     says whether the project holds process_map_step.bpmn (the run that
     writes the PDD may have written it too, not yet in place); None looks in
-    the folder."""
+    the folder. `handoff` (contract C20, `--handoff`) is the version of
+    annotations.handoffs the document is made for; without it the document
+    is a working copy (handoff_versions.version_line)."""
     if Document is None:
         raise RuntimeError(
             "python-docx is not installed. Add `python-docx>=1.1.0` to "
             "normalization/requirements.txt and reinstall."
         )
     s = _Session(session_folder, annotations, stats, manifest, events, map_images)
+    s.handoff = handoff
     if map_file is not None:
         s.map_file = bool(map_file)
     doc = Document()
@@ -368,6 +377,8 @@ class _Session:
         self.stats = stats if isinstance(stats, dict) else {}
         self.manifest = manifest if isinstance(manifest, dict) else {}
         self.portrait = None
+        # C20: the hand-off version the document is made for (None: a working copy).
+        self.handoff = None
         meta = self.stats.get("meta") or {}
         self.app_names = meta.get("app_names") or {}
         config = self.manifest.get("config")
@@ -961,9 +972,20 @@ def _write_document_control(doc, s):
     request = s.request()
     if request:
         rows.append(("Request", request))
+    # C20: every PDD says which version it is: the hand-off it is made for,
+    # else a working copy (after the latest hand-off, or before the first).
     rows += [("Document generated", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
-             ("Version", "Draft")]
+             ("Version", version_line(s.annotations, s.handoff))]
     _kv_table(doc, rows)
+    history = history_rows(s.annotations)
+    if history:
+        label = doc.add_paragraph()
+        label.add_run("Version history").bold = True
+        if Pt is not None:
+            # Clear of the table above, close to its own.
+            label.paragraph_format.space_before = Pt(12)
+            label.paragraph_format.space_after = Pt(4)
+        _table(doc, HISTORY_HEADER, history, widths=(0.8, 1.1, 1.3, 2.8))
 
 
 # The analyst's fields of section 2 (C6), each with the gap it leaves empty.
@@ -1678,13 +1700,16 @@ def _rekey_value(data, value) -> str:
     return value if len(value) >= (REKEY_MIN_LEN_VOCAB if vouched else REKEY_MIN_LEN) else ""
 
 
-def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
+def rekey_pairs(s) -> list[tuple[tuple[str, str], tuple[str, str], int, list[str]]]:
     """Re-keyed data: ((field, system) first typed, (field, system) typed
-    again, runs) for every value typed into a field in one system and typed
-    again into a field of another system in the same run, counted over the
-    runs, most frequent first."""
+    again, runs, values) for every value typed into a field in one system
+    and typed again into a field of another system in the same run, counted
+    over the runs, most frequent first. `values` are the values so typed
+    again, each once, in the order met (the Technical details' example
+    values, contract C20; the PDD prints the pairs, _rekeyed)."""
     counts: Counter = Counter()
     order: dict = {}
+    values: dict = {}
     for units in s.units:
         entries = []
         for unit in units:
@@ -1699,12 +1724,19 @@ def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
             if v not in first:
                 first[v] = (field, system)
             elif system and system != first[v][1]:
-                pairs.add((first[v], (field, system)))
+                pair = (first[v], (field, system))
+                pairs.add(pair)
+                values.setdefault(pair, {}).setdefault(v, None)
         for pair in pairs:
             counts[pair] += 1
             order.setdefault(pair, len(order))
-    return [(a, b, n) for (a, b), n in sorted(counts.items(),
-                                                key=lambda kv: (-kv[1], order[kv[0]]))]
+    return [(a, b, n, list(values.get((a, b), {})))
+            for (a, b), n in sorted(counts.items(), key=lambda kv: (-kv[1], order[kv[0]]))]
+
+
+def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
+    """The re-keyed pairs the PDD prints (rekey_pairs without the values)."""
+    return [(a, b, n) for a, b, n, _values in rekey_pairs(s)]
 
 
 def _rekey_sentence(src, dst, n, runs) -> str:

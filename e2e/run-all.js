@@ -33,7 +33,7 @@ function stopTree(child) {
   else child.kill("SIGKILL");
 }
 
-const SMOKES = ["session-smoke.js", "overview-smoke.js", "runs-smoke.js", "map-slim-smoke.js", "transcript-smoke.js", "panel-smoke.js", "companion-smoke.js", "subprocess-smoke.js"];
+const SMOKES = ["session-smoke.js", "overview-smoke.js", "runs-smoke.js", "map-slim-smoke.js", "transcript-smoke.js", "panel-smoke.js", "companion-smoke.js", "subprocess-smoke.js", "handoff-smoke.js"];
 
 function runOne(file) {
   return new Promise((resolve) => {

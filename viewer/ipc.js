@@ -23,6 +23,11 @@ function openSessionFolder() {
   return ipcRenderer.invoke("viewer:openSessionFolder");
 }
 
+/** Lane HV. @returns {Promise<any>} the chosen hand-off zip's path, or null */
+function openHandoffDialog() {
+  return ipcRenderer.invoke("viewer:openHandoffDialog");
+}
+
 /* ---- Normalization ---- */
 
 /** @param {object} opts @returns {Promise<any>} */
@@ -105,6 +110,21 @@ function openExternal(filePath) {
  *  @returns {Promise<{ok: boolean, path?: string, bytes?: number, size?: string, entries?: number, error?: string}>} */
 function exportProjectZip(payload) {
   return ipcRenderer.invoke("viewer:exportProjectZip", payload);
+}
+
+/** Lane HV (contract C20): the hand-off's zip next to the project folder.
+ *  @param {{sessionFolder: string, base: string, version: number, pdd: string, tech: string}} payload
+ *  @returns {Promise<{ok: boolean, path?: string, size?: string, error?: string}>} */
+function exportHandoffZip(payload) {
+  return ipcRenderer.invoke("viewer:exportHandoffZip", payload);
+}
+
+/** Lane HV: open the PDD ("pdd") or the Technical details ("tech") a
+ *  hand-off opened read only came with.
+ *  @param {{sessionFolder: string, kind: string}} payload
+ *  @returns {Promise<{ok: boolean, path?: string, error?: string}>} */
+function openHandoffFile(payload) {
+  return ipcRenderer.invoke("viewer:openHandoffFile", payload);
 }
 
 /* ---- External video ---- */
@@ -208,11 +228,11 @@ function onProjectWrite(fn) {
 }
 
 module.exports = {
-  loadSession, openSessionFolder,
+  loadSession, openSessionFolder, openHandoffDialog,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
   rememberStepName, readRememberedNames, forgetStepName, restoreStepName,
-  exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip,
+  exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip, exportHandoffZip, openHandoffFile,
   attachExternalVideo, copyVideoIn,
   importTranscript, removeTranscript, restoreTranscript, saveTranscriptSync,
   chooseNewProject, createProject, addScreenshot, addAttachment, openAttachment,

@@ -19,7 +19,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
 - **Cycle state** (lanes, the autonomous decisions AD-1 to AD-33, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
-  Data contracts C1 to C19:
+  Data contracts C1 to C20:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
 - **Baseline** (health, CI history, code review RP-01 to RP-36):
   [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
@@ -82,8 +82,11 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
    away; optionally *Edit as the As-Is map* (and a To-Be copy), kept once
    something in it is changed.
 7. **Export the PDD**: its map is the edited As-Is copy when one exists, else
-   the map from the runs. Export also saves the map (image, BPMN) and the
-   *Whole project (.zip)*; each export opens Explorer at the file.
+   the map from the runs. Export also saves the map (image, BPMN), the
+   *Technical details (.xlsx)* and the *Whole project (.zip)*; each export
+   opens Explorer at the file. *Hand off...* hands a numbered version to the
+   developers: one zip next to the folder with the project, the PDD and the
+   Technical details of that version.
 
 Along the way the analyst adds what the recording lacks: steps, screenshots,
 notes, attachments, a step's system, the flow. Every change saves itself to
@@ -96,7 +99,7 @@ the folder.
 | `capture/` | SME side: tray app, recording bar, end summary, transaction key; the C# recorder in `capture/recorder/` (tests in `Recorder.Tests/`). |
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
-| `e2e/` | The in-repo Playwright gate: eight smokes against the real viewer, all run by `run-all.js`. |
+| `e2e/` | The in-repo Playwright gate: nine smokes against the real viewer, all run by `run-all.js`. |
 | `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19); `pdd-rows-golden.json` (pins the PDD's rows of sections 5 and 6 that the Overview shows); `steps-signature-golden.json` (pins the signature of the steps those rows were measured from). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
@@ -231,6 +234,25 @@ the folder.
   writes). Export, *Whole project (.zip)* zips the folder next to it
   (`project-zip.js`, `zip-folder.js`, a copy of the capture app's writer),
   never over an earlier zip and not while an analysis runs.
+- **Hand-offs** (C20, lane HV). *Export*, *Hand off...* asks what changed,
+  adds `{ version, handed_off_at, by, note }` to `annotations.handoffs` (one
+  undoable edit: Ctrl+Z takes it back, the zip stays) and writes
+  `<project> v<N>.zip` next to the folder: the folder, and at the zip's root
+  the PDD and the Technical details made for that version (`normalize.py
+  --handoff N`, `--tech-out`; `viewer/handoff-zip.js`). Every PDD says its
+  version ("Version N, handed off <date> by <name>", else "Working copy
+  after version N") over a Version history table. *Open a hand-off
+  (.zip)...* (Open menu, and the page shown while no project is open) takes
+  the zip: extracted under `<userData>/handoffs/<project> v<N>/`
+  (`handoff-open.js`; a hand-off unzipped by hand is read only too) and
+  opened read only (`.app.read-only`,
+  `read-only.js`; main refuses every write there): everything looked at and
+  played, nothing changed, no analysis, the project line "Version N,
+  handed off <date> by <name> · Read only". No sync, no locks, no
+  comparison: a newer version is a zip of its own. The Technical details
+  (`tech_details.py`, written by `xlsx_writer.py` on the standard library):
+  the reference transaction's recorded controls in the PDD's step order,
+  the data fields per transaction, the re-keyed values, the applications.
 - **The PDD** (`pdd_export.py`): tool-neutral, built around the confirmed
   reference run. The document fields (C6) fill their places and survive
   re-export; a step's `description` (C7) is its text.
@@ -331,9 +353,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 ## Verification
 
 - UI bugs are invisible to the unit suites: validate behaviour in the real
-  viewer. `e2e/run-all.js` runs eight smokes: `session`, `overview`, `runs`,
-  `map-slim`, `transcript`, `panel`, `companion` and `subprocess` (each
-  `<name>-smoke.js`; [e2e/README.md](e2e/README.md) says what each covers).
+  viewer. `e2e/run-all.js` runs nine smokes: `session`, `overview`, `runs`,
+  `map-slim`, `transcript`, `panel`, `companion`, `subprocess` and
+  `handoff` (each `<name>-smoke.js`; [e2e/README.md](e2e/README.md) says
+  what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles
   are left out).

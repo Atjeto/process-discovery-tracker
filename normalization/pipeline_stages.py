@@ -461,14 +461,19 @@ def _run_mining_exports(
     events: list[dict[str, Any]] | None = None,
     pdd_map_images: str | None = None,
     staging: Staging | None = None,
+    tech_out: str | None = None,
+    handoff: int | None = None,
 ) -> None:
     """The step-level observed-flow BPMN (when `mine` is set) plus the
-    requested PDD export. The BPMN keeps its best-effort try/except. A
-    requested PDD export that fails raises ExportFailed (C13 exit code 3):
-    the run then commits nothing, so the project stays as it was. `events` is
-    the derived event stream the PDD reads the entered fields from.
-    `pdd_map_images` is the manifest of the maps' pictures (contract C19).
-    With a `staging`, the step BPMN is staged and committed with the run."""
+    requested PDD and Technical details exports. The BPMN keeps its
+    best-effort try/except. A requested export that fails raises
+    ExportFailed (C13 exit code 3): the run then commits nothing, so the
+    project stays as it was. `events` is the derived event stream the PDD
+    and the workbook read the entered fields from. `pdd_map_images` is the
+    manifest of the maps' pictures (contract C19). `tech_out` is the
+    Technical details workbook's path and `handoff` the hand-off version both
+    documents are made for (contract C20; None: a working copy). With a
+    `staging`, the step BPMN is staged and committed with the run."""
     map_written = False
     if mine:
         # Step observed-flow BPMN: the ACTUAL annotated step flow mined into
@@ -525,6 +530,7 @@ def _run_mining_exports(
                 events=events,
                 map_images=pdd_map_images,
                 map_file=map_written or None,
+                handoff=handoff,
             )
         except Exception as e:  # noqa: BLE001 -- any failure fails the export
             # The traceback goes to normalize.log only (INFO is below the
@@ -534,3 +540,23 @@ def _run_mining_exports(
                 f"PDD export to {pdd_out} failed: {type(e).__name__}: {e}. "
                 "Nothing in the project was changed.") from e
         print(f"[normalize] wrote PDD: {pdd_out}")
+
+    # C20: the Technical details workbook, a requested export like the PDD.
+    if tech_out:
+        try:
+            from tech_details import write_tech_details
+            write_tech_details(
+                Path(tech_out),
+                session_folder=session_folder,
+                annotations=existing_anno,
+                stats=summary,
+                manifest=manifest,
+                events=events,
+                handoff=handoff,
+            )
+        except Exception as e:  # noqa: BLE001 (any failure fails the export)
+            logger.info("Technical details export traceback", exc_info=True)
+            raise ExportFailed(
+                f"Technical details export to {tech_out} failed: {type(e).__name__}: {e}. "
+                "Nothing in the project was changed.") from e
+        print(f"[normalize] wrote Technical details: {tech_out}")

@@ -668,3 +668,119 @@ no separate image file per map (the owner's remark about images described today'
   transactions ran*). At a level the copy has no plane for, the step map's plane shows with one
   line saying so. A stale step map is analyzed once when the Map needs it. *Edit* keeps a copy
   only from its first change.
+
+## C20. Hand-off versions, the read-only open and the Technical details (lane HV)
+
+The owner, 2026-09-25: "my concern is that dev gets a project, starts building from it, PM updates
+the project, Dev doesn't know and voila, a discrepancy. Devs should not add anything at this
+stage." And: "sync via one drive is possible, yes. But unreliable. DO NOT OVER COMPLICATE. We are
+making a tool, not an enterprise app or a product." So a project is handed to the developers as
+numbered versions, every copy says which version it is, and a developer opens a version read only.
+No sync, no locks, no roles, no comparison. On the developers' Solution Design Document (written
+outside the app): the recording already holds technical data a developer needs, so a generated
+Technical details workbook goes with every version.
+
+- **Data.** `annotations.handoffs` (viewer-written, oldest first): `[{ version, handed_off_at, by,
+  note }]`. `version` a whole number from 1, the next one more than the highest; `handed_off_at`
+  ISO 8601 UTC (its date, the first ten characters, is what every document prints); `by` the
+  Windows user (`os.userInfo().username`); `note` what changed, one line, never empty (the first
+  hand-off's dialog is filled with "First hand-off"). An entry without a whole version of 1 or more
+  is ignored; of two entries with one version the later counts. The pipeline never writes the key
+  and round-trips it.
+- **Hand off...** (Export menu, `viewer/views/handoff-ui.js`). One dialog, "What changed in this
+  version?" (OK waits for a note). The entry is added as one undoable edit ("Hand off version N
+  (the zip file stays)"); Ctrl+Z takes it back and the zip stays where it is. Then the PDD and the
+  Technical details are made for the version by the PDD export's own path (the analysis first when
+  the step map is older than the steps, the map pictures drawn off screen, one run with
+  `--pdd-out`, `--tech-out` and `--handoff N`), and the main process writes `<project> v<N>.zip`
+  next to the project folder (`viewer:exportHandoffZip`, `viewer/handoff-zip.js`): the folder as
+  the Whole project zip holds it (zip-folder.js, the capture app's copy, unchanged), then at the
+  zip's root `<project> v<N> PDD.docx` and `<project> v<N> Technical details.xlsx`, appended to the
+  zip it wrote, built as `.building` and renamed when complete. `<project>` is the name the
+  Overview shows (`session-summary.js displayName`: the document title, else `manifest.label`,
+  else the request, else the folder's name), without the characters Windows refuses, at most 60
+  characters. A zip is never written over another (`" (2)"` and on). Explorer opens at the zip. A
+  hand-off that does not finish (the run or the zip failed) takes its entry back at once
+  (`session.js takeBackLastEdit`, or an edit of its own when another edit came after it), so no
+  version is recorded without its zip. Refused while the project's analysis runs, beside another
+  zip of the project, and in a hand-off opened read only.
+- **Every document says its version** (`normalization/handoff_versions.py`). The PDD's Document
+  control row "Version" (it read "Draft") and the Technical details' About sheet read "Version N,
+  handed off <date> by <name>" when made for hand-off N (`--handoff N`, an entry the project
+  holds), else "Working copy after version N" (the highest), else "Working copy, not handed off
+  yet". Once the project was handed off, the PDD adds a "Version history" table under Document
+  control: Version, Date, By, What changed, one row per entry, oldest first. The viewer's
+  read-only line is the same words before " · Read only" (`viewer/handoff.js handedOffLine`).
+- **The read-only open.** *Open a hand-off (.zip)...* takes a hand-off zip (the Open menu, and a
+  button on the page shown while no project is open; a file dialog for zips, since Windows' folder
+  dialog, the one Open project... shows, lists folders only; `viewer:loadSession` sees a `.zip`
+  file). It is a hand-off when its root holds one project folder (a `manifest.json`) whose
+  `annotations.json` lists at least one version, and beside it `<project> v<N> PDD.docx` and
+  `<project> v<N> Technical details.xlsx`, N the version it lists last (the Whole project zip of a
+  project handed off before holds neither: a working copy, never shown as a version); any other
+  zip is refused with a sentence saying to unzip it first. Its content is extracted, as
+  the zip holds it, into `<userData>/handoffs/<project> v<N>/` (`viewer/handoff-open.js`: streamed,
+  every file's size and CRC checked; an entry outside the folder, an encrypted entry or another
+  compression refused; written into a temporary folder renamed only when complete) with
+  `.pdt-handoff.json` beside the project (`{ session_id, version, handed_off_at, zip, pdd, tech,
+  opened_at }`). The same zip opens the same folder again; another hand-off of the same version
+  gets `<project> v<N> (2)/`; a newer version is a folder of its own and just opens (nothing
+  compares). Every folder under `<userData>/handoffs` opens read only, and so does a hand-off
+  unzipped by hand (Windows' Extract All, then Open project on the folder it makes: a project
+  folder beside which lie `<project> v<N> PDD.docx` and `<project> v<N> Technical details.xlsx`
+  for the version its `annotations.json` lists last) (`isReadOnlyProject`, `session.readOnly`):
+  - everything can be looked at and played: every level, the step panel, the video, the
+    transcript, the maps as they came (no analysis: the Map draws the step map it came with), and
+    the PDD and the Technical details it came with (Export, *PDD of this version*, *Technical
+    details of this version*, opened in their programs);
+  - nothing can change: the page carries `.app.read-only` and `styles.css`, beside the
+    unreadable-annotations page's rules (lane FX2), hides every editing control on every level; the
+    step pane's and the document's fields are read only; the shortcuts that edit, the double-click
+    rename and the editing items of the right-click menus do nothing; opening a transaction records
+    nothing; no analysis starts; `session.js` refuses every annotations write (so no Undo entry is
+    recorded) and the main process refuses every write into the folder (`_refuseReadOnly` in each
+    handler that writes a project folder or runs the analysis; a unit test reads `main.js` and
+    fails on a writer without it);
+  - the Overview's project line opens with "Version N, handed off <date> by <name> · Read only"
+    (`#ov-handoff`, what changed in its tooltip), the Checklist is not drawn, the top bar's save
+    state reads *Read only*, and the Recent list names the entry "<name> · version N, read only".
+- **The Technical details** (`normalization/tech_details.py`, `--tech-out <file.xlsx>`, its own
+  Export item *Technical details (.xlsx)*, and in every hand-off zip). Written with the standard
+  library (`xlsx_writer.py`: zipfile, inline strings and numbers, a bold header row on a light grey
+  fill through a two-format `styles.xml`, the header frozen, fixed column widths; the bundled
+  Python has no spreadsheet library and none is added). It reads what the PDD reads, through
+  `pdd_export`'s session, so its numbers, fields and re-keying are the PDD's. Sheets, in order:
+  - *About*: the project, the version line, the reference transaction, one line on each sheet and
+    on the recorder's words (identity source, confidence, coverage);
+  - *Steps and controls*: one row per recorded interaction of the reference transaction (the steps
+    3.2 prints; a hidden step, and a hidden sub-step's interactions, left out), in step order:
+    Step (the PDD's number: "Step 3", and "Step 3.2" for a sub-step of the chapter's first visit),
+    Step name, Action (Click, Type, Select, Toggle, Focus), Value (a password field "(not recorded:
+    secret field)"), Control type, Automation id, Name, Class name, Identity source, Confidence (a
+    number), Window title, Program (`process_name`), System (the step's own system first, else
+    `shared/system-names.json`);
+  - *Data fields*: one row per field typed or chosen in a step (the PDD's data table's key: the
+    field and the step's alignment key), Field, Automation id, Control type, System and screen,
+    Step, then one column per transaction (the PDD's names for them) with what was entered there
+    (several values joined with "; "), and "Outside the transactions" when such a step entered a
+    field ("Value" alone without marked transactions);
+  - *Re-keyed values*: `pdd_export.rekey_pairs`, the PDD's own rule (5, Re-keyed data): Source
+    system, Source field, Target system, Target field, Values (the values so typed again), and
+    Transactions ("2 of 3");
+  - *Applications*: one row per program and system the recorded interactions ran in: Program,
+    System, Coverage (the recorder's `coverage_hint`: rich, basic, minimal, else "Not recorded"),
+    Remote or terminal (`capture_detail`'s rule: an interaction through a remote or terminal
+    framework; "Not recorded" when the recording has no framework), Steps (the process's distinct
+    steps with an interaction there).
+- **CLI.** `normalize.py --tech-out <file.xlsx>` writes the workbook; `--handoff <N>` makes the PDD
+  and the workbook for version N (a value below 1 is a usage error, exit 1). A failed workbook is
+  a failed export (exit 3): the run commits nothing. The viewer passes `--tech-out` for Export,
+  Technical details (.xlsx) and a hand-off, and `--handoff` only for a hand-off.
+- **Tests.** `test_handoff_versions.py` (the line in its three states, the PDD's row and table),
+  `test_tech_details.py` (the parts parse with ElementTree, each sheet's header and rows on a
+  fixture and on the demo through the pipeline, the CLI's refusals), `viewer/handoff.test.js`,
+  `viewer/handoff-zip.test.js` (the zip read back independently, the open and its refusals),
+  `viewer/read-only.test.js` (no write path: the renderer, every main-process writer, the save
+  state, the take-back), and `e2e/handoff-smoke.js`.
+- **Out.** Sync (OneDrive or otherwise), locks, roles, a comparison of versions, a developer's
+  notes or edits, removing the folders under `handoffs/` from the app, signing a zip.

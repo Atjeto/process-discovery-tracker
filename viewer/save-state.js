@@ -40,11 +40,16 @@
  *      saved until it is fixed.
  *   4. Opening another project starts over; a report for another folder
  *      changes nothing.
+ *   5. A hand-off opened read only (lane HV, contract C20) says "Read only",
+ *      with its version in the tooltip, and no report changes that: nothing
+ *      is written there.
  *
  * The state logic is pure (initialState, withUnreadable, applyWrite, view),
  * so the unit tests pin it; mount, projectOpened and noteWrite drive the
  * element. No electron here: renderer.js passes the IPC subscription in.
  */
+
+const Handoff = require("./handoff.js");
 
 const SAVING_DELAY_MS = 300;
 const UNREADABLE = "ANNOTATIONS_UNREADABLE";
@@ -85,9 +90,11 @@ function sameFolder(a, b) {
 }
 
 /* The state of a project just opened. `unreadable`: the load's
-   annotationsError, when annotations.json cannot be read. */
-function initialState(folder, unreadable) {
-  return withUnreadable({ folder: folder || null, inFlight: 0, savingShown: false, savedAt: null, failures: [] }, unreadable);
+   annotationsError, when annotations.json cannot be read. `readOnly`: the
+   line of a hand-off opened read only (rule 5), else null. */
+function initialState(folder, unreadable, readOnly) {
+  return withUnreadable({ folder: folder || null, inFlight: 0, savingShown: false, savedAt: null, failures: [],
+    readOnly: readOnly || null }, unreadable);
 }
 
 /* The state with the unreadable annotations.json failure as the latest load
@@ -104,7 +111,7 @@ function withUnreadable(state, unreadable) {
    `at` (a Date). A report for another folder changes nothing (the same
    state comes back). */
 function applyWrite(state, evt, at) {
-  if (!evt || !sameFolder(evt.folder, state.folder)) return state;
+  if (!evt || !sameFolder(evt.folder, state.folder) || state.readOnly) return state;
   if (evt.phase === "start") return Object.assign({}, state, { inFlight: state.inFlight + 1 });
   if (evt.phase !== "end") return state;
   let inFlight = state.inFlight;
@@ -166,6 +173,10 @@ function defaultTime(d) {
 function view(state, fmtTime) {
   const fmt = fmtTime || defaultTime;
   const where = state.folder ? ": " + state.folder : "";
+  if (state.readOnly) {
+    return { kind: "readonly", text: "Read only",
+      title: state.readOnly + ", opened read only: nothing here can change. Changes are made in the analyst's project." };
+  }
   if (state.inFlight > 0 && state.savingShown) {
     return { kind: "saving", text: "Saving...", title: "Saving to the project folder" + where + "." };
   }
@@ -240,11 +251,13 @@ function mount(el, deps) {
 function projectOpened(session) {
   const folder = (session && session.sessionFolder) || null;
   const unreadable = (session && session.annotationsError) || null;
+  const readOnly = session && session.readOnly === true
+    ? (Handoff.handedOffLine(Handoff.latest(session.annotations)) || "A hand-off") : null;
   if (folder && sameFolder(folder, _state.folder)) {
-    _state = withUnreadable(_state, unreadable);
+    _state = Object.assign(withUnreadable(_state, unreadable), { readOnly });
   } else {
     _clearTimer();
-    _state = initialState(folder, unreadable);
+    _state = initialState(folder, unreadable, readOnly);
   }
   _render(false);
 }

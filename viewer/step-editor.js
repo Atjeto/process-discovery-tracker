@@ -80,7 +80,9 @@
      carries "▸ N sub-steps", which opens its level.
        opts: { nameListId, onBeginRename(step), emptyHtml, baseline,
                subSteps(step) (its visible sub-steps counted, null for a
-               plain step), onOpenSub(step) } */
+               plain step), onOpenSub(step), readOnly (lane HV: a hand-off
+               opened read only, where a row is neither renamed nor
+               ticked) } */
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu, opts) {
     const o = opts || {};
     host.innerHTML = "";
@@ -158,7 +160,7 @@
       const checkEl = row.querySelector(".multi-check");
       checkEl.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (onMultiSelect) onMultiSelect(s.step_id);
+        if (onMultiSelect && !o.readOnly) onMultiSelect(s.step_id);
       });
       // Right-click a row for the full step context menu (Split / Merge /
       // Rename / Hide / Jump / flags), the same menu the Steps timeline
@@ -174,7 +176,7 @@
       // listener above picks the row; this is how it starts the rename).
       row._pdtBeginRename = () => {
         const nameEl = row.querySelector(".step-name");
-        if (!nameEl) return;
+        if (!nameEl || o.readOnly) return;
         if (o.onBeginRename) o.onBeginRename(s);
         beginInlineRename(nameEl, s, onInlineRename, steps, o.nameListId);
       };

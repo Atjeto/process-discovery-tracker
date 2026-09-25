@@ -111,6 +111,7 @@ survives every re-analysis.
 | `step_filters` | viewer | Apps (and window titles) left out of the analysis |
 | `excluded_ranges[]` | viewer | Time spans left out of drafting and statistics |
 | `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; its text leaves the notes out, and the step map shows a step's notes and files beside its task (C18) |
+| `handoffs[]` | viewer | The versions handed to the developers (Export, Hand off...): `{ version, handed_off_at, by, note }`, oldest first; every PDD and Technical details workbook says which version it is (contract C20) |
 | `notes[]` | nobody now | The product edition's timestamped Flow notes; both writers seed it empty and round-trip old entries |
 | `analysis_overrides[]` | nobody now | Corrections to the waste and automation estimates; applied when an older file carries them |
 | `process_exclusions` | pipeline | What the self and ignored-app filter dropped; regenerated every run |

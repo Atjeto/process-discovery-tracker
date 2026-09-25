@@ -47,6 +47,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       </button>
       <div class="project-menu-popup" id="recent-menu-popup" style="display:none; min-width: 280px;">
         <button class="project-menu-item" id="btn-open-session" type="button" title="Open a project folder: the folder the SME's capture app saved, or a project made with New">Open project...</button>
+        <button class="project-menu-item" id="btn-open-handoff" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only, to look at, play and read, with the PDD and the Technical details it came with.">Open a hand-off (.zip)...</button>
         <div class="recent-menu-section" id="recent-menu-content"></div>
       </div>
     </div>
@@ -80,7 +81,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <span>Export</span><span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="session-export-popup" style="display:none">
+        <!-- Lane HV (contract C20): a hand-off opened read only opens the two
+             files it came with (views/handoff-ui.js); shown only there. -->
+        <button class="project-menu-item" id="btn-handoff-open-pdd" title="Open the PDD this version came with. It says which version it is.">PDD of this version</button>
+        <button class="project-menu-item" id="btn-handoff-open-tech" title="Open the Technical details this version came with: the recorded controls, the data fields, the re-keyed values and the applications.">Technical details of this version</button>
         <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is the one the Map shows first, your edited As-Is map when there is one, else the process map.">PDD (.docx)</button>
+        <!-- Lane HV (contract C20): the workbook for developers (--tech-out). -->
+        <button class="project-menu-item" id="btn-session-tech" title="Write the Technical details (.xlsx) for developers: every recorded click, entry and choice of the reference transaction with the control it acted on, the data fields of each transaction, the values typed again in another system, and the applications.">Technical details (.xlsx)</button>
         <!-- P2.12: both map items save the As-Is map chosen for the PDD
              when there is one, else the process map
              (process_map_step.bpmn; the image drawn as the PDD draws it).
@@ -89,6 +96,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <button class="project-menu-item" id="btn-session-map-svg" title="Save the map the Map shows as an SVG image: the As-Is map chosen for the PDD, else the process map, drawn as the PDD draws it, with the notes the PDD leaves out. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
         <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
         <!-- One zip of the whole project folder, next to it (project-zip.js). -->
+        <!-- Lane HV (contract C20): a numbered version for the developers
+             (views/handoff-ui.js). -->
+        <button class="project-menu-item" id="btn-session-handoff" title="Hand this version of the project to the developers: one zip next to the project folder, numbered v1, v2 and on, with the whole project, the PDD and the Technical details of the version. The PDD says which version it is.">Hand off...</button>
         <button class="project-menu-item" id="btn-session-zip" title="Make one zip of the whole project folder, next to it: the recording, your work, the video, the transcript, screenshots, attachments and edited maps. The way to hand the project to someone.">Whole project (.zip)</button>
       </div>
     </div>
@@ -106,6 +116,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <h2>No project open</h2>
         <p>Open the folder the SME's capture app saved, or a project you made. New, in the top bar, starts a project from a video or an empty one.</p>
         <button class="primary" id="btn-open-session-hero">Open project...</button>
+        <button id="btn-open-handoff-hero" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only.">Open a hand-off (.zip)...</button>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
         <div class="recent-sessions">
           <div class="recent-header">
@@ -418,6 +429,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <button class="help-nav-item" data-section="stepsphases">Steps</button>
         <button class="help-nav-item" data-section="markers">Markers</button>
         <button class="help-nav-item" data-section="capture">Recording keys</button>
+        <button class="help-nav-item" data-section="handoff">Hand-offs</button>
         <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
         <button class="help-nav-item" data-section="trouble">Troubleshooting</button>
         <span class="help-version" id="help-version"></span>
@@ -517,6 +529,17 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">Ctrl+Shift+P</span></td><td>Take a screenshot by hand.</td></tr>
           </table>
           <p class="help-hint">The recording bar on the SME's screen does the same without the keys: <em>Start recording</em>, then <em>Next transaction</em> for each transaction, <em>Pause</em> and <em>Stop</em>. <em>End transaction</em> is in the capture app's tray menu.</p>
+        </section>
+
+        <!-- Lane HV (contract C20): hand-off versions, the read-only open and
+             the Technical details. -->
+        <section class="help-section" data-section="handoff">
+          <h3>Handing a version to the developers</h3>
+          <p><em>Export</em>, <em>Hand off...</em> asks what changed in this version, then makes one zip next to the project folder, named after the project and its version (for example <em>Order entry v2.zip</em>): the whole project, with the PDD and the <em>Technical details</em> of that version. Each hand-off gets the next number, and the PDD says which version it is: its Document control reads <em>Version 2, handed off</em> with the date and your name, over a table of every version and what changed. A PDD exported between hand-offs reads <em>Working copy after version 2</em>. Ctrl+Z takes a hand-off's version back; its zip file stays where it is.</p>
+          <h3>Opening a hand-off</h3>
+          <p>A developer opens the zip with <em>Open</em>, <em>Open a hand-off (.zip)</em> (a button on the page shown while no project is open, too). The app keeps its own copy and opens it read only: everything can be looked at and played, and nothing can change. A hand-off unzipped by hand opens read only too. The Overview's project line reads the version, the date and who handed it off; <em>Export</em> opens the PDD and the Technical details the zip came with. A newer version is a zip of its own, opened the same way.</p>
+          <h3>The Technical details</h3>
+          <p>A spreadsheet of what the recording holds for a developer: every click, entry and choice of the reference transaction with the control it acted on and how the recorder identified it, every field with what was entered in each transaction (a password was never recorded), the values typed again in another system, and the programs. <em>Export</em>, <em>Technical details (.xlsx)</em> writes it on its own too.</p>
         </section>
 
         <section class="help-section" data-section="shortcuts">

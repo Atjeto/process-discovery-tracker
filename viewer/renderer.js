@@ -42,6 +42,8 @@ const Planes = require("./map-planes.js");
 const AsIsLinks = require("./asis-links.js");
 const { pddExportOutcome } = require("./normalize-result.js");
 const SaveState = require("./save-state.js");
+const RO = require("./read-only.js");
+const HandoffUI = require("./views/handoff-ui.js");
 
 /* ============ Flow view -- see views/flow-view.js ================= */
 
@@ -563,18 +565,57 @@ async function exportArtifact(kind) {
 
   // PDD: normalize writes the document straight to a temp path.
   const os = require("os");
-  const ext = "docx";
-  const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + "." + ext);
-  // RP-09: nothing may sit at the temp path before the run, so a document
-  // found there afterwards can only be THIS run's (pddExportOutcome below).
-  try { fs.unlinkSync(tmpPath); }
-  catch (e) {
-    if (e.code !== "ENOENT") { toast("Export failed: could not prepare " + tmpPath + ": " + e.message, "error"); return; }
+  const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + ".docx");
+  const made = await writeDocuments(target, { pddOut: tmpPath, label: "Writing the PDD..." });
+  if (!made.ok) {
+    if (made.message) toast(made.message, "error");
+    return;
+  }
+  await _offerExport(tmpPath, "process." + kind + ".docx");
+}
+
+/* Offer a document an export wrote to a temp path: the save dialog, then its
+   folder opens with the file selected; the temp file goes either way. */
+async function _offerExport(tmpPath, suggested) {
+  let out = null;
+  try {
+    out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });
+  } catch (e) {
+    toast("Export failed: the document could not be saved: " + ((e && e.message) || e), "error");
+  }
+  if (out) {
+    await Ipc.revealFile(out);
+    toast("Exported: " + path.basename(out), "success");
+  }
+  try { fs.unlinkSync(tmpPath); } catch (_) {}
+}
+
+/* Write the documents of the project on screen (`target`): the PDD to
+   `pddOut` and (contract C20, lane HV) the Technical details workbook to
+   `techOut`, either or both, in one run of the pipeline; `handoff` is the
+   hand-off version they are made for (none: a working copy), `label` the
+   status line's words while it runs. The PDD's maps are drawn off screen
+   first, after an analysis when the step map is older than the steps.
+   Resolves { ok: true } once every file asked for is written, else
+   { ok: false, message } (message null when the analysis before it has
+   already said why); a file written by a run that failed is removed. */
+async function writeDocuments(target, { pddOut, techOut, handoff, label } = {}) {
+  const os = require("os");
+  const outs = [pddOut, techOut].filter(Boolean);
+  // RP-09: nothing may sit at an output path before the run, so a file found
+  // there afterwards can only be THIS run's (pddExportOutcome below).
+  for (const p of outs) {
+    try { fs.unlinkSync(p); }
+    catch (e) {
+      if (e.code !== "ENOENT") return { ok: false, message: "Export failed: could not prepare " + p + ": " + e.message };
+    }
   }
   const opts = { sessionFolder: target.sessionFolder, mine: false };
+  if (techOut) opts.techOut = techOut;
+  if (Number.isInteger(handoff) && handoff >= 1) opts.handoff = handoff;
   let mapImgPath = null, tobeImgPath = null, picsDir = null;
-  if (kind === "pdd") {
-    opts.pddOut = tmpPath;
+  if (pddOut) {
+    opts.pddOut = pddOut;
     const writePng = (dataUrl, tag) => {
       const comma = dataUrl ? dataUrl.indexOf("base64,") : -1;
       if (comma === -1) return null;
@@ -613,7 +654,7 @@ async function exportArtifact(kind) {
       if ((!src || RefmapUI.needsAnalyze(before, src)) && !(await analyzeSession())) {
         // The analysis said why; the pictures drawn so far go.
         for (const p of [mapImgPath, tobeImgPath]) { if (p) { try { fs.unlinkSync(p); } catch (_) {} } }
-        return;
+        return { ok: false, message: null };
       }
     }
     if (!opts.pddMapImage && !locked) {
@@ -646,38 +687,49 @@ async function exportArtifact(kind) {
   // The PDD's run rewrites annotations.json from the same steps and writes
   // no map, so the map it printed stays current (lane MV: opening the Map
   // afterwards does not analyze again).
-  const r = await RefmapUI.keepingStepMapCurrent(() => runPipeline(opts, kind === "pdd" ? "Writing the PDD..." : UPDATING));
+  const r = await RefmapUI.keepingStepMapCurrent(() => runPipeline(opts, label || UPDATING));
   if (mapImgPath) { try { fs.unlinkSync(mapImgPath); } catch (_) {} }
   if (tobeImgPath) { try { fs.unlinkSync(tobeImgPath); } catch (_) {} }
   if (picsDir) { try { fs.rmSync(picsDir, { recursive: true, force: true }); } catch (_) {} }
   // RP-09 / C13: a non-zero exit (3 = the export failed) is a failure with
-  // the pipeline's reason, and so is a "success" that wrote no document. The
-  // analyst is offered the file only when this run wrote it.
-  let doc = { exists: false, size: 0 };
-  try { const st = fs.statSync(tmpPath); doc = { exists: st.isFile(), size: st.size }; }
-  catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the exported PDD:", e); }
-  const outcome = pddExportOutcome(r, doc);
-  if (!outcome.ok) {
-    toast(outcome.message, "error");
-    try { fs.unlinkSync(tmpPath); } catch (_) { /* absent, or a partial file the OS will clean from temp */ }
-    return;
+  // the pipeline's reason, and so is a "success" that wrote no file. The
+  // analyst is offered a file only when this run wrote it.
+  for (const p of outs) {
+    let doc = { exists: false, size: 0 };
+    try { const st = fs.statSync(p); doc = { exists: st.isFile(), size: st.size }; }
+    catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the exported file:", e); }
+    const outcome = pddExportOutcome(r, doc);
+    if (!outcome.ok) {
+      for (const q of outs) { try { fs.unlinkSync(q); } catch (_) { /* absent, or a partial file the OS will clean from temp */ } }
+      return { ok: false, message: outcome.message };
+    }
   }
-  // The PDD's run wrote analysis.json too, with the rows it printed in
+  // The run wrote analysis.json too, with the rows the PDD prints in
   // sections 5 and 6: the Overview shows those (one source, lane CC).
   _rereadAnalysis(target);
-  const suggested = "process." + kind + "." + ext;
-  let out = null;
-  try {
-    out = await Ipc.exportFile({ sourcePath: tmpPath, suggestedName: suggested });
-  } catch (e) {
-    toast("Export failed: the document could not be saved: " + ((e && e.message) || e), "error");
-  }
-  if (out) {
-    await Ipc.revealFile(out);
-    toast("Exported: " + path.basename(out), "success");
-  }
-  try { fs.unlinkSync(tmpPath); } catch (_) {}
+  return { ok: true };
 }
+
+/* Export, Technical details (.xlsx) (contract C20, lane HV): the workbook a
+   developer reads beside the PDD, written by the pipeline (--tech-out),
+   then offered like every export. */
+async function exportTechDetails() {
+  const target = State.getSession();
+  if (!target) { toast("Open a project first.", "error"); return; }
+  const tmpPath = path.join(require("os").tmpdir(), "pdt-export-" + Date.now() + ".xlsx");
+  const made = await writeDocuments(target, { techOut: tmpPath, label: "Writing the Technical details..." });
+  if (!made.ok) {
+    if (made.message) toast(made.message, "error");
+    return;
+  }
+  await _offerExport(tmpPath, "technical-details.xlsx");
+}
+if ($("#btn-session-tech")) $("#btn-session-tech").addEventListener("click", () => exportTechDetails());
+
+/* Lane HV: Export, Hand off... (views/handoff-ui.js), with the documents
+   writer above; and, in a hand-off opened read only, the PDD and the
+   Technical details it came with. */
+HandoffUI.initHandoffUI({ writeDocuments: (target, o) => writeDocuments(target, o) });
 
 /* Read the project's analysis.json again into the project on screen (the
    PDD's run rewrote it) and redraw what shows it: the Overview's
@@ -906,6 +958,9 @@ document.addEventListener("keydown", (e) => {
   // alone and no shortcut edits anything (Help's ? still opens Help).
   const unreadable = State.getSession() && State.getSession().annotationsError;
   if (unreadable && !(e.key === "?" || (e.shiftKey && e.key === "/"))) return;
+  // Lane HV: in a hand-off opened read only no shortcut edits anything (the
+  // video, the zoom, the step selection and Help still answer).
+  if (RO.isReadOnly(State.getSession()) && _editsInReadOnly(e)) return;
   // Don't intercept other shortcuts while typing in inputs
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
@@ -1020,6 +1075,17 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+/* Lane HV: the shortcuts that change a project (Undo and Redo, the Steps
+   verbs, a step at the playhead), which a hand-off opened read only ignores. */
+function _editsInReadOnly(e) {
+  const key = String(e.key || "").toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && (key === "z" || key === "y" || key === "enter")) return true;
+  if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) return true;
+  const level = State.getLevel();
+  if (level === "flow" && key === "s" && !e.ctrlKey && !e.metaKey && !e.altKey) return true;
+  return level === "steps" && !e.ctrlKey && !e.metaKey && !e.altKey && (key === "enter" || key === "n" || key === "s" || key === "m");
+}
 
 /* ============ Help modal ========================================== */
 
@@ -1210,8 +1276,10 @@ function toggleRecentMenu(force) {
     e.stopPropagation();
     toggleRecentMenu();
   });
-  const item = document.getElementById("btn-open-session");
-  if (item) item.addEventListener("click", () => toggleRecentMenu(false));
+  for (const id of ["btn-open-session", "btn-open-handoff"]) {
+    const item = document.getElementById(id);
+    if (item) item.addEventListener("click", () => toggleRecentMenu(false));
+  }
   document.addEventListener("click", (e) => {
     if (!popup.contains(e.target) && !btn.contains(e.target)) toggleRecentMenu(false);
   });

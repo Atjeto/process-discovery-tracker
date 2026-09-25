@@ -240,7 +240,9 @@ def test_document_control_names_the_folder_the_sme_the_video_and_the_request():
     assert rows[:7] == ["Process | Not named yet", f"Project folder | {folder}",
                         "Recorded | 2026-05-14", "Recorded by | Ana Silva",
                         "Transactions recorded | 2", "Video | None", "Request | ENG-1"]
-    assert rows[7].startswith("Document generated | ") and rows[8] == "Version | Draft"
+    # C20: a PDD not made for a hand-off says it is a working copy.
+    assert rows[7].startswith("Document generated | ")
+    assert rows[8] == "Version | Working copy, not handed off yet"
     assert [r for r in rows if r.startswith("Project")] == [f"Project folder | {folder}"]
 
     # The login when the profile has no name; an attached video; the capture's

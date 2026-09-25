@@ -28,8 +28,8 @@ with a Python traceback. Only 0 changes the project's outputs.
     0  success
     1  usage error, or the folder is not a session folder
     2  annotations.json exists but cannot be read; nothing was written
-    3  a requested export (--pdd-out) failed; nothing in the project was
-       changed and the export was not written
+    3  a requested export (--pdd-out, --tech-out) failed; nothing in the
+       project was changed and the export was not written
 """
 
 from __future__ import annotations
@@ -103,13 +103,17 @@ def normalize(
     pdd_tobe_image: str | None = None,
     names_path: str | None = None,
     pdd_map_images: str | None = None,
+    tech_out: str | None = None,
+    handoff: int | None = None,
 ) -> dict[str, Any]:
     """Run the pipeline on one session folder. `names_path` is the optional
     remembered-names store (contract C4): drafted steps whose draft_key it
     lists take the remembered name, after the names the analyst gave in this
     session (the session's own names come first, so they travel with it).
     `pdd_map_images` is the manifest of the maps' pictures for the PDD
-    (contract C19): the main map's, and one per sub-process."""
+    (contract C19): the main map's, and one per sub-process. `tech_out` is
+    the Technical details workbook to write and `handoff` the hand-off
+    version the PDD and the workbook are made for (contract C20)."""
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
@@ -137,7 +141,8 @@ def normalize(
             session_folder, annotations, manifest, worker_id, recorded, staging,
             taxonomy_path=taxonomy_path, mine=mine, pdd_out=pdd_out,
             pdd_map_image=pdd_map_image, pdd_tobe_image=pdd_tobe_image,
-            names_path=names_path, pdd_map_images=pdd_map_images)
+            names_path=names_path, pdd_map_images=pdd_map_images,
+            tech_out=tech_out, handoff=handoff)
     except BaseException:
         staging.discard()
         raise
@@ -162,6 +167,8 @@ def _normalize_staged(
     pdd_tobe_image: str | None,
     names_path: str | None,
     pdd_map_images: str | None,
+    tech_out: str | None = None,
+    handoff: int | None = None,
 ) -> dict[str, Any]:
     """The pipeline's stages, each output staged (normalize() commits them)."""
     events_file = session_folder / "events.jsonl"
@@ -219,12 +226,14 @@ def _normalize_staged(
         session_folder, classified, existing_anno, summary, manifest,
         cases=cases, recorded=recorded, staging=staging)
 
-    # The step-level BPMN (--mine) + the requested PDD export. A failed PDD
-    # export raises ExportFailed, and the run then commits nothing.
+    # The step-level BPMN (--mine) + the requested PDD and Technical details
+    # exports. A failed export raises ExportFailed, and the run then commits
+    # nothing.
     _run_mining_exports(
         session_folder, existing_anno, mine, summary, manifest,
         analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
-        events=classified, pdd_map_images=pdd_map_images, staging=staging)
+        events=classified, pdd_map_images=pdd_map_images, staging=staging,
+        tech_out=tech_out, handoff=handoff)
 
     return {
         "session_folder": str(session_folder),
@@ -242,6 +251,17 @@ def _fail(code: int, message: str) -> None:
     one_line = str(message).replace("\r", " ").replace("\n", " ")
     print(f"[normalize] ERROR: {one_line}", file=sys.stderr, flush=True)
     sys.exit(code)
+
+
+def _version(text: str) -> int:
+    """--handoff's value: a version number, 1 or more."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a version number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a version number (1 or more)")
+    return value
 
 
 class _ArgumentParser(argparse.ArgumentParser):
@@ -283,6 +303,14 @@ def main():
                              "step the analyst named in this session has that key (its name "
                              "comes first). Optional: a missing or unreadable file prints a "
                              "warning and drafting uses the session's and the default names.")
+    parser.add_argument("--tech-out", type=str, default=None,
+                        help="Write the Technical details workbook (.xlsx) to this path: the "
+                             "reference transaction's recorded controls, the data fields per "
+                             "transaction, the re-keyed values and the applications (contract C20).")
+    parser.add_argument("--handoff", type=_version, default=None, metavar="N",
+                        help="The hand-off version (annotations.handoffs) the PDD and the Technical "
+                             "details are made for: they read \"Version N, handed off <date> by "
+                             "<name>\". Without it they are a working copy.")
     args = parser.parse_args()
 
     setup_logging()
@@ -300,6 +328,8 @@ def main():
             pdd_tobe_image=args.pdd_tobe_image,
             names_path=args.names,
             pdd_map_images=args.pdd_map_images,
+            tech_out=args.tech_out,
+            handoff=args.handoff,
         )
     except AnnotationsUnreadable as exc:
         _fail(2, str(exc))

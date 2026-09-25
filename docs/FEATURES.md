@@ -97,7 +97,21 @@ The Python pipeline the viewer runs by itself; see
   business rules and exceptions; one data
   table; applications and time; improvement and automation scope with the
   To-Be map; notes; attachments. The analyst's fields survive every
-  re-export; an empty field leaves a visible gap.
+  re-export; an empty field leaves a visible gap. Every PDD says which
+  version it is: "Version 2, handed off <date> by <name>" when made for a
+  hand-off, else "Working copy after version 2" (or "Working copy, not
+  handed off yet"), with a Version history table once the project was
+  handed off.
+- **The Technical details (.xlsx).** For the developers who build from the
+  PDD: every recorded click, entry and choice of the reference transaction
+  in the PDD's step order (Step 3, Step 3.2), with its control type,
+  automation id, name, class name, how the recorder identified it and how
+  far that can be trusted, the window, the program and the system; every
+  field typed or chosen, with what was entered in each transaction (a
+  password never recorded); the values typed again in another system (the
+  PDD's re-keyed data); and each program's coverage, whether it ran on a
+  remote or terminal surface, and its steps. Written with the standard
+  library, it opens in Excel without a repair.
 - **Meeting transcripts.** A Teams `.vtt` or `.docx` transcript is parsed
   into timed, speaker-tagged sentences; nothing interprets what was said.
 
@@ -261,9 +275,21 @@ The viewer says *transaction* for one pass through the process and
 - **Export**: the PDD (with a picture of each sub-process's map in its
   chapter), the process map as an image (SVG, the picture the PDD prints and
   the Map shows first, of the level the Map shows) and as BPMN (one file
-  with every map), and the
+  with every map), the *Technical details (.xlsx)*, and the
   *Whole project (.zip)*: one zip of the folder, next to it, to hand the
   project to someone. Every export opens its folder with the file selected.
+- **Hand off to the developers**: *Export*, *Hand off...* asks what changed
+  in this version and makes *<project> v2.zip* next to the project folder:
+  the whole project, with the PDD and the Technical details of version 2 at
+  its root. The versions go up by one, the PDD lists them, and Ctrl+Z takes
+  a version back (its zip stays).
+- **A hand-off opened read only**: *Open a hand-off (.zip)...* (the Open
+  menu, and a button while no project is open) takes a hand-off zip; the app
+  keeps its own copy and opens it read only: every level, the
+  video, the transcript, the maps and the PDD it came with can be looked at
+  and played, and nothing can change. Its project line reads "Version 2,
+  handed off <date> by <name> · Read only". A newer version is a zip of its
+  own, opened the same way.
 - **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
   and a dark theme.
 - **An unreadable annotations file** is said in a banner, and nothing is

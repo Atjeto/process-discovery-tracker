@@ -209,6 +209,8 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .save-state { font-size: 11px; color: var(--fg-3); white-space: nowrap;
   padding: 2px 4px; border-radius: var(--radius-sm); cursor: default; }
 .save-state[data-state="failed"] { color: var(--bad); font-weight: 600; }
+/* Lane HV: a hand-off opened read only; the version is in its tooltip. */
+.save-state[data-state="readonly"] { color: var(--fg); font-weight: 600; }
 .save-state:focus-visible { outline: 1px dotted var(--accent); outline-offset: 2px; }
 .save-state.fade { animation: save-state-fade 0.4s ease-out; }
 @keyframes save-state-fade { from { opacity: 0.2; } to { opacity: 1; } }
@@ -287,6 +289,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .empty-state h2 { margin-bottom: 8px; color: var(--fg); }
 .empty-state p { color: var(--fg-3); font-size: 13px; margin: 8px 0 20px; }
+/* Lane HV: the developer's way in, beside Open project. */
+#btn-open-handoff-hero { margin-left: 8px; }
 .recent-sessions { margin-top: 36px; text-align: left; }
 .recent-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .recent-header h3 { margin: 0; }
@@ -1005,6 +1009,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .analysis-empty.ov-waiting { padding: 24px 16px 12px; }
 /* The session summary: one line, plus warning lines only when needed. */
 .ov-summary { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
+/* Lane HV (contract C20): the first line of a hand-off opened read only,
+   "Version 2, handed off 2026-09-25 by rasha · Read only". */
+.ov-handoff { align-self: flex-start; max-width: 100%; box-sizing: border-box; font-size: 12px; font-weight: 600;
+  color: var(--fg); line-height: 1.5; padding: 2px 8px; border-radius: 4px; border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent); overflow-wrap: anywhere; }
 .ov-summary-line { font-size: 12px; color: var(--fg-2); line-height: 1.5; }
 .ov-summary-name { color: var(--fg); font-weight: 600; }
 .ov-summary-warn { display: flex; flex-direction: column; gap: 6px; }
@@ -1576,6 +1585,76 @@ details.analysis-module { padding: 0; }
 .app.annotations-unreadable .session-layout-map,
 .app.annotations-unreadable .event-table-host,
 .app.annotations-unreadable .step-panel { display: none !important; }
+/* Lane HV (contract C20): a hand-off opened read only (read-only.js). The
+   same way as above: one class on the page, here hiding every control that
+   changes the project, on every level; what shows can be looked at and
+   played. The fields left (a step's name, system, description and flow, the
+   document) are read only (read-only.js lockInputs). The Export menu keeps
+   the map exports and gains the two files the hand-off came with. */
+.app:not(.read-only) #btn-handoff-open-pdd,
+.app:not(.read-only) #btn-handoff-open-tech { display: none; }
+.app.read-only #btn-session-pdd,
+.app.read-only #btn-session-tech,
+.app.read-only #btn-session-zip,
+.app.read-only #btn-session-handoff,
+.app.read-only #btn-attach-video,
+.app.read-only #btn-remove-video,
+.app.read-only #btn-attach-transcript,
+.app.read-only #btn-remove-transcript,
+.app.read-only .summary-fix,
+.app.read-only #btn-ov-attach,
+.app.read-only #ov-attach:not(:has(.att-row)),
+.app.read-only [data-att-act="remove"],
+.app.read-only .tr-add,
+.app.read-only #btn-add-step,
+.app.read-only #btn-sync-video,
+.app.read-only #btn-video-remove,
+.app.read-only #btn-link-recording,
+.app.read-only #btn-tl-attach-video,
+.app.read-only .tl-tr-sync,
+.app.read-only .tl-tr-replace,
+.app.read-only .tl-tr-remove,
+.app.read-only .marker-actions,
+.app.read-only #btn-add-manual-step,
+.app.read-only #btn-delete-selected-steps,
+.app.read-only #btn-merge-selected,
+.app.read-only #btn-group-selected,
+.app.read-only #btn-ignored-apps,
+.app.read-only #btn-remembered-names,
+.app.read-only .multi-check,
+.app.read-only #btn-dissolve-level,
+.app.read-only #btn-flow-only-when,
+.app.read-only #btn-flow-go-to,
+.app.read-only #btn-flow-remove-condition,
+.app.read-only .flow-link-remove,
+.app.read-only #btn-step-hide,
+.app.read-only #btn-step-make-sub,
+.app.read-only #btn-step-dissolve,
+.app.read-only #btn-step-add-shot,
+.app.read-only [data-shot-act],
+.app.read-only #btn-step-add-note,
+.app.read-only [data-note-act],
+.app.read-only #btn-step-attach,
+.app.read-only #step-shots-sect:not(:has(.step-shot-card)),
+.app.read-only #step-notes-sect:not(:has(.step-note)),
+.app.read-only #step-atts-sect:not(:has(.att-row)),
+.app.read-only #btn-step-split,
+.app.read-only #btn-step-merge,
+.app.read-only #btn-step-merge-selected,
+.app.read-only #btn-step-delete,
+.app.read-only #step-sub-note,
+.app.read-only .si-split-btn,
+.app.read-only #btn-fork-refmap,
+.app.read-only #btn-toggle-refmaps,
+.app.read-only #refmap-panel,
+.app.read-only #btn-map-asis-edit,
+.app.read-only #map-view-stale,
+.app.read-only #btn-map-asis-recopy,
+.app.read-only .help-action,
+.app.read-only #btn-restore-annotations { display: none !important; }
+/* A field that is read, not typed in: no fill, a dashed edge. */
+.app.read-only #step-detail :is(input, textarea)[readonly],
+.app.read-only #ov-doc :is(input, textarea)[readonly] { background: transparent; border-style: dashed; resize: none; }
 
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {

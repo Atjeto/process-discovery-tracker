@@ -39,6 +39,7 @@ const Planes = require("./map-planes.js");
 const MapView = require("./map-view.js");
 const SaveState = require("./save-state.js");
 const AsIsFresh = require("./asis-freshness.js");
+const RO = require("./read-only.js");
 const { toast, escapeHtml } = require("./dom.js");
 const { confirmModal } = require("./modals.js");
 
@@ -74,8 +75,10 @@ function _markCurrent(s) {
   if (s && s.sessionFolder) _current = { folder: s.sessionFolder, mtime: _annoMtime(s.sessionFolder) };
 }
 /* Whether process_map_step.bpmn (`srcPath`) needs an analysis before it is
-   shown or copied: missing, or older than annotations.json. */
+   shown or copied: missing, or older than annotations.json. Never in a
+   hand-off opened read only (lane HV): it shows the map it came with. */
 function _needsAnalyze(s, srcPath) {
+  if (RO.isReadOnly(s)) return false;
   const bpmnMs = _fileMtime(srcPath);
   if (bpmnMs == null) return true;
   const annoMs = s ? _annoMtime(s.sessionFolder) : null;
@@ -419,7 +422,7 @@ function rowHtml(m, s) {
 
 async function onRowAction(act, id) {
   const s = session();
-  if (!s) return;
+  if (!s || RO.isReadOnly(s)) return;
   if (act === "edit") { openEditor(id); return; }
   if (act === "dup") {
     const src = RefStore.find(s.annotations, id);
@@ -462,7 +465,7 @@ async function onRowAction(act, id) {
 
 async function onRowPdd(id, role) {
   const s = session();
-  if (!s) return;
+  if (!s || RO.isReadOnly(s)) return;
   RefStore.setRole(s.annotations, id, role || null);
   await persist("Set PDD role");
   refresh();
@@ -500,6 +503,8 @@ let _edit = null;
 async function onFork(like) {
   const s = session();
   if (!s || !s.sessionFolder) { toast("Open a project first.", "error"); return; }
+  // Lane HV: no map is copied or edited in a hand-off opened read only.
+  if (RO.isReadOnly(s)) return;
   if (_forking) return;
   // The Map's lock (overview-view.mapLockHtml, required lazily: the Overview
   // requires this module): no runs marked, not analyzed, or a failed check.
@@ -610,7 +615,7 @@ async function _takeBack(t) {
 /* Open a copy that is kept (the Map's Edit, a gallery row). */
 async function openEditor(id) {
   const s = session();
-  if (!s) return;
+  if (!s || RO.isReadOnly(s)) return;
   const e = RefStore.find(s.annotations, id);
   if (!e) return;
   if (!RefStore.fileExists(s.sessionFolder, e)) {

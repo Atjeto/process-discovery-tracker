@@ -37,6 +37,8 @@ const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
 const ProjectZip = require("./project-zip.js");
 const ProjectFolder = require("./project-folder.js");
+const HandoffZip = require("./handoff-zip.js");
+const HandoffOpen = require("./handoff-open.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 const { clearStaged } = require("./staged-outputs.js");
 
@@ -44,6 +46,23 @@ const { clearStaged } = require("./staged-outputs.js");
    viewer's userData folder (an e2e run's throwaway profile gets its own). */
 function namesStorePath() {
   return NamesStore.namesStorePath(app.getPath("userData"));
+}
+
+/* Lane HV (contract C20): a hand-off zip opens read only, extracted under
+   <userData>/handoffs (handoff-open.js), and so does a hand-off unzipped by
+   hand (its PDD and Technical details beside the project folder). Each
+   handler below that writes a project folder, or runs the analysis that
+   rewrites one, refuses such a folder first, before any dialog and before
+   the save state hears of a write. The renderer shows no editing control
+   there; this is the sink that holds even when one slips through. */
+function _userData() {
+  return typeof app.getPath === "function" ? app.getPath("userData") : null;
+}
+const READ_ONLY_ERROR = "this is a hand-off opened read only: nothing in it can change.";
+function _refuseReadOnly(sessionFolder) {
+  const root = path.resolve(String(sessionFolder || ""));
+  return sessionFolder && HandoffOpen.isReadOnlyProject(_userData(), root)
+    ? { ok: false, code: "READ_ONLY", error: READ_ONLY_ERROR } : null;
 }
 
 let mainWindow = null;
@@ -208,8 +227,29 @@ ipcMain.handle("viewer:openSessionFolder", async () => {
   return r.filePaths[0];
 });
 
-ipcMain.handle("viewer:loadSession", (_e, sessionFolder) => {
-  return loadSessionData(sessionFolder);
+/* Lane HV: Open a hand-off (.zip). Windows' folder dialog, the one Open
+   project shows, lists folders only, so a hand-off zip is picked here. */
+ipcMain.handle("viewer:openHandoffDialog", async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: "Open a hand-off",
+    properties: ["openFile"],
+    filters: [{ name: "Hand-off zip", extensions: ["zip"] }],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return r.filePaths[0];
+});
+
+/* A project folder, or (lane HV) a hand-off zip: extracted under
+   <userData>/handoffs, or found where it was extracted before
+   (handoff-open.js), and its project folder opened read only. The result
+   then carries openedZip (the zip) and handoffReused. */
+ipcMain.handle("viewer:loadSession", async (_e, sessionFolder) => {
+  const chosen = String(sessionFolder || "");
+  let isZip = false;
+  try { isZip = /\.zip$/i.test(chosen) && fs.statSync(chosen).isFile(); } catch (_) { isZip = false; }
+  if (!isZip) return loadSessionData(chosen);
+  const opened = await HandoffOpen.openHandoffZip(chosen, _userData());
+  return Object.assign(loadSessionData(opened.folder), { openedZip: path.resolve(chosen), handoffReused: opened.reused });
 });
 
 ipcMain.handle("viewer:exportFile", async (_e, { sourcePath, suggestedName }) => {
@@ -248,6 +288,7 @@ const _zipping = new Set();
 ipcMain.handle("viewer:exportProjectZip", async (_e, { sessionFolder } = {}) => {
   const root = _sessionRoot(sessionFolder);
   if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
+  if (_refuseReadOnly(root)) return { ok: false, code: "READ_ONLY", error: "A hand-off opened read only is not zipped again: the zip you opened is its zip." };
   if (_normalizeFolder !== null && _normalizeFolder === root) {
     return { ok: false, error: "The steps and the map are being updated: make the zip once the update is done." };
   }
@@ -262,6 +303,51 @@ ipcMain.handle("viewer:exportProjectZip", async (_e, { sessionFolder } = {}) => 
   } finally {
     _zipping.delete(root);
   }
+});
+
+/* Export, Hand off... (lane HV, contract C20): "<project> v<N>.zip" next to
+   the project folder, holding the folder and, at its root, the PDD and the
+   Technical details the renderer had the pipeline write for this version
+   (handoff-zip.js). The version is recorded in annotations.json before
+   (handoff-ui.js). Not while the project's analysis runs, one zip of a
+   project at a time (with the Whole project zip), and never for a hand-off
+   opened read only. Result { ok: true, path, bytes, size, entries } or
+   { ok: false, error } (a sentence). */
+ipcMain.handle("viewer:exportHandoffZip", async (_e, { sessionFolder, base, version, pdd, tech } = {}) => {
+  const root = _sessionRoot(sessionFolder);
+  if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
+  const ro = _refuseReadOnly(root);
+  if (ro) return ro;
+  if (!Number.isInteger(version) || version < 1) return { ok: false, error: "The version number is missing." };
+  for (const f of [pdd, tech]) {
+    if (typeof f !== "string" || !fs.existsSync(f)) return { ok: false, error: "The PDD or the Technical details were not written." };
+  }
+  if (_normalizeFolder !== null && _normalizeFolder === root) {
+    return { ok: false, error: "The steps and the map are being updated: hand off once the update is done." };
+  }
+  if (_zipping.has(root)) return { ok: false, error: "A zip of this project is being made already." };
+  _zipping.add(root);
+  try {
+    const r = await HandoffZip.writeHandoffZip(root, { base: String(base || ""), version, pdd, tech });
+    return { ok: true, path: r.zipPath, bytes: r.bytes, size: ProjectZip.humanSize(r.bytes), entries: r.entries };
+  } catch (e) {
+    console.error("[viewer:exportHandoffZip] not made:", e && (e.stack || e.message));
+    return { ok: false, error: ProjectZip.describeZipError(e) };
+  } finally {
+    _zipping.delete(root);
+  }
+});
+
+/* Lane HV: the PDD or the Technical details (kind "pdd" or "tech") a
+   hand-off opened read only came with, opened in its program (Word, Excel).
+   Result { ok: true, path } or { ok: false, error }. */
+ipcMain.handle("viewer:openHandoffFile", async (_e, { sessionFolder, kind } = {}) => {
+  const root = _sessionRoot(sessionFolder);
+  if (!root || !_knownSessionRoots.has(root) || !_refuseReadOnly(root)) return { ok: false, error: "this is not a hand-off opened read only." };
+  const file = HandoffOpen.handoffFile(root, kind);
+  if (!file) return { ok: false, error: "the hand-off came without that file." };
+  const err = await shell.openPath(file);
+  return err ? { ok: false, error: err } : { ok: true, path: file };
 });
 
 ipcMain.handle("viewer:revealFile", (_e, p) => shell.showItemInFolder(p));
@@ -312,6 +398,9 @@ function loadSessionData(sessionFolder) {
   }
 
   const stats = loadOptionalJson(path.join(sessionFolder, "stats.json"));
+  // Lane HV: a hand-off opened read only (under <userData>/handoffs, or
+  // unzipped by hand).
+  const readOnly = HandoffOpen.isReadOnlyProject(_userData(), root);
   // RP-04: an annotations.json that exists but cannot be read is reported
   // (annotationsError, shown as a banner naming the file and its backups),
   // never treated as absent; the writers below refuse to replace it.
@@ -376,6 +465,7 @@ function loadSessionData(sessionFolder) {
     integrity,
     transcript,
     transcriptError,
+    readOnly,
   };
 }
 
@@ -419,6 +509,9 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
     if (!fs.existsSync(path.join(root, "manifest.json"))) {
       return { ok: false, code: null, error: "Analysis could not start: this is not a project folder (no manifest.json)." };
     }
+    // Lane HV: the analysis rewrites the project's outputs; a hand-off opened
+    // read only keeps the ones it came with.
+    if (_refuseReadOnly(root)) return { ok: false, code: null, error: "Analysis does not run here: " + READ_ONLY_ERROR };
     // RP-04: normalize.py rewrites annotations.json. Never launch it over an
     // unreadable one (the pipeline's own check is C13 exit code 2; this guard
     // also covers a pipeline that predates it).
@@ -448,6 +541,10 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       pddTobeImage: opts.pddTobeImage || null,
       // C19: the manifest of the sub-processes' map pictures.
       pddMapImages: opts.pddMapImages || null,
+      // C20: the Technical details workbook, and the hand-off version both
+      // documents are made for.
+      techOut: opts.techOut || null,
+      handoff: Number.isInteger(opts.handoff) && opts.handoff >= 1 ? opts.handoff : null,
       namesPath,
       onLog: (text) => mainWindow.webContents.send("viewer:normalizeLog", translatePipelineError(text)),
       onProc: (h) => { _normalizeHandle = h; },
@@ -482,7 +579,9 @@ ipcMain.handle("viewer:cancelNormalize", () => {
 /* External video attach (Teams recording, screen capture from any tool).
    Stored on the session's annotations under external_video so the raw
    manifest stays untouched. */
-ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder }) => {
+ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const r = await dialog.showOpenDialog(mainWindow, {
     title: "Attach external video",
     properties: ["openFile"],
@@ -505,6 +604,8 @@ ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {
      and (lane FX2) while the project's analysis runs, which would refuse the
      entry's save and leave the copy in video/ unlisted.
      Result { ok, stored, copied, copyError } or { ok: false, error }. */
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "video");
   w.start();
   try {
@@ -550,6 +651,8 @@ function _sessionRoot(sessionFolder) {
    { ok: true, summary }, or { ok: false, code, error } (error: the script's
    reason; exit 2 and 3 leave the previous transcript in place). */
 ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "transcript");
   const root = _sessionRoot(sessionFolder);
   if (!root) return w.end({ ok: false, code: null, error: "this is not a project folder." }, NO_PROJECT);
@@ -573,6 +676,8 @@ ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => 
    removed, tag, files } (tag and files: what restoreTranscript puts back) or
    { ok: false, error }. */
 ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "transcript");
   w.start();
   try {
@@ -596,6 +701,8 @@ ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
    of the same name attached since is kept). Result { ok: true, restored,
    kept } or { ok: false, error }. */
 ipcMain.handle("viewer:restoreTranscript", (_e, { sessionFolder, tag, files } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "transcript");
   w.start();
   try {
@@ -612,6 +719,8 @@ ipcMain.handle("viewer:restoreTranscript", (_e, { sessionFolder, tag, files } = 
 /* Sync: rewrites transcript.json's offset_ms (atomically) and nothing else.
    Result { ok: true } or { ok: false, error }. */
 ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "transcript");
   w.start();
   try {
@@ -688,6 +797,8 @@ ipcMain.handle("viewer:createProject", async () => {
    anything is asked or written while the project's analysis runs (the
    entry's save would be refused, and the file left in the folder unlisted). */
 ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "screenshot");
   try {
     const root = _sessionRoot(sessionFolder);
@@ -720,6 +831,8 @@ ipcMain.handle("viewer:addScreenshot", async (_e, { sessionFolder, source, data 
    label } (label: the original file name) or { ok: false, error }. Lane
    FX2: refused before the dialog while the project's analysis runs. */
 ipcMain.handle("viewer:addAttachment", async (_e, { sessionFolder } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "attachment");
   try {
     const root = _sessionRoot(sessionFolder);
@@ -766,7 +879,10 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
   /* Anchor the write to an absolute session folder; reject if the
      resolved path doesn't contain a manifest (i.e. is not actually a
      session folder). Prevents accidental writes to arbitrary paths
-     via a manipulated IPC payload. */
+     via a manipulated IPC payload. Lane HV: never in a hand-off opened
+     read only. */
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "annotations");
   w.start();
   try {
@@ -807,6 +923,8 @@ ipcMain.handle("viewer:saveAnnotations", (_e, { sessionFolder, annotations }) =>
    while the project's analysis runs. Result { ok: true, backup, mtimeMs,
    keptAs } or { ok: false, error } (a sentence). */
 ipcMain.handle("viewer:restoreAnnotationsBackup", (_e, { sessionFolder, expect } = {}) => {
+  const ro = _refuseReadOnly(sessionFolder);
+  if (ro) return ro;
   const w = _projectWrite(sessionFolder, "annotations");
   w.start();
   try {
@@ -909,4 +1027,4 @@ app.on("activate", () => {
 /* Exported for unit tests (the security helper is pure and validated in
    isolation). Importing this module under plain node is made safe by the
    Electron shim near the top. */
-module.exports = { validateScreenshotOpen, _knownSessionRoots, loadSessionData };
+module.exports = { validateScreenshotOpen, _knownSessionRoots, loadSessionData, READ_ONLY_ERROR };

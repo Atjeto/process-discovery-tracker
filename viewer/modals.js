@@ -56,14 +56,18 @@ function promptModal(opts) {
       backdrop.remove();
       resolve(value);
     }
-    okBtn.addEventListener("click", () => done(input.value));
+    // opts.required (lane HV): OK waits for some text.
+    const blank = () => !!opts.required && !String(input.value).trim();
+    const syncOk = () => { okBtn.disabled = blank(); };
+    if (opts.required) { input.addEventListener("input", syncOk); syncOk(); }
+    okBtn.addEventListener("click", () => { if (!blank()) done(input.value); });
     cancelBtn.addEventListener("click", () => done(null));
     closeBtn.addEventListener("click", () => done(null));
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) done(null);
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !opts.multiline) { e.preventDefault(); done(input.value); }
+      if (e.key === "Enter" && !opts.multiline) { e.preventDefault(); if (!blank()) done(input.value); }
       else if (e.key === "Escape") { e.preventDefault(); done(null); }
     });
     setTimeout(() => { input.focus(); input.select(); }, 0);

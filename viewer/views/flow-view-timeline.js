@@ -33,6 +33,7 @@ const RunsModel = require("../runs-model.js");
 const { numberOnlyLabel } = RunsModel;
 const { isoMs } = require("../run-differences.js");
 const SPM = require("../sub-process-maps.js");
+const RO = require("../read-only.js");
 const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 
@@ -1020,8 +1021,9 @@ function renderTimeline() {
         const menu = (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
+          // Lane HV: a hand-off opened read only keeps its stretches as they are.
           _menu(ev.clientX, ev.clientY, [
-            ["Include again", () => includeAgain(b.range)],
+            ...(RO.isReadOnly(State.getSession()) ? [] : [["Include again", () => includeAgain(b.range)]]),
             ["Go to its start", () => seekToTimestamp(new Date(b.startMs).toISOString())],
           ]);
         };
@@ -1146,6 +1148,8 @@ function renderTimeline() {
         pin.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
+          // Lane HV: a note of a hand-off opened read only is read, not edited.
+          if (RO.isReadOnly(State.getSession())) return;
           const UI = require("./analyst-ui.js");   // lazy: it requires this module
           _menu(e.clientX, e.clientY, [["Edit note…", () => UI.editNote(n.id)], ["Delete note", () => UI.deleteNote(n.id)]]);
         });

@@ -106,6 +106,19 @@ function projectName(manifest, folderName) {
   return requestName(manifest) || requestCode(manifest) || _text(folderName) || "This project";
 }
 
+/* The name the app shows for a project (the Overview's project line, the
+   names of a hand-off's files, handoff.js): the document title once it is
+   written, else the name given to the recording or to a project made in the
+   viewer (manifest.label), else projectName (the request, else the folder's
+   name `folderName`). */
+function displayName(session, folderName) {
+  const doc = session && session.annotations && session.annotations.document;
+  const title = doc && typeof doc.title === "string" ? doc.title.trim() : "";
+  const m = (session && session.manifest) || {};
+  const label = typeof m.label === "string" ? m.label.trim() : "";
+  return title || label || projectName(m, folderName);
+}
+
 /* The Recents entry's name: the document title once it is written, else the
    name given at the end of the recording (manifest.label), else the request
    code (AD-30) and the folder name, else the folder name alone (the capture
@@ -180,6 +193,7 @@ module.exports = {
   requestName,
   requestCode,
   projectName,
+  displayName,
   recentLabel,
   detectMarkerProblems,
 };

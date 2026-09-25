@@ -46,6 +46,8 @@ const { isVideoCopy } = require("../analyst-files.js");
 const Fresh = require("../rows-freshness.js");
 const AsIsFresh = require("../asis-freshness.js");
 const AC = require("../analyst-content.js");
+const RO = require("../read-only.js");
+const Handoff = require("../handoff.js");
 
 /* ---- Stage failures (contract C12, RP-10) -------------------------------- */
 
@@ -421,16 +423,14 @@ function _mediaParts(sess) {
 function _summaryLine(sess, state) {
   const s = SessionSummary.computeSummary(sess);
   const m = (sess && sess.manifest) || {};
-  const docTitle = _docValue(((sess && sess.annotations) || {}).document, "title").trim();
-  // The request's name or code, else the folder's name; never the capture
-  // app's default request ("Default engagement", lane FX1).
+  // The document title, else the analyst-given name (manifest.label: a
+  // project made in the viewer, C16), else the request's name or code, else
+  // the folder's name; never the capture app's default request ("Default
+  // engagement", lane FX1). The hand-off's file names use the same name.
   const folderName = String((sess && sess.sessionFolder) || "").split(/[\\/]/).filter(Boolean).pop() || "";
-  const project = SessionSummary.projectName(m, folderName);
   const login = s ? s.worker : ((m.config && m.config.worker && m.config.worker.id) || "");
   const sme = SessionSummary.smeName(m) || login;
-  // The analyst-given name (manifest.label: a project made in the viewer, C16) before the project.
-  const label = typeof m.label === "string" ? m.label.trim() : "";
-  const parts = ['<strong class="ov-summary-name">' + escapeHtml(docTitle || label || project) + "</strong>"];
+  const parts = ['<strong class="ov-summary-name">' + escapeHtml(SessionSummary.displayName(sess, folderName)) + "</strong>"];
   // A project made from a video or from nothing (C16) was not recorded by anyone.
   if (sme && !["video", "blank"].includes(m.source)) parts.push("recorded by " + escapeHtml(sme));
   if (state) {
@@ -510,10 +510,21 @@ function _summaryWarnings(sess) {
   return out.join("");
 }
 
+/* Lane HV (contract C20): the line of a hand-off opened read only, "Version
+   2, handed off 2026-09-25 by rasha · Read only", what changed in its
+   tooltip; "" for a project the analyst works on. */
+function _handoffLineHtml(sess) {
+  if (!RO.isReadOnly(sess)) return "";
+  const entry = Handoff.latest(sess.annotations);
+  const title = entry && entry.note ? "What changed in this version: " + entry.note : "";
+  return '<div class="ov-handoff" id="ov-handoff"' + (title ? ' title="' + escapeAttr(title) + '"' : "") + ">" +
+    escapeHtml(Handoff.readOnlyLine(entry)) + "</div>";
+}
+
 function _summaryHtml(sess, state) {
   const line = _summaryLine(sess, state);
   const warn = state ? _summaryWarnings(sess) : "";
-  return '<div class="ov-summary" id="ov-summary">' + line +
+  return '<div class="ov-summary" id="ov-summary">' + _handoffLineHtml(sess) + line +
     (warn ? '<div class="ov-summary-warn">' + warn + "</div>" : "") + "</div>";
 }
 
@@ -558,13 +569,16 @@ let _docFolder = null;
    scope": the count, and the empty fields by name while some are written
    (with none written, every field is still to write). Commas only: a label
    can hold "and". */
-function _documentStatusText(st) {
+function _documentStatusText(st, readOnly) {
   const count = st.filled + " of " + st.total + " written";
-  return st.filled > 0 && st.missing.length ? count + ". To write: " + st.missing.join(", ") : count;
+  // Lane HV: a hand-off opened read only names the empty fields, not a to-do.
+  return st.filled > 0 && st.missing.length ? count + (readOnly ? ". Not written: " : ". To write: ") + st.missing.join(", ") : count;
 }
 
-/* Who fills the document, in the summary beside its title (AD-29). */
+/* Who fills the document, in the summary beside its title (AD-29); in a
+   hand-off opened read only (lane HV), who wrote it. */
 const DOC_WHO = "You write these. The PDD prints them.";
+const DOC_WHO_READ_ONLY = "The analyst wrote these. The PDD prints them.";
 
 /* ---- 3b. From the transcript (contract C8) -------------------------------- */
 
@@ -736,8 +750,8 @@ function _documentHtml(anno, sess, open) {
     '<summary class="analysis-module-head" title="The PDD prints each field you write in place of its ' +
       'placeholder; the fields are kept for every later export.">' +
       '<span class="analysis-module-title">Document</span>' +
-      '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(DOC_WHO) + "</span>" +
-      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st)) + "</span>" +
+      '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(RO.isReadOnly(sess) ? DOC_WHO_READ_ONLY : DOC_WHO) + "</span>" +
+      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, RO.isReadOnly(sess))) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
     '<div class="analysis-module-body ov-doc-body">' + fields + AnalystUI.overviewAttachmentsHtml(anno) +
@@ -887,7 +901,8 @@ function _showRowsLine() {
    steps (Fresh.refreshNeed). Returns whether a refresh started. */
 function refreshRowsIfOlder() {
   const sess = State.getSession();
-  if (!sess || !_deps.analyze) return false;
+  // Lane HV: a hand-off opened read only shows the rows it came with.
+  if (!sess || !_deps.analyze || RO.isReadOnly(sess)) return false;
   const signature = Fresh.refreshNeed(sess, { busy: _deps.busy(), typing: _typingOnOverview(), tried: _tried });
   if (!signature) return false;
   const folder = sess.sessionFolder;
@@ -955,7 +970,9 @@ function overviewHtml(sess, run, docOpen, rowsLine) {
   }
   const anno = (sess && sess.annotations) || {};
   const state = pathState(sess);
-  let html = _nextLineHtml(state);
+  // Lane HV: the Checklist is the analyst's to-do list; a hand-off opened
+  // read only has nothing to do.
+  let html = RO.isReadOnly(sess) ? "" : _nextLineHtml(state);
   html += _summaryHtml(sess, state);
   // P1.10: the only typing the home asks for sits under the recording line;
   // once every stage is done it opens by itself, so the home leads with it.
@@ -989,6 +1006,8 @@ function renderOverviewLevel() {
   AnalystUI.wireOverviewAttachments(host);
   _wireTranscript(host);
   wireObservations(host);
+  // Lane HV: the document of a hand-off opened read only is read, not typed in.
+  if (RO.isReadOnly(sess)) RO.lockInputs(host.querySelector("#ov-doc"));
   if (typing) {
     const field = host.querySelector('[data-doc="' + typing.key + '"]');
     if (field) {

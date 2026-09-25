@@ -4,7 +4,7 @@ A captured session is a self-contained folder: the integration seam between
 capture, normalization and the viewer (section 2.1 of the design). This file
 is the authoritative format reference;
 [DATA-MODEL.md](../docs/architecture/DATA-MODEL.md) is the working summary.
-Contract numbers (C1 to C18) refer to
+Contract numbers (C1 to C20) refer to
 `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; the decisions
 behind the light version are in [ADR-0029](../docs/adr/0029-ba-helper-refocus.md).
 
@@ -353,6 +353,41 @@ An empty field prints a "[To be completed: ...]" gap in its place, except
 `title` (the document is then titled "Process Definition Document") and
 `notes` (left out). Only these fields leave gaps, so every gap is one the
 analyst can close in the app. The pipeline preserves this key verbatim.
+
+**`handoffs`** *(array; contract C20, viewer-written)*: the versions of the
+project handed to the developers (Export, Hand off...), oldest first:
+
+```json
+"handoffs": [
+  { "version": 1, "handed_off_at": "2026-09-25T10:14:03.120Z", "by": "rasha",
+    "note": "First hand-off" }
+]
+```
+
+- **`version`**: a whole number from 1; the next hand-off takes one more
+  than the highest. **`handed_off_at`**: when it was handed off (UTC; its
+  date is what the documents print). **`by`**: the Windows user who handed
+  it off. **`note`**: what changed in this version, one line, never empty
+  (the first hand-off's dialog is filled with "First hand-off").
+- A hand-off adds its entry as one undoable edit, then writes
+  `<project> v<N>.zip` next to the project folder: the folder (this entry
+  in its `annotations.json`) and, at the zip's root, `<project> v<N>
+  PDD.docx` and `<project> v<N> Technical details.xlsx`, made for this
+  version (`normalize.py --handoff N`). `<project>` is the name the viewer
+  shows (the document title, else `manifest.label`, else the request, else
+  the folder's name), without the characters Windows refuses. A zip is never
+  written over another: `" (2)"` and on. Ctrl+Z takes the entry back; the
+  zip stays. A hand-off that does not finish takes its entry back at once.
+- Every PDD and Technical details workbook says which version it is:
+  "Version N, handed off <date> by <name>" when made for hand-off N, else
+  "Working copy after version N" (the highest), or "Working copy, not handed
+  off yet"; the PDD adds a Version history table of every entry
+  (`normalization/handoff_versions.py`). A developer who opens the zip sees
+  its project read only, its latest entry as the project line (see "Analyst
+  library", `handoffs/`).
+- An entry without a whole `version` of 1 or more is ignored; of two
+  entries with one version, the later one counts. The pipeline never writes
+  this key and round-trips it untouched.
 
 **`analyst_screenshots`** *(array; contract C16, viewer-written)*: the
 screenshots the analyst added by hand (a video frame, a pasted image, a
@@ -931,7 +966,8 @@ revision before ADR-0029) and on branch `product-edition`.
 ## Analyst library (outside the session folder)
 
 Two stores on the analyst's machine, in the viewer's user data folder
-(Electron `userData`) under `pdt-library/`. Both are written by the viewer
+(Electron `userData`) under `pdt-library/`, and (contract C20) the
+hand-offs opened there, under `handoffs/` (below). Both are written by the viewer
 through a temp file renamed over the store, so a failed write leaves the
 previous store in place. A store that exists but cannot be read (bad JSON,
 a byte order mark, the wrong `version`) is reported and never replaced.
@@ -956,6 +992,30 @@ Entries a reader skips are kept on disk as they are.
   runs when the file exists. A missing or unreadable file is not a failure
   there: one stderr warning, and drafting goes on without it. Both readers
   skip an entry without a non-blank `name`.
+
+### `handoffs/` (contract C20): the hand-offs opened read only
+
+Open a hand-off (.zip)... takes a hand-off zip (`viewer/handoff-open.js`): a
+zip whose root holds one project folder whose `annotations.json` lists at
+least one `handoffs` entry, and beside it `<project> v<N> PDD.docx` and
+`<project> v<N> Technical details.xlsx`, N the version it lists last. Any
+other zip, the SME's recording and the whole project's zip among them, is
+refused with a sentence saying to unzip it first. Its content is extracted, as the
+zip holds it, into `handoffs/<project> v<N>/`: the project folder, the PDD
+and the Technical details, and `.pdt-handoff.json` beside them
+(`{ session_id, version, handed_off_at, zip, pdd, tech, opened_at }`: the
+file names of the two documents, and what makes the same zip open the same
+folder again). Another hand-off of the same version gets `<project> v<N>
+(2)/`. An entry that would land outside the folder, an encrypted entry, or a
+file whose size or CRC does not match stops the extraction, which writes
+into a temporary folder renamed only when complete. The project folder in it
+opens read only: every folder under `handoffs/` is, and the viewer writes
+nothing there (no save, no analysis, no file added). Nothing removes these
+folders; a newer version is a folder of its own. A hand-off unzipped by hand
+(Windows' Extract All, then Open project on the folder it makes) opens read
+only too: a project folder beside which lie `<project> v<N> PDD.docx` and
+`<project> v<N> Technical details.xlsx`, N the version its `annotations.json`
+lists last (`isReadOnlyProject`).
 
 ### `pdt-library/processes.json` (contract C5, light template)
 
@@ -1358,7 +1418,11 @@ offset_ms, recording_path }`, `session-integrity.json`), the viewer
 for a project it makes `manifest.json` and an empty `events.jsonl`) and
 `transcript_import.py` (`transcript.json`, `transcript/`). The viewer's
 Export, Whole project (.zip) writes `<folder name>.zip` next to the folder
-(`<folder name> (2).zip` when that name is taken), never inside it.
+(`<folder name> (2).zip` when that name is taken), never inside it; Export,
+Hand off... writes `<project> v<N>.zip` there too, with the PDD and the
+Technical details of the version at its root (contract C20, `handoffs`
+above). The Technical details workbook goes to the path given with
+`--tech-out`.
 
 **No longer written:** `events.xes`, `events.csv`, `dfg.json`, the
 activity-level `process_map.bpmn` and the per-case maps in `process_maps/`
@@ -1447,7 +1511,12 @@ the boxes, the lines and the other names.
 python normalize.py <session_folder> [--taxonomy path/to/taxonomy.yaml] [--mine]
     [--pdd-out path.docx] [--pdd-map-image path.png] [--pdd-map-images maps.json]
     [--pdd-tobe-image path.png] [--names remembered-names.json]
+    [--tech-out path.xlsx] [--handoff N]
 ```
+
+`--tech-out` (contract C20) writes the Technical details workbook, and
+`--handoff N` makes the PDD and the workbook for hand-off version N (see
+`handoffs` in annotations.json).
 
 `--pdd-map-images` (contract C19) is a manifest of the maps' pictures,
 `{"maps": [{"path": [<node>, ...], "png": "<file>"}]}`, a relative `png`
@@ -1461,7 +1530,7 @@ that map prints as a table.
 | 0 | Success. |
 | 1 | Usage error (bad arguments), or the folder is not a project folder. |
 | 2 | `annotations.json` exists but cannot be parsed; nothing was written. |
-| 3 | A requested export (`--pdd-out`) failed; nothing in the project was changed (lane FX1: the outputs are moved in only when the whole run succeeds), and the export was not written. |
+| 3 | A requested export (`--pdd-out`, `--tech-out`) failed; nothing in the project was changed (lane FX1: the outputs are moved in only when the whole run succeeds), and the export was not written. |
 
 Every error (codes 1 to 3) is one stderr line starting `[normalize] ERROR:`;
 an unexpected crash also exits 1, with a Python traceback. The viewer treats

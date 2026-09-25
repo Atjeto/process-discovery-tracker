@@ -26,6 +26,7 @@
 
 const State = require("./state.js");
 const Ipc = require("./ipc.js");
+const RO = require("./read-only.js");
 // Property access (not destructuring) so the unit tests can stub Dom.toast.
 const Dom = require("./dom.js");
 
@@ -107,6 +108,15 @@ async function beforeProjectWrite(sessionFolder) {
    ALREADY been shown to the analyst as an error toast. `what` names the edit
    in that message. */
 async function writeAnnotations(sessionFolder, annotations, what) {
+  // Lane HV: a hand-off opened read only is never written (main.js refuses it
+  // too); no control offers a change there, so this says one slipped through.
+  const open = State.getSession();
+  if (RO.isReadOnly(open) && open.sessionFolder === sessionFolder) {
+    const msg = "Your change" + (what ? " (" + what + ")" : "") + " was not saved: " + RO.READ_ONLY_REASON;
+    console.error("[session] annotations.json not saved: read only");
+    Dom.toast(msg, "error");
+    throw _surfacedError(msg);
+  }
   await beforeProjectWrite(sessionFolder);
   let r;
   try {
@@ -139,13 +149,15 @@ async function writeAnnotations(sessionFolder, annotations, what) {
 /* `extra` (optional) rides on the edit's undo entry: `names` (lane FX2), the
    remembered names the edit changed, [{ key, before, after }] (each an entry
    { name, updated_at }, or null for none), which an undo puts back to
-   `before` and a redo to `after`. */
+   `before` and a redo to `after`; `tag` (lane HV), a string that names the
+   entry for takeBackLastEdit. */
 async function saveAnnotationsWithUndo(annotations, label, extra) {
   const session = State.getSession();
   if (!session || !session.sessionFolder) return null;
   const sf = session.sessionFolder;
   const snap = snapshotAnnotations(annotations);
   const names = extra && Array.isArray(extra.names) && extra.names.length ? extra.names : null;
+  const tag = extra && typeof extra.tag === "string" && extra.tag ? extra.tag : null;
   return _serial(async () => {
     const r = await writeAnnotations(sf, annotations, label);
     // Only a save that reached the disk becomes undoable and moves the
@@ -159,7 +171,8 @@ async function saveAnnotationsWithUndo(annotations, label, extra) {
     // and must not move the new session's baseline.
     if (State.getSession() !== session) return r;
     const prev = _baseline !== null ? _baseline : snapshotAnnotations(session.annotations);
-    State.recordEdit(Object.assign({ label: label || "edit", annotations: prev, sessionFolder: sf }, names ? { names } : {}));
+    State.recordEdit(Object.assign({ label: label || "edit", annotations: prev, sessionFolder: sf },
+      names ? { names } : {}, tag ? { tag } : {}));
     _baseline = snap;   // this edit is now the committed state
     return r;
   });
@@ -185,6 +198,36 @@ async function _revertNames(names, which) {
       (which === "undo" ? "put back" : "renamed again") + ": " + failed[0], "error", { hold: true });
   }
   State.emit("names");
+}
+
+/* Lane HV: take back the project's last edit when it is still the last one
+   and carries `tag` (a hand-off that did not finish: its version entry goes,
+   as if it had never been made). Its state before is written back as the
+   committed state and shown, with no redo kept. Resolves true when it was
+   taken back; false when it is not the last edit any more (another edit came
+   after it), or the write failed (shown to the analyst, the entry kept). */
+function takeBackLastEdit(tag) {
+  const session = State.getSession();
+  if (!session || !tag) return Promise.resolve(false);
+  return _serial(async () => {
+    if (State.getSession() !== session) return false;
+    const popped = State.popUndo(session.sessionFolder);
+    if (!popped) return false;
+    if (popped.tag !== tag) { State.pushUndo(popped); return false; }
+    const opened = (session.annotations && session.annotations.opened_runs) || [];
+    if (opened.length && popped.annotations) {
+      popped.annotations.opened_runs = [...new Set([...(popped.annotations.opened_runs || []), ...opened])];
+    }
+    try {
+      await writeAnnotations(popped.sessionFolder, popped.annotations, "take back: " + popped.label);
+    } catch (_) {
+      State.pushUndo(popped);
+      return false;
+    }
+    _baseline = snapshotAnnotations(popped.annotations);
+    applyRevertedAnnotations(popped.annotations);
+    return true;
+  });
 }
 
 /* A settings write that is deliberately NOT undoable (the caller re-analyzes
@@ -381,6 +424,6 @@ function initSession(deps) {
 module.exports = {
   initSession, resetUndoStack, captureBaseline, canUndo, canRedo,
   writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct, setBeforeWrite, beforeProjectWrite,
-  performUndo, performRedo, applyRevertedAnnotations, revertFollowUp,
+  performUndo, performRedo, applyRevertedAnnotations, revertFollowUp, takeBackLastEdit,
   ensureAnnoShape, persistAnnotations,
 };

@@ -51,6 +51,8 @@ const Transcript = require("./flow-view-transcript.js");
 const AnalystUI = require("./analyst-ui.js");
 const StepPanel = require("./step-panel.js");
 const { ipcErrorText } = require("../project-folder.js");
+const RO = require("../read-only.js");
+const Handoff = require("../handoff.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -177,6 +179,17 @@ async function openSessionFlow() {
 $("#btn-open-session-hero").addEventListener("click", openSessionFlow);
 $("#btn-open-session").addEventListener("click", openSessionFlow);
 
+/* Lane HV (C20): Open a hand-off (.zip). The zip an analyst handed off is
+   extracted under userData and opens read only (main.js viewer:loadSession,
+   handoff-open.js); Windows' folder dialog would not list it. */
+async function openHandoffFlow() {
+  const zip = await Ipc.openHandoffDialog();
+  if (!zip) return;
+  await loadSessionIntoView(zip);
+}
+if ($("#btn-open-handoff-hero")) $("#btn-open-handoff-hero").addEventListener("click", openHandoffFlow);
+if ($("#btn-open-handoff")) $("#btn-open-handoff").addEventListener("click", openHandoffFlow);
+
 /* New project from a video / New empty project (C16; the New menu, AD-29):
    the main process asks for the video, then the project's name and folder,
    makes the folder and copies the video in; the project opens and is
@@ -246,6 +259,11 @@ function _rerenderWaiting() {
    A failed run shows the log; a cancelled one does not (nothing failed). */
 function runPipeline(opts, label) {
   const folder = opts.sessionFolder;
+  // Lane HV: a hand-off opened read only keeps the analysis it came with.
+  const open = State.getSession();
+  if (RO.isReadOnly(open) && open.sessionFolder === folder) {
+    return Promise.resolve({ ok: false, error: "The analysis does not run here: " + RO.READ_ONLY_REASON });
+  }
   _pendingRuns += 1;
   const job = _runQueue.then(async () => {
     // A quiet cancel asked for before this run started (the analyst took a
@@ -331,7 +349,8 @@ function cancelAnalysisQuietly() {
    the pipeline ends, before the reload. */
 async function analyzeSession(opts) {
   const sess = State.getSession();
-  if (!sess) return false;
+  // Lane HV: nothing is analyzed in a hand-off opened read only.
+  if (!sess || RO.isReadOnly(sess)) return false;
   const kind = opts && opts.confirm;
   if (kind && CONFIRMS[kind] && ((sess.annotations && sess.annotations.steps) || []).length) {
     const n = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess));
@@ -401,7 +420,12 @@ async function loadSessionIntoView(folder, opts) {
   // Lane FX2 (validation pass 3, F3): the step panel belongs to the project
   // it showed: another project closes it (the same one draws it again).
   StepPanel.refresh();
-  if (path.resolve(String(asked)) !== path.resolve(String(folder))) {
+  if (loaded && loaded.openedZip && RO.isReadOnly(loaded)) {
+    // Lane HV: a hand-off zip opens read only.
+    const line = Handoff.handedOffLine(Handoff.latest(loaded.annotations));
+    toast("Opened " + (line ? line.charAt(0).toLowerCase() + line.slice(1) : "the hand-off") +
+      ", read only: nothing here can change.", "info");
+  } else if (path.resolve(String(asked)) !== path.resolve(String(folder))) {
     toast("Opened the recording in the folder you chose: " + path.basename(folder) + ".", "info");
   }
   // Reset undo when switching to a different session. Undo/redo
@@ -419,6 +443,9 @@ async function loadSessionIntoView(folder, opts) {
   // The top bar's levels, status line and Export show once a recording is open.
   const shell = document.querySelector(".app");
   if (shell) shell.classList.add("has-session");
+  // Lane HV: a hand-off opened read only shows no editing control
+  // (read-only.js, styles.css .read-only).
+  if (shell) shell.classList.toggle("read-only", RO.isReadOnly(State.getSession()));
   renderAnnotationsErrorBanner();
   // The top bar's save state follows the project on screen (save-state.js).
   SaveState.projectOpened(State.getSession());
@@ -428,7 +455,10 @@ async function loadSessionIntoView(folder, opts) {
   /* The Recents entry is named by the document title once it is written,
      else by the name given at the end of the recording, else by its project
      and folder (session-summary.recentLabel). */
-  pushRecent(folder, recentLabel(State.getSession(), path.basename(folder)));
+  const label = recentLabel(State.getSession(), path.basename(folder));
+  // Lane HV: a hand-off opened read only says which version it is.
+  const handed = RO.isReadOnly(State.getSession()) ? Handoff.latest(State.getSession().annotations) : null;
+  pushRecent(folder, handed ? label + " · version " + handed.version + ", read only" : label);
 
   renderSessionPills();
   // C8: the transcript's menu items follow the loaded file.
@@ -503,7 +533,7 @@ async function loadSessionIntoView(folder, opts) {
   // and not while annotations.json cannot be read (the banner says why, and
   // the pipeline would refuse).
   const opened = State.getSession();
-  if (!(opts && opts.afterAnalysis) && !opened.annotationsError && analysisNeed(opened) &&
+  if (!(opts && opts.afterAnalysis) && !opened.annotationsError && !RO.isReadOnly(opened) && analysisNeed(opened) &&
       !_analyzedOnOpen.has(opened.sessionFolder)) {
     _analyzedOnOpen.add(opened.sessionFolder);
     analyzeSession().catch((e) => console.error("[flow-view] the automatic analysis failed:", e));
@@ -645,7 +675,8 @@ function renderSessionPills() {
     return;
   }
   const sess = State.getSession();
-  if (!sess) { host.innerHTML = ""; return; }
+  // Lane HV: nothing is applied in a hand-off opened read only.
+  if (!sess || RO.isReadOnly(sess)) { host.innerHTML = ""; return; }
   // Marker changes that wait for an analysis (marker-edits.js). They already
   // show in the Markers list and on the timeline as pending.
   const pending = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits,
@@ -832,8 +863,10 @@ function renderSelectionStats() {
     .join(", ");
   const dur = State.getSelectionRange().endMs - State.getSelectionRange().startMs;
   // A project with nothing recorded (C16) has no events to leave out: the
-  // act is offered only where it acts.
+  // act is offered only where it acts. Lane HV: a hand-off opened read only
+  // offers neither act.
   const recorded = evs.length > 0;
+  const editable = !RO.isReadOnly(State.getSession());
   card.innerHTML =
     '<h4>Selection</h4>' +
     '<div class="row"><span>Duration</span><span>' + escapeHtml(formatDuration(dur)) + '</span></div>' +
@@ -841,12 +874,12 @@ function renderSelectionStats() {
     '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
     '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
     (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
-    '<button class="summary-fix" id="tl-selection-case">Insert transaction from selection</button>' +
-    (recorded ? '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without what was recorded in this stretch. The Timeline then shows it hatched: click it to include it again.">Leave out of the analysis</button>' : '') +
+    (editable ? '<button class="summary-fix" id="tl-selection-case">Insert transaction from selection</button>' : '') +
+    (recorded && editable ? '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without what was recorded in this stretch. The Timeline then shows it hatched: click it to include it again.">Leave out of the analysis</button>' : '') +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
-  document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
-  if (recorded) document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
+  if (editable) document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
+  if (recorded && editable) document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
 }
 
 /* The screenshot surfaces (hover thumb, grid, gallery, openScreenshot)
@@ -884,11 +917,14 @@ function showMarkerInsertMenu(x, y, ts) {
     menu.appendChild(item);
   }
 
-  // AD-29: a Start marker starts a transaction, an End marker ends it.
-  addItem("Start a transaction here…", () => queueSyntheticMarker(ts, "start"));
-  addItem("End the transaction here",  () => queueSyntheticMarker(ts, "end"));
-  // C16: a note pinned to this moment (the Notes lane; never printed).
-  addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
+  // Lane HV: a hand-off opened read only offers only the way to the step.
+  if (!RO.isReadOnly(State.getSession())) {
+    // AD-29: a Start marker starts a transaction, an End marker ends it.
+    addItem("Start a transaction here…", () => queueSyntheticMarker(ts, "start"));
+    addItem("End the transaction here",  () => queueSyntheticMarker(ts, "end"));
+    // C16: a note pinned to this moment (the Notes lane; never printed).
+    addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
+  }
   addItem("Jump to step here",         () => {
     State.setPendingStepJump(ts);
     const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
@@ -1224,8 +1260,11 @@ function buildEventActions(ev) {
   };
   cell.appendChild(mkBtn("jump", "Seek the video and timeline to this event",
     () => seekToTimestamp(ev.timestamp)));
-  cell.appendChild(mkBtn("+ step", "Create a step at this event's time",
-    () => addStepAtTimestamp(ev.timestamp)));
+  // Lane HV: no step is added in a hand-off opened read only.
+  if (!RO.isReadOnly(State.getSession())) {
+    cell.appendChild(mkBtn("+ step", "Create a step at this event's time",
+      () => addStepAtTimestamp(ev.timestamp)));
+  }
   return cell;
 }
 

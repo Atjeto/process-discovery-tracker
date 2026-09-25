@@ -17,7 +17,7 @@ viewer/python/python.exe normalization/golden_check.py   # the session golden
 cd viewer && node --test                                  # incl. the UI copy guard
 cd capture && node --test
 dotnet test capture/recorder/Recorder.Tests/Recorder.Tests.csproj   # when capture/recorder/ changed
-cd e2e && node run-all.js                                 # the eight smokes, the real viewer
+cd e2e && node run-all.js                                 # the nine smokes, the real viewer
 ```
 
 If any goes red, you broke something: fix it or revert. Never commit red,
@@ -103,7 +103,7 @@ every push.
 
 A fresh chip, even in a clean worktree, needs nothing outside the repo:
 `e2e/` bundles `playwright-core` and drives the viewer's own Electron
-(`npm install` in `viewer/` and `e2e/` once). The eight smokes are worked
+(`npm install` in `viewer/` and `e2e/` once). The nine smokes are worked
 examples; [e2e/README.md](../e2e/README.md) says what each covers.
 
 1. **Work on a temp copy, never on the committed demo.** The viewer analyzes
@@ -172,7 +172,9 @@ others):
 - New: `#btn-new-menu` opens `#new-menu-popup`: `#btn-new-from-video`
   (New project from a video...), `#btn-new-blank` (New empty project...).
 - Open: `#btn-recent-menu` opens `#recent-menu-popup`: `#btn-open-session`
-  (Open project...) and the recent projects
+  (Open project...), `#btn-open-handoff` (Open a hand-off (.zip)..., opened
+  read only; also `#btn-open-handoff-hero` on the empty state: stub
+  `dialog.showOpenDialog` to answer the zip's path) and the recent projects
   `#recent-menu-content .recent-menu-item[data-folder]`.
 - Levels: `.view-mode-btn[data-level="overview"|"flow"|"steps"|"map"]`
   (the Timeline is `flow`); each shows `#session-layout-<level>`. The
@@ -181,14 +183,35 @@ others):
   `#btn-cancel-normalize`; else `#btn-apply-marker-edits` when marker
   changes wait.
 - The save state `#save-state` (`role="status"`, focusable):
-  `data-state="saved"|"saving"|"failed"`, its text *Saved*, *Saving...* or
-  *Not saved*, the time, the folder or the reason in its `title`.
+  `data-state="saved"|"saving"|"failed"|"readonly"`, its text *Saved*,
+  *Saving...*, *Not saved* or (a hand-off opened read only) *Read only*,
+  the time, the folder, the reason or the version in its `title`.
 - Export: `#btn-session-export-menu` opens `#session-export-popup`:
-  `#btn-session-pdd`, `#btn-session-map-svg`, `#btn-session-step-bpmn`,
-  `#btn-session-zip` (Whole project (.zip); it reads "Making the zip..."
-  and the Export button carries `aria-busy="true"` while the zip is made).
-  Every export then shows its file in Explorer (step 3 above).
+  `#btn-session-pdd`, `#btn-session-tech` (Technical details (.xlsx),
+  contract C20), `#btn-session-map-svg`, `#btn-session-step-bpmn`,
+  `#btn-session-handoff` (Hand off...: a `.modal-prompt` asking what
+  changed, OK disabled while it is blank; the item reads "Handing off..."
+  and Export carries `aria-busy="true"` while the hand-off is made; the zip
+  `<project> v<N>.zip` lands beside the project folder, and a smoke waits
+  for Explorer's stub to show it), `#btn-session-zip` (Whole project (.zip);
+  it reads "Making the zip..." and the Export button carries
+  `aria-busy="true"` while the zip is made). In a hand-off opened read only
+  the writing items are hidden and `#btn-handoff-open-pdd` (PDD of this
+  version) and `#btn-handoff-open-tech` show, each opening its file with
+  `shell.openPath` (stub it). Every export then shows its file in Explorer
+  (step 3 above).
 - `#btn-help` (below), `#btn-theme-toggle`.
+
+**A hand-off opened read only** (contract C20, lane HV): the project comes
+from a folder under `<userData>/handoffs/<project> v<N>/`, or is a hand-off
+unzipped by hand (its PDD and Technical details beside the project folder)
+(`State.getSession().readOnly === true`), the page carries `.app.read-only`,
+and every editing control is hidden (`styles.css`, beside
+`.annotations-unreadable`); the step pane's and the document's fields are
+`readOnly` (a tick or a list `disabled`). The Checklist `#ov-next` is not
+drawn. A smoke that checks "nothing is written" snapshots the extracted
+folder (names, sizes, times, hashes) before and after
+(`e2e/handoff-smoke.js`).
 
 **Shell:** the empty state `#session-empty` (`#btn-open-session-hero`,
 `#recent-list-session li[data-folder]`, `#recent-clear-all`); the loaded
@@ -205,7 +228,10 @@ shown only after a failed run; `#toast`.
 - The Checklist `#ov-next` (`data-next` = the next stage; stages
   `.ov-next-stage[data-stage="runs"|"pattern"|"review"|"document"|"export"]`,
   `.done` when done) and its one button `#btn-ov-next` (`data-next-act`).
-- The project line `#ov-summary`: `[data-summary="runs"|"steps"|"video"|"transcript"]`,
+- The project line `#ov-summary`: in a hand-off opened read only its first
+  line `#ov-handoff` ("Version 2, handed off <date> by <name> · Read only",
+  what changed in its `title`);
+  `[data-summary="runs"|"steps"|"video"|"transcript"]`,
   `#btn-attach-video` (Attach, or Replace), `#btn-remove-video` (only for a
   video the analyst attached; a `.modal-confirm` first),
   `#btn-attach-transcript`, `#btn-remove-transcript`, the marker fixes
@@ -429,7 +455,7 @@ the transactions ran one click away):
   (and `Control+Y`) undoes (redoes) a map edit there; the viewer's own
   shortcuts do nothing underneath.
 
-**Help** `#help-modal`: `.help-nav-item[data-section="start"|"stepsphases"|"markers"|"capture"|"shortcuts"|"trouble"]`,
+**Help** `#help-modal`: `.help-nav-item[data-section="start"|"stepsphases"|"markers"|"capture"|"handoff"|"shortcuts"|"trouble"]`,
 `.help-section[data-section]`, `#btn-help-reanalyze` (Troubleshooting),
 `#help-version`, `#btn-help-close`.
 

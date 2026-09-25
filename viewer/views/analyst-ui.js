@@ -24,6 +24,7 @@ const { promptModal } = require("../modals.js");
 const AC = require("../analyst-content.js");
 const SPM = require("../sub-process-maps.js");
 const SystemNames = require("../system-names.js");
+const RO = require("../read-only.js");
 // Lazy: the Overview's unit tests load this module without a page.
 const Video = () => require("./flow-view-video.js");
 
@@ -392,6 +393,8 @@ if (typeof document !== "undefined") document.addEventListener("paste", (e) => {
   const pane = document.getElementById("step-detail");
   const active = document.activeElement;
   if (!pane || !_sess() || State.getLevel() !== "steps" || !active || !(active === pane || pane.contains(active))) return;
+  // Lane HV: nothing is added to a hand-off opened read only.
+  if (RO.isReadOnly(_sess())) return;
   const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
   const img = items.find((i) => i.kind === "file" && /^image\/(png|jpeg)$/.test(i.type));
   const stepId = State.getSelectedStepId();

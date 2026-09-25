@@ -80,6 +80,8 @@ function renderMarkersList() {
     if (m.markerType === "start") {
       row.addEventListener("dblclick", async (e) => {
         if (e.target.closest(".marker-actions")) return;
+        // Lane HV: a hand-off opened read only renames nothing.
+        if (require("../read-only.js").isReadOnly(State.getSession())) return;
         const current = m.label || "";
         const next = await promptModal({ title: "Rename marker", message: "New label", defaultValue: current, okLabel: "Rename" });
         if (next == null || next.trim() === "" || next === current) return;
