@@ -162,6 +162,22 @@ RULE: a CI run older than twice its usual time is a failure; look at it before t
 RULE: a `page.evaluate` returns plain data only (a block body when the call is for its
 effect); never return DOM nodes, library objects or collections.
 
+### BH14: the coordinator turned a description of the owner's practice into a requirement (coordinator)
+Asked whether sub-processes should be separate chapters, the owner answered "Maps are images, remember.
+So each sub map is a separate image" about how the team works today. The coordinator recorded it as a
+per-map image export and told the owner so; the owner corrected it at once ("no no no i didn't say DO A
+SUBMAP AS AN IMAGE"). RULE: an answer that describes today's practice is context, not scope; build what
+was proposed and approved, and ask before adding a requirement.
+
+### BH15: two features shipped as slices the analyst could not see or manage (coordinator)
+Saved processes (C5) stored a process that could never be listed, opened or reused, and was applied only
+silently; saved names was a narrow slice of the product's vocabs. The owner: "I mind the fact that you
+implemented partially. If you decide to include and build something, then do it right." A read-only audit
+then graded 120 features (109 complete, 8 partial, 3 out of scope) and lane CC completed or cut every
+partial one; saved processes were removed (a process is recorded once). RULE: before including a
+feature, check it shows what it does, lets the analyst manage what it stores, shows its effect where it
+acts and has an inverse; else cut it.
+
 ## What worked
 
 - L1a (opus): reported a legacy-copy leftover in a fenced area (Steps legend)
