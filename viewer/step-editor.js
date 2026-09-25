@@ -73,9 +73,9 @@
   /* The step rows of one run (steps-view.js renders the runs around them).
      A row: the multi-select tick (shown on hover or once ticked), the name
      (double-click to rename, with the shared name suggestions), the waste
-     tag, the state chip and the duration (the run says in one line which
-     names are remembered names: names given to the same drafted step
-     elsewhere in the project). P1.9: a row carries a chip only
+     tag, the state chip and the duration (the run says in one line how many
+     steps were named for the analyst: from the project's library, or from
+     the name given to the same drafted step elsewhere in the project). P1.9: a row carries a chip only
      where it differs from its run: `opts.baseline` is the chip class the run's
      status stands for ("draft" or "confirmed"), and a row whose chip is that
      class shows none (the run's own status says it). Without a baseline (the

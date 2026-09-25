@@ -387,7 +387,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     const g2 = await group(R2);
     const row2 = g2.rows.find((r) => r.id === searchIds[R2]) || {};
     const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && g2.rows.every((r) => r.tags === 0) &&
-      g2.namesNote === "Remembered names: 1 of 10 steps";
+      g2.namesNote === "Named for you: 1 of 10 steps";
     record("run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says how many names are remembered names), without a re-analysis",
       ok2, JSON.stringify({ row2, namesNote: g2.namesNote }));
     if (!(ok && ok2)) await shot(page, "fail-runs-rename.png");

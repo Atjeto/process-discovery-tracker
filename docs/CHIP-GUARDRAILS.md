@@ -358,7 +358,7 @@ shown only after a failed run; `#toast`.
   `.run-notes li[data-kind]` (said apart, no difference: `left_out`, a
   stretch left out of the analysis, and `not_done`, a step that happens
   only under a condition and was not done; lane FX1); `.run-names-note`
-  ("Remembered names: N of M steps"); `.run-show-hidden`.
+  ("Named for you: N of M steps", from the library or the project's own names); `.run-show-hidden`.
 - The step rows `.step-row[data-step-id]` (double-click renames the row its
   first click landed on; right-click opens `#step-ctx-menu`). A sub-process
   row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N

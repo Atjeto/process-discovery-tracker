@@ -90,6 +90,8 @@ module and the PDD's ROI table are cut with their inputs
 `roi_inputs` annotations block, which is now a legacy key per contract C10).
 
 **D6 / AD-7. Light vocab: a remembered-names store keyed by `draft_key`.**
+
+*Note 2026-09-25:* replaced by the activity library (contract C21): one file that ships with the app, `library/activities.json`, which a project copies at its first analysis and keeps; the per-PC store and `--names` are removed.
 The plan's "name it once" idea (section 6) originally described reusing the
 in-app vocabulary discovery engine and its volatility picker
 (`normalization/signature_pick.py`) to derive a control signature per named

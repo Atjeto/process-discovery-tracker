@@ -928,16 +928,16 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   }
   // Its inverse, Undo confirm, is beside the Confirmed badge (_addUndoConfirm).
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  // One line per run says how many names are remembered names (names given
-  // to the same drafted step elsewhere in this project), in place of a tag on
-  // every row.
-  const saved = run.visible.filter((s) => s.name_source === "remembered" &&
+  // One line per run says how many steps were named for the analyst (from
+  // the project's library, C21, or from the name given to the same drafted
+  // step elsewhere in this project), in place of a tag on every row.
+  const saved = run.visible.filter((s) => (s.name_source === "remembered" || s.name_source === "library") &&
     (RunsModel.DRAFT_STATES.has(s.state) || s.state === "confirmed")).length;
   if (saved) {
     const line = document.createElement("p");
     line.className = "run-names-note";
-    line.title = "These steps took the name you gave the same drafted step in this project: the same screen and button get the same name.";
-    line.textContent = "Remembered names: " + saved + " of " + _plural(n, "step", "steps");
+    line.title = "These steps were named for you: from the project's library, or from the name you gave the same screen and button elsewhere in this project.";
+    line.textContent = "Named for you: " + saved + " of " + _plural(n, "step", "steps");
     acts.appendChild(line);
   }
   if (diffs && diffs.length) _appendDiffLists(body, acts, diffs, "How this transaction differs from the reference transaction");
