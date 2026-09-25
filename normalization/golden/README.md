@@ -3,8 +3,10 @@
 These `*.projection.json` files are the regression baseline for the whole
 pipeline. The gate, `normalization/golden_check.py`, copies each committed
 demo session in `sessions/example-aggregate/` to a temp folder, analyzes it
-there (`normalize.py --mine`) and compares a projection of the output with
-the golden here.
+there (`normalize.py --mine --library library/activities.json`, the shipped
+activity library of contract C21, which has no activity, so the golden also
+proves that an empty library changes nothing) and compares a projection of
+the output with the golden here.
 
 ## What is pinned
 

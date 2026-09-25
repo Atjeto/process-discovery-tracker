@@ -4,9 +4,10 @@ Before this, a name given in the pattern run reached the other runs' drafts
 only through the analyst's own remembered-names file (`--names`), outside
 the session folder: the same session analyzed or exported on another machine
 drafted runs 2 to N under their default names, and every count keyed on
-names moved. Now a draft takes, in this order, the name the analyst gave to
-a step with the same draft_key in this session, the remembered-names file's
-name, then its drafted name.
+names moved. A draft takes the name the analyst gave to a step with the same
+draft_key in this session, else its drafted name. (Contract C21 removed the
+remembered-names file; the project keeps its own activity library, so the
+same project reads the same on every machine.)
 
 The unit tests are stdlib only. The pipeline tests run the real normalize()
 on a temp copy of the committed demo and need the full-deps gate (pandas,
@@ -115,7 +116,7 @@ def test_blank_names_odd_shapes_and_missing_steps_name_nothing():
     assert session_names(None) == {} and session_names({"steps": None}) == {}
 
 
-# ---- drafting: the precedence session, then remembered, then drafted ------------
+# ---- drafting: the session's name, else the drafted one ---------------------------
 
 def _ev(eid, sec, name, aid, case):
     return {"event_id": eid, "type": "interaction", "timestamp": _ts(sec),
@@ -124,19 +125,16 @@ def _ev(eid, sec, name, aid, case):
                      "process_name": "crm.exe", "case_ids": [case]}}
 
 
-def test_a_draft_takes_the_session_name_before_the_remembered_one():
+def test_a_draft_takes_the_session_name_else_its_drafted_name():
     events = [_ev("e1", 1, "Find", "find", "r2"), _ev("e2", 5, "Save", "save", "r2"),
               _ev("e3", 9, "Print", "print", "r2")]
-    drafts = auto_suggest_steps(
-        events,
-        session_names={FIND: "Look up the order"},
-        remembered_names={FIND: "Older remembered name", SAVE: "Save the order"})
+    drafts = auto_suggest_steps(events, session_names={FIND: "Look up the order"})
     by_key = {d["draft_key"]: d for d in drafts}
     assert by_key[FIND]["name"] == "Look up the order"
-    assert by_key[SAVE]["name"] == "Save the order"
+    assert by_key[SAVE]["name"] == "CRM - Orders: Save"
     assert by_key["crm|CRM - Orders|Button:print"]["name"] == "CRM - Orders: Print"
     assert [by_key[k]["name_source"] for k in (FIND, SAVE, "crm|CRM - Orders|Button:print")] \
-        == ["remembered", "remembered", "draft"]
+        == ["remembered", "draft", "draft"]
 
 
 # ---- the pipeline: same names on every machine -----------------------------------
@@ -202,12 +200,12 @@ def _work(folder):
 
 
 @_needs_deps
-def test_the_other_runs_drafts_take_the_names_without_the_names_file(tmp_path):
+def test_the_other_runs_drafts_take_the_session_names(tmp_path):
     import normalize as normalize_mod
     folder = _copy_demo(tmp_path / "demo")
     normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)
     runs = _work(folder)
-    normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)   # no --names
+    normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True)
     anno = _read(folder)
     drafts = [s for s in anno["steps"]
               if s.get("case_id") in runs[1:] and s.get("draft_key") in NAMES]
@@ -235,30 +233,38 @@ def _doc_text(path: Path) -> str:
 
 
 @_needs_deps
-def test_the_pdd_reads_the_same_with_and_without_the_names_file(tmp_path):
-    """The review's proof of F1: the worked session exported with the
-    analyst's remembered names and exported on a machine without them prints
-    the same document, every section."""
+def test_the_pdd_reads_the_same_on_another_machine(tmp_path):
+    """The review's proof of F1: the worked session exported here and
+    exported on another machine prints the same document, every section.
+    The names come from the project folder, and so does the activity library
+    (contract C21): the other machine's app library names the pattern run's
+    first screen, but the project keeps the (empty) library its first
+    analysis copied."""
     import normalize as normalize_mod
-    first = _copy_demo(tmp_path / "with-names")
-    normalize_mod.normalize(first, taxonomy_path=str(TAXONOMY), mine=True)
-    _work(first)
-    second = tmp_path / "without-names"
-    shutil.copytree(first, second)
-    store = tmp_path / "remembered-names.json"
-    store.write_text(json.dumps({"version": 1, "names": {
-        k: {"name": v, "updated_at": _ts(0)} for k, v in NAMES.items()}}), encoding="utf-8")
+    first = _copy_demo(tmp_path / "machine-one-project")
+    shipped = NORMALIZATION.parent / "library" / "activities.json"
     normalize_mod.normalize(first, taxonomy_path=str(TAXONOMY), mine=True,
-                            names_path=str(store), pdd_out=str(tmp_path / "with.docx"))
+                            library_path=str(shipped))
+    _work(first)
+    second = tmp_path / "machine-two-project"
+    shutil.copytree(first, second)
+    other = tmp_path / "other-activities.json"
+    other.write_text(json.dumps({"format": 1, "version": "other", "applications": [
+        {"name": "Salesforce", "activities": [
+            {"id": "other-1", "name": "A name from another library", "code": "X-1",
+             "screens": [[next(iter(NAMES))]]}]}]}), encoding="utf-8")
+    normalize_mod.normalize(first, taxonomy_path=str(TAXONOMY), mine=True,
+                            library_path=str(shipped), pdd_out=str(tmp_path / "one.docx"))
     normalize_mod.normalize(second, taxonomy_path=str(TAXONOMY), mine=True,
-                            pdd_out=str(tmp_path / "without.docx"))
-    with_names = _doc_text(tmp_path / "with.docx")
-    without = _doc_text(tmp_path / "without.docx")
+                            library_path=str(other), pdd_out=str(tmp_path / "two.docx"))
+    one = _doc_text(tmp_path / "one.docx")
+    two = _doc_text(tmp_path / "two.docx")
     # The folder name is the one line that differs by construction.
-    with_names = with_names.replace("with-names", "FOLDER")
-    without = without.replace("without-names", "FOLDER")
-    assert with_names == without
+    one = one.replace("machine-one-project", "FOLDER")
+    two = two.replace("machine-two-project", "FOLDER")
+    assert one == two
+    assert "A name from another library" not in two and "X-1" not in two
     for drafted in ("Salesforce - Account lookup: Search", "va01: Check document",
                     "Outlook - Order confirmation: Send"):
-        assert drafted not in without
-    assert re.search(r"Enter the sales order in SAP", without)
+        assert drafted not in two
+    assert re.search(r"Enter the sales order in SAP", two)

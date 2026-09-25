@@ -177,8 +177,11 @@ def write_annotations(session_folder: Path, anno: dict, staging: "Staging | None
 # Staging). The viewer removes files with it after it stops a run.
 STAGED_SUFFIX = ".pdt-staged"
 # The order a commit moves the outputs into place: analysis.json, which
-# says the project is analyzed (its `format`), comes last.
-_COMMIT_ORDER = ("stats.json", "process_map_step.bpmn", "annotations.json", "analysis.json")
+# says the project is analyzed (its `format`), comes last. library.json is
+# the project's copy of the app's library (contract C21), staged by the
+# project's first analysis only.
+_COMMIT_ORDER = ("library.json", "stats.json", "process_map_step.bpmn", "annotations.json",
+                 "analysis.json")
 
 
 class Staging:
@@ -190,7 +193,8 @@ class Staging:
     analysis.json last). The pipeline commits as its very last act, so a run
     that fails, or that the viewer stops (it kills the process: on Windows
     nothing runs after that), leaves every output as it was: annotations.json,
-    stats.json, analysis.json and process_map_step.bpmn. discard() removes
+    stats.json, analysis.json, process_map_step.bpmn and the project's first
+    copy of the library, library.json (contract C21). discard() removes
     the staged files of a run that failed; clear_staged() removes the ones a
     stopped run left, before the next run stages its own."""
 
@@ -210,6 +214,16 @@ class Staging:
         staged = self.path(name)
         with open(staged, "w", encoding="utf-8") as f:
             json.dump(obj, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        return staged
+
+    def write_bytes(self, name: str, data: bytes) -> Path:
+        """Stage `data` as the output `name` byte for byte (a copy of a
+        file), flushed to disk."""
+        staged = self.path(name)
+        with open(staged, "wb") as f:
+            f.write(data)
             f.flush()
             os.fsync(f.fileno())
         return staged

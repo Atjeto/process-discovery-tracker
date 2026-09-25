@@ -27,14 +27,14 @@ The released viewer ships its own Python with these packages
 Analyze a session the way the viewer does (from the repo root):
 
 ```
-python normalization/normalize.py <session_folder> --taxonomy normalization/taxonomy.yaml --mine --names "<viewer userData>/pdt-library/remembered-names.json"
+python normalization/normalize.py <session_folder> --taxonomy normalization/taxonomy.yaml --mine --library library/activities.json
 ```
 
 | Flag | Effect |
 |---|---|
 | `--taxonomy` | The classification rules. The activity statistics use them; drafting does not. |
 | `--mine` | Also write `process_map_step.bpmn`, the step-level map. |
-| `--names` | The remembered-names store: a draft whose `draft_key` it lists takes the remembered name, after the names the session's own steps give. |
+| `--library` | The app's activity library (`library/activities.json`, contract C21). A project without its own `library.json` gets a copy of it with this analysis, and from then on the project's copy is used, never replaced. A run of drafts whose screens an activity lists becomes one draft named from it. A missing or invalid file prints a warning and is not copied. |
 | `--pdd-out` | Render the PDD to this `.docx` path. |
 | `--pdd-map-image`, `--pdd-tobe-image` | Pictures of the As-Is and To-Be maps for the PDD. |
 | `--pdd-map-images` | A manifest of the maps' pictures for the PDD, the main map's and one per sub-process (`{"maps": [{"path": [...], "png": "..."}]}`). |
@@ -42,7 +42,8 @@ python normalization/normalize.py <session_folder> --taxonomy normalization/taxo
 | `--handoff` | The hand-off version the PDD and the workbook are made for ("Version N, handed off ..."); without it they are a working copy. |
 
 Outputs land in the session folder: `stats.json`, `analysis.json`, the
-updated `annotations.json`, `process_map_step.bpmn` (with `--mine`) and
+updated `annotations.json`, `process_map_step.bpmn` (with `--mine`),
+`library.json` (the project's copy of the library, made once) and
 `normalize.log`. `events.jsonl` is never changed, so re-running is always
 safe; the analyst's steps survive it.
 

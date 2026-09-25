@@ -240,14 +240,16 @@ def test_readable_app_names_reach_the_stats_and_the_capture_detail(tmp_path):
 def test_analysis_json_holds_what_the_viewer_and_the_pdd_read(tmp_path):
     """Lane FX1: the analysis layer nobody read is cut. analysis.json holds
     the transaction check, the capture detail, the PDD's rows of sections 5
-    and 6, the steps they were measured from, and its format (4)."""
+    and 6, the steps they were measured from, the version of the activity
+    library the run used (contract C21: none here) and its format (4)."""
     session = _make_session(tmp_path / "s")
     normalize_mod.normalize(session)
     analysis = _read(session, "analysis.json")
     assert set(analysis) == {"meta", "case_quality", "coverage_caveat", "pdd_data", "pdd_time",
-                             "steps_signature", "stage_errors", "format"}
+                             "steps_signature", "library_version", "stage_errors", "format"}
     assert analysis["format"] == pipeline_stages.ANALYSIS_FORMAT == 4
     assert analysis["coverage_caveat"] is None and analysis["stage_errors"] == []
+    assert analysis["library_version"] is None
 
 
 # ---- RP-10 / C12 --------------------------------------------------------------
@@ -425,74 +427,41 @@ def test_a_missing_folder_is_a_usage_error_the_viewer_can_show(tmp_path):
 
 
 def test_help_lists_exactly_the_c11_options():
-    """C11's options, plus C19's manifest of the maps' pictures and C20's
-    Technical details workbook and hand-off version."""
+    """C11's options, plus C19's manifest of the maps' pictures, C20's
+    Technical details workbook and hand-off version, and C21's app library
+    (which replaced the remembered-names store's --names)."""
     proc = _run_cli("--help")
     assert proc.returncode == 0
     import re
     options = set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", proc.stdout))
     assert options == {"--help", "--taxonomy", "--mine", "--pdd-out",
-                       "--pdd-map-image", "--pdd-map-images", "--pdd-tobe-image", "--names",
+                       "--pdd-map-image", "--pdd-map-images", "--pdd-tobe-image", "--library",
                        "--tech-out", "--handoff"}
     assert "session_folder" in proc.stdout
 
 
-# ---- C1 drafting, C4 remembered names, P1 draft_summary --------------------
+def test_the_removed_names_flag_is_a_usage_error(tmp_path):
+    """C21 removed the remembered-names store and its --names flag: a run
+    that still passes it is a usage error (exit 1) and writes nothing."""
+    session = _make_session(tmp_path / "s")
+    proc = _run_cli(session, "--names", tmp_path / "remembered-names.json")
+    assert proc.returncode == 1
+    errors = _error_lines(proc)
+    assert len(errors) == 1 and "--names" in errors[0]
+    assert not (session / "annotations.json").exists()
+
+
+# ---- C1 drafting, C4 session names, P1 draft_summary -----------------------
 
 FIND_KEY = "crm|CRM - Orders|Button:find"
 
 
-def _names_store(path: Path, names: dict) -> Path:
-    path.write_text(json.dumps({"version": 1, "names": {
-        k: {"name": v, "updated_at": "2026-09-23T09:00:00Z"} for k, v in names.items()}}),
-        encoding="utf-8")
-    return path
-
-
-def _warning_lines(proc) -> list[str]:
-    return [ln for ln in proc.stderr.splitlines() if ln.startswith("[normalize] WARNING:")]
-
-
-def test_the_names_flag_applies_a_remembered_name(tmp_path):
-    session = _make_session(tmp_path / "s")
-    store = _names_store(tmp_path / "remembered-names.json",
-                         {FIND_KEY: "Look up the customer"})
-    proc = _run_cli(session, "--names", store)
-    assert proc.returncode == 0, proc.stderr[-2000:]
-    assert _warning_lines(proc) == []
-    steps = _read(session, "annotations.json")["steps"]
-    named = [s for s in steps if s["draft_key"] == FIND_KEY]
-    assert len(named) == 2                      # one per run
-    for s in named:
-        assert s["name"] == "Look up the customer"
-        assert s["name_source"] == "remembered"
-    others = [s for s in steps if s["draft_key"] != FIND_KEY]
-    assert others and all(s["name_source"] == "draft" for s in others)
-    assert _read(session, "stats.json")["meta"]["draft_summary"]["name_source"] == {
-        "remembered": 2, "draft": 4}
-
-
-def test_an_unreadable_names_file_warns_once_and_drafts_default_names(tmp_path):
-    session = _make_session(tmp_path / "s")
-    store = tmp_path / "remembered-names.json"
-    store.write_text("{not json", encoding="utf-8")
-    proc = _run_cli(session, "--names", store)
-    assert proc.returncode == 0, proc.stderr[-2000:]
-    assert _error_lines(proc) == []
-    warnings = _warning_lines(proc)
-    assert len(warnings) == 1 and str(store) in warnings[0]
-    steps = _read(session, "annotations.json")["steps"]
-    assert len(steps) == 6
-    assert all(s["name_source"] == "draft" for s in steps)
-    assert {s["name"] for s in steps if s["draft_key"] == FIND_KEY} == {"CRM - Orders: Find"}
-
-
 def test_confirmed_run_1_survives_re_analysis_while_run_2_is_re_drafted(tmp_path):
     """Item 4 of the drafting lane: the analyst confirms every draft of run 1;
-    re-analysis (now with a remembered name) leaves run 1 exactly as it was,
-    one-interaction steps included, and re-drafts run 2 under the same ids.
-    F1 (C4): run 2's draft takes the name the analyst confirmed for its key
-    in this session, before the remembered-names file's name."""
+    re-analysis leaves run 1 exactly as it was, one-interaction steps
+    included, and re-drafts run 2 under the same ids. F1 (C4): run 2's
+    draft takes the name the analyst confirmed for its key in this
+    session."""
     session = _make_session(tmp_path / "s")
     normalize_mod.normalize(session)
     runs = {c["label"]: c["case_id"] for c in _read(session, "stats.json")["case_stats"]}
@@ -507,8 +476,7 @@ def test_confirmed_run_1_survives_re_analysis_while_run_2_is_re_drafted(tmp_path
     assert len(run1_before) == 3 and len(run2_ids_before) == 3
     (session / "annotations.json").write_text(json.dumps(anno), encoding="utf-8")
 
-    store = _names_store(tmp_path / "names.json", {FIND_KEY: "Look up the customer"})
-    normalize_mod.normalize(session, names_path=str(store))
+    normalize_mod.normalize(session)
 
     steps = _read(session, "annotations.json")["steps"]
     run1_after = sorted((s for s in steps if s["case_id"] == runs["Order a"]),

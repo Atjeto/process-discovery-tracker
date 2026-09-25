@@ -17,7 +17,9 @@ library (xlsx_writer.py). Its sheets:
                       chapter prints), the action and its value, the control
                       (type, automation id, name, class name), how the
                       recorder identified it (identity source, confidence),
-                      the window title, the program and the system;
+                      the window title, the program and the system, and the
+                      library activity the step is with its code (contract
+                      C21);
   Data fields         one row per field typed or chosen in a step (the
                       rows of the PDD's data table), with the field's
                       identity and one column per transaction holding what
@@ -60,8 +62,9 @@ SECRET = "(not recorded: secret field)"
 NOT_RECORDED = "Not recorded"
 
 STEPS_HEADER = ("Step", "Step name", "Action", "Value", "Control type", "Automation id", "Name",
-                "Class name", "Identity source", "Confidence", "Window title", "Program", "System")
-_STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16)
+                "Class name", "Identity source", "Confidence", "Window title", "Program", "System",
+                "Activity", "Code")
+_STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12)
 DATA_HEADER = ("Field", "Automation id", "Control type", "System and screen", "Step")
 _DATA_WIDTHS = (24, 24, 14, 30, 30)
 REKEYED_HEADER = ("Source system", "Source field", "Target system", "Target field", "Values",
@@ -73,7 +76,8 @@ _APPS_WIDTHS = (22, 22, 12, 19, 8)
 # One line on each sheet, and on the recorder's words, for the About sheet.
 SHEET_LINES = (
     (STEPS, "Every recorded click, entry and choice of the reference transaction, in the order "
-            "of its steps, with the control it acted on and how the recorder identified it."),
+            "of its steps, with the control it acted on, how the recorder identified it and the "
+            "library activity its step is, with the activity's code."),
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
            "transaction. A password field was not recorded."),
     (REKEYED, "The values typed in one system and typed again in another in the same "
@@ -183,7 +187,9 @@ def _time(s, eid: str):
 
 
 def steps_rows(s) -> list[list[Any]]:
-    """The rows of Steps and controls (STEPS_HEADER)."""
+    """The rows of Steps and controls (STEPS_HEADER). Activity and Code are
+    the name and the code of the library activity the row's step is
+    (contract C21, `library_activity`), empty when it is none."""
     labels = _sub_labels(s)
     rows: list[list[Any]] = []
     seen: set[str] = set()
@@ -198,10 +204,13 @@ def steps_rows(s) -> list[list[Any]]:
             action, value = _action(data)
             app, title = _text(data.get("process_name")), _text(data.get("window_title"))
             system = (step_system(holder) or step_system(step) or s.ctx.where_data(app, title)[0])
+            activity = s.activity(holder)
             rows.append([label, _step_name(holder), action, value, _text(data.get("control_type")),
                          _text(data.get("automation_id")), _text(data.get("name")),
                          _text(data.get("class_name")), _text(data.get("identity_source")),
-                         _number(data.get("confidence")), title, app, system])
+                         _number(data.get("confidence")), title, app, system,
+                         activity.name if activity is not None else "",
+                         activity.code if activity is not None else ""])
     return rows
 
 
@@ -346,10 +355,11 @@ def about_rows(s, handoff: int | None) -> list[list[Any]]:
 
 
 def tech_sheets(*, session_folder, annotations, stats, manifest, events,
-                handoff: int | None = None) -> list[Sheet]:
+                handoff: int | None = None, library=None) -> list[Sheet]:
     """The workbook's sheets, for the inputs the PDD reads (the derived event
-    stream, the steps, stats.json and the manifest)."""
-    s = _Session(session_folder, annotations, stats, manifest, events)
+    stream, the steps, stats.json and the manifest) and the activity library
+    the steps name (contract C21; None: the project's library.json)."""
+    s = _Session(session_folder, annotations, stats, manifest, events, library=library)
     about = about_rows(s, handoff)
     head_rows = {0, 4, 5 + len(SHEET_LINES) + 1}
     data_header, data = data_rows(s)
@@ -367,9 +377,10 @@ def tech_sheets(*, session_folder, annotations, stats, manifest, events,
 
 
 def write_tech_details(out_path: str | Path, *, session_folder, annotations, stats, manifest,
-                       events, handoff: int | None = None) -> None:
+                       events, handoff: int | None = None, library=None) -> None:
     """Write the Technical details workbook to `out_path` (normalize.py
-    --tech-out; `handoff` is --handoff, the version it is made for)."""
+    --tech-out; `handoff` is --handoff, the version it is made for;
+    `library` the activity library of the run, contract C21)."""
     write_workbook(out_path, tech_sheets(session_folder=session_folder, annotations=annotations,
                                          stats=stats, manifest=manifest, events=events,
-                                         handoff=handoff))
+                                         handoff=handoff, library=library))

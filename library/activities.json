@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "version": "1",
+  "applications": [
+    { "name": "Salesforce", "activities": [] },
+    { "name": "SAP", "activities": [] },
+    { "name": "ServiceNow", "activities": [] },
+    { "name": "Jira", "activities": [] },
+    { "name": "Zendesk", "activities": [] },
+    { "name": "Excel", "activities": [] },
+    { "name": "Word", "activities": [] },
+    { "name": "Outlook", "activities": [] },
+    { "name": "Notepad", "activities": [] },
+    { "name": "Google Chrome", "activities": [] },
+    { "name": "Microsoft Edge", "activities": [] },
+    { "name": "Firefox", "activities": [] }
+  ]
+}

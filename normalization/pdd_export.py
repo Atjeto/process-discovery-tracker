@@ -72,6 +72,11 @@ Sub-processes (contract C19): sections 4 to 9 read the main level only;
 what the analyst adds by step_id (screenshots, the one for the PDD,
 attachments) resolves at every level.
 
+The activity library (contract C21): a step that is an activity of the
+project's library (`step.library_activity`) prints the activity's code
+first on its context line ("Code SF-01 · Salesforce, Accounts · ..."), and
+the activity's description when the analyst wrote none for the step.
+
 Uses python-docx.
 """
 
@@ -100,6 +105,7 @@ except ImportError:
 
 from _dt import parse_ts_or_none as _parse_ts
 from handoff_versions import HISTORY_HEADER, history_rows, version_line
+from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
 from step_context import (StepContext, clock, fmt_ms as _fmt_duration, has_video,
                           step_duration_ms, step_start, step_system, untimed_key, video_start)
@@ -161,12 +167,16 @@ def write_pdd(
     map_images: str | Path | None = None,
     map_file: bool | None = None,
     handoff: int | None = None,
+    library=None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
     steps' systems, screens and entered fields are read from; without it the
     data section says the field entries were not available. `analysis` is
     accepted for the pipeline's call and not printed: the document holds no
-    analysis findings (section 1 of the earlier document is cut).
+    analysis findings (section 1 of the earlier document is cut). `library`
+    is the activity library the steps' `library_activity` names (contract
+    C21, library.Library, the one the pipeline's run uses); without it the
+    project's library.json is read.
 
     `map_images` (contract C19, the `--pdd-map-images` manifest) names a
     picture per map, {"maps": [{"path": [<node>, ...], "png": "<file>"}]}:
@@ -182,7 +192,8 @@ def write_pdd(
             "python-docx is not installed. Add `python-docx>=1.1.0` to "
             "normalization/requirements.txt and reinstall."
         )
-    s = _Session(session_folder, annotations, stats, manifest, events, map_images)
+    s = _Session(session_folder, annotations, stats, manifest, events, map_images,
+                 library=library)
     s.handoff = handoff
     if map_file is not None:
         s.map_file = bool(map_file)
@@ -377,13 +388,17 @@ class _Session:
     """What every section reads, computed once: the visible steps, the runs,
     the reference run (C3), each run's steps aligned to it, the document
     fields (C6), the recorded interactions and where each step happened,
-    and (C19) the maps of the sub-processes with their chapters."""
+    (C19) the maps of the sub-processes with their chapters, and (C21) the
+    project's activity library, `library` (None: the folder's library.json,
+    read when a step first names an activity)."""
 
-    def __init__(self, folder, annotations, stats, manifest, events, map_images=None):
+    def __init__(self, folder, annotations, stats, manifest, events, map_images=None,
+                 library=None):
         self.folder = Path(folder)
         self.annotations = annotations if isinstance(annotations, dict) else {}
         self.stats = stats if isinstance(stats, dict) else {}
         self.manifest = manifest if isinstance(manifest, dict) else {}
+        self._library = library
         self.portrait = None
         # C20: the hand-off version the document is made for (None: a working copy).
         self.handoff = None
@@ -585,9 +600,30 @@ class _Session:
             out = f"{out} ({video})" if out else video
         return out
 
+    def activity(self, step):
+        """The library activity a step is (contract C21): the activity of
+        the project's library its `library_activity` names, or None."""
+        aid = step.get("library_activity") if isinstance(step, dict) else None
+        if not isinstance(aid, str) or not aid:
+            return None
+        if self._library is None:
+            self._library = load_library(self.folder / LIBRARY_FILE)
+        return self._library.activities.get(aid)
+
+    def description(self, step) -> str:
+        """The step's description as the document prints it: the analyst's
+        (analyst_description), else the description of the library activity
+        the step is (contract C21), else ""."""
+        desc = self.analyst_description(step)
+        if desc:
+            return desc
+        activity = self.activity(step)
+        return activity.description if activity is not None else ""
+
     def context_line(self, step, level=None) -> str:
-        """The line under a step's heading: system and screen, its average
-        time, in how many transactions it happened ("in 3 of 4
+        """The line under a step's heading: the code of the library activity
+        the step is (contract C21, "Code SF-01"), system and screen, its
+        average time, in how many transactions it happened ("in 3 of 4
         transactions"), where it is in the recording. Contract C16: the time
         leaves out the steps without a time range and is not said when none
         of them has one; the implicit run (transactions not marked) is not
@@ -595,6 +631,9 @@ class _Session:
         timed and counted over its map's traces, out of the transactions
         that ran its sub-process, and placed in the reference transaction."""
         parts = []
+        activity = self.activity(step)
+        if activity is not None and activity.code:
+            parts.append(f"Code {activity.code}")
         where = self.where(step)
         if where:
             parts.append(where)
@@ -645,11 +684,12 @@ class _Session:
         return "" if is_drafted_description(desc, [{"data": d} for d in datas]) else desc
 
     def what_was_done(self, step) -> str:
-        """For a step outside the reference run: the analyst's description;
-        else the fields it entered; else the drafting's narration of what
-        was done (its clicks), each sentence once."""
+        """For a step outside the reference run: the analyst's description,
+        else its library activity's (description); else the fields it
+        entered; else the drafting's narration of what was done (its
+        clicks), each sentence once."""
         for member in _members(step):
-            desc = self.analyst_description(member) if isinstance(member, dict) else ""
+            desc = self.description(member) if isinstance(member, dict) else ""
             if desc:
                 return " ".join(desc.split())
         fields = self.field_names(step)
@@ -1291,9 +1331,10 @@ def _step_number(number, level=None) -> str:
 
 def _write_step(doc, s, step, number, steps, level=None):
     """One printed step: its heading ("Step 2: <name>"), its context line,
-    "Only when" its condition, its description when the analyst wrote it,
-    the fields it entered, its attachments, its screenshots, the waste flag
-    and its flow (C17). Contract C19: `level` is the map it is drawn in; in a
+    "Only when" its condition, its description when the analyst wrote it
+    (else its library activity's, C21), the fields it entered, its
+    attachments, its screenshots, the waste flag and its flow (C17).
+    Contract C19: `level` is the map it is drawn in; in a
     sub-process's chapter it is numbered "Step <chapter number>.<number>". A
     group of steps (`group: true`) prints no fields and no screenshot: its
     chapter prints its steps with theirs. A step whose map node has a
@@ -1306,7 +1347,7 @@ def _write_step(doc, s, step, number, steps, level=None):
     if condition:
         # C17: the step happens only under this condition.
         doc.add_paragraph(f"Only when {_sentence(condition)}")
-    desc = s.analyst_description(step)
+    desc = s.description(step)
     if desc:
         _text(doc, desc)
     group = step.get("group") is True

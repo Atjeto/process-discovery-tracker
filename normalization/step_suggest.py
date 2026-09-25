@@ -4,14 +4,16 @@ Within each run (case), a step is a stretch of consecutive interactions on one
 screen. It ends at a commit interaction (inclusive), at the first interaction
 on a different screen (exclusive), or at the end of the run. Every draft
 carries a value-free `draft_key` ("<app>|<screen>|<commit>"), so a name the
-analyst gives once is remembered and applied to later drafts (contract C4).
+analyst gives once names the project's other drafts of that key (contract
+C4: the session's own names), and a run of drafts whose screens the
+project's activity library knows becomes one draft named from its activity
+(contract C21, library_drafts).
 """
 
 from __future__ import annotations
 import bisect
 import json
 import re
-import sys
 import uuid
 from collections import Counter
 from pathlib import Path
@@ -25,6 +27,7 @@ from _dt import parse_ts_or_none as _parse_ts_or_none
 # crashing. The boundary (load_events) already coerces timestamp to a string;
 # this guards the remaining "string but not ISO" case. Mirrors the same choice
 # in case_assignment._parse_ts.
+from library import collapse
 from recognition import is_browser_chrome
 
 
@@ -323,7 +326,6 @@ def auto_suggest_steps(
     session_id: str = "",
     ignored_processes: list[str] | None = None,
     excluded_ranges: list[dict] | None = None,
-    remembered_names: dict[str, str] | None = None,
     session_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Draft every run's steps with the drafting rule (contract C1).
@@ -345,16 +347,16 @@ def auto_suggest_steps(
     `filter_browser_chrome` (the browser's own address bar, tabs and toolbar,
     ADR-0009). Typing bursts are coalesced before this runs (coalesce.py).
 
-    A draft takes, in this order (contract C4): the name the analyst gave to
-    a step with the same draft_key in this session (`session_names`, from
+    A draft takes the name the analyst gave to a step with the same
+    draft_key in this session (contract C4: `session_names`, from
     session_names() on the session's own annotations, so the names travel
-    with the session folder); else the name the remembered-names store gives
-    it (`remembered_names`, the `--names` file on the analyst's machine);
-    either way with `name_source: "remembered"`. Otherwise the default name
-    is "<screen>: <commit label>", or "<screen>" for a step that did not end
-    on a commit, with `name_source: "draft"`."""
-    remembered = dict(remembered_names or {})
-    remembered.update(session_names or {})
+    with the session folder), with `name_source: "remembered"`. Otherwise
+    the default name is "<screen>: <commit label>", or "<screen>" for a step
+    that did not end on a commit, with `name_source: "draft"`. (The
+    remembered-names store and its `--names` flag were removed with contract
+    C21; the project's activity library names runs of drafts afterwards,
+    in _merge_steps.)"""
+    remembered = dict(session_names or {})
     excluded = _parse_excluded_ranges(excluded_ranges)
     shots = _screenshot_index(events)
     # Group by top-level case (last case_id in case_ids list, or None)
@@ -442,51 +444,6 @@ def draft_summary(
     }
 
 
-def _warn(msg: str) -> None:
-    """One warning line on stderr (the app_vocab convention)."""
-    one_line = str(msg).replace("\r", " ").replace("\n", " ")
-    print(f"[normalize] WARNING: {one_line}", file=sys.stderr)
-
-
-def load_remembered_names(path: str | Path | None) -> dict[str, str]:
-    """Read the remembered-names store (contract C4, the `--names` flag):
-    {"version": 1, "names": {"<draft_key>": {"name": "...", "updated_at": "..."}}}.
-    Returns {draft_key: name}. The store is optional input, so a missing,
-    unreadable or malformed file is not a failure: it prints one warning line
-    on stderr and returns {}, and drafting uses the default names. Inside a
-    valid store, an entry without a non-blank "name" is skipped (one warning
-    line counts them)."""
-    if not path:
-        return {}
-    fallback = "drafting uses the default names"
-    try:
-        with open(path, encoding="utf-8") as fh:
-            doc = json.load(fh)
-    except FileNotFoundError:
-        _warn(f"remembered names file not found: {path}; {fallback}")
-        return {}
-    except (OSError, ValueError) as e:     # ValueError covers bad JSON and bad UTF-8
-        _warn(f"remembered names file unreadable: {path} "
-              f"({type(e).__name__}: {e}); {fallback}")
-        return {}
-    names = doc.get("names") if isinstance(doc, dict) else None
-    if not isinstance(names, dict) or doc.get("version") != 1:
-        _warn(f"remembered names file is not a version 1 names store: {path}; {fallback}")
-        return {}
-    out: dict[str, str] = {}
-    skipped = 0
-    for key, entry in names.items():
-        name = entry.get("name") if isinstance(entry, dict) else None
-        if isinstance(key, str) and key and isinstance(name, str) and name.strip():
-            out[key] = name.strip()
-        else:
-            skipped += 1
-    if skipped:
-        _warn(f"remembered names file {path}: skipped {skipped} entr"
-              f"{'y' if skipped == 1 else 'ies'} without a name")
-    return out
-
-
 # The step states whose names a draft with the same key takes (C4, F1): the
 # analyst confirmed, renamed or added the step. A hidden step names nothing.
 NAMING_STATES = ("confirmed", "edited", "manually_authored")
@@ -495,8 +452,8 @@ NAMING_STATES = ("confirmed", "edited", "manually_authored")
 def session_names(annotations: dict | None) -> dict[str, str]:
     """The names the analyst gave in this session, by draft_key (contract C4,
     F1): {draft_key: name} from the session's steps in NAMING_STATES, so the
-    drafts of runs 2 to N read the same on every machine without the
-    analyst's remembered-names file.
+    drafts of runs 2 to N read the same on every machine: the names travel
+    with the project folder.
 
     A name the analyst typed (a step `edited` or `manually_authored`) comes
     before a name the analyst accepted (`confirmed`, usually the drafted or
@@ -944,8 +901,137 @@ def _follow_parent_case(steps: list) -> None:
             _follow_parent_case(subs)
 
 
+# --- The activity library (contract C21) --------------------------------------
+
+def library_drafts(fresh: list, kept: list, library: Any = None,
+                   interactions_by_id: dict | None = None) -> list:
+    """Contract C21: `kept` with each run of consecutive drafts whose
+    draft_keys equal the screens of an activity of the project's `library`
+    (library.Library) made one draft named from that activity
+    (_library_draft); a draft no run matches is kept as it is.
+
+    `fresh` is the C1 drafts in their order (a run's in time order) and
+    `kept` the ones left once the drafts overlapping the analyst's steps
+    were dropped (drop_overlapping_auto_steps). Drafts are consecutive when
+    they are kept, in one run, with no dropped draft between them, so a run
+    of screens never reaches across one of the analyst's steps. A screen
+    repeated back to back counts once. Read left to right: at each draft the
+    longest run that equals an activity's screens wins. A library without
+    screens (the shipped one, or none) returns `kept` unchanged."""
+    runs = getattr(library, "runs", None) or {}
+    if not runs:
+        return kept
+    longest = max(len(r) for r in runs)
+    keep = {id(d) for d in kept}
+    out: list = []
+    stretch: list = []
+
+    def name_stretch() -> None:
+        i = 0
+        while i < len(stretch):
+            size, found, screens = 0, None, []
+            for j in range(i, len(stretch)):
+                key = stretch[j].get("draft_key")
+                if not isinstance(key, str) or not key:
+                    break
+                if not screens or screens[-1] != key:
+                    screens.append(key)
+                    if len(screens) > longest:
+                        break
+                if tuple(screens) in runs:
+                    size, found = j - i + 1, runs[tuple(screens)]
+            if found is None:
+                out.append(stretch[i])
+                i += 1
+            else:
+                out.append(_library_draft(stretch[i:i + size], library.activities[found],
+                                          interactions_by_id))
+                i += size
+        stretch.clear()
+
+    for d in fresh or []:
+        if id(d) not in keep:
+            name_stretch()               # a dropped draft ends the stretch
+            continue
+        if stretch and d.get("case_id") != stretch[-1].get("case_id"):
+            name_stretch()
+        stretch.append(d)
+    name_stretch()
+    return out
+
+
+def _library_draft(run: list, activity: Any, interactions_by_id: dict | None) -> dict:
+    """The one draft a run of drafts becomes (contract C21): named from the
+    activity (`name_source: "library"`, `library_activity` its id), its
+    `draft_keys` the run's screens (a repeat once, so the activity reads the
+    same in every transaction) and no draft_key (it is no longer one
+    draft, as after the viewer's merge), the span and the evidence of the
+    run. Like any draft its description is the narration of its
+    interactions (the PDD and the step pane read that as no description),
+    it takes their grain keys, the waste flag of any draft of the run and
+    the end_reason of the last."""
+    first, last = run[0], run[-1]
+    ids = [eid for d in run for eid in (d.get("evidence") or {}).get("interaction_event_ids") or []]
+    shots = list(dict.fromkeys(ref for d in run
+                               for ref in (d.get("evidence") or {}).get("screenshot_refs") or []))
+    events = [(interactions_by_id or {}).get(eid) for eid in ids]
+    if ids and all(events):
+        description, grain = _default_step_description(events), step_grain_keys(events)
+    else:       # without the interactions: the drafts' own narrations
+        description = " ".join(str(d.get("description") or "").strip() for d in run).strip()
+        grain = first.get("grain_keys")
+    return {
+        "step_id": str(uuid.uuid4()),
+        "session_id": first.get("session_id"),
+        "case_id": first.get("case_id"),
+        "name": activity.name,
+        "description": description,
+        "time_range": {"start": first["time_range"]["start"], "end": last["time_range"]["end"]},
+        "evidence": {"interaction_event_ids": ids, "screenshot_refs": shots,
+                     "video_timecode_range": None, "manual_notes": ""},
+        "state": "auto_suggested",
+        "canonical_step_id": None,
+        "flags": {"waste": any((d.get("flags") or {}).get("waste") is True for d in run)},
+        "phase_id": None,
+        "grain_keys": grain,
+        "draft_keys": list(collapse(d["draft_key"] for d in run)),
+        "name_source": "library",
+        "library_activity": activity.id,
+        "end_reason": last.get("end_reason"),
+    }
+
+
+def _repoint_links(preserved: list, drafts: list, existing: list) -> int:
+    """Contract C21: a link (C17) of a kept step to a draft that a run of the
+    library made part of one draft points at that draft. The link names a
+    step of the previous analysis by its step_id; when no step of this one
+    has that id any more and every interaction of that step is in a draft
+    the library named here, the link takes that draft's id. Returns how many
+    links moved."""
+    named = [(d, _evidence_ids(d)) for d in drafts if d.get("name_source") == "library"]
+    if not named:
+        return 0
+    present = {s.get("step_id") for s in list(preserved) + list(drafts)}
+    before = {s.get("step_id"): _evidence_ids(s) for s in existing or [] if isinstance(s, dict)}
+    moved = 0
+    for step in preserved:
+        links = step.get("links")
+        for link in links if isinstance(links, list) else []:
+            to = link.get("to") if isinstance(link, dict) else None
+            target = to.strip() if isinstance(to, str) else ""
+            if not target or target == "end" or target in present:
+                continue
+            evs = before.get(target)
+            into = next((d for d, d_evs in named if evs and evs <= d_evs), None)
+            if into is not None and into.get("step_id") != step.get("step_id"):
+                link["to"] = into["step_id"]
+                moved += 1
+    return moved
+
+
 def _merge_steps(existing: list, fresh: list,
-                 interactions_by_id: dict | None = None) -> list:
+                 interactions_by_id: dict | None = None,
+                 library: Any = None) -> list:
     """Preserve manually_authored, edited, confirmed, and hidden steps
     (PRESERVED_STATES). Replace auto_* steps with the latest fresh
     suggestions. A `hidden` step is one the analyst
@@ -977,7 +1063,15 @@ def _merge_steps(existing: list, fresh: list,
     at every depth, gets its process_label here (the main level's rule) and
     its parent's case_id in restamp_preserved_case_ids. The merge reads no
     sub-step otherwise: the main level stays what the statistics and the
-    analysis see."""
+    analysis see.
+
+    Contract C21: once the overlapping drafts are dropped, each run of
+    consecutive drafts whose screens an activity of the project's `library`
+    lists becomes one draft named from it (library_drafts). That happens
+    before the drafts inherit their identities, so the named draft keeps its
+    step_id from one analysis to the next; a kept step's link to a draft the
+    run took in then points at the named draft (_repoint_links). An empty
+    library changes nothing."""
     from step_flow import declares_flow   # step_flow reads step_context, which imports this module
     by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
@@ -991,7 +1085,15 @@ def _merge_steps(existing: list, fresh: list,
     if dropped:
         print(f"[normalize] dropped {len(dropped)} auto step(s) "
               f"overlapping analyst-owned steps")
+    kept = library_drafts(fresh or [], kept, library, interactions_by_id)
+    named = sum(1 for d in kept if d.get("name_source") == "library")
+    if named:
+        print(f"[normalize] library: {named} draft(s) named from its activities")
     kept = _inherit_step_identity(kept, existing or [], preserved)
+    moved = _repoint_links(preserved, kept, existing or [])
+    if moved:
+        print(f"[normalize] library: {moved} link(s) now point at the draft "
+              f"their target became part of")
     result = preserved + kept
     # Stamp a value-free process_label for the step-level maps (recomputed
     # every analyze, so it tracks analyst renames).

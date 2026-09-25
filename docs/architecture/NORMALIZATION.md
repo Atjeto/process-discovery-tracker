@@ -3,7 +3,7 @@
 > Overview level. Field-level formats are in
 > [`shared/SCHEMA.md`](../../shared/SCHEMA.md); the decisions behind the
 > light version are in [ADR-0029](../adr/0029-ba-helper-refocus.md) and the
-> data contracts (C1 to C20) it points to.
+> data contracts (C1 to C21) it points to.
 
 ## Purpose and entry points
 
@@ -27,7 +27,7 @@ A project opened read only (a hand-off, contract C20) is never analyzed.
 ```
 python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
     [--pdd-out <path.docx>] [--pdd-map-image <path.png>] [--pdd-map-images <maps.json>]
-    [--pdd-tobe-image <path.png>] [--names <remembered-names.json>]
+    [--pdd-tobe-image <path.png>] [--library <activities.json>]
     [--tech-out <path.xlsx>] [--handoff <N>]
 ```
 
@@ -39,7 +39,7 @@ python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
 | `--pdd-map-image` | A picture of the As-Is map, printed as section 3.1. The viewer passes the edited As-Is copy when one is chosen, else the step map (`process_map_step.bpmn`) drawn off screen by bpmn-js. |
 | `--pdd-map-images` | Contract C19: a manifest of the maps' pictures, `{"maps": [{"path": [<node>, ...], "png": "<file>"}]}` (a relative file is read from the manifest's folder). Path `[]` is the main map's picture and wins over `--pdd-map-image`; any other path is a sub-process's map, printed in its chapter. An entry whose file is missing is left out, and that map prints as a table; an unreadable manifest gives a warning and no pictures. The viewer renders one picture per numbered map. |
 | `--pdd-tobe-image` | A picture of the To-Be map, printed as section 7.1. The viewer passes the copy chosen as To-Be. |
-| `--names` | The remembered-names store (contract C4). A draft whose `draft_key` the session's own analyst steps do not name takes the store's name. A missing or unreadable file prints one warning and drafting goes on without it. The viewer passes it on every run when the store exists. |
+| `--library` | Contract C21: the app's activity library, `library/activities.json` (`resources/library/activities.json` in the packaged viewer). A project folder without its own `library.json` gets a copy of it with this analysis (staged with the other outputs, so only a run that succeeds leaves it); from then on the project's copy is used, with or without the flag, and never replaced, so a newer app library never changes an existing project. A file that is missing or fails a check prints one warning, is not copied, and the run uses no library (the drafting below is then unchanged). The viewer passes it on every run. It replaced `--names`, the remembered-names store of contract C4, which is removed: `--names` is now a usage error. |
 | `--tech-out` | Contract C20: write the Technical details workbook (`.xlsx`) to this path (`tech_details.py`, below): the reference transaction's recorded controls, the data fields per transaction, the re-keyed values and the applications. A requested export like the PDD: a failure exits 3 and changes nothing. The viewer passes it for Export, Technical details (.xlsx) and for a hand-off. |
 | `--handoff` | Contract C20: the hand-off version (an entry of `annotations.handoffs`) the PDD and the Technical details are made for: they read "Version N, handed off <date> by <name>". Without it (or for a version the project does not hold) they are a working copy: "Working copy after version N", or "Working copy, not handed off yet". A value below 1 is a usage error. The viewer passes it only for Export, Hand off... |
 
@@ -53,7 +53,8 @@ never opens a stale export.
 
 A run changes the project only when it succeeds (lane FX1): every output
 (`annotations.json`, `stats.json`, `analysis.json`,
-`process_map_step.bpmn`) is staged beside its name as `<name>.pdt-staged`
+`process_map_step.bpmn`, and the project's first copy of the library,
+`library.json`) is staged beside its name as `<name>.pdt-staged`
 (`session_io.Staging`) and moved into place together as the run's very last
 act, `analysis.json` last. A run that fails removes what it staged; a run the
 viewer stops (Cancel kills the process, so nothing runs after) moves
@@ -85,8 +86,10 @@ viewer's Attach transcript runs this CLI with the same Python it uses for
 ### `golden_check.py`
 
 The session golden. It copies each of the 10 demo sessions in
-`sessions/example-aggregate/` to a temp folder, runs `normalize.py --mine`
-there, and compares a projection with `normalization/golden/`: stable
+`sessions/example-aggregate/` to a temp folder, runs `normalize.py --mine
+--library library/activities.json` there (the shipped library, which has no
+activity, so the golden also proves that an empty library changes nothing),
+and compares a projection with `normalization/golden/`: stable
 `stats.json` meta counts, the step count, the distinct `process_label` set,
 and the step map's task names, its tasks counted by kind (contract C18 as
 lane CL amended it: every task of the demo is a plain `task`, no user task
@@ -138,16 +141,31 @@ helpers in `pipeline_stages.py`, in this order:
    interaction on another screen, exclusive; or (c) at the end of the run.
    Interactions outside every run are drafted the same way with
    `case_id: null`. Each draft carries `draft_key`, `name_source` and
-   `end_reason`. A draft's name comes, in this order, from a step the analyst
-   named in this session with the same key (`step_suggest.session_names`:
-   typed names before accepted ones, the pattern run's first), from the
-   remembered-names store (`--names`), else from the rule's default name;
-   the first two give `name_source: "remembered"`. So names travel with the
-   session folder. `draft_summary()` counts the fresh drafts for the P1 probe;
-   `_merge_steps()` keeps every analyst-owned step (`confirmed`, `edited`,
-   `manually_authored`, `hidden`), drops a fresh draft that overlaps one, lets
-   a fresh draft inherit the `step_id` of the step it re-covers, and restamps
-   `process_label` and `grain_keys` on every step. A draft that still
+   `end_reason`. A draft's name comes from a step the analyst named in this
+   session with the same key (`step_suggest.session_names`: typed names
+   before accepted ones, the pattern run's first), with `name_source:
+   "remembered"`, else from the rule's default name. So names travel with
+   the session folder. `draft_summary()` counts the fresh drafts for the P1
+   probe; `_merge_steps()` keeps every analyst-owned step (`confirmed`,
+   `edited`, `manually_authored`, `hidden`), drops a fresh draft that
+   overlaps one, names runs of the drafts left from the project's activity
+   library (below), lets a fresh draft inherit the `step_id` of the step it
+   re-covers, and restamps `process_label` and `grain_keys` on every step.
+   **The activity library** (contract C21, `step_suggest.library_drafts`):
+   drafts are consecutive when they are in one run with no dropped draft
+   between them (so a run never reaches across an analyst's step); a
+   screen repeated back to back counts once; read left to right, at each
+   draft the longest run of drafts whose `draft_key`s equal the screens of
+   an activity becomes one draft with the activity's name, `name_source:
+   "library"`, `library_activity` (the activity's id), `draft_keys` (the
+   run's screens, a repeat once; no `draft_key`), the span and the evidence
+   of the run, the narration of its actions as its description and the
+   `end_reason` of its last draft. A draft no run matches is unchanged, and
+   a library without screens (the shipped one) changes nothing. The named
+   draft is made before the drafts inherit their ids, so it keeps its
+   `step_id` from one analysis to the next; a link (C17) of a kept step to
+   a draft of the previous analysis that is now inside a named draft points
+   at the named draft. A draft that still
    carries a step flow key (`only_when` or `links`, contract C17) is the
    analyst's: it is kept as `edited`, so no analysis drafts the flow away;
    so is a draft that carries `sub_steps` (contract C19, a sub-process).
@@ -196,7 +214,9 @@ helpers in `pipeline_stages.py`, in this order:
    them with (`data_section`, `time_section`) from the inputs it reads (the
    full derived stream, so a step kept inside a stretch left out keeps its
    fields), for every session; the Overview shows them as they are (one
-   source, pinned by `shared/pdd-rows-golden.json`). `steps_signature`
+   source, pinned by `shared/pdd-rows-golden.json`). `library_version` is
+   the version of the activity library the run used (C21), `null` without
+   one. `steps_signature`
    (`steps_signature.py`) records the steps they were measured from; the
    viewer takes the same signature of the steps it has and, as the Overview
    opens, analyzes again when the two differ (pinned by
@@ -291,8 +311,10 @@ and the other names. What a BPMN tool receives besides the shapes:
   implicit run of a session without a recording).
 - **A colour per system** (C18): each task's fill and stroke, written as
   bpmn-js's `bioc:fill` and `bioc:stroke` (other tools ignore them), from a
-  palette of nine named colours in the order the systems are first used
-  (the reference transaction first: the PDD's order). A tenth system and
+  palette of nine named colours, the systems in the order of the project
+  library's applications (C21), then the systems it does not list in the
+  order they are first used (the reference transaction first: the PDD's
+  order). A tenth system and
   later keep the default look. One text annotation, `TextAnnotation_legend`,
   lists them: "Colour by system", then one line per system ("SAP: orange",
   "no colour" past the palette), then "Hand icon: done outside the
@@ -385,7 +407,8 @@ gaps. The sections, in the reader's order:
    number never reads as a section's), "Only when ..." when the step has a
    condition (C17), its
    description (C7: the analyst's text; a draft's generated narration is
-   left out), the fields it entered, its attachments, its screenshots, the
+   left out; without one, the description of the library activity the step
+   is, C21), the fields it entered, its attachments, its screenshots, the
    waste flag, and one line per link: "Then goes back to step N, <name>,
    when ...", "Then goes on to step N ...", "Then skips to step N ..." or
    "The process ends here when ...". A step whose map node is a
@@ -438,8 +461,9 @@ gaps. The sections, in the reader's order:
    attached files: each file's label and name. Nothing is embedded; the
    files stay in the session folder's `attachments/`.
 
-**The step context line** under each step heading: system and screen, the
-average time, "in N of M transactions", and where it is in the recording
+**The step context line** under each step heading: the code of the library
+activity the step is ("Code SF-01", contract C21, when the activity has one),
+system and screen, the average time, "in N of M transactions", and where it is in the recording
 ("Transaction 1 at 0:19", the time since the recording started, plus the
 video time when the video's start is known; in a video session, the video
 time). Each part is left out when it is unknown; a step without a time
@@ -470,7 +494,8 @@ Its sheets:
   "(not recorded: secret field)"), the control type, automation id, name and
   class name, the identity source and confidence, the window title, the
   program (`process_name`) and the system (the step's own system first, else
-  `shared/system-names.json`).
+  `shared/system-names.json`), then Activity and Code: the name and the code
+  of the library activity the row's step is (C21), empty when it is none.
 - **Data fields**: one row per field typed or chosen in a step, the rows
   of the PDD's data table (a field in a step, aligned across the
   transactions by the step's draft key), with the field's automation id,
@@ -572,7 +597,8 @@ SCHEMA.md.
 | `app_names.py` | Readable application names and business system names from `shared/system-names.json` (above). |
 | `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (time, then `order`), the recording clock ("0:19") and the video start. Read by the PDD and the step map. |
 | `recognition.py` | The platform recognition layer (below). |
-| `step_suggest.py` | The drafting rule, `session_names()`, `load_remembered_names()`, `draft_summary()`, `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
+| `step_suggest.py` | The drafting rule, `session_names()`, `draft_summary()`, `library_drafts()` (C21), `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
+| `library.py` | Contract C21, standard library only: `load_library` (the format number, unique activity ids, names unique within an application, no run of screens in two activities; a file missing or failing a check is an empty library whose `problem` says why) and `project_library` (the project's `library.json`, else a copy of the app's library, staged with the run, else none). |
 | `classification.py`, `classification_overrides.py` | Taxonomy classification and the override replay; internal only. |
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
 | `case_quality.py` | The transaction check of `analysis.json`: how the runs were found, how many, and the share of the recorded actions inside them. |
@@ -596,7 +622,7 @@ Deleted with their features ([ADR-0029](../adr/0029-ba-helper-refocus.md)):
 `signature_pick.py`, `pii_masking.py`, `analysis_roi.py`, `step_csv.py`,
 `bpmn_step.py` and `bpmn_phase.py`.
 
-## Vocabularies and remembered names
+## Vocabularies, names and the activity library
 
 **App vocabularies** (`normalization/app_vocabularies/*.yaml`, rationale in
 [ADR-0002](../adr/0002-app-vocabularies.md)) still load and match as before:
@@ -604,15 +630,21 @@ they give interactions a `meaningful_name`, a `screen_id` and default flags.
 Nothing in the app edits or discovers vocabulary entries anymore
 ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md) is superseded).
 
-A lighter mechanism replaces the workbenches, owned by the viewer
-(contract C4):
+Lighter mechanisms replace the workbenches:
 
-- **Remembered names**: a store keyed by `draft_key`. The pipeline reads it
-  through `--names` at draft time, after the session's own names, so a step
-  named once arrives named in every later session.
+- **The session's own names** (contract C4): a draft takes the name the
+  analyst gave to a step with its `draft_key` in the same project
+  (`step_suggest.session_names`). The remembered-names store and its
+  `--names` flag were removed with contract C21.
+- **The activity library** (contract C21): the app ships
+  `library/activities.json`; each project keeps its own copy,
+  `library.json`, made by its first analysis, and a run of drafts whose
+  screens an activity lists becomes one draft named from it (stage 4). Its
+  application order is the step map's colour order; the PDD prints an
+  activity's code and description, the Technical details its name and code.
 
-Its shape is in [SCHEMA.md](../../shared/SCHEMA.md). (The saved processes of
-contract C5 left the app on 2026-09-24: a process is recorded once.)
+Their shapes are in [SCHEMA.md](../../shared/SCHEMA.md). (The saved processes
+of contract C5 left the app on 2026-09-24: a process is recorded once.)
 
 ## Recognition layer
 
@@ -628,8 +660,8 @@ Rationale: [ADR-0011](../adr/0011-platform-recognition-layer.md).
 ## Outputs
 
 Written into the session folder: `stats.json`, `analysis.json`, the updated
-`annotations.json`, `process_map_step.bpmn` (with `--mine`) and
-`normalize.log`. The PDD goes to the `--pdd-out` path, the Technical details
+`annotations.json`, `process_map_step.bpmn` (with `--mine`), `library.json`
+(once: the project's copy of the app's library, C21) and `normalize.log`. The PDD goes to the `--pdd-out` path, the Technical details
 to the `--tech-out` path. `transcript_import.py`
 writes `transcript.json` and the `transcript/` copy. Re-running is
 non-destructive; `stats.json.meta.normalization_run_at` tells a consumer when

@@ -535,8 +535,9 @@ def _flow_bpmn(edges: list[dict], runs: int, count_runs: bool = True):
 
 # The main end's name while the document's Result is empty.
 _MAIN_END = "End"
-# A fill and a stroke per system, in the order the systems were first used
-# (_systems_in_order): light fills, dark strokes. bpmn-js writes a task's
+# A fill and a stroke per system, in the order of the project library's
+# applications (contract C21), then the order the other systems were first
+# used (_systems_in_order): light fills, dark strokes. bpmn-js writes a task's
 # name in its stroke colour, 6.9:1 or more on its fill, so a coloured task
 # stays legible in the PDD's print. Each colour is named for the legend.
 _PALETTE = (("blue", "#bfdbfe", "#1e3a8a"), ("orange", "#fed7aa", "#7c2d12"),
@@ -597,6 +598,17 @@ def _systems_in_order(anno: dict[str, Any], run_order: Any,
             if system:
                 seen.setdefault(system, None)
     return list(seen)
+
+
+def _in_library_order(systems: list[str], app_order: Any) -> list[str]:
+    """Contract C21: `systems` in the order of the project library's
+    applications (`app_order`, their names), the systems the library does
+    not list after them in the order they come in: the colour order."""
+    rank: dict[str, int] = {}
+    for i, name in enumerate(app_order or ()):
+        rank.setdefault(name, i)
+    listed = sorted((s for s in systems if s in rank), key=lambda s: rank[s])
+    return listed + [s for s in systems if s not in rank]
 
 
 def _notes_of(anno: dict[str, Any], steps: list[dict[str, Any]]) -> str:
@@ -662,17 +674,18 @@ def _data_objects(anno: dict[str, Any], steps: list[dict[str, Any]],
 
 def _map_extras(anno: dict[str, Any], model: Any, context: Any,
                 run_order: Any, *, palette: dict | None = None,
-                used: set | None = None) -> dict[str, Any]:
+                used: set | None = None, app_order: Any = None) -> dict[str, Any]:
     """What contract C18 puts beside the map's tasks, as mining.export_bpmn
     takes it (keyed by a task's id()): its kind (a manual task when every
     step it stands for was done outside every system, _outside_systems;
     else a plain task); its system's fill and stroke (_PALETTE, the systems
-    in _systems_in_order; a system past the palette's end keeps the default
-    look); its steps' notes (one text annotation, cut at _NOTE_MAX
-    characters, whole in its documentation when cut); the files attached to
-    its steps (a data object each, _data_objects); and the legend naming
-    each system's colour, then what the hand marker means when the map has
-    a manual task. A
+    in _systems_in_order, put in the project library's application order,
+    `app_order`, contract C21, by _in_library_order; a system past the
+    palette's end keeps the default look); its steps' notes (one text
+    annotation, cut at _NOTE_MAX characters, whole in its documentation
+    when cut); the files attached to its steps (a data object each,
+    _data_objects); and the legend naming each system's colour, in that
+    order, then what the hand marker means when the map has a manual task. A
     task's system is the one its documentation names (its reference
     transaction's step first). When one label is on several tasks (a
     transaction that came back to a step), the first holds its notes and
@@ -684,7 +697,7 @@ def _map_extras(anno: dict[str, Any], model: Any, context: Any,
     first colours, and a system keeps its colour on every map."""
     by_label = _node_steps(anno)
     node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
-    systems = _systems_in_order(anno, run_order, node_system)
+    systems = _in_library_order(_systems_in_order(anno, run_order, node_system), app_order)
     palette = {} if palette is None else palette
     _colour(palette, systems)
     return _extras_of(anno, model, by_label, node_system, systems, palette, context,
@@ -846,7 +859,8 @@ def _plane_model(traces: list[list[dict[str, Any]]], tx: list[int], marked: bool
 def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: Any,
                         transactions: list[list[dict[str, Any]]], *, context: Any = None,
                         implicit_runs: Any = (), noise_threshold: float = 0.2,
-                        palette: dict | None = None, used: set | None = None) -> dict[int, dict]:
+                        palette: dict | None = None, used: set | None = None,
+                        app_order: Any = None) -> dict[int, dict]:
     """Contract C19: every map of sub_process_maps.map_tree below the main
     one, as mining.export_bpmn takes it (its `sub_planes`): {id(task): the
     sub-process's map}. Each task of a sub-process node is tagged
@@ -860,7 +874,8 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
     and main end are unnamed and its early ends keep their `when`; its
     counts ("In N of M transactions", the branch names) are over the
     transactions that ran the sub-process; its legend names the systems
-    drawn in it, each keeping its colour from `palette` across the file;
+    drawn in it (in the library's application order, `app_order`, contract
+    C21), each keeping its colour from `palette` across the file;
     its data objects' keys stay unique (`used`). Its ids start with
     "Sub<n>_", n its place in map_tree's list, unique in the file. {} when
     no step is a sub-process."""
@@ -913,13 +928,14 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
         node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
         seen: dict[str, None] = {}
         # The systems in the order the reference transaction, then the
-        # others, first used them (_systems_in_order's order).
+        # others, first used them (_systems_in_order's order), put in the
+        # library's application order (C21).
         for _c, trace in sorted(zip(cases, traces), key=lambda ct: ct[0] != pattern):
             for s in trace:
                 system = node_system.get(_step_label(s))
                 if system:
                     seen.setdefault(system, None)
-        systems = list(seen)
+        systems = _in_library_order(list(seen), app_order)
         _colour(palette, systems)
         extras = _extras_of(anno, model, by_label, node_system, systems, palette, context, used)
         spec = {"model": model, "prefix": f"Sub{index}_", "documentation": documentation,
@@ -941,6 +957,7 @@ def write_observed_bpmn(
     implicit_runs: Any = (),
     run_order: Any = None,
     run_spans: Any = None,
+    app_order: Any = None,
 ) -> bool:
     """Mine the observed step flow into BPMN and write it (with layout).
 
@@ -967,7 +984,9 @@ def write_observed_bpmn(
     from the first line of its Result, else "End" (C18); each branch is
     named "N of M transactions" (branch_names). Contract C18 adds the task
     kinds, the systems' colours and their legend, the notes and the data
-    objects (_map_extras).
+    objects (_map_extras); contract C21 gives the colours in the order of
+    the project library's applications (`app_order`, their names), the
+    systems it does not list after them.
     `context` (a step_context.StepContext) supplies the system and screen.
     `implicit_runs` holds the case id of a session's implicit run (C16),
     whose steps the documentation does not count in runs.
@@ -1039,10 +1058,12 @@ def write_observed_bpmn(
     # One palette and one set of data object keys for every map of the file.
     palette: dict = {}
     used: set = set()
-    extras = _map_extras(anno, bpmn, context, run_order, palette=palette, used=used)
+    extras = _map_extras(anno, bpmn, context, run_order, palette=palette, used=used,
+                         app_order=app_order)
     planes = _sub_process_planes(anno, extras["task_tags"], bpmn, transactions,
                                  context=context, implicit_runs=implicit_runs,
-                                 noise_threshold=noise_threshold, palette=palette, used=used)
+                                 noise_threshold=noise_threshold, palette=palette, used=used,
+                                 app_order=app_order)
     mining.export_bpmn(bpmn, out_path, documentation=documentation,
                        flow_names=flow_names, label_room=declared,
                        sub_planes=planes or None, **extras)

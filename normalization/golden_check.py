@@ -37,6 +37,10 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 GOLDEN_DIR = os.path.join(HERE, "golden")
+# The app's activity library the viewer passes (contract C21). The shipped
+# one lists the known systems and no activity, so the golden proves that an
+# empty library changes nothing in the drafting.
+APP_LIBRARY = os.path.join(REPO_ROOT, "library", "activities.json")
 
 # Reference sessions under sessions/example-aggregate/ that the gate pins.
 # The full committed demo corpus (10 sessions of the order-to-cash process at
@@ -95,8 +99,9 @@ def _session_src(name: str) -> str:
 
 
 def build_projection(session_name: str) -> dict:
-    """Copy the reference session's inputs to a temp dir, run `normalize --mine`
-    there, and return a stable projection of the produced artifacts."""
+    """Copy the reference session's inputs to a temp dir, run `normalize --mine
+    --library <the shipped library>` there, and return a stable projection
+    of the produced artifacts."""
     src = _session_src(session_name)
     if not os.path.isdir(src):
         raise FileNotFoundError(f"reference session not found: {src}")
@@ -109,9 +114,11 @@ def build_projection(session_name: str) -> dict:
 
         # Faithful to the §0 harness command: `normalize.py <folder> --mine`,
         # default taxonomy + vocabs, run from the repo root so the relative
-        # default paths resolve.
+        # default paths resolve, with the shipped library as the viewer
+        # passes it (C21: copied into the temp folder, never the demo's).
         proc = subprocess.run(
-            [sys.executable, os.path.join(HERE, "normalize.py"), tmp, "--mine"],
+            [sys.executable, os.path.join(HERE, "normalize.py"), tmp, "--mine",
+             "--library", APP_LIBRARY],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,

@@ -39,7 +39,7 @@ from classification import (
 from classification_overrides import apply_classification_overrides
 from step_suggest import (
     auto_suggest_steps, _merge_steps, restamp_preserved_case_ids,
-    draft_summary, load_remembered_names, session_names,
+    draft_summary, session_names,
 )
 import app_vocab
 from app_names import build_app_names
@@ -148,18 +148,19 @@ def _run_step_segmentation(
     session_id_str: str,
     cal: dict,
     session_folder: Path,
-    names_path: str | None = None,
     recorded: bool = True,
     staging: Staging | None = None,
+    library: Any = None,
 ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     """Step drafting (the C1 rule), then persist annotations. Returns
     (merged_steps, total_interactions, draft_summary). A draft takes the name
-    the analyst gave to a step with its draft_key in this session first, then
-    the one in `names_path`, the optional remembered-names store (C4, the
-    `--names` flag). `recorded` is False for a session without a recording
-    (C16): its steps without a time whose transaction is gone join the first
-    transaction. With a `staging`, annotations.json is staged and committed
-    with the run (session_io.Staging)."""
+    the analyst gave to a step with its draft_key in this session (C4), and
+    a run of drafts an activity of the project's `library` (library.Library,
+    contract C21) lists becomes one draft named from it (_merge_steps).
+    `recorded` is False for a session without a recording (C16): its steps
+    without a time whose transaction is gone join the first transaction.
+    With a `staging`, annotations.json is staged and committed with the run
+    (session_io.Staging)."""
     total_interactions = sum(1 for e in with_cases if e.get("type") == "interaction")
     # ADR-0024: event_id -> interaction, so _merge_steps can resolve each step's
     # grain_keys (the view-time roll-up containment keys) from its evidence.
@@ -171,14 +172,13 @@ def _run_step_segmentation(
         with_cases, session_id=session_id_str,
         ignored_processes=_step_ignored_processes(existing_anno),
         excluded_ranges=_excluded_ranges(existing_anno),
-        remembered_names=load_remembered_names(names_path),
         session_names=session_names(existing_anno),
         **_step_calibration_kwargs(cal),
     )
     # Counted on the fresh drafts, before the merge (see draft_summary).
     summary = draft_summary(auto_steps, cases, interactions_by_id)
     merged_steps = _merge_steps(existing_anno.get("steps") or [], auto_steps,
-                                interactions_by_id)
+                                interactions_by_id, library=library)
     # RP-01 / C9: a preserved analyst step keeps its case_id only while that
     # run still exists; otherwise it moves to the run containing it in time.
     restamped = restamp_preserved_case_ids(merged_steps, cases, recorded=recorded)
@@ -333,6 +333,7 @@ def _run_analysis(
     cases: Any = None,
     recorded: bool = True,
     staging: Staging | None = None,
+    library_version: str | None = None,
 ) -> Any:
     """analysis.json: what the viewer and the PDD read of the analysis.
 
@@ -347,6 +348,9 @@ def _run_analysis(
       pdd_time         (pdd_export.pdd_rows), which the Overview shows as
                        they are.
       steps_signature  the steps those rows were measured from.
+      library_version  the version of the project's activity library the
+                       drafts were named from (contract C21), or null when
+                       the analysis used no library.
       meta, stage_errors, format.
 
     The analysis layer of the product edition (the facts, the findings, the
@@ -379,7 +383,7 @@ def _run_analysis(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "session_id": (manifest or {}).get("session_id", ""),
         "step_count": len(steps),
-    }}
+    }, "library_version": library_version}
     try:
         from case_quality import compute_case_quality
         analysis_result["case_quality"] = compute_case_quality(
@@ -463,6 +467,7 @@ def _run_mining_exports(
     staging: Staging | None = None,
     tech_out: str | None = None,
     handoff: int | None = None,
+    library: Any = None,
 ) -> None:
     """The step-level observed-flow BPMN (when `mine` is set) plus the
     requested PDD and Technical details exports. The BPMN keeps its
@@ -472,7 +477,10 @@ def _run_mining_exports(
     and the workbook read the entered fields from. `pdd_map_images` is the
     manifest of the maps' pictures (contract C19). `tech_out` is the
     Technical details workbook's path and `handoff` the hand-off version both
-    documents are made for (contract C20; None: a working copy). With a
+    documents are made for (contract C20; None: a working copy). `library`
+    is the activity library the run uses (contract C21, library.Library):
+    its application order is the step map's colour order, and the PDD and
+    the workbook print its activities' codes and descriptions. With a
     `staging`, the step BPMN is staged and committed with the run."""
     map_written = False
     if mine:
@@ -507,7 +515,8 @@ def _run_mining_exports(
                 if bpmn_observed.write_observed_bpmn(
                         existing_anno, str(out),
                         context=context, implicit_runs=implicit, run_order=run_order,
-                        run_spans=run_spans):
+                        run_spans=run_spans,
+                        app_order=getattr(library, "applications", None)):
                     map_written = True
                     print(f"[normalize] {'staged' if staging is not None else 'wrote'} {final}")
         except Exception as e:
@@ -531,6 +540,7 @@ def _run_mining_exports(
                 map_images=pdd_map_images,
                 map_file=map_written or None,
                 handoff=handoff,
+                library=library,
             )
         except Exception as e:  # noqa: BLE001 -- any failure fails the export
             # The traceback goes to normalize.log only (INFO is below the
@@ -553,6 +563,7 @@ def _run_mining_exports(
                 manifest=manifest,
                 events=events,
                 handoff=handoff,
+                library=library,
             )
         except Exception as e:  # noqa: BLE001 (any failure fails the export)
             logger.info("Technical details export traceback", exc_info=True)

@@ -4,7 +4,7 @@ A captured session is a self-contained folder: the integration seam between
 capture, normalization and the viewer (section 2.1 of the design). This file
 is the authoritative format reference;
 [DATA-MODEL.md](../docs/architecture/DATA-MODEL.md) is the working summary.
-Contract numbers (C1 to C20) refer to
+Contract numbers (C1 to C21) refer to
 `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; the decisions
 behind the light version are in [ADR-0029](../docs/adr/0029-ba-helper-refocus.md).
 
@@ -33,6 +33,7 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   stats.json              # pipeline outputs: see "Post-normalization artifacts"
   analysis.json
   process_map_step.bpmn   # with --mine
+  library.json            # the project's activity library, copied once by its first analysis (C21)
   normalize.log
   transcript/             # a copy of an imported meeting transcript (C8), if any
   transcript.json         # its parsed segments, if any
@@ -725,9 +726,10 @@ delete.
   "name": "string",
   "process_label": "string: the value-free grouping key (ADR-0013)",
   "draft_key": "string, drafted steps only: \"<app>|<screen>|<commit>\" (C1)",
-  "draft_keys": ["string", "merged drafts only: the members' draft keys, in order"],
+  "draft_keys": ["string", "merged drafts only: the members' draft keys, in order; a library draft: the run's screens (C21)"],
   "action_key": "string, drafted sub-steps only: \"<app>|<screen>|enter:<field>\" or \"<app>|<screen>|click:<control>\" (C19)",
-  "name_source": "remembered|draft, drafted steps only; action|remembered, drafted sub-steps only",
+  "name_source": "remembered|draft|library, drafted steps only; action|remembered, drafted sub-steps only",
+  "library_activity": "string, optional: the id of the library activity the step is (C21)",
   "end_reason": "commit|screen_change|run_end, drafted steps only",
   "grain_keys": {
     "element": "string: the control the step acted on (automation_id or name)",
@@ -921,16 +923,18 @@ drafted step carries:
   is `"<control_type>:<identity>"` of the commit interaction (identity:
   automation_id, else name, else class_name, else `"?"`, each passed through
   the shared value rules), or the literal `"(visit)"` when the step did not
-  end on a commit. The remembered names (C4) match on it (so did the saved
-  processes of C5 until they left the app). A key is used whole, never split (a screen label can contain `|`).
+  end on a commit. The session's own names (C4) match on it (so did the
+  remembered-names store until contract C21, and the saved processes of C5
+  until they left the app). A key is used whole, never split (a screen label can contain `|`).
 - **`name_source`**: `"remembered"` when the name is one the analyst gave
-  before, else `"draft"`. A draft takes, in this order, the name of a step
-  the analyst named in this session with the same key (typed names, in
-  `edited` or `manually_authored` steps, before accepted ones in `confirmed`
-  steps; the pattern run's first), then the remembered-names store's name
-  (`--names`), then the default name. So names travel with the session
-  folder: the same session analyzed on another machine drafts the same
-  names.
+  before, `"library"` for a draft named from the project's activity library
+  (below), else `"draft"`. A draft takes the name of a step the analyst
+  named in this session with the same key (typed names, in `edited` or
+  `manually_authored` steps, before accepted ones in `confirmed` steps; the
+  pattern run's first), else the default name. So names travel with the
+  session folder: the same session analyzed on another machine drafts the
+  same names. (The remembered-names store and `--names` came after the
+  session's names until contract C21 removed them.)
 - **`end_reason`**: `"commit"`, `"screen_change"` or `"run_end"`, the three
   ways the rule ends a step.
 
@@ -938,6 +942,30 @@ The default name (when not remembered) is `"<screen label>: <commit label>"`,
 or `"<screen label>"` for a `"(visit)"` step; the commit label is the
 interaction's vocab `meaningful_name`, else its `name`, else its
 `control_type`. Names never embed a typed value.
+
+**Drafts named from the activity library (contract C21).** After the drafts
+are made and the ones overlapping the analyst's steps are dropped,
+`step_suggest.library_drafts` reads each run's drafts left to right against
+the project's library (`library.json`, below). Drafts are consecutive when
+they are in one run with no dropped draft between them, so a run never
+reaches across a step of the analyst's; a screen repeated back to back
+counts once. At each draft, the longest run of drafts whose `draft_key`s
+equal the screens of an activity becomes one draft (`auto_suggested`):
+`name` the activity's name, `name_source: "library"`, **`library_activity`**
+the activity's id, `draft_keys` the run's screens (a repeat once, so one
+activity aligns alike in every transaction) and no `draft_key`, the span
+(`time_range` from the first draft's start to the last one's end) and the
+evidence (`interaction_event_ids` and `screenshot_refs` in order) of the
+run, the narration of its interactions as its `description`, their
+`grain_keys`, the waste flag of any draft of the run and the `end_reason`
+of the last. A draft no run matches is unchanged, and a library without
+screens (the shipped one) changes nothing: the session golden runs with it.
+The named draft is made before the drafts inherit their ids, so it keeps
+its `step_id` from one analysis to the next; a link (C17) of a kept step
+to a step of the previous analysis that is gone, when every interaction of
+that step lies inside a named draft, points at the named draft. The viewer
+sets `library_activity` too, on any step the analyst names from the
+library's picker.
 
 **Merged and split steps.** A merge or a split in the viewer removes the
 draft identity (`draft_key`, `name_source`, `end_reason`), because the
@@ -1014,27 +1042,25 @@ an edited map's file, a transcript) wait for their Undo under
 
 ### `pdt-library/remembered-names.json` (contract C4, light vocab)
 
+**Removed with contract C21 (2026-09-25):** the pipeline no longer reads it
+(`--names` is a usage error) and the viewer drops the store and its dialog;
+a rename still names the project's other drafts of its key (the session's
+own names, `name_source`). A file already in a user's `pdt-library` is left
+as it is, unused. The format below is kept for the record.
+
 ```json
 { "version": 1,
   "names": { "<draft_key>": { "name": "Look up customer", "updated_at": "ISO 8601" } } }
 ```
 
-- Written when the analyst renames a step that carries a `draft_key`; the
-  rename also applies at once to every still-draft step in the session with
-  the same key. The Remembered step names dialog (Steps toolbar) renames an entry
-  or forgets it (the entry is deleted). Either reaches the project too:
-  every draft of the key, and every other step of the key that carries the
-  old name, at every level, takes the new name (Forget: its drafted name
-  back), so the next analysis does not bring the old name back from the
-  session's own names (see `name_source`). An undo or a redo of a rename or
-  a forget puts the store's entry back as it was before or after (lane FX2).
-  A drafted sub-step's name (C19) is kept under the key
-  `"action|" + action_key`; the project's own sub-step names come first.
-- Read by the pipeline through `normalize.py --names <path>` at draft time,
-  after the session's own names; the viewer passes it on every analysis it
-  runs when the file exists. A missing or unreadable file is not a failure
-  there: one stderr warning, and drafting goes on without it. Both readers
-  skip an entry without a non-blank `name`.
+- It was written when the analyst renamed a step that carried a
+  `draft_key` (the rename also applied at once to every still-draft step in
+  the session with the same key, which it still does), and by the
+  Remembered step names dialog (Steps toolbar), which renamed or forgot an
+  entry; a drafted sub-step's name (C19) was kept under the key
+  `"action|" + action_key`.
+- It was read by the pipeline through `normalize.py --names <path>` at
+  draft time, after the session's own names.
 
 ### `handoffs/` (contract C20): the hand-offs opened read only
 
@@ -1297,6 +1323,55 @@ entry point `transcript_import.parse(path)` returns `{"format", "segments"}`
 and raises `TranscriptError` with a one-line reason; it writes nothing, so a
 transcript can be previewed before it is written into the session.
 
+## library.json (contract C21): the project's activity library
+
+The app ships one activity library, `library/activities.json` at the
+repository root (`resources/library/activities.json` in the packaged
+viewer); swapping the library means replacing that file. A project keeps the
+library it started with: the first analysis of a folder without
+`library.json` copies the app's library into it byte for byte
+(`normalize.py --library <file>`, `library.project_library`; staged with the
+run's other outputs, so only a run that succeeds leaves it), and from then
+on the pipeline and the viewer use the project's copy only, so a newer app
+library never changes an existing project. `analysis.json` records its
+`library_version`.
+
+```json
+{ "format": 1, "version": "<text>",
+  "applications": [
+    { "name": "Salesforce",
+      "activities": [
+        { "id": "sf-find-account", "name": "Find the account", "code": "SF-01",
+          "description": "Look the customer up by the account number.",
+          "screens": [ ["chrome|Salesforce - Account lookup|Button:search"],
+                       ["chrome|Salesforce - Accounts|Button:find", "chrome|Salesforce - Account|(visit)"] ] },
+        { "id": "sf-call", "name": "Call the customer" } ] } ] }
+```
+
+- **`applications`**: the systems, each `name` as `shared/system-names.json`
+  gives it (C14). Their order is the step map's colour order: the systems
+  of a map take the palette's colours in this order, the systems the
+  library does not list after them in the order they are first used. The
+  shipped file lists the known systems of `system-names.json` and no
+  activity.
+- **An activity**: `id` (unique in the file) and `name` (unique within its
+  application), `code` and `description` optional. `screens` lists one or
+  more runs of screens, each a list of draft keys (C1) in order; a screen
+  repeated back to back counts once. An activity without `screens` has a
+  name only (for the steps added by hand).
+- **Checks** (`library.load_library`): the `format` number (1), unique ids,
+  names unique within an application, no run of screens (its repeats taken
+  out) in two activities, and the shapes above. A file that is missing or
+  fails a check is an empty library, never a part of one, with one warning
+  saying why: a project's copy that fails stays as it is (never replaced),
+  and an app library that fails is not copied (the next analysis copies it
+  once it is fixed).
+- **Where it shows**: the drafting (the step entity's "Drafts named from the
+  activity library", above); the step map's colours; the PDD, whose step
+  context line opens with the activity's code ("Code SF-01") and which
+  prints the activity's description when the analyst wrote none for the
+  step; the Technical details' Activity and Code columns.
+
 ## analysis.json
 
 What the viewer and the PDD read of the analysis, written by every run of
@@ -1346,6 +1421,7 @@ again as the project opens. The keys of an older file are not read.
     }
   },
   "steps_signature": "hex",
+  "library_version": "the version of the project's library, or null",
   "stage_errors": [],
   "format": 4
 }
@@ -1392,6 +1468,10 @@ again as the project opens. The keys of an older file are not read.
   `shared/steps-signature-golden.json`. A failure writes `null` with one
   `stage_errors` entry (`steps_signature`); an analysis without the key reads
   as older than the steps.
+- **`library_version`** (contract C21): the `version` of the activity
+  library the run used (the project's `library.json`, or the app's library
+  it copied in this run), `null` when it used none (no library, or one that
+  failed a check).
 - **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`: 3
   since `pdd_data` and `pdd_time`, 4 since lane FX1's cut and
   `coverage_caveat`); the viewer analyzes a project again as it opens when
@@ -1447,9 +1527,10 @@ process ends and by the next run as it starts.
 | File | Contents |
 |---|---|
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `analysis.json` | `{ meta, case_quality, coverage_caveat, pdd_data, pdd_time, steps_signature, stage_errors, format }` |
+| `analysis.json` | `{ meta, case_quality, coverage_caveat, pdd_data, pdd_time, steps_signature, library_version, stage_errors, format }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
 | `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below), one plane per sub-process (C19). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
+| `library.json` | Once, by the first analysis given `--library` in a folder without one: the project's copy of the app's activity library (C21, above), never replaced. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |
 
 The PDD goes to the path given with `--pdd-out`; the viewer writes it to a
@@ -1509,8 +1590,10 @@ the boxes, the lines and the other names.
   (C15; not counted in the implicit run of a session without a recording).
 - **A colour per system** (C18). Each task gets a light fill and a dark
   stroke, written as bpmn-js's `bioc:fill` and `bioc:stroke` (other tools
-  ignore them), from a palette of nine named colours in the order the
-  reference transaction, then the others, first use the systems. A tenth
+  ignore them), from a palette of nine named colours, the systems in the
+  order of the project library's applications (C21), then the systems it
+  does not list in the order the reference transaction, then the others,
+  first use them. A tenth
   system and later keep the default look. One text annotation,
   `TextAnnotation_legend`, names the colours: "Colour by system", then one
   line per system ("SAP: orange", or "no colour"), and, when a task of its
@@ -1562,9 +1645,14 @@ the boxes, the lines and the other names.
 ```
 python normalize.py <session_folder> [--taxonomy path/to/taxonomy.yaml] [--mine]
     [--pdd-out path.docx] [--pdd-map-image path.png] [--pdd-map-images maps.json]
-    [--pdd-tobe-image path.png] [--names remembered-names.json]
+    [--pdd-tobe-image path.png] [--library activities.json]
     [--tech-out path.xlsx] [--handoff N]
 ```
+
+`--library` (contract C21) is the app's activity library: a project without
+`library.json` gets a copy of it, and the project's copy is used from then
+on (`library.json` above). It replaced `--names` (the remembered-names
+store), now a usage error.
 
 `--tech-out` (contract C20) writes the Technical details workbook, and
 `--handoff N` makes the PDD and the workbook for hand-off version N (see

@@ -1,4 +1,4 @@
-"""The drafting rule (contract C1) and the remembered-names read side (C4).
+"""The drafting rule (contract C1) and the session's own names (C4).
 
 A drafted step is a stretch of consecutive interactions on one screen within a
 run. It ends at a commit interaction (inclusive), at the first interaction on
@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from step_suggest import (  # noqa: E402
-    _merge_steps, auto_suggest_steps, draft_summary, load_remembered_names,
+    _merge_steps, auto_suggest_steps, draft_summary,
 )
 
 T0 = datetime(2026, 9, 23, 9, 0, 0, tzinfo=timezone.utc)
@@ -327,14 +327,14 @@ def test_names_keys_and_reasons_never_carry_a_typed_value():
             assert secret not in s[field], f"typed value leaked into {field}"
 
 
-def test_a_remembered_name_replaces_the_default_and_sets_name_source():
+def test_a_session_name_replaces_the_default_and_sets_name_source():
     events = [
         _ev("e1", 1, "value_changed", aid="customer", name="Customer", value="C-1"),
         _ev("e2", 2, "invoked", ct="Button", aid="find", name="Find"),
         _ev("e3", 3, "value_changed", aid="note", name="Note", value="n"),
     ]
-    remembered = {"crm|CRM - Orders|Button:find": "Look up the customer"}
-    steps = _by_start(auto_suggest_steps(events, remembered_names=remembered))
+    named = {"crm|CRM - Orders|Button:find": "Look up the customer"}
+    steps = _by_start(auto_suggest_steps(events, session_names=named))
     assert [s["name"] for s in steps] == ["Look up the customer", "CRM - Orders"]
     assert [s["name_source"] for s in steps] == ["remembered", "draft"]
     assert steps[0]["draft_key"] == "crm|CRM - Orders|Button:find"
@@ -388,62 +388,6 @@ def test_screenshots_inside_the_time_range_are_attached():
     assert steps[0]["evidence"]["screenshot_refs"] == [
         "screenshots/inside.jpg", "screenshots/at-end.jpg"]
     assert steps[1]["evidence"]["screenshot_refs"] == []
-
-
-# --- remembered-names store (C4 read side) ----------------------------------
-
-def _store(tmp_path, doc, name="remembered-names.json"):
-    path = tmp_path / name
-    path.write_text(doc if isinstance(doc, str) else json.dumps(doc), encoding="utf-8")
-    return path
-
-
-def _warnings(capsys):
-    return [ln for ln in capsys.readouterr().err.splitlines()
-            if ln.startswith("[normalize] WARNING:")]
-
-
-def test_the_names_store_is_read(tmp_path, capsys):
-    path = _store(tmp_path, {"version": 1, "names": {
-        "crm|CRM - Orders|Button:find": {"name": " Look up customer ",
-                                         "updated_at": "2026-09-23T09:00:00Z"}}})
-    assert load_remembered_names(path) == {
-        "crm|CRM - Orders|Button:find": "Look up customer"}
-    assert _warnings(capsys) == []
-
-
-def test_no_names_flag_means_no_names_and_no_warning(capsys):
-    assert load_remembered_names(None) == {}
-    assert _warnings(capsys) == []
-
-
-def test_a_missing_unreadable_or_malformed_store_warns_once_and_falls_back(tmp_path, capsys):
-    cases = {
-        "missing": tmp_path / "nope.json",
-        "bad json": _store(tmp_path, "{not json", "bad.json"),
-        "not utf-8": tmp_path / "latin.json",
-        "wrong version": _store(tmp_path, {"version": 2, "names": {}}, "v2.json"),
-        "names not an object": _store(tmp_path, {"version": 1, "names": []}, "list.json"),
-        "not an object": _store(tmp_path, [1, 2], "array.json"),
-    }
-    cases["not utf-8"].write_bytes(b'{"version": 1, "names": {"k": {"name": "\xe9"}}}')
-    for label, path in cases.items():
-        assert load_remembered_names(path) == {}, label
-        warnings = _warnings(capsys)
-        assert len(warnings) == 1, (label, warnings)
-        assert str(path) in warnings[0], label
-
-
-def test_entries_without_a_name_are_skipped_with_one_warning(tmp_path, capsys):
-    path = _store(tmp_path, {"version": 1, "names": {
-        "good": {"name": "Keep"},
-        "blank": {"name": "   "},
-        "no-name": {"updated_at": "x"},
-        "not-a-dict": "Name",
-    }})
-    assert load_remembered_names(path) == {"good": "Keep"}
-    warnings = _warnings(capsys)
-    assert len(warnings) == 1 and "skipped 3" in warnings[0]
 
 
 # --- re-analysis: preserved one-interaction steps are not re-drafted ---------
@@ -503,7 +447,7 @@ def test_draft_summary_is_numbers_only_in_run_order():
         "child": {"case_id": "child", "parent_case_id": "run-a", "start_ts": _ts(1)},
         "run-c": {"case_id": "run-c", "parent_case_id": None, "start_ts": _ts(40)},
     }
-    drafts = auto_suggest_steps(events, remembered_names={
+    drafts = auto_suggest_steps(events, session_names={
         "crm|CRM - Orders|Button:go": "Go on"})
     by_id = {e["event_id"]: e for e in events}
     summary = draft_summary(drafts, cases, by_id)

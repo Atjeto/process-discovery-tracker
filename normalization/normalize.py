@@ -2,6 +2,7 @@
 
 Usage:
     python normalize.py <session_folder> [--taxonomy path/to/taxonomy.yaml] [--mine]
+        [--library path/to/library/activities.json]
 
 Pipeline:
     1. Load events.jsonl, sort by timestamp
@@ -16,11 +17,13 @@ against an updated taxonomy without recapture (§6.3) -- raw events.jsonl
 is never modified.
 
 A run changes the project folder only when it succeeds: annotations.json,
-stats.json, analysis.json and process_map_step.bpmn are staged beside their
-names and moved into place together as the run's very last act
-(session_io.Staging). A run that fails, or that the viewer stops (Cancel
-kills the process), leaves every one of them as it was; the next run removes
-what a stopped run staged. normalize.log records every run.
+stats.json, analysis.json and process_map_step.bpmn (and library.json, the
+project's copy of the activity library its first analysis makes, contract
+C21) are staged beside their names and moved into place together as the
+run's very last act (session_io.Staging). A run that fails, or that the
+viewer stops (Cancel kills the process), leaves every one of them as it was;
+the next run removes what a stopped run staged. normalize.log records every
+run.
 
 Exit codes (contract C13). Codes 1 to 3 below report the error as one stderr
 line starting with "[normalize] ERROR:"; an unexpected crash also exits 1,
@@ -62,6 +65,7 @@ from session_io import (
     has_recording, Staging, clear_staged,
 )
 from marker_edits import apply_marker_edits
+from library import project_library
 from pipeline_config import (
     _step_ignored_processes, _excluded_ranges,
     _DEFAULT_CALIBRATION, _calibration, _step_calibration_kwargs,
@@ -101,15 +105,15 @@ def normalize(
     pdd_out: str | None = None,
     pdd_map_image: str | None = None,
     pdd_tobe_image: str | None = None,
-    names_path: str | None = None,
+    library_path: str | None = None,
     pdd_map_images: str | None = None,
     tech_out: str | None = None,
     handoff: int | None = None,
 ) -> dict[str, Any]:
-    """Run the pipeline on one session folder. `names_path` is the optional
-    remembered-names store (contract C4): drafted steps whose draft_key it
-    lists take the remembered name, after the names the analyst gave in this
-    session (the session's own names come first, so they travel with it).
+    """Run the pipeline on one session folder. `library_path` is the app's
+    activity library (contract C21, --library): a project without its own
+    library.json gets a copy of it, committed with the run, and the run
+    uses the project's copy whenever there is one (library.project_library).
     `pdd_map_images` is the manifest of the maps' pictures for the PDD
     (contract C19): the main map's, and one per sub-process. `tech_out` is
     the Technical details workbook to write and `handoff` the hand-off
@@ -141,7 +145,7 @@ def normalize(
             session_folder, annotations, manifest, worker_id, recorded, staging,
             taxonomy_path=taxonomy_path, mine=mine, pdd_out=pdd_out,
             pdd_map_image=pdd_map_image, pdd_tobe_image=pdd_tobe_image,
-            names_path=names_path, pdd_map_images=pdd_map_images,
+            library_path=library_path, pdd_map_images=pdd_map_images,
             tech_out=tech_out, handoff=handoff)
     except BaseException:
         staging.discard()
@@ -165,12 +169,15 @@ def _normalize_staged(
     pdd_out: str | None,
     pdd_map_image: str | None,
     pdd_tobe_image: str | None,
-    names_path: str | None,
+    library_path: str | None,
     pdd_map_images: str | None,
     tech_out: str | None = None,
     handoff: int | None = None,
 ) -> dict[str, Any]:
     """The pipeline's stages, each output staged (normalize() commits them)."""
+    # Contract C21: the project's activity library (its library.json, else a
+    # copy of the app's, staged with the other outputs, else none).
+    library = project_library(session_folder, library_path, staging)
     events_file = session_folder / "events.jsonl"
     raw, dropped_lines = load_events(events_file)
     print(f"[normalize] loaded {len(raw)} raw events")
@@ -203,10 +210,11 @@ def _normalize_staged(
     # Additive, regenerated each run: what the self/ignored-process filter dropped.
     existing_anno["process_exclusions"] = exclude_report
 
-    # Step drafting (the C1 rule), then persist annotations.
+    # Step drafting (the C1 rule, then the library's names, C21), then
+    # persist annotations.
     merged_steps, total_interactions, draft_summary = _run_step_segmentation(
         with_cases, cases, existing_anno, session_id_str, cal, session_folder,
-        names_path=names_path, recorded=recorded, staging=staging)
+        recorded=recorded, staging=staging, library=library)
 
     # Taxonomy classification + analyst overrides + the per-window collapse.
     classified, collapsed, taxonomy, taxonomy_report = (
@@ -224,7 +232,8 @@ def _normalize_staged(
     # rows of sections 5 and 6 and the steps they were measured from.
     analysis_result = _run_analysis(
         session_folder, classified, existing_anno, summary, manifest,
-        cases=cases, recorded=recorded, staging=staging)
+        cases=cases, recorded=recorded, staging=staging,
+        library_version=library.version)
 
     # The step-level BPMN (--mine) + the requested PDD and Technical details
     # exports. A failed export raises ExportFailed, and the run then commits
@@ -233,7 +242,7 @@ def _normalize_staged(
         session_folder, existing_anno, mine, summary, manifest,
         analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
         events=classified, pdd_map_images=pdd_map_images, staging=staging,
-        tech_out=tech_out, handoff=handoff)
+        tech_out=tech_out, handoff=handoff, library=library)
 
     return {
         "session_folder": str(session_folder),
@@ -297,12 +306,14 @@ def main():
     parser.add_argument("--pdd-tobe-image", type=str, default=None,
                         help="PNG of the To-Be map the analyst drew (ADR-0019), embedded "
                              "in the PDD's improvement and automation scope section.")
-    parser.add_argument("--names", type=str, default=None,
-                        help="Remembered-names store (remembered-names.json). A drafted step "
-                             "whose draft key is listed takes the remembered name, unless a "
-                             "step the analyst named in this session has that key (its name "
-                             "comes first). Optional: a missing or unreadable file prints a "
-                             "warning and drafting uses the session's and the default names.")
+    parser.add_argument("--library", type=str, default=None, metavar="PATH",
+                        help="The app's activity library (library/activities.json, contract "
+                             "C21). A project without its own library.json gets a copy of it "
+                             "with this analysis; from then on the project's copy is used and "
+                             "never replaced. A run of drafts whose screens an activity lists "
+                             "becomes one draft named from it. Optional: a missing or invalid "
+                             "file prints a warning, is not copied and the analysis uses no "
+                             "library.")
     parser.add_argument("--tech-out", type=str, default=None,
                         help="Write the Technical details workbook (.xlsx) to this path: the "
                              "reference transaction's recorded controls, the data fields per "
@@ -326,7 +337,7 @@ def main():
             pdd_out=args.pdd_out,
             pdd_map_image=args.pdd_map_image,
             pdd_tobe_image=args.pdd_tobe_image,
-            names_path=args.names,
+            library_path=args.library,
             pdd_map_images=args.pdd_map_images,
             tech_out=args.tech_out,
             handoff=args.handoff,
