@@ -889,3 +889,39 @@ Technical details workbook goes with every version.
   state, the take-back), and `e2e/handoff-smoke.js`.
 - **Out.** Sync (OneDrive or otherwise), locks, roles, a comparison of versions, a developer's
   notes or edits, removing the folders under `handoffs/` from the app, signing a zip.
+
+## C21. The activity library (owner 2026-09-25; lanes LIB-P and LIB-V)
+
+Keep it simple: a tool, not a product.
+
+- **The app's library:** one file, `library/activities.json` (repo root; in the packaged viewer
+  `resources/library/activities.json`). Swapping the library means replacing that file. Format:
+  `{ "format": 1, "version": "<text>", "applications": [ { "name": <system name as
+  system-names.json gives it>, "activities": [ { "id", "name", "code"?, "description"?,
+  "screens": [ [<draft_key>, ...], ... ] } ] } ] }`. The application order is the colour order.
+  An activity's `screens` lists one or more runs of screens (one draft_key each, in order); a
+  name-only activity (added by hand steps) has no screens. The shipped file: the known systems
+  as applications, no activities.
+- **A project keeps the library it started with:** the first analysis copies the app's library
+  into the project folder as `library.json`; from then on the pipeline and the viewer use the
+  project's copy only. A newer app library never changes an existing project. `analysis.json`
+  records `library_version`.
+- **Drafting:** after the C1 drafts are made (and drafts overlapping the analyst's steps are
+  dropped), a run of consecutive drafts whose draft_keys equal an activity's screens (repeats of
+  one screen count once, the longest run wins) becomes one draft named from the activity:
+  `name_source: "library"`, `library_activity: <id>`, `draft_keys` the run. Drafts that match
+  nothing are unchanged. An empty library changes nothing (the session golden proves it).
+- **Remembered step names (C4) are removed:** the store, its dialog and `--names`. A rename still
+  names the project's other drafts of that key (the session's own names).
+- **The picker:** the step pane's name offers the project library's activities of the step's
+  application (pick the application first for a step added by hand); picking sets the name, the
+  system, `library_activity`, and uses the activity's description when the step has none. Typing
+  any name stays possible.
+- **Where it shows:** the map (same names, one colour per application in library order), the PDD
+  (the code on the step's context line, the activity's description when the PM wrote none), the
+  Technical details (activity and code columns).
+- **The Library builder** (Help, *Build the library...*; the owner's tool): reads project folders
+  and hand-off zips (annotations and manifest only), lists the named steps by application with
+  their screens, how often and in which projects; the same screens named differently show side by
+  side; the owner ticks, fixes names, codes and descriptions, and saves a library file (a new
+  version). A name that already exists in the application adds its screens to that activity.
