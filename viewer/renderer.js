@@ -740,7 +740,7 @@ async function exportTechDetails() {
     if (made.message) toast(made.message, "error");
     return;
   }
-  await _offerExport(tmpPath, "technical-details.xlsx");
+  await _offerExport(tmpPath, _exportName(target, "Technical details.xlsx"));
 }
 if ($("#btn-session-tech")) $("#btn-session-tech").addEventListener("click", () => exportTechDetails());
 
