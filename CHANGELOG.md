@@ -178,6 +178,10 @@ implementation notes
   - *Restore the newest backup*, on the banner of an unreadable
     annotations file, puts back the newest readable backup and keeps the
     unreadable file beside it.
+  - The Overview's Data and Applications and time are as new as the steps:
+    opened after a change of the steps, it measures them again, saying
+    "From the last analysis; refreshing" meanwhile. Typing in the document
+    stops that; the next opening measures them.
 
 ### Changed
 

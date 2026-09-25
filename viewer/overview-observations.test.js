@@ -125,8 +125,16 @@ test("the Observations block holds exactly its two items and says the PDD prints
   assert.equal((html.match(/data-module="/g) || []).length, 2);
   assert.ok(html.includes('data-module="data"') && html.includes('data-module="time"'));
   assert.ok(html.includes('<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
-    '<div class="ov-block-who">' + OBSERVATIONS_WHO + "</div></div>"), "the title says who fills the block");
+    '<div class="ov-block-who">' + OBSERVATIONS_WHO + "</div>" +
+    '<div class="ov-rows-freshness" id="ov-rows-freshness" hidden></div></div>'),
+  "the title says who fills the block; the line on the rows' age is hidden while they are current");
   assert.equal(OBSERVATIONS_WHO, "Measured from the recording. The PDD prints them in sections 5 and 6.");
+  // Older than the steps: the quiet line says so, over the rows it keeps.
+  const older = observationsHtml({ analysis: { pdd_data: FULL.pdd_data, pdd_time: FULL.pdd_time } },
+    "From the last analysis; refreshing");
+  assert.ok(older.includes('<div class="ov-rows-freshness" id="ov-rows-freshness">From the last analysis; refreshing</div>'));
+  assert.equal((older.match(/class="ov-rows"/g) || []).length, (html.match(/class="ov-rows"/g) || []).length,
+    "the previous rows show meanwhile");
   for (const gone of ["Data typed twice", "Where the time goes", "Average time", "Happened in", "ov-time", "ov-retyped"]) {
     assert.ok(!html.includes(gone), gone);
   }

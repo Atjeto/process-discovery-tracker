@@ -30,6 +30,10 @@
  *       the As-Is copy (P2.12);
  *   (h) Attach video syncs with two clicks (click-to-sync), no typed offset;
  *       Cancel leaves the recording as it was;
+ *   (k) lane CC: a step renamed in Steps, the Overview opened: its rows are
+ *       measured again (the previous rows meanwhile, "From the last
+ *       analysis; refreshing"), then show the new name; a document field
+ *       taking the cursor stops that, and the next opening measures them;
  *   (e) on a marker-STRIPPED copy the Checklist says no transactions are
  *       marked, and its button opens the Timeline with the Markers panel
  *       showing;
@@ -977,6 +981,100 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       vid.removed && vid.removed.stored === null && vid.removed.fileGone && vid.removed.line === "No video" && !vid.removed.removeBtn &&
       vid.undoRemove && vid.undoRemove.stored === "video/first call.webm" && vid.undoRemove.fileBack && vid.lineAfterUndo === "Video"),
     JSON.stringify({ line: vid.line, header: vid.header, confirm: vid.confirm, removed: vid.removed, undoRemove: vid.undoRemove, after: vid.lineAfterUndo }));
+
+  // (k) Lane CC: the Observations' rows are as new as the steps. A step
+  // renamed in Steps makes them older; as the Overview opens they are
+  // measured again (the status line, the previous rows meanwhile under "From
+  // the last analysis; refreshing"), then show the new name, and the Overview
+  // opened again analyzes nothing. A document field taking the cursor stops a
+  // refresh (nothing is analyzed while the analyst types): the rows stay,
+  // saying they are older, the text typed is saved, and the next opening
+  // measures them.
+  const NAME1 = "E2E renamed: Look up the customer account";
+  const NAME2 = "E2E renamed: Find the customer";
+  const idle = () => page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
+  const rowsNow = (name) => page.evaluate((n) => {
+    const line = document.getElementById("ov-rows-freshness");
+    const s = require("./state.js").getSession();
+    return {
+      busy: require("./views/flow-view.js").analysisBusy(),
+      line: line && !line.hidden ? line.textContent : "",
+      hasName: [...document.querySelectorAll("#ov-observations table.ov-rows td")].some((td) => td.textContent.includes(n)),
+      current: require("./rows-freshness.js").stepsSignature(s.annotations) === s.analysis.steps_signature,
+    };
+  }, name);
+  const renameFirst = async (name) => {
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+    await page.waitForSelector("#step-list .run-group.pattern", { state: "visible", timeout: T });
+    const open = await page.evaluate(() => document.querySelector("#step-list .run-group.pattern").classList.contains("open"));
+    if (!open) await page.locator("#step-list .run-group.pattern > .run-row").click({ timeout: T });
+    await page.locator("#step-list .run-group.pattern .step-row").first().click({ timeout: T });
+    await page.locator("#step-name").fill(name, { timeout: T });
+    await page.locator("#step-name").press("Enter");   // no Save button: Enter saves the name
+    await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
+      .some((e) => e.textContent.trim() === n), name, { timeout: T });
+  };
+  const openOverview = () => page.evaluate(() => { document.querySelector('.view-mode-btn[data-level="overview"]').click(); });
+  const fr = {};
+  try {
+    await idle();
+    await renameFirst(NAME1);
+    await openOverview();
+    fr.opened = await rowsNow(NAME1);
+    fr.pills = await page.evaluate(() => (document.getElementById("session-pills").textContent || "").replace(/\s+/g, " ").trim());
+    await idle();
+    await page.waitForFunction((n) => [...document.querySelectorAll("#ov-observations table.ov-rows td")]
+      .some((td) => td.textContent.includes(n)), NAME1, { timeout: T });
+    fr.after = await rowsNow(NAME1);
+    fr.recorded = JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "analysis.json"), "utf-8")).steps_signature ===
+      await page.evaluate(() => require("./rows-freshness.js").stepsSignature(require("./state.js").getSession().annotations));
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+    await openOverview();
+    fr.again = await rowsNow(NAME1);
+    // Typing stops the refresh.
+    await renameFirst(NAME2);
+    await openOverview();
+    await page.waitForFunction(() => { const r = require("./state.js").getAnalysisRun(); return !!(r && r.status === "running"); },
+      null, { timeout: T });
+    await page.evaluate(() => {
+      const d = document.getElementById("ov-doc");
+      d.open = true;
+      d.querySelector('[data-doc="notes"]').focus();
+    });
+    await idle();
+    fr.stopped = await rowsNow(NAME2);
+    await page.keyboard.type("E2E: typed while the rows were older");
+    await page.keyboard.press("Tab");
+    await page.waitForFunction(() => (((require("./state.js").getSession().annotations || {}).document || {}).notes || "")
+      .startsWith("E2E: typed"), null, { timeout: T });
+    for (let k = 0; k < 40 && !((readAnno().document || {}).notes || "").startsWith("E2E: typed"); k++) await wait(125);
+    fr.typed = (readAnno().document || {}).notes || "";
+    fr.toast = await page.evaluate(() => (document.getElementById("toast") || {}).textContent || "");
+    // The next opening measures them.
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+    await openOverview();
+    fr.reopened = await rowsNow(NAME2);
+    await idle();
+    await page.waitForFunction((n) => [...document.querySelectorAll("#ov-observations table.ov-rows td")]
+      .some((td) => td.textContent.includes(n)), NAME2, { timeout: T });
+    fr.final = await rowsNow(NAME2);
+  } catch (e) {
+    logActionError("(k) the rows refresh as the Overview opens", e);
+    fr.err = String(e.message).split("\n")[0];
+    await shot(page, "fail-overview-rows-refresh.png");
+  }
+  record("(k) lane CC: a step renamed in Steps: as the Overview opens its rows are measured again (the status line; the previous rows meanwhile, \"From the last analysis; refreshing\"), then show the new name; opened again, nothing is analyzed",
+    !!(!fr.err && fr.opened && fr.opened.busy && fr.opened.line === "From the last analysis; refreshing" && !fr.opened.hasName &&
+      /Updating steps and map/.test(fr.pills || "") &&
+      fr.after.hasName && fr.after.line === "" && fr.after.current && fr.recorded &&
+      fr.again && !fr.again.busy && fr.again.line === "" && fr.again.hasName),
+    JSON.stringify({ opened: fr.opened, pills: fr.pills, after: fr.after, recorded: fr.recorded, again: fr.again, err: fr.err }));
+  record("(k) lane CC: a document field taking the cursor stops the refresh (no analysis while the analyst types): the rows stay, \"From the last analysis; the steps changed since.\", the text typed is saved; the next opening measures them",
+    !!(!fr.err && fr.stopped && !fr.stopped.busy && !fr.stopped.hasName &&
+      fr.stopped.line === "From the last analysis; the steps changed since." &&
+      fr.typed === "E2E: typed while the rows were older" && !/not saved|cancelled/i.test(fr.toast || "") &&
+      fr.reopened && fr.reopened.busy && fr.final && fr.final.hasName && fr.final.line === "" && fr.final.current),
+    JSON.stringify({ stopped: fr.stopped, typed: fr.typed, toast: fr.toast, reopened: fr.reopened, final: fr.final, err: fr.err }));
 
   await close();
 

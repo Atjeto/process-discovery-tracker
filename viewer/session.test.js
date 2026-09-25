@@ -108,6 +108,20 @@ test("a save that could not move a file says so, held over the act's own success
   assert.equal(State.canUndo("F1b"), true, "the save reached the disk: it is undoable");
 });
 
+test("setBeforeWrite: every write waits for it first (the Overview's rows refresh stops before a save)", async () => {
+  loadFakeSession("BW", [{ step_id: "a", name: "orig" }]);
+  const order = [];
+  Session.setBeforeWrite(async (folder) => { order.push("stop " + folder); await new Promise((r) => setTimeout(r, 5)); order.push("stopped"); });
+  Ipc.saveAnnotations = async () => { order.push("write"); return { ok: true }; };
+  try {
+    await editStepNameInPlace("after the stop", "rename step");
+  } finally {
+    Session.setBeforeWrite(null);
+    Ipc.saveAnnotations = SAVE_OK;
+  }
+  assert.deepEqual(order, ["stop BW", "stopped", "write"]);
+});
+
 test("the undo baseline does not advance on a failed save", async () => {
   loadFakeSession("F2", [{ step_id: "a", name: "orig" }]);
   Ipc.saveAnnotations = async () => ({ ok: false, error: "ENOSPC: no space left on device" });

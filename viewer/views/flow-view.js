@@ -29,7 +29,7 @@ const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
 const { recentLabel } = require("../session-summary.js");
 const { renderStepsLevel } = require("./steps-view.js");
-const { renderOverviewLevel, hasAnalysisBlocks } = require("./overview-view.js");
+const { renderOverviewLevel, hasAnalysisBlocks, refreshRowsIfOlder, stopRowsRefresh } = require("./overview-view.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
@@ -242,6 +242,14 @@ function runPipeline(opts, label) {
   const folder = opts.sessionFolder;
   _pendingRuns += 1;
   const job = _runQueue.then(async () => {
+    // A quiet cancel asked for before this run started (the analyst took a
+    // document field in the same moment the Overview opened): it never starts.
+    if (_cancelBeforeStart) {
+      _cancelBeforeStart = false;
+      State.setAnalysisRun({ folder, status: "cancelled" });
+      renderSessionPills();
+      return { ok: false, cancelled: true };
+    }
     _running = label || UPDATING;
     hideAnalysisLog();
     $("#normalize-log").textContent = "";
@@ -251,6 +259,8 @@ function runPipeline(opts, label) {
     let r;
     try { r = await Ipc.runNormalizeExtended(opts); }
     catch (e) { r = { ok: false, error: "Analysis could not start: " + ((e && e.message) || String(e)) }; }
+    // A cancel asked for while this run ran was for this run only.
+    _cancelBeforeStart = false;
     if (!r) r = { ok: false, error: "The analysis did not answer." };
     _running = null;
     const onScreen = !!(State.getSession() && State.getSession().sessionFolder === folder);
@@ -289,12 +299,30 @@ const CONFIRMS = {
   }),
 };
 
+/* Stop the running analysis without a message: the Overview's rows
+   refresh, when the analyst types in the document, leaves the Overview or
+   saves (overview-view.js stopRowsRefresh). Its analyzeSession then ends
+   as a cancelled run, quietly. */
+let _quietCancel = false;
+let _cancelBeforeStart = false;
+function cancelAnalysisQuietly() {
+  if (!analysisBusy()) return;
+  _quietCancel = true;
+  // The run may not have started yet (its process not spawned, so main has
+  // nothing to kill): then it is skipped as it starts (runPipeline).
+  const run = State.getAnalysisRun();
+  if (!(run && run.status === "running")) _cancelBeforeStart = true;
+  Promise.resolve(Ipc.cancelNormalize()).catch(() => { /* nothing runs any more */ });
+}
+
 /* Analyze the recording on screen: run the pipeline (always writing the
    process map's BPMN file, the file the Map's edit act copies) and reload the
    recording. Resolves true when it ran and the recording was reloaded.
    opts.confirm: "markers" (Apply N marker changes) or "reanalyze" (Help's
    Re-analyze) asks first when the recording has steps; the automatic runs
-   (on open, Apps outside the process, a range left out, the Map's edit act) never ask. */
+   (on open, Apps outside the process, a range left out, the Map's edit act,
+   the Overview's rows) never ask. opts.onPipelineEnd(result) is called as
+   the pipeline ends, before the reload. */
 async function analyzeSession(opts) {
   const sess = State.getSession();
   if (!sess) return false;
@@ -306,9 +334,17 @@ async function analyzeSession(opts) {
   }
   const folder = sess.sessionFolder;
   const r = await runPipeline({ sessionFolder: folder, mine: true }, UPDATING);
+  const quiet = _quietCancel;
+  _quietCancel = false;
+  if (opts && typeof opts.onPipelineEnd === "function") {
+    try { opts.onPipelineEnd(r); } catch (e) { console.error("[flow-view] onPipelineEnd:", e); }
+  }
   const onScreen = !!(State.getSession() && State.getSession().sessionFolder === folder);
   if (!onScreen) return false;
-  if (r.cancelled) { toast("Update cancelled: the steps and the map are as they were."); return false; }
+  if (r.cancelled) {
+    if (!quiet) toast("Update cancelled: the steps and the map are as they were.");
+    return false;
+  }
   if (!r.ok) { toast(r.error, "error"); return false; }
   toast("Steps and map updated.", "success");
   await loadSessionIntoView(folder, { afterAnalysis: true });
@@ -340,6 +376,8 @@ Ipc.onNormalizeLog((text) => {
 
 async function loadSessionIntoView(folder, opts) {
   const prevFolder = State.getSession() ? State.getSession().sessionFolder : null;
+  // The Overview's rows refresh belongs to the project it measures.
+  if (prevFolder && prevFolder !== folder) stopRowsRefresh();
   try {
     State.setSession(await Ipc.loadSession(folder));
   } catch (e) {
@@ -450,6 +488,10 @@ async function loadSessionIntoView(folder, opts) {
     _analyzedOnOpen.add(opened.sessionFolder);
     analyzeSession().catch((e) => console.error("[flow-view] the automatic analysis failed:", e));
   }
+  // A project opening on the Overview opens the Overview: its rows are
+  // measured again when they are older than the steps (none while the
+  // analysis above runs).
+  if (prevFolder !== folder && !(opts && opts.afterAnalysis) && State.getLevel() === "overview") refreshRowsIfOlder();
   // The Map is drawn only while it shows: a project opened, or reloaded after
   // an analysis, while the Map is on screen is drawn again (after the
   // analysis above is asked for, so the Map does not ask for another).
@@ -1241,7 +1283,7 @@ module.exports = {
   loadSessionIntoView, renderTimeline, renderMarkersList,
   // The analysis: automatic runs, the deliberate ones (confirm), and the
   // pipeline runner the exports share (one status line, one log).
-  renderSessionPills, analyzeSession, analysisBusy, runPipeline, UPDATING,
+  renderSessionPills, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).

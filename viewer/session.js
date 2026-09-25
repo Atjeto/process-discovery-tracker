@@ -85,11 +85,21 @@ function _surfacedError(message) {
   return err;
 }
 
+/* Called, and awaited, before every annotations write: the Overview's rows
+   refresh stops first (overview-view.js), since the analysis it runs would
+   refuse the write. */
+let _beforeWrite = null;
+function setBeforeWrite(fn) { _beforeWrite = typeof fn === "function" ? fn : null; }
+
 /* The one renderer write path for annotations.json (RP-04). Resolves to the
    main-process result ({ ok: true, path }) or rejects with an error that has
    ALREADY been shown to the analyst as an error toast. `what` names the edit
    in that message. */
 async function writeAnnotations(sessionFolder, annotations, what) {
+  if (_beforeWrite) {
+    try { await _beforeWrite(sessionFolder); }
+    catch (e) { console.error("[session] before the write:", e); }
+  }
   let r;
   try {
     r = await Ipc.saveAnnotations({ sessionFolder, annotations });
@@ -332,7 +342,7 @@ function initSession(deps) {
 
 module.exports = {
   initSession, resetUndoStack, captureBaseline, canUndo, canRedo,
-  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct,
+  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct, setBeforeWrite,
   performUndo, performRedo, applyRevertedAnnotations, revertFollowUp,
   ensureAnnoShape, persistAnnotations,
 };

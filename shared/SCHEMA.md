@@ -1331,6 +1331,19 @@ a session without steps too (the step-based blocks are empty there).
   transactions). Written for every session, one without a recording
   included. A failure writes both `null` with one `stage_errors` entry
   (`pdd_rows`). Pinned with the viewer by `shared/pdd-rows-golden.json`.
+- **`steps_signature`** (lane CC): the signature of the steps those rows
+  were measured from (`normalization/steps_signature.py`): the SHA-256 (hex)
+  of one JSON text, the reference transaction's case id, then every step in
+  the list's order as the fields the rows read (`step_id`, `case_id`,
+  `name`, `state`, the `time_range` ends, `order`, `system`, `draft_key`,
+  `draft_keys`, `evidence.interaction_event_ids`), its `sub_steps` the same
+  way. The viewer takes the same signature of the steps it has
+  (`viewer/rows-freshness.js`), and the Overview analyzes again as it opens
+  when the two differ. The document, notes, a step's description, flow and
+  screenshots never change it. Pinned with the viewer by
+  `shared/steps-signature-golden.json`. A failure writes `null` with one
+  `stage_errors` entry (`steps_signature`); an analysis without the key reads
+  as older than the steps.
 - **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`, 3
   since `pdd_data` and `pdd_time`); the viewer analyzes a project again as
   it opens when the number is missing or lower
@@ -1384,8 +1397,8 @@ and `efficiency`, which does not run without the waste split);
 `facts`); `facts`; `findings`, which does not run when `step_analysis`,
 `motifs`, `facts`, `time_study`, `segments` or `automation_candidates`
 failed, since its detectors read all of them and a partial run would
-under-report; `pdd_findings`; and `pdd_rows` (`pdd_data` and `pdd_time`
-together). The viewer's Overview shows a failed stage as "this check could
+under-report; `pdd_findings`; `pdd_rows` (`pdd_data` and `pdd_time`
+together); and `steps_signature`. The viewer's Overview shows a failed stage as "this check could
 not run on this recording", never as a measured negative. The PDD reads no
 analysis stage: it prints sections 5 and 6 with the functions that wrote
 `pdd_data` and `pdd_time`.
@@ -1420,7 +1433,7 @@ range: they have no time to measure.
 | File | Contents |
 |---|---|
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings, pdd_data, pdd_time, format }` |
+| `analysis.json` | `{ meta, waste_classification, time_study, segments, automation_candidates, efficiency, stage_errors, case_quality, facts, findings, pdd_findings, pdd_data, pdd_time, steps_signature, format }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
 | `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below), one plane per sub-process (C19). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
 | `normalize.log` | Rolling log of warnings and info (see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)) |

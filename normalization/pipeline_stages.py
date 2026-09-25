@@ -426,6 +426,15 @@ def _run_analysis(
     except Exception as e:  # noqa: BLE001 (recorded as a stage error)
         analysis_result["pdd_data"] = analysis_result["pdd_time"] = None
         _failed("pdd_rows", f"{type(e).__name__}: {e}")
+    # The steps those rows were measured from, as a signature
+    # (steps_signature.py): the viewer computes it over the steps it has, and
+    # the Overview analyzes again as it opens when the two differ.
+    try:
+        from steps_signature import steps_signature
+        analysis_result["steps_signature"] = steps_signature(existing_anno)
+    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
+        analysis_result["steps_signature"] = None
+        _failed("steps_signature", f"{type(e).__name__}: {e}")
     if not recorded:
         for key in ("facts", "findings", "pdd_findings"):
             analysis_result[key] = None

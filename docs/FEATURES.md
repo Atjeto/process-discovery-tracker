@@ -141,7 +141,9 @@ The viewer says *transaction* for one pass through the process and
   transaction and each system's screens, steps and time per transaction.
   They are the PDD's own rows, from the same analysis, so the two say one
   fact in the same words; they are measured again with each analysis and
-  each PDD export.
+  each PDD export, and as the Overview opens when the steps changed since
+  (a quiet line says "From the last analysis; refreshing" meanwhile; typing
+  in the document stops it).
 
 **Timeline**
 

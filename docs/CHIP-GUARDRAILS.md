@@ -81,13 +81,14 @@ every push.
    (`process-label-golden.json`, `screen-label-golden.json`,
    `run-differences-golden.json` (the stretches left out of the analysis
    too), `flow-links-golden.json`, `sub-process-maps-golden.json`,
-   `pdd-rows-golden.json`) pinned from both sides
+   `pdd-rows-golden.json`, `steps-signature-golden.json`) pinned from both sides
    (`test_process_label.py`, `test_screen_label.py`,
    `test_run_differences_golden.py`, `test_flow_links_golden.py`,
    `test_app_names.py`, the pipeline's test of the sub-process maps and
-   `test_pdd_rows_golden.py`; `process-map-levels.test.js`,
-   `run-differences.test.js`, `system-names.test.js`,
-   `sub-process-maps.test.js`, `overview-observations.test.js`).
+   `test_pdd_rows_golden.py`, `test_steps_signature.py`;
+   `process-map-levels.test.js`, `run-differences.test.js`,
+   `system-names.test.js`, `sub-process-maps.test.js`,
+   `overview-observations.test.js`, `rows-freshness.test.js`).
 7. **User-facing copy is plain business English, without dashes.** No
    internal vocabulary in rendered strings (the banned list and its
    replacements are in [DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md), UI
@@ -225,7 +226,12 @@ shown only after a failed run; `#toast`.
   then Time per transaction and Time in each application), the sub-titles
   `.ov-rows-title`, the Re-keyed data `.ov-rekeyed li`, the walkthrough line
   `.ov-rows-after`. They are `analysis.json` `pdd_data` and `pdd_time` as
-  they are, cell by cell (lane CC).
+  they are, cell by cell (lane CC). The line on their age
+  `#ov-rows-freshness` (hidden while they are current). Opening the Overview
+  after a change of the steps starts an analysis: wait for
+  `require("./views/flow-view.js").analysisBusy()` to be false before
+  reading the rows; a text field of the Overview taking the cursor, leaving
+  the Overview or a save stops it.
 
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
 - Header: `#timeline-summary`, the Transaction select `#case-scope-select`,

@@ -1007,6 +1007,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .ov-section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
 .ov-section-head .ov-section-title { margin-bottom: 0; }
 .ov-block-who { font-size: 11px; color: var(--fg-3); }
+/* The Observations' line on the rows' age (lane CC): quiet, at the end of
+   the head, only while the rows are older than the steps. */
+.ov-rows-freshness { font-size: 11px; color: var(--fg-3); font-style: italic; margin-left: auto; }
 .analysis-note.ov-stage-not-run { border-left: 3px solid var(--warn); padding: 4px 0 4px 8px;
   margin-top: 6px; font-style: normal; color: var(--fg-2); }
 .ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);

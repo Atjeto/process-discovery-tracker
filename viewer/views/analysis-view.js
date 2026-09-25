@@ -143,13 +143,18 @@ function timeItem(analysis) {
    and the PDD prints the same rows. */
 const OBSERVATIONS_WHO = "Measured from the recording. The PDD prints them in sections 5 and 6.";
 
-/* The Observations block of the Overview for one session. Pure (no DOM, no
+/* The Observations block of the Overview for one session. `rowsLine`: the
+   quiet line on the rows' age (rows-freshness.js freshnessLine), "" while
+   they are current; overview-view.js updates it in place. Pure (no DOM, no
    State): the unit tests render fixture sessions through it. */
-function observationsHtml(sess) {
+function observationsHtml(sess, rowsLine) {
   if (!sess) return "";
+  const line = rowsLine || "";
   return '<section class="ov-section ov-observations" id="ov-observations">' +
     '<div class="ov-section-head"><div class="ov-section-title">Observations</div>' +
-      '<div class="ov-block-who">' + escapeHtml(OBSERVATIONS_WHO) + "</div></div>" +
+      '<div class="ov-block-who">' + escapeHtml(OBSERVATIONS_WHO) + "</div>" +
+      '<div class="ov-rows-freshness" id="ov-rows-freshness"' + (line ? "" : " hidden") + ">" +
+        escapeHtml(line) + "</div></div>" +
     _moduleShell("data", dataItem(sess.analysis)) +
     _moduleShell("time", timeItem(sess.analysis)) +
     "</section>";

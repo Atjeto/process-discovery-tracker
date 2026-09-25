@@ -174,7 +174,11 @@ helpers in `pipeline_stages.py`, in this order:
    them with (`data_section`, `time_section`) from the inputs it reads (the
    full derived stream, so a step kept inside a stretch left out keeps its
    fields), for every session; the Overview shows them as they are (one
-   source, pinned by `shared/pdd-rows-golden.json`). `format` is
+   source, pinned by `shared/pdd-rows-golden.json`). `steps_signature`
+   (`steps_signature.py`) records the steps they were measured from; the
+   viewer takes the same signature of the steps it has and, as the Overview
+   opens, analyzes again when the two differ (pinned by
+   `shared/steps-signature-golden.json`). `format` is
    `pipeline_stages.ANALYSIS_FORMAT`, 3: the viewer analyzes a project again
    as it opens when its `analysis.json` carries a lower one.
 8. **Step map and PDD** (`_run_mining_exports`). With `--mine`,
@@ -470,6 +474,7 @@ SCHEMA.md.
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
 | `pdd_export.py` | The PDD (above), and `pdd_rows` (the rows of its sections 5 and 6 the analysis writes into `analysis.json`). |
+| `steps_signature.py` | `steps_signature`: the signature of the steps the rows were measured from, written into `analysis.json`; the viewer's `rows-freshness.js` takes the same one (lane CC). |
 | `memo_export.py` | What is left of the findings memo: `run_rows` (the runs the PDD's tables read), the "could not run" wording, and `pdd_findings` (still written to `analysis.json`; nothing reads it). No memo document is written. |
 | `transcript_import.py` | The transcript parser and its CLI (above). |
 | `golden_check.py` | The session golden (above). |
