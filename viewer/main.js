@@ -43,6 +43,7 @@ const ProjectFolder = require("./project-folder.js");
 const HandoffZip = require("./handoff-zip.js");
 const HandoffOpen = require("./handoff-open.js");
 const WindowRegistry = require("./window-registry.js");
+const UserActed = require("./user-acted.js");
 const { resultFromRunnerError } = require("./normalize-result.js");
 const { clearStaged } = require("./staged-outputs.js");
 
@@ -461,7 +462,13 @@ function loadSessionData(sessionFolder) {
     for (const line of lines) {
       const t = line.trim();
       if (!t) continue;
-      try { events.push(JSON.parse(t)); } catch (_e) {}
+      let ev;
+      try { ev = JSON.parse(t); } catch (_e) { continue; }
+      // A program's own change, which the recorder writes marked instead of
+      // dropping it: the file keeps it, the viewer leaves it out as the
+      // pipeline does.
+      if (UserActed.isProgramsOwnChange(ev)) continue;
+      events.push(ev);
     }
     events.sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
   }

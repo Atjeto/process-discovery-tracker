@@ -10,7 +10,15 @@ before the transactions are found and the steps drafted, so the drafts, the
 fields the PDD and the Technical details list and the statistics read the
 user's actions only. The raw events.jsonl is never changed.
 
-An interaction is left out when (its reason in the report):
+First, before the typing bursts are coalesced (leave_out_not_the_users),
+an interaction the recorder marked "user_acted": false is left out
+(not_the_users): the recorder saw a program change it by itself (a screen
+filling its fields, the ribbon echoing the selection) and writes it marked
+instead of dropping it, so a misjudged program loses nothing in the raw
+recording. It goes first so the coalescing never folds the user's value of
+a field into a later change the program made to it.
+
+Then an interaction is left out when (its reason in the report):
 
   no_identity    a click, choice or toggle with no automation id, name or
                  class name: it says nothing, and a web click that lost its
@@ -90,9 +98,25 @@ _CLICK_KINDS = ("invoked", "selection_changed", "toggle_changed")
 _ACTIONS = ("invoked",) + _CHANGES
 
 # The reasons, in the order the rules are tried and the report lists them.
-REASONS = ("no_identity", "empty_value", "office_ribbon", "desktop", "popup", "repeat",
-           "render", "reaction", "after_click", "dropdown_echo", "repeat_choice",
+REASONS = ("not_the_users", "no_identity", "empty_value", "office_ribbon", "desktop", "popup",
+           "repeat", "render", "reaction", "after_click", "dropdown_echo", "repeat_choice",
            "navigation")
+
+
+def not_the_users(ev: dict) -> bool:
+    """True for an interaction the recorder marked as a program's own change
+    ("user_acted": false)."""
+    data = ev.get("data") if isinstance(ev, dict) else None
+    return ev.get("type") == "interaction" and isinstance(data, dict) and data.get("user_acted") is False
+
+
+def leave_out_not_the_users(events: list[dict[str, Any]] | None
+                            ) -> tuple[list[dict[str, Any]], int]:
+    """(events without the interactions marked as a program's own change,
+    how many were left out). The input is not changed."""
+    events = list(events or [])
+    kept = [ev for ev in events if not not_the_users(ev)]
+    return kept, len(events) - len(kept)
 
 
 def _text(value: Any) -> str:
@@ -253,13 +277,18 @@ def _fill_windows(events: list[dict]) -> dict[int, dict]:
     return filled
 
 
-def clean_recorder_noise(events: list[dict[str, Any]] | None
+def clean_recorder_noise(events: list[dict[str, Any]] | None, not_the_users_count: int = 0
                          ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """(events, report): `events` without the interactions the user did not
     make (the rules in the module docstring) and with the window title and
     program an interaction lacks filled in; the input is not changed.
-    report: {"dropped": {reason: count}, "filled": count}."""
+    `not_the_users_count`: how many marked interactions
+    leave_out_not_the_users took out before the coalescing, counted in the
+    report under not_the_users (any still here are left out too).
+    report: {"dropped": {reason: count}, "dropped_total", "filled": count}."""
     events = list(events or [])
+    events, marked_here = leave_out_not_the_users(events)
+    not_the_users_count += marked_here
     filled = _fill_windows(events)
     idx = [i for i, ev in enumerate(events) if ev.get("type") == "interaction"
            and isinstance(ev.get("data"), dict) and ev["data"].get("kind") in _ACTIONS]
@@ -354,6 +383,7 @@ def clean_recorder_noise(events: list[dict[str, Any]] | None
             prev_in[program] = i
 
     dropped = {r: 0 for r in REASONS}
+    dropped["not_the_users"] = not_the_users_count
     for r in reasons.values():
         dropped[r] += 1
     out: list[dict[str, Any]] = []
@@ -365,7 +395,7 @@ def clean_recorder_noise(events: list[dict[str, Any]] | None
         out.append(ev)
     kept_filled = sum(1 for i in filled if i not in reasons)
     return out, {"dropped": {r: c for r, c in dropped.items() if c},
-                 "dropped_total": len(reasons), "filled": kept_filled}
+                 "dropped_total": len(reasons) + not_the_users_count, "filled": kept_filled}
 
 
 def _near(idx: list[int], n: int, times: dict, within_ms: float):

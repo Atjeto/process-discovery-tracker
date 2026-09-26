@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from recorder_noise import clean_recorder_noise, is_blank_value  # noqa: E402
+from recorder_noise import clean_recorder_noise, is_blank_value, leave_out_not_the_users  # noqa: E402
 from step_suggest import auto_suggest_steps  # noqa: E402
 
 T0 = datetime(2026, 9, 25, 23, 30, 0, tzinfo=timezone.utc)
@@ -427,3 +427,42 @@ def test_a_log_without_milliseconds_keeps_its_close_events():
     ]
     kept, report = _kept(events)
     assert kept == ["a", "b"] and report["dropped_total"] == 0
+
+
+# ---- The recorder marks a program's own change; the pipeline leaves it out ----
+
+def test_a_change_the_recorder_marked_as_the_programs_own_is_left_out_and_counted():
+    """The recorder writes a change no user act explains with "user_acted":
+    false instead of dropping it (the owner, 2026-09-26: nothing a misjudged
+    program does is lost from the raw recording); the pipeline leaves it out
+    of the steps and counts it."""
+    events = [
+        _ev("typed", 0, "value_changed", aid="qty", name="Quantity", value="2"),
+        _ev("filled", 800, "value_changed", aid="date", name="Delivery date", value="01.10.2026",
+            user_acted=False),
+        _ev("save", 3000, "invoked", ct="Button", aid="btn-save", name="Save order"),
+    ]
+    kept, report = _kept(events)
+    assert kept == ["typed", "save"]
+    assert report["dropped"] == {"not_the_users": 1}
+    assert report["dropped_total"] == 1
+    rest, n = leave_out_not_the_users(events)
+    assert [e["event_id"] for e in rest] == ["typed", "save"] and n == 1
+
+
+def test_a_programs_own_change_never_takes_the_place_of_the_users_value_of_that_field():
+    """The marked change leaves before the typing bursts are coalesced: the
+    coalescing keeps the last value of a run on one field, and a program's
+    change right after the user's typing would otherwise replace it."""
+    from pipeline_stages import _run_coalesce
+    events = [
+        _marker("m1", 0),
+        _ev("c", 1000, "value_changed", aid="cust", name="Customer", value="Con"),
+        _ev("contoso", 1400, "value_changed", aid="cust", name="Customer", value="Contoso"),
+        _ev("program", 1700, "value_changed", aid="cust", name="Customer", value="Contoso Ltd",
+            user_acted=False),
+    ]
+    _coalesced, edited, _edits, noise = _run_coalesce(events, {}, {"coalesce_idle_ms": 1500})
+    values = [e["data"].get("value") for e in edited if e["type"] == "interaction"]
+    assert values == ["Contoso"]
+    assert noise["dropped"].get("not_the_users") == 1

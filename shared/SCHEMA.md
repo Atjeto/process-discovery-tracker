@@ -189,6 +189,7 @@ Sourced from Windows UI Automation through the C# recorder sidecar. See
 | `value_truncated` | bool | `value_changed` only; present (`true`) when the 256-character clamp fired, so the stored value is partial |
 | `value_source` | string | `value_changed` only; present **only when the value was recovered** off the primary UIA ValuePattern path (section 11e): currently `text_pattern` (read through `TextPattern` from a rich-text or document control whose ValuePattern was empty). Omitted on the normal path. |
 | `coverage_hint` | string | First interaction per process only: `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). How richly UIA exposes that app. |
+| `user_acted` | bool | Present (`false`) only when the recorder judged the change a program's own, not the user's (`IntentGate.cs`: no focus on the element, not under the pointer): a screen filling its fields as it loads, the Office ribbon echoing the selected cell. Written marked instead of dropped, so a misjudged program loses nothing here; the pipeline (`recorder_noise.leave_out_not_the_users`, before the typing bursts are coalesced) and the viewer leave it out, and `stats.json` meta `recorder_noise` counts it as `not_the_users`. The Windows shell's own changes (File Explorer's navigation pane, the desktop) are never written. |
 
 Fields are omitted (not nulled) when the underlying UIA property throws on
 access.
@@ -217,7 +218,9 @@ always remain.
 
 **The derived stream's noise stage** (lane LF-PIPE,
 `normalization/recorder_noise.py`). Before the runs are found, the pipeline
-leaves out of its derived stream the interactions the user did not make (an
+leaves out of its derived stream the interactions the recorder marked
+`user_acted: false` (first, before the typing bursts are coalesced) and the
+interactions the user did not make (an
 empty web field, U+FFFC; a click, choice or toggle with no identity; the
 Office ribbon mirroring the selection, never a ribbon change with nothing
 else of its program around it; a desktop choice; a choice in a window
@@ -1841,7 +1844,7 @@ field") instead of the signature's default.
 | `dropped_jsonl_lines` | Lines that failed to parse. Zero is expected; see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) otherwise. |
 | `collapsed_activity_count` | Activity events left after the section 7.1 step 7 collapse. |
 | `coalesced_event_count` | Events left after typing bursts were coalesced. |
-| `recorder_noise` | What stage 2 left out of the derived stream as the recorder's noise, not the user's actions, and the windows it filled in (`normalization/recorder_noise.py`, lane LF-PIPE), counts only: `{ dropped: {reason: count}, dropped_total, filled }`. The reasons: `no_identity`, `empty_value`, `office_ribbon`, `desktop`, `popup`, `repeat`, `render`, `reaction`, `after_click`, `dropdown_echo`, `repeat_choice`, `navigation`. |
+| `recorder_noise` | What stage 2 left out of the derived stream as the recorder's noise, not the user's actions, and the windows it filled in (`normalization/recorder_noise.py`, lane LF-PIPE), counts only: `{ dropped: {reason: count}, dropped_total, filled }`. The reasons: `not_the_users`, `no_identity`, `empty_value`, `office_ribbon`, `desktop`, `popup`, `repeat`, `render`, `reaction`, `after_click`, `dropdown_echo`, `repeat_choice`, `navigation`. |
 | `interaction_count` | Interaction events in the session. |
 | `case_count` | Runs in the session. |
 | `marker_edits_applied` | Edits from `annotations.json` `marker_edits` that took effect this run. |

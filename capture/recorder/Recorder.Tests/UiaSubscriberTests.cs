@@ -303,4 +303,18 @@ public class UiaSubscriberTests {
             UiaSubscriber.CoalesceKeyOf(new ElementInfo(7, "3-9-1", null, null, "Edit")));
         Assert.Null(UiaSubscriber.CoalesceKeyOf(new ElementInfo(7, null, "", "", "Edit")));
     }
+
+    // The gate marks, it does not drop (the owner, 2026-09-26): a change the
+    // user made is kept, one a program made by itself is written marked
+    // (user_acted false) for the pipeline to leave out, and only the Windows
+    // shell's own changes (its navigation pane naming the folders) are dropped.
+    [Theory]
+    [InlineData(true, false, "Keep")]
+    [InlineData(true, true, "Keep")]
+    [InlineData(false, false, "Mark")]
+    [InlineData(false, true, "Drop")]
+    public void Outcome_keeps_the_users_marks_a_programs_and_drops_only_the_shells(
+        bool userActed, bool isShell, string expected) {
+        Assert.Equal(expected, UiaSubscriber.Outcome(userActed, isShell).ToString());
+    }
 }

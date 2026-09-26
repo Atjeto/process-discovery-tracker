@@ -457,16 +457,21 @@ used from .NET ([ADR-0001](../adr/0001-click-recorder-sidecar-language.md)).
   `basic`, `minimal`); a value clamped at 256 characters is flagged
   `value_truncated`; `toggle_state` is `on`, `off` or `indeterminate`.
 - **What the user acted on** (`IntentGate.cs`, lane LF-SME). A value change
-  is written when its field has the keyboard focus, had it within 2 s, or
+  is the user's when its field has the keyboard focus, had it within 2 s, or
   holds the focused element (a combo box around its edit or its open list);
   a toggle or a selection on the same terms, or inside a focused list,
   tree, table or tab strip, or under the mouse pointer (a click that moves
-  no focus, like the Office ribbon's Bold); every invoke is written. So a
-  screen filling its fields as it loads, the Office ribbon echoing the
-  selected cell, File Explorer's navigation pane refreshing (it names the
-  user's folders) and a desktop icon selected behind the windows are left
-  out. A program that never reports the focus below its window keeps what
-  it reports while it is in front (never the Windows shell). Also: a click
+  no focus, like the Office ribbon's Bold); every invoke is the user's. The
+  rest (a screen filling its fields as it loads, the Office ribbon echoing
+  the selected cell) is written marked `"user_acted": false` instead of
+  dropped (the owner, 2026-09-26: a program the gate misjudges must lose
+  nothing), and the pipeline and the viewer leave it out; a marked value
+  coalesces under a key of its own, so it never replaces the user's value of
+  that field. Only the Windows shell's own changes are never written: File
+  Explorer's navigation pane refreshing (it names the user's folders) and a
+  desktop icon selected behind the windows. A program that never reports the
+  focus below its window keeps what it reports while it is in front, unmarked
+  (never the Windows shell). Also: a click
   first writes the values still waiting in the debounce window, so the
   order is the user's; an empty value is not written (an empty web input
   reads back as U+FFFC); a choice in a drop-down list is written once, as

@@ -119,6 +119,10 @@ helpers in `pipeline_stages.py`, in this order:
    `events.jsonl` is never rewritten; what was dropped is recorded in
    `annotations.process_exclusions`.
 2. **Coalesce, recorder noise and marker edits** (`_run_coalesce`).
+   First the interactions the recorder marked as a program's own change
+   (`user_acted: false`) leave (`recorder_noise.leave_out_not_the_users`,
+   counted as `not_the_users`), so the coalescing never folds the user's
+   value of a field into the program's.
    Per-keystroke `value_changed` bursts on one control fold into one
    final-value event (`coalesce.py`). Then what the recorder saw that the
    user did not do leaves the derived stream (`recorder_noise.py`, lane

@@ -417,7 +417,9 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   }
 
   function fireInteraction(data) {
-    lastInteractionMs = Date.now();
+    // A program's own change (the recorder marks it "user_acted": false) is
+    // written, but it is no sign of the worker at the desk.
+    if (!(data && data.user_acted === false)) lastInteractionMs = Date.now();
     const ev = interactionEvent(sessionId, data);
     appendEvent(ev);
     // The recorder produced an interaction for this pid -- it is

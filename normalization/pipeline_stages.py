@@ -31,7 +31,7 @@ from case_assignment import (
     assign_case_ids, collect_cases, needs_implicit_run, add_implicit_run,
 )
 from coalesce import coalesce_typing_bursts
-from recorder_noise import clean_recorder_noise
+from recorder_noise import clean_recorder_noise, leave_out_not_the_users
 from classification import (
     classify_events,
     collapse_adjacent,
@@ -80,10 +80,13 @@ def _run_coalesce(
     echo, the Office ribbon's, a screen rendering, and the window a click
     lost filled in), then apply annotation marker edits. Returns (coalesced,
     edited, edits_applied, noise report)."""
-    coalesced = coalesce_typing_bursts(raw, idle_ms=cal["coalesce_idle_ms"])
-    if len(coalesced) < len(raw):
-        print(f"[normalize] coalesced: {len(raw)} -> {len(coalesced)} events")
-    cleaned, noise = clean_recorder_noise(coalesced)
+    # What the recorder marked as a program's own change goes first, so the
+    # coalescing never folds the user's value into the program's.
+    users, marked = leave_out_not_the_users(raw)
+    coalesced = coalesce_typing_bursts(users, idle_ms=cal["coalesce_idle_ms"])
+    if len(coalesced) < len(users):
+        print(f"[normalize] coalesced: {len(users)} -> {len(coalesced)} events")
+    cleaned, noise = clean_recorder_noise(coalesced, not_the_users_count=marked)
     if noise["dropped_total"] or noise["filled"]:
         print(f"[normalize] recorder noise: left out {noise['dropped_total']} "
               f"interaction(s) the user did not make {noise['dropped']}, "

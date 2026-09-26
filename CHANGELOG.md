@@ -407,13 +407,17 @@ implementation notes
   no longer repeats a system its step's name already says.
 - **The recorder writes what the SME did, in the order it was done** (lane
   LF-SME, from ten recordings of live apps):
-  - Only what the SME acted on is recorded: a value in the field with the
-    keyboard focus, a toggle or a selection there or under the mouse
-    pointer, and every click on a button or link. A screen filling its
-    fields as it loads, the Office ribbon echoing the selected cell, File
-    Explorer's navigation pane refreshing (it named the owner's folders),
-    a desktop icon selected behind the windows and Excel's formula
-    AutoComplete list are left out.
+  - What the SME did is told from what a program does by itself: a value
+    in the field with the keyboard focus, a toggle or a selection there or
+    under the mouse pointer, and every click on a button or link are the
+    SME's. A screen filling its fields as it loads and the Office ribbon
+    echoing the selected cell are written marked ("user_acted": false), and
+    the analysis and the viewer leave them out of the steps: a program the
+    rule misjudges loses nothing from the recording, and a changed rule
+    with Re-analyze brings it back. Only File Explorer's navigation pane
+    refreshing (it named the owner's folders) and a desktop icon selected
+    behind the windows are never written. Excel's formula AutoComplete list
+    is left out by the analysis.
   - A value typed just before a click is written before the click; an empty
     field is no longer a typed value; a drop-down choice is written once,
     as the drop-down's value; the browser's address bar once per address; a

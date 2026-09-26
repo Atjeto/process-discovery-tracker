@@ -1,5 +1,7 @@
 // Whether the user acted on an element: the recorder keeps what the user
-// did and leaves out what an application does by itself. The live
+// did and marks what an application does by itself ("user_acted": false;
+// the pipeline leaves it out, and only the Windows shell's own changes are
+// never written: UiaSubscriber.Outcome). The live
 // recordings of 2026-09-26 (findings 3, 6, 11 and 13) showed the second
 // kind drafted as work: a web screen filling its empty fields and its
 // select's default option as it loads, the Office ribbon echoing the

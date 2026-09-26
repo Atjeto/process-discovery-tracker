@@ -13,13 +13,17 @@
 //   - text_changed events are dropped. The C# code already noted they
 //     are "notification only, no payload" -- the actual value comes
 //     from ValueProperty changes.
-//   - Only what the user acted on is written (IntentGate, lane LF-SME): a
-//     value change on the focused element (or one focused within two
-//     seconds), a selection or toggle there or under the mouse pointer,
-//     and every invoke. A screen filling its fields as it loads, the Office
-//     ribbon echoing the selected cell, File Explorer's navigation pane
-//     refreshing and a desktop icon selected behind the windows are left
-//     out.
+//   - What the user acted on is told from what a program does by itself
+//     (IntentGate, lane LF-SME): a value change on the focused element (or
+//     one focused within two seconds), a selection or toggle there or under
+//     the mouse pointer, and every invoke are the user's. The rest (a screen
+//     filling its fields as it loads, the Office ribbon echoing the selected
+//     cell) is written with "user_acted": false, and the pipeline leaves it
+//     out of the steps: the gate only marks, so a program it misjudges loses
+//     nothing (the owner, 2026-09-26). The Windows shell is the exception:
+//     what it does by itself (File Explorer's navigation pane naming every
+//     folder as it refreshes, a desktop icon selected behind the windows)
+//     is never written.
 //   - value_changed / range_value_changed events are coalesced per
 //     (pid, automation_id || name || runtime_id) within a debounce
 //     window. Typing "Customer Acme Corp" emits one event with the
@@ -116,6 +120,9 @@ public sealed class UiaSubscriber {
     // focus (the user typing), and a click does not flush them.
     private const string AddressBarClass = "OmniboxViewViews";
     private const string NavKeyPrefix = "nav|";
+    // A value the program changed by itself coalesces under a key of its
+    // own, so it never replaces the user's value of the same field.
+    private const string AppKeyPrefix = "app|";
     private readonly ConcurrentDictionary<string, ElementInfo> _navFields = new();
 
     // Written values per coalescing key, read and written only inside the
@@ -382,9 +389,11 @@ public sealed class UiaSubscriber {
             // somewhere else: kept once per address (live finding 25). Any
             // other field counts only when the user worked in it (IntentGate).
             var addressBar = info.ClassName == AddressBarClass;
-            if (!addressBar && !UserActedOnValue(el, info)) return;
+            var outcome = Outcome(addressBar || UserActedOnValue(el, info), IsShell(info.Pid));
+            if (outcome == GateOutcome.Drop) return;
+            if (outcome == GateOutcome.Mark) built.Data["user_acted"] = false;
             var key = CoalesceKeyOf(info);
-            NoteActivity(info);
+            if (outcome == GateOutcome.Keep) NoteActivity(info);
             if (key == null) {
                 // No stable identity: emit immediately, no coalescing possible.
                 _values.Emit(built);
@@ -393,6 +402,8 @@ public sealed class UiaSubscriber {
             if (addressBar) {
                 key = NavKeyPrefix + key;
                 _navFields[key] = info;
+            } else if (outcome == GateOutcome.Mark) {
+                key = AppKeyPrefix + key;
             }
             built.CoalesceKey = key;
             _values.Submit(key, built);
@@ -444,10 +455,30 @@ public sealed class UiaSubscriber {
     // The gate, the repeat check and the write, for an event already read.
     private void ClickLikeBuilt(string kind, AutomationElement el, InteractionLine built) {
         var info = InfoOf(built.Data, el);
-        if (kind != "invoked" && (info == null || !UserActedOnClick(el, info))) return;
-        if (info != null && IsRepeatClick(kind, info)) return;
+        var outcome = GateOutcome.Keep;
+        if (kind != "invoked") {
+            if (info == null) return;
+            outcome = Outcome(UserActedOnClick(el, info), IsShell(info.Pid));
+            if (outcome == GateOutcome.Drop) return;
+            if (outcome == GateOutcome.Mark) built.Data["user_acted"] = false;
+        }
+        // Only the user's clicks are compared for a repeat: a program's own
+        // selection must not hide the user's click on the same control.
+        if (outcome == GateOutcome.Keep && info != null && IsRepeatClick(kind, info)) return;
         _values.EmitAfterFlush(k => !k.StartsWith(NavKeyPrefix, StringComparison.Ordinal), built);
     }
+
+    /// <summary>What the gate's answer does to an event.</summary>
+    internal enum GateOutcome { Keep, Mark, Drop }
+
+    /// <summary>
+    /// The user's act is kept; a program's own change is marked
+    /// ("user_acted": false) and the pipeline leaves it out of the steps;
+    /// the Windows shell's own changes are never written (its navigation
+    /// pane names the folders).
+    /// </summary>
+    internal static GateOutcome Outcome(bool userActed, bool isShell) =>
+        userActed ? GateOutcome.Keep : isShell ? GateOutcome.Drop : GateOutcome.Mark;
 
     /// <summary>
     /// A selection. A choice in a drop-down list (an item inside a combo
@@ -645,8 +676,8 @@ public sealed class UiaSubscriber {
             if (line.CoalesceKey != null && IsRepeatValue(line)) return;
             // E6 / live finding 22: the first interaction WRITTEN for a pid
             // carries the coverage hint (a coalesced or left-out event must not
-            // take it along).
-            TrySetCoverageHint(line.Data);
+            // take it along, nor one the program made by itself).
+            if (!line.Data.ContainsKey("user_acted")) TrySetCoverageHint(line.Data);
         }
         _onEvent(evt);
     }

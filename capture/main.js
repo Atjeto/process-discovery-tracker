@@ -862,8 +862,9 @@ async function startRecorderForSession() {
           if (!tracker) return;
           try { tracker.fireInteraction(data); }
           catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
-          // The browser watchdog: something from this program was recorded.
-          if (browserWatch) browserWatch.noteRecorded(data && data.process_name);
+          // The browser watchdog: something the SME did in this program was
+          // recorded (a program's own change, marked, is not).
+          if (browserWatch && !(data && data.user_acted === false)) browserWatch.noteRecorded(data && data.process_name);
           // §E2: an interaction proves the recorder is alive.
           if (deadMan) deadMan.noteSignal();
         },
