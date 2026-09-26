@@ -440,6 +440,9 @@ implementation notes
     active time of 0s in the PDD, no app-switch screenshots, no warning
     for a program it could not record) and the packaged viewer lost
     dagre for the live map. Both filters are pinned by unit tests.
+  - A recording without a single foreground row (every recording of the
+    packaged capture app before this fix) prints its active time as "Not
+    recorded" in the PDD, not 0s.
 
 ### Removed
 

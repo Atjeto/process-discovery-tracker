@@ -263,12 +263,17 @@ def case_stats(
 
     In a session without a recording (`recorded` False: a video or blank
     session, contract C16) nothing measured the foreground, so `active_ms`
-    is None, never a measured 0. The implicit run of such a session carries
-    `implicit: True` (case_assignment.add_implicit_run)."""
+    is None, never a measured 0. The same holds for a recording without a
+    single activity row: its capture app never saw the foreground window
+    (the packaged capture app before 2.0.0 shipped without a package its
+    window reader needs), so the PDD says "Not recorded", not 0s. The
+    implicit run of a session without a recording carries `implicit: True`
+    (case_assignment.add_implicit_run)."""
     idle = _idle_intervals(events)
     rows_in = [ev for ev in events or []
                if isinstance(ev, dict) and ev.get("type") == "activity"
                and isinstance(ev.get("data"), dict)]
+    measured = recorded and bool(rows_in)
     spans = []          # (start, end, case_ids) of the rows whose time can be read
     unplaced = []       # the rows whose time cannot be read
     for ev in rows_in:
@@ -301,7 +306,7 @@ def case_stats(
             "start_ts": meta.get("start_ts"),
             "end_ts": meta.get("end_ts"),
             "wall_clock_ms": wall,
-            "active_ms": round(active) if recorded else None,
+            "active_ms": round(active) if measured else None,
             "end_reason": meta.get("end_reason"),
         }
         if meta.get("implicit"):

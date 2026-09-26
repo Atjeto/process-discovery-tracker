@@ -156,7 +156,9 @@ def test_fuzz_stats_wellformed():
             crows = case_stats(events, cases)
             assert len(crows) == len(cases)
             for r in crows:
-                assert r["active_ms"] >= 0
+                # None when no activity row was recorded at all (nothing measured)
+                assert (r["active_ms"] is None) == (n_act == 0)
+                assert r["active_ms"] is None or r["active_ms"] >= 0
                 assert r["wall_clock_ms"] is None or r["wall_clock_ms"] >= 0
             # sorted by start_ts
             starts = [r["start_ts"] or "" for r in crows]

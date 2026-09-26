@@ -161,9 +161,24 @@ def test_case_stats_of_a_session_without_a_recording_measure_no_active_time():
     row = case_stats([], cases, recorded=False)[0]
     assert row["active_ms"] is None and row["wall_clock_ms"] is None
     assert row["implicit"] is True
-    assert case_stats([], cases)[0]["active_ms"] == 0          # a recording: measured
     plain = {"c1": {**cases["imp"], "implicit": False}}
     assert "implicit" not in case_stats([], plain)[0]
+
+
+def test_a_recording_without_a_single_activity_row_measured_no_active_time():
+    """The packaged capture app before 2.0.0 never saw the foreground window,
+    so its recordings hold no activity row: their active time is None ("Not
+    recorded" in the PDD), not 0s. One row is a measurement, even of 0."""
+    cases = {"c1": {"label": None, "parent_case_id": None,
+                    "start_ts": "2026-05-14T09:00:00Z", "end_ts": "2026-05-14T09:01:00Z",
+                    "end_reason": None}}
+    assert case_stats([], cases)[0]["active_ms"] is None
+    elsewhere = {"type": "activity", "timestamp": "2026-05-14T08:00:00Z",
+                 "data": {"app": "Excel", "duration_ms": 5000}}
+    assert case_stats([elsewhere], cases)[0]["active_ms"] == 0
+    inside = {"type": "activity", "timestamp": "2026-05-14T09:00:10Z",
+              "data": {"app": "Excel", "duration_ms": 20000}}
+    assert case_stats([inside], cases)[0]["active_ms"] == 20000
 
 
 def test_compute_all_includes_step_stats():
@@ -257,7 +272,10 @@ def test_case_stats_tolerates_corrupt_timestamps():
     rows = case_stats([], cases)               # must not raise ValueError on parse
     assert len(rows) == 1
     assert rows[0]["wall_clock_ms"] is None
-    assert rows[0]["active_ms"] == 0
+    assert rows[0]["active_ms"] is None        # no activity row: nothing measured
+    filed = {"type": "activity", "timestamp": "2026-05-14T09:00:10Z",
+             "data": {"duration_ms": 3000, "case_ids": ["c1"]}}
+    assert case_stats([filed], cases)[0]["active_ms"] == 3000
 
 
 # --- The group label (moved from the cut analysis layer) ----------------
