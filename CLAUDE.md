@@ -17,9 +17,9 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-33, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-42, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
-  Data contracts C1 to C20:
+  Data contracts C1 to C21:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
 - **Baseline** (health, CI history, code review RP-01 to RP-36):
   [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.1** (2026-09-26), the light
+- **Versions.** The current release is **v2.0.1** (2026-09-27), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -198,8 +198,12 @@ the folder.
 - **System names** (C14): `shared/system-names.json` turns an application
   and a window title into the business system (Salesforce for a Chrome
   window on Salesforce), read by `app_names.py` and `system-names.js` for
-  the legend, the fact line, the map boxes, the panel and the PDD. A
-  `step.system` set by the analyst wins.
+  the Timeline's legend, the fact line, the map boxes, the panel and the
+  PDD. Its site
+  rule (2.0.1, `site_name`, `siteName`) names a browser window on a site no
+  rule names by the site its title ends with, the browser's name dropped
+  ("Order Desk"), and the screen then leaves the site out. A `step.system`
+  set by the analyst wins.
 - **The video travels with the folder.** Attach video copies it into
   `video/` and stores its path relative to the folder; a missing absolute
   path falls back to a file of that name in the folder (`video-path.js`).
@@ -207,11 +211,17 @@ the folder.
   brings it back (lane CC).
 - **One clock.** The viewer's times and the PDD's pointers read the time
   since the recording started (m:ss or h:mm:ss); the time of day shows only
-  in the Timeline's summary.
+  in the Timeline's summary. A Steps row shows when its step starts. A
+  length reads one way in the viewer (`dom.js` `formatDuration`) and in the
+  step map's documentation (`step_context.fmt_ms`): "under 1s",
+  "42s", "2m 07s", "3m", "1h 04m"; never "0s", "28.9s" or "414ms", and
+  never "2:17", which is a moment on the one clock.
 - **The step panel** (`views/step-panel.js`): three doors (a map box, a
   timeline step band, a Steps row; a task of the Map's picture is a map box
   too) open one panel with every occurrence of the step: its moment, a
-  small video, screenshots, what was said, notes.
+  small video, screenshots, what was said, notes. How the transactions ran
+  fits again when the panel opens or closes beside it (`dfg-viewer.js`
+  `resize`).
 - **The map** (lane MV, `map-view.js`, `refmap-ui.js`). The Map shows the map
   the PDD prints: the As-Is copy chosen for the PDD, else
   `process_map_step.bpmn` (written by `--mine`), drawn by bpmn-js and linked
@@ -230,32 +240,46 @@ the folder.
   and the Checklist's *Check the As-Is map* say so, and *Copy again* makes a
   new copy, kept at its first change, which takes the old one's place in the
   PDD.
-- **The richer step map** (C18, AD-32). `process_map_step.bpmn` names its
-  main end after the Result and each early end after its `when`; a step done
-  in a system is a plain task and a step done outside every system (added by
-  hand, no system set) a manual task, the hand marker (lane CL: the person
-  marker on every box said nothing); a step's notes are a text annotation and
-  its attachments data objects; each system has a colour (`bioc:fill`,
-  `bioc:stroke`) listed in a legend, which also says what the hand means.
-  Without a chosen As-Is copy, the Map's picture, Export's map image and the
-  PDD's map picture are this file drawn by bpmn-js (the PDD's picture
-  without the steps' notes, lane FX2).
+- **The richer step map** (C18, AD-32, as 2.0.1 amended it).
+  `process_map_step.bpmn` names its main end after the Result and each early
+  end after its `when`; a step done in a system is a plain task with a short
+  text annotation above it naming the system (`TextAnnotation_system_<k>`),
+  unless every task of the map done in a system is done in the same one:
+  the map then says it once ("System: SAP", `TextAnnotation_system`, joined
+  to nothing). A step done outside every system (added by hand, no system
+  set) is a manual task, the hand marker, with no label (lane CL: the person
+  marker on every box said nothing). A step's notes are a text annotation
+  under its task, its attachments data objects under it; a flow that turns
+  up or down leaves or enters a gateway at its top or bottom corner, and the
+  map keeps its merge gateways. No colours and no legend since
+  2.0.1: a label is text a process manager changes in any BPMN tool, where
+  no tool could change a colour. Without a chosen As-Is copy, the Map's
+  picture, Export's map image and the PDD's map picture are this file drawn
+  by bpmn-js (the PDD's picture without the steps' notes, lane FX2; the
+  system labels stay). A click on a system label does nothing
+  (`asis-links.js` `isSystemLabel`).
 - **Sub-processes** (C19, AD-33).
   - **Storage.** A step's `sub_steps` array holds its sub-steps, nested and
     the same shape as steps. `annotations.steps` stays the main level, so a
     reader that ignores `sub_steps` sees only that.
   - **Creating one.** *Open as a sub-process* drafts one sub-step per
-    recorded action (`action_key`, never `draft_key`). *Group into a
-    sub-process* adds a parent with `group: true`; a link it moves remembers
-    where it was (`lifted_from`, `pointed_to`, lane FX2). *Dissolve* undoes
-    either and gives each such link back.
+    recorded action (`action_key`, never `draft_key`); the cells of one
+    sheet filled one after another are one sub-step, "Fill in columns A to
+    F" (`<app>|<screen>|cells:A-F`, 2.0.1). A recorded step with fewer
+    than two actions has nothing to open: the step pane disables the verb
+    with its reason and the step menu leaves it out (a step added by hand
+    still opens, empty). *Group into a sub-process* adds a parent with
+    `group: true`; a link it moves remembers where it was (`lifted_from`,
+    `pointed_to`, lane FX2). *Dissolve* undoes either and gives each such
+    link back.
   - **The maps.** `mapTree` (`viewer/sub-process-maps.js`) and `map_tree`
     (`normalization/sub_process_maps.py`) list the project's maps. They are
     pinned by `shared/sub-process-maps-golden.json`: traces per visit, the
     hierarchical numbers, the order.
   - **Where it shows.** Steps and Map share `State.mapPath`. The step BPMN
-    draws each sub-process as a collapsed `bpmn:subProcess` with its own
-    plane (ids prefixed `Sub<n>_`). The PDD prints one chapter per numbered
+    draws each sub-process as a collapsed `bpmn:subProcess` (16 px taller
+    than a task, so its name clears the + marker) with its own plane (ids
+    prefixed `Sub<n>_`). The PDD prints one chapter per numbered
     sub-process (3.3 onwards), with pictures passed by the viewer through
     `--pdd-map-images`.
 - **Saving and handing over.** Every change saves itself to the project
@@ -301,9 +325,13 @@ the folder.
   hand-off) and the Technical details, so the PDD holds no values, controls
   or recorded times: its section 5 names the systems and the information
   entered in each, 6 is the analyst's *Volume and effort*, and the re-keyed
-  data is said under 7. Tool-neutral, built around the confirmed reference
-  run. The document fields (C6) fill their places and survive re-export; a
-  step's `description` (C7) is its text.
+  data is said under 7. A step's context line reads "SAP, Order entry · in
+  3 of 4 transactions · Transaction 1 at 0:19", and while steps are drafts
+  the PDD says so ("The analyst has not yet confirmed N of these M
+  steps."). Tool-neutral, built around the confirmed reference run. The document
+  fields (C6) fill their places and survive re-export; Document control's
+  Request is the document's optional `request` (2.0.1), else the capture's.
+  A step's `description` (C7) is its text.
 - **The meeting transcript** (C8): `transcript_import.py` writes
   `transcript.json`. A sentence is placed through its own sync, else the
   attached video's; added to a description or a document field, it reaches

@@ -12,8 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from step_context import (StepContext, clock, has_video, screen_of, step_ms,
-                          video_start)
+from step_context import (StepContext, clock, fmt_ms, has_video, screen_of,
+                          step_ms, video_start)
 
 SAP_VOCAB = {"id": "sap-gui", "name": "SAP GUI", "scope": {"process_name": "sapgui.exe"},
              "screens": [{"id": "va01", "name": "Create Sales Order (VA01)"}]}
@@ -100,6 +100,21 @@ def test_clock_formats_positions():
         assert clock(bad) == ""
 
 
+def test_a_duration_reads_one_way_as_the_viewer_says_it():
+    """2.0.1: fmt_ms and the viewer's dom.js formatDuration are one rule:
+    never "0s", half a second up, "" for no value."""
+    assert fmt_ms(0) == "under 1s"
+    assert fmt_ms(999) == "under 1s"
+    assert fmt_ms(1000) == "1s"
+    assert fmt_ms(2500) == "3s"
+    assert fmt_ms(28900) == "29s"
+    assert fmt_ms(137000) == "2m 17s"
+    assert fmt_ms(180000) == "3m"
+    assert fmt_ms(3840000) == "1h 04m"
+    for none in (None, -1, float("nan"), float("inf"), True, "12"):
+        assert fmt_ms(none) == ""
+
+
 def test_step_ms_is_the_time_range():
     assert step_ms({"time_range": {"start": "2026-05-14T09:00:01Z",
                                    "end": "2026-05-14T09:00:04.500Z"}}) == 3500
@@ -164,8 +179,10 @@ def test_a_draft_whose_screen_the_drafting_made_value_free_says_that_screen():
     title = "New order for Contoso Ltd - Order Desk - Google Chrome"
     ctx = _ctx({"q": {"process_name": "chrome.exe", "window_title": title}})
     drafted = _step("q", draft_key="chrome|New order for \u2026 - Order Desk|Button:btn-save-order")
-    assert ctx.where(drafted) == ("Google Chrome", "New order for \u2026, Order Desk")
-    assert ctx.value_free_screen(drafted, "Google Chrome") == "New order for \u2026, Order Desk"
+    # 2.0.1: the site the title ends with is the system, so the screen
+    # leaves it out.
+    assert ctx.where(drafted) == ("Order Desk", "New order for \u2026")
+    assert ctx.value_free_screen(drafted, "Order Desk") == "New order for \u2026"
     plain = _step("q", draft_key="chrome|New order for Contoso Ltd - Order Desk|(visit)")
-    assert ctx.where(plain) == ("Google Chrome", "New order for Contoso Ltd, Order Desk")
+    assert ctx.where(plain) == ("Order Desk", "New order for Contoso Ltd")
     assert ctx.value_free_screen(_step("q"), "Google Chrome") == ""

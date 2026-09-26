@@ -230,6 +230,7 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       await page.locator("#btn-step-make-sub").click({ timeout: T });
       await page.waitForSelector("#steps-crumbs:not([hidden])", { timeout: T });
       lv = await level();
+      await shot(page, "subproc-steps-level.png");
     } catch (e) { err = errText(e); }
     const disk = await waitDisk(ANNO, (a) => opened(a).length === 4);
     const occ = opened(disk);
@@ -659,7 +660,7 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       // legend moved a little).
       await page.evaluate(() => {
         const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
-        ed.get("modeling").moveElements([ed.get("elementRegistry").get("TextAnnotation_legend")], { x: 0, y: 8 });
+        ed.get("modeling").moveElements([ed.get("elementRegistry").filter((e) => /^(?:Sub\d+_)?TextAnnotation_system/.test(e.id))[0]], { x: 0, y: 8 });
       });
       await wait(1400);
       await page.locator("#btn-refmap-editor-close").click({ timeout: T });

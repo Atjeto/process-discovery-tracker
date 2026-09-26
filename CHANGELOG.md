@@ -6,12 +6,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [2.0.1] (2026-09-26): the PDD for its readers
+## [2.0.1] (2026-09-27): the PDD for its readers, and maps a PM can keep
 
 The PDD is the process written down for the SME, who confirms it, and for
 whoever asks about the process being automated; it is archived per
 version. The developers work from the project (a read-only hand-off) and
 the Technical details, so the PDD no longer prints what they read there.
+The map names the system of each step in words a process manager can
+change, and the SME's app loses its setup.
 
 ### Changed
 
@@ -34,6 +36,36 @@ the Technical details, so the PDD no longer prints what they read there.
 - **The Overview opens at once.** Its *Observations* (a copy of the PDD's
   sections 5 and 6) are gone, and with them the analysis that ran as the
   Overview opened after a change of the steps and stopped when you typed.
+- **The map names each step's system above its box**, as a short text
+  annotation you change by typing in the map editor or any BPMN tool; a
+  map whose steps are all done in one system says it once ("System: SAP").
+  The colours and their legend are gone: no editor could change a colour,
+  so an edited map kept the wrong ones. A step's notes now sit under its
+  box.
+- **A decision's paths part at the diamond**: each leaves from its own
+  corner, so a skipped step no longer hides under the main line. A
+  sub-process box is a little taller, so the + marker never covers its
+  name.
+- **A web application is named by its site**: a browser window on a site
+  no rule knows reads its site ("Order Desk"), not "Google Chrome".
+- **A step you name like a step of the reference transaction is that
+  step** in the differences and in the PDD, whatever the recorder drafted.
+- **A sheet's cells are one sub-step**: *Open as a sub-process* gives
+  "Fill in columns A to F" for the cells filled one after another, and says
+  so when a step has only one recorded action to open.
+- **The request is written in the viewer**: an optional *Request* field in
+  the Document, printed in the PDD's Document control and on the project
+  line.
+- **One way to say a time**: a Steps row shows when its step starts (0:06),
+  and every duration reads one way, in the app and in the map's BPMN:
+  "under 1s", "42s", "2m 17s" or "1h 04m" (never "0s", "28.9s" or "414ms",
+  and never "2:17", which reads as a moment). How the transactions ran fits
+  again when the step panel opens beside it.
+- **The PDD says who still has to confirm**: "The analyst has not yet
+  confirmed 2 of these 4 steps."
+- **Easier to read on a small screen**: the pane and section titles and a
+  transaction's step count and time are a size larger, and *Dissolve
+  sub-process* is a button in the breadcrumb, as in the step pane.
 
 ### Removed
 
@@ -41,6 +73,10 @@ the Technical details, so the PDD no longer prints what they read there.
   a project analyzed by 2.0.0 is analyzed again once as it opens), and the
   goldens that pinned them (`shared/pdd-rows-golden.json`,
   `shared/steps-signature-golden.json`).
+- **The capture app's Recording setup and its named transactions**: the
+  SME's app keeps Start, Next transaction, Pause, Stop, the summary and the
+  zip; Settings and Profile stay for the analyst or IT. A recording setup
+  saved by 2.0.0 is still read.
 
 ## [2.0.0] (2026-09-26): the BA-helper refocus
 

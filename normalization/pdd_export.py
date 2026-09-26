@@ -504,11 +504,17 @@ class _Session:
         return value.strip() if isinstance(value, str) else ""
 
     def request(self) -> str:
-        """The capture's request (its engagement, AD-30), as the viewer's
-        project line names it (session-summary.js requestOf): its name and
-        its code, "Invoice intake review (REQ-2026-042)", the name or the
-        code alone, or "" when the capture app's defaults were left (the name
-        "Default engagement", the code "default")."""
+        """The request the project is for (AD-30), as the viewer's project
+        line names it (session-summary.js requestOfSession): the analyst's
+        document field (C6 `document.request`, 2.0.1, typed in the viewer),
+        else the capture's request (its engagement, set in the capture app's
+        Recording setup before 2.0.1): its name and its code, "Invoice intake
+        review (REQ-2026-042)", the name or the code alone, or "" when the
+        capture app's defaults were left (the name "Default engagement", the
+        code "default")."""
+        written = self.field("request")
+        if written:
+            return written
         config = self.manifest.get("config")
         config = config if isinstance(config, dict) else {}
         name = _text_of(self.manifest.get("engagement_name")) or _text_of(config.get("engagement_name"))
@@ -1186,12 +1192,12 @@ def _write_steps(doc, s):
 
 
 def _drafts_line(doc, steps) -> None:
-    """How many of the printed steps are drafts, when any is."""
+    """How many of the printed steps the analyst has not confirmed yet, when
+    any: in the reader's words (the SME reads it), not the app's."""
     drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
     if drafts:
-        doc.add_paragraph(f"{drafts} of these {_plural(len(steps), 'step')} "
-                          f"{'is a draft' if drafts == 1 else 'are drafts'} "
-                          "not confirmed yet.")
+        doc.add_paragraph(f"The analyst has not yet confirmed {drafts} of these "
+                          f"{_plural(len(steps), 'step')}.")
 
 
 def _level_rows(s, level) -> list[tuple[str, str]]:
@@ -1468,7 +1474,9 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
     pattern step with the most keys wins; among equals, the first one. The
     same rule as viewer/run-differences.js collapseToReference. A folded unit
     keeps the run's steps it stands for under `members` (their times and
-    fields); the rule does not read them."""
+    fields); the rule does not read them. Then (2.0.1, _named_alike) a step
+    whose own key the pattern lacks but whose name is a pattern step's is
+    that step."""
     targets = []
     for step in pattern_steps:
         dk = step.get("draft_key") if isinstance(step, dict) else None
@@ -1478,7 +1486,7 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
         if keys and len(keys) >= 2:
             targets.append((keys, step))
     if not targets:
-        return list(run_steps)
+        return _named_alike(pattern_steps, list(run_steps))
     out, i = [], 0
     while i < len(run_steps):
         best, best_len = None, 0
@@ -1497,6 +1505,39 @@ def _collapse_merged(pattern_steps, run_steps) -> list:
         else:
             out.append(run_steps[i])
             i += 1
+    return _named_alike(pattern_steps, out)
+
+
+def _name_key(name) -> str:
+    """A step's name as two names are compared: its whitespace collapsed,
+    without case."""
+    return " ".join(str(name or "").split()).lower()
+
+
+def _named_alike(pattern_steps, units) -> list:
+    """`units` with each one whose own align key the pattern lacks, and whose
+    name is the name of a pattern step (_name_key), taken for that step (2.0.1:
+    the analyst named them alike, so they are one step, and the map draws them
+    as one box): a unit carrying the pattern step's name and identity (its
+    draft_key, else its draft_keys, else its name alone) and the run's steps it
+    stands for under `members`. viewer/run-differences.js namedAlike."""
+    keys = {_align_key(p) for p in pattern_steps if isinstance(p, dict)}
+    by_name: dict[str, dict] = {}
+    for p in pattern_steps:
+        if isinstance(p, dict) and _name_key(p.get("name")):
+            by_name.setdefault(_name_key(p.get("name")), p)
+    out = []
+    for u in units:
+        ref = by_name.get(_name_key(u.get("name"))) if isinstance(u, dict) else None
+        if ref is None or _align_key(u) in keys:
+            out.append(u)
+            continue
+        unit = {"name": ref.get("name"), "case_id": u.get("case_id"), "members": _members(u)}
+        if isinstance(ref.get("draft_key"), str) and ref["draft_key"]:
+            unit["draft_key"] = ref["draft_key"]
+        elif _key_list(ref.get("draft_keys")):
+            unit["draft_keys"] = list(_key_list(ref.get("draft_keys")))
+        out.append(unit)
     return out
 
 

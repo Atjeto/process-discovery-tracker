@@ -272,6 +272,11 @@ def test_document_control_names_the_folder_the_sme_the_video_and_the_request():
                     "1. Document control")
     assert "Request | REQ-2026-042" in rows
     assert not any("Default engagement" in r for r in rows)
+    # 2.0.1: the request the analyst writes in the viewer wins.
+    annotations["document"] = {"request": "Order entry review (REQ-2026-101)"}
+    rows = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                    "1. Document control")
+    assert "Request | Order entry review (REQ-2026-101)" in rows
 
 
 def test_document_fields_replace_their_gaps():
@@ -476,7 +481,7 @@ def test_the_reference_run_is_the_detailed_process():
                          "The steps as done in Transaction 1: Order 1, the reference transaction."]
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Mail - Compose: Send"]
-    assert not any("not confirmed yet" in t for t in steps)
+    assert not any("not yet confirmed" in t for t in steps)
 
 
 def test_a_chosen_reference_run_and_its_draft_status_line():
@@ -486,7 +491,7 @@ def test_a_chosen_reference_run_and_its_draft_status_line():
         a["pattern_run"] = {"case_id": R2}
     blocks, steps = _steps_section(choose_run_2)
     assert steps[1] == "The steps as done in Transaction 2: Order 2, the reference transaction."
-    assert steps[2] == "3 of these 3 steps are drafts not confirmed yet."
+    assert steps[2] == "The analyst has not yet confirmed 3 of these 3 steps."
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Look up the order", "Step 2: Sheet - Log: Save", "Step 3: CRM - Orders: Save"]
     # The time is counted from the start of the recording, not of the run:
@@ -1438,7 +1443,7 @@ def test_a_chapter_prints_its_map_then_the_reference_transactions_first_visit():
         "Click Save (1 of 2 transactions)",
         "Check stock | Click Save (1 of 2 transactions)",
         "Click Save | End (2 of 2 transactions)",
-        "2 of these 3 steps are drafts not confirmed yet."]
+        "The analyst has not yet confirmed 2 of these 3 steps."]
     one = chapter.index("Step 2.1: Enter the order number")
     assert chapter[one + 1:one + 3] == [
         "Contoso CRM, Orders · in 2 of 2 transactions · Transaction 1 at 0:04",
@@ -1617,7 +1622,7 @@ def test_the_map_pictures_manifest_gives_each_map_its_picture():
     assert orientation.count(WD_ORIENT.LANDSCAPE) == 2
     assert _numbered(blocks) == OUTLINE[:_CHAPTERS_AT] + _CHAPTERS + OUTLINE[_CHAPTERS_AT:]
     # The chapter's picture takes its map's place; its steps follow.
-    assert _section(blocks, _CHAPTERS[0])[0] == "2 of these 3 steps are drafts not confirmed yet."
+    assert _section(blocks, _CHAPTERS[0])[0] == "The analyst has not yet confirmed 2 of these 3 steps."
     assert _section(blocks, _CHAPTERS[1])[:2] == [
         "Each step and the steps that followed it in the transactions:", "Step | Followed by"]
 

@@ -97,10 +97,8 @@ test("bar: a key that could not be registered is not shown", () => {
   assert.strictEqual(G.barModel({ status: RECORDING, hotkey: "" }).key, "");
 });
 
-test("bar: a named-transaction caret only while recording and only when named transactions are set up", () => {
-  assert.strictEqual(G.barModel({ status: RECORDING, namedRuns: true }).namedRuns, true);
-  assert.strictEqual(G.barModel({ status: RECORDING, namedRuns: false }).namedRuns, false);
-  assert.strictEqual(G.barModel({ status: { tracking: false }, namedRuns: true }).namedRuns, false);
+test("bar: 2.0.1 has no named transactions: the bar says nothing of them", () => {
+  assert.ok(!("namedRuns" in G.barModel({ status: RECORDING })));
 });
 
 test("bar: a problem is one line in words: the recorder stopped for good or went silent", () => {
@@ -171,7 +169,7 @@ test("every sentence the SME reads here is free of machine words, the retired ru
     { ...RECORDING, openMarkers: [] }, { ...RECORDING, recorder_state: "dead" },
     { ...RECORDING, recorder_state: "starting" },
     { ...RECORDING, paused: true, pausedMs: 6000 }]) {
-    const m = G.barModel({ status, hotkey: "Control+Shift+S", namedRuns: true });
+    const m = G.barModel({ status, hotkey: "Control+Shift+S" });
     texts.push(m.stateText, m.runText, m.pauseLabel, m.title, m.problem || "", m.paused, m.pauseNow, G.trayStatusLine(status));
   }
   texts.push(G.summaryModel({ runs: 2, durationMs: 5000, pausedMs: 4000 }).headline);

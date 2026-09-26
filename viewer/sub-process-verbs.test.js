@@ -509,3 +509,26 @@ test("lane FX2: + Step at a moment inside a sub-process goes to its steps, at an
   assert.deepEqual([p.kind, p.list === root, p.parent], ["open", true, null], "after every step: the main level");
   assert.equal(SPV.momentPlace(null, ms("10")).kind, "open");
 });
+
+test("2.0.1: a sheet's cells filled one after another are one sub-step, named by the columns (the rows change from one transaction to the next)", () => {
+  const cell = (id, name, value, sec, kind) => ({ event_id: id, type: "interaction", timestamp: "2026-09-26T10:00:" + String(sec).padStart(2, "0") + "Z",
+    data: { kind: kind || "value_changed", control_type: "DataItem", name, value, process_name: "EXCEL.EXE", window_title: "orders.xlsx - Excel" } });
+  const save = { event_id: "s", type: "interaction", timestamp: "2026-09-26T10:00:30Z",
+    data: { kind: "invoked", control_type: "Button", name: "Save", process_name: "EXCEL.EXE", window_title: "orders.xlsx - Excel" } };
+  const events = [cell("a2", "A2", "SO-1", 1), cell("b2", "B2", "Contoso", 3), cell("a3", "A3", "SO-2", 5), cell("f3", "F3", "99", 7), save];
+  const inter = Object.fromEntries(events.map((e) => [e.event_id, e]));
+  const step = { step_id: "p", case_id: "run1", name: "Fill the order lines", draft_key: "excel|orders.xlsx|Button:Save",
+    time_range: { start: events[0].timestamp, end: save.timestamp }, evidence: { interaction_event_ids: events.map((e) => e.event_id), screenshot_refs: [] } };
+  const subs = SPV.draftSubSteps(step, inter, { newId });
+  assert.deepEqual(subs.map((s) => [s.name, s.action_key, s.evidence.interaction_event_ids.length]), [
+    ["Fill in columns A to F", "excel|orders.xlsx|cells:A-F", 4],
+    ["Click Save", "excel|orders.xlsx|click:Save", 1]]);
+  assert.equal(subs[0].description, "Entered 4 cells, A2 to F3.");
+  // Dissolve reads the drafted name and description back from the events.
+  assert.deepEqual(SPV.draftedAction(subs[0], inter), { name: "Fill in columns A to F", description: "Entered 4 cells, A2 to F3." });
+  // One cell alone stays its own action; a cell's address is a DataItem's name only.
+  assert.deepEqual(SPV.actionsOf([cell("x", "B7", "1", 1)], "excel|s").map((a) => a.name), ["Enter B7"]);
+  assert.deepEqual(SPV.cellOf({ control_type: "DataItem", name: "AB12" }), { col: 28, row: 12 });
+  assert.equal(SPV.cellOf({ control_type: "Edit", name: "A2" }), null);
+  assert.equal(SPV.cellOf({ control_type: "DataItem", name: "Total" }), null);
+});

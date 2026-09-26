@@ -12,8 +12,10 @@
  *     "attachments/<file>" (mining.export_bpmn);
  *   a text annotation shows its note: its documentation holds the whole text
  *     when the map shows it cut, else its text is the whole note;
- *   the legend (TextAnnotation_legend), the flows, the events and the
- *     gateways do nothing.
+ *   a system label (2.0.1: TextAnnotation_system_<k> above a task, or a
+ *     map's one TextAnnotation_system), the legend of a copy made before
+ *     2.0.1 (TextAnnotation_legend), the flows, the events and the gateways
+ *     do nothing.
  * Contract C19: a map with sub-processes has a plane per sub-process
  * (map-planes.js). A collapsed sub-process opens the panel on its node, and
  * a task inside a sub-process's plane on its node at that level (the names
@@ -31,6 +33,9 @@ const SPM = require("./sub-process-maps.js");
 const Planes = require("./map-planes.js");
 
 const LEGEND_ID = "TextAnnotation_legend";
+/* A system label the pipeline writes (2.0.1): above a task, or the one label
+   of a map done in one system. */
+const SYSTEM_ID = /^TextAnnotation_system(?:_\d+)?$/;
 const DATA_PREFIX = "DataObjectReference_";
 /* The id the pipeline gives the text annotation of a step's notes (C18,
    mining.py: TextAnnotation_1, TextAnnotation_2, ...; in a sub-process's
@@ -65,10 +70,17 @@ function documentation(element) {
     .map((d) => _lines(d && d.text)).filter(Boolean).join("\n");
 }
 
-/* The legend of the systems' colours: part of the picture, never a link (a
-   sub-process's plane has its own, its id prefixed). */
+/* The legend of the systems' colours on a copy made before 2.0.1: part of
+   the picture, never a link (a sub-process's plane has its own, its id
+   prefixed). */
 function isLegend(element) {
   return is(element, "bpmn:TextAnnotation") && Planes.baseId(_bo(element).id) === LEGEND_ID;
+}
+
+/* A system label (2.0.1): part of the picture, never a link. The analyst
+   changes it by typing in the map editor. */
+function isSystemLabel(element) {
+  return is(element, "bpmn:TextAnnotation") && SYSTEM_ID.test(Planes.baseId(_bo(element).id));
 }
 
 /* A step's notes on the map (C18): the text annotation the pipeline wrote
@@ -118,7 +130,7 @@ function elementAction(element) {
     return id || file ? { kind: "file", id, file } : null;
   }
   if (is(element, "bpmn:TextAnnotation")) {
-    if (isLegend(element)) return null;
+    if (isLegend(element) || isSystemLabel(element)) return null;
     const text = documentation(element) || _lines(bo.text);
     return text ? { kind: "note", text } : null;
   }
@@ -193,4 +205,4 @@ function attachmentFor(action, attachments) {
   return (action.file && list.find((a) => _fileName(a.file) === action.file)) || null;
 }
 
-module.exports = { LEGEND_ID, is, documentation, isLegend, isStepNote, elementAction, taskNode, projectPath, attachmentFor };
+module.exports = { LEGEND_ID, is, documentation, isLegend, isSystemLabel, isStepNote, elementAction, taskNode, projectPath, attachmentFor };

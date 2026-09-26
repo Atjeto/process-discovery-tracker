@@ -58,6 +58,8 @@ attachments/rates.xlsx</bpmn:documentation>
 Then the rate.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:textAnnotation id="TextAnnotation_3" />
+    <bpmn:textAnnotation id="TextAnnotation_system_1"><bpmn:text>Salesforce</bpmn:text></bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_system"><bpmn:text>System: Salesforce</bpmn:text></bpmn:textAnnotation>
     <bpmn:textAnnotation id="TextAnnotation_legend">
       <bpmn:text>Colour by system
 Salesforce: blue</bpmn:text>
@@ -310,4 +312,15 @@ test("a data object whose attachment is gone, or that names none, opens nothing"
   assert.strictEqual(L.attachmentFor({ kind: "file", id: "att-1", file: "order spec.txt" }, null), null);
   assert.strictEqual(L.attachmentFor({ kind: "note", text: "x" }, ATTS), null);
   assert.strictEqual(L.attachmentFor(null, ATTS), null);
+});
+
+test("2.0.1: a system label, above a task or once for the map, is part of the picture: no click, never a note", async () => {
+  const el = await elements();
+  for (const id of ["TextAnnotation_system_1", "TextAnnotation_system"]) {
+    assert.strictEqual(L.isSystemLabel(el[id]), true, id);
+    assert.strictEqual(L.elementAction(el[id]), null, id);
+    assert.strictEqual(L.isStepNote(el[id]), false, id);
+  }
+  assert.strictEqual(L.isSystemLabel(el.TextAnnotation_1), false, "a note is no label");
+  assert.strictEqual(L.isSystemLabel(el.TextAnnotation_legend), false);
 });

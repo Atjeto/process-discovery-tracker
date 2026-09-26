@@ -14,8 +14,7 @@
  *     "activities": [ { "id", "name", "code"?, "description"?,
  *                       "screens": [ [<draft_key>, ...], ... ] } ] } ] }
  *
- * An application is named as shared/system-names.json names the system; the
- * order of the applications is the order of their colours on the map. An
+ * An application is named as shared/system-names.json names the system. An
  * activity's screens are runs of screens (one draft_key each, in order); an
  * activity for steps added by hand has none.
  *

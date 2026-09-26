@@ -39,7 +39,6 @@ const { injectTokens } = require("./ui/tokens.js");
    and Stop needs 615 px, 5 more are kept for font rendering; the
    named-transaction caret adds 29 (30 kept). */
 const BAR_WIDTH = 620;
-const NAMED_RUNS_EXTRA = 30; // the caret next to Next transaction, when named transactions are set up
 const BAR_HEIGHT = 44;       // one row; a problem line makes it taller (fitHeight)
 const BAR_MAX_HEIGHT = 200;
 const STATE_FILE = "recording-bar.json";
@@ -113,22 +112,21 @@ function getBar() {
 }
 
 /* The bar's width: wide enough for "Recording · between transactions ·
-   1:02:05" beside its buttons, plus the named-transaction caret when named
-   transactions are set up. */
-function barWidth(namedRuns) {
-  return BAR_WIDTH + (namedRuns ? NAMED_RUNS_EXTRA : 0);
+   1:02:05" beside its buttons. */
+function barWidth() {
+  return BAR_WIDTH;
 }
 
 /* Open the bar (or show it again) without taking the focus. thickFrame is
    off: a frameless window that cannot be resized otherwise comes out 16 px
    narrower and 8 px lower than asked on Windows, and ignores setSize. */
-function openBar(initialView, opts) {
+function openBar(initialView) {
   if (isOpen()) {
     if (!bar.isVisible()) bar.showInactive();
     return bar;
   }
   const { BrowserWindow, screen } = require("electron");
-  const size = { width: barWidth(opts && opts.namedRuns), height: BAR_HEIGHT };
+  const size = { width: barWidth(), height: BAR_HEIGHT };
   const pos = placeBar({
     saved: loadPosition(),
     size,

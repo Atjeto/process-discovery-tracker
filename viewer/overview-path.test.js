@@ -233,8 +233,10 @@ test("documentStatus counts the ten fields that fill a placeholder and names the
   assert.equal(documentStatus(FULL_DOC).filled, 10);
   assert.deepEqual(documentStatus(FULL_DOC).missing, [], "notes are never missing");
   assert.deepEqual(DOC_FIELDS.map((f) => f.key),
-    ["title", "purpose", "scope", "trigger", "result", "contacts", "business_rules", "exceptions", "effort", "improvement", "notes"],
-    "contract C6 fields, with trigger, result, the volume and effort, and improvement");
+    ["title", "request", "purpose", "scope", "trigger", "result", "contacts", "business_rules", "exceptions", "effort",
+      "improvement", "notes"],
+    "contract C6 fields, with the request (optional, 2.0.1), trigger, result, the volume and effort, and improvement");
+  assert.deepEqual(DOC_FIELDS.filter((f) => f.optional).map((f) => f.key), ["request", "notes"], "never owed");
 });
 
 /* ---- overviewHtml: the home's structure ------------------------------------ */
@@ -435,7 +437,7 @@ test("the document is collapsed while acts are left, says who writes it, how man
   // AD-29: an empty field asks its short question; where it lands is its
   // tooltip only (P3.6: never a resident line), never "In the PDD" inside it.
   assert.equal((html.match(/placeholder="In the PDD/g) || []).length, 0);
-  assert.equal((html.match(/title="In the PDD: /g) || []).length, 11);
+  assert.equal((html.match(/title="In the PDD: /g) || []).length, 12);
   assert.ok(!html.includes("ov-doc-where"));
   assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" placeholder="Why is the process done, and for whom?" ' +
     'title="In the PDD: Purpose" rows="3">Why</textarea>'));

@@ -212,3 +212,15 @@ test("lane FX2: the line above the rows says which rows play when the video does
   assert.equal(L(rows(1, 2), 2, 0, 2), "This step happened twice: once in each transaction.", "none covered: nothing to play");
   assert.equal(L(rows(1, 2, 3), 3, 2, 0), "This step happened 3 times: once in each transaction. Play the ones with a time.");
 });
+
+test("2.0.1: a duration reads one way everywhere, the PDD's: under 1s (never 0s), 42s, 2m 17s, 1h 04m; never m:ss, which is a moment", () => {
+  assert.equal(SF.formatMs(0), "under 1s");
+  assert.equal(SF.formatMs(999), "under 1s");
+  assert.equal(SF.formatMs(1000), "1s");
+  assert.equal(SF.formatMs(28900), "29s");
+  assert.equal(SF.formatMs(137000), "2m 17s");
+  assert.equal(SF.formatMs(180000), "3m");
+  assert.equal(SF.formatMs(3840000), "1h 04m");
+  assert.equal(SF.formatMs(-1), "");
+  assert.equal(SF.formatMs(NaN), "");
+});

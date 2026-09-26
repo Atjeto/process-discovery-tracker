@@ -2,8 +2,9 @@
 # Copy to a known location and set PDT_CONFIG=path/to/this.yaml before launch.
 # Anything omitted falls back to defaults in config.js.
 
-# The request this recording is for (Recording setup shows these as Request
-# code and Request name). The code is the folder name above the recordings.
+# The request this recording is for: its code and name, stamped on the
+# manifest. The code is the folder name above the recordings. The analyst
+# can also write the request in the viewer (the document's Request).
 engagement_id: "demo-2026-05"
 engagement_name: "Demo engagement"
 
@@ -16,12 +17,6 @@ worker:
 auto_end_idle_minutes: 30
 poll_interval_seconds: 5
 idle_threshold_seconds: 60
-
-# Named transactions ("task shortcuts") offered on the recording bar (the
-# caret next to Next transaction) and in the tray's "Start a named
-# transaction" submenu. Set per request. Leave empty and the transaction key
-# labels them "Transaction 1", "Transaction 2", ...
-process_labels: []
 
 # OBS integration. Set required: true in production so a session fails
 # fast if OBS isn't reachable. Leave false during local development.

@@ -165,9 +165,74 @@ function actionOf(data, prefix) {
   return null;
 }
 
+/* A spreadsheet cell a field is: { col, row } (column A is 1) when the
+   control is a DataItem named by a cell address ("A2", "AB12"), else null.
+   The PDD's rule (pdd_export._cell_address). */
+const CELL_NAME = /^\$?([A-Z]{1,3})\$?([1-9][0-9]{0,6})$/;
+function cellOf(d) {
+  const data = d || {};
+  if (_t(data.control_type) !== "DataItem") return null;
+  const m = CELL_NAME.exec(_t(data.meaningful_name) || _t(data.name));
+  if (!m) return null;
+  let col = 0;
+  for (const ch of m[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+  return { col, row: Number(m[2]) };
+}
+
+function _columnLetters(col) {
+  let s = "";
+  for (let n = col; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
+}
+
+/* The cells of one action, or null when one of its events is no cell. */
+function _cellsOf(action) {
+  const cells = action.events.map((ev) => cellOf(ev.data));
+  return cells.every(Boolean) ? cells : null;
+}
+
+/* Consecutive actions on the cells of one sheet (one prefix), two or more,
+   folded into one (2.0.1): a spreadsheet is filled cell by cell, and a
+   sub-step per cell made a chapter of twenty "Enter A2" headings. Its key
+   and name follow the columns, which stay the same from one transaction to
+   the next (the rows change): "Fill in columns A to F", key
+   "<prefix>|cells:A-F"; its description says the cells and how many. */
+function _foldCells(actions, prefix) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length >= 2) {
+      const cells = run.flatMap((a) => a.cells);
+      const cols = cells.map((c) => c.col), rows = cells.map((c) => c.row);
+      const first = _columnLetters(Math.min(...cols)), last = _columnLetters(Math.max(...cols));
+      const from = first + Math.min(...rows), to = last + Math.max(...rows);
+      const pre = prefix || eventPrefix(run[0].events[0].data || {});
+      const n = run.length;
+      out.push({
+        key: pre + "|cells:" + first + "-" + last,
+        name: first === last ? "Fill in column " + first : "Fill in columns " + first + " to " + last,
+        description: "Entered " + n + " cells, " + (from === to ? from : from + " to " + to) + ".",
+        events: run.flatMap((a) => a.events),
+      });
+    } else out.push(...run.map(({ cells, pre, ...a }) => a));
+    run = [];
+  };
+  for (const a of actions) {
+    const cells = _cellsOf(a);
+    const pre = prefix || eventPrefix(a.events[0].data || {});
+    if (cells && (!run.length || run[0].pre === pre)) { run.push(Object.assign({}, a, { cells, pre })); continue; }
+    flush();
+    if (cells) run.push(Object.assign({}, a, { cells, pre }));
+    else out.push(a);
+  }
+  flush();
+  return out;
+}
+
 /* The actions of a list of interaction events, in order: consecutive events
    on one control (one action_key) are one action, named by its first event
-   and described by its last (the value the field ended with).
+   and described by its last (the value the field ended with); then the
+   cells of a sheet filled one after the other are one action (_foldCells).
    [{ key, name, description, events }] */
 function actionsOf(events, prefix) {
   const out = [];
@@ -179,7 +244,7 @@ function actionsOf(events, prefix) {
     if (last && last.key === a.key) { last.events.push(ev); last.description = a.description; }
     else out.push(Object.assign({ events: [ev] }, a));
   }
-  return out;
+  return _foldCells(out, prefix);
 }
 
 function _events(step, interactionsById) {
@@ -276,7 +341,8 @@ function draftedAction(step, interactionsById) {
   const events = _events(step, interactionsById);
   const key = _t(step && step.action_key);
   const prefix = key.includes("|enter:") ? key.slice(0, key.lastIndexOf("|enter:"))
-    : key.includes("|click:") ? key.slice(0, key.lastIndexOf("|click:")) : null;
+    : key.includes("|click:") ? key.slice(0, key.lastIndexOf("|click:"))
+      : key.includes("|cells:") ? key.slice(0, key.lastIndexOf("|cells:")) : null;
   const acts = actionsOf(events, prefix);
   if (!acts.length) return { name: "", description: "" };
   return { name: acts[0].name, description: acts[acts.length - 1].description };
@@ -700,6 +766,6 @@ function renameNode(transactions, path, node, name, except) {
 }
 
 module.exports = {
-  actionOf, actionsOf, eventPrefix, parentPrefix, draftSubSteps, draftedAction, projectActionNames,
+  actionOf, actionsOf, cellOf, eventPrefix, parentPrefix, draftSubSteps, draftedAction, projectActionNames,
   openAsSubProcess, groupCheck, groupPromptText, groupInto, dissolveLoss, dissolve, renameNode, momentPlace,
 };

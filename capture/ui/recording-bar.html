@@ -90,7 +90,6 @@
   </div>
   <div class="controls" id="controls-rec" hidden>
     <button class="primary" id="btn-next">Next transaction<kbd id="kbd-next"></kbd></button>
-    <button class="caret" id="btn-named" title="Start a named transaction" aria-label="Start a named transaction" hidden>&#9662;</button>
     <button id="btn-pause">Pause</button>
     <button class="stop" id="btn-stop">Stop</button>
   </div>
@@ -155,7 +154,6 @@ function paint(next) {
     $(id).hidden = !view.key;
   }
   $("btn-pause").textContent = view.pauseLabel || "Pause";
-  $("btn-named").hidden = !view.namedRuns;
   $("problem").textContent = view.problem || "";
   $("problem").hidden = !view.problem;
   fit();
@@ -173,7 +171,6 @@ async function tick() {
 // transaction otherwise.
 $("btn-start").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:fireStart"); tick(); });
 $("btn-next").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:fireStart"); tick(); });
-$("btn-named").addEventListener("click", () => { ipcRenderer.invoke("pdt:namedRunMenu"); });
 $("btn-pause").addEventListener("click", async () => { await ipcRenderer.invoke("pdt:togglePause"); tick(); });
 $("btn-stop").addEventListener("click", () => { confirming = true; paint(); });
 $("btn-keep").addEventListener("click", () => { confirming = false; paint(); });

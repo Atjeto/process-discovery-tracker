@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -908,21 +909,35 @@ def _points(edge):
 
 
 def _annotations(root):
-    """(notes, legend): the text annotations joined to a task by an
-    association, as {task name: annotation}, and the one no association
-    joins (the systems' legend), or None."""
+    """(notes, map label): the steps' notes (TextAnnotation_<n>) joined to a
+    task by an association, as {task name: annotation}, and the one text
+    annotation no association joins (a map's one system, 2.0.1), or None."""
     process = _process(root)
     by_id = {el.get("id"): el for el in process}
     notes, joined = {}, set()
     for assoc in process.findall(f"{_BPMN}association"):
         task, note = by_id[assoc.get("sourceRef")], by_id[assoc.get("targetRef")]
         assert _tag(task) in _TASK_TAGS and _tag(note) == "textAnnotation"
-        notes[task.get("name")] = note
         joined.add(note.get("id"))
-    legends = [el for el in process.findall(f"{_BPMN}textAnnotation")
-               if el.get("id") not in joined]
-    assert len(legends) <= 1
-    return notes, (legends[0] if legends else None)
+        if re.match(r"^TextAnnotation_\d+$", note.get("id")):
+            notes[task.get("name")] = note
+    free = [el for el in process.findall(f"{_BPMN}textAnnotation")
+            if el.get("id") not in joined]
+    assert len(free) <= 1
+    return notes, (free[0] if free else None)
+
+
+def _system_labels(root):
+    """{task name: (label text, association)} of the system labels joined
+    to the tasks (2.0.1: TextAnnotation_system_<k>)."""
+    process = _process(root)
+    by_id = {el.get("id"): el for el in process}
+    out = {}
+    for assoc in process.findall(f"{_BPMN}association"):
+        label = by_id[assoc.get("targetRef")]
+        if label.get("id").startswith("TextAnnotation_system_"):
+            out[by_id[assoc.get("sourceRef")].get("name")] = (_text(label), assoc)
+    return out
 
 
 def _text(el, child="text"):
@@ -945,22 +960,25 @@ def test_steps_in_a_system_are_plain_tasks_and_steps_outside_every_system_manual
     kinds = {name: _tag(el) for name, el in _tasks(root).items()}
     assert kinds == {**{name: "task" for name in _FLOW_STEPS},
                      "Phone the customer": "manualTask", "Log the call in SAP": "task"}
-    assert _text(_annotations(root)[1]).split("\n")[-1] == "Hand icon: done outside the systems"
+    # 2.0.1: a task done in a system is labelled with it; the manual task,
+    # done outside every system, carries its hand and no label.
+    labels = _system_labels(root)
+    assert "Phone the customer" not in labels and labels["Log the call in SAP"][0] == "SAP"
 
 
-def test_a_map_without_a_step_outside_the_systems_has_no_hand_in_its_legend():
+def test_a_step_added_by_hand_with_its_system_set_is_a_plain_task_labelled_with_it():
     anno = _rich_anno()
     anno["steps"][-1]["system"] = "Phone"
     root = _written(anno, context=_plain_context())
     assert "manualTask" not in {_tag(el) for el in _tasks(root).values()}
-    assert "Hand" not in _text(_annotations(root)[1])
+    assert _system_labels(root)["Phone the customer"][0] == "Phone"
 
 
-def test_a_map_of_steps_outside_the_systems_has_a_legend_of_the_hand_alone():
+def test_a_map_of_steps_outside_the_systems_has_no_system_label():
     anno = {"steps": [_untimed("A", "Receive the letter", 1), _untimed("A", "File it", 2)]}
     root = _written(anno, context=_plain_context())
     assert {_tag(el) for el in _tasks(root).values()} == {"manualTask"}
-    assert _text(_annotations(root)[1]) == "Hand icon: done outside the systems"
+    assert _system_labels(root) == {} and _annotations(root)[1] is None
     assert not any(k.startswith(_BIOC) for sh in _di_shapes(root).values() for k in sh.attrib)
 
 
@@ -1071,17 +1089,19 @@ def test_a_steps_notes_become_one_text_annotation_joined_to_its_task():
     assert _text(notes["Confirm the lines"], "documentation") is None
     # A note on a moment is on no task.
     assert "A note on a moment." not in ET.tostring(root, encoding="unicode")
-    # Each note sits above its task, over its width, the association rising
-    # straight from the task's top into the note's bottom; both have a place
-    # on the diagram.
+    # 2.0.1: each note sits under its task (the system label is above it),
+    # over its width, the association falling straight from the task's
+    # bottom into the note's top; both have a place on the diagram.
     shapes, edges = _di_shapes(root), _di_edges(root)
-    for assoc in _process(root).findall(f"{_BPMN}association"):
+    for note in notes.values():
+        assoc = next(a for a in _process(root).findall(f"{_BPMN}association")
+                     if a.get("targetRef") == note.get("id"))
         assert assoc.get("associationDirection") == "None"
         tx, ty, tw, th = _bounds(shapes[assoc.get("sourceRef")])
-        nx, ny, nw, nh = _bounds(shapes[assoc.get("targetRef")])
-        assert ny + nh < ty and nx < tx + tw and tx < nx + nw
+        nx, ny, nw, nh = _bounds(shapes[note.get("id")])
+        assert ny > ty + th and nx < tx + tw and tx < nx + nw
         (x1, y1), (x2, y2) = _points(edges[assoc.get("id")])
-        assert (y1, y2) == (ty, ny + nh) and x1 == x2
+        assert (y1, y2) == (ty + th, ny) and x1 == x2
         assert tx < x1 < tx + tw and nx < x1 < nx + nw
     # Tall enough for its lines: 12 px text, 14.4 px a line, 7 px padding.
     _x, _y, w, h = _bounds(shapes[notes["Check the customer"].get("id")])
@@ -1127,48 +1147,42 @@ def test_attachments_on_a_step_become_data_objects_joined_to_its_task():
         assert order == sorted(order, key=rank.index)
 
 
-def test_tasks_take_a_colour_per_system_and_a_legend_names_them():
+def test_each_task_is_labelled_with_the_system_it_is_done_in():
+    """2.0.1: the system a task is done in is a short text annotation above
+    it, level with its left side, joined by an association (a process
+    manager changes it by typing in any BPMN tool; a colour could be
+    changed in none): no colour and no legend. A manual task carries its
+    hand and no label."""
     root = _written(_rich_anno(), context=_plain_context())
-    shapes = _di_shapes(root)
-    colour = {name: (shapes[el.get("id")].get(f"{_BIOC}fill"),
-                     shapes[el.get("id")].get(f"{_BIOC}stroke"))
-              for name, el in _tasks(root).items()}
-    blue, orange, green = ("#bfdbfe", "#1e3a8a"), ("#fed7aa", "#7c2d12"), ("#bbf7d0", "#14532d")
-    # The systems in the order the transaction first used them: Outlook, Salesforce, SAP.
-    assert colour == {"Receive the order": blue, "Send the confirmation": blue,
-                      "Check the customer": orange, "Book the order": green,
-                      "Confirm the lines": green, "Phone the customer": (None, None)}
-    _notes, legend = _annotations(root)
-    # Phone the customer is done outside the systems: the legend says what
-    # its hand means.
-    assert _text(legend) == ("Colour by system\nOutlook: blue\nSalesforce: orange\nSAP: green\n"
-                             "Hand icon: done outside the systems")
-    assert legend.get("id") in shapes
-    # The reference transaction orders the systems when there are several.
+    labels = _system_labels(root)
+    assert {name: text for name, (text, _a) in labels.items()} == {
+        "Receive the order": "Outlook", "Check the customer": "Salesforce",
+        "Book the order": "SAP", "Confirm the lines": "SAP", "Send the confirmation": "Outlook"}
+    assert _annotations(root)[1] is None
+    assert not any(k.startswith(_BIOC) for sh in _di_shapes(root).values() for k in sh.attrib)
+    shapes, edges = _di_shapes(root), _di_edges(root)
+    for _name, (_label, assoc) in labels.items():
+        assert assoc.get("associationDirection") == "None"
+        tx, ty, tw, _th = _bounds(shapes[assoc.get("sourceRef")])
+        lx, ly, _lw, lh = _bounds(shapes[assoc.get("targetRef")])
+        assert ly + lh < ty and lx == tx
+        (x1, y1), (x2, y2) = _points(edges[assoc.get("id")])
+        assert (y1, y2) == (ty, ly + lh) and x1 == x2 and tx < x1 < tx + tw
+
+
+def test_a_map_done_in_one_system_says_it_once():
+    """When every task of a map that is done in a system is done in the
+    same one, the map says it once, in a text annotation joined to nothing
+    ("System: SAP"), and no task carries a label."""
     anno = _rich_anno()
-    anno["steps"] += [_step("B", "Check the customer", "2026-05-18T10:00:00Z"),
-                      _step("B", "Book the order", "2026-05-18T10:00:10Z")]
-    for s in anno["steps"][-2:]:
-        s["system"] = "Salesforce" if s["name"].startswith("Check") else "SAP"
-    anno["pattern_run"] = {"case_id": "B"}
-    _notes, legend = _annotations(_written(anno, context=_plain_context()))
-    assert _text(legend) == ("Colour by system\nSalesforce: blue\nSAP: orange\nOutlook: green\n"
-                             "Hand icon: done outside the systems")
-
-
-def test_a_system_past_the_palette_keeps_the_default_look():
-    """Nine named colours: a tenth system's tasks keep bpmn-js's own look,
-    and the legend says so."""
-    names = [f"Step {i}" for i in range(10)]
-    steps = [_step("A", n, f"2026-05-18T09:00:{i:02d}Z") for i, n in enumerate(names)]
-    for i, s in enumerate(steps):
-        s["system"] = f"System {i}"
-    root = _written({"steps": steps}, context=_plain_context())
-    shapes = _di_shapes(root)
-    fills = [shapes[_tasks(root)[n].get("id")].get(f"{_BIOC}fill") for n in names]
-    assert all(fills[:9]) and len(set(fills[:9])) == 9 and fills[9] is None
-    _notes, legend = _annotations(root)
-    assert _text(legend).split("\n")[-2:] == ["System 8: grey", "System 9: no colour"]
+    for s in anno["steps"]:
+        if s.get("system"):
+            s["system"] = "SAP"
+    root = _written(anno, context=_plain_context())
+    assert _system_labels(root) == {}
+    label = _annotations(root)[1]
+    assert label.get("id") == "TextAnnotation_system" and _text(label) == "System: SAP"
+    assert label.get("id") in _di_shapes(root)
 
 
 def test_attachment_ids_become_unique_xml_ids():
@@ -1185,10 +1199,10 @@ def test_attachment_ids_become_unique_xml_ids():
                     "three.pdf": "DataObjectReference_file"}
 
 
-def test_without_systems_there_are_no_colours_and_no_legend():
+def test_without_systems_there_are_no_labels_and_no_colours():
     root = _written(_flow_anno(), context=_plain_context())
     assert not any(k.startswith(_BIOC) for sh in _di_shapes(root).values() for k in sh.attrib)
-    assert _annotations(root) == ({}, None)
+    assert _annotations(root) == ({}, None) and _system_labels(root) == {}
 
 
 def _mined_rich_anno():
@@ -1261,9 +1275,25 @@ def test_a_rich_map_is_valid_bpmn_and_nothing_overlaps(case):
     root = _written(anno, context=_plain_context())
     _assert_valid_bpmn(root)
     _well_formed(root)
-    assert _annotations(root)[1] is not None                 # the legend
+    assert _system_labels(root)                  # 2.0.1: each task's system above it
     assert _process(root).findall(f"{_BPMN}dataObjectReference")
     _assert_readable(root, min_label_w=84 if case == "mined" else 90)
+
+
+def test_a_long_note_and_files_under_one_task_keep_clear_of_each_other():
+    """2.0.1: a task's note sits under it and its files right of the note, so
+    a note five lines tall and two files with long names on one task leave
+    every box, line and name clear."""
+    anno = _rich_anno()
+    step = anno["steps"][0]["step_id"]
+    anno["analyst_notes"].append({"id": "n5", "text": _LONG_NOTE + " " + _LONG_NOTE, "step_id": step,
+                                  "at": None, "added_at": "2026-09-24T10:00:00Z"})
+    anno["attachments"].append({"id": "a4", "file": "a-very-long-file-name-for-the-order.pdf",
+                                "label": "The customer's signed order form, scanned", "step_id": step,
+                                "added_at": "2026-09-24T10:00:00Z"})
+    root = _written(anno, context=_plain_context())
+    _assert_valid_bpmn(root)
+    _assert_readable(root)
 
 
 def test_the_rich_map_is_written_the_same_way_every_time():
@@ -1278,7 +1308,6 @@ def test_the_rich_map_is_written_the_same_way_every_time():
 # ---- lane FX3: the waste flag on the step map ---------------------------------------
 
 _WASTE_DOC = "Flagged as waste: this step should not be needed."
-_LEGEND_WASTE = "Waste: a step that should not be needed"
 
 
 def _waste_marks(root):
@@ -1293,12 +1322,12 @@ def _waste_marks(root):
     return out
 
 
-def test_a_step_flagged_as_waste_marks_its_task_and_the_legend_says_what_the_mark_means():
+def test_a_step_flagged_as_waste_marks_its_task():
     """Lane FX3, the live map's rule (process-map-levels.wasteNodes): a task a
     visible step of which is flagged as waste carries a small text
     annotation "Waste" (its documentation says what it means), joined by an
-    association; the legend's last line explains it. A hidden step marks
-    nothing, and a map without a flag has no such line."""
+    association, right of the task's system label. A hidden step marks
+    nothing."""
     anno = _rich_anno()
     anno["steps"][2]["flags"] = {"waste": True}          # Book the order
     root = _written(anno, context=_plain_context())
@@ -1309,7 +1338,6 @@ def test_a_step_flagged_as_waste_marks_its_task_and_the_legend_says_what_the_mar
     assert (mark.get("id"), assoc.get("id")) == ("TextAnnotation_waste_1", "Association_waste_1")
     assert (_text(mark), _text(mark, "documentation")) == ("Waste", _WASTE_DOC)
     assert assoc.get("associationDirection") == "None"
-    assert _text(_annotations(root)[1]).split("\n")[-1] == _LEGEND_WASTE
     # The mark sits above its task, the association rising from the task's
     # top into the mark's lower hook; both have a place on the diagram.
     shapes, edges = _di_shapes(root), _di_edges(root)
@@ -1318,19 +1346,19 @@ def test_a_step_flagged_as_waste_marks_its_task_and_the_legend_says_what_the_mar
     assert my + mh < ty and mx < tx + tw
     (x1, y1), (x2, y2) = _points(edges[assoc.get("id")])
     assert (y1, y2) == (ty, my + mh) and tx < x1 < tx + tw and mx < x2 < mx + mw
-    # A hidden step marks nothing; without a flag, no mark and no legend line.
+    # A hidden step marks nothing; without a flag, no mark.
     anno["steps"][2]["state"] = "hidden"
     anno["steps"][2]["flags"] = {"waste": True}
     anno["steps"][3]["flags"] = {"waste": False}
     root = _written(anno, context=_plain_context())
     assert _waste_marks(root) == {}
-    assert _LEGEND_WASTE not in (_text(_annotations(root)[1]) or "")
 
 
-def test_a_waste_mark_beside_a_note_keeps_the_map_valid_and_nothing_overlaps():
-    """The Waste mark of a task with notes sits right of the note, level
-    with its bottom: the rich maps stay valid BPMN, and no line crosses a
-    box, no two boxes overlap and every label stays clear (lane FX3)."""
+def test_a_waste_mark_beside_a_system_label_keeps_the_map_valid_and_nothing_overlaps():
+    """The Waste mark of a task with a system label sits right of the
+    label, level with its bottom: the rich maps stay valid BPMN, and no line
+    crosses a box, no two boxes overlap and every label stays clear (lane
+    FX3; 2.0.1 put the system label where the note was)."""
     for anno in (_rich_anno(), _mined_rich_anno()):
         for s in anno["steps"]:
             if s["name"] in ("Check the customer", "Search", "Escalate"):
@@ -1342,15 +1370,16 @@ def test_a_waste_mark_beside_a_note_keeps_the_map_valid_and_nothing_overlaps():
         assert marks
         shapes = _di_shapes(root)
         notes = {_text(n): n for n in _process(root).findall(f"{_BPMN}textAnnotation")
-                 if not n.get("id").startswith("TextAnnotation_waste_")}
+                 if re.match(r"^TextAnnotation_\d+$", n.get("id"))}
         for name, (mark, assoc) in marks.items():
             joined = [a for a in _process(root).findall(f"{_BPMN}association")
-                      if a.get("sourceRef") == assoc.get("sourceRef") and a is not assoc]
+                      if a.get("sourceRef") == assoc.get("sourceRef") and a is not assoc
+                      and a.get("targetRef").startswith("TextAnnotation_system_")]
             if joined:
-                note_box = _bounds(shapes[joined[0].get("targetRef")])
+                label_box = _bounds(shapes[joined[0].get("targetRef")])
                 mark_box = _bounds(shapes[mark.get("id")])
-                assert mark_box[0] >= note_box[0] + note_box[2]
-                assert mark_box[1] + mark_box[3] == note_box[1] + note_box[3]
+                assert mark_box[0] >= label_box[0] + label_box[2]
+                assert mark_box[1] + mark_box[3] == label_box[1] + label_box[3]
         assert notes
         _assert_readable(root, min_label_w=84)
 

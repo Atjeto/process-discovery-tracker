@@ -35,9 +35,10 @@ function createSession({ baseDir, engagementId, config, consent }) {
     engagement_id: engagement,
     /* Lift the analyst-entered request name out of the config snapshot to a
        first-class field so the recents list and the viewer header can show it
-       without digging into manifest.config. This is the name the operator
-       typed in Recording setup (Request name); it was previously saved only
-       inside config and never surfaced anywhere (D4). */
+       without digging into manifest.config: the request name from the
+       config (a PDT_CONFIG file, or a Recording setup saved before 2.0.1,
+       when the SME's app still had one; the analyst now writes the request
+       in the viewer). It was previously saved only inside config (D4). */
     engagement_name: (config && config.engagement_name) || null,
     started_at: new Date().toISOString(),
     ended_at: null,

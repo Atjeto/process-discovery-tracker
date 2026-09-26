@@ -3,8 +3,8 @@
 Serializes the step map's BPMN (a pm4py BPMN object, drawn by
 bpmn_observed from the step flow edges) with a pure-Python layout, wrapped
 into rows so a long flow prints legibly on a page, with
-what contract C18 puts beside the tasks (their kinds and colours, notes,
-data objects and a legend), and (contract C19) one plane per map: a
+what contract C18 puts beside the tasks (their kinds, the system each is
+done in, notes and data objects), and (contract C19) one plane per map: a
 sub-process's map is written inside its collapsed bpmn:subProcess and drawn
 in a diagram of its own (_Plane). The step-level observed-flow BPMN
 (bpmn_observed.py) is the only caller.
@@ -45,10 +45,6 @@ _BPMNDI_NS = "http://www.omg.org/spec/BPMN/20100524/DI"
 _DC_NS = "http://www.omg.org/spec/DD/20100524/DC"
 _DI_NS = "http://www.omg.org/spec/DD/20100524/DI"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
-# bpmn-js's colour attributes on a shape (bioc:fill, bioc:stroke); other
-# tools ignore them.
-_BIOC_NS = "http://bpmn.io/schema/bpmn/biocolor/1.0"
-
 _XML_ID_BAD = re.compile(r"[^A-Za-z0-9_\-]")
 
 # Shape dimensions for the layout. Tasks and subprocesses get one
@@ -105,38 +101,49 @@ _LABEL_PX = 12
 _LEGIBLE_PT = 8.5
 _MAX_ROWS = 8
 
-# Contract C18: what sits beside a task. Its notes are a text annotation above
-# it, level with its left side, which bpmn-js writes in 12 px Arial, 7 px in
-# from its edges, 14.4 px a line; the association rises from the task's top
-# into the note's bracket, through the gap below the note. Its attached files
-# are data objects (36 x 50 in bpmn-js) under it, side by side, each with its
-# name under it (an 11 px label at most 90 px wide), the data association
-# rising from each to the task's bottom. A named event has its name under it,
-# a little below its thick circle. The layout keeps room for all of them in
-# the node's column (_layout_full above, below, min_width).
+# Contract C18: what sits beside a task. The system it is done in (2.0.1) is a
+# one-line text annotation above it, level with its left side, which bpmn-js
+# writes in 12 px Arial, 7 px in from its edges, 14.4 px a line; the
+# association rises from the task's top into the end of the label bracket's
+# lower hook, through the gap below the label. Its notes are a text
+# annotation under it, level with its left side, the association falling
+# from the task's bottom into the end of the note bracket's upper hook. Its
+# attached files are data objects (36 x 50 in bpmn-js) under it, side by
+# side (right of its note when it has one), each with its name under it (an
+# 11 px label at most 90 px wide), the data association rising from each to
+# the task's bottom. A named event has its name under it, a little below its
+# thick circle. The layout keeps room for all of them in the node's column
+# (_layout_full above, below, min_width).
 _NOTE_W = 140
 _NOTE_PAD = 7
 _NOTE_LINE = 14.4
 _NOTE_GAP = 16
-_NOTE_HOOK = 10    # the association meets the end of the bracket's lower hook
+_NOTE_HOOK = 10    # the association meets the end of the bracket's hook
 _DATA_W = 36
 _DATA_H = 50
 _DATA_SLOT = 96
 _DATA_GAP = 16
 _EVENT_NAME_GAP = 3   # an end event's thick circle reaches 2 px below its box
 # Lane FX3: a task a step of which is flagged as waste has a small text
-# annotation above it, next to its notes' place: level with the task's left
-# side when it has no note, else right of the note, _WASTE_GAP apart; the
-# association rises from the task's top (its right end when a note is there)
-# into the end of the mark's lower hook. Its ids are TextAnnotation_waste_<k>
-# and Association_waste_<k>, so the viewer never takes it for a step's notes,
-# which the PDD's pictures leave out (asis-links.isStepNote).
+# annotation above it, next to its system label's place: level with the
+# task's left side when it has no label, else right of the label,
+# _WASTE_GAP apart; the association rises from the task's top (its right end
+# when a label is there) into the end of the mark's lower hook. Its ids are
+# TextAnnotation_waste_<k> and Association_waste_<k>, so the viewer never
+# takes it for a step's notes, which the PDD's pictures leave out
+# (asis-links.isStepNote). The system labels are TextAnnotation_system_<k>
+# and Association_system_<k>; the one label of a map whose every task is
+# done in one system is TextAnnotation_system, joined to nothing.
 _WASTE_TEXT = "Waste"
 _WASTE_DOC = "Flagged as waste: this step should not be needed."
 _WASTE_GAP = 8
-_LEGEND_GAP = 24   # between the diagram and a legend beside or under it
-_LEGEND_CLEAR = 12
-_LEGEND_STEP = 24
+_SYSTEM_PREFIX = "System: "   # the one label of a map done in one system
+# A collapsed sub-process is taller than a task, so its name keeps clear of
+# the + marker bpmn-js draws at its bottom (a three-line name ran into it).
+_SUB_EXTRA = 16
+_MAP_LABEL_GAP = 24   # between the diagram and its label beside or under it
+_MAP_LABEL_CLEAR = 12
+_MAP_LABEL_STEP = 24
 
 
 def _safe_id(prefix: str, idx: int, raw: str | None) -> str:
@@ -682,10 +689,10 @@ def _note_size(text: str, width: int = _NOTE_W) -> tuple[int, int]:
     return width, math.ceil(lines * _NOTE_LINE + 2 * _NOTE_PAD)
 
 
-def _legend_size(text: str) -> tuple[int, int]:
-    """(width, height) of the legend's text annotation: as wide as its
-    longest line (each line one entry, none wrapped) and as tall as its
-    lines (_note_size)."""
+def _annotation_size(text: str) -> tuple[int, int]:
+    """(width, height) of a short text annotation (the map's one system
+    label, a task's system label, the Waste mark): as wide as its longest
+    line (none wrapped) and as tall as its lines (_note_size)."""
     widest = max(_text_px(line, 12) for line in text.split("\n"))
     return _note_size(text, math.ceil(widest) + 2 * _NOTE_PAD + 4)
 
@@ -799,10 +806,11 @@ def _place_labels(lay: _Layout, records: list[tuple[str, str, str, str]],
     return placed
 
 
-def _place_legend(size: tuple[int, int], boxes, stretches) -> tuple[int, int, int, int]:
-    """Where the legend sits (contract C18): inside the diagram when there is
-    room, the lowest place (then the rightmost) that keeps _LEGEND_CLEAR px
-    from every box, name and line, tried every _LEGEND_STEP px from the
+def _place_map_label(size: tuple[int, int], boxes, stretches) -> tuple[int, int, int, int]:
+    """Where the map's one system label sits (contract C18 as 2.0.1 amended
+    it, where the legend sat before): inside the diagram when there is
+    room, the lowest place (then the rightmost) that keeps _MAP_LABEL_CLEAR px
+    from every box, name and line, tried every _MAP_LABEL_STEP px from the
     bottom right corner; else beside the diagram or under it, whichever
     prints the diagram larger on a landscape page (under it on a tie)."""
     w, h = size
@@ -812,58 +820,80 @@ def _place_legend(size: tuple[int, int], boxes, stretches) -> tuple[int, int, in
     right = max([b[0] + b[2] for b in boxes] + [p[0] for p in points])
     bottom = max([b[1] + b[3] for b in boxes] + [p[1] for p in points])
     left, top, right, bottom = (int(v) for v in (left, top, right, bottom))
-    for y in range(bottom - h, top - 1, -_LEGEND_STEP):
-        for x in range(right - w, left - 1, -_LEGEND_STEP):
-            if not _touches((x, y, w, h), _LEGEND_CLEAR, boxes, [], stretches):
+    for y in range(bottom - h, top - 1, -_MAP_LABEL_STEP):
+        for x in range(right - w, left - 1, -_MAP_LABEL_STEP):
+            if not _touches((x, y, w, h), _MAP_LABEL_CLEAR, boxes, [], stretches):
                 return x, y, w, h
 
     def scale(box):
         width = max(right, box[0] + w) - min(left, box[0])
         height = max(bottom, box[1] + h) - min(top, box[1])
         return min(_PAGE_W_PT / width, _PAGE_H_PT / height)
-    under = (left, bottom + _LEGEND_GAP, w, h)
-    beside = (right + _LEGEND_GAP, top, w, h)
+    under = (left, bottom + _MAP_LABEL_GAP, w, h)
+    beside = (right + _MAP_LABEL_GAP, top, w, h)
     return beside if scale(beside) > scale(under) else under
 
 
 def _waste_size() -> tuple[int, int]:
     """(width, height) of the Waste mark (lane FX3): one line, as wide as
-    its word (the legend's rule, _legend_size)."""
-    return _legend_size(_WASTE_TEXT)
+    its word (_annotation_size)."""
+    return _annotation_size(_WASTE_TEXT)
+
+
+def _system_size(name: str) -> tuple[int, int]:
+    """(width, height) of a task's system label (2.0.1): one line, as wide
+    as its name (_annotation_size), at most a note wide."""
+    w, h = _annotation_size(name)
+    return (w, h) if w <= _NOTE_W else _note_size(name)
 
 
 def _beside(lay: _Layout, note_sizes: dict[str, tuple[int, int]],
             data_names: dict[str, list[tuple[str, str, str, tuple[int, int]]]],
             event_names: dict[str, tuple[int, int]],
-            waste_nodes: list[str] | None = None):
+            waste_nodes: list[str] | None = None,
+            system_sizes: dict[str, tuple[int, int]] | None = None):
     """Where contract C18's elements sit once the nodes are placed:
     ({task id: note box}, {task id: association points}, {data key: (task
     id, box, name box, association points)}, {event id: name box},
-    {task id: (Waste mark box, association points)}). A note
-    sits _NOTE_GAP above its task, level with its left side, the
-    association rising straight from the task's top into the end of the
-    note bracket's lower hook. The data objects of a task sit side by side
-    under it, centred, _DATA_GAP below it, each name centred under its
-    object, each data association rising from the object's top to the
-    task's bottom (straight up when the object is under the task). An
-    event's name is centred under it, _EVENT_NAME_GAP below it. Lane FX3:
-    the Waste mark of a task (`waste_nodes`) sits in its note's place, or
-    right of its note, _WASTE_GAP apart, level with the note's bottom."""
-    notes, note_lines, data, events, waste = {}, {}, {}, {}, {}
-    for nid, (w, h) in note_sizes.items():
+    {task id: (Waste mark box, association points)}, {task id: (system
+    label box, association points)}). A task's system label (2.0.1) sits
+    _NOTE_GAP above it, level with its left side, the association rising
+    straight from the task's top into the end of the label bracket's lower
+    hook. A note sits _NOTE_GAP under its task, level with its left side,
+    the association falling straight from the task's bottom into the end of
+    the note bracket's upper hook. The data objects of a task sit side by
+    side under it, centred (right of its note, _DATA_GAP apart, when it has
+    one), _DATA_GAP below it, each name centred under its object, each data
+    association rising from the object's top to the task's bottom (straight
+    up when the object is under the task). An event's name is centred under
+    it, _EVENT_NAME_GAP below it. Lane FX3: the Waste mark of a task
+    (`waste_nodes`) sits in its system label's place, or right of its
+    label, _WASTE_GAP apart, level with the label's bottom."""
+    notes, note_lines, data, events, waste, systems = {}, {}, {}, {}, {}, {}
+    system_sizes = system_sizes or {}
+    for nid, (w, h) in system_sizes.items():
         tx, ty, _tw, _th = lay.pos[nid]
-        notes[nid] = (tx, ty - _NOTE_GAP - h, w, h)
-        note_lines[nid] = [(tx + _NOTE_HOOK, ty), (tx + _NOTE_HOOK, ty - _NOTE_GAP)]
+        systems[nid] = ((tx, ty - _NOTE_GAP - h, w, h),
+                        [(tx + _NOTE_HOOK, ty), (tx + _NOTE_HOOK, ty - _NOTE_GAP)])
+    for nid, (w, h) in note_sizes.items():
+        tx, ty, _tw, th = lay.pos[nid]
+        notes[nid] = (tx, ty + th + _NOTE_GAP, w, h)
+        note_lines[nid] = [(tx + _NOTE_HOOK, ty + th), (tx + _NOTE_HOOK, ty + th + _NOTE_GAP)]
     ww, wh = _waste_size()
     for nid in waste_nodes or []:
         tx, ty, tw, _th = lay.pos[nid]
-        wx = tx + note_sizes[nid][0] + _WASTE_GAP if nid in note_sizes else tx
-        start = (tx + tw - _NOTE_HOOK, ty) if nid in note_sizes else (tx + _NOTE_HOOK, ty)
+        wx = tx + system_sizes[nid][0] + _WASTE_GAP if nid in system_sizes else tx
+        start = (tx + tw - _NOTE_HOOK, ty) if nid in system_sizes else (tx + _NOTE_HOOK, ty)
         waste[nid] = ((wx, ty - _NOTE_GAP - wh, ww, wh),
                       [start, (wx + _NOTE_HOOK, ty - _NOTE_GAP)])
     for nid, objects in data_names.items():
         tx, ty, tw, th = lay.pos[nid]
-        left = tx + tw // 2 - (len(objects) * _DATA_SLOT - (_DATA_SLOT - _LABEL_WRAP)) // 2
+        if nid in note_sizes:
+            # Right of the note: each file's name (up to _LABEL_WRAP wide,
+            # centred under it) keeps clear of the note, however tall.
+            left = tx + note_sizes[nid][0] + _DATA_GAP
+        else:
+            left = tx + tw // 2 - (len(objects) * _DATA_SLOT - (_DATA_SLOT - _LABEL_WRAP)) // 2
         oy = ty + th + _DATA_GAP
         for k, (key, _name, _doc, (lw, lh)) in enumerate(objects):
             ocx = left + k * _DATA_SLOT + _LABEL_WRAP // 2
@@ -873,7 +903,7 @@ def _beside(lay: _Layout, note_sizes: dict[str, tuple[int, int]],
     for nid, (lw, lh) in event_names.items():
         x, y, w, h = lay.pos[nid]
         events[nid] = (x + w // 2 - lw // 2, y + h + _EVENT_NAME_GAP, lw, lh)
-    return notes, note_lines, data, events, waste
+    return notes, note_lines, data, events, waste, systems
 
 
 def _bounds(parent, box) -> None:
@@ -892,10 +922,10 @@ def export_bpmn(bpmn_obj, out_path: str, *,
                 flow_names: dict | None = None,
                 label_room: bool = False,
                 task_tags: dict | None = None,
-                colours: dict | None = None,
+                systems: dict | None = None,
                 notes: dict | None = None,
                 data: dict | None = None,
-                legend: str | None = None,
+                map_system: str | None = None,
                 sub_planes: dict | None = None,
                 waste: set | None = None) -> None:
     """Serialize a BPMN 2.0 file with a computed BPMNDI layout.
@@ -919,18 +949,22 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     drawn is there; then it moves the same way.
 
     Contract C18, each keyed by a task (its id()): `task_tags` its element
-    ("task", "manualTask"; else by its class); `colours` its (fill,
-    stroke), written as bpmn-js's bioc:fill and bioc:stroke; `notes` its
-    (text, whole text or None): a text annotation above it, joined by an
+    ("task", "manualTask"; else by its class); `systems` the system it is
+    done in (2.0.1): a one-line text annotation above it, joined by an
+    association, so a process manager changes it by typing in any BPMN
+    tool (a colour could be changed in none of them); `notes` its (text,
+    whole text or None): a text annotation under it, joined by an
     association, the whole text its documentation when the shown one was
     cut; `data` its [(key, name, documentation)]: a data object reference
     each (ids DataObjectReference_<key> and DataObject_<key>) under it,
     joined by a data input association (the task holds it, with the
-    property BPMN 2.0 wants as its target). `legend` is the text of one
-    more text annotation that no association joins (_place_legend). Lane
-    FX3: `waste` holds the tasks a step of which is flagged as waste, each
-    with a small text annotation, "Waste", next to its notes' place
-    (_beside), joined by an association. Every
+    property BPMN 2.0 wants as its target). `map_system` is the one system
+    of a map whose every task is done in it, said once ("System: SAP") in
+    a text annotation that no association joins (_place_map_label), in place
+    of a label on every task. Lane FX3: `waste` holds the tasks a step of
+    which is flagged as waste, each with a small text annotation, "Waste",
+    next to its system label's place (_beside), joined by an association.
+    Every
     element has its place on the diagram, and a named event its name's:
     the layout keeps room for them all (_layout_full), and the lines and
     the flows' names keep clear of them.
@@ -940,8 +974,9 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     keyword arguments above for it (its own "sub_planes" too, at any depth)
     and "prefix", the text every id of its plane starts with, unique in the
     file. Such a task (tagged "subProcess" in `task_tags`) is written as a
-    collapsed bpmn:subProcess, named, documented, coloured and joined to its
-    notes and files like a task, task sized, its shape isExpanded="false";
+    collapsed bpmn:subProcess, named, documented, labelled and joined to its
+    notes and files like a task, _SUB_EXTRA px taller than a task (the +
+    marker keeps clear of its name), its shape isExpanded="false";
     it holds the map's model, drawn in a BPMNDiagram of its own whose
     plane's bpmnElement is the sub-process (_Plane). A task tagged
     "subProcess" without an entry is a collapsed sub-process with nothing
@@ -954,7 +989,6 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     ET.register_namespace("dc", _DC_NS)
     ET.register_namespace("di", _DI_NS)
     ET.register_namespace("xsi", _XSI_NS)
-    ET.register_namespace("bioc", _BIOC_NS)
     defs = ET.Element(
         f"{{{_BPMN_NS}}}definitions",
         {
@@ -968,8 +1002,9 @@ def export_bpmn(bpmn_obj, out_path: str, *,
         {"id": "Process_1", "isExecutable": "false"},
     )
     main = _Plane(bpmn_obj, "", documentation=documentation, flow_names=flow_names,
-                  label_room=label_room, task_tags=task_tags, colours=colours,
-                  notes=notes, data=data, legend=legend, sub_planes=sub_planes, waste=waste)
+                  label_room=label_room, task_tags=task_tags, systems=systems,
+                  notes=notes, data=data, map_system=map_system, sub_planes=sub_planes,
+                  waste=waste)
     # C19: each sub-process's plane, depth first, with the id of the
     # sub-process its diagram draws.
     planes: list[tuple[_Plane, str]] = []
@@ -985,8 +1020,8 @@ def export_bpmn(bpmn_obj, out_path: str, *,
 
 
 # The keyword arguments of export_bpmn a sub-process's map carries (C19).
-_PLANE_KEYS = ("documentation", "flow_names", "label_room", "task_tags", "colours",
-               "notes", "data", "legend", "sub_planes", "waste")
+_PLANE_KEYS = ("documentation", "flow_names", "label_room", "task_tags", "systems",
+               "notes", "data", "map_system", "sub_planes", "waste")
 
 
 class _Plane:
@@ -999,16 +1034,16 @@ class _Plane:
     ids and a sub-process's are unique in the file."""
 
     def __init__(self, bpmn_obj, prefix: str = "", *, documentation=None, flow_names=None,
-                 label_room=False, task_tags=None, colours=None, notes=None, data=None,
-                 legend=None, sub_planes=None, waste=None):
+                 label_room=False, task_tags=None, systems=None, notes=None, data=None,
+                 map_system=None, sub_planes=None, waste=None):
         self.prefix = prefix
         self.documentation = documentation or {}
         flow_names = flow_names or {}
         self.label_room = label_room
-        self.task_tags, self.colours = task_tags or {}, colours or {}
-        notes, data = notes or {}, data or {}
+        self.task_tags = task_tags or {}
+        systems, notes, data = systems or {}, notes or {}, data or {}
         waste = waste or set()
-        self.legend = legend
+        self.map_label = _SYSTEM_PREFIX + map_system if map_system else None
         self.sub_planes = sub_planes or {}
         # C19: the sub-processes drawn collapsed on this plane.
         self.collapsed: set[str] = set()
@@ -1051,6 +1086,8 @@ class _Plane:
         # it takes (_layout_full above, below, min_width).
         self.note_sizes: dict[str, tuple[int, int]] = {}
         self.note_text: dict[str, tuple[str, str | None]] = {}
+        self.system_sizes: dict[str, tuple[int, int]] = {}
+        self.system_text: dict[str, str] = {}
         self.data_names: dict[str, list[tuple[str, str, str, tuple[int, int]]]] = {}
         self.event_names: dict[str, tuple[int, int]] = {}
         self.waste_nodes: list[str] = []
@@ -1060,34 +1097,53 @@ class _Plane:
         for n in self.nodes:
             nid = self.node_id[id(n)]
             name = n.get_name() if hasattr(n, "get_name") else ""
+            half = _shape_size(self.node_cls[nid])[0] // 2
+            # What sits above the task, left to right from its left side: its
+            # system label (2.0.1), then the Waste mark (lane FX3); the task
+            # is centred in its column, which holds their width right of that.
+            above_w = above_h = 0
+            label = systems.get(id(n))
+            if isinstance(label, str) and label.strip():
+                self.system_text[nid] = label.strip()
+                self.system_sizes[nid] = _system_size(label.strip())
+                above_w, above_h = self.system_sizes[nid]
+            if id(n) in waste:
+                self.waste_nodes.append(nid)
+                ww, wh = _waste_size()
+                above_w = above_w + _WASTE_GAP + ww if above_w else ww
+                above_h = max(above_h, wh)
+            if above_w:
+                self.above[nid] = above_h + _NOTE_GAP
+                self.min_width[nid] = 2 * max(half, above_w - half)
+            # What sits under it, left to right from its left side: its note,
+            # then its files; without a note the files are centred under it.
+            below_w = below_h = 0
             if id(n) in notes and notes[id(n)][0]:
                 self.note_text[nid] = notes[id(n)]
                 self.note_sizes[nid] = _note_size(notes[id(n)][0])
-                self.above[nid] = self.note_sizes[nid][1] + _NOTE_GAP
-                # The note starts at the task's left side; the task is centred
-                # in its column, which holds the note's width right of that.
-                half = _shape_size(self.node_cls[nid])[0] // 2
-                self.min_width[nid] = 2 * max(half, self.note_sizes[nid][0] - half)
+                below_w, below_h = self.note_sizes[nid][0], self.note_sizes[nid][1] + _NOTE_GAP
             if data.get(id(n)):
                 objects = [(key, dname, ddoc, _label_size(dname)) for key, dname, ddoc in data[id(n)]]
                 self.data_names[nid] = objects
-                self.below[nid] = _DATA_GAP + _DATA_H + max(size[1] for *_rest, size in objects)
-                self.min_width[nid] = max(self.min_width.get(nid, 0),
-                                          len(objects) * _DATA_SLOT - (_DATA_SLOT - _LABEL_WRAP))
+                files_w = len(objects) * _DATA_SLOT - (_DATA_SLOT - _LABEL_WRAP)
+                files_h = _DATA_GAP + _DATA_H + max(size[1] for *_rest, size in objects)
+                if below_w:
+                    below_w += _DATA_GAP + files_w
+                    self.min_width[nid] = max(self.min_width.get(nid, 0), 2 * max(half, below_w - half))
+                else:
+                    self.min_width[nid] = max(self.min_width.get(nid, 0), files_w)
+                below_h = max(below_h, files_h)
+            elif below_w:
+                self.min_width[nid] = max(self.min_width.get(nid, 0), 2 * max(half, below_w - half))
+            if below_h:
+                self.below[nid] = below_h
             if "Event" in self.node_cls[nid] and name:
                 self.event_names[nid] = _label_size(name)
                 self.below[nid] = _EVENT_NAME_GAP + self.event_names[nid][1]
                 self.min_width[nid] = max(_EVENT_SIZE, self.event_names[nid][0])
-            if id(n) in waste:
-                # Lane FX3: the Waste mark, in the note's place or right of it.
-                self.waste_nodes.append(nid)
-                ww, wh = _waste_size()
-                note_w, note_h = self.note_sizes.get(nid, (0, 0))
-                row = note_w + _WASTE_GAP + ww if note_w else ww
-                self.above[nid] = max(note_h, wh) + _NOTE_GAP
-                half = _shape_size(self.node_cls[nid])[0] // 2
-                self.min_width[nid] = max(self.min_width.get(nid, 0), 2 * max(half, row - half))
         self.note_ids = {nid: f"TextAnnotation_{k}" for k, nid in enumerate(self.note_text, start=1)}
+        self.system_ids = {nid: f"TextAnnotation_system_{k}"
+                           for k, nid in enumerate(self.system_text, start=1)}
         self.waste_ids = {nid: f"TextAnnotation_waste_{k}"
                           for k, nid in enumerate(self.waste_nodes, start=1)}
 
@@ -1154,8 +1210,9 @@ class _Plane:
             if fid in self.flow_docs:
                 ET.SubElement(flow_el, f"{{{_BPMN_NS}}}documentation").text = self.flow_docs[fid]
 
-        # C18: the data objects (flow elements), then the artifacts: the notes,
-        # the legend and the associations.
+        # C18: the data objects (flow elements), then the artifacts: the
+        # system labels, the notes, the Waste marks, a map's one system label
+        # and the associations.
         for objects in self.data_names.values():
             for key, dname, ddoc, _size in objects:
                 ET.SubElement(parent, f"{{{_BPMN_NS}}}dataObject",
@@ -1165,6 +1222,10 @@ class _Plane:
                                      "dataObjectRef": self._pid(f"DataObject_{key}")})
                 if ddoc:
                     ET.SubElement(ref, f"{{{_BPMN_NS}}}documentation").text = ddoc
+        for nid, label in self.system_text.items():
+            ann = ET.SubElement(parent, f"{{{_BPMN_NS}}}textAnnotation",
+                                {"id": self._pid(self.system_ids[nid])})
+            ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = label
         for nid, (shown, whole) in self.note_text.items():
             ann = ET.SubElement(parent, f"{{{_BPMN_NS}}}textAnnotation",
                                 {"id": self._pid(self.note_ids[nid])})
@@ -1176,10 +1237,14 @@ class _Plane:
                                 {"id": self._pid(self.waste_ids[nid])})
             ET.SubElement(ann, f"{{{_BPMN_NS}}}documentation").text = _WASTE_DOC
             ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = _WASTE_TEXT
-        if self.legend:
+        if self.map_label:
             ann = ET.SubElement(parent, f"{{{_BPMN_NS}}}textAnnotation",
-                                {"id": self._pid("TextAnnotation_legend")})
-            ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = self.legend
+                                {"id": self._pid("TextAnnotation_system")})
+            ET.SubElement(ann, f"{{{_BPMN_NS}}}text").text = self.map_label
+        for k, nid in enumerate(self.system_text, start=1):
+            ET.SubElement(parent, f"{{{_BPMN_NS}}}association",
+                          {"id": self._pid(f"Association_system_{k}"), "associationDirection": "None",
+                           "sourceRef": self._pid(nid), "targetRef": self._pid(self.system_ids[nid])})
         for k, nid in enumerate(self.note_text, start=1):
             ET.SubElement(parent, f"{{{_BPMN_NS}}}association",
                           {"id": self._pid(f"Association_{k}"), "associationDirection": "None",
@@ -1196,6 +1261,8 @@ class _Plane:
         nodes, node_id, node_cls = self.nodes, self.node_id, self.node_cls
         flow_records = self.flow_records
         sizes = {nid: _shape_size(node_cls[nid]) for nid in node_id.values()}
+        for nid in self.collapsed:
+            sizes[nid] = (sizes[nid][0], sizes[nid][1] + _SUB_EXTRA)
         edge_list = [(s, t) for (_, s, t, _n) in flow_records]
         ids = list(node_id.values())
         splits = {sid for (_f, sid, _t, name) in flow_records if name}
@@ -1210,35 +1277,45 @@ class _Plane:
             counts[(channel, row)] = counts.get((channel, row), 0) + 1
         lay = _layout_full(ids, edge_list, sizes, lanes_hint=counts, splits=splits,
                            label_room=label_room, **room)
-        note_boxes, note_lines, data_boxes, event_boxes, waste_marks = _beside(
-            lay, self.note_sizes, self.data_names, self.event_names, self.waste_nodes)
+        note_boxes, note_lines, data_boxes, event_boxes, waste_marks, system_marks = _beside(
+            lay, self.note_sizes, self.data_names, self.event_names, self.waste_nodes,
+            self.system_sizes)
         extra = (list(note_boxes.values()) + [d[1] for d in data_boxes.values()]
                  + [d[2] for d in data_boxes.values()] + list(event_boxes.values())
-                 + [box for box, _line in waste_marks.values()])
+                 + [box for box, _line in waste_marks.values()]
+                 + [box for box, _line in system_marks.values()])
         extra_lines = [(a, b) for pts in list(note_lines.values()) + [d[3] for d in data_boxes.values()]
                        + [line for _box, line in waste_marks.values()]
+                       + [line for _box, line in system_marks.values()]
                        for a, b in zip(pts, pts[1:])]
         routes = {fid: _waypoints(lay, lanes.get(fid), sid, tid, named=bool(name))
                   for (fid, sid, tid, name) in flow_records}
         events = [_event_label(lay.pos[node_id[id(n)]], n.get_name()) for n in nodes
                   if "Event" in node_cls[node_id[id(n)]] and hasattr(n, "get_name") and n.get_name()]
+        # The flows of a gateway part at the gateway, from its top or bottom
+        # corner (_vertex_route), on every map: a skip that left a split from
+        # the same corner as the main line ran on top of it, so the fork was
+        # not seen (2.0.1). A mined map's branch keeps its fixed name place
+        # (_label_bounds) while its line keeps its side.
+        gateways = {nid for nid, cls in node_cls.items() if "Gateway" in cls}
+        corners: set[tuple[str, str]] = set()
+        parted: set[str] = set()
+        for fid, sid, tid, _name in flow_records:
+            route = _vertex_route(lay, lanes.get(fid), sid, tid, gateways, corners, extra)
+            if route:
+                routes[fid] = route
+                parted.add(fid)
         first = None
-        if label_room:
-            gateways = {nid for nid, cls in node_cls.items() if "Gateway" in cls}
-            corners: set[tuple[str, str]] = set()
-            for fid, sid, tid, _name in flow_records:
-                routes[fid] = (_vertex_route(lay, lanes.get(fid), sid, tid, gateways, corners, extra)
-                               or routes[fid])
-        else:
+        if not label_room:
             first = {fid: _label_bounds(routes[fid], lanes.get(fid))
-                     for (fid, _s, _t, name) in flow_records if name}
+                     for (fid, _s, _t, name) in flow_records if name and fid not in parted}
         placed = _place_labels(lay, flow_records, routes, lanes, taken=events, boxes=extra,
                                lines=extra_lines, first=first)
-        legend_box = None
-        if self.legend:
+        map_label_box = None
+        if self.map_label:
             drawn = list(lay.pos.values()) + extra + list(placed.values())
             lines = [s for pts in routes.values() for s in zip(pts, pts[1:])] + extra_lines
-            legend_box = _place_legend(_legend_size(self.legend), drawn, lines)
+            map_label_box = _place_map_label(_annotation_size(self.map_label), drawn, lines)
 
         diagram = ET.SubElement(
             defs, f"{{{_BPMNDI_NS}}}BPMNDiagram", {"id": self._pid("BPMNDiagram_1")})
@@ -1246,16 +1323,11 @@ class _Plane:
             diagram, f"{{{_BPMNDI_NS}}}BPMNPlane",
             {"id": self._pid("BPMNPlane_1"), "bpmnElement": element})
 
-        colour_of = {node_id[key]: value for key, value in self.colours.items() if key in node_id}
         for nid in node_id.values():
             attrs = {"id": self._pid(f"Shape_{nid}"), "bpmnElement": self._pid(nid)}
             if nid in self.collapsed:
                 # C19: a sub-process is drawn collapsed; its map is its own plane.
                 attrs["isExpanded"] = "false"
-            if nid in colour_of:
-                fill, stroke = colour_of[nid]
-                attrs[f"{{{_BIOC_NS}}}stroke"] = stroke
-                attrs[f"{{{_BIOC_NS}}}fill"] = fill
             shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape", attrs)
             _bounds(shape, lay.pos[nid])
             if nid in event_boxes:
@@ -1266,6 +1338,11 @@ class _Plane:
                                    "bpmnElement": self._pid(f"DataObjectReference_{key}")})
             _bounds(shape, box)
             _bounds(ET.SubElement(shape, f"{{{_BPMNDI_NS}}}BPMNLabel"), name_box)
+        for nid, (box, _line) in system_marks.items():
+            shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
+                                  {"id": self._pid(f"Shape_{self.system_ids[nid]}"),
+                                   "bpmnElement": self._pid(self.system_ids[nid])})
+            _bounds(shape, box)
         for nid, box in note_boxes.items():
             shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
                                   {"id": self._pid(f"Shape_{self.note_ids[nid]}"),
@@ -1276,11 +1353,11 @@ class _Plane:
                                   {"id": self._pid(f"Shape_{self.waste_ids[nid]}"),
                                    "bpmnElement": self._pid(self.waste_ids[nid])})
             _bounds(shape, box)
-        if legend_box is not None:
+        if map_label_box is not None:
             shape = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNShape",
-                                  {"id": self._pid("Shape_TextAnnotation_legend"),
-                                   "bpmnElement": self._pid("TextAnnotation_legend")})
-            _bounds(shape, legend_box)
+                                  {"id": self._pid("Shape_TextAnnotation_system"),
+                                   "bpmnElement": self._pid("TextAnnotation_system")})
+            _bounds(shape, map_label_box)
 
         for fid, sid, tid, name in flow_records:
             edge = ET.SubElement(
@@ -1291,6 +1368,11 @@ class _Plane:
             if name:
                 label = ET.SubElement(edge, f"{{{_BPMNDI_NS}}}BPMNLabel")
                 _bounds(label, placed[fid])
+        for k, nid in enumerate(self.system_text, start=1):
+            edge = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
+                                 {"id": self._pid(f"Edge_Association_system_{k}"),
+                                  "bpmnElement": self._pid(f"Association_system_{k}")})
+            _waypoints_of(edge, system_marks[nid][1])
         for k, nid in enumerate(self.note_text, start=1):
             edge = ET.SubElement(plane, f"{{{_BPMNDI_NS}}}BPMNEdge",
                                  {"id": self._pid(f"Edge_Association_{k}"),

@@ -105,7 +105,8 @@ def test_the_shipped_library_lists_the_known_systems_and_no_activity():
     assert lib.problem is None and lib.version == "1"
     assert lib.activities == {} and lib.runs == {}
     rules = json.loads((REPO / "shared" / "system-names.json").read_text(encoding="utf-8"))["rules"]
-    assert sorted(lib.applications) == sorted({r["system"] for r in rules})
+    # A site rule (2.0.1) names a site from the title, not one system.
+    assert sorted(lib.applications) == sorted({r["system"] for r in rules if "system" in r})
     assert len(set(lib.applications)) == len(lib.applications)
     doc = json.loads(APP_LIBRARY.read_text(encoding="utf-8"))
     assert doc["format"] == 1 and all(app["activities"] == [] for app in doc["applications"])
@@ -544,38 +545,3 @@ def test_the_technical_details_name_each_rows_activity_and_code(tmp_path):
         ("Step 2", "Print the order", "ORD-2"), ("Step 3", "", "")]
 
 
-@pytest.mark.skipif(not _PIPELINE_OK, reason="pm4py not installed")
-def test_the_step_map_colours_follow_the_librarys_application_order():
-    import bpmn_observed
-    from step_context import StepContext
-    assert bpmn_observed._in_library_order(
-        ["Outlook", "Acme", "Salesforce", "SAP"], ("Salesforce", "SAP", "Excel", "Outlook")) == [
-        "Salesforce", "SAP", "Outlook", "Acme"]
-    steps = [{"step_id": f"s{i}", "case_id": "A", "name": name, "state": "edited",
-              "system": system, "time_range": {"start": _ts(i), "end": _ts(i)}}
-             for i, (name, system) in enumerate((("Read the mail", "Outlook"),
-                                                  ("Check the stock", "Acme"),
-                                                  ("Book the order", "Salesforce")))]
-    bpmn, bioc = "{http://www.omg.org/spec/BPMN/20100524/MODEL}", "{http://bpmn.io/schema/bpmn/biocolor/1.0}"
-
-    def written(app_order):
-        with tempfile.TemporaryDirectory() as d:
-            out = os.path.join(d, "map.bpmn")
-            assert bpmn_observed.write_observed_bpmn(
-                {"steps": copy.deepcopy(steps)}, out, context=StepContext({}, {}, vocabs=[]),
-                app_order=app_order)
-            root = ET.parse(out).getroot()
-        process = root.find(f"{bpmn}process")
-        legend = next(el for el in process if el.get("id") == "TextAnnotation_legend")
-        shapes = {sh.get("bpmnElement"): sh.get(f"{bioc}fill")
-                  for sh in root.iter("{http://www.omg.org/spec/BPMN/20100524/DI}BPMNShape")}
-        fills = {el.get("name"): shapes[el.get("id")] for el in process
-                 if el.tag == f"{bpmn}task"}
-        return legend.find(f"{bpmn}text").text, fills
-
-    legend, fills = written(("Salesforce", "SAP", "Excel", "Outlook"))
-    assert legend == "Colour by system\nSalesforce: blue\nOutlook: orange\nAcme: green"
-    assert fills == {"Book the order": "#bfdbfe", "Read the mail": "#fed7aa",
-                     "Check the stock": "#bbf7d0"}
-    # Without a library the systems keep the order they were first used in.
-    assert written(None)[0] == "Colour by system\nOutlook: blue\nAcme: orange\nSalesforce: green"

@@ -159,6 +159,7 @@ function mapEmptyText(steps) {
    do. */
 const DOC_FIELDS = [
   { key: "title", label: "Title", where: "the title and Document control", ask: "What is the process called?", line: true },
+  { key: "request", label: "Request", where: "Document control: Request", ask: "Which request is this for? Its name and code", line: true, optional: true },
   { key: "purpose", label: "Purpose", where: "Purpose", ask: "Why is the process done, and for whom?" },
   { key: "scope", label: "Scope", where: "Scope", ask: "Where does it start and end, and what is left out?" },
   { key: "trigger", label: "Trigger", where: "Trigger: what starts the process", ask: "What starts the process?" },
@@ -182,7 +183,9 @@ function documentStatus(doc) {
   const counted = DOC_FIELDS.filter((f) => !f.optional);
   const filled = counted.filter((f) => _docValue(doc, f.key).trim()).length;
   const missing = counted.filter((f) => !_docValue(doc, f.key).trim()).map((f) => f.label);
-  const firstEmpty = DOC_FIELDS.find((f) => !_docValue(doc, f.key).trim()) || null;
+  // The cursor goes to the first empty field that counts: an optional one
+  // (the request, the notes) is never owed.
+  const firstEmpty = counted.find((f) => !_docValue(doc, f.key).trim()) || null;
   return { filled, total: counted.length, missing, firstEmpty: firstEmpty ? firstEmpty.key : null };
 }
 
@@ -422,14 +425,16 @@ function _summaryLine(sess, state) {
   const login = s ? s.worker : ((m.config && m.config.worker && m.config.worker.id) || "");
   const sme = SessionSummary.smeName(m) || login;
   const shown = SessionSummary.displayName(sess, folderName);
-  // AD-30, lane FX3 (validation pass 3, F23): the capture's request shows on
-  // the line, its code next to its name: beside the name when the request
-  // names the project, else as a part of its own once the document title or
-  // the recording's name names it. Never the capture app's defaults.
-  const reqName = SessionSummary.requestName(m);
-  const reqCode = SessionSummary.requestCode(m);
-  const reqText = SessionSummary.requestOf(m);
-  const namesProject = !!reqText && (shown === reqName || shown === reqCode);
+  // AD-30, lane FX3 (validation pass 3, F23): the request shows on the
+  // line, its code next to its name: beside the name when the capture's
+  // request names the project, else as a part of its own once the document
+  // title or the recording's name names it. Never the capture app's
+  // defaults. 2.0.1: the request the analyst writes in the document wins.
+  const docReq = SessionSummary.documentRequest(sess);
+  const reqName = docReq ? "" : SessionSummary.requestName(m);
+  const reqCode = docReq ? "" : SessionSummary.requestCode(m);
+  const reqText = docReq || SessionSummary.requestOf(m);
+  const namesProject = !docReq && !!reqText && (shown === reqName || shown === reqCode);
   const parts = ['<strong class="ov-summary-name">' + escapeHtml(shown) + "</strong>" +
     (namesProject && shown === reqName && reqCode && reqCode !== reqName
       ? ' <span class="ov-summary-code" data-summary="request">(' + escapeHtml(reqCode) + ")</span>" : "")];
@@ -446,9 +451,9 @@ function _summaryLine(sess, state) {
     }
   }
   parts.push(..._mediaParts(sess));
-  // AD-30: the tooltip names the capture's engagement as the request (only
-  // when one was set), never as the project: that word is what is opened.
-  const request = SessionSummary.requestOf(m);
+  // AD-30: the tooltip names the request (only when one was set), never as
+  // the project: that word is what is opened.
+  const request = reqText;
   const analyzed = s && s.analyzedAt ? new Date(s.analyzedAt).toLocaleString() : "";
   const title = [request ? "Request: " + request : "", analyzed ? "Analyzed " + analyzed : ""]
     .filter(Boolean).join(" · ");
@@ -605,8 +610,8 @@ function _transcriptWhat(view) {
   return _tr.during ? "What was said, during the transactions too" : "What was said outside the transactions";
 }
 
-/* The document fields a sentence can be added to: C6's, less title and contacts. */
-const TR_TARGETS = DOC_FIELDS.filter((f) => f.key !== "title" && f.key !== "contacts");
+/* The document fields a sentence can be added to: C6's, less title, request and contacts. */
+const TR_TARGETS = DOC_FIELDS.filter((f) => !["title", "request", "contacts"].includes(f.key));
 
 /* The sentences the disclosure lists now, or null without a transcript. */
 function _transcriptView(sess) {

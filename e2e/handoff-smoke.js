@@ -443,7 +443,7 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       top.line === expectLine && top.title === "What changed in this version: The credit check added", JSON.stringify(top.line));
     record("(d) the top bar's save state reads Read only, with the version in its tooltip",
       top.save === "Read only" && top.saveTitle.startsWith(expectLine.replace(" · Read only", "")), top.saveTitle);
-    record("(d) the document's fields are read, not typed in", top.shell && top.docLocked && top.docCount === 11 &&
+    record("(d) the document's fields are read, not typed in", top.shell && top.docLocked && top.docCount === 12 &&
       top.who === "The analyst wrote these. The PDD prints them.", JSON.stringify(top));
     await shotsBothThemes(dev, "readonly-line", size);
     const bad = {};

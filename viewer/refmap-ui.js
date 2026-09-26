@@ -396,10 +396,10 @@ const RECOPY_TITLE = "Make a new copy of the process map as it is now, named lik
   "something in it, and then takes this copy's place in the PDD; this copy stays as it is.";
 
 /* What Copy again gives a copy the process map changed after (C18): a copy
-   made before the map had its colours, notes and attachments gets them. */
+   made before the map had its systems, notes and attachments gets them. */
 function copyAgainLine(m, s) {
   return RefStore.predatesRichMap(RefStore.readBpmn(s.sessionFolder, m))
-    ? "Copy again to get the colours, notes and attachments on the map; your edits to this copy are not carried over."
+    ? "Copy again to get the systems, notes and attachments on the map; your edits to this copy are not carried over."
     : "Copy again to get the map as it is now; your edits to this copy are not carried over.";
 }
 

@@ -15,8 +15,8 @@ one used, so a newer app library never changes an existing project.
           {"id": "...", "name": "...", "code": "...", "description": "...",
            "screens": [["<draft_key>", ...], ...]}]}]}
 
-`code`, `description` and `screens` are optional. The application order is
-the step map's colour order. An activity's `screens` lists one or more runs
+`code`, `description` and `screens` are optional (the application order
+was the step map's colour order until 2.0.1). An activity's `screens` lists one or more runs
 of screens, one draft_key each, in order; a screen repeated back to back
 counts once (collapse), so a run is compared with its repeats taken out. An
 activity without screens has a name only (for the steps added by hand).

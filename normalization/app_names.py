@@ -20,7 +20,10 @@ in this order:
 
 `system_name` names the system one application and window title belong to:
 the first system-names rule that matches both, else the application's
-readable name. A browser is only where a web system ran.
+readable name. A browser is only where a web system ran: a browser window on
+a site no rule names is named by the site its title ends with (the rule with
+`site`, site_name), "Order Desk" for "Customer lookup - Order Desk - Google
+Chrome", and by the browser only when the title names no site.
 
 It never invents a product name: every result is a listed system name, a
 vocabulary name, a piece of a recorded window title, or the executable name
@@ -60,10 +63,12 @@ def app_key(app: Any) -> str:
 _SYSTEMS_PATH = Path(__file__).resolve().parent.parent / "shared" / "system-names.json"
 
 
-def _load_system_rules(path: Path = _SYSTEMS_PATH) -> list[tuple[frozenset, Any, str]]:
+def _load_system_rules(path: Path = _SYSTEMS_PATH) -> list[tuple[frozenset, Any, str, Any]]:
     """The system-names rules, in order: (application keys, compiled title
-    pattern or None, system name). A rule without applications or a name,
-    or with a pattern that does not compile, is skipped."""
+    pattern or None, system name, None) for a named rule, and (application
+    keys, None, "", the names to drop) for a site rule (`site`: true, 2.0.1,
+    site_name). A rule without applications, a named rule without a name,
+    or one with a pattern that does not compile, is skipped."""
     with open(path, encoding="utf-8") as fh:
         doc = json.load(fh)
     rules = []
@@ -73,6 +78,11 @@ def _load_system_rules(path: Path = _SYSTEMS_PATH) -> list[tuple[frozenset, Any,
         procs = r.get("process")
         procs = [procs] if isinstance(procs, str) else procs
         keys = frozenset(app_key(p) for p in procs or [] if isinstance(p, str) and p.strip())
+        if keys and r.get("site") is True:
+            drop = r.get("drop") if isinstance(r.get("drop"), list) else []
+            rules.append((keys, None, "", frozenset(_plain(d).lower() for d in drop
+                                                     if isinstance(d, str) and d.strip())))
+            continue
         system = r.get("system")
         title = r.get("title")
         try:
@@ -80,8 +90,41 @@ def _load_system_rules(path: Path = _SYSTEMS_PATH) -> list[tuple[frozenset, Any,
         except re.error:
             continue
         if keys and isinstance(system, str) and system.strip():
-            rules.append((keys, rx, system.strip()))
+            rules.append((keys, rx, system.strip(), None))
     return rules
+
+
+# An ending a browser puts on a window's title when it holds several tabs
+# ("Order Desk and 3 more pages").
+_MORE_PAGES = re.compile(r"\s+and\s+\d+\s+more\s+pages?$", re.IGNORECASE)
+
+
+def _plain(text: str) -> str:
+    """`text` without zero-width spaces (Edge writes "Microsoft\u200b Edge"),
+    its whitespace collapsed."""
+    return " ".join(str(text).replace("\u200b", "").split())
+
+
+def site_name(title: Any, drop: Any = ()) -> str:
+    """The web system a browser window's title names (2.0.1): its last
+    segment once a last segment naming the browser (`drop`, lowercase) is
+    dropped, an ending "and N more pages" cut, when at least two segments
+    are left and the shared value rules leave the segment as it is; else
+    "". "Order Desk" for "Customer lookup - Order Desk - Google Chrome";
+    "" for "New Tab - Google Chrome" (a page, not a site)."""
+    from step_suggest import _value_free   # step_suggest imports this module
+    if not isinstance(title, str):
+        return ""
+    segs = [_plain(s) for s in _TITLE_SPLIT.split(title.strip())]
+    segs = [s for s in segs if s]
+    while segs and segs[-1].lower() in drop:
+        segs.pop()
+    if len(segs) < 2:
+        return ""
+    site = _MORE_PAGES.sub("", segs[-1]).strip()
+    if not site or not re.search(r"[A-Za-z]", site) or _value_free(site) != site:
+        return ""
+    return site
 
 
 def fallback_name(app: Any) -> str:
@@ -113,8 +156,8 @@ def _title_name(key: str, titles: list[str]) -> str:
 
 def _application_rule(key: str) -> str:
     """The system name a rule without a title gives this application, or ""."""
-    for keys, rx, system in _SYSTEM_RULES:
-        if rx is None and key in keys:
+    for keys, rx, system, site in _SYSTEM_RULES:
+        if rx is None and site is None and key in keys:
             return system
     return ""
 
@@ -173,14 +216,22 @@ def display_name(app: Any, names: dict[str, str] | None = None) -> str:
 def system_name(app: Any, title: Any = "", names: dict[str, str] | None = None) -> str:
     """The business system one application and window title belong to: the
     first shared/system-names.json rule whose applications include `app`
-    and whose title pattern (when it has one) matches `title`; else the
-    application's readable name (display_name). "" for no application."""
+    and whose title pattern (when it has one) matches `title`, a site rule
+    naming the site the title ends with (site_name); else the application's
+    readable name (display_name). "" for no application."""
     if not isinstance(app, str) or not app.strip():
         return ""
     key = app_key(app)
     text = title if isinstance(title, str) else ""
-    for keys, rx, system in _SYSTEM_RULES:
-        if key in keys and (rx is None or rx.search(text)):
+    for keys, rx, system, site in _SYSTEM_RULES:
+        if key not in keys:
+            continue
+        if site is not None:
+            found = site_name(text, site)
+            if found:
+                return found
+            continue
+        if rx is None or rx.search(text):
             return system
     return display_name(app, names)
 

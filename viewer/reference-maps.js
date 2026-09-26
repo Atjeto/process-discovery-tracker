@@ -277,16 +277,18 @@ function isStale(entry, currentSourceHash, currentSourceSig) {
             entry.forked_from_hash !== currentSourceHash);
 }
 
-/* A copy made before the step map had its colours, notes and attachments
+/* A copy made before the step map had its systems, notes and attachments
    (contract C18): it has none of what process_map_step.bpmn has had since,
    a user or a manual task (the two kinds of every task until lane CL made a
    task done in a system a plain task), the legend (TextAnnotation_legend, on
-   any plane) or a task's colour (bioc:fill). Such a copy offers Copy again in
-   those words once the process map changes (refmap-ui.js). */
+   any plane) or a task's colour (bioc:fill) before 2.0.1, a system label
+   (TextAnnotation_system, or TextAnnotation_system_<k>) since. Such a copy
+   offers Copy again in those words once the process map changes
+   (refmap-ui.js). */
 function predatesRichMap(xml) {
   const s = String(xml || "");
   return !/<(?:[\w.-]+:)?(?:userTask|manualTask)[\s/>]/.test(s) &&
-    !/\sid="(?:Sub\d+_)?TextAnnotation_legend"/.test(s) &&
+    !/\sid="(?:Sub\d+_)?TextAnnotation_(?:legend|system(?:_\d+)?)"/.test(s) &&
     !/\s[\w.-]+:fill="/.test(s);
 }
 

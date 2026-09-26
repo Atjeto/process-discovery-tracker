@@ -39,11 +39,11 @@ Default keys:
 - `Ctrl+Shift+P`: take a screenshot.
 
 Setup for the analyst or IT sits in the tray's Setup (analyst) menu:
-Recording setup (the request and the named transactions,
-`userData/quick-config.yaml`), Settings (keys, OBS, screenshots, the storage
-limit, the idle end of the open transaction, `userData/user-config.json`),
-Profile (who is recording), the readiness check, and the recordings on this
-computer. Or set `PDT_CONFIG=path\to\config.yaml` before launch for the
+Settings (keys, OBS, screenshots, the storage limit, the idle end of the open
+transaction, `userData/user-config.json`), Profile (who is recording), the
+readiness check, and the recordings on this computer. The analyst writes the
+request in the viewer (2.0.1); a `userData/quick-config.yaml` saved by an
+earlier version is still read. Or set `PDT_CONFIG=path\to\config.yaml` before launch for the
 whole schema (`sample-config.yaml`); Settings and Profile still layer on
 top.
 
@@ -76,7 +76,7 @@ in [CAPTURE.md](../docs/architecture/CAPTURE.md#module-map-capture).
 | `zip-folder.js` | The zip for the analyst. |
 | `recorder.js`, `dead-man.js` | The C# sidecar's supervision and the silent-recorder alarm. |
 | `config.js`, `user-config.js` | Defaults, the YAML, the Settings and Profile overlay. |
-| `recording-bar.js`, `end-summary-window.js`, `welcome-window.js`, `help-window.js`, `consent-window.js`, `settings-window.js`, `profile-window.js`, `session-config-window.js` | The windows; each loads its markup from `ui/<name>.html`. |
+| `recording-bar.js`, `end-summary-window.js`, `welcome-window.js`, `help-window.js`, `consent-window.js`, `settings-window.js`, `profile-window.js` | The windows; each loads its markup from `ui/<name>.html`. |
 | `test/` | The `node:test` suite. |
 | `recorder/` | The C# UI Automation recorder: see [docs/interaction-recorder.md](../docs/interaction-recorder.md). |
 

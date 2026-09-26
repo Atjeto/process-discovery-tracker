@@ -58,13 +58,19 @@ function parseClock(text) {
   return ((Number(m[1] || 0) * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000;
 }
 
+/* A duration the one way the app and the step map's documentation say it
+   (2.0.1; the pipeline's step_context.fmt_ms): "under 1s", "42s", "2m 07s", "3m", "1h 04m"; never
+   "0s", "28.9s" or "414ms", and never "2:17", which reads as a moment on
+   the one clock. "" when unknown. */
 function formatDuration(ms) {
-  if (ms == null) return "";
-  const s = ms / 1000;
-  if (s < 1) return Math.round(ms) + "ms";
-  if (s < 60) return s.toFixed(1) + "s";
-  if (s < 3600) return Math.floor(s / 60) + "m" + Math.round(s % 60) + "s";
-  return Math.floor(s / 3600) + "h" + Math.floor((s % 3600) / 60) + "m";
+  if (ms == null || !isFinite(ms) || ms < 0) return "";
+  if (ms < 1000) return "under 1s";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60), rs = s % 60;
+  if (m < 60) return rs ? m + "m " + String(rs).padStart(2, "0") + "s" : m + "m";
+  const h = Math.floor(m / 60), rm = m % 60;
+  return h + "h " + String(rm).padStart(2, "0") + "m";
 }
 
 function fillTable(sel, rows) {

@@ -25,8 +25,9 @@ test("deepMerge: nested objects merge, sibling keys are preserved", () => {
 });
 
 test("deepMerge: arrays are replaced wholesale, not merged", () => {
-  const merged = deepMerge(DEFAULTS, { process_labels: ["a", "b"] });
-  assert.deepStrictEqual(merged.process_labels, ["a", "b"]);
+  const base = deepMerge(DEFAULTS, { interactions: { exclude_processes: ["x"] } });
+  const merged = deepMerge(base, { interactions: { exclude_processes: ["a", "b"] } });
+  assert.deepStrictEqual(merged.interactions.exclude_processes, ["a", "b"]);
 });
 
 test("deepMerge: a null override returns base unchanged", () => {
@@ -101,13 +102,12 @@ test("validateConfig does not flag the default request code: no toast at every s
   assert.deepStrictEqual(validateConfig({}, os.tmpdir()), []);
 });
 
-test("Recording setup shows the engagement as the Request (AD-30); its keys stay engagement_id and engagement_name", () => {
-  const html = fs.readFileSync(path.join(__dirname, "..", "ui", "session-config.html"), "utf-8");
-  assert.ok(html.includes("<legend>Request</legend>"));
-  assert.ok(html.includes('<label class="fld" for="eng-id">Request code</label>'));
-  assert.ok(html.includes('<label class="fld" for="eng-name">Request name</label>'));
-  assert.ok(!/\bproject\b/i.test(html), "project means only what the analyst opens");
-  assert.ok(html.includes("engagement_id:") && html.includes("engagement_name:"), "the data keys are unchanged");
+test("2.0.1: the SME's app has no recording setup (the analyst writes the request in the viewer)", () => {
+  assert.ok(!fs.existsSync(path.join(__dirname, "..", "ui", "session-config.html")));
+  assert.ok(!fs.existsSync(path.join(__dirname, "..", "session-config-window.js")));
+  const main = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf-8");
+  assert.ok(!main.includes("Recording setup") && !main.includes("named transaction"));
+  assert.ok(!("process_labels" in DEFAULTS), "the named transactions' key is gone from the defaults");
 });
 
 test("validateConfig passes a configured engagement and a writable folder (B2)", () => {

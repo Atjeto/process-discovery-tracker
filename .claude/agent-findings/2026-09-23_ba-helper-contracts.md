@@ -167,9 +167,9 @@ File: `<viewer userData>/pdt-library/processes.json`, written atomically by the 
 ## C6. Document sections (`annotations.document`, viewer-written; AD-2)
 
 ```json
-"document": { "title": "", "purpose": "", "scope": "", "trigger": "", "result": "",
-              "contacts": "", "business_rules": "", "exceptions": "", "effort": "",
-              "improvement": "", "notes": "" }
+"document": { "title": "", "request": "", "purpose": "", "scope": "", "trigger": "",
+              "result": "", "contacts": "", "business_rules": "", "exceptions": "",
+              "effort": "", "improvement": "", "notes": "" }
 ```
 
 Plain multi-line strings. The PDD renders each non-empty field in place of the
@@ -193,6 +193,15 @@ whoever asks) added `effort`, printed as 6 Volume and effort: how often the
 process is done and how long one takes, as the analyst states it. The
 document prints no recorded time (the recording is a walkthrough with
 explanations). A gap is now printed for nine fields.
+
+Amended by 2.0.1 (2026-09-27): the request moved from the capture app to the
+viewer. An optional `request` (label "Request", one line, the question
+"Which request is this for? Its name and code") prints in the PDD's Document
+control Request row; while it is empty the row prints the capture's request
+from the manifest as before (AD-30), so it leaves no gap. Like `notes` it is
+not counted in the Overview's "N of 10 written". The Overview's project line
+and its tooltip show it (`session-summary.js` `documentRequest`), else the
+capture's (`requestOf`). A transcript sentence is never added to it.
 
 ## C7. Step notes
 
@@ -332,6 +341,16 @@ application and a window title into the business system the work happened in.
   the same rules (legend, step fact line, map boxes: lane V2).
 - The demo's five applications resolve to Salesforce (Chrome on Salesforce), SAP,
   Excel, Outlook and Notepad (pinned by `test_app_names.py`).
+- Amended by 2.0.1 (2026-09-27): a site rule (`"site": true` with a `drop` list of the
+  browsers' own names), after the web systems' title rules and before the browsers' own
+  names, names a browser window on a site no rule names by the site its title ends with:
+  the title split at a spaced hyphen, a pipe, an en or em dash or "::", a last segment
+  naming the browser dropped (compared without zero-width spaces), an ending "and N more
+  pages" cut, then the last segment ("Order Desk"). It names nothing when fewer than two
+  segments are left (a lone "New Tab" stays Google Chrome) or when the shared value rules
+  would change the segment (a value, not a name), and the next rule applies. Both sides
+  implement it (`app_names.site_name`, `viewer/system-names.js` `siteName`); the step's
+  screen then leaves the site out ("Customer lookup").
 
 ## C15. The PDD's inputs and the step map file (lane LUX-P)
 
@@ -584,6 +603,28 @@ map editor. The default after a step is always the next step in its transaction.
   ends with "Waste: a step that should not be needed" when its plane has one. The PDD's
   pictures keep it. Lane FX2 marks the same steps on the live map: a dashed border and
   a last line "Waste".
+- Amended by 2.0.1 (2026-09-27): the system a task is done in is said in words, not in
+  a colour (no BPMN editor could change a colour, so an edited map kept the wrong ones).
+  `process_map_step.bpmn` has no `bioc:fill` or `bioc:stroke` and no legend
+  (`TextAnnotation_legend` and its lines "Colour by system", "Hand icon: done outside the
+  systems" and "Waste: a step that should not be needed" are gone), and
+  `write_observed_bpmn` no longer takes the library's application order (C21's colour
+  order is void). Each task done in a system gets a short text annotation above it naming
+  the system (`TextAnnotation_system_<k>`, joined by `Association_system_<k>`; with the
+  `Sub<n>_` prefix in a sub-process's plane). When every task of a plane that is done in a
+  system is done in the same one, the plane says it once instead: one text annotation
+  "System: <name>" joined to nothing (`TextAnnotation_system`, placed where the legend
+  was), and no task gets a label. A manual task keeps the hand marker and gets no label.
+  The notes moved under the task (`TextAnnotation_<n>`, the association falling from the
+  task's bottom); the files sit under it, right of its note when it has one; the Waste
+  mark sits right of the system label. A collapsed sub-process is 16 px taller than a
+  task, so its name keeps clear of the + marker. A flow that turns up or down leaves or
+  enters a gateway at its top or bottom corner, one flow a corner (they ran together out of
+  its right corner, so a skip hid under the main line); the map keeps its merge gateways
+  (the owner's house style). In the viewer a system label is part of the
+  picture: a click does nothing (`asis-links.js` `isSystemLabel`), the PDD's pictures
+  keep it (only the steps' notes are left out), and `reference-maps.js`
+  `predatesRichMap` counts it as a mark of a copy made after C18.
 - **The As-Is map in the viewer is interactive** (the illustrated map was dropped: the links
   replace it): the chosen As-Is copy renders with bpmn-js, not as a flat image, and a click on a
   task opens the step panel for the step it stands for (matched by the map's node rule on the
@@ -760,6 +801,17 @@ no separate image file per map (the owner's remark about images described today'
   grouped too (`sub-process-verbs.js` `groupPromptText`). + Step at a moment a sub-process holds
   goes into it, at any depth: the sub-step that holds the moment is split there, else a new
   sub-step starts at it, so a sub-step gets a time as a main-level step does (`momentPlace`).
+- **Amended by 2.0.1 (2026-09-27).** *Open as a sub-process* folds the cells of one sheet
+  filled one after another (two or more actions on `DataItem` controls named by a cell
+  address, on one screen) into one sub-step named by the columns: "Fill in columns A to F"
+  ("Fill in column B" for one column), `action_key` `"<app>|<screen>|cells:A-F"`,
+  description "Entered 20 cells, A2 to F5." (`sub-process-verbs.js` `cellOf`); a single
+  cell stays "Enter B7". A spreadsheet is filled cell by cell, and a sub-step per cell made
+  a chapter of twenty "Enter A2" headings. On a recorded step that would draft fewer than
+  two sub-steps the verb is disabled in the step pane with its reason ("This step has one
+  recorded action (a sheet's cells filled one after another count as one), so it has no
+  steps of its own to open.") and left out of the step menu; a step added by hand still
+  opens, with `[]`.
 
 - **Amended by lane MV (2026-09-24)**, for C15, C18 and C19: the Map opens on the map the PDD
   prints, the chosen As-Is copy else `process_map_step.bpmn`, drawn by bpmn-js and linked like
@@ -904,7 +956,8 @@ Keep it simple: a tool, not a product.
   `resources/library/activities.json`). Swapping the library means replacing that file. Format:
   `{ "format": 1, "version": "<text>", "applications": [ { "name": <system name as
   system-names.json gives it>, "activities": [ { "id", "name", "code"?, "description"?,
-  "screens": [ [<draft_key>, ...], ... ] } ] } ] }`. The application order is the colour order.
+  "screens": [ [<draft_key>, ...], ... ] } ] } ] }`. The application order was the colour
+  order until 2.0.1 (2026-09-27) took the colours off the map; nothing reads it since.
   An activity's `screens` lists one or more runs of screens (one draft_key each, in order); a
   name-only activity (added by hand steps) has no screens. The shipped file: the known systems
   as applications, no activities.
@@ -923,7 +976,8 @@ Keep it simple: a tool, not a product.
   application (pick the application first for a step added by hand); picking sets the name, the
   system, `library_activity`, and uses the activity's description when the step has none. Typing
   any name stays possible.
-- **Where it shows:** the map (same names, one colour per application in library order), the PDD
+- **Where it shows:** the map (same names; until 2.0.1 one colour per application in library
+  order, since then each task's system in words, C18), the PDD
   (the code on the step's context line, the activity's description when the PM wrote none), the
   Technical details (activity and code columns).
 - **The Library builder** (Help, *Build the library...*; the owner's tool): reads project folders

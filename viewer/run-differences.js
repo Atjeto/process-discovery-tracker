@@ -24,7 +24,10 @@
  * step's name and draft_keys (so it matches it). At each position the merged
  * reference step with the most keys wins; among equals, the first one in the
  * reference. So two drafts in run 2 match the pattern run's merge of the same
- * two drafts even where the merge was not carried.
+ * two drafts even where the merge was not carried. Then (2.0.1) a step whose
+ * own key the reference lacks, but whose name is a reference step's name
+ * (whitespace collapsed, without case), is that step: the analyst named them
+ * alike, and the map draws them as one box (namedAlike).
  *
  * Then the differences, one line each: every step of the run whose key the
  * reference lacks is an "Extra step" (where it sits: after the step before
@@ -133,10 +136,37 @@ function _mergeTargets(refSteps) {
    folded into one unit (see the header). Steps are kept as they are. A
    folded unit keeps the run's steps it stands for under `members` (their
    times); the rule reads only its first member's start. */
+/* A step's name as two names are compared (pdd_export._name_key). */
+function _nameKey(name) {
+  return String(name == null ? "" : name).split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+}
+
+/* `units` with each one whose own key the reference lacks, and whose name is
+   a reference step's name, taken for that step (see the header): a unit
+   carrying the reference step's name and identity and the run's steps it
+   stands for under `members`. pdd_export._named_alike. */
+function namedAlike(refSteps, units) {
+  const refs = (refSteps || []).filter((r) => r && typeof r === "object");
+  const keys = new Set(refs.map(alignKey));
+  const byName = new Map();
+  for (const r of refs) {
+    const k = _nameKey(r.name);
+    if (k && !byName.has(k)) byName.set(k, r);
+  }
+  return (units || []).map((u) => {
+    const ref = u && typeof u === "object" ? byName.get(_nameKey(u.name)) : null;
+    if (!ref || keys.has(alignKey(u))) return u;
+    const unit = { name: ref.name, case_id: u.case_id, members: Array.isArray(u.members) && u.members.length ? u.members : [u] };
+    if (typeof ref.draft_key === "string" && ref.draft_key) unit.draft_key = ref.draft_key;
+    else if (_keyList(ref.draft_keys)) unit.draft_keys = _keyList(ref.draft_keys).slice();
+    return unit;
+  });
+}
+
 function collapseToReference(refSteps, runSteps) {
   const run = Array.isArray(runSteps) ? runSteps : [];
   const targets = _mergeTargets(refSteps);
-  if (!targets.length) return run.slice();
+  if (!targets.length) return namedAlike(refSteps, run.slice());
   const out = [];
   let i = 0;
   while (i < run.length) {
@@ -154,7 +184,7 @@ function collapseToReference(refSteps, runSteps) {
       i++;
     }
   }
-  return out;
+  return namedAlike(refSteps, out);
 }
 
 /* ---- the stretches left out of the analysis ---------------------------------------- */
@@ -393,6 +423,6 @@ function isDifference(d) {
 
 module.exports = {
   PATTERN_REFERENCE, REFERENCE_RUN, RUN_UNIT,
-  stepKeys, mergeKey, alignKey, stepName, collapseToReference, firstOccurrences, commonOrder, differences,
+  stepKeys, mergeKey, alignKey, stepName, collapseToReference, namedAlike, firstOccurrences, commonOrder, differences,
   leftOutStretches, leftOutText, differenceCount, isDifference, isoMs: _ms,
 };

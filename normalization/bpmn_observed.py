@@ -30,8 +30,10 @@ system set) is a plain task and a step done outside every system a manual
 task, the hand marker (C18 as lane CL amended it: the same person marker on
 every box said nothing); the analyst's notes on a step are a text annotation
 joined to its task, and the files attached to it data objects joined to it;
-each task takes its system's colour, with a legend that names them and, where
-the map has a manual task, what the hand means (_map_extras).
+the system a task is done in is a short text annotation above it (2.0.1: a
+process manager changes it by typing in any BPMN tool, which a colour
+allowed in none), said once for a map whose every task is done in one
+system (_map_extras).
 
 Contract C19 splits a process into sub-processes: every map of
 sub_process_maps.map_tree is a plane of the one file. A sub-process node is
@@ -222,10 +224,6 @@ def _document_field(anno: dict[str, Any], key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _duration(ms: float) -> str:
-    return "under 1s" if ms < 500 else fmt_ms(ms)
-
-
 def _analyst_description(step: dict[str, Any], context: Any) -> str:
     """The step's description when the analyst wrote it: a draft's
     description is the drafting's narration of its interactions (recomputed
@@ -309,7 +307,7 @@ def _documented(groups: dict[str, list[tuple[Any, dict[str, Any]]]], runs: int,
         if not (cases <= implicit):
             facts.append(f"in {n} of {runs} transaction{'' if runs == 1 else 's'}")
         if timed:
-            facts.append(f"{_duration(sum(timed) / len(timed))} on average")
+            facts.append(f"{fmt_ms(sum(timed) / len(timed))} on average")
         said = ", ".join(facts)
         said = said[:1].upper() + said[1:] + "." if said else ""
         lines = [desc] if desc else []
@@ -537,23 +535,6 @@ def _flow_bpmn(edges: list[dict], runs: int, count_runs: bool = True):
 
 # The main end's name while the document's Result is empty.
 _MAIN_END = "End"
-# A fill and a stroke per system, in the order of the project library's
-# applications (contract C21), then the order the other systems were first
-# used (_systems_in_order): light fills, dark strokes. bpmn-js writes a task's
-# name in its stroke colour, 6.9:1 or more on its fill, so a coloured task
-# stays legible in the PDD's print. Each colour is named for the legend.
-_PALETTE = (("blue", "#bfdbfe", "#1e3a8a"), ("orange", "#fed7aa", "#7c2d12"),
-            ("green", "#bbf7d0", "#14532d"), ("purple", "#ddd6fe", "#4c1d95"),
-            ("red", "#fecaca", "#7f1d1d"), ("teal", "#99f6e4", "#134e4a"),
-            ("pink", "#fbcfe8", "#831843"), ("yellow", "#fef08a", "#713f12"),
-            ("grey", "#e5e7eb", "#374151"))
-_LEGEND_TITLE = "Colour by system"
-_UNCOLOURED = "no colour"
-# The legend's last line where its map has a manual task (lane CL).
-_LEGEND_MANUAL = "Hand icon: done outside the systems"
-# Lane FX3: a task a step of which is flagged as waste gets a small text
-# annotation (mining._WASTE_TEXT, "Waste"), and the legend says what it means.
-_LEGEND_WASTE = "Waste: a step that should not be needed"
 # The longest text a note shows on the map (about five lines of the note,
 # mining._NOTE_W wide); the whole notes are the annotation's documentation.
 _NOTE_MAX = 90
@@ -583,34 +564,6 @@ def _system_of(step: dict[str, Any], context: Any) -> str:
     """A step's system as its task's documentation names it
     (StepContext.where); without a context, the one the analyst set (C16)."""
     return context.where(step)[0] if context is not None else step_system(step)
-
-
-def _systems_in_order(anno: dict[str, Any], run_order: Any,
-                      node_system: dict[str, str]) -> list[str]:
-    """The systems of the map's tasks in the order the reference transaction,
-    then the others (in the viewer's order), first used them: the order the
-    PDD lists the systems of the process in."""
-    pattern = _pattern_case(anno)
-    transactions = sorted(_transactions(anno, run_order),
-                          key=lambda t: 0 if any(s.get("case_id") == pattern for s in t) else 1)
-    seen: dict[str, None] = {}
-    for steps in transactions:
-        for s in sorted(steps, key=_start_key):
-            system = node_system.get(_step_label(s))
-            if system:
-                seen.setdefault(system, None)
-    return list(seen)
-
-
-def _in_library_order(systems: list[str], app_order: Any) -> list[str]:
-    """Contract C21: `systems` in the order of the project library's
-    applications (`app_order`, their names), the systems the library does
-    not list after them in the order they come in: the colour order."""
-    rank: dict[str, int] = {}
-    for i, name in enumerate(app_order or ()):
-        rank.setdefault(name, i)
-    listed = sorted((s for s in systems if s in rank), key=lambda s: rank[s])
-    return listed + [s for s in systems if s not in rank]
 
 
 def _notes_of(anno: dict[str, Any], steps: list[dict[str, Any]]) -> str:
@@ -674,45 +627,26 @@ def _data_objects(anno: dict[str, Any], steps: list[dict[str, Any]],
     return out
 
 
-def _map_extras(anno: dict[str, Any], model: Any, context: Any,
-                run_order: Any, *, palette: dict | None = None,
-                used: set | None = None, app_order: Any = None) -> dict[str, Any]:
+def _map_extras(anno: dict[str, Any], model: Any, context: Any, *,
+                used: set | None = None) -> dict[str, Any]:
     """What contract C18 puts beside the map's tasks, as mining.export_bpmn
     takes it (keyed by a task's id()): its kind (a manual task when every
     step it stands for was done outside every system, _outside_systems;
-    else a plain task); its system's fill and stroke (_PALETTE, the systems
-    in _systems_in_order, put in the project library's application order,
-    `app_order`, contract C21, by _in_library_order; a system past the
-    palette's end keeps the default look); its steps' notes (one text
-    annotation, cut at _NOTE_MAX characters, whole in its documentation
-    when cut); the files attached to its steps (a data object each,
-    _data_objects); and the legend naming each system's colour, in that
-    order, then what the hand marker means when the map has a manual task. A
-    task's system is the one its documentation names (its reference
-    transaction's step first). When one label is on several tasks (a
-    transaction that came back to a step), the first holds its notes and
-    files.
+    else a plain task); the system it is done in (2.0.1), as a label above
+    it, or once for the map when every task of it is done in one system
+    (_extras_of); its steps' notes (one text annotation, cut at _NOTE_MAX
+    characters, whole in its documentation when cut); the files attached
+    to its steps (a data object each, _data_objects). A task's system is
+    the one its documentation names (its reference transaction's step
+    first). When one label is on several tasks (a transaction that came
+    back to a step), the first holds its notes and files.
 
-    `palette` ({system: (colour, fill, stroke)}) and `used` (the data
-    objects' keys) are shared with the sub-processes' maps of the file
-    (contract C19, _sub_process_planes): the main map's systems take the
-    first colours, and a system keeps its colour on every map."""
+    `used` (the data objects' keys) is shared with the sub-processes' maps
+    of the file (contract C19, _sub_process_planes)."""
     by_label = _node_steps(anno)
     node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
-    systems = _in_library_order(_systems_in_order(anno, run_order, node_system), app_order)
-    palette = {} if palette is None else palette
-    _colour(palette, systems)
-    return _extras_of(anno, model, by_label, node_system, systems, palette, context,
+    return _extras_of(anno, model, by_label, node_system, context,
                       set() if used is None else used)
-
-
-def _colour(palette: dict, systems: list[str]) -> None:
-    """Give each of `systems` that has no colour yet the next colour of
-    _PALETTE, while one is left (C18; C19: a system keeps one colour across
-    the file)."""
-    for system in systems:
-        if system not in palette and len(palette) < len(_PALETTE):
-            palette[system] = _PALETTE[len(palette)]
 
 
 def _wasted(steps: list[dict[str, Any]]) -> bool:
@@ -724,20 +658,20 @@ def _wasted(steps: list[dict[str, Any]]) -> bool:
 
 
 def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[str, Any]]],
-               node_system: dict[str, str], systems: list[str], palette: dict,
-               context: Any, used: set) -> dict[str, Any]:
+               node_system: dict[str, str], context: Any, used: set) -> dict[str, Any]:
     """_map_extras for one map: `by_label` its steps by task label (the
-    reference transaction's first), `node_system` each label's system,
-    `systems` the systems its legend names, in order, and `palette` their
-    colours. The legend's last lines say what the hand marker means when
-    one of its tasks is a manual task (_LEGEND_MANUAL), and what the Waste
-    mark means when one of its tasks has it (_LEGEND_WASTE, lane FX3); a map
-    with neither a system, a manual task nor a waste mark has no legend.
+    reference transaction's first), `node_system` each label's system. Each
+    task done in a system is labelled with it (`systems`, 2.0.1: a text
+    annotation above the task, which a process manager changes by typing
+    in any BPMN tool, where a colour could be changed in none), unless every
+    task of the map that is done in a system is done in the same one: the
+    map then says it once (`map_system`) and labels no task. A manual task
+    (done outside every system) carries the hand marker and no label.
     `waste` holds the tasks a step of which is flagged as waste (_wasted),
     each of them, as the live map marks its box (lane FX3)."""
     from pm4py.objects.bpmn.obj import BPMN
     task_tags: dict[int, str] = {}
-    colours: dict[int, tuple[str, str]] = {}
+    systems: dict[int, str] = {}
     notes: dict[int, tuple[str, str | None]] = {}
     data: dict[int, list[tuple[str, str, str]]] = {}
     waste: set[int] = set()
@@ -747,10 +681,10 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
         if label not in by_label:
             continue
         steps = by_label[label]
-        task_tags[id(node)] = ("manualTask" if all(_outside_systems(s, context) for s in steps)
-                               else "task")
-        if node_system[label] in palette:
-            colours[id(node)] = palette[node_system[label]][1:]
+        manual = all(_outside_systems(s, context) for s in steps)
+        task_tags[id(node)] = "manualTask" if manual else "task"
+        if not manual and node_system.get(label):
+            systems[id(node)] = node_system[label]
         if _wasted(steps):
             waste.add(id(node))
         if label in done:
@@ -763,18 +697,12 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
         objects = _data_objects(anno, steps, used)
         if objects:
             data[id(node)] = objects
-    lines = []
-    if systems:
-        lines = [_LEGEND_TITLE] + [
-            f"{system}: {palette[system][0] if system in palette else _UNCOLOURED}"
-            for system in systems]
-    if "manualTask" in task_tags.values():
-        lines.append(_LEGEND_MANUAL)
-    if waste:
-        lines.append(_LEGEND_WASTE)
-    legend = "\n".join(lines) or None
-    return {"task_tags": task_tags, "colours": colours, "notes": notes, "data": data,
-            "legend": legend, "waste": waste}
+    named = set(systems.values())
+    map_system = next(iter(named)) if len(named) == 1 else None
+    if map_system:
+        systems = {}
+    return {"task_tags": task_tags, "systems": systems, "map_system": map_system,
+            "notes": notes, "data": data, "waste": waste}
 
 
 # ---- contract C19: a map per sub-process, each a plane of the one file ----------
@@ -826,9 +754,7 @@ def _plane_model(traces: list[list[dict[str, Any]]], tx: list[int], marked: bool
 
 def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: Any,
                         transactions: list[list[dict[str, Any]]], *, context: Any = None,
-                        implicit_runs: Any = (),
-                        palette: dict | None = None, used: set | None = None,
-                        app_order: Any = None) -> dict[int, dict]:
+                        implicit_runs: Any = (), used: set | None = None) -> dict[int, dict]:
     """Contract C19: every map of sub_process_maps.map_tree below the main
     one, as mining.export_bpmn takes it (its `sub_planes`): {id(task): the
     sub-process's map}. Each task of a sub-process node is tagged
@@ -841,10 +767,9 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
     (_plane_model, _documented, _extras_of) from its own traces: its start
     and main end are unnamed and its early ends keep their `when`; its
     counts ("In N of M transactions", the branch names) are over the
-    transactions that ran the sub-process; its legend names the systems
-    drawn in it (in the library's application order, `app_order`, contract
-    C21), each keeping its colour from `palette` across the file;
-    its data objects' keys stay unique (`used`). Its ids start with
+    transactions that ran the sub-process; its tasks are labelled with
+    their systems as the main map's are (said once when it is done in one
+    system); its data objects' keys stay unique (`used`). Its ids start with
     "Sub<n>_", n its place in map_tree's list, unique in the file. {} when
     no step is a sub-process."""
     import sub_process_maps
@@ -857,7 +782,6 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
         if m["path"]:
             children.setdefault(tuple(m["path"][:-1]), []).append((index, m))
     implicit = set(implicit_runs or ())
-    palette = {} if palette is None else palette
     used = set() if used is None else used
 
     def attach(model, tags, path) -> dict[int, dict]:
@@ -894,18 +818,7 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
                             + [s for c, s in pairs if c != pattern])
                     for label, pairs in groups.items()}
         node_system = {label: _system_of(steps[0], context) for label, steps in by_label.items()}
-        seen: dict[str, None] = {}
-        # The systems in the order the reference transaction, then the
-        # others, first used them (_systems_in_order's order), put in the
-        # library's application order (C21).
-        for _c, trace in sorted(zip(cases, traces), key=lambda ct: ct[0] != pattern):
-            for s in trace:
-                system = node_system.get(_step_label(s))
-                if system:
-                    seen.setdefault(system, None)
-        systems = _in_library_order(list(seen), app_order)
-        _colour(palette, systems)
-        extras = _extras_of(anno, model, by_label, node_system, systems, palette, context, used)
+        extras = _extras_of(anno, model, by_label, node_system, context, used)
         spec = {"model": model, "prefix": f"Sub{index}_", "documentation": documentation,
                 "flow_names": flow_names, "label_room": label_room, **extras}
         nested = attach(model, extras["task_tags"], tuple(m["path"]))
@@ -924,7 +837,6 @@ def write_observed_bpmn(
     implicit_runs: Any = (),
     run_order: Any = None,
     run_spans: Any = None,
-    app_order: Any = None,
 ) -> bool:
     """Draw the observed step flow as BPMN and write it (with layout).
 
@@ -951,10 +863,8 @@ def write_observed_bpmn(
     (annotations.document; unnamed while it is empty) and the main end event
     from the first line of its Result, else "End" (C18); each branch is
     named "N of M transactions" (branch_names). Contract C18 adds the task
-    kinds, the systems' colours and their legend, the notes and the data
-    objects (_map_extras); contract C21 gives the colours in the order of
-    the project library's applications (`app_order`, their names), the
-    systems it does not list after them.
+    kinds, the system each task is done in (a label above it, or once for a
+    map done in one system), the notes and the data objects (_map_extras).
     `context` (a step_context.StepContext) supplies the system and screen.
     `implicit_runs` holds the case id of a session's implicit run (C16),
     whose steps the documentation does not count in runs.
@@ -1020,14 +930,11 @@ def write_observed_bpmn(
     if flow_names is None:
         traces = [[e["concept:name"] for e in trace] for trace in log]
         flow_names = branch_names(bpmn, traces)
-    # One palette and one set of data object keys for every map of the file.
-    palette: dict = {}
+    # One set of data object keys for every map of the file.
     used: set = set()
-    extras = _map_extras(anno, bpmn, context, run_order, palette=palette, used=used,
-                         app_order=app_order)
+    extras = _map_extras(anno, bpmn, context, used=used)
     planes = _sub_process_planes(anno, extras["task_tags"], bpmn, transactions,
-                                 context=context, implicit_runs=implicit_runs,
-                                 palette=palette, used=used, app_order=app_order)
+                                 context=context, implicit_runs=implicit_runs, used=used)
     mining.export_bpmn(bpmn, out_path, documentation=documentation,
                        flow_names=flow_names, label_room=declared,
                        sub_planes=planes or None, **extras)

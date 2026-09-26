@@ -71,24 +71,24 @@ const DEFAULT_REQUEST_CODE = "default";
 
 function _text(v) { return typeof v === "string" ? v.trim() : ""; }
 
-/* The request name set in the capture app's Recording setup (the top-level
-   field, else the config snapshot), or null when none was set or the
-   default was left. */
+/* The request name of the capture's configuration (AD-30: a PDT_CONFIG file,
+   or a Recording setup saved before 2.0.1; the top-level field, else the
+   config snapshot), or null when none was set or the default was left. */
 function requestName(manifest) {
   const m = manifest || {};
   const name = _text(m.engagement_name) || _text(m.config && m.config.engagement_name);
   return name && name !== DEFAULT_REQUEST_NAME ? name : null;
 }
 
-/* The request code set in the capture app's Recording setup, or null when
-   none was set or the default was left. */
+/* The request code of the capture's configuration, or null when none was
+   set or the default was left. */
 function requestCode(manifest) {
   const code = _text((manifest || {}).engagement_id);
   return code && code !== DEFAULT_REQUEST_CODE ? code : null;
 }
 
-/* The capture's request (AD-30): the engagement set in the capture app's
-   Recording setup, shown as its Request code and Request name so that
+/* The capture's request (AD-30): the engagement of the capture's
+   configuration, shown as its Request code and Request name so that
    "project" only ever means what the analyst opens. "Order intake (ENG-7)",
    the name or the code alone, or null when the capture app's defaults were
    left (the PDD's Request row follows the same rule, pdd_export request). */
@@ -202,10 +202,19 @@ function detectMarkerProblems(events, opts) {
   return problems;
 }
 
+/* The request the analyst wrote in the document (C6 `document.request`,
+   2.0.1), "" when none: it wins over the capture's (requestOf). */
+function documentRequest(session) {
+  const doc = session && session.annotations && session.annotations.document;
+  const v = doc && typeof doc === "object" ? doc.request : "";
+  return typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+}
+
 module.exports = {
   eventSpanMs,
   computeSummary,
   smeName,
+  documentRequest,
   requestOf,
   requestName,
   requestCode,

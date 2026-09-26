@@ -111,8 +111,8 @@ surfaces:
 | Step | Use | Weight |
 |---|---|---|
 | 8 to 9px | micro mono badges (state glyphs, axis ticks, the screenshot rail label) | 400 to 600 |
-| 10px | **overline labels**: uppercase, `letter-spacing: 0.4px`, 600, `--fg-3` (section titles) | 600 |
-| 11px | secondary text, mono data values, hints | 400 |
+| 10 to 11px | **overline labels**: uppercase, `letter-spacing: 0.4px`, 600, `--fg-3` (section titles); the pane titles (`.editor-pane-title`, `h3`) and the step pane's section titles are 11px since 2.0.1, legible at 1024x720 | 600 |
+| 11px | secondary text, mono data values (a transaction's head, `.run-meta`), hints | 400 |
 | 12px | controls, buttons, body-secondary | 400 |
 | 13px | **body** (the `html` base) and emphasized labels | 400 / 600 |
 | 14px | icon buttons (mono glyphs), dialog titles | 400 to 600 |
@@ -124,7 +124,7 @@ no-video icon, a list's remove cross.
 ### Capture windows share the same stack
 
 The capture app's windows (the recording bar, the end summary, the welcome,
-Help, consent, Settings, Profile, Recording setup) consume the **same two
+Help, consent, Settings, Profile) consume the **same two
 font tokens** via [`capture/ui/tokens.js`](../../capture/ui/tokens.js),
 which injects an `@font-face` + `:root { --font-ui; --font-mono }` block
 into every window's markup, the fonts inlined as `data:` URIs (most capture
@@ -158,7 +158,11 @@ byte-copies) by hand in the same commit.
   button per surface: the next act). Danger: `--rec` fill, and the plain
   look again while disabled. Link buttons (`.link-btn`) carry the small
   acts inside text (Attach, Replace, Remove; *Undo confirm* beside a
-  transaction's Confirmed badge, in `--fg-3`). A quiet tool beside the main
+  transaction's Confirmed badge, in `--fg-3`; a section's add act beside
+  its title, *Add note*, *Attach file...*; the Flow line's *Only when...*
+  and *Go to...*). An act on the step or the steps themselves is a button,
+  wherever it sits: *Dissolve sub-process* is a button in the step pane
+  and in the breadcrumb (2.0.1). A quiet tool beside the main
   work (the Steps toolbar's *Apps outside the process...*; the Map's *Fit*, *Reset layout* and *Edited maps*, and
   the edited maps' row acts) is `.tool-btn`: 11px `--fg-2` in the text
   face on no fill inside the `--rule` border, the card's fill under the
@@ -250,35 +254,22 @@ cooler, so the bands read on the dark base. A band is coloured by its
 application and named by its business system (a Chrome band on Salesforce
 reads "Salesforce"), so two systems in one browser share a colour.
 
-## The step map's colours (contract C18)
+## The step map's system labels (contract C18)
 
-The pipeline writes a colour per system into `process_map_step.bpmn`
-(`normalization/bpmn_observed.py` `_PALETTE`), as bpmn-js's `bioc:fill` and
-`bioc:stroke`: a light fill and a dark stroke, in the order the reference
-transaction, then the others, first use the systems. A step done in a system
-is a plain task; a step done outside every system is a manual task, whose
-hand marker the legend explains in a line of its own (after it, a Waste
-line when a task is flagged as waste, lane FX3). bpmn-js writes a
-task's name in its stroke colour, so every pair keeps its name at 6.9:1 or
-more on its fill, legible in the PDD's print. A legend text annotation
-names each system's colour; a tenth system and later keep bpmn-js's default
-look and read "no colour" there.
-
-| Name | Fill | Stroke |
-|---|---|---|
-| blue | `#bfdbfe` | `#1e3a8a` |
-| orange | `#fed7aa` | `#7c2d12` |
-| green | `#bbf7d0` | `#14532d` |
-| purple | `#ddd6fe` | `#4c1d95` |
-| red | `#fecaca` | `#7f1d1d` |
-| teal | `#99f6e4` | `#134e4a` |
-| pink | `#fbcfe8` | `#831843` |
-| yellow | `#fef08a` | `#713f12` |
-| grey | `#e5e7eb` | `#374151` |
-
-The colours belong to the map file, not to the viewer's theme: a BPMN tool
-that reads bpmn-js's colour attributes shows them too, and one that does
-not ignores them.
+`process_map_step.bpmn` names the system a task is done in with words, not
+colours (2.0.1): a short text annotation above the task
+(`TextAnnotation_system_<k>`), or, when every task of a map done in a
+system is done in the same one, one annotation for the whole map ("System:
+SAP", `TextAnnotation_system`, placed inside the map where there is room,
+else beside or under it). A step done outside every system is a manual
+task: its hand marker says so, and it gets no label. A process manager
+changes a label by typing in the map editor or any BPMN tool; no editor
+could change the colours the map carried before (`bioc:fill`,
+`bioc:stroke` and a legend naming them), so an edited map kept the wrong
+ones. The labels are part of the picture: the Map's click does nothing on
+one (`asis-links.js` `isSystemLabel`), and the PDD's pictures keep them.
+Like the rest of the map, they are drawn in bpmn-js's default look on the
+white page, the same in every place that draws the map.
 
 ## Notes
 
@@ -297,9 +288,9 @@ not ignores them.
   level, the map editor, the pictures in the PDD and Export's map image)
   are **not** themed: they are documents, drawn on a white page in both
   themes, and the editor's canvas stays light in the dark theme too. Lines,
-  events and text are the library's black; since contract C18 each task
-  carries its system's colour ("The step map's colours" above), which
-  every place that draws the map shows the same way.
+  events, text and the system labels are the library's black; since 2.0.1
+  no task of the step map carries a colour ("The step map's system labels"
+  above; an As-Is copy made before keeps the colours it had).
 - Studio Dark replaces the earlier abandoned "stratified-dark" theme. That
   theme's low-contrast translucent-tint problem (issues D1 to D3 in the
   ARCHITECTURE-ISSUES register) is addressed here: `--fg-3` is held lighter

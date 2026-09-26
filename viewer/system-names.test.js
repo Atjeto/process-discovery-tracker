@@ -90,7 +90,15 @@ test("lane LF-PIPE: the Windows apps read by their names; a page's system is its
   assert.equal(SN.systemName("WINWORD.EXE", "letter.docx" + SEP + "Word", {}), "Word");
   assert.equal(SN.systemName("OUTLOOK.EXE", "Inbox", {}), "Outlook");
   assert.equal(SN.systemName("chrome.exe", "Contoso | Account | Salesforce", {}), "Salesforce");
-  assert.equal(SN.systemName("chrome.exe", "Customer lookup" + SEP + "Order Desk", {}), "Google Chrome");
+  // 2.0.1: a site no rule names is named by the title's last segment.
+  assert.equal(SN.systemName("chrome.exe", "Customer lookup" + SEP + "Order Desk", {}), "Order Desk");
+  assert.equal(SN.systemName("chrome.exe", "Customer lookup" + SEP + "Order Desk" + SEP + "Google Chrome", {}), "Order Desk");
+  assert.equal(SN.systemName("msedge.exe", "Page" + SEP + "Order Desk and 3 more pages" + SEP + "Microsoft\u200b Edge", {}), "Order Desk");
+  assert.equal(SN.systemName("chrome.exe", "New Tab" + SEP + "Google Chrome", {}), "Google Chrome", "one segment is a page, not a site");
+  assert.equal(SN.systemName("chrome.exe", "Orders" + SEP + "SO12345", {}), "Google Chrome", "a value is not a site");
+  assert.equal(SN.systemName("EXCEL.EXE", "Order Desk" + SEP + "Excel", {}), "Excel", "the site rule is for browsers");
+  assert.equal(SN.siteName("Order Desk", new Set()), "");
+  assert.ok(!SN.knownSystems().includes(""), "a site rule adds no name to the System field's list");
   assert.equal(SN.systemName("msedge.exe", "Order Desk", {}), "Microsoft Edge");
   for (const s of ["Calculator", "Character Map", "Paint", "File Explorer"]) assert.ok(SN.knownSystems().includes(s), s);
 });
@@ -100,6 +108,7 @@ test("lane LF-PIPE (#24): a map box leaves its system line out when the step's n
   assert.equal(SN.namesSystem("Account | Salesforce: Save", "salesforce"), true, "ignoring case");
   assert.equal(SN.namesSystem("Excelsior orders: Save", "Excel"), false, "whole words only");
   assert.equal(SN.namesSystem("Customer lookup" + SEP + "Order Desk: Search", "Google Chrome"), false);
+  assert.equal(SN.namesSystem("Customer lookup" + SEP + "Order Desk: Search", "Order Desk"), true);
   assert.equal(SN.systemLine("orders.xlsx" + SEP + "Excel: Save", "Excel"), "");
   assert.equal(SN.systemLine("Customer lookup" + SEP + "Order Desk: Search", "Google Chrome"), "Google Chrome");
   assert.equal(SN.systemLine("Check the stock", ""), "");
@@ -109,7 +118,7 @@ test("lane LF-PIPE (#24): a map box leaves its system line out when the step's n
 test("lane LF-PIPE: a step whose click lost its program in the recording takes the program the pipeline filled in (its grain keys)", () => {
   const inter = { c: { data: { kind: "invoked", name: "Select", window_title: "Customer lookup" + SEP + "Order Desk" + SEP + "Google Chrome" } } };
   const step = { evidence: { interaction_event_ids: ["c"] }, grain_keys: { app: "chrome", screen: "Customer lookup" + SEP + "Order Desk" + SEP + "Google Chrome" } };
-  assert.deepEqual(SN.whereOfStep(step, inter, {}), { system: "Google Chrome", screen: "Customer lookup, Order Desk" });
+  assert.deepEqual(SN.whereOfStep(step, inter, {}), { system: "Order Desk", screen: "Customer lookup" });
   const bare = { evidence: { interaction_event_ids: ["c"] }, grain_keys: { app: "(app)", screen: "(screen)" } };
   assert.deepEqual(SN.whereOfStep(bare, inter, {}), { system: "", screen: "Customer lookup, Order Desk" });
 });

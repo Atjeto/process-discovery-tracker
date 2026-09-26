@@ -6,8 +6,6 @@
   const TM = require("./transcript-model.js");
   const StepFlow = require("./step-flow.js");
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
-  // A step's time on screen ("42s", "2:17", "1h04"), the fact line's too.
-  const { duration: stepDuration } = require("./step-facts.js");
   // C21: the activities the name field's picker keeps as the analyst types.
   const { filterActivities } = require("./library.js");
   // One composed human identity line per element (App Library pass, R1). Reused
@@ -73,7 +71,9 @@
   /* The step rows of one run (steps-view.js renders the runs around them).
      A row: the multi-select tick (shown on hover or once ticked), the name
      (double-click to rename, with the shared name suggestions), the waste
-     tag, the state chip and the duration (the run says in one line how many
+     tag, the state chip and when the step starts on the one clock (2.0.1:
+     the moment finds the step in the video; its duration is in its pane and
+     in the step panel, and the transaction's in its header) (the run says in one line how many
      steps were named for the analyst: from the project's library, or from
      the name given to the same drafted step elsewhere in the project). P1.9: a row carries a chip only
      where it differs from its run: `opts.baseline` is the chip class the run's
@@ -85,7 +85,8 @@
                subSteps(step) (its visible sub-steps counted, null for a
                plain step), onOpenSub(step), readOnly (lane HV: a hand-off
                opened read only, where a row is neither renamed nor
-               ticked) } */
+               ticked), originMs (when the recording started, for the
+               moment each row shows) } */
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu, opts) {
     const o = opts || {};
     host.innerHTML = "";
@@ -130,7 +131,7 @@
         <span class="multi-check" title="Click to select for merge or to hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
         ${subHtml}${flagBadges}${chipHtml}
-        <span class="step-time">${escapeHtml(stepDuration(s.time_range))}</span>
+        <span class="step-time">${escapeHtml(sinceStart(s.time_range && s.time_range.start, o.originMs))}</span>
       `;
       if (subHtml) {
         row.dataset.subProcess = "true";
@@ -316,7 +317,9 @@
           ? "Put its steps back in its place, in every transaction. Ctrl+Z undoes it."
           : "Drop its sub-steps, in every transaction; what you added to them moves to this step. Ctrl+Z undoes it.")}">Dissolve sub-process</button>`
       : callbacks.canOpenAsSub
-        ? `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click), in every transaction where it happens, and show them">Open as a sub-process</button>`
+        ? (callbacks.openAsSubWhy
+          ? `<button id="btn-step-make-sub" disabled title="${escapeAttr(callbacks.openAsSubWhy)}">Open as a sub-process</button>`
+          : `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click, a sheet's cells), in every transaction where it happens, and show them">Open as a sub-process</button>`)
         : "";
     const splitWhy = sub ? "" : splitBlocker(step);
     const moreActs = sub

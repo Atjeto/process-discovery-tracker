@@ -107,11 +107,12 @@ omits window bounds leave the field off.
 ```
 
 A start marker's `label` is the run's name: "Transaction N" ("Run N" in
-recordings made before 2.0.0), or a named transaction from the capture
-app's Recording setup. End markers carry a `null` label. `reason` is
+recordings made before 2.0.0), or, in a recording made before 2.0.1, a
+named transaction from the capture app's Recording setup (gone since). End
+markers carry a `null` label. `reason` is
 present only when an end was fired automatically: `auto_close_for_sibling`
-when the next run started (the transaction key, Next transaction or a
-named transaction) while the run was open, `auto_end_idle` when an idle
+when the next run started (the transaction key or Next transaction) while
+the run was open, `auto_end_idle` when an idle
 stretch past `auto_end_idle_minutes` ended it. An end with no `reason` was
 fired by the SME (End transaction) or by stopping the recording.
 
@@ -355,9 +356,9 @@ not an edit), and the pipeline round-trips it untouched.
 document-level sections, as fields that survive re-export:
 
 ```json
-"document": { "title": "", "purpose": "", "scope": "", "trigger": "", "result": "",
-              "contacts": "", "business_rules": "", "exceptions": "", "effort": "",
-              "improvement": "", "notes": "" }
+"document": { "title": "", "request": "", "purpose": "", "scope": "", "trigger": "",
+              "result": "", "contacts": "", "business_rules": "", "exceptions": "",
+              "effort": "", "improvement": "", "notes": "" }
 ```
 
 Plain multi-line strings, edited in the Overview's document panel. The PDD
@@ -366,6 +367,7 @@ prints each non-empty field in its place:
 | Field | Prints as |
 |---|---|
 | `title` | The document's title and Document control's "Process" |
+| `request` | Document control's "Request" (2.0.1): which request the project is for, its name and code, one line. Empty, the row prints the capture's request from the manifest as before (`engagement_name`, `engagement_id`), else no row. The Overview's project line and its tooltip show it too (`viewer/session-summary.js` `documentRequest`). A transcript sentence is never added to it |
 | `purpose`, `scope` | 2.1 Purpose, 2.2 Scope |
 | `trigger` | 2.3 Trigger: what starts the process. Its first line also names the step map's start event |
 | `result` | 2.4 Result: what the process has produced when it ends. Its first line also names the step map's main end event ("End" while it is empty; C18) |
@@ -377,9 +379,12 @@ prints each non-empty field in its place:
 | `notes` | 8 Notes, printed only when written (the attachments, C16, follow it) |
 
 An empty field prints a "[To be completed: ...]" gap in its place, except
-`title` (the document is then titled "Process Definition Document") and
-`notes` (left out). Only these fields leave gaps, so every gap is one the
-analyst can close in the app. The pipeline preserves this key verbatim.
+`title` (the document is then titled "Process Definition Document"),
+`request` (the capture's, above) and `notes` (left out). Only these fields
+leave gaps, so every gap is one the analyst can close in the app. The
+Overview's status counts ten fields, all but `request` and `notes`, which
+are optional ("N of 10 written"). The pipeline preserves this key
+verbatim.
 
 **`handoffs`** *(array; contract C20, viewer-written)*: the versions of the
 project handed to the developers (Export, Hand off...), oldest first:
@@ -455,8 +460,8 @@ in its text or in its map pictures (the document's own Notes field,
 `document.notes`, is printed; lane FX2: the viewer draws the PDD's pictures
 without the notes). The step map (`process_map_step.bpmn`, so also its
 As-Is copy, the Map and Export's map image and BPMN file) shows the notes on
-a step's task as one text annotation joined to the task (contract C18); a
-note on a moment is on no task. The key
+a step's task as one text annotation under the task, joined to it
+(contract C18); a note on a moment is on no task. The key
 is not `notes`: that one holds the product edition's Flow notes (see "Notes
 and marker edits"). Removing a note deletes its entry. The pipeline never
 writes this key and round-trips it untouched.
@@ -715,8 +720,10 @@ lives at `derived_maps/<map_id>.bpmn`.
   copy of the process map as it is now, named and kinded like the stale
   one, which opens in the editor and is kept at its first change, like
   Edit's; then it takes the stale copy's PDD role (lane FX2). It never
-  merges, and the stale copy stays. A copy made before the step map had its
-  colours, notes and attachments (C18) says that Copy again brings them.
+  merges, and the stale copy stays. A copy made before the step map had
+  what C18 added (`viewer/reference-maps.js` `predatesRichMap`: none of a
+  user or manual task, the legend, a colour or, since 2.0.1, a system
+  label) says that Copy again brings them.
 - **`pdd_role`**: `null` | `as_is` | `to_be`: which PDD slot the map fills
   (one map per slot). At export the viewer renders the copy to PNG and passes
   it as `--pdd-map-image` (As-Is, section 3.1) or `--pdd-tobe-image` (To-Be,
@@ -744,7 +751,7 @@ delete.
   "process_label": "string: the value-free grouping key (ADR-0013)",
   "draft_key": "string, drafted steps only: \"<app>|<screen>|<commit>\" (C1)",
   "draft_keys": ["string", "merged drafts only: the members' draft keys, in order; a library draft: the run's screens (C21)"],
-  "action_key": "string, drafted sub-steps only: \"<app>|<screen>|enter:<field>\" or \"<app>|<screen>|click:<control>\" (C19)",
+  "action_key": "string, drafted sub-steps only: \"<app>|<screen>|enter:<field>\", \"<app>|<screen>|click:<control>\" or \"<app>|<screen>|cells:A-F\" (C19)",
   "name_source": "remembered|draft|library, drafted steps only; action|remembered, drafted sub-steps only",
   "library_activity": "string, optional: the id of the library activity the step is (C21)",
   "end_reason": "commit|screen_change|run_end, drafted steps only",
@@ -801,7 +808,8 @@ other change to a draft does.
   by hand, or to correct a recorded one). It wins over the system derived
   from the step's interactions (C14) in the PDD (the step's line, the
   systems of the process, Systems and information used) and in the
-  step map's task documentation and colour (C18); the screen stays derived.
+  step map's task documentation and system label (C18); the screen stays
+  derived.
 - **`pdd_screenshot`**: the one screenshot the PDD prints under the step: a
   recorder screenshot's session-relative path (one of `screenshot_refs`), or
   the `id` of an entry of `analyst_screenshots`. Absent (or naming a file
@@ -889,7 +897,18 @@ analysis, the PDD's sections 4 to 9) sees the main level only.
   description is the phrase with the value; its `time_range` runs from the
   action's first event to the next action's first event; its `evidence`
   holds the action's event ids and the parent's screenshots of that span.
-  A remembered name for it is keyed `"action|" + action_key`.
+  A remembered name for it is keyed `"action|" + action_key`. Since 2.0.1
+  the cells of one sheet filled one after another (two or more actions on
+  `DataItem` controls named by a cell address, on one screen) are one
+  sub-step named by their columns: "Fill in columns A to F" ("Fill in
+  column B" for one column), `action_key` `"<app>|<screen>|cells:A-F"`,
+  description "Entered 20 cells, A2 to F5."; a single cell stays "Enter
+  B7". A recorded step that would draft fewer than two sub-steps has
+  nothing to open (a step added by hand still opens, with `[]`): the step
+  pane disables *Open as a sub-process* with the reason
+  ("This step has one recorded action (a sheet's cells filled one after
+  another count as one), so it has no steps of its own to open.") and the
+  step menu leaves it out.
 - **Re-analysis** keeps every subtree as it is. It stamps each sub-step,
   at every depth, with a `process_label` by the main level's rule (an
   `action_key` counts like a `draft_key`: a drafted sub-step's label is its
@@ -996,7 +1015,13 @@ flattened) in order. It lets a merge in the pattern run be carried to the
 same consecutive drafts in the other runs, and it is the step's alignment
 key in the differences view and in the PDD's section 4.1:
 `"merge:"` plus the keys as a JSON array. A step with `draft_key` aligns as
-`"draft:<draft_key>"`, any other step as `"label:<process_label>"`.
+`"draft:<draft_key>"`, any other step as `"label:<process_label>"`. After
+the merge folding, a run's step whose own align key the reference lacks
+but whose name is a reference step's name (whitespace collapsed, case
+ignored) is that step, carrying its name and identity (2.0.1:
+`pdd_export._named_alike`, `run-differences.js` `namedAlike`), so a step
+the analyst names like the reference transaction's step is that step, as
+the map already drew them as one box; the golden has two cases for it.
 `shared/run-differences-golden.json` pins that one rule for both the viewer
 (`run-differences.js`) and the PDD (`pdd_export.py`), with the lines it
 writes (lane FX1: one rule for Steps and 4.1): an extra step, a step in
@@ -1137,7 +1162,7 @@ lists last (`isReadOnlyProject`).
   "session_id": "uuid",
   "source": "recorder | video | blank (optional; absent means recorder)",
   "engagement_id": "default",
-  "engagement_name": "request name from setup (optional; null until set)",
+  "engagement_name": "request name from the configuration (optional; null until set)",
   "started_at": "ISO 8601",
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
@@ -1230,17 +1255,20 @@ list names a session by its document title (`annotations.document.title`),
 else this label, else the request code and the folder name (the folder name
 alone when the capture app's default code was left, lane FX1).
 
-`engagement_name` is the request name typed in the capture app's Recording
-setup (AD-30), lifted out of `config` to the top level at session creation
-so lists can show it without reading the nested config; `null` when never
-set. Older sessions carry it inside `config.engagement_name`, and consumers
-fall back to that. The PDD's Document control prints the Request as the
-viewer's project line names it: the name and the code, "Invoice intake
-review (REQ-2026-042)", else the one that was set (lane FX1: the code was
-dropped). The capture app's defaults (the name "Default engagement", the
-code "default") are no request: the PDD prints no Request row, and the
-viewer never shows them, the project line naming the project by its folder
-(lane FX1).
+`engagement_name` is the request name of the capture configuration (AD-30:
+a `PDT_CONFIG` file, or a `userData/quick-config.yaml` that the capture
+app's Recording setup saved before 2.0.1, which is still read), lifted out
+of `config` to the top level at session creation so lists can show it
+without reading the nested config; `null` when never set. Older sessions
+carry it inside `config.engagement_name`, and consumers fall back to that.
+The PDD's Document control prints the Request as the viewer's project line
+names it: the request the analyst wrote in the document
+(`annotations.document.request`, 2.0.1) when there is one, else the name
+and the code, "Invoice intake review (REQ-2026-042)", else the one that was
+set (lane FX1: the code was dropped). The capture app's defaults (the name
+"Default engagement", the code "default") are no request: the PDD prints no
+Request row, and the viewer never shows them, the project line naming the
+project by its folder (lane FX1).
 
 `purpose` is always `"process"`. The field is kept so the shape stays
 stable. Before ADR-0029 a session could also be `"app_prep"` (an App
@@ -1370,11 +1398,9 @@ library never changes an existing project. `analysis.json` records its
 ```
 
 - **`applications`**: the systems, each `name` as `shared/system-names.json`
-  gives it (C14). Their order is the step map's colour order: the systems
-  of a map take the palette's colours in this order, the systems the
-  library does not list after them in the order they are first used. The
-  shipped file lists the known systems of `system-names.json` and no
-  activity.
+  gives it (C14). (Their order was the step map's colour order until 2.0.1
+  took the colours away; the step map no longer reads it.) The shipped
+  file lists the known systems of `system-names.json` and no activity.
 - **An activity**: `id` (unique in the file) and `name` (unique within its
   application), `code` and `description` optional. `screens` lists one or
   more runs of screens, each a list of draft keys (C1) in order; a screen
@@ -1388,7 +1414,7 @@ library never changes an existing project. `analysis.json` records its
   and an app library that fails is not copied (the next analysis copies it
   once it is fixed).
 - **Where it shows**: the drafting (the step entity's "Drafts named from the
-  activity library", above); the step map's colours; the PDD, whose step
+  activity library", above); the PDD, whose step
   context line opens with the activity's code ("Code SF-01") and which
   prints the activity's description when the analyst wrote none for the
   step; the Technical details' Activity and Code columns.
@@ -1531,7 +1557,11 @@ demo sessions included, may still hold them; nothing reads them.
 Valid BPMN 2.0 with diagram interchange, left to right, wrapped into rows
 when one row would print its labels below 8.5 pt on a landscape page, every
 line routed around the boxes, and every element and name placed clear of
-the boxes, the lines and the other names.
+the boxes, the lines and the other names. A line that turns up or down
+leaves a gateway from its top or bottom corner (and enters one at a
+corner), one line a corner, so a gateway's lines part at the gateway
+(2.0.1: they ran together out of its right corner, and a skip hid under
+the main line); the map keeps its merge gateways.
 
 - **What it is drawn from.** The visible steps that belong to a run: one
   trace per run, nodes labelled by `process_label`, a step repeated back to
@@ -1562,33 +1592,36 @@ the boxes, the lines and the other names.
   the flow's documentation. The flow into an early end has no name: its end event says
   the `when`. A branch without a declared name says "N of M transactions"
   (C15; not counted in the implicit run of a session without a recording).
-- **A colour per system** (C18). Each task gets a light fill and a dark
-  stroke, written as bpmn-js's `bioc:fill` and `bioc:stroke` (other tools
-  ignore them), from a palette of nine named colours, the systems in the
-  order of the project library's applications (C21), then the systems it
-  does not list in the order the reference transaction, then the others,
-  first use them. A tenth
-  system and later keep the default look. One text annotation,
-  `TextAnnotation_legend`, names the colours: "Colour by system", then one
-  line per system ("SAP: orange", or "no colour"), and, when a task of its
-  map is a manual task, a line "Hand icon: done outside the systems"
-  (lane CL), and, when a task of its map has the Waste mark, a last line
-  "Waste: a step that should not be needed" (lane FX3). A map with neither
-  a system, a manual task nor a Waste mark has no legend; a map of manual
-  tasks only has that one line.
+- **The system a task is done in** (C18 as 2.0.1 amended it). A task done
+  in a system gets a short text annotation above it naming the system,
+  `TextAnnotation_system_<k>`, joined by `Association_system_<k>`, text a
+  process manager changes by typing in any BPMN tool. When every task of a
+  map (a plane) that is done in a system is done in the same one, the map
+  says it once instead: one text annotation "System: <name>",
+  `TextAnnotation_system`, joined to nothing (inside the map where there
+  is room, else beside or under it), and no task gets a label. A manual
+  task keeps the hand marker and gets no label. The file has no colours
+  (no `bioc:fill` or `bioc:stroke`) and no legend: the colour per system
+  and `TextAnnotation_legend` ("Colour by system", "Hand icon: done outside
+  the systems", "Waste: a step that should not be needed") are gone, since
+  no BPMN editor could change a colour. The viewer takes a system label for
+  part of the picture: a click on one does nothing (`asis-links.js`
+  `isSystemLabel`), and the PDD's pictures keep it.
 - **Waste** (lane FX3). A task a visible step of which is flagged as waste
   (`flags.waste`, the live map's rule) has a small text annotation above
   it, `TextAnnotation_waste_<k>` with the text "Waste" and the
   documentation "Flagged as waste: this step should not be needed.",
-  joined by `Association_waste_<k>`: in its notes' place, or right of its
-  notes. The PDD's pictures keep it (only the notes are left out).
+  joined by `Association_waste_<k>`: right of its system label, or level
+  with the task's left side when it has none. The PDD's pictures keep it
+  (only the notes are left out).
 - **Notes** (C18). The notes on a task's steps (`analyst_notes` with that
-  `step_id`) are one text annotation above the task, joined by an
-  association: one note per line, cut after a whole word within 90
-  characters, whole in the annotation's documentation. A note on a moment
-  is on no task.
+  `step_id`) are one text annotation under the task, `TextAnnotation_<n>`,
+  joined by an association falling from the task's bottom: one note per
+  line, cut after a whole word within 90 characters, whole in the
+  annotation's documentation. A note on a moment is on no task.
 - **Attachments** (C18). Each file attached to a task's steps is a data
-  object under it (`DataObjectReference_<attachment id>` and
+  object under it, right of its note when it has one
+  (`DataObjectReference_<attachment id>` and
   `DataObject_<attachment id>`, named by the label, else the file name,
   documented with `attachments/<file>`), joined by a data input
   association. A step name on several tasks shows its notes and files on
@@ -1596,20 +1629,20 @@ the boxes, the lines and the other names.
 - **Sub-processes** (C19). Every map of `map_tree` (the step entity's
   "Sub-processes", above) is a plane of this one file. A sub-process node
   is a collapsed `bpmn:subProcess` in place of its task (its shape
-  `isExpanded="false"`, task sized), named by its node, documented and
-  coloured like a task, holding its own map, drawn in a
-  `bpmndi:BPMNDiagram` of its own whose plane's `bpmnElement` is the
-  sub-process. That map is chosen as the main
+  `isExpanded="false"`, 16 px taller than a task so its name keeps clear
+  of the + marker), named by its node, documented and labelled like a
+  task, holding its own map, drawn in a `bpmndi:BPMNDiagram` of its own
+  whose plane's `bpmnElement` is the sub-process. That map is chosen as the main
   one (a chain for one trace whose steps' flow does not change the map,
   else the flow edges) from its own traces; a sub-process with no steps
   is a start joined to an end. Its start and main end are unnamed, its
   early ends named from their `when`. Its counts ("In N of M
   transactions", the branch names) are over the transactions that ran the
-  sub-process. Notes, attachments and colours as above on every plane;
-  each plane has its own legend of the systems drawn in it, and a system
-  keeps one colour across the file. The main plane keeps its ids; every id
-  inside a sub-plane starts with `Sub<n>_`, n the map's place in
-  `map_tree`'s list (`Sub1_TextAnnotation_legend`,
+  sub-process. Notes, attachments and system labels as above on every
+  plane: a plane whose tasks are all done in one system says it once. The
+  main plane keeps its ids; every id inside a sub-plane starts with
+  `Sub<n>_`, n the map's place in `map_tree`'s list
+  (`Sub1_TextAnnotation_system_2`, `Sub2_TextAnnotation_system`,
   `Sub2_DataObjectReference_<attachment id>`). A node on several tasks
   (a chain that comes back to it) is a sub-process on each, and the first
   holds its map. A file without a sub-process is written as before.
@@ -1804,7 +1837,7 @@ field") instead of the signature's default.
 | `draft_summary` | The drafting rule's own structure-only numbers (the P1 probe instrument), counted on the fresh drafts before the merge with the analyst's steps: `{ runs, steps_per_run, out_of_run_steps, end_reason: {commit, screen_change, run_end}, name_source: {remembered, draft}, commit_identity: {automation_id, name, class_name, "?"} }`. `steps_per_run` follows run start order. On a session with no runs, `runs` is 0 and every draft counts in `out_of_run_steps`. The [P1 draft-probe runbook](../docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md) reads it. |
 | `app_vocabularies`, `app_vocabulary_matches`, `app_vocabulary_hits_by_id` | Vocabularies loaded, interactions matched, hits per vocabulary. |
 | `vocab_coverage` | Per app `{ total_interactions, enriched, coverage_pct }`: how much of each app's interactions a vocabulary could name. The viewer does not show it. |
-| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`): the `shared/system-names.json` rule for that application alone (a rule without a title: "SAP", "Excel", "Google Chrome"), else a vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name; never an invented product name. The viewer and the capture detail (`analysis.json` `coverage_caveat`) read application names through it. The PDD and the step map name the business system through `app_names.system_name`, which also applies the title rules (a Chrome window on Salesforce is "Salesforce"; C14). |
+| `app_names` | `{ executable as recorded: readable name }` for every application in the recording (`normalization/app_names.py`): the `shared/system-names.json` rule for that application alone (a rule without a title: "SAP", "Excel", "Google Chrome"), else a vocabulary's name, else a window-title segment naming the executable as a word, else the capitalized executable name; never an invented product name. The viewer and the capture detail (`analysis.json` `coverage_caveat`) read application names through it. The PDD and the step map name the business system through `app_names.system_name`, which also applies the title rules (a Chrome window on Salesforce is "Salesforce"; C14) and, after them, the site rule (`site: true`, 2.0.1, `app_names.site_name` and the viewer's `siteName`): a browser window on a site no rule names is named by the site its title ends with, its title split at a spaced hyphen, a pipe, an en or em dash or "::", a last segment naming the browser dropped (the rule's `drop` list, zero-width spaces ignored) and an ending "and N more pages" cut ("Order Desk"); nothing when fewer than two segments are left or when the shared value rules would change the segment, and the next rule applies. The step's screen then leaves the site out. |
 | `annotations_present`, `session_folder`, `worker_id` | Bookkeeping. |
 
 `canonical_process_id`, `canonical_version`, `drift_count`, `phase_count`,

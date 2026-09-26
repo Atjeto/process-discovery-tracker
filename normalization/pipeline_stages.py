@@ -468,8 +468,7 @@ def _run_mining_exports(
     Technical details workbook's path and `handoff` the hand-off version both
     documents are made for (contract C20; None: a working copy). `library`
     is the activity library the run uses (contract C21, library.Library):
-    its application order is the step map's colour order, and the PDD and
-    the workbook print its activities' codes and descriptions. With a
+    the PDD and the workbook print its activities' codes and descriptions. With a
     `staging`, the step BPMN is staged and committed with the run."""
     map_written = False
     if mine:
@@ -504,8 +503,7 @@ def _run_mining_exports(
                 if bpmn_observed.write_observed_bpmn(
                         existing_anno, str(out),
                         context=context, implicit_runs=implicit, run_order=run_order,
-                        run_spans=run_spans,
-                        app_order=getattr(library, "applications", None)):
+                        run_spans=run_spans):
                     map_written = True
                     print(f"[normalize] {'staged' if staging is not None else 'wrote'} {final}")
         except Exception as e:

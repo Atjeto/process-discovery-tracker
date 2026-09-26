@@ -43,12 +43,13 @@ def _scalar(rng: Random):
 
 
 def test_fuzz_duration_formatters_are_total():
-    """clock (the place of a step in the recording) is total over any scalar
-    and returns a string."""
+    """clock (the place of a step in the recording) and fmt_ms (a length,
+    the step map's documentation) are total over any scalar and return a
+    string."""
     for i in range(ITERS):
         rng = Random(BASE + i)
         v = _scalar(rng)
-        for fn in (step_context.clock,):
+        for fn in (step_context.clock, step_context.fmt_ms):
             try:
                 out = fn(v)
                 assert isinstance(out, str), f"non-str for {v!r}: {out!r}"

@@ -251,7 +251,8 @@ shown only after a failed run; `#toast`.
 - The project line `#ov-summary`: in a hand-off opened read only its first
   line `#ov-handoff` ("Version 2, handed off <date> by <name> · Read only",
   what changed in its `title`);
-  `[data-summary="runs"|"steps"|"video"|"transcript"]`,
+  `[data-summary="runs"|"steps"|"video"|"transcript"|"request"]` (the
+  request: the document's, 2.0.1, else the capture's),
   `#btn-attach-video` (Attach, or Replace), `#btn-remove-video` (only for a
   video the analyst attached; a `.modal-confirm` first),
   `#btn-attach-transcript`, `#btn-remove-transcript`, the marker fixes
@@ -259,9 +260,10 @@ shown only after a failed run; `#toast`.
   take their files out of the folder and Ctrl+Z brings them back (lane CC;
   a smoke waits for the reload after the undo: the video's
   `State.getSession().recordingPath`, the transcript's `.transcript`).
-- The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"effort"|"improvement"|"notes"]`
+- The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"request"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"effort"|"improvement"|"notes"]`
   (saved on change), who fills it `#ov-doc-who`, `#ov-doc-status` (the
-  count, and the empty fields by name); the attachments `#ov-attach`
+  count, "N of 10 written": `request` and `notes` are optional and not
+  counted; and the empty fields by name); the attachments `#ov-attach`
   (`#btn-ov-attach`, `.att-row[data-att-id]` with `.att-label-input` and
   `[data-att-act="open"|"remove"]`); the transcript `#ov-tr` (`#ov-tr-list`,
   `.tr-add-to[data-seg]` opens `#ov-tr-add-menu [data-doc-target]`).
@@ -365,7 +367,8 @@ shown only after a failed run; `#toast`.
   only under a condition and was not done; lane FX1); `.run-names-note`
   ("Named for you: N of M steps", from the library or the project's own names); `.run-show-hidden`.
 - The step rows `.step-row[data-step-id]` (double-click renames the row its
-  first click landed on; right-click opens `#step-ctx-menu`). A sub-process
+  first click landed on; right-click opens `#step-ctx-menu`; `.step-time`
+  is when the step starts, m:ss on the one clock, 2.0.1). A sub-process
   row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
   sub-steps", a click opens its level).
 - The step pane `#step-detail` (focus it before Ctrl+V): `.step-fact`,
@@ -385,7 +388,10 @@ shown only after a failed run; `#toast`.
   `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
   `#flag-waste`, `#btn-step-watch` (only with a video), `#btn-step-hide`,
   C19: `#btn-step-make-sub` (Open as a sub-process, on a step of a
-  transaction) or on a sub-process `#btn-step-open-sub` and
+  transaction; 2.0.1: disabled with its reason in its title on a recorded
+  step with fewer than two actions, a sheet's cells filled one after
+  another counting as one, and then left out of `#step-ctx-menu`) or on a
+  sub-process `#btn-step-open-sub` and
   `#btn-step-dissolve` (its More shows `#step-sub-note` in place of Split
   and Merge);
   `#step-shots-sect` (`#btn-step-add-shot` opens `#shot-src-menu
@@ -401,7 +407,8 @@ shown only after a failed run; `#toast`.
 
 **The step panel** (`#step-panel`, `views/step-panel.js`; hidden until a
 door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line
-`#sp-flow` when one is set, `.sp-count`; `.sp-missing` alone for an As-Is
+`#sp-flow` when one is set, `.sp-count`, without "about ... each" when the
+mean is under a second; `.sp-missing` alone for an As-Is
 task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 (`.sp-play`, `.sp-at`, `.sp-shot`), `#sp-video-note` (the one line when the
 video has no moment of the row: not covered, or no time; lane FX2), the
@@ -455,8 +462,12 @@ the transactions ran one click away):
   itself is `#map-asis-canvas`, a bpmn-js
   navigated viewer (`host.__bpmnViewer`; shapes
   `.djs-element[data-element-id]`, the ones a click opens marked
-  `.pdt-link`, the legend `TextAnnotation_legend` marked `.pdt-inert`); a
-  note opens the popover `#map-asis-note` (`.map-asis-pop-text`,
+  `.pdt-link`, the system labels marked `.pdt-inert`: 2.0.1,
+  `TextAnnotation_system_<k>` above a task or a map's one
+  `TextAnnotation_system`, "System: <name>", `Sub<n>_` inside a plane;
+  the legend `TextAnnotation_legend` of a copy made before 2.0.1 is inert
+  too); a note (a step's notes are `TextAnnotation_<n>`, under its task)
+  opens the popover `#map-asis-note` (`.map-asis-pop-text`,
   `.map-asis-pop-close`). C19: the plane shown is
   `__bpmnViewer.get("canvas").getRootElement()` (a sub-process's id plus
   `_plane`; the ids inside it start `Sub<n>_`); bpmn-js's crumbs above a
@@ -468,7 +479,8 @@ the transactions ran one click away):
   while the Map withholds the process map or no transaction has a visible
   step, lane FX3): the editor opens on a new copy, kept at
   its first change (a change in the map, its name or its role; a smoke that
-  needs the copy makes one, for example moves `TextAnnotation_legend` with
+  needs the copy makes one, for example moves a system label, the first
+  element whose id starts `TextAnnotation_system`, with
   `modeling.moveElements`, and waits for the 600 ms delayed write); closed
   without one, nothing is kept (no `reference_maps` entry, no file in
   `derived_maps/`). `#btn-toggle-refmaps` (`#refmap-count`)
@@ -546,6 +558,17 @@ row's rename keeps the names used in the project). Gone since 2026-09-26
 (`rows-freshness.js`, `session.js` `setBeforeWrite` and
 `beforeProjectWrite`, `flow-view.js` `cancelAnalysisQuietly`) and
 `analysis.json` `pdd_data`, `pdd_time` and `steps_signature` (format 5).
+Gone since 2026-09-27 (2.0.1): the step map's colours (`bioc:fill`,
+`bioc:stroke`) and its legend `TextAnnotation_legend` ("Colour by system",
+"Hand icon: done outside the systems", "Waste: a step that should not be
+needed"), now the system labels `TextAnnotation_system_<k>` and a map's
+one `TextAnnotation_system` (an As-Is copy made before keeps its own); the
+capture app's Recording setup (`session-config-window.js`,
+`ui/session-config.html`, `pdt:sessionConfigGet`, `pdt:sessionConfigSave`,
+Setup (analyst)'s *Recording setup...*) and its named transactions (the
+bar's caret, `pdt:namedRunMenu`, the tray's *Start a named transaction*);
+and the Steps row's duration (the row's `.step-time` is when the step
+starts).
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

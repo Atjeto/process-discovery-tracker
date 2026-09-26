@@ -24,7 +24,6 @@ const DEFAULTS = {
   auto_end_on_idle: true,
   poll_interval_seconds: 5,
   idle_threshold_seconds: 60,
-  process_labels: [],
   obs: {
     required: false,
     websocket_url: "ws://127.0.0.1:4455",
@@ -131,7 +130,7 @@ function writeConfigSnapshot(folder, config) {
    than discovered after an 8-hour recording. Returns plain sentences
    (empty when all is well). The request code is not checked here: the
    default one is a setup choice, not a problem to announce at every start
-   (it is set under Setup (analyst), Recording setup). */
+   (since 2.0.1 the analyst writes the request in the viewer). */
 function validateConfig(config, baseDir) {
   const problems = [];
   if (baseDir) {

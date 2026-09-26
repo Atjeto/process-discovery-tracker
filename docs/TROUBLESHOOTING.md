@@ -90,15 +90,16 @@ antivirus blocking the executable, or a YAML syntax error in the file
 
 ### `PDT_CONFIG` is not picked up
 
-**Symptom:** the named transactions (the caret on the bar, the tray's Start
-a named transaction) or the request are the defaults.
+**Symptom:** the request or the settings the file sets are the defaults.
 
 **Check:**
 1. `setx PDT_CONFIG ...` affects programs started afterwards, not a running
    one: quit the capture app and start it again.
 2. Does the path exist? A missing file quietly falls back to the defaults.
-3. Without `PDT_CONFIG`, the app reads `quick-config.yaml` from Setup
-   (analyst), Recording setup, which applies at the next launch.
+3. Without `PDT_CONFIG`, the app reads the `quick-config.yaml` that the
+   Recording setup of a version before 2.0.1 saved, if there is one. The
+   analyst can write the request in the viewer instead (the document's
+   Request), which the PDD prints.
 
 ### A recording shows as recovered
 

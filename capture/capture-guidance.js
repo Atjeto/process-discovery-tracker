@@ -95,7 +95,7 @@ function pausedText(ms) {
    elapsed time is the time recorded (the pauses left out); while paused,
    the pause's own length shows beside Paused (pauseNow, "0:03"), and the
    time paused in all is in the bar's tooltip (lane FX3, F17). */
-function barModel({ status, hotkey, namedRuns } = {}) {
+function barModel({ status, hotkey } = {}) {
   const state = recordingState(status);
   const stateText = state === "idle" ? "Not recording" : state === "paused" ? "Paused" : "Recording";
   const run = runText(status);
@@ -113,7 +113,6 @@ function barModel({ status, hotkey, namedRuns } = {}) {
     key: formatHotkey(hotkey),
     problem: problemText(status),
     pauseLabel: state === "paused" ? "Resume" : "Pause",
-    namedRuns: !!namedRuns && state !== "idle",
     title: state === "idle" ? stateText : stateText + ": " + run + ", " + elapsed + (pausedLine ? " (" + pausedLine + ")" : ""),
   };
 }

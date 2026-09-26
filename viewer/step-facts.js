@@ -19,7 +19,7 @@
 "use strict";
 
 const { valueFree } = require("./process-map-levels.js");
-const { sinceStart } = require("./dom.js");
+const { sinceStart, formatDuration } = require("./dom.js");
 const { isBrowserChrome } = require("./recognition.js");
 
 const ELLIPSIS = String.fromCharCode(0x2026);
@@ -201,19 +201,15 @@ function pointer(step, runs, originMs) {
   return run ? run.title + " at " + at : at + " into the recording";
 }
 
-/* The step's time on screen: "42s", "2:17", "1h04". */
+/* The step's time on screen: "42s", "2m 17s", "1h 04m". */
 function duration(tr) {
   return formatMs(Date.parse(tr && tr.end) - Date.parse(tr && tr.start));
 }
 
-/* A time in ms the way a step's shows: "42s", "2:17", "1h04" ("" when unknown). */
+/* A time in ms the way a step's shows (dom.js formatDuration, the one rule
+   for durations): "under 1s", "42s", "2m 17s", "1h 04m"; "" when unknown. */
 function formatMs(ms) {
-  if (!isFinite(ms) || ms < 0) return "";
-  const secs = Math.round(ms / 1000);
-  if (secs < 60) return secs + "s";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return mins + ":" + String(secs % 60).padStart(2, "0");
-  return Math.floor(mins / 60) + "h" + String(mins % 60).padStart(2, "0");
+  return formatDuration(ms);
 }
 
 /* The step pane's one fact line: the system first, then the code of the

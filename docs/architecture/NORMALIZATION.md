@@ -15,8 +15,7 @@ Python; it also runs from a shell. There is no Analyze button: the viewer
 runs the pipeline by itself when a session opens without a current analysis
 (none, or one from an older pipeline), after Apps outside the process,
 after a time range is left out or included again (and after an undo of
-either), as the Overview opens when the rows it shows are older than the
-steps, on the Map when the map it shows is older than the steps, inside
+either), on the Map when the map it shows is older than the steps, inside
 Edit as the As-Is map, and before a PDD export, a map export or a hand-off
 when the step map is missing or older than the steps. Apply marker changes
 runs it on request; Help, Troubleshooting has Re-analyze for a stuck state.
@@ -354,32 +353,39 @@ and the other names. What a BPMN tool receives besides the shapes:
 - **Branch names.** A branch leaving a gateway without a declared name says
   "N of M transactions", the transactions that took it (not counted in the
   implicit run of a session without a recording).
-- **A colour per system** (C18): each task's fill and stroke, written as
-  bpmn-js's `bioc:fill` and `bioc:stroke` (other tools ignore them), from a
-  palette of nine named colours, the systems in the order of the project
-  library's applications (C21), then the systems it does not list in the
-  order they are first used (the reference transaction first: the PDD's
-  order). A tenth system and
-  later keep the default look. One text annotation, `TextAnnotation_legend`,
-  lists them: "Colour by system", then one line per system ("SAP: orange",
-  "no colour" past the palette), then "Hand icon: done outside the
-  systems" when a task of the map is a manual task, then "Waste: a step
-  that should not be needed" when a task has the Waste mark. It sits inside
-  the map where there is room, else beside or under it.
+- **The system a task is done in** (C18 as 2.0.1 amended it): a short
+  text annotation above the task naming the system
+  (`TextAnnotation_system_<k>`, joined by `Association_system_<k>`), which
+  a process manager changes by typing in any BPMN tool. When every task of
+  a map that is done in a system is done in the same one, the map says it
+  once instead: one text annotation "System: <name>" joined to nothing
+  (`TextAnnotation_system`, inside the map where there is room, else
+  beside or under it), and no task gets a label. A manual task keeps the
+  hand marker and gets no label. The map has no colours (no `bioc:fill` or
+  `bioc:stroke`) and no legend: no BPMN editor could change a colour, so an
+  edited map kept the wrong ones, and `write_observed_bpmn` no longer takes
+  the library's application order.
 - **Waste** (lane FX3): a task a visible step of which is flagged as waste
   has a text annotation "Waste" above it (`TextAnnotation_waste_<k>`, its
   documentation "Flagged as waste: this step should not be needed.",
-  joined by `Association_waste_<k>`), in its notes' place or right of its
-  notes.
+  joined by `Association_waste_<k>`), right of its system label, or level
+  with the task's left side when it has none.
 - **Notes** (C18): the analyst's notes on a task's steps (`analyst_notes`
-  with a `step_id`) are one text annotation above the task, joined by an
-  association: one note per line, the text cut after a whole word within 90
+  with a `step_id`) are one text annotation under the task
+  (`TextAnnotation_<n>`), the association falling from the task's bottom:
+  one note per line, the text cut after a whole word within 90
   characters, whole in the annotation's documentation. A note on a moment
   is on no task.
 - **Attachments** (C18): each file attached to a task's steps is a data
-  object under it (`DataObjectReference_<attachment id>`, named by the
-  label, else the file name, documented with `attachments/<file>`), joined
-  by a data input association.
+  object under it, right of its note when it has one
+  (`DataObjectReference_<attachment id>`, named by the label, else the file
+  name, documented with `attachments/<file>`), joined by a data input
+  association.
+- **Gateways.** A flow that turns up or down leaves a gateway from its top
+  or bottom corner (and enters one at a corner), one flow a corner, so the
+  flows of a gateway part at the gateway (2.0.1: they ran together out of
+  its right corner, and a skip hid under the main line). The map keeps
+  its merge gateways.
 - A step name on several tasks (a transaction that comes back to a step)
   shows its notes and files on the first.
 
@@ -395,10 +401,11 @@ is a plane of the one file (`bpmn_observed._sub_process_planes`, written by
 `mining.export_bpmn`, one `_Plane` per map, recursively):
 
 - A sub-process node is a collapsed `bpmn:subProcess` in its parent's map,
-  in place of the task: task sized, its shape `isExpanded="false"`, named
-  by its node, documented, coloured and joined to its notes and files like
-  a task. It holds its map's model, drawn in a `bpmndi:BPMNDiagram` of its
-  own whose plane's `bpmnElement` is the sub-process. A node on several
+  in place of the task: 16 px taller than a task, so its name keeps clear
+  of the + marker, its shape `isExpanded="false"`, named by its node,
+  documented, labelled with its system and joined to its notes and files
+  like a task. It holds its map's model, drawn in a `bpmndi:BPMNDiagram` of
+  its own whose plane's `bpmnElement` is the sub-process. A node on several
   tasks is a sub-process on each; the first holds the map.
 - The map is chosen as the main one from its own traces (the flow edges
   when the flow set on its steps changes the map, a chain for one trace,
@@ -407,9 +414,9 @@ is a plane of the one file (`bpmn_observed._sub_process_planes`, written by
   Its start and main end are unnamed, its early ends named from their
   `when`. Its counts ("In N of M transactions", the branch names) are over
   the transactions that ran the sub-process, not its visits.
-- Notes, attachments and colours as above on every plane. Each plane has
-  its own legend of the systems drawn in it; a system keeps one colour
-  across the file (the main map's systems take the first colours).
+- Notes, attachments and system labels as above on every plane: a plane
+  whose tasks are all done in one system says it once
+  (`Sub<n>_TextAnnotation_system`).
 - The main plane keeps its ids, so a file without a sub-process is written
   byte for byte as before. Every id inside a sub-plane starts with
   `Sub<n>_`, n the map's place in `map_tree`'s list, so the ids are unique
@@ -434,9 +441,10 @@ gaps. The sections, in the reader's order:
 1. **Document control.** The process (the document title), the project
    folder, when it was recorded and by whom (the SME's profile name, else
    the Windows login), the transactions recorded, whether a video is
-   attached, the request when one was set (AD-30: its name and its code,
-   "Invoice intake review (REQ-2026-042)", the capture app's defaults never
-   printed), the date generated, and its version (contract C20,
+   attached, the request: the one the analyst wrote in the document (C6
+   `request`, 2.0.1), else the capture's when one was set (AD-30: its name
+   and its code, "Invoice intake review (REQ-2026-042)", the capture app's
+   defaults never printed), the date generated, and its version (contract C20,
    `handoff_versions.py`): "Version N, handed off <date> by <name>" when it
    is made for a hand-off (`--handoff`), else "Working copy after version N",
    or "Working copy, not handed off yet"; then, once the project was handed
@@ -448,7 +456,9 @@ gaps. The sections, in the reader's order:
    `--pdd-map-image`, else the map from the runs as a table (each step and
    the steps that followed it, with the number of runs) and a line naming
    `process_map_step.bpmn`. 3.2 the steps of the reference run: first the
-   systems the process runs through, then one heading per step with its
+   systems the process runs through, then, while any printed step is a
+   draft, "The analyst has not yet confirmed N of these M steps." (a
+   chapter says it too), then one heading per step with its
    context line (the heading reads "Step N: <name>": lane FX1, so a step's
    number never reads as a section's), "Only when ..." when the step has a
    condition (C17), its
@@ -472,12 +482,19 @@ gaps. The sections, in the reader's order:
    chapter prints.
 4. **Variations, rules and exceptions** (sections 4 to 9 read the main
    level only). 4.1 how each other run differed
-   from the reference run (extra steps with their system, where and in how
-   many runs; a different order; skipped steps; a step that happens only
-   under a condition (C17) and was not done, "Not done: <name> (only when
-   <condition>).", which is no difference; a step done more often than in
-   the reference run, "Repeated: <name>, <n> times."), aligned by draft key,
-   merge key, else label: the rule the viewer's Steps level uses (lane FX1:
+   from the reference run, in plain sentences under the transaction's name
+   (2.0.1, `_variation_lines`): an extra step with its system, where and in
+   how many transactions ("Check the stock is done after Save order, in 1
+   of 3 transactions."); a different order; a skipped step ("Send the
+   confirmation is not done here (it is done in 2 of 3 transactions).");
+   a step that happens only under a condition (C17) and was not done ("...
+   is not done here: it is done only when <condition>."), which is no
+   difference; a step done more often than in the reference run. The runs
+   are aligned by draft key, merge key, else label, and then a step whose
+   own key the reference lacks but whose name is a reference step's
+   (whitespace collapsed, case ignored) is that step (2.0.1,
+   `_named_alike`: the analyst named them alike, and the map already drew
+   them as one box): the rule the viewer's Steps level uses (lane FX1:
    one rule, with the same default reference transaction and the same order
    of steps that start at one moment), pinned by
    `shared/run-differences-golden.json`. The reference run is compared with
@@ -568,9 +585,9 @@ a temporary file renamed into place.
 The PDD prints no analysis finding and reads no analysis stage, so a failed
 stage changes nothing in it. The notes the analyst pins to steps and moments
 (`annotations.analyst_notes`) are context in the viewer: the PDD leaves them
-out, in its text and (lane FX2) in the map pictures the viewer draws for it,
-while the Map, Export's map image and the BPMN file show a step's notes
-beside its task (above).
+out, in its text and (lane FX2) in the map pictures the viewer draws for it
+(which keep the system labels), while the Map, Export's map image and the
+BPMN file show a step's notes under its task (above).
 
 ## System names (`shared/system-names.json`, contract C14)
 
@@ -579,6 +596,17 @@ without `.exe`) and a window title into the business system the work
 happened in: SAP, Excel, Outlook, and for a browser window the web system
 its title names (Salesforce, ServiceNow, Jira, Zendesk). The first matching
 rule wins; a rule without a title pattern also names the application itself.
+After the web systems' rules and before the browsers' own names, the site
+rule (`site: true` with a `drop` list of browser names, 2.0.1) names a
+browser window on a site no rule names by the site its title ends with:
+the title split at a spaced hyphen, a pipe, an en or em dash or "::", a
+last segment naming the browser dropped (zero-width spaces ignored), an
+ending "and N more pages" cut, then the last segment ("Order Desk" for the
+page "Customer lookup" on Order Desk in Chrome). It names nothing when
+fewer than two segments are left (a lone "New Tab" stays Google Chrome) or
+when the shared value rules would change the segment (a value, not a
+name), and the next rule applies. The step's screen then leaves the site
+out ("Customer lookup").
 `app_names.py` reads it:
 
 - `build_app_names` gives each executable a readable name for `stats.json`
@@ -586,13 +614,15 @@ rule wins; a rule without a title pattern also names the application itself.
   then a window-title segment that names the executable, then the
   capitalized executable name. Never an invented product name.
 - `system_name(app, title, names)` names the system of one application and
-  window title: the first matching rule, else the readable name.
+  window title: the first matching rule (a site rule through `site_name`),
+  else the readable name.
 
 The PDD and the step map name systems through `step_context.py`, which also
 derives a step's value-free screen from its window title and prefers a
 vocabulary's screen name when it contains the title's screen. A system the
 analyst set on a step (`step.system`, C16) wins. The viewer applies the same
-rules from the same file (`viewer/system-names.js`).
+rules from the same file (`viewer/system-names.js`, the site rule as
+`siteName`).
 
 ## Sessions without a recording (contract C16)
 
@@ -642,7 +672,7 @@ SCHEMA.md.
 | `marker_edits.py` | Replays the analyst's marker edits onto a derived stream; an insert becomes a synthetic marker with event id `insert-<edit_id>`. |
 | `case_assignment.py` | Marker-based runs (never nested), deterministic case ids, `case_ids` stamping, the implicit run (C16). |
 | `app_vocab.py` | Loads the shipped vocabularies (`app_vocabularies/*.yaml`, plus any folder in `PDT_APP_VOCABULARIES`) and enriches matching interactions. `regex_guard.py` refuses authored title patterns that could backtrack catastrophically. |
-| `app_names.py` | Readable application names and business system names from `shared/system-names.json` (above). |
+| `app_names.py` | Readable application names and business system names from `shared/system-names.json` (above; the site rule's `site_name`, 2.0.1). |
 | `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (time, then `order`), the recording clock ("0:19") and the video start. Read by the PDD and the step map. |
 | `recognition.py` | The platform recognition layer (below). |
 | `step_suggest.py` | The drafting rule, `session_names()`, `draft_summary()`, `library_drafts()` (C21), `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
@@ -651,11 +681,11 @@ SCHEMA.md.
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
 | `case_quality.py` | The transaction check of `analysis.json`: how the runs were found, how many, and the share of the recorded actions inside them. |
 | `capture_detail.py` | `coverage_caveat` of `analysis.json`: the apps the recorder saw with less detail, with one plain claim the Overview shows. |
-| `mining.py` | The pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
+| `mining.py` | The pure-Python BPMN writer and layout (`export_bpmn`: task kinds, the system labels (a map's one label placed where the legend was), notes, data objects and the Waste marks placed with the rest, a gateway's flows from its corners; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
 | `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
-| `pdd_export.py` | The PDD (above), and `rekey_pairs` (the re-keyed data, which the Technical details lists with its values). |
+| `pdd_export.py` | The PDD (above), its half of the differences rule (`_collapse_merged`, `_named_alike`), and `rekey_pairs` (the re-keyed data, which the Technical details lists with its values). |
 | `handoff_versions.py` | Contract C20, pure: the one line on a document's version (`version_line`: made for a hand-off, or a working copy) and the version history rows, from `annotations.handoffs`. The PDD and the Technical details read it. |
 | `tech_details.py` | Contract C20: the Technical details workbook (above), its sheets as plain rows. |
 | `xlsx_writer.py` | A minimal `.xlsx` writer on `zipfile` (above). |
@@ -686,9 +716,9 @@ Lighter mechanisms replace the workbenches:
 - **The activity library** (contract C21): the app ships
   `library/activities.json`; each project keeps its own copy,
   `library.json`, made by its first analysis, and a run of drafts whose
-  screens an activity lists becomes one draft named from it (stage 4). Its
-  application order is the step map's colour order; the PDD prints an
-  activity's code and description, the Technical details its name and code.
+  screens an activity lists becomes one draft named from it (stage 4). The
+  PDD prints an activity's code and description, the Technical details its
+  name and code.
 
 Their shapes are in [SCHEMA.md](../../shared/SCHEMA.md). (The saved processes
 of contract C5 left the app on 2026-09-24: a process is recorded once.)

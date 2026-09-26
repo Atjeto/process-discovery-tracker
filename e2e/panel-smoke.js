@@ -25,7 +25,7 @@
  *       Process map (image), with no As-Is copy saves the step BPMN drawn by
  *       bpmn-js; the chosen copy shows drawn by bpmn-js, where a task opens
  *       the panel on its step (and plays it), a file opens its attachment, a
- *       note shows its whole text and the legend takes no click; an edit in
+ *       note shows its whole text and a system label takes no click; an edit in
  *       the map editor says Saving... then Saved in the top bar, and a task
  *       renamed there says in the panel that no step has its name;
  *   (e) the folder moved and opened on a fresh profile still has its video,
@@ -612,7 +612,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     asis.image = {
       bpmnJs: /created with bpmn-js/.test(svg) && /djs-/.test(svg), liveMap: /Process Discovery Tracker: process map/.test(svg),
       note: svg.includes('data-element-id="TextAnnotation_1"'), file: svg.includes('data-element-id="DataObjectReference_' + ATT.id + '"'),
-      legend: svg.includes('data-element-id="TextAnnotation_legend"'),
+      labels: /data-element-id="TextAnnotation_system(?:_\d+)?"/.test(svg),
       suggested: path.basename((await v.app.evaluate(() => global.__pdtSaveDefault)) || ""),
       revealed: path.resolve((await v.app.evaluate(() => global.__pdtRevealed)) || ".").toLowerCase() === path.resolve(svgOut).toLowerCase(),
       level: await page.evaluate(() => require("./state.js").getLevel()),
@@ -626,7 +626,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
 
   await part("f2", true, async () => {
     // The Map's act makes the As-Is copy (lane MV: kept at its first change,
-    // here the legend moved a little); the Map then shows it.
+    // here a system label moved a little); the Map then shows it.
     await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: T });
     await page.locator("#btn-fork-refmap").click({ timeout: T });
     await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
@@ -634,7 +634,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await wait(800);
     await page.evaluate(() => {
       const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
-      ed.get("modeling").moveElements([ed.get("elementRegistry").get("TextAnnotation_legend")], { x: 0, y: 8 });
+      ed.get("modeling").moveElements([ed.get("elementRegistry").filter((e) => /^TextAnnotation_system/.test(e.id))[0]], { x: 0, y: 8 });
     });
     await wait(1400);   // the editor's delayed write (600 ms)
     await page.locator("#btn-refmap-editor-close").click({ timeout: T });
@@ -653,10 +653,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       return {
         task: find((e) => is(e, "bpmn:Task") && e.businessObject.name === name),
         other: find((e) => is(e, "bpmn:Task") && /^va01: Check/.test(e.businessObject.name || "")),
-        note: find((e) => is(e, "bpmn:TextAnnotation") && e.id !== "TextAnnotation_legend"),
-        noteShown: (all.find((e) => is(e, "bpmn:TextAnnotation") && e.id !== "TextAnnotation_legend") || { businessObject: {} }).businessObject.text || "",
+        note: find((e) => is(e, "bpmn:TextAnnotation") && /^TextAnnotation_\d+$/.test(e.id)),
+        noteShown: (all.find((e) => is(e, "bpmn:TextAnnotation") && /^TextAnnotation_\d+$/.test(e.id)) || { businessObject: {} }).businessObject.text || "",
         file: find((e) => is(e, "bpmn:DataObjectReference")),
-        legend: find((e) => e.id === "TextAnnotation_legend"),
+        legend: find((e) => /^TextAnnotation_system/.test(e.id)),
       };
     }, SAVE.name);
 
@@ -677,7 +677,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   });
 
   await part("f4", false, async () => {
-    // (f4) A note shows its whole text; the legend takes no click.
+    // (f4) A note shows its whole text; a system label takes no click.
     await page.click('#map-asis-canvas .djs-element[data-element-id="' + ids.note + '"]', { timeout: T });
     asis.note = await page.evaluate(() => ((document.querySelector("#map-asis-note .map-asis-pop-text") || {}).textContent || ""));
     await page.screenshot({ path: path.join(__dirname, "panel-smoke-asis.png") }).catch(() => {});
@@ -730,8 +730,8 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       rows: document.querySelectorAll("#sp-body .sp-occ").length, video: !document.getElementById("sp-video").hidden }));
   });
   const im = asis.image || {};
-  record("(f1) C18 + AD-32: Export, Process map (image), with no As-Is copy, saves the step BPMN drawn by bpmn-js (the PDD's picture, its note, file and legend on it), not the live map, and the level stays",
-    !failed.f1 && im.bpmnJs && !im.liveMap && im.note && im.file && im.legend && !!im.base && im.suggested === im.base + " map.svg" && im.revealed && im.level === "steps",
+  record("(f1) C18 + AD-32: Export, Process map (image), with no As-Is copy, saves the step BPMN drawn by bpmn-js (the PDD's picture, its note, file and system labels on it), not the live map, and the level stays",
+    !failed.f1 && im.bpmnJs && !im.liveMap && im.note && im.file && im.labels && !!im.base && im.suggested === im.base + " map.svg" && im.revealed && im.level === "steps",
     JSON.stringify(failed.f1 || im));
   const tk = asis.task || {};
   const saveRow = ((tk.st && tk.st.rows) || []).find((r) => r.id === SAVE.step_id) || {};
@@ -743,7 +743,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   record("(f3) C18: a file on the As-Is map opens its attachment through the safe open path (attachments/ of the project)",
     !failed.f3 && !!asis.opened && path.resolve(asis.opened).toLowerCase() === path.resolve(S, "attachments", ATT.file).toLowerCase(),
     JSON.stringify(failed.f3 || { opened: asis.opened }));
-  record("(f4) C18: a note on the As-Is map shows its whole text in a popover (the map shows it cut); the legend takes no click",
+  record("(f4) C18: a note on the As-Is map shows its whole text in a popover (the map shows it cut); a system label takes no click",
     !failed.f4 && asis.note === NOTE && /…$/.test(ids.noteShown || "") &&
       !!asis.legend && asis.legend.through && !asis.legend.pop && asis.legend.name === SAVE.name,
     JSON.stringify(failed.f4 || { note: asis.note, shown: ids.noteShown, legend: asis.legend }));

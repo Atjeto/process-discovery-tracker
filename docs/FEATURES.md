@@ -24,8 +24,8 @@ The SME's tray app; see [architecture/CAPTURE.md](architecture/CAPTURE.md).
 - **The recording bar.** A small strip that stays on top without taking the
   keyboard focus and stays out of shared screens and screenshots: the state,
   the transaction in progress, the time recorded (the pauses left out; while
-  paused, the pause's length beside Paused), Next transaction (with named
-  transactions when they are set up), Pause and Stop.
+  paused, the pause's length beside Paused), Next transaction, Pause and
+  Stop.
 - **What it records.** The foreground window every 5 s, the clicks and
   typing through a C# UI Automation sidecar (password fields are never
   recorded), a start and an end marker per transaction, screenshots on an
@@ -40,11 +40,11 @@ The SME's tray app; see [architecture/CAPTURE.md](architecture/CAPTURE.md).
   minutes; a lost write, a program the recorder cannot see and failing
   screenshots each tell the SME; a crashed recording is recovered at the
   next launch.
-- **Setup (analyst).** Recording setup (the request and the named
-  transactions), Settings (keys, OBS, screenshots, the storage limit, the
-  idle end of a transaction), Profile (who is recording), a readiness
+- **Setup (analyst).** Settings (keys, OBS, screenshots, the storage limit,
+  the idle end of a transaction), Profile (who is recording), a readiness
   check, the recordings on this computer and their deletion. An optional
-  consent window.
+  consent window. The request is written in the viewer (2.0.1); a
+  recording setup saved by an earlier version is still read.
 
 ## The pipeline and the PDD
 
@@ -66,8 +66,9 @@ The Python pipeline the viewer runs by itself; see
   stays hidden. The raw recording is never changed.
 - **Business system names.** Steps, maps and the PDD name the system a step
   happened in (SAP, Excel, Outlook, Salesforce for a Chrome window on
-  Salesforce), from one rule list shared with the viewer; a system set by
-  hand wins.
+  Salesforce), from one rule list shared with the viewer; a browser window
+  on a site no rule knows reads its site ("Order Desk"), not the browser.
+  A system set by hand wins.
 - **Statistics and observations.** Times per run and per step, the variants
   of the runs, the data typed again in another system, and the applications
   the recorder saw with less detail. A transaction's active time is the
@@ -82,23 +83,28 @@ The Python pipeline the viewer runs by itself; see
   condition, a loop back, a skip, an early end), the start named after the
   trigger, the main end after the result and each early end after its
   condition, plain tasks for the steps done in a system and manual tasks
-  (the hand marker) for the steps done outside every system, each step's
-  notes beside it, a *Waste* note beside a step flagged as waste, its
-  attachments as files under it, and a colour per system with a legend that
-  also says what the hand and the Waste note mean. Task names stay
-  the step names, so a BPMN tool imports them clean.
+  (the hand marker) for the steps done outside every system, the system of
+  each task in a short label above it (or said once, "System: SAP", when
+  every task is done in one system), a *Waste* note beside a step flagged
+  as waste, each step's notes under it and its attachments as files under
+  it, and a decision's paths leaving from its own corners. The labels are
+  text a process manager changes in any BPMN tool; the map has no colours
+  and no legend (2.0.1). Task names stay the step names, so a BPMN tool
+  imports them clean.
 - **The PDD (.docx).** The process written down for the SME, who
   confirms it, and for whoever asks about the process; archived per
   version. The developers work from the project in the viewer and the
   Technical details, so it holds no values, controls or recorded times.
-  Tool-neutral, in the reader's order: document control; purpose, scope,
-  trigger, result and contacts; the As-Is map and the reference
-  transaction's steps (each with its system, screen, "in N of M
-  transactions", "Transaction 1 at 0:19", "Only when" its condition, its
-  description, the fields it entered, one screenshot (the one chosen for
-  the PDD, else its first) and its attachments, a waste flag, and where the
-  process goes after it besides the next step), each step headed "Step 2:
-  <name>" so its number never reads as a section's; variations in plain
+  Tool-neutral, in the reader's order: document control (the request the
+  analyst wrote, else the capture's); purpose, scope, trigger, result and
+  contacts; the As-Is map and the reference transaction's steps (each with
+  its system, screen, "in N of M transactions", "Transaction 1 at 0:19",
+  "Only when" its condition, its description, the fields it entered, one
+  screenshot (the one chosen for the PDD, else its first) and its
+  attachments, a waste flag, and where the process goes after it besides
+  the next step), each step headed "Step 2: <name>" so its number never
+  reads as a section's, under a line saying how many the analyst has not
+  yet confirmed while any is a draft; variations in plain
   sentences (the lines the Steps level lists: extra, reordered, skipped and
   repeated steps, a conditional step not done, and a stretch left out of
   the analysis), business rules and exceptions; the systems used, each with
@@ -153,15 +159,18 @@ The viewer says *transaction* for one pass through the process and
   app keeps no record of it) and explained in its tooltip, with one button
   for the next act. While the As-Is map the PDD prints was made before the
   steps changed, it adds *Check the As-Is map*.
-- **The project line**: who recorded it, its transactions, the reference
+- **The project line**: who recorded it, the request (the one written in
+  the document, else the capture's), its transactions, the reference
   transaction's steps, the video and the transcript with Attach, Replace
   and Remove (each taken out with its files in the folder, and back with
   Ctrl+Z), and a warning only when one is needed.
-- **The document** ("You write these. The PDD prints them."): eleven fields
-  that print in their own places in the PDD (title, purpose, scope,
-  trigger, result, contacts, business rules, exceptions, volume and effort,
-  improvement and automation scope, notes). An empty field looks empty, and the heading
-  counts the fields written and, once one is, names the ones still empty.
+- **The document** ("You write these. The PDD prints them."): twelve fields
+  that print in their own places in the PDD (title, request, purpose,
+  scope, trigger, result, contacts, business rules, exceptions, volume and
+  effort, improvement and automation scope, notes). An empty field looks
+  empty, and the heading counts the fields written, all but the request
+  and the notes, which are optional ("3 of 10 written"), and, once one is,
+  names the ones still empty.
   With it, the project's attachments and the transcript's sentences with
   *Add to* a field; a sentence said before the recording started reads
   "0:28 before".
@@ -197,15 +206,19 @@ The viewer says *transaction* for one pass through the process and
 **Steps**
 
 - **The transactions and their steps**, under one line that says what a
-  transaction is. Confirm the reference transaction after fixing its
-  boundaries (merge, split, add, hide) and names; *Undo confirm*, beside
-  the Confirmed badge, takes it back. A merge carries to the same drafts of the other
-  transactions; a hidden draft can be hidden in every transaction.
+  transaction is; a row shows when its step starts, a transaction's head
+  its time ("under 1s", "42s", "2m 07s"). Confirm the reference transaction
+  after fixing its boundaries (merge, split, add, hide) and names; *Undo
+  confirm*, beside the Confirmed badge, takes it back. A merge carries to
+  the same drafts of the other transactions; a hidden draft can be hidden
+  in every transaction.
 - **The other transactions are reviewed, not confirmed**: each lists its
   extra, skipped, reordered and repeated steps against the reference
   transaction, and its head counts them; a step that happens only under a
   condition and was not done is said apart, as no difference (the PDD's
-  4.1 lists the same lines).
+  4.1 lists the same lines). A step named like a step of the reference
+  transaction is that step, whatever the recorder drafted (the map already
+  draws them as one box).
 - **The step pane**: a fact line led by the system, Name, System, the fields
   typed, Description (with what was said during the step), the Flow line,
   Waste, Watch and Hide; screenshots (a video frame, a pasted image or a
@@ -219,10 +232,13 @@ The viewer says *transaction* for one pass through the process and
   toast says so; Ctrl+Z brings both back.
 - **Sub-processes**: a step can hold steps of its own, at any depth. *Open
   as a sub-process* gives a step one step per action recorded in it (a
-  field typed, a click; named without the values typed), in every
-  transaction where it happens; *Group into a sub-process...* moves ticked
-  steps, one after the other, into a new sub-process, and the same steps in
-  every transaction too (it says first what it will group, and where). Its
+  field typed, a click; named without the values typed; the cells of a
+  sheet filled one after another are one step, "Fill in columns A to F"),
+  in every transaction where it happens; a step with only one recorded
+  action has none to open, and the step pane says so. *Group into a
+  sub-process...* moves ticked steps, one after the other, into a new
+  sub-process, and the same steps in every transaction too (it says first
+  what it will group, and where). Its
   row's *▸ N sub-steps* opens it: a breadcrumb
   names the way down and goes back up, and the list shows one block per
   transaction that goes through it, compared with the reference
@@ -251,12 +267,14 @@ The viewer says *transaction* for one pass through the process and
 **Map**
 
 - **The map the PDD prints, first**: the process map drawn from the
-  transactions' steps as BPMN (each system in its colour with a legend, the
-  decisions as gateways, the notes and files beside their steps), or the
-  edited As-Is map once there is one, under one line that says which
-  ("Process map (the PDD prints this map)", "As-Is map (edited; the PDD
-  prints this map)"). It is linked: a task opens the step panel on its
-  step, a file opens its attachment, a note shows its whole text. After a
+  transactions' steps as BPMN (each task's system in a label above it, or
+  said once when every task is done in one system; the decisions as
+  gateways whose paths part at their corners; the notes and files under
+  their steps), or the edited As-Is map once there is one, under one line
+  that says which ("Process map (the PDD prints this map)", "As-Is map
+  (edited; the PDD prints this map)"). It is linked: a task opens the step
+  panel on its step, a file opens its attachment, a note shows its whole
+  text; a system label is part of the picture and takes no click. After a
   change to the steps the Map updates the process map first, once, keeping
   the picture meanwhile; one line says why when it cannot be drawn.
 - **How the transactions ran**, one click away (and back): the same steps
@@ -271,7 +289,7 @@ The viewer says *transaction* for one pass through the process and
   change after the As-Is copy was made, the Map's line and the Checklist say
   so, with *Copy again*: a new copy of the process map as it is now, kept at
   its first change, which then takes the old one's place in the PDD (a copy
-  made before the step map had its colours, notes and attachments offers
+  made before the step map had its systems, notes and attachments offers
   the same for them). *Delete* takes a copy out with its file, and Ctrl+Z
   brings both back.
 - **Boxes moved by hand**: on how the transactions ran, a dragged box stays
@@ -290,9 +308,11 @@ The viewer says *transaction* for one pass through the process and
 - **The step panel**: from a task of the map (or a box of how the
   transactions ran), a timeline step band or a Steps row, every occurrence
   of the step with its moment in a small video (a moment the video does not
-  cover says so), its screenshots, what was said and its notes, its flow in
-  one line when one is set, and the waste flag; its foot goes to the step in
-  Steps, or on the Timeline.
+  cover says so; a time under a second reads "under 1s"), its screenshots,
+  what was said and its notes, its flow in one line when one is set, and
+  the waste flag; its foot goes to the step in Steps, or on the Timeline.
+  How the transactions ran fits again when the panel opens or closes
+  beside it.
 - **Saved as you go**: every change saves itself to the project folder, and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.

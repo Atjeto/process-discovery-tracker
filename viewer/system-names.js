@@ -17,7 +17,7 @@
 "use strict";
 
 const path = require("node:path");
-const { screenType } = require("./process-map-levels.js");
+const { screenType, valueFree } = require("./process-map-levels.js");
 
 const _doc = require(path.join(__dirname, "..", "shared", "system-names.json"));
 
@@ -27,13 +27,27 @@ function appKey(app) {
   return s.endsWith(".exe") ? s.slice(0, -4) : s;
 }
 
-/* The rules in order: { keys, rx, system }. A rule without applications or
-   a name, or with a pattern that does not compile, is skipped. */
+/* A text without zero-width spaces (Edge writes "Microsoft\u200b Edge"), its
+   whitespace collapsed (app_names._plain). */
+function _plain(text) {
+  return String(text == null ? "" : text).replace(/\u200b/g, "").split(/\s+/).filter(Boolean).join(" ");
+}
+
+/* The rules in order: { keys, rx, system } for a named rule, { keys, drop }
+   for a site rule (`site`: true, 2.0.1, siteName). A rule without
+   applications, a named rule without a name, or one with a pattern that
+   does not compile, is skipped. */
 const RULES = [];
 for (const r of (_doc && Array.isArray(_doc.rules)) ? _doc.rules : []) {
   if (!r || typeof r !== "object") continue;
   const procs = typeof r.process === "string" ? [r.process] : (Array.isArray(r.process) ? r.process : []);
   const keys = new Set(procs.filter((p) => typeof p === "string" && p.trim()).map(appKey));
+  if (keys.size && r.site === true) {
+    const drop = new Set((Array.isArray(r.drop) ? r.drop : []).filter((d) => typeof d === "string" && d.trim())
+      .map((d) => _plain(d).toLowerCase()));
+    RULES.push({ keys, rx: null, system: "", drop });
+    continue;
+  }
   const system = typeof r.system === "string" ? r.system.trim() : "";
   let rx = null;
   if (typeof r.title === "string" && r.title) {
@@ -50,8 +64,28 @@ function fallbackName(app) {
 }
 
 function _applicationRule(key) {
-  for (const r of RULES) if (!r.rx && r.keys.has(key)) return r.system;
+  for (const r of RULES) if (!r.rx && !r.drop && r.keys.has(key)) return r.system;
   return "";
+}
+
+/* The separators between a window title's segments: a spaced hyphen, pipe,
+   en dash or em dash (as code points), or "::". */
+const TITLE_SPLIT = /\s+(?:[-|\u2013\u2014]|::)\s+/;
+
+/* The web system a browser window's title names (app_names.site_name,
+   2.0.1): its last segment once a last segment naming the browser (`drop`)
+   is dropped, an ending "and N more pages" cut, when at least two segments
+   are left and the shared value rules leave the segment as it is; else "".
+   "Order Desk" for "Customer lookup - Order Desk - Google Chrome". */
+function siteName(title, drop) {
+  if (typeof title !== "string") return "";
+  const segs = title.trim().split(TITLE_SPLIT).map(_plain).filter(Boolean);
+  const names = drop instanceof Set ? drop : new Set();
+  while (segs.length && names.has(segs[segs.length - 1].toLowerCase())) segs.pop();
+  if (segs.length < 2) return "";
+  const site = segs[segs.length - 1].replace(/\s+and\s+\d+\s+more\s+pages?$/i, "").trim();
+  if (!site || !/[A-Za-z]/.test(site) || valueFree(site) !== site) return "";
+  return site;
 }
 
 /* The readable name of one application (app_names.display_name): the
@@ -71,22 +105,25 @@ function displayName(app, names) {
 
 /* The business system of one application and window title
    (app_names.system_name): the first rule whose applications include the
-   application and whose title pattern, when it has one, finds the title;
-   else the application's readable name. "" without an application. */
+   application and whose title pattern, when it has one, finds the title, a
+   site rule naming the site the title ends with (siteName); else the
+   application's readable name. "" without an application. */
 function systemName(app, title, names) {
   const raw = String(app == null ? "" : app).trim();
   if (!raw) return "";
   const key = appKey(raw);
   const text = typeof title === "string" ? title : "";
   for (const r of RULES) {
-    if (r.keys.has(key) && (!r.rx || r.rx.test(text))) return r.system;
+    if (!r.keys.has(key)) continue;
+    if (r.drop) {
+      const site = siteName(text, r.drop);
+      if (site) return site;
+      continue;
+    }
+    if (!r.rx || r.rx.test(text)) return r.system;
   }
   return displayName(raw, names);
 }
-
-/* The separators between a window title's segments: a spaced hyphen, pipe,
-   en dash or em dash (as code points), or "::". */
-const TITLE_SPLIT = /\s+(?:[-|\u2013\u2014]|::)\s+/;
 
 /* True when a title segment is (part of) a system name, as whole words. */
 function _names(segment, name) {
@@ -191,7 +228,7 @@ function appSystems(interactions, names) {
 /* Every system the shared list names, each once, in its order (the step
    pane's System field offers them, C16). */
 function knownSystems() {
-  return [...new Set(RULES.map((r) => r.system))];
+  return [...new Set(RULES.map((r) => r.system).filter(Boolean))];
 }
 
 /* True when a step's name already names its system, as whole words,
@@ -213,6 +250,6 @@ function systemLine(name, system) {
 }
 
 module.exports = {
-  appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName, knownSystems, appSystems,
+  appKey, displayName, systemName, siteName, screenOf, whereData, whereOfStep, fallbackName, knownSystems, appSystems,
   namesSystem, systemLine,
 };

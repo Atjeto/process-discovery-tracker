@@ -58,13 +58,22 @@ def test_an_unlisted_application_takes_its_readable_name():
 def test_the_file_is_ordered_rules_with_a_process_list_and_a_system():
     doc = json.loads(SYSTEMS.read_text(encoding="utf-8"))
     assert doc["version"] == 1 and isinstance(doc["_README"], str)
+    sites = 0
     for rule in doc["rules"]:
-        assert set(rule) <= {"process", "title", "system"}, rule
         assert rule["process"] and all(p == p.lower() and not p.endswith(".exe")
                                        for p in rule["process"])
+        if rule.get("site") is True:
+            # 2.0.1: a site rule names a browser window by its site, and
+            # drops the browser's own name from the title first.
+            assert set(rule) <= {"process", "site", "drop"}, rule
+            assert all(isinstance(d, str) and d.strip() for d in rule["drop"])
+            sites += 1
+            continue
+        assert set(rule) <= {"process", "title", "system"}, rule
         assert rule["system"].strip()
         if "title" in rule:
             re.compile(rule["title"])
+    assert sites == 1
     # No dash punctuation in the shared text the viewer may show.
     text = SYSTEMS.read_text(encoding="utf-8")
     assert chr(0x2013) not in text and chr(0x2014) not in text and " -- " not in text
@@ -80,8 +89,30 @@ def test_the_first_matching_rule_wins(tmp_path):
         {"process": ["x"], "title": "(", "system": "Bad pattern"},
     ]}), encoding="utf-8")
     rules = app_names._load_system_rules(path)
-    assert [system for _k, _rx, system in rules] == ["Order Portal", "Google Chrome",
-                                                      "Never reached"]
+    assert [system for _k, _rx, system, _site in rules] == ["Order Portal", "Google Chrome",
+                                                             "Never reached"]
+
+
+def test_a_browser_window_on_a_site_no_rule_names_is_named_by_its_site():
+    """2.0.1: the site a browser window's title ends with names the web
+    system (the site rule of shared/system-names.json), once the browser's
+    own name is dropped; a title of one segment names a page, not a site,
+    and a segment the value rules would change is a value, not a name. A
+    rule above the site rule still wins, and the rule is for browsers."""
+    cases = {
+        ("chrome.exe", "Customer lookup - Order Desk - Google Chrome"): "Order Desk",
+        ("chrome.exe", "New order for Contoso Ltd - Order Desk"): "Order Desk",
+        ("msedge.exe", "Page - Order Desk and 3 more pages - Microsoft\u200b Edge"): "Order Desk",
+        ("chrome.exe", "New Tab - Google Chrome"): "Google Chrome",
+        ("chrome.exe", "Orders - SO12345"): "Google Chrome",
+        ("chrome.exe", "Account lookup | Salesforce - Google Chrome"): "Salesforce",
+        ("EXCEL.EXE", "Order Desk - Excel"): "Excel",
+    }
+    for (app, title), system in cases.items():
+        assert system_name(app, title) == system, (app, title)
+    assert app_names.site_name("Customer lookup - Order Desk", frozenset()) == "Order Desk"
+    assert app_names.site_name("Order Desk", frozenset()) == ""
+    assert app_names.site_name(None) == ""
 
 
 # ---- the per-application names (stats.json meta.app_names) -----------------------
@@ -148,7 +179,7 @@ def test_lane_lf_pipe_the_windows_apps_read_by_their_names():
         ("notepad.exe", "notes.txt - Notepad"): "Notepad",
         ("msedge.exe", "Order Desk"): "Microsoft Edge",
         ("chrome.exe", "Contoso | Account | Salesforce"): "Salesforce",
-        ("chrome.exe", "Customer lookup - Order Desk"): "Google Chrome",
+        ("chrome.exe", "Customer lookup - Order Desk"): "Order Desk",
     }
     for (app, title), system in cases.items():
         assert system_name(app, title) == system, (app, title)

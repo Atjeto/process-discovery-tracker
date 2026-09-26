@@ -112,7 +112,9 @@ function countLine(occ, runCount) {
   const inRuns = new Set(occ.filter((o) => o.run).map((o) => o.run.caseId)).size;
   const ms = occ.map((o) => Date.parse(o.step.time_range && o.step.time_range.end) - Date.parse(o.step.time_range && o.step.time_range.start))
     .filter((x) => isFinite(x) && x >= 0);
-  const avg = ms.length ? StepFacts.formatMs(ms.reduce((a, b) => a + b, 0) / ms.length) : "";
+  // 2.0.1: a step that takes under a second has no "about ... each".
+  const mean = ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : NaN;
+  const avg = mean >= 1000 ? StepFacts.formatMs(mean) : "";
   return (runCount ? "In " + inRuns + " of " + runCount + " transaction" + (runCount === 1 ? "" : "s") : "Outside the transactions") +
     (avg ? ", about " + avg + " each" : "");
 }

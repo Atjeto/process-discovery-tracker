@@ -238,12 +238,12 @@ function _rootSet(e) {
   catch (err) { console.error("[asis-view] the Map did not follow the plane shown:", err); }
 }
 
-/* Mark what a click opens (a pointer) and the legend (clicks go through it
-   to the canvas, which pans). */
+/* Mark what a click opens (a pointer), and the legend and the system labels
+   (clicks go through them to the canvas, which pans). */
 function _mark(v) {
   const canvas = v.get("canvas");
   for (const el of v.get("elementRegistry").getAll()) {
-    if (Links.isLegend(el)) canvas.addMarker(el, "pdt-inert");
+    if (Links.isLegend(el) || Links.isSystemLabel(el)) canvas.addMarker(el, "pdt-inert");
     else if (Links.elementAction(el)) canvas.addMarker(el, "pdt-link");
   }
 }

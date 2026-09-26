@@ -6,10 +6,10 @@ place of the task, named and documented like a task; it holds its own map,
 drawn in a BPMNDiagram of its own whose plane's bpmnElement is the
 sub-process. Ids inside a sub-plane carry a prefix unique in the file; the
 main plane keeps its ids. A sub-process's start and main end are unnamed,
-its early ends named from their `when`; notes, attachments and colours as
-C18 on every plane, each plane with its own legend, a system keeping one
-colour across the file; counts over the transactions that ran the
-sub-process; a sub-process with no steps is a start joined to an end.
+its early ends named from their `when`; notes, attachments and system
+labels as C18 on every plane (2.0.1: a plane done in one system says it
+once); counts over the transactions that ran the sub-process; a
+sub-process with no steps is a start joined to an end.
 
 Run with: pytest normalization/test/test_bpmn_sub_processes.py
 """
@@ -17,6 +17,7 @@ Run with: pytest normalization/test/test_bpmn_sub_processes.py
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -170,8 +171,10 @@ def test_a_sub_process_is_a_collapsed_sub_process_holding_its_map_in_a_plane_of_
     shape = next(sh for sh in main_plane if sh.get("bpmnElement") == check.get("id"))
     assert shape.get("isExpanded") == "false"
     bounds = shape.find(f"{_DC}Bounds")
-    assert (bounds.get("width"), bounds.get("height")) == ("120", "72")      # task sized
-    assert shape.get(f"{_BIOC}fill") is not None
+    # Task wide, and taller so its name keeps clear of the + marker (2.0.1).
+    assert (bounds.get("width"), bounds.get("height")) == ("120", "88")
+    labelled = {a.get("sourceRef"): a.get("targetRef") for a in main if _tag(a) == "association"}
+    assert labelled[check.get("id")].startswith("TextAnnotation_system_")
     # Its map is drawn in a diagram of its own, whose plane is the sub-process,
     # and the main plane draws none of it.
     assert _drawn(planes[check.get("id")]) == _members(check)
@@ -257,29 +260,37 @@ def test_the_counts_of_a_sub_process_are_over_the_transactions_that_ran_it():
     assert flows <= {"1 of 2 transactions", "2 of 2 transactions"} and flows
 
 
-def test_each_plane_has_its_legend_and_a_system_keeps_its_colour_across_the_file():
+def _labels(container):
+    """{task name: its system label's text} on one plane (2.0.1)."""
+    by_id = {el.get("id"): el for el in container}
+    return {by_id[a.get("sourceRef")].get("name"): _text(by_id[a.get("targetRef")])
+            for a in container if _tag(a) == "association"
+            and "TextAnnotation_system_" in a.get("targetRef")}
+
+
+def _map_label(container):
+    """The one system label of a plane done in one system, or None."""
+    found = [el for el in container if _tag(el) == "textAnnotation"
+             and el.get("id").endswith("TextAnnotation_system")]
+    assert len(found) <= 1
+    return _text(found[0]) if found else None
+
+
+def test_each_plane_labels_its_tasks_with_their_systems():
+    """2.0.1: every plane labels its tasks with the systems they are done
+    in, and a plane done in one system says it once; no colours."""
     root = _written(_anno())
     main = _main(root)
     check = _child(main, "Check the order")
     price = _child(check, "Look up price")
-
-    def legend(container):
-        found = [el for el in container if _tag(el) == "textAnnotation"
-                 and el.get("id").endswith("TextAnnotation_legend")]
-        assert len(found) == 1
-        return _text(found[0])
-    assert legend(main) == "Colour by system\nOutlook: blue\nCRM: orange"
-    assert legend(check) == "Colour by system\nCRM: orange\nPrice list: green"
-    assert legend(price) == "Colour by system\nPrice list: green"
-    fills: dict[str, set] = {}
-    by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
-    for shape in root.iter(f"{_BPMNDI}BPMNShape"):
-        el = by_id[shape.get("bpmnElement")]
-        if _tag(el) in _TASKS and shape.get(f"{_BIOC}fill"):
-            fills.setdefault(shape.get(f"{_BIOC}fill"), set()).add(el.get("name"))
-    assert fills == {"#bfdbfe": {"Receive the order", "Send the confirmation"},
-                     "#fed7aa": {"Check the order", "Enter customer", "Click Save"},
-                     "#bbf7d0": {"Look up price", "Open the list", "Read the price"}}
+    assert _labels(main) == {"Receive the order": "Outlook", "Check the order": "CRM",
+                             "Send the confirmation": "Outlook"}
+    assert _map_label(main) is None
+    assert _labels(check) == {"Enter customer": "CRM", "Look up price": "Price list",
+                              "Click Save": "CRM"}
+    assert _map_label(check) is None
+    assert _labels(price) == {} and _map_label(price) == "System: Price list"
+    assert not any(k.startswith(_BIOC) for sh in root.iter(f"{_BPMNDI}BPMNShape") for k in sh.attrib)
 
 
 def test_notes_and_files_on_sub_steps_are_drawn_on_their_plane():
@@ -288,9 +299,10 @@ def test_notes_and_files_on_sub_steps_are_drawn_on_their_plane():
     check = _child(main, "Check the order")
     price = _child(check, "Look up price")
     notes = [el for el in check if _tag(el) == "textAnnotation"
-             and not el.get("id").endswith("legend")]
+             and re.match(r"^Sub\d+_TextAnnotation_\d+$", el.get("id"))]
     assert [_text(n) for n in notes] == ["Save twice when the CRM is slow."]
-    assoc = [el for el in check if _tag(el) == "association"]
+    assoc = [el for el in check if _tag(el) == "association"
+             and el.get("targetRef") == notes[0].get("id")]
     tasks = {el.get("id"): el.get("name") for el in check if _tag(el) in _TASKS}
     assert [(tasks[a.get("sourceRef")], a.get("targetRef")) for a in assoc] == [
         ("Click Save", notes[0].get("id"))]
@@ -309,8 +321,7 @@ def test_notes_and_files_on_sub_steps_are_drawn_on_their_plane():
 
 def test_a_sub_step_done_outside_the_systems_is_a_manual_task_on_its_plane():
     """C18 as lane CL amended it, on every plane: a sub-step added by hand
-    with no system is a manual task, and its plane's legend ends saying what
-    the hand means; the main plane, which has none, does not."""
+    with no system is a manual task, with its hand and no system label."""
     anno = _anno()
     check_a = next(s for s in anno["steps"] if s["step_id"] == "A-c")
     check_a["sub_steps"].append({"step_id": "A-hand", "case_id": "A", "name": "Phone the warehouse",
@@ -322,14 +333,7 @@ def test_a_sub_step_done_outside_the_systems_is_a_manual_task_on_its_plane():
     kinds = {el.get("name"): _tag(el) for el in check if _tag(el) in _TASKS}
     assert kinds == {"Enter customer": "task", "Look up price": "subProcess", "Click Save": "task",
                      "Phone the warehouse": "manualTask"}
-
-    def legend(container):
-        found = [el for el in container if _tag(el) == "textAnnotation"
-                 and el.get("id").endswith("TextAnnotation_legend")]
-        assert len(found) == 1
-        return _text(found[0])
-    assert legend(check) == "Colour by system\nCRM: orange\nPrice list: green\nHand icon: done outside the systems"
-    assert legend(main) == "Colour by system\nOutlook: blue\nCRM: orange"
+    assert "Phone the warehouse" not in _labels(check)
 
 
 def test_a_sub_process_without_steps_is_a_start_joined_to_an_end():
@@ -458,8 +462,8 @@ def test_a_hidden_sub_process_has_no_plane_and_hidden_sub_steps_are_not_drawn():
 
 def test_a_waste_flag_on_a_sub_step_marks_its_task_on_its_plane():
     """Lane FX3: the Waste mark of a sub-step is drawn on the sub-process's
-    plane, its ids prefixed like every id there; the plane's legend says what
-    the mark means, and the main plane, with no flag, does not."""
+    plane, its ids prefixed like every id there; the main plane, with no
+    flag, has none."""
     anno = _anno()
     check_a = next(s for s in anno["steps"] if s["step_id"] == "A-c")
     check_a["sub_steps"][0]["flags"] = {"waste": True}          # Enter customer
@@ -475,11 +479,4 @@ def test_a_waste_flag_on_a_sub_step_marks_its_task_on_its_plane():
         ("Sub1_Association_waste_1", "Enter customer", "Sub1_TextAnnotation_waste_1")]
     plane = _planes(root)[check.get("id")]
     assert {"Sub1_TextAnnotation_waste_1", "Sub1_Association_waste_1"} <= _drawn(plane)
-
-    def legend(container):
-        found = [el for el in container if _tag(el) == "textAnnotation"
-                 and el.get("id").endswith("TextAnnotation_legend")]
-        return _text(found[0]) if found else ""
-    assert legend(check).split("\n")[-1] == "Waste: a step that should not be needed"
-    assert "Waste" not in legend(main)
     assert not [el for el in main if _tag(el) == "textAnnotation" and "waste" in el.get("id")]

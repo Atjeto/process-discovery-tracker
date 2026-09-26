@@ -1,5 +1,5 @@
 {
-  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 4.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, the difference lines, and the stretches of a run left out of the analysis. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). A case with `excluded_ranges` also gives `run_span` (the run's start and end) and `origin` (when the recording started): each range is cut to the run's span, the pattern steps inside a stretch are not Skipped, and the run says once, first, that part of it was left out, with the times since the recording started. Lane FX1 made it one rule for the Steps level and the PDD's section 4.1: a pattern step the run lacks that happens only under a condition (only_when, contract C17) reads \"Not done: <name> (only when <condition>).\" and is no difference; a step the run does more often than the pattern run, at least twice, reads \"Repeated: <name>, <n> times.\" at its first time, after the skipped steps; `count` is how many lines are differences (the left-out line and a Not done line are not). Before the rule runs, each side sorts `pattern` and `run` by its own order of steps (a start time first, then `order`, then neither), and steps that start at one moment keep their list order (the viewer once broke the tie by step_id). `reference_cases` pin the default reference transaction on both sides: the analyst's choice (`pattern_run`) while it names a transaction, else the first transaction by start that has a visible step; a transaction whose every step is hidden is passed over. Change a case only together with both implementations.",
+  "_README": "Seam guard for the differences between runs. The viewer (viewer/run-differences.js, the Steps differences review) and the PDD (normalization/pdd_export.py, section 4.1) implement one algorithm: the alignment key of a step (draft:<draft_key>, merge:<JSON array of draft_keys>, else label:<process_label of the name>), the folding of consecutive run steps that spell a merged reference step, the difference lines, and the stretches of a run left out of the analysis. Both viewer/run-differences.test.js and normalization/test/test_run_differences_golden.py read every case here: `run_keys` is the alignment keys of the run after folding, `expected` the difference lines of the run against the pattern run, in order. Steps are listed in time order and are all visible (hidden steps never reach either side). A case with `excluded_ranges` also gives `run_span` (the run's start and end) and `origin` (when the recording started): each range is cut to the run's span, the pattern steps inside a stretch are not Skipped, and the run says once, first, that part of it was left out, with the times since the recording started. Lane FX1 made it one rule for the Steps level and the PDD's section 4.1: a pattern step the run lacks that happens only under a condition (only_when, contract C17) reads \"Not done: <name> (only when <condition>).\" and is no difference; a step the run does more often than the pattern run, at least twice, reads \"Repeated: <name>, <n> times.\" at its first time, after the skipped steps; `count` is how many lines are differences (the left-out line and a Not done line are not). Before the rule runs, each side sorts `pattern` and `run` by its own order of steps (a start time first, then `order`, then neither), and steps that start at one moment keep their list order (the viewer once broke the tie by step_id). `reference_cases` pin the default reference transaction on both sides: the analyst's choice (`pattern_run`) while it names a transaction, else the first transaction by start that has a visible step; a transaction whose every step is hidden is passed over. 2.0.1: after the folding, a run step whose own key the pattern lacks but whose name is a pattern step's name (whitespace collapsed, without case) is that step, carrying its name and identity (the analyst named them alike, and the map draws them as one box); `run_keys` show it. Change a case only together with both implementations.",
   "version": 1,
   "cases": [
     {
@@ -308,6 +308,44 @@
         "Part of this run was left out of the analysis (1:10 to 1:45)."
       ],
       "count": 0
+    },
+    {
+      "name": "a step the analyst named like a pattern step is that step, whatever its own key",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Fill the order lines", "draft_key": "excel|orders.xlsx|(visit)" },
+        { "name": "Send the confirmation", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "fill the  order lines", "draft_key": "excel|orders.xlsx|Button:Save" },
+        { "name": "Compose: Send", "draft_key": "mail|Compose|Button:send" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:excel|orders.xlsx|(visit)",
+        "draft:mail|Compose|Button:send"
+      ],
+      "expected": []
+    },
+    {
+      "name": "a step named like no pattern step keeps its own key and reads extra",
+      "pattern": [
+        { "name": "Look up the order", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Fill the order lines", "draft_key": "excel|orders.xlsx|(visit)" }
+      ],
+      "run": [
+        { "name": "Orders: Find", "draft_key": "crm|Orders|Button:find" },
+        { "name": "Fill the lines", "draft_key": "excel|orders.xlsx|Button:Save" }
+      ],
+      "run_keys": [
+        "draft:crm|Orders|Button:find",
+        "draft:excel|orders.xlsx|Button:Save"
+      ],
+      "expected": [
+        "Extra step: Fill the lines (after Orders: Find).",
+        "Skipped: Fill the order lines (step 2 of the pattern run)."
+      ]
     }
   ],
   "reference_cases": [

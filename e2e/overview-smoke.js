@@ -716,11 +716,11 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
     await page.waitForSelector("#refmap-editor-host .djs-container", { timeout: T });
     mapProbe.role = await page.locator("#refmap-editor-pdd").inputValue({ timeout: T });
-    // Lane MV: a new copy is kept at its first change (the legend moved a
+    // Lane MV: a new copy is kept at its first change (a system label moved a
     // little), after the editor's delayed write.
     await page.evaluate(() => {
       const ed = document.getElementById("refmap-editor-host").__bpmnViewer;
-      ed.get("modeling").moveElements([ed.get("elementRegistry").get("TextAnnotation_legend")], { x: 0, y: 8 });
+      ed.get("modeling").moveElements([ed.get("elementRegistry").filter((e) => /^(?:Sub\d+_)?TextAnnotation_system/.test(e.id))[0]], { x: 0, y: 8 });
     });
     await wait(1400);
     await page.locator("#btn-refmap-editor-close").click({ timeout: T });

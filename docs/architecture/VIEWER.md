@@ -131,20 +131,24 @@ container. The Overview is the default on load.
   prints was made before the steps changed, *Check the As-Is map* comes
   before the export (lane FX2, `asis-freshness.js`); it shrinks to one line
   once only the export is left); the project
-  line (its name, who recorded it, its transactions, the reference
-  transaction's steps, the video and the transcript with their Attach,
-  Replace and Remove (the video's Remove only for a video the analyst
-  attached), and warning lines only when a marker problem, a
+  line (its name, who recorded it, the request, its transactions, the
+  reference transaction's steps, the video and the transcript with their
+  Attach, Replace and Remove (the video's Remove only for a video the
+  analyst attached), and warning lines only when a marker problem, a
   missing file, a check that could not run or an app recorded with less
   detail needs one); the Document ("You write these. The PDD prints them.":
-  the eleven fields of contract C6, an empty one showing its question in light
-  italics, a status that counts the written fields and, once one is
+  the twelve fields of contract C6, an empty one showing its question in
+  light italics, a status that counts ten of them, all but the Request and
+  the Notes, which are optional ("N of 10 written") and, once one is
   written, names the empty ones, the Attachments list, and "From the
-  transcript" while one is attached). The Overview measures nothing: the
-  PDD's own sections (the systems and the information used, the volume and
-  effort) are the document's alone (2.0.1), and opening the Overview never
-  runs an analysis. Until the project is analyzed it
-  shows one note that says where the analysis is.
+  transcript" while one is attached). The Request the analyst writes
+  (2.0.1) is the project's request on the project line and in its tooltip
+  (`session-summary.js` `documentRequest`), else the capture's
+  (`requestOf`); a transcript sentence is never added to it. The Overview
+  measures nothing: the PDD's own sections (the systems and the
+  information used, the volume and effort) are the document's alone
+  (2.0.1), and opening the Overview never runs an analysis. Until the
+  project is analyzed it shows one note that says where the analysis is.
 - **Timeline**: the timeline with its lanes and their header column (a key
   and a name per lane, like a video editor's track headers), the video pane,
   the side panel (Screenshots, Markers) and the Raw events drawer, which
@@ -153,8 +157,10 @@ container. The Overview is the default on load.
   line that says what a transaction is (the reference transaction with
   Confirm transaction, and *Undo confirm* beside its Confirmed badge once it
   is confirmed; each other transaction with its differences; "Outside the
-  transactions"), and
-  the step pane beside them. The divider between the two moves with a drag
+  transactions"), each step row showing when its step starts on the one
+  clock and each transaction's head its time ("under 1s", "42s", "2m 07s":
+  `dom.js` `formatDuration`), and the step pane beside them. The divider
+  between the two moves with a drag
   or, focused, with Left, Right, Home and End; a double-click or Enter gives
   the usual widths back (`pane-splitter.js`; at 1100px wide or less the two
   stack, without it). The toolbar has *+ Add step*, the bulk Hide, Merge
@@ -169,8 +175,9 @@ container. The Overview is the default on load.
   `process_map_step.bpmn`, drawn by bpmn-js, read only and linked
   ([`asis-view.js`](../../viewer/asis-view.js), C18): a task opens the step
   panel on the step it stands for, a file opens its attachment, a note shows
-  its whole text, the legend takes no click; drag pans, Ctrl and the wheel
-  zoom, and the Map's fit fits it. It is drawn on the editor's page with no
+  its whole text, a system label (and the legend of a copy made before
+  2.0.1) takes no click; drag pans, Ctrl and the wheel zoom, and the Map's
+  fit fits it. It is drawn on the editor's page with no
   frame around it, each exclusive gateway with its marker as the editor and
   the PDD's picture draw it. One header line (`#map-view-bar`) says which
   picture shows: "Process map (the PDD prints this map)", or the copy's name
@@ -227,19 +234,23 @@ timeline step band, and a selected Steps row (Watch in the step pane opens
 it and plays the step); a task of the map the PDD prints is a map box too. It names
 the step, its system and screen, its description, its flow in one short
 line when one is set (contract C17: "Only when ... · Goes back to step 2
-when ...") and "In N of M transactions, about Xs each", then says how often the
+when ...") and "In N of M transactions, about Xs each" (without "about ...
+each" when the mean is under a second), then says how often the
 step happened ("This step happened 5 times: once in transactions 1, 3 and 4,
 twice in transaction 2. Play any of them.") and lists one row per time:
 "Transaction 1 · 0:39 into the recording · took 8s" ("Transaction 2, again"
-for a second time in one transaction) with a play button for its own small
-video, which opens paused on the row the panel opened on, then the step's
+for a second time in one transaction; "took under 1s", never "0s") with a
+play button for its own small video, which opens paused on the row the
+panel opened on, then the step's
 screenshots, what was said then and its notes, each under a small lead. Its foot says *Open in Steps*, or *Show on timeline* on the
 Steps level, and *Open sub-process* for a sub-process. At a level below the
 main one (C19) the panel shows the occurrences of the step's node in every
 visit of that level. A task of that map that no step stands for (added or
 renamed in the editor, or its step renamed or hidden since the copy was
 made) opens the panel on its name, with one line saying no step has it. The panel closes on the Overview; closed on Steps, it stays
-closed while rows are selected, until a door opens it again.
+closed while rows are selected, until a door opens it again. How the
+transactions ran fits again when the panel opens or closes beside it
+(`dfg-viewer.js` `resize`, 2.0.1).
 
 **Sub-processes** (contract C19; [`sub-process-maps.js`](../../viewer/sub-process-maps.js),
 [`sub-process-verbs.js`](../../viewer/sub-process-verbs.js)). A step with
@@ -262,7 +273,14 @@ sub-process only. The verbs, each one undoable edit at the level shown:
 *Open as a sub-process* (the step pane, the step menu: every visible
 occurrence of the step's node at its level, in every transaction, gets one
 drafted sub-step per recorded action, named without values and keyed by
-`action_key`; drafts become edited; the new level opens), *Group into a
+`action_key`; the cells of one sheet filled one after another (two or
+more `DataItem` controls named by a cell address) are one sub-step named
+by their columns ("Fill in columns A to F", keyed
+`<app>|<screen>|cells:A-F`, described "Entered 20 cells, A2 to F5."),
+while a single cell stays "Enter B7"; drafts become edited; the new level
+opens; on a recorded step
+with fewer than two actions the step pane's button is disabled with the
+reason and the step menu leaves it out, 2.0.1), *Group into a
 sub-process...* (two or more ticked steps one after the other in one
 transaction; the same stretches in every transaction are grouped too, and
 the links move with them), *+ Add step* (into the open visit), *Dissolve
@@ -314,7 +332,7 @@ their module as `<name>.test.js`.
 | `ipc.js` | One typed wrapper per `viewer:*` channel; nothing else touches `ipcRenderer`. |
 | `state.js` | The central store, the topic bus, the undo and redo stacks (section 6). |
 | `session.js` | Annotation saves with undo, `persistAnnotations`, undo and redo in place, `ensureAnnoShape` (section 9). |
-| `dom.js` | `$`, `$$`, escaping, `formatDuration`, the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
+| `dom.js` | `$`, `$$`, escaping, `formatDuration` (2.0.1: the one way a length reads in the app, the rule the step map's documentation shares (`step_context.fmt_ms`): "under 1s", "42s", "2m 07s", "3m", "1h 04m"; never "0s", "28.9s", "414ms" or "2:17", which is a moment; the Timeline's summary, bands and Raw events, the live map's tips and `step-facts.js` `formatMs` use it), the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
 | `modals.js` | `promptModal` (`required`: OK waits for some text), `confirmModal`: themed dialogs. |
 | `handoff.js` | Pure (contract C20): the versions of `annotations.handoffs` (`entries`, `latest`, `nextVersion`, `newEntry`), the one line a version says (`handedOffLine`, the PDD's words; `readOnlyLine`), the project's name as the app shows it and made safe for Windows, and the hand-off's file names. |
 | `read-only.js` | A hand-off opened read only (C20): `isReadOnly(session)`, the check every verb reachable without a control makes, and `lockInputs` (the step pane's and the document's fields read only); lane MW: `isOpenElsewhere` and `reasonFor`, for a project open for editing in another window. |
@@ -367,21 +385,21 @@ their module as `<name>.test.js`.
 |---|---|
 | `runs-model.js` | The runs and their steps as the Steps level shows them: their titles ("Transaction N"; a marker label that only numbers its run is not shown, `numberOnlyLabel`), the reference run (C3), step order (time, then `order`), chips and statuses, the carried merges, the probe line, a rename's propagation to the same drafts (`propagateName`), the names a row's rename suggests (`nameSuggestions`: the names used in the project). C19: Confirm and Undo confirm (`reopenRun`) reach every level, a status reads every visible level (`patternConfirmed`, `holdsDraft`), and names propagate at every level (`propagateActionName`). |
 | `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`, `mainMapName`. |
-| `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
-| `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
+| `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`; 2.0.1: the cells of one sheet filled one after another folded into one, "Fill in columns A to F", `cellOf`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
+| `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. After the merge folding, a step whose own align key the reference lacks but whose name is a reference step's (whitespace collapsed, case ignored) is that step (`namedAlike`, 2.0.1). The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
 | `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are pending until the next analysis. |
 | `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps, with the Start and End events and the step flow of contract C17 (`buildAnnotationDfg`, `flowEdges`, `stepLinks`, `mapNodeLabel`, where a drafted step or sub-step, with a `draft_key` or an `action_key`, is its name; one rule with the step BPMN, pinned by `shared/flow-links-golden.json`), and the value-free `processLabel` and `screenType` from the shared rule files. |
 | `step-flow.js` | The pure half of the step flow (C17): what the Flow line and the step panel say (`linkReading`, `panelLine`, `inheritedLine`), the steps a link can go to, the edits, and the repairs when a target step is hidden, removed, merged or split. |
-| `asis-links.js` | What a click on the map the PDD prints does (C18): a task names its step's map box, a data object its attachment (`DataObjectReference_<id>`), a text annotation its note; the legend, the flows, the events and the gateways do nothing. C19: a task and a collapsed sub-process carry their level (the names of the sub-processes around them), `projectPath` reads those names as the project's own sub-processes, and the ids in a plane are read without its `Sub<n>_` prefix. |
+| `asis-links.js` | What a click on the map the PDD prints does (C18): a task names its step's map box, a data object its attachment (`DataObjectReference_<id>`), a text annotation its note; a system label (`isSystemLabel`: `TextAnnotation_system_<k>`, or a map's one `TextAnnotation_system`), the legend of a copy made before 2.0.1, the flows, the events and the gateways do nothing. C19: a task and a collapsed sub-process carry their level (the names of the sub-processes around them), `projectPath` reads those names as the project's own sub-processes, and the ids in a plane are read without its `Sub<n>_` prefix. |
 | `map-view.js` | Which picture the Map shows (lane MV): the map the PDD prints (the chosen As-Is copy, else `process_map_step.bpmn`; at a sub-process the copy's plane, else the step map's) or how the transactions ran, when the Map analyzes first (the step map needed and older than the steps, no analysis running or already run for that change), the line that says why a picture does not show (`WHY`), and the words of the one header line (`line`). |
 | `map-planes.js` | The maps of one BPMN file (C19): each sub-process's plane found by its path of names (`findPlane`), the path of an element's level and of a plane's root, the `Sub<n>_` prefix (`baseId`), the PDD's map pictures (`pddMaps`, the manifest `pddManifest`) and an exported image's name (`imageName`). |
-| `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, `whereOfStep`, the systems the System field offers. |
-| `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · SO-01 · Account lookup · 6s · ends at Search · Transaction 1 at 0:19", the code of a step named from the library next to the system, C21), the fields typed, the drafted narration shown as a hint. |
+| `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, the site rule's `siteName` (2.0.1: a browser window on a site no rule names is named by the site its title ends with), `whereOfStep`, the systems the System field offers. |
+| `step-facts.js` | What the step pane and the panel say about a step: the fact line ("Salesforce · SO-01 · Account lookup · 6s · ends at Search · Transaction 1 at 0:19", the code of a step named from the library next to the system, C21), the fields typed, the drafted narration shown as a hint, and a length as the viewer writes it (`formatMs`, `dom.js` `formatDuration`). |
 | `library-builder.js` | The Library builder's model (C21): the steps a project's analysts named (`namedSteps`: confirmed, edited or added by hand, with their screens), one entry per name in a system (`collect`), the rows (`rows`: the library's activities ticked, the projects' names after them, clusters of rows that share screens or a name, a conflict where the same screens carry different names), the library the ticked rows make (`buildLibrary`: a name the library has adds its screens to that activity), the version (`nextVersion`: the date and a counter). |
 | `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
 | `transcript-model.js` | The transcript's time rule (its own sync, else the video's; a sentence said before the recording reads "0:28 before") and every pick of sentences (for a step, outside the transactions, by speaker or search). |
-| `session-summary.js` | The project line's facts, the request (`requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
-| `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`), keeping the signature of the maps its steps drew (`forked_from_steps`, lane FX2); for a copy made before that was kept, whether it is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its colours, notes and attachments (C18). |
+| `session-summary.js` | The project line's facts, the request (the document's, `documentRequest`, 2.0.1, else the capture's, `requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
+| `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`), keeping the signature of the maps its steps drew (`forked_from_steps`, lane FX2); for a copy made before that was kept, whether it is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its systems, notes and attachments (C18: none of a user or manual task, the legend, a colour or, since 2.0.1, a system label). |
 | `asis-freshness.js` | Whether an edited copy was made from the steps as they are now (lane FX2): `stepsMapSignature` (every map of the project, its boxes and lines, each box's notes, files, system, hand marker, sub-process and waste mark, and the Trigger and the Result), `copyStale` (the signature a copy kept, else `reference-maps.js` `isStale`), `chosenAsIsStale` for the Map's line and the Checklist. |
 | `case-scope.js` | The Transaction select's options ("Transaction 1 · Order #10900"), escaped. |
 | `recognition.js` | Platform recognition of an interaction (ADR-0011), for the step pane's interaction list. |
@@ -392,11 +410,11 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `step-editor.js` | The step rows of a run and the step pane: the fact line, Name (C21: its picker, the library's activities of the step's system under the field, opened by a click, typing or Down; a click or Enter picks one; with none, one quiet line while the field has the focus), System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, *Open as a sub-process* (or on a sub-process *Open sub-process* and *Dissolve sub-process*, C19), the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. A double-click renames the row its first click landed on, even when that click's redraw moved the rows. |
+| `step-editor.js` | The step rows of a run (each with when its step starts on the one clock, 2.0.1) and the step pane: the fact line, Name (C21: its picker, the library's activities of the step's system under the field, opened by a click, typing or Down; a click or Enter picks one; with none, one quiet line while the field has the focus), System, the fields typed, Description, "Said during this step", the Flow line (C17: "Always · then the next step", *Only when...*, *Go to...* with a dropdown of the transaction's steps and End the process), Waste, Watch, Hide, *Open as a sub-process* (disabled with its reason on a recorded step with fewer than two actions; on a sub-process *Open sub-process* and *Dissolve sub-process*, C19), the screenshots, notes and attachments, and under More the interactions, Show on timeline, Split, Merge. Name, System, a condition and a link's "when" save on Enter or when the field is left, a link's target when it is picked, Description when it is left: there is no Save button. A double-click renames the row its first click landed on, even when that click's redraw moved the rows. |
 | `map-controller.js` | The Map's live map, how the transactions ran: draws the data source once it has an edge (the Start's and the End's count), its fit control, a box click to the step panel, a double-click on a sub-process's box to its map (C19). |
-| `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set (and per level, C19); a sub-process's box carries a + (a small square at its foot). |
+| `dfg-viewer.js` | The live map on cytoscape, laid out left to right by `@dagrejs/dagre` with room for the condition labels and every line routed around the boxes (cytoscape-dagre is the fallback): the Start and End circles, time-weighted edges, the conditions on their lines, a dashed line for a path set in Steps that no transaction took, an edge tip in words; dragged layouts persist per node set (and per level, C19); a sub-process's box carries a + (a small square at its foot); `resize` fits the map again when the step panel opens or closes beside it (2.0.1). |
 | `refmap-ui.js` | The Map level's picture and the edited maps (lane MV): which picture shows and when it is drawn again (`syncMapView`, the facts for `map-view.js`: the view chosen, the copy, `process_map_step.bpmn` and whether it is current, the planes each file has once drawn), its one header line and the line that says why, the Map's own analysis once per change (`mapBusy` while it runs), the step map kept current across the edited maps' own saves and the PDD's run (`keepingStepMapCurrent`); the edit act (it analyzes first when the steps changed since the map file was written, or waits for the Map's own analysis), the new copy kept at its first change and dropped when it was left unchanged, the gallery (with what *Copy again* gives), the editor overlay, the map files it writes reported to the save state, and the off-screen renderer of the PDD's pictures and Export's map image (`renderBpmnToPng`, `renderBpmnToSvg`; C19: a plane per path, `renderPlanesToPng`, `renderPlaneToSvg`). |
-| `asis-view.js` | The map the PDD prints on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, each exclusive gateway with its marker as the modeler draws it, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`). C19: the plane of a level (`showLevel`, each plane fitted the first time; the drawn file's `definitions` for the planes it has), bpmn-js's own drill down told to the Map (`configure`'s `onLevel`), the main map's crumb named. |
+| `asis-view.js` | The map the PDD prints on the Map level (C18): bpmn-js's navigated viewer, read only and fitted, each exclusive gateway with its marker as the modeler draws it, its clicks (`asis-links.js`: the step panel, an attachment, the note popover `#map-asis-note`; the system labels, and the legend of a copy made before 2.0.1, marked inert). C19: the plane of a level (`showLevel`, each plane fitted the first time; the drawn file's `definitions` for the planes it has), bpmn-js's own drill down told to the Map (`configure`'s `onLevel`), the main map's crumb named. |
 | `bpmn-viewer.js` | The bpmn-js modeler in the editor overlay: a copy opens on its own saved layout, a new one from its XML before its file exists (`xml`, lane MV); each edit, undo and redo is heard first (`onChange`: a new copy is kept then), written back after a short delay and reported to the save state; `flush` writes a waiting edit when the editor closes or another map opens; `changed` tells whether the map differs from the one opened. |
 | `bpmn-text-wrap.js` | A bpmn-js module (lane FX3) given to every bpmn-js the viewer creates (the Map's picture, the editor, the PDD's and Export's pictures): each name is wrapped between words in its own font and box before diagram-js lays it out, so a word that fits a line is never cut in two (`wrapLines`, `innerWidth`). Only the text drawn changes, never the diagram's file. |
 
@@ -815,8 +833,8 @@ programs). Nothing can change:
   records nothing (`opened_runs`); a paste adds no screenshot.
 - **No save, no analysis.** `session.js writeAnnotations` refuses a
   read-only project before the main process (so no Undo entry is ever
-  recorded), the analysis never starts (on open, on the Map, as the
-  Overview opens, from a verb: `analyzeSession`, `runPipeline`), and the
+  recorded), the analysis never starts (on open, on the Map, from a verb:
+  `analyzeSession`, `runPipeline`), and the
   main process refuses every write into a folder under `<userData>/handoffs`
   (section 5), so a control that slips through changes nothing.
 - **The project line** (`#ov-handoff`, the Overview's first line) reads

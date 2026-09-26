@@ -83,12 +83,14 @@ it is done; its button takes you to the next.
    4 in Steps. Each lists how it differs from the reference transaction.
    Transaction 2 has an extra step (the Notepad lookup) and repeated steps.
    Transaction 3 reads *Not done* for the email, which is no difference once
-   the email has its condition. Transaction 4 has no differences. The other
+   the email has its condition. Transaction 4 has no differences. Where the
+   recorder drafted the same work as another step, give it the name of the
+   reference transaction's step: it then counts as that step. The other
    transactions are not confirmed.
 8. **Fill the document fields on the Overview.** Open *Document* and write
    each field: title, purpose, scope, trigger, result, key contacts,
    business rules, exceptions, volume and effort, and the improvement and
-   automation scope (notes are optional). For example, the title *Order to
+   automation scope (the request and the notes are optional). For example, the title *Order to
    cash*, the trigger *A customer order arrives by email* and the volume and
    effort *About 40 orders a day, 3 minutes each*. The PDD prints each field
    in its own place, and the title names the files PDT makes: *Order to cash
@@ -97,7 +99,8 @@ it is done; its button takes you to the next.
    in SAP as the material number), the PDD says so under the improvement
    scope.
 9. **Check the Map.** The Map shows the map the PDD prints: a box per step
-   in its system's colour, and the decisions from the flow you set. Click a
+   with the system it is done in above it, and the decisions from the flow
+   you set. Click a
    box to see each time the step happened, with its moment in the video and
    its screenshots. *Show how the transactions ran* shows the paths the
    transactions took; point at a line to see how often.
@@ -256,7 +259,7 @@ app.
 | Word | Meaning |
 |---|---|
 | Project | What you open or start in PDT: one folder with the recording or video, your work and all you add. |
-| Request | The name of what the SME is asked to record, set in the capture app's *Recording setup*. The Overview shows it on the project line. |
+| Request | The name and code of the request the project is for, written in the document's *Request* field. The Overview shows it on the project line. |
 | SME | The subject matter expert who does the process and records it. |
 | Transaction | One pass through the process, for example one order. |
 | Step | One piece of work in a transaction, for example *Create the sales order in SAP*. |

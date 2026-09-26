@@ -27,6 +27,7 @@
   const PdtTheme = require("./theme.js");
   const Levels = require("./process-map-levels.js");
   const SystemNames = require("./system-names.js");
+  const { formatDuration } = require("./dom.js");
   const { START, END, OTHERWISE } = Levels;
   // Joins an edge's two node ids: no step name has this character.
   const SEP = String.fromCharCode(1);
@@ -221,16 +222,10 @@
     return had;
   }
 
-  /* Compact duration for the edge tooltip ("1h 04m", "4m 32s", "12s",
-     "<1s"). Mirrors the Python claim formatter. */
+  /* An edge tip's duration, the one way the app says it (dom.js
+     formatDuration). */
   function _fmtDur(ms) {
-    const s = Math.round((ms || 0) / 1000);
-    if (s < 1) return "<1s";
-    if (s < 60) return s + "s";
-    const m = Math.floor(s / 60), rs = s % 60;
-    if (m < 60) return rs ? m + "m " + String(rs).padStart(2, "0") + "s" : m + "m";
-    const h = Math.floor(m / 60), rm = m % 60;
-    return h + "h " + String(rm).padStart(2, "0") + "m";
+    return formatDuration(ms || 0);
   }
 
   /* Lane FX2: the quiet marker on a box whose step is flagged as waste (the
@@ -590,8 +585,12 @@
 
   function fit() { _fitReadable(cy); }
 
-  /* The host changed size (the step panel opened or closed beside it). */
-  function resize() { if (cy) { try { cy.resize(); } catch (_) {} } }
+  /* The host changed size (the step panel opened or closed beside it): the
+     map fits it again, so no box is left cut off at its edge (2.0.1). */
+  function resize() {
+    if (!cy) return;
+    try { cy.resize(); _fitReadable(cy); } catch (_) { /* the map went away */ }
+  }
 
   /* A node click selects the node (the accent `node:selected` style); the
      step panel beside the map says what the box stands for (V2 item 4; the

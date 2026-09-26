@@ -62,7 +62,6 @@ const { createBrowserWatchdog } = require("./browser-watchdog.js");
 const { createScreenshotGate, isAppSwitch, isScreenChange, keepScreenshot } = require("./screenshot-gate.js");
 const { createRecordingControl } = require("./recording-control.js");
 const guidance = require("./capture-guidance.js");
-const { showSessionConfigWindow } = require("./session-config-window.js");
 const { showSettingsWindow } = require("./settings-window.js");
 const { showProfileWindow } = require("./profile-window.js");
 const { needsPrompt, consentRecord } = require("./consent.js");
@@ -101,8 +100,8 @@ let lastStatus = null;
    containing this rect, so firing a marker from the recorder -- which moves
    focus to the recorder's monitor -- still captures the worker's monitor. */
 let lastWorkBounds = null;
-/* help, settings, profile, sessionConfig and one end summary per
-   recording: single-instance windows. The recording bar keeps its own
+/* help, settings, profile and one end summary per recording:
+   single-instance windows. The recording bar keeps its own
    (recording-bar.js), because it opens without taking the focus. */
 const windows = createWindowManager();
 let obs = null;
@@ -549,35 +548,6 @@ ipcMain.handle("pdt:obsTest", async (_e, { url, password }) => {
     return { ok: false, message: msg };
   }
 });
-
-function quickConfigPath() {
-  return path.join(app.getPath("userData"), "quick-config.yaml");
-}
-
-ipcMain.handle("pdt:sessionConfigGet", () => {
-  const p = quickConfigPath();
-  if (!fs.existsSync(p)) return { yaml: "", path: null };
-  try { return { yaml: fs.readFileSync(p, "utf-8"), path: p }; }
-  catch (e) { return { yaml: "", path: p, error: String(e && e.message) }; }
-});
-
-ipcMain.handle("pdt:sessionConfigSave", (_e, { yaml: text }) => {
-  const p = quickConfigPath();
-  try {
-    const dir = path.dirname(p);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(p, text || "", "utf-8");
-    bootLog(`quick-config saved to ${p}`);
-    appLogger().info(`quick-config saved to ${p}`);
-    return { saved: true, path: p };
-  } catch (e) {
-    return { saved: false, path: p, error: String(e && e.message) };
-  }
-});
-
-function showSessionConfigDialog() {
-  windows.show("sessionConfig", () => showSessionConfigWindow());
-}
 
 function showSettingsDialog() {
   windows.show("settings", () => showSettingsWindow());
@@ -1192,16 +1162,11 @@ function currentStatus() {
   };
 }
 
-function hasNamedRuns() {
-  return !!(config && Array.isArray(config.process_labels) && config.process_labels.length);
-}
-
 /* What the bar paints (capture-guidance.barModel), sent with every status. */
 function barView(status) {
   return guidance.barModel({
     status: status || currentStatus(),
     hotkey: keyFor("start"),
-    namedRuns: hasNamedRuns(),
   });
 }
 
@@ -1284,18 +1249,9 @@ ipcMain.handle("pdt:zipFolder", async (_e, sessionFolder) => {
   }
 });
 
-/* The recording bar: its height follows its content (a problem line), and
-   the caret next to Next transaction offers the named ones. */
+/* The recording bar: its height follows its content (a problem line). */
 ipcMain.handle("pdt:barResize", (_e, size) => {
   recordingBar.fitHeight(size && size.height);
-});
-ipcMain.handle("pdt:namedRunMenu", (e) => {
-  if (!hasNamedRuns()) return;
-  const menu = Menu.buildFromTemplate(config.process_labels.map((label) => ({
-    label,
-    click: () => { startFromUi(label); },
-  })));
-  menu.popup({ window: BrowserWindow.fromWebContents(e.sender) || undefined });
 });
 
 function showHelp() {
@@ -1306,7 +1262,7 @@ function showHelp() {
 }
 
 function openRecordingBar() {
-  return recordingBar.openBar(barView(), { namedRuns: hasNamedRuns() });
+  return recordingBar.openBar(barView());
 }
 
 function toggleRecordingBar() {
@@ -1333,14 +1289,12 @@ function localStamp(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/* Everything the analyst (or IT) sets up, in one submenu: the recording
-   setup, settings, profile, the readiness check, and the recordings on
-   this computer. The recording setup and the readiness check are offered
-   only while nothing records (setup applies at the next launch; the check
-   runs its own recorder). */
+/* Everything the analyst (or IT) sets up, in one submenu: settings,
+   profile, the readiness check, and the recordings on this computer. The
+   readiness check is offered only while nothing records (it runs its own
+   recorder). 2.0.1: the analyst writes the request in the viewer. */
 function buildSetupMenu() {
   const items = [];
-  if (!tracker) items.push({ label: "Recording setup...", click: () => showSessionConfigDialog() });
   items.push({ label: "Settings...", click: () => showSettingsDialog() });
   items.push({ label: "Profile...", click: () => showProfileDialog() });
   if (!tracker) items.push({ label: "Readiness check...", click: () => showReadinessDialog() });
@@ -1408,17 +1362,6 @@ function buildMenu() {
       accelerator: keyFor("start") || undefined,
       click: () => { startFromUi(); },
     });
-    // Named transactions from the recording setup (process_labels). Like
-    // the transaction key, each ends the open run first; runs never nest.
-    if (hasNamedRuns()) {
-      items.push({
-        label: "Start a named transaction",
-        submenu: config.process_labels.map((label) => ({
-          label,
-          click: () => { startFromUi(label); },
-        })),
-      });
-    }
     const openRun =
       lastStatus && lastStatus.markerDepth > 0
         ? lastStatus.openMarkers[lastStatus.openMarkers.length - 1]

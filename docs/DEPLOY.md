@@ -30,10 +30,10 @@ No admin rights, no installer, no PATH changes. OBS is optional.
    free disk, starts the recorder, and shows how much the recorder sees of
    each open program; the report lands in `readiness-report.json` next to
    the recordings.
-5. Optional set-up, all in the tray's Setup (analyst) menu: Recording setup
-   (the request and the named transactions), Settings (keys, OBS,
-   screenshots, the storage limit, the idle end of the open transaction),
-   Profile (who is recording).
+5. Optional set-up, all in the tray's Setup (analyst) menu: Settings (keys,
+   OBS, screenshots, the storage limit, the idle end of the open
+   transaction), Profile (who is recording). The analyst writes the request
+   in the viewer (the document's Request).
    For a project-wide YAML instead, set `PDT_CONFIG` before launch (`setx
    PDT_CONFIG "C:\Users\<user>\PDT\config\project.yaml"`, which takes effect
    for programs started afterwards); Settings and Profile still layer on
@@ -162,7 +162,7 @@ The install is a folder. Upgrading is replacing that folder.
 | State | Location | Notes |
 |---|---|---|
 | Recordings | `%APPDATA%\process-discovery-tracker-capture\sessions\` | Outside the install folder. |
-| Capture settings | `%APPDATA%\process-discovery-tracker-capture\` (`user-config.json`, `quick-config.yaml`, `recording-bar.json`) | Settings, Profile, Recording setup, the bar's place. |
+| Capture settings | `%APPDATA%\process-discovery-tracker-capture\` (`user-config.json`, `quick-config.yaml`, `recording-bar.json`) | Settings, Profile, a Recording setup saved before 2.0.1 (still read), the bar's place. |
 | Capture logs | `%APPDATA%\process-discovery-tracker-capture\` (`boot.log`, `app.log`) | Append-only. |
 | An older version's library | `%APPDATA%\process-discovery-tracker-viewer\pdt-library\` | Not read any more: the remembered step names (removed on 2026-09-25, contract C21) and the saved processes (removed on 2026-09-24). |
 | The hand-offs opened | `%APPDATA%\process-discovery-tracker-viewer\handoffs\` | One folder per hand-off zip opened, read only; the app removes none. |

@@ -359,3 +359,12 @@ test("C18: a copy made before the step map had its colours, notes and attachment
     "a task's colour");
   assert.equal(RM.predatesRichMap(before.replace("t1", "TextAnnotation_legendary")), true, "only the legend's id counts");
 });
+
+test("2.0.1: a copy with system labels (above a task, or once for the map) is a rich map, never one to copy again for that", () => {
+  const head = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="Process_1"><bpmn:task id="t1" name="Save" />';
+  const tail = "</bpmn:process></bpmn:definitions>";
+  assert.equal(RM.predatesRichMap(head + tail), true, "control: plain tasks alone");
+  assert.equal(RM.predatesRichMap(head + '<bpmn:textAnnotation id="TextAnnotation_system_1"><bpmn:text>SAP</bpmn:text></bpmn:textAnnotation>' + tail), false);
+  assert.equal(RM.predatesRichMap(head + '<bpmn:textAnnotation id="TextAnnotation_system"><bpmn:text>System: SAP</bpmn:text></bpmn:textAnnotation>' + tail), false);
+  assert.equal(RM.predatesRichMap(head + '<bpmn:textAnnotation id="Sub1_TextAnnotation_system_2" />' + tail), false, "on a sub-process's plane");
+});

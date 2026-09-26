@@ -32,8 +32,7 @@ folder:
   recording", "Recording: Transaction 2", "Paused: between transactions".
 - **The tray menu.** Not recording: Start recording (with its key), Open
   recordings folder, Show recording bar, Help, Setup (analyst), Quit.
-  Recording: Next transaction, Start a named transaction (when named
-  transactions are set up), End transaction (naming the open one), Take a
+  Recording: Next transaction, End transaction (naming the open one), Take a
   screenshot, Pause or Resume recording, Stop recording, then the same
   items as above. Quit stops a running recording first, without the end
   summary.
@@ -44,8 +43,7 @@ folder:
   elapsed time (m:ss, h:mm:ss from an hour: the time recorded, the pauses
   left out; while paused, the pause's own length beside Paused, and the time
   paused in all in the bar's tooltip), Next transaction with its key,
-  a caret with the named transactions when they are set up, Pause or
-  Resume, and Stop with an inline confirm (Keep recording, Stop
+  Pause or Resume, and Stop with an inline confirm (Keep recording, Stop
   recording). A problem line appears under it only when clicks and
   typing are not being recorded. Made for recording during a Teams call: it
   appears without taking the keyboard focus, asks Windows to leave it out of
@@ -102,11 +100,11 @@ still in progress (the consent window open, OBS connecting, the recorder
 draining) is absorbed, not queued.
 
 - **Transactions never nest.** A new transaction first ends the open one
-  (`tracker.startRun`, end reason `auto_close_for_sibling`). An unnamed one
-  is labelled "Transaction N" ("Run N" in recordings made before 2.0.0; N
-  counts every start in the recording) or, from the bar's caret or the
-  tray's Start a named transaction, a named one from the Recording setup
-  (`process_labels`).
+  (`tracker.startRun`, end reason `auto_close_for_sibling`). Each is
+  labelled "Transaction N" ("Run N" in recordings made before 2.0.0; N
+  counts every start in the recording). The named transactions of the
+  Recording setup are gone since 2.0.1, and with them the `process_labels`
+  key (a YAML file that still sets it changes nothing).
 - **End transaction** (the second key, or the tray) ends the open
   transaction without starting another; the bar then reads "between
   transactions". It never has to be pressed: stopping ends the open
@@ -284,7 +282,10 @@ shared with the viewer.
 | `consent-window.js` | `consent.html` | The consent gate (below). The pure decision and record logic is in `consent.js`. |
 | `settings-window.js` | `settings.html` | Setup (analyst), Settings: keys, OBS, screenshots, the storage limit and the idle end of the open transaction. |
 | `profile-window.js` | `profile.html` | Setup (analyst), Profile: who is recording. |
-| `session-config-window.js` | `session-config.html` | Setup (analyst), Recording setup: the request (code and name) and the named transactions. |
+
+The Recording setup window (`session-config-window.js`,
+`ui/session-config.html`: the request and the named transactions) is gone
+since 2.0.1; the analyst writes the request in the viewer.
 
 **Other:** `build-package.js` (the `electron-packager` wrapper for
 releases), `test/` (the `node:test` suite: `npm test`), `recorder/` (the C#
@@ -297,8 +298,7 @@ The main process answers these `pdt:*` channels from the windows:
 | Channel | Used by | Does |
 |---|---|---|
 | `pdt:status` | recording bar | The status snapshot plus the bar's view model |
-| `pdt:fireStart` | recording bar | The one start (a named transaction's label optional) |
-| `pdt:namedRunMenu` | recording bar | Pops up the named transactions under the caret |
+| `pdt:fireStart` | recording bar | The one start |
 | `pdt:togglePause` | recording bar | Pause or Resume |
 | `pdt:endSession` | recording bar | Stop (the end summary follows) |
 | `pdt:barResize` | recording bar | The bar's height follows its content (a problem line) |
@@ -312,13 +312,14 @@ The main process answers these `pdt:*` channels from the windows:
 | `pdt:obsTest` | Settings | Test OBS connection |
 | `pdt:settingsGet`, `pdt:settingsSave` | Settings | The Settings slices |
 | `pdt:profileGet`, `pdt:profileSave` | Profile | Who is recording |
-| `pdt:sessionConfigGet`, `pdt:sessionConfigSave` | Recording setup | `userData/quick-config.yaml` |
 
 The end summary's channels act only on a recording folder under the
 recordings folder (`session.isRecordingFolder`). Gone: `pdt:manualScreenshot`
 (a screenshot by hand is the key or the tray item), `pdt:sessionSummary`
 (the end summary is its own window), `pdt:fireSync` (cross-machine sync
-markers are cut).
+markers are cut), and since 2.0.1 `pdt:sessionConfigGet`,
+`pdt:sessionConfigSave` and `pdt:namedRunMenu` (the Recording setup and
+the named transactions).
 
 ## Configuration
 
@@ -327,10 +328,11 @@ Settings come in layers, each merged over the one before:
 1. `DEFAULTS` in `config.js`, the one source of default values (except
    `storage_warn_gb`, read with an inline fallback of 50).
 2. A YAML file: `PDT_CONFIG=path\to\config.yaml` set before launch (the whole
-   schema: `capture/sample-config.yaml`), else `userData/quick-config.yaml`,
-   written by Setup (analyst), Recording setup (the request code and name,
-   the named transactions; offered only while nothing records, read at
-   the next launch).
+   schema: `capture/sample-config.yaml`), else a `userData/quick-config.yaml`
+   that the Recording setup of an earlier version saved: it is still read,
+   so its `engagement_id` and `engagement_name` still reach the manifest.
+   The Recording setup is gone since 2.0.1: the analyst writes the request
+   in the viewer (the document's Request).
 3. `userData/user-config.json`: Setup (analyst), Settings (keys, OBS,
    screenshots, the storage limit, the idle end of the open transaction)
    and Profile (id, display name, role, team, stamped on every manifest).
@@ -339,9 +341,8 @@ Settings come in layers, each merged over the one before:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `engagement_id`, `engagement_name` | `"default"`, `"Default engagement"` | The request code and name (Recording setup's Request, AD-30), stamped on the manifest; the code is the folder above the recordings. |
+| `engagement_id`, `engagement_name` | `"default"`, `"Default engagement"` | The request code and name (AD-30), from the YAML file, stamped on the manifest; the code is the folder above the recordings. The analyst's Request in the viewer (2.0.1) wins in the PDD and on the project line. |
 | `worker` | the Windows login | Who is recording: `id`, `name`, `role`, `bu` (team). |
-| `process_labels` | `[]` | The named transactions: the caret next to Next transaction on the bar, and the tray's Start a named transaction. |
 | `auto_end_idle_minutes` | `30` | Inactivity that ends the open transaction. |
 | `auto_end_on_idle` | `true` | `false` keeps the transaction open through idle (all-day recordings); idle is recorded either way. |
 | `poll_interval_seconds` | `5` | Not read: the active-window poll is fixed at 5 s (`tracker.js`). |

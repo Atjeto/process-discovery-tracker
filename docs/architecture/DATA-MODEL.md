@@ -68,7 +68,7 @@ Every line is one JSON object with a fixed envelope; only `data` varies by
 | `type` | Produced by | `data` carries |
 |---|---|---|
 | `activity` | foreground-window polling (every 5 s) | `app`, `title`, `pid`, `duration_ms`, `bounds` |
-| `marker` | the transaction key, the recording bar and the tray (Next transaction, a named transaction, End transaction), stopping the recording, a long idle stretch | `marker_type` (`start` / `end`), `label`, `reason` |
+| `marker` | the transaction key, the recording bar and the tray (Next transaction, End transaction; a named transaction in a recording made before 2.0.1), stopping the recording, a long idle stretch | `marker_type` (`start` / `end`), `label`, `reason` |
 | `system` | session lifecycle | `kind` (`session_start`, `idle_start`, `screenshot`, `recorder_died`, `events_dropped`, ...) plus a kind-specific payload |
 | `interaction` | the C# UI Automation recorder | `kind`, `control_type`, `automation_id`, `name`, `window_title`, `process_name`, `value` (never a password), capture-confidence fields |
 
@@ -107,7 +107,7 @@ survives every re-analysis.
 | `steps[]` | pipeline (drafts), viewer (analyst edits) | The step entities (below) |
 | `pattern_run` | viewer | The run confirmed as the reference, and the draft-fix counts (contract C3) |
 | `opened_runs[]` | viewer | The case ids of the other runs opened in Steps once the reference run was confirmed; the Checklist ticks *Review the other transactions* when every one is there |
-| `document` | viewer | The PDD's document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions, effort (the volume and effort), improvement, notes (C6) |
+| `document` | viewer | The PDD's document fields: title, request (optional, 2.0.1: Document control's Request, which falls back to the capture's), purpose, scope, trigger, result, contacts, business rules, exceptions, effort (the volume and effort), improvement, notes (C6) |
 | `marker_edits[]` | viewer | Rename, re-time, delete or insert a run marker; replayed on a derived stream, the raw marker stays |
 | `reference_maps[]` | viewer | The editable map copies and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/`. Each row keeps the signature of the maps its steps drew (`forked_from_steps`, lane FX2), so the app says when the steps changed after the copy was made |
 | `external_video` | viewer | The attached video: `{ path, offset_ms, attached_at }` |
@@ -183,8 +183,9 @@ Contract C19 adds sub-processes: a step's `sub_steps` holds its sub-steps,
 the same shape, at any depth (`annotations.steps` stays the main level). A
 group made by *Group into a sub-process* carries `group: true`; a sub-step
 drafted from a recorded action carries `action_key`
-(`"<app>|<screen>|enter:<field>"` or `"<app>|<screen>|click:<control>"`)
-and no `draft_key`. A link that Group moved carries where it was, for
+(`"<app>|<screen>|enter:<field>"`, `"<app>|<screen>|click:<control>"`, or
+since 2.0.1 `"<app>|<screen>|cells:A-F"` for the cells of one sheet filled
+one after another, named "Fill in columns A to F") and no `draft_key`. A link that Group moved carries where it was, for
 Dissolve to give it back (lane FX2): `lifted_from` (the member steps it
 left) or `pointed_to` (the member it pointed at before its group). Readers
 of the flow read `to` and `when` only.

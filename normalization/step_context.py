@@ -271,10 +271,16 @@ def step_sort_key(step: dict) -> tuple[int, float]:
 
 
 def fmt_ms(ms: Any) -> str:
-    """A duration in the reader's words: "12s", "3m 40s", "1h 12m" (0 for a
-    missing value). The PDD's times and the step map's documentation."""
-    ms = ms or 0
-    s = int(round(ms / 1000.0))
+    """A duration in the reader's words, the one rule the viewer's dom.js
+    formatDuration shares (2.0.1): "under 1s", "42s", "2m 07s", "3m",
+    "1h 04m"; never "0s", and "" for a missing or negative value. The step
+    map's documentation ("12s on average")."""
+    if (isinstance(ms, bool) or not isinstance(ms, (int, float))
+            or not math.isfinite(ms) or ms < 0):
+        return ""
+    if ms < 1000:
+        return "under 1s"
+    s = int(math.floor(ms / 1000.0 + 0.5))   # half up, as Math.round
     if s < 60:
         return f"{s}s"
     m, s = divmod(s, 60)

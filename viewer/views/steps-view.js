@@ -51,7 +51,7 @@
 
 "use strict";
 
-const { $, escapeHtml, escapeAttr, formatDuration, cryptoRandomId, toast, placeMenu, recordingStartMs } = require("../dom.js");
+const { $, escapeHtml, escapeAttr, cryptoRandomId, toast, placeMenu, recordingStartMs } = require("../dom.js");
 const { confirmModal, promptModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
@@ -564,7 +564,7 @@ function _renderCrumbs(model, pattern, path) {
   nav.appendChild(trail);
   const dissolve = document.createElement("button");
   dissolve.type = "button";
-  dissolve.className = "link-btn crumb-dissolve";
+  dissolve.className = "crumb-dissolve";
   dissolve.id = "btn-dissolve-level";
   dissolve.title = "Put the steps of this sub-process back in the steps above it, in every transaction";
   dissolve.textContent = "Dissolve sub-process";
@@ -611,7 +611,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
   const diffs = refVisit && !isRef
     ? RunDiff.differences(refVisit.visible, c.visible, { reference: RunDiff.REFERENCE_RUN, unit: RunDiff.RUN_UNIT }) : null;
   const dur = _visitDuration(c);
-  const meta = _plural(n, "step", "steps") + (dur != null ? " · " + formatDuration(dur) : "") +
+  const meta = _plural(n, "step", "steps") + (dur != null ? " · " + StepFacts.formatMs(dur) : "") +
     _diffMeta(diffs, !!diffs);
   const status = !isRef ? null : !n ? "empty" : confirmed ? "confirmed" : "draft";
   g.innerHTML = _groupHead(isOpen,
@@ -866,6 +866,8 @@ function _groupBody(visible, hiddenCount, emptyText, baseline) {
       // C19: a sub-process row opens its level ("▸ N sub-steps").
       subSteps: (step) => (SPM.isSubProcess(step) ? step.sub_steps.filter((x) => x && x.state !== "hidden").length : null),
       onOpenSub: (step) => openSubProcessAction(step.step_id),
+      // 2.0.1: each row shows when its step starts, on the one clock.
+      originMs: recordingStartMs(State.getSession()),
     });
   return body;
 }
@@ -884,7 +886,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   // Item 3: the run's differences from its reference, counted in its meta
   // (no count on the reference run the others are compared with).
   const diffs = _runDiffs(ref, run);
-  const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + formatDuration(run.durationMs) : "") +
+  const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + StepFacts.formatMs(run.durationMs) : "") +
     _diffMeta(diffs, !isPattern);
   // AD-28: only the reference run is confirmed, so only it carries a status,
   // read from its confirmation (C3); the other runs are reviewed by opening
@@ -1165,6 +1167,9 @@ function stepDetailCallbacks(selected, interactionsById) {
     subProcess: SPM.isSubProcess(selected)
       ? { count: selected.sub_steps.filter((x) => x && x.state !== "hidden").length, group: selected.group === true } : null,
     canOpenAsSub: !SPM.isSubProcess(selected) && selected.state !== "hidden" && _inTransaction(selected),
+    // 2.0.1: a step of one recorded action has nothing to open (a sheet's
+    // cells filled one after another are one action): the verb says so.
+    openAsSubWhy: _oneAction(selected, interactionsById),
     onOpenAsSub: openAsSubProcessAction,
     onOpenSub: openSubProcessAction,
     onDissolve: dissolveStepAction,
@@ -1176,6 +1181,15 @@ function stepDetailCallbacks(selected, interactionsById) {
 function _inTransaction(step) {
   const model = _model();
   return !!(step && typeof step.case_id === "string" && model.runs.some((r) => r.caseId === step.case_id));
+}
+
+/* Why Open as a sub-process has nothing to open for `step` (2.0.1): its
+   recording holds fewer than two actions, so its one sub-step would repeat
+   it; "" when there is something to open. */
+const ONE_ACTION = "This step has one recorded action (a sheet's cells filled one after another count as one), so it has no steps of its own to open.";
+function _oneAction(step, interactionsById) {
+  if (!step || !((step.evidence && step.evidence.interaction_event_ids) || []).length) return "";
+  return SPV.draftSubSteps(step, interactionsById || _interactionsById(), {}).length < 2 ? ONE_ACTION : "";
 }
 
 /* ===== Step flow (C17) ================================================= */
@@ -2539,7 +2553,7 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Merge " + _multiSel.size + " selected steps", () => mergeSelectedSteps());
     addItem("Group " + _multiSel.size + " selected steps into a sub-process…", () => groupSelectedAction());
   }
-  if (!isSub && step.state !== "hidden" && _inTransaction(step)) {
+  if (!isSub && step.state !== "hidden" && _inTransaction(step) && !_oneAction(step)) {
     addItem("Open as a sub-process", () => openAsSubProcessAction(stepId));
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
