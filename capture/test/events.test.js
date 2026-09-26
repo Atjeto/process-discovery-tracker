@@ -128,6 +128,24 @@ test("a password entry keeps value_redacted and never carries a value (live find
   assert.strictEqual(ev.data.name, "Password");
 });
 
+test("a program's own change keeps its mark, user_acted false", () => {
+  // The recorder marks what a program did by itself instead of dropping it;
+  // the pipeline and the viewer leave marked changes out of the steps. The
+  // live check through the packaged build found the allowlist stripping it.
+  const ev = interactionEvent(SID, {
+    kind: "value_changed",
+    control_type: "ComboBox",
+    automation_id: "ord-product",
+    name: "Product",
+    value: "Laptop stand LS-200",
+    user_acted: false,
+  });
+  assertEnvelope(ev, "interaction");
+  assert.strictEqual(ev.data.user_acted, false);
+  const own = interactionEvent(SID, { kind: "invoked", control_type: "Button", name: "Save order" });
+  assert.ok(!("user_acted" in own.data), "the SME's own act carries no mark");
+});
+
 test("interactionEvent passes through value_source (recovered value flag)", () => {
   // value_source (§11e) flags a value recovered off the primary ValuePattern
   // path; the allowlist must keep it for transparency about recovery.

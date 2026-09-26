@@ -53,6 +53,10 @@ function interactionEvent(sessionId, data) {
     // reached events.jsonl as a value change with no value, read downstream
     // as "Cleared Password" (lane LF-SME, live finding 1).
     "value_redacted",
+    // A program's own change, which the recorder writes marked instead of
+    // dropping it: without the mark here it reached events.jsonl as the
+    // SME's own act (a page's default drop-down value as a typed field).
+    "user_acted",
     // E6 / E7 -- recorder-emitted signal-quality fields.
     "coverage_hint", "value_truncated",
     // E8 (§11e) -- desktop-coverage-hardening signal fields. `framework`
