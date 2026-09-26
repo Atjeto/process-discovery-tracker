@@ -54,13 +54,33 @@ _MIN_KEY_LEN = 3
 
 
 def app_key(app: Any) -> str:
-    """The comparison key of an executable token: lowercased, ".exe" stripped."""
+    """The comparison key of an executable token: lowercased, ".exe"
+    stripped. A program's own name as Windows gives it, which the capture
+    app records for the window in front ("Google Chrome"), is the key of
+    its executable ("chrome": system-names.json `program_names`, 2.0.1)."""
     s = str(app or "").strip().lower()
-    return s[:-4] if s.endswith(".exe") else s
+    s = s[:-4] if s.endswith(".exe") else s
+    return _PROGRAM_NAMES.get(" ".join(s.replace("\u200b", "").split()), s)
 
 
 # The one vocabulary of systems, shared with the viewer.
 _SYSTEMS_PATH = Path(__file__).resolve().parent.parent / "shared" / "system-names.json"
+
+
+def _load_program_names(path: Path = _SYSTEMS_PATH) -> dict[str, str]:
+    """system-names.json `program_names`: {a program's name as Windows gives
+    it, lowercased, zero-width spaces taken out: its application key}."""
+    with open(path, encoding="utf-8") as fh:
+        names = json.load(fh).get("program_names")
+    if not isinstance(names, dict):
+        return {}
+    return {" ".join(k.replace("\u200b", "").split()).lower(): v.strip().lower()
+            for k, v in names.items()
+            if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip()
+            and not k.startswith("_")}
+
+
+_PROGRAM_NAMES = _load_program_names()
 
 
 def _load_system_rules(path: Path = _SYSTEMS_PATH) -> list[tuple[frozenset, Any, str, Any]]:

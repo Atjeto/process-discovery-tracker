@@ -457,7 +457,8 @@ gaps. The sections, in the reader's order:
    the steps that followed it, with the number of runs) and a line naming
    `process_map_step.bpmn`. 3.2 the steps of the reference run: first the
    systems the process runs through, then, while any printed step is a
-   draft, "The analyst has not yet confirmed N of these M steps." (a
+   draft, "The analyst has not yet confirmed N of these M steps." (or
+   "these M steps", "this step", when none is confirmed; a
    chapter says it too), then one heading per step with its
    context line (the heading reads "Step N: <name>": lane FX1, so a step's
    number never reads as a section's), "Only when ..." when the step has a
@@ -606,7 +607,11 @@ page "Customer lookup" on Order Desk in Chrome). It names nothing when
 fewer than two segments are left (a lone "New Tab" stays Google Chrome) or
 when the shared value rules would change the segment (a value, not a
 name), and the next rule applies. The step's screen then leaves the site
-out ("Customer lookup").
+out ("Customer lookup"). The file's `program_names` (2.0.1) lists the
+names Windows gives a program, which the capture app records for the
+window in front ("Google Chrome", "Microsoft Excel"), each with the
+application a rule knows it by ("chrome", "excel"), so a live recording's
+Timeline names a system as its steps do.
 `app_names.py` reads it:
 
 - `build_app_names` gives each executable a readable name for `stats.json`

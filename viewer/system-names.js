@@ -21,10 +21,14 @@ const { screenType, valueFree } = require("./process-map-levels.js");
 
 const _doc = require(path.join(__dirname, "..", "shared", "system-names.json"));
 
-/* An application token's comparison key: lowercased, ".exe" stripped. */
+/* An application token's comparison key: lowercased, ".exe" stripped. A
+   program's own name as Windows gives it, which the capture app records for
+   the window in front ("Google Chrome"), is the key of its executable
+   ("chrome": system-names.json `program_names`, 2.0.1; app_names.app_key). */
 function appKey(app) {
   const s = String(app == null ? "" : app).trim().toLowerCase();
-  return s.endsWith(".exe") ? s.slice(0, -4) : s;
+  const k = s.endsWith(".exe") ? s.slice(0, -4) : s;
+  return PROGRAM_NAMES.get(_plain(k)) || k;
 }
 
 /* A text without zero-width spaces (Edge writes "Microsoft\u200b Edge"), its
@@ -37,6 +41,15 @@ function _plain(text) {
    for a site rule (`site`: true, 2.0.1, siteName). A rule without
    applications, a named rule without a name, or one with a pattern that
    does not compile, is skipped. */
+/* system-names.json `program_names`: a program's name as Windows gives it,
+   lowercased and plain, to its application key. */
+const PROGRAM_NAMES = new Map();
+const _programNames = _doc && _doc.program_names;
+for (const [name, key] of Object.entries(_programNames && typeof _programNames === "object" ? _programNames : {})) {
+  if (name.startsWith("_") || typeof key !== "string" || !key.trim() || !name.trim()) continue;
+  PROGRAM_NAMES.set(_plain(name).toLowerCase(), key.trim().toLowerCase());
+}
+
 const RULES = [];
 for (const r of (_doc && Array.isArray(_doc.rules)) ? _doc.rules : []) {
   if (!r || typeof r !== "object") continue;

@@ -103,6 +103,18 @@ test("lane LF-PIPE: the Windows apps read by their names; a page's system is its
   for (const s of ["Calculator", "Character Map", "Paint", "File Explorer"]) assert.ok(SN.knownSystems().includes(s), s);
 });
 
+test("2.0.1: a program named as Windows names it (the capture app's window in front) is its executable, so the Timeline names a system as the steps do", () => {
+  assert.equal(SN.appKey("Google Chrome"), "chrome");
+  assert.equal(SN.appKey("Microsoft\u200b Edge"), "msedge");
+  assert.equal(SN.appKey("Microsoft Excel"), "excel");
+  assert.equal(SN.appKey("Erpclient.exe"), "erpclient");
+  assert.equal(SN.systemName("Google Chrome", "Customer lookup" + SEP + "Order Desk" + SEP + "Google Chrome", {}), "Order Desk");
+  assert.equal(SN.systemName("Google Chrome", "Account lookup | Salesforce" + SEP + "Google Chrome", {}), "Salesforce");
+  assert.equal(SN.systemName("Google Chrome", "New Tab" + SEP + "Google Chrome", {}), "Google Chrome");
+  assert.equal(SN.systemName("Microsoft Excel", "orders-week40.xlsx" + SEP + "Excel", {}), "Excel");
+  assert.equal(SN.systemName("Microsoft Outlook", "Inbox" + SEP + "Outlook", {}), "Outlook");
+});
+
 test("lane LF-PIPE (#24): a map box leaves its system line out when the step's name already names the system", () => {
   assert.equal(SN.namesSystem("orders.xlsx" + SEP + "Excel: Save", "Excel"), true);
   assert.equal(SN.namesSystem("Account | Salesforce: Save", "salesforce"), true, "ignoring case");

@@ -202,8 +202,11 @@ the folder.
   PDD. Its site
   rule (2.0.1, `site_name`, `siteName`) names a browser window on a site no
   rule names by the site its title ends with, the browser's name dropped
-  ("Order Desk"), and the screen then leaves the site out. A `step.system`
-  set by the analyst wins.
+  ("Order Desk"), and the screen then leaves the site out. Its
+  `program_names` makes the name Windows gives a program, which the capture
+  app records for the window in front ("Google Chrome"), the application a
+  rule knows ("chrome"), so the Timeline names systems as the steps do. A
+  `step.system` set by the analyst wins.
 - **The video travels with the folder.** Attach video copies it into
   `video/` and stores its path relative to the folder; a missing absolute
   path falls back to a file of that name in the folder (`video-path.js`).

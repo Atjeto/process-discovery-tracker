@@ -1193,11 +1193,17 @@ def _write_steps(doc, s):
 
 def _drafts_line(doc, steps) -> None:
     """How many of the printed steps the analyst has not confirmed yet, when
-    any: in the reader's words (the SME reads it), not the app's."""
+    any: in the reader's words (the SME reads it), not the app's. "2 of these
+    3 steps", and when none is confirmed "these 3 steps" or "this step"
+    (never "1 of these 1 step", seen on a one-step recording)."""
     drafts = sum(1 for st in steps if st.get("state") == "auto_suggested")
-    if drafts:
-        doc.add_paragraph(f"The analyst has not yet confirmed {drafts} of these "
-                          f"{_plural(len(steps), 'step')}.")
+    if not drafts:
+        return
+    if drafts < len(steps):
+        which = f"{drafts} of these {_plural(len(steps), 'step')}"
+    else:
+        which = "this step" if drafts == 1 else f"these {drafts} steps"
+    doc.add_paragraph(f"The analyst has not yet confirmed {which}.")
 
 
 def _level_rows(s, level) -> list[tuple[str, str]]:

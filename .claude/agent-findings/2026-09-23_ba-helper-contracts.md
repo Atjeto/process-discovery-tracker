@@ -350,7 +350,12 @@ application and a window title into the business system the work happened in.
   segments are left (a lone "New Tab" stays Google Chrome) or when the shared value rules
   would change the segment (a value, not a name), and the next rule applies. Both sides
   implement it (`app_names.site_name`, `viewer/system-names.js` `siteName`); the step's
-  screen then leaves the site out ("Customer lookup").
+  screen then leaves the site out ("Customer lookup"). The file's `program_names` maps the
+  name Windows gives a program, which the capture app records for the window in front
+  ("Google Chrome", "Microsoft Excel"; the recorder writes "chrome.exe"), to the application
+  a rule knows ("chrome", "excel"), in both `app_key` and `appKey`: the live walk found the
+  Timeline's bands and legend reading "Google Chrome" and "Microsoft Excel" while the steps
+  read "Order Desk" and "Excel".
 
 ## C15. The PDD's inputs and the step map file (lane LUX-P)
 

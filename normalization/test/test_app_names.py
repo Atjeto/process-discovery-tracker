@@ -74,6 +74,11 @@ def test_the_file_is_ordered_rules_with_a_process_list_and_a_system():
         if "title" in rule:
             re.compile(rule["title"])
     assert sites == 1
+    # 2.0.1: the names Windows gives a program, each with an application a
+    # rule knows.
+    known = {p for rule in doc["rules"] for p in rule["process"]}
+    names = {k: v for k, v in doc["program_names"].items() if not k.startswith("_")}
+    assert names and all(v in known for v in names.values()), names
     # No dash punctuation in the shared text the viewer may show.
     text = SYSTEMS.read_text(encoding="utf-8")
     assert chr(0x2013) not in text and chr(0x2014) not in text and " -- " not in text
@@ -113,6 +118,26 @@ def test_a_browser_window_on_a_site_no_rule_names_is_named_by_its_site():
     assert app_names.site_name("Customer lookup - Order Desk", frozenset()) == "Order Desk"
     assert app_names.site_name("Order Desk", frozenset()) == ""
     assert app_names.site_name(None) == ""
+
+
+def test_a_program_named_as_windows_names_it_is_its_executable():
+    """2.0.1: the capture app records the window in front by the name
+    Windows gives the program ("Google Chrome", "Microsoft Excel"), the
+    recorder by its executable; both are one application, so the Timeline
+    names a system as the steps do (system-names.json `program_names`)."""
+    assert app_names.app_key("Google Chrome") == app_names.app_key("chrome.exe") == "chrome"
+    assert app_names.app_key("Microsoft\u200b Edge") == "msedge"
+    assert app_names.app_key("Microsoft Excel") == "excel"
+    assert app_names.app_key("Erpclient.exe") == "erpclient"
+    cases = {
+        ("Google Chrome", "Customer lookup - Order Desk - Google Chrome"): "Order Desk",
+        ("Google Chrome", "Account lookup | Salesforce - Google Chrome"): "Salesforce",
+        ("Google Chrome", "New Tab - Google Chrome"): "Google Chrome",
+        ("Microsoft Excel", "orders-week40.xlsx - Excel"): "Excel",
+        ("Microsoft Outlook", "Inbox - Outlook"): "Outlook",
+    }
+    for (app, title), system in cases.items():
+        assert system_name(app, title) == system, (app, title)
 
 
 # ---- the per-application names (stats.json meta.app_names) -----------------------

@@ -47,7 +47,9 @@ change, and the SME's app loses its setup.
   sub-process box is a little taller, so the + marker never covers its
   name.
 - **A web application is named by its site**: a browser window on a site
-  no rule knows reads its site ("Order Desk"), not "Google Chrome".
+  no rule knows reads its site ("Order Desk"), not "Google Chrome", on the
+  Timeline as in the steps, the map and the PDD; the Timeline says "Excel"
+  where it said "Microsoft Excel".
 - **A step you name like a step of the reference transaction is that
   step** in the differences and in the PDD, whatever the recorder drafted.
 - **A sheet's cells are one sub-step**: *Open as a sub-process* gives

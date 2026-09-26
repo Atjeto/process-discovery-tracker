@@ -491,7 +491,7 @@ def test_a_chosen_reference_run_and_its_draft_status_line():
         a["pattern_run"] = {"case_id": R2}
     blocks, steps = _steps_section(choose_run_2)
     assert steps[1] == "The steps as done in Transaction 2: Order 2, the reference transaction."
-    assert steps[2] == "The analyst has not yet confirmed 3 of these 3 steps."
+    assert steps[2] == "The analyst has not yet confirmed these 3 steps."
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Look up the order", "Step 2: Sheet - Log: Save", "Step 3: CRM - Orders: Save"]
     # The time is counted from the start of the recording, not of the run:
