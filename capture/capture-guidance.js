@@ -66,14 +66,20 @@ const TRANSACTION_MEANS =
 const CLICKS_NOT_RECORDED =
   "Clicks and typing are not being recorded. Keep going and tell the analyst.";
 
-/* The one problem the bar shows as a line of its own: the recorder that
-   captures clicks and typing has stopped for good, or has been silent past
-   the alarm threshold. Nothing when recording is fine, when clicks and
-   typing are switched off in setup, or when not recording. */
+/* Lane LF-SME (live finding 15): the first start after an install or an
+   update waits for Windows to check the recorder; the bar says so instead
+   of the app seeming frozen. */
+const STARTING_RECORDER = "Starting the recorder...";
+
+/* The one line the bar shows under its row: the recorder that captures
+   clicks and typing has stopped for good, or has been silent past the alarm
+   threshold; or it is still starting. Nothing when recording is fine, when
+   clicks and typing are switched off in setup, or when not recording. */
 function problemText(status) {
   const s = status || {};
   if (!s.tracking) return null;
   if (s.recorder_state === "dead" || s.recorder_silent) return CLICKS_NOT_RECORDED;
+  if (s.recorder_state === "starting") return STARTING_RECORDER;
   return null;
 }
 
@@ -119,7 +125,7 @@ function trayStatusLine(status) {
   const m = barModel({ status });
   if (m.state === "idle") return m.stateText;
   const line = m.stateText + ": " + m.runText;
-  return m.problem ? line + " (clicks and typing not recorded)" : line;
+  return m.problem === CLICKS_NOT_RECORDED ? line + " (clicks and typing not recorded)" : line;
 }
 
 /* The end summary: transactions and duration in one line ("4 transactions,
@@ -174,5 +180,6 @@ module.exports = {
   summaryModel,
   friendlyAppName,
   CLICKS_NOT_RECORDED,
+  STARTING_RECORDER,
   TRANSACTION_MEANS,
 };

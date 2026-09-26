@@ -51,8 +51,12 @@ folder:
   appears without taking the keyboard focus, asks Windows to leave it out of
   screen captures (a shared screen, the OBS video and the recording's own
   screenshots show the work, not the bar), can be dragged anywhere by its
-  text, and remembers its place (`userData/recording-bar.json`; a place on a
-  monitor that is gone falls back to the bottom right of the main screen).
+  text, and remembers its place (`userData/recording-bar.json`). With no
+  place saved, or one on a monitor that is gone, it opens at the top centre
+  of the main screen, over the title bars, clear of the buttons maximized
+  programs keep at the bottom right. While the recorder is still starting
+  (the first Start right after the app launched), the line under the row
+  says "Starting the recorder...".
   It opens when a recording starts and closes when it stops; the tray's
   Hide recording bar and Show recording bar toggle it.
 - **The welcome** (first launch only, flagged in
@@ -140,8 +144,10 @@ queue. A crash therefore loses at most the activity and interaction events
 queued at that moment (under 500 ms). Each event carries a monotonic `_seq`
 (its 0-based append ordinal), so normalization can order events that share
 a millisecond. Screenshot triggers are coalesced by a 2 second leading-edge
-debounce, so coincident triggers (an app switch landing with a run start)
-collapse to one capture; a screenshot taken by hand is never suppressed.
+debounce, and nothing new starts while a capture is still being taken
+(`screenshot-gate.js`), so coincident triggers (an app switch landing with
+a run start) collapse to one capture; the first program of a recording is
+not an app switch; a screenshot taken by hand is never suppressed.
 
 ## Recording lifecycle
 
@@ -152,12 +158,18 @@ collapse to one capture; a screenshot taken by hand is never suppressed.
   comes next; declining stops the start and nothing is created. Then
   `session.js` creates the folder and `manifest.json` (`status: active`), the
   config snapshot is written, the tracker starts polling, the display
-  geometry is stamped on the manifest, the recorder sidecar starts, the
-  dead-man monitor is armed, and Transaction 1 starts. Without
-  `obs.required`, OBS connects in the background; without OBS the
-  recording goes on without video and says nothing.
+  geometry is stamped on the manifest, the dead-man monitor is armed, and
+  Transaction 1 starts; the recorder sidecar starts beside them, as soon as
+  it is ready (with `interactions.required` the start waits for it). The
+  app starts the recorder once at launch, in a worker thread, with nothing
+  to record: Windows' check of the large single-file executable and its
+  first unpacking happen then, not at the SME's first Start (it froze the
+  app for 17 s once). Without `obs.required`, OBS connects in the
+  background; without OBS the recording goes on without video and says
+  nothing.
 - **Stop** (single-flight: the bar and the tray at once stop it only once).
-  The recorder stops and drains its last values; OBS stops; the tracker
+  The recorder stops and drains its last values; OBS stops; a screenshot
+  still being taken lands (3 s at most); the tracker
   ends the open run (`endOpenRuns`) before `session_end`; `manifest.json`
   gets `status: closed` and `ended_at`; `session-integrity.json` is written
   last, so the viewer can tell an incomplete copy. The bar closes and the
@@ -169,16 +181,21 @@ collapse to one capture; a screenshot taken by hand is never suppressed.
 
 ## Handing the recording over
 
-The end summary's **Make a zip for the analyst** writes
-`<YYYYMMDD-HHMMSS>.zip` next to the recording folder (`zip-folder.js`: plain
+The end summary's **Make a zip for the analyst** writes a zip named after
+the recording (the name typed above the button, made safe for Windows; the
+time stamp `<YYYYMMDD-HHMMSS>.zip` when there is none, or beside the name
+when another recording's zip has it; `recording-zip.js`) next to the
+recording folder (`zip-folder.js`: plain
 PKZIP with UTF-8 names, the folder as the zip's root, already compressed
 files such as screenshots and videos stored as they are, written to a
 `.partial` file and renamed at the end) and shows it selected in Explorer.
 Nothing is sent: the SME attaches the zip to an email or a Teams message by
 hand, or copies the folder. A recording over 4 GB, or with more than 65,535
 files and folders, cannot be zipped (the summary says so; copy the folder
-instead). A recording still running cannot be zipped. Deleting a recording
-under Setup (analyst) deletes its zip too.
+instead). A recording still running cannot be zipped. A zip made again
+replaces the recording's earlier one, whatever it was named (a zip is the
+recording's when its first entry is the recording folder). Deleting a
+recording under Setup (analyst) deletes its zip too.
 
 ## The recording folder
 
@@ -189,7 +206,7 @@ under Setup (analyst) deletes its zip too.
 | `config.yaml` | The configuration the recording used |
 | `screenshots/` | The screenshots (`_d<displayId>` suffix per display when `screenshots.display` is `all`) |
 | `obs/sync.json` | The OBS video's clock offset, when OBS recorded |
-| `session-integrity.json` | Every file's name and size, written at Stop |
+| `session-integrity.json` | Every file's name and size, written at Stop, and again when the recording is named |
 
 The OBS video itself lands where OBS's Settings, Output, Recording Path
 says, outside the recording folder; `manifest.json` records its absolute
@@ -210,12 +227,15 @@ cross-cutting modules out of it.
 | `capture-guidance.js` | Pure module: the words of the recording bar (`barModel`), the tray's status line and the end summary (`summaryModel`), from one status snapshot; what a transaction is (`TRANSACTION_MEANS`, for the welcome and Help); and the program names in toasts. |
 | `tracker.js` | The 5 second active-window polling loop; runs (`startRun` ends the open run first, `endOpenRuns`); event append with `_seq`; the write queue and dropped-batch accounting (RP-21); programs the recorder cannot see (`uncaptured_app`). |
 | `session.js` | Recording folder creation, `manifest.json` I/O (`updateManifest` is one read-modify-write), orphan recovery, the integrity file, the optional name, `isRecordingFolder` (the end summary acts only on a real recording folder), `removeSessionFolder` (the folder and its zip). |
-| `zip-folder.js` | One recording folder as one zip next to it; local only (`node:fs`, `node:zlib`). |
+| `zip-folder.js` | One recording folder as one zip next to it; local only (`node:fs`, `node:zlib`). The viewer keeps a copy that must stay the same. |
+| `recording-zip.js` | Which zips are a recording's (read from the zip's first entry) and the zip's name: the recording's name, else its time stamp. |
+| `browser-watchdog.js` | Pure: when to tell the SME that clicks and typing in a browser are not being recorded (below). |
+| `screenshot-gate.js` | Pure: when a screenshot trigger takes a screenshot (above). |
 | `session-storage.js` | The recordings' sizes (a zip next to a folder counts) and the delete flows under Setup (analyst). |
 | `events.js` | Event-envelope factories. |
 | `config.js` | Loads and deep-merges the YAML over `DEFAULTS`, the one source of default values; the pre-flight check. |
 | `user-config.js` | The persistent `userData/user-config.json` overlay (Settings, Profile, a remembered "once" consent), merged over the YAML at launch. |
-| `recorder.js` | Spawns the C# `recorder.exe` sidecar, parses its NDJSON, runs the stdout-quiet watchdog, and `superviseRecorder` restarts it per recording (below). |
+| `recorder.js` | Spawns the C# `recorder.exe` sidecar, parses its NDJSON, runs the stdout-quiet watchdog, and `superviseRecorder` restarts it per recording (below); `warmUpRecorder` starts it once at launch in a worker thread. |
 | `dead-man.js` | The dead-man monitor (pure, injectable clock): no interaction and no recorder heartbeat for over 2 minutes means the recorder went silent (below). |
 | `readiness.js` | The readiness check: free disk on the recordings folder and on the drive the recorder extracts to, the recorder starts and answers, and how much it sees of each open program (rich, basic, minimal, wall). Setup (analyst), Readiness check (only while nothing records), or the `--readiness` command line; both write `readiness-report.json` next to the recordings. Exit codes: 0 ready, 2 not ready, 3 crashed. |
 | `obs.js` | OBS WebSocket: scene set-up, start and stop recording, the clock offset. |
@@ -379,8 +399,12 @@ silently thin or lost:
 - **Programs the recorder cannot see.** A program in front for a sustained
   stretch with no interaction from it (often one running as administrator,
   or one with no UI Automation) gets one `uncaptured_app` system event and
-  a toast. A browser in front for 8 s with no interaction from any browser
-  gets one toast per recording. Transactions and screenshots still record.
+  a toast. A browser in front, with the SME's mouse or keyboard in use, for
+  30 s in all, from which nothing has been recorded in this recording (no
+  interaction, and no typing the recorder has seen but not written yet),
+  gets one toast per recording (`browser-watchdog.js`); time paused, idle,
+  or while the recorder is starting does not count, and Resume starts the
+  count again. Transactions and screenshots still record.
 
 ## The C# recorder sidecar (`capture/recorder/`)
 
@@ -393,8 +417,11 @@ used from .NET ([ADR-0001](../adr/0001-click-recorder-sidecar-language.md)).
   `shutdown` (`hello` carries `verbose`, `debounce_ms`, `ocr` and
   `host_process`, the capture app's own executable, so the recorder never
   records PDT's own windows); the recorder answers with `ready`,
-  `interaction`, `stats` and `warning` lines. A `stats` line carries
-  throughput counters plus an `errors` count and a `last_error` snapshot.
+  `interaction`, `stats`, `activity` and `warning` lines. A `stats` line
+  carries throughput counters plus an `errors` count and a `last_error`
+  snapshot. An `activity` line (`process_name`, at most every 2 s per
+  program) says the recorder has seen typing it has not written yet; the
+  capture app counts it for its browser check and never writes it.
 - **The `snapshot` command** ([ADR-0025](../adr/0025-in-app-vocabulary-discovery.md),
   narrowed by [ADR-0029](../adr/0029-ba-helper-refocus.md)).
   `{cmd:"snapshot", target:"foreground"|<hwnd>, passes:2}` walks the target
@@ -407,13 +434,37 @@ used from .NET ([ADR-0001](../adr/0001-click-recorder-sidecar-language.md)).
   (`SnapshotWalker` over the `ISnapshotElement` seam) is unit-tested with a
   synthetic tree in `Recorder.Tests`. See `Snapshotter.cs`.
 - `UiaSubscriber.cs` subscribes to UI Automation events (invoke, selection,
-  toggle, value), filters noise (drops `focus_changed` and `text_changed`,
-  coalesces rapid `value_changed` within the debounce window, drops
-  low-signal Win32 and Chromium internal control types), and reads fields
-  safely (a property that throws is omitted, not nulled). The first
-  interaction per process carries a `coverage_hint` (`rich`, `basic`,
-  `minimal`); a value clamped at 256 characters is flagged
-  `value_truncated`.
+  toggle, value, and the focus), filters noise (writes no `focus_changed`
+  and `text_changed`, coalesces rapid `value_changed` within the debounce
+  window, drops low-signal Win32 and Chromium internal control types), and
+  reads fields safely (a property that throws is omitted, not nulled). The
+  handlers are added under a UI Automation cache request, so an event
+  arrives with its element's type, id, name, class, framework, process and
+  password flag already fetched: a button whose click changes the page is
+  gone a few milliseconds later, and its click keeps its name. The focus is
+  read on a thread of its own, since UI Automation calls every handler on
+  one thread in turn. The
+  first interaction written per process carries a `coverage_hint` (`rich`,
+  `basic`, `minimal`); a value clamped at 256 characters is flagged
+  `value_truncated`; `toggle_state` is `on`, `off` or `indeterminate`.
+- **What the user acted on** (`IntentGate.cs`, lane LF-SME). A value change
+  is written when its field has the keyboard focus, had it within 2 s, or
+  holds the focused element (a combo box around its edit or its open list);
+  a toggle or a selection on the same terms, or inside a focused list,
+  tree, table or tab strip, or under the mouse pointer (a click that moves
+  no focus, like the Office ribbon's Bold); every invoke is written. So a
+  screen filling its fields as it loads, the Office ribbon echoing the
+  selected cell, File Explorer's navigation pane refreshing (it names the
+  user's folders) and a desktop icon selected behind the windows are left
+  out. A program that never reports the focus below its window keeps what
+  it reports while it is in front (never the Windows shell). Also: a click
+  first writes the values still waiting in the debounce window, so the
+  order is the user's; an empty value is not written (an empty web input
+  reads back as U+FFFC); a choice in a drop-down list is written once, as
+  the combo box's `value_changed`; the browser's address bar (Chromium's
+  `OmniboxViewViews`) is written once per address, never its keystrokes; a
+  popup without a title (a drop-down list, a context menu) takes the title
+  of the window in front of the same program.
 - **Framework detection (section 11e).** Every interaction carries a
   normalized `framework` (`win32`, `winforms`, `wpf`, `winui`, `chromium`,
   `java`, `javafx`, `qt`, `remote`, `terminal`, `unknown`), derived in

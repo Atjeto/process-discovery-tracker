@@ -56,7 +56,10 @@ const { captureScreenshot } = require("./screenshots.js");
 const { showHelpWindow } = require("./help-window.js");
 const recordingBar = require("./recording-bar.js");
 const { showEndSummaryWindow } = require("./end-summary-window.js");
-const { zipFolder, describeZipError } = require("./zip-folder.js");
+const { describeZipError } = require("./zip-folder.js");
+const { zipRecording } = require("./recording-zip.js");
+const { createBrowserWatchdog } = require("./browser-watchdog.js");
+const { createScreenshotGate, isAppSwitch } = require("./screenshot-gate.js");
 const { createRecordingControl } = require("./recording-control.js");
 const guidance = require("./capture-guidance.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
@@ -111,6 +114,14 @@ let baseDir = null;
    current() is the live recorder, null while restarting or after death. */
 let recorder = null;
 let recorderPermanentlyDead = false;
+/* Lane LF-SME (live finding 15): the recorder's launch-time warm-up (a
+   promise, null when clicks and typing are off), and whether a recording's
+   recorder is still starting (the bar says "Starting the recorder..."). A
+   stop while it starts moves recorderEpoch on, and the late start stands
+   down. */
+let recorderWarmUp = null;
+let recorderStarting = false;
+let recorderEpoch = 0;
 
 /* The keys actually registered at launch: a key another program holds
    falls back to its Ctrl+Alt variant, or is not registered at all. The
@@ -157,20 +168,35 @@ const sessionStorage = createSessionStorage({
 });
 
 /* Leading-edge debounce: a burst of triggers (an app switch plus a
-   marker start/end landing together) collapses to a single capture.
-   Manual shots pass { force: true } and are never suppressed. */
+   marker start/end landing together) collapses to a single capture, and
+   nothing new starts while a capture is still being taken (screenshot-gate.js,
+   live finding 21). Manual shots pass { force: true } and are never
+   suppressed. */
 const SCREENSHOT_MIN_INTERVAL_MS = 2000;
-let lastScreenshotMs = 0;
+const shotGate = createScreenshotGate({ minIntervalMs: SCREENSHOT_MIN_INTERVAL_MS });
 let screenshotFailureNotified = false;
+/* The screenshots still being taken: a Stop waits for them (up to a few
+   seconds), so the last one lands in the recording before session_end and
+   in its integrity file, instead of failing against a closed recording and
+   telling the SME "Screenshots are failing" after the Stop. */
+const shotsInFlight = new Set();
+const SHOT_DRAIN_MS = 3000;
 
-async function fireScreenshot(kind, opts) {
-  if (!tracker || !session || !config.screenshots.enabled) return;
-  const now = Date.now();
-  if (!(opts && opts.force) && now - lastScreenshotMs < SCREENSHOT_MIN_INTERVAL_MS) {
-    bootLog(`screenshot coalesced (${now - lastScreenshotMs}ms since last, kind=${kind})`);
-    return;
+function fireScreenshot(kind, opts) {
+  if (!tracker || !session || !config.screenshots.enabled) return Promise.resolve();
+  if (!shotGate.begin(!!(opts && opts.force))) {
+    bootLog(`screenshot coalesced (${Math.round(shotGate.msSinceLast())}ms since last, kind=${kind})`);
+    return Promise.resolve();
   }
-  lastScreenshotMs = now;
+  const job = takeScreenshot(kind, tracker, session).finally(() => {
+    shotsInFlight.delete(job);
+    shotGate.end();
+  });
+  shotsInFlight.add(job);
+  return job;
+}
+
+async function takeScreenshot(kind, shotTracker, shotSession) {
   try {
     // Pass the foreground window bounds so multi-monitor "active"
     // mode can pick the right display. lastStatus is refreshed every
@@ -178,7 +204,7 @@ async function fireScreenshot(kind, opts) {
     // after session_start), screenshots.js falls back to cursor pos
     // then primary.
     const result = await captureScreenshot({
-      screenshotsFolder: path.join(session.sessionFolder, "screenshots"),
+      screenshotsFolder: path.join(shotSession.sessionFolder, "screenshots"),
       quality: config.screenshots.quality,
       mode: config.screenshots.display,
       foregroundBounds: lastWorkBounds || (lastStatus ? lastStatus.currentBounds : null),
@@ -188,14 +214,17 @@ async function fireScreenshot(kind, opts) {
       occludingWindows: BrowserWindow.getAllWindows(),
     });
     if (!result) return;
+    // The recording stopped meanwhile (a Stop waits a few seconds at most):
+    // nothing is written after its session_end.
+    if (shotTracker.getStatus().stopped) return;
     // captureScreenshot returns string|string[]. Emit one system
     // event per file so the timeline shows a dot for each display
     // when display="all".
     const paths = Array.isArray(result) ? result : [result];
-    for (const p of paths) tracker.fireSystem(kind || "screenshot", { path: p });
+    for (const p of paths) shotTracker.fireSystem(kind || "screenshot", { path: p });
   } catch (e) {
     bootLog(`screenshot failed: ${e && e.message}`);
-    if (!screenshotFailureNotified) {
+    if (!screenshotFailureNotified && tracker === shotTracker) {
       screenshotFailureNotified = true;
       notifyUser(
         "Process Discovery Tracker",
@@ -206,54 +235,42 @@ async function fireScreenshot(kind, opts) {
   }
 }
 
-/* Browser-foreground-no-events watchdog (ADR-0001 footnote: Chrome /
-   Edge expose web content via UIA, but only after the AXTree is woken
-   up). The recorder's own wake-up poller closes most of the gap, but
-   if Chrome is foreground for >= BROWSER_NO_EVENTS_MS and zero
-   interactions have been forwarded from a browser process in the same
-   window, surface a once-per-session toast so the analyst knows the
-   session is rolling but the browser is invisible to UIA. */
-const BROWSER_FOREGROUND_NAMES = new Set([
-  "chrome.exe", "msedge.exe", "brave.exe", "iexplore.exe", "opera.exe",
-  "vivaldi.exe", "Google Chrome", "Microsoft Edge", "Brave",
-]);
-const BROWSER_NO_EVENTS_MS = 8000;
-let _browserForegroundSinceMs = 0;
-let _lastBrowserInteractionMs = 0;
-let _browserToastShownThisSession = false;
-function _isBrowserName(app) {
-  if (!app) return false;
-  return BROWSER_FOREGROUND_NAMES.has(app);
+/* Wait for the screenshots still being taken, at most SHOT_DRAIN_MS. */
+function drainScreenshots() {
+  if (!shotsInFlight.size) return Promise.resolve();
+  return Promise.race([
+    Promise.allSettled([...shotsInFlight]),
+    new Promise((resolve) => setTimeout(resolve, SHOT_DRAIN_MS)),
+  ]);
 }
-function _noteBrowserInteractionIfApplicable(data) {
-  // Called from the recorder's onEvent hook for every interaction the
-  // recorder emits; if the source app is a browser, refresh the
-  // timestamp so the watchdog stays quiet.
-  const proc = (data && data.process_name) || "";
-  if (_isBrowserName(proc)) _lastBrowserInteractionMs = Date.now();
-}
-function _checkBrowserForegroundWatchdog() {
-  if (!session || !tracker || _browserToastShownThisSession) return;
-  const status = lastStatus;
-  if (!status || !_isBrowserName(status.currentApp)) {
-    _browserForegroundSinceMs = 0;
-    return;
-  }
-  if (_browserForegroundSinceMs === 0) _browserForegroundSinceMs = Date.now();
-  const since = Date.now() - _browserForegroundSinceMs;
-  const sinceLastInt = Date.now() - _lastBrowserInteractionMs;
-  if (since >= BROWSER_NO_EVENTS_MS && sinceLastInt >= BROWSER_NO_EVENTS_MS) {
-    _browserToastShownThisSession = true;
-    // One plain line for the SME; the IT fix (the browser's
-    // AccessibilityModeEnabled policy) is in docs/architecture/CAPTURE.md.
-    notifyUser(
-      "Process Discovery Tracker",
-      "Clicks and typing in " + guidance.friendlyAppName(status.currentApp) +
-      " are not being recorded. Keep going and tell the analyst; transactions and " +
-      "screenshots are still recorded.",
-      { urgency: "normal" }
-    );
-  }
+
+/* Browser watchdog (ADR-0001 footnote: Chrome / Edge expose web content via
+   UIA, but only after the AXTree is woken up). The recorder's own wake-up
+   poller closes most of the gap; browser-watchdog.js decides when the SME is
+   told it did not: a browser in front, the SME active, 30 s in all, and
+   nothing from that browser recorded in this recording. One toast per
+   recording (lane LF-SME, live finding 14). */
+let browserWatch = null;
+function checkBrowserWatchdog(status) {
+  if (!session || !tracker || !browserWatch) return;
+  let idleMs = Infinity;
+  try { idleMs = powerMonitor.getSystemIdleTime() * 1000; } catch (_) { /* no idle time: not counted */ }
+  const warn = browserWatch.tick({
+    foregroundApp: status && status.currentApp,
+    userIdleMs: idleMs,
+    paused: !!(status && status.paused),
+    recorderOn: recorderStateLabel(false) === "on",
+  });
+  if (!warn) return;
+  // One plain line for the SME; the IT fix (the browser's
+  // AccessibilityModeEnabled policy) is in docs/architecture/CAPTURE.md.
+  notifyUser(
+    "Process Discovery Tracker",
+    "Clicks and typing in " + guidance.friendlyAppName(status.currentApp) +
+    " are not being recorded. Keep going and tell the analyst; transactions and " +
+    "screenshots are still recorded.",
+    { urgency: "normal" }
+  );
 }
 
 async function onTickHandler(status) {
@@ -269,9 +286,12 @@ async function onTickHandler(status) {
     lastWorkBounds = status.currentBounds;
   }
   refreshTray();
-  _checkBrowserForegroundWatchdog();
+  checkBrowserWatchdog(status);
   /* App-switch screenshot trigger -- detect new currentApp value and
-     fire a screenshot. lastTrackedApp persists across ticks. */
+     fire a screenshot. lastTrackedApp persists across ticks. The first
+     program of the recording is not a switch: Transaction 1's screenshot
+     shows it (live finding 21: this check used to run after lastTrackedApp
+     had been overwritten, so it never skipped). */
   if (
     config &&
     config.screenshots.enabled &&
@@ -279,10 +299,9 @@ async function onTickHandler(status) {
     status.currentApp &&
     status.currentApp !== lastTrackedApp
   ) {
+    const switched = isAppSwitch(lastTrackedApp, status.currentApp);
     lastTrackedApp = status.currentApp;
-    /* skip the very first set so we don't take a screenshot at session
-       start for every session; the manual launch is well-known */
-    if (lastTrackedApp !== null) fireScreenshot("screenshot");
+    if (switched) fireScreenshot("screenshot");
   }
 }
 
@@ -713,10 +732,8 @@ async function startSession() {
     interactionsExpected: !!(config.interactions && config.interactions.enabled),
     onNotice: handleTrackerNotice,
   });
-  // Reset browser-foreground-no-events watchdog state for the new session.
-  _browserForegroundSinceMs = 0;
-  _lastBrowserInteractionMs = 0;
-  _browserToastShownThisSession = false;
+  // A fresh browser watchdog for the new recording.
+  browserWatch = createBrowserWatchdog();
   if (obsConnected) {
     tracker.fireSystem("obs_recording_start");
   }
@@ -766,11 +783,18 @@ async function startSession() {
 
   recorderPermanentlyDead = false;   // RP-20: recorder state resets per session only
   if (config.interactions && config.interactions.enabled) {
-    const ok = await startRecorderForSession();
-    if (!ok && config.interactions.required) {
-      // Strict mode: required recorder failed - tear down the session.
-      await endSession({ skipCloseout: true });
-      return null;
+    if (config.interactions.required) {
+      const ok = await startRecorderForSession();
+      if (!ok) {
+        // Strict mode: the required recorder failed, so the session goes.
+        await endSession({ skipCloseout: true });
+        return null;
+      }
+    } else {
+      /* Lane LF-SME (live finding 15): the recording and Transaction 1
+         start now, and the recorder joins as soon as it is ready; until
+         then the bar says "Starting the recorder...". */
+      startRecorderForSession().catch((e) => bootLog(`recorder start failed: ${e && e.message}`));
     }
   }
 
@@ -789,8 +813,18 @@ async function startSession() {
    interactions.max_restarts_per_session times per session (RP-20: the
    budget is the supervisor's, created here once per session, and never
    refilled by a successful re-spawn). A clean exit (code 0, what endSession
-   asks for) is not a death: no recorder_died, no restart. */
+   asks for) is not a death: no recorder_died, no restart.
+   Lane LF-SME (live finding 15): it waits for the launch-time warm-up first
+   (without blocking: the bar says "Starting the recorder..."), so the spawn
+   itself is quick; a stop meanwhile cancels it. */
 async function startRecorderForSession() {
+  const epoch = recorderEpoch;
+  if (recorderWarmUp) {
+    recorderStarting = true;
+    try { await recorderWarmUp; } catch (_) { /* the spawn below reports its own failure */ }
+    recorderStarting = false;
+    if (epoch !== recorderEpoch || !session || !tracker) return false;   // stopped meanwhile
+  }
   try {
     recorder = require("./recorder.js").superviseRecorder({
       spawnOpts: {
@@ -802,10 +836,16 @@ async function startRecorderForSession() {
           if (!tracker) return;
           try { tracker.fireInteraction(data); }
           catch (e) { bootLog(`fireInteraction failed: ${e && e.message}`); }
-          // Feed the browser-no-events watchdog so we don't alarm on a
-          // browser that is actually producing UIA traffic.
-          try { _noteBrowserInteractionIfApplicable(data); } catch (_) {}
+          // The browser watchdog: something from this program was recorded.
+          if (browserWatch) browserWatch.noteRecorded(data && data.process_name);
           // §E2: an interaction proves the recorder is alive.
+          if (deadMan) deadMan.noteSignal();
+        },
+        // Typing the recorder saw and has not written yet: recorded input for
+        // the browser watchdog, and a sign of life (never written to disk).
+        onActivity: (data) => {
+          if (!tracker) return;
+          if (browserWatch) browserWatch.noteRecorded(data && data.process_name);
           if (deadMan) deadMan.noteSignal();
         },
         onWarning: (w) => bootLog(`[recorder] ${w.msg || ""}: ${w.detail || ""}`),
@@ -836,6 +876,9 @@ async function startRecorderForSession() {
         );
       },
     });
+    // Paused while the recorder was starting: it starts paused too.
+    const live = recorder.current();
+    if (live && tracker && tracker.getStatus().paused) live.pause();
     return true;
   } catch (e) {
     bootLog(`recorder spawn failed: ${e && e.message}`);
@@ -917,6 +960,7 @@ function endSession(opts) {
 
 async function endSessionNow(opts) {
   if (!tracker) return null;
+  recorderEpoch += 1;     // a recorder still starting for this recording stands down
   stopIdleMonitor();
   stopDeadManMonitor();   // §E2: a clean end is not a silent death
 
@@ -953,6 +997,8 @@ async function endSessionNow(opts) {
     obsConnected = false;
   }
 
+  // A screenshot still being taken lands before session_end.
+  await drainScreenshots();
   const finalStatus = await tracker.stop();
   closeSession({ sessionFolder: session.sessionFolder, status: "closed" });
   /* B5: integrity manifest, written last so it captures the final
@@ -1055,6 +1101,7 @@ ipcMain.handle("pdt:fireStart", (_e, label) => startFromUi(label));
 function recorderStateLabel(paused) {
   if (!config || !config.interactions || !config.interactions.enabled) return "disabled";
   if (recorderPermanentlyDead) return "dead";
+  if (recorderStarting && tracker) return "starting";
   if (!recorder || !recorder.current()) return "off";
   return paused ? "paused" : "on";
 }
@@ -1106,6 +1153,8 @@ function togglePause() {
   if (!tracker) return null;
   const s = tracker.getStatus();
   if (s.paused) tracker.resume(); else tracker.pause();
+  // After Resume the browser watchdog counts afresh (live finding 14).
+  if (s.paused && browserWatch) browserWatch.restart();
   lastStatus = tracker.getStatus();
   const live = recorder && recorder.current();
   if (live) {
@@ -1150,7 +1199,8 @@ ipcMain.handle("pdt:showFolder", (_e, sessionFolder) => {
   return true;
 });
 
-/* "Make a zip for the analyst": <folder>.zip next to the folder, then
+/* "Make a zip for the analyst": a zip next to the folder, named after the
+   recording (recording-zip.js; the time stamp when it has no name), then
    Explorer with the zip selected, for the SME to attach to an email or a
    Teams message by hand. Nothing is sent from here. */
 ipcMain.handle("pdt:zipFolder", async (_e, sessionFolder) => {
@@ -1161,7 +1211,7 @@ ipcMain.handle("pdt:zipFolder", async (_e, sessionFolder) => {
     return { ok: false, error: "This recording is still running." };
   }
   try {
-    const r = await zipFolder(sessionFolder);
+    const r = await zipRecording(sessionFolder);
     shell.showItemInFolder(r.zipPath);
     sessionStorage.invalidateSessionsCache();
     bootLog(`zip written: ${r.zipPath} (${r.bytes} bytes, ${r.entries} entries)`);
@@ -1502,11 +1552,15 @@ app.whenReady().then(() => {
      historically extracted synchronously the first time startSession()
      ran -- a multi-second freeze on first capture. Do it async here at
      launch so the first session start is instant. Quiet no-op when the
-     exe is already present or the zip isn't shipped (dev box). */
+     exe is already present or the zip isn't shipped (dev box).
+     Then the warm-up (lane LF-SME, live finding 15): the recorder runs once,
+     in a worker thread, so Windows' check of the 187 MB exe and its first
+     unpacking happen now and not at the SME's first Start. A Start before
+     it is done waits for it without freezing (startRecorderForSession). */
   if (config.interactions && config.interactions.enabled) {
-    const { ensureRecorderExtracted } = require("./recorder.js");
+    const { ensureRecorderExtracted, warmUpRecorder } = require("./recorder.js");
     // Quiet unless it fails: unpacking is not the SME's business.
-    ensureRecorderExtracted({ bootLog }).then((r) => {
+    recorderWarmUp = ensureRecorderExtracted({ bootLog }).then((r) => {
       if (!r.ok && r.reason !== "no-zip") {
         notifyUser(
           "Process Discovery Tracker",
@@ -1517,7 +1571,12 @@ app.whenReady().then(() => {
       /* reason === "no-zip" on a dev box is fine: a hand-built
          recorder/publish/recorder.exe is already on disk, or the user
          doesn't have one yet. */
-    }).catch((e) => bootLog(`recorder extraction failed: ${e && e.message}`));
+      if (!r.ok || !r.exe) return null;
+      return warmUpRecorder(r.exe).then((w) => {
+        bootLog(`[recorder] warm-up: ${JSON.stringify(w)}`);
+        return w;
+      });
+    }).catch((e) => { bootLog(`recorder extraction failed: ${e && e.message}`); return null; });
   }
 }).catch((e) => bootLog(`whenReady failed: ${(e && e.stack) || e}`));
 

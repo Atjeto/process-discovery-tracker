@@ -10,7 +10,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { PassThrough, Writable } = require("node:stream");
-const { spawnRecorder, superviseRecorder } = require("../recorder.js");
+const { spawnRecorder, superviseRecorder, warmUpRecorder } = require("../recorder.js");
 
 /* A ChildProcess look-alike: piped stdio, and 'close' once stdout has
    closed (as Node emits it after the stdio streams end). `onStdin` sees
@@ -126,4 +126,36 @@ test("RP-23: stop() resolves only after the recorder's final output reached onEv
   });
   await rec.stop({ drainTimeoutMs: 1000 });
   assert.deepEqual(events.map((d) => d.value), ["Acme"], "the last typed value was not dropped");
+});
+
+test("lane LF-SME: the recorder's activity lines reach onActivity and never onEvent", async () => {
+  const events = [];
+  const activity = [];
+  const lines = [
+    JSON.stringify({ v: 1, type: "activity", data: { process_name: "chrome.exe" } }),
+    JSON.stringify({ v: 1, type: "interaction", data: { kind: "invoked", name: "Save order" } }),
+  ].join("\n");
+  const rec = spawnRecorder({
+    sessionId: "t",
+    recorderPath: "fake-recorder.exe",
+    spawnFn: () => fakeChild({ onStdin: exitThenFlush(lines) }),
+    onEvent: (d) => events.push(d),
+    onActivity: (d) => activity.push(d),
+    bootLog: () => {},
+  });
+  await rec.stop({ drainTimeoutMs: 1000 });
+  assert.deepEqual(activity, [{ process_name: "chrome.exe" }]);
+  assert.deepEqual(events.map((d) => d.kind), ["invoked"], "an activity line is not an interaction");
+});
+
+test("live finding 15: the warm-up starts the recorder once in a worker, asks it to shut down, and reports", async () => {
+  // Node stands in for recorder.exe: it ends when its stdin (the shutdown line) ends.
+  const fake = ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0));"];
+  const r = await warmUpRecorder(process.execPath, { args: fake, timeoutMs: 20000 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.code, 0);
+  assert.ok(Number.isFinite(r.spawnMs) && Number.isFinite(r.totalMs), JSON.stringify(r));
+  const missing = await warmUpRecorder(path.join(os.tmpdir(), `pdt-no-such-recorder-${process.pid}.exe`));
+  assert.equal(missing.ok, false);
+  assert.match(String(missing.error), /ENOENT/);
 });

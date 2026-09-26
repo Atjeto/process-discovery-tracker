@@ -124,6 +124,65 @@ public class UiaSubscriberTests {
         Assert.Null(s5);
     }
 
+    // Live finding 4: an empty web input reads back through TextPattern as
+    // U+FFFC and was written as a typed value. CleanValue drops U+FFFC and a
+    // rich edit's closing paragraph mark; blank is no value, and recovery
+    // from a blank or U+FFFC-only text recovers nothing.
+    [Fact]
+    public void CleanValue_and_recovery_never_turn_an_empty_field_into_a_typed_value() {
+        Assert.Equal("", UiaSubscriber.CleanValue("\uFFFC"));
+        Assert.Equal("", UiaSubscriber.CleanValue("\uFFFC\uFFFC"));
+        Assert.Equal("", UiaSubscriber.CleanValue(null));
+        Assert.Equal("", UiaSubscriber.CleanValue("   "));
+        Assert.Equal("ab", UiaSubscriber.CleanValue("a\uFFFCb"));
+        Assert.Equal("R€", UiaSubscriber.CleanValue("R€\r"));
+        Assert.Equal("line one\nline two", UiaSubscriber.CleanValue("line one\nline two\r\n"));
+        Assert.Equal("  Acme Corp", UiaSubscriber.CleanValue("  Acme Corp"));
+
+        var (v1, s1) = UiaSubscriber.RecoverValue("", "\uFFFC", "text_pattern");
+        Assert.Null(v1);
+        Assert.Null(s1);
+        var (v2, s2) = UiaSubscriber.RecoverValue("", "\uFFFCAcme", "text_pattern");
+        Assert.Equal("Acme", v2);
+        Assert.Equal("text_pattern", s2);
+    }
+
+    // Live finding 12: toggle_state was "1"/"0" (the ToggleState number) and
+    // missing when a provider sent no new value. SCHEMA: on | off | indeterminate.
+    [Theory]
+    [InlineData(1, "on")]
+    [InlineData(0, "off")]
+    [InlineData(2, "indeterminate")]
+    [InlineData("1", "on")]
+    [InlineData("0", "off")]
+    [InlineData("On", "on")]
+    [InlineData("indeterminate", "indeterminate")]
+    [InlineData(7, null)]
+    [InlineData(null, null)]
+    public void ToggleStateName_reads_on_off_or_indeterminate(object? raw, string? expected) {
+        Assert.Equal(expected, UiaSubscriber.ToggleStateName(raw));
+    }
+
+    [Fact]
+    public void ToggleStateName_reads_the_ui_automation_enum() {
+        Assert.Equal("on", UiaSubscriber.ToggleStateName(System.Windows.Automation.ToggleState.On));
+        Assert.Equal("off", UiaSubscriber.ToggleStateName(System.Windows.Automation.ToggleState.Off));
+        Assert.Equal("indeterminate", UiaSubscriber.ToggleStateName(System.Windows.Automation.ToggleState.Indeterminate));
+    }
+
+    // Pins CoverageHintFor (E6): rich = an AutomationId, basic = a control
+    // type only, minimal = a class name only.
+    [Fact]
+    public void CoverageHintFor_reads_how_richly_the_program_exposes_the_element() {
+        Assert.Equal("rich", UiaSubscriber.CoverageHintFor(new Dictionary<string, object?> {
+            ["automation_id"] = "ord-qty", ["control_type"] = "Edit" }));
+        Assert.Equal("basic", UiaSubscriber.CoverageHintFor(new Dictionary<string, object?> {
+            ["automation_id"] = "", ["control_type"] = "Document" }));
+        Assert.Equal("minimal", UiaSubscriber.CoverageHintFor(new Dictionary<string, object?> {
+            ["class_name"] = "Edit" }));
+        Assert.Null(UiaSubscriber.CoverageHintFor(new Dictionary<string, object?> { ["kind"] = "invoked" }));
+    }
+
     // Pins ResolveIdentitySource: the identity-ladder rung. AutomationId
     // wins, then Name, then ClassName, else "none" (the OCR candidate).
     [Theory]
@@ -230,5 +289,18 @@ public class UiaSubscriberTests {
             UiaSubscriber.CoalesceKeyFromProps(7, null, null, null, runtimeId: null));
         Assert.Null(
             UiaSubscriber.CoalesceKeyFromProps(7, "", "", "Edit", new int[0]));
+    }
+
+    // CoalesceKeyOf (an element already read) gives the same key as
+    // CoalesceKeyFromProps for the same element.
+    [Fact]
+    public void CoalesceKeyOf_agrees_with_CoalesceKeyFromProps() {
+        Assert.Equal(UiaSubscriber.CoalesceKeyFromProps(42, "customerId", "Customer", "Edit", new[] { 1, 2 }),
+            UiaSubscriber.CoalesceKeyOf(new ElementInfo(42, "1-2", "customerId", "Customer", "Edit", "Edit")));
+        Assert.Equal(UiaSubscriber.CoalesceKeyFromProps(42, "", "Customer", "TextBox", new[] { 1, 2 }),
+            UiaSubscriber.CoalesceKeyOf(new ElementInfo(42, "1-2", "", "Customer", "Edit", "TextBox")));
+        Assert.Equal(UiaSubscriber.CoalesceKeyFromProps(7, null, null, null, new[] { 3, 9, 1 }),
+            UiaSubscriber.CoalesceKeyOf(new ElementInfo(7, "3-9-1", null, null, "Edit")));
+        Assert.Null(UiaSubscriber.CoalesceKeyOf(new ElementInfo(7, null, "", "", "Edit")));
     }
 }

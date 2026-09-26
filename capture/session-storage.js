@@ -5,7 +5,7 @@ const path = require("node:path");
 const { dialog } = require("electron");
 const { bootLog } = require("./boot-log.js");
 const { listRecentSessions, removeSessionFolder } = require("./session.js");
-const { zipPathFor } = require("./zip-folder.js");
+const { zipsOf } = require("./recording-zip.js");
 
 /* Recursive byte total for a folder. Unreadable entries are skipped. */
 function folderBytes(folder) {
@@ -36,10 +36,13 @@ function humanSize(bytes) {
 }
 
 /* A recording's bytes on disk: its folder plus the zip made for the
-   analyst next to it, if there is one. */
+   analyst next to it, if there is one (named after the recording,
+   recording-zip.js). */
 function recordingBytes(folder) {
   let zipBytes = 0;
-  try { zipBytes = fs.statSync(zipPathFor(folder)).size; } catch (_) { /* no zip */ }
+  for (const z of zipsOf(folder)) {
+    try { zipBytes += fs.statSync(z).size; } catch (_) { /* gone meanwhile */ }
+  }
   return folderBytes(folder) + zipBytes;
 }
 

@@ -145,6 +145,21 @@ test("fireInteraction shapes and counts interaction events", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("a recorder password entry reaches events.jsonl with value_redacted and no value (live finding 1)", () => {
+  const { dir, file } = tmpEvents();
+  const t = startTracker({ sessionId: "s", eventsFile: file });
+  // The recorder's line for a password field, as the sidecar sends it.
+  t.fireInteraction({
+    kind: "value_changed", control_type: "Edit", automation_id: "si-password", name: "Password",
+    framework: "chromium", identity_source: "automation_id", confidence: 0.95, value_redacted: true,
+  });
+  t.stop();
+  const [pw] = readEvents(file).filter((e) => e.type === "interaction");
+  assert.strictEqual(pw.data.value_redacted, true);
+  assert.ok(!("value" in pw.data));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("session_start is emitted on start and session_end on stop", () => {
   const { dir, file } = tmpEvents();
   const t = startTracker({ sessionId: "s", eventsFile: file });

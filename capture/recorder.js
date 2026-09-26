@@ -99,8 +99,55 @@ function ensureRecorderExtracted({ bootLog, onStart } = {}) {
   });
 }
 
+/* Lane LF-SME, live finding 15: the first Start after the recorder was
+   installed or updated froze the capture app for 17.6 s. Starting the 187 MB
+   single-file recorder.exe blocks the calling thread while Windows' virus
+   check reads it, and its first run unpacks it
+   (DOTNET_BUNDLE_EXTRACT_BASE_DIR). The capture app therefore starts it
+   once at launch in a worker thread, with nothing to record: the check and
+   the unpacking are paid there, and the first Start is quick. Resolves
+   { ok, code, spawnMs, totalMs } or { ok: false, error }; never throws. */
+const WARM_UP_SOURCE = `
+const { parentPort, workerData } = require("node:worker_threads");
+const { spawn } = require("node:child_process");
+const t0 = Date.now();
+function done(r) { parentPort.postMessage(r); }
+let child = null;
+try {
+  child = spawn(workerData.exe, workerData.args, { stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
+} catch (e) {
+  done({ ok: false, error: String(e && e.message), spawnMs: Date.now() - t0 });
+}
+if (child) {
+  const spawnMs = Date.now() - t0;
+  const timer = setTimeout(() => { try { child.kill(); } catch (_) {} }, workerData.timeoutMs);
+  child.on("error", (e) => { clearTimeout(timer); done({ ok: false, error: String(e && e.message), spawnMs }); });
+  child.on("exit", (code) => { clearTimeout(timer); done({ ok: code === 0, code, spawnMs, totalMs: Date.now() - t0 }); });
+  child.stdin.on("error", () => {});
+  child.stdin.end(JSON.stringify({ cmd: "shutdown" }) + "\\n");
+}
+`;
+
+function warmUpRecorder(exe, { args = [], timeoutMs = 120_000 } = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r) => { if (!settled) { settled = true; resolve(r); } };
+    let worker;
+    try {
+      const { Worker } = require("node:worker_threads");
+      worker = new Worker(WARM_UP_SOURCE, { eval: true, workerData: { exe, args, timeoutMs } });
+    } catch (e) {
+      finish({ ok: false, error: String(e && e.message) });
+      return;
+    }
+    worker.once("message", (r) => { finish(r); worker.terminate().catch(() => {}); });
+    worker.once("error", (e) => finish({ ok: false, error: String(e && e.message) }));
+    worker.once("exit", () => finish({ ok: false, error: "the warm-up ended without an answer" }));
+  });
+}
+
 /* `spawnFn` is child_process.spawn; the unit tests pass a fake child. */
-function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, onReady, bootLog, spawnFn = spawn }) {
+function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEvent, onActivity, onWarning, onStats, onExit, onSnapshotControl, onSnapshotDone, onReady, bootLog, spawnFn = spawn }) {
   const exe = recorderPath || resolveRecorderPath(bootLog);
   const child = spawnFn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
@@ -119,6 +166,9 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
       return;
     }
     if (msg.type === "interaction" && onEvent) onEvent(msg.data);
+    // Typing seen and not written yet (lane LF-SME, finding 14): a hint for
+    // the "not being recorded" check, never written to events.jsonl.
+    else if (msg.type === "activity") { if (onActivity) onActivity(msg.data || {}); }
     else if (msg.type === "warning" && onWarning) onWarning(msg);
     else if (msg.type === "stats" && onStats) onStats(msg.data);
     // ADR-0025 in-app vocabulary discovery: a one-shot `snapshot` command
@@ -297,4 +347,4 @@ function superviseRecorder({
   };
 }
 
-module.exports = { spawnRecorder, superviseRecorder, resolveRecorderPath, ensureRecorderExtracted };
+module.exports = { spawnRecorder, superviseRecorder, resolveRecorderPath, ensureRecorderExtracted, warmUpRecorder };

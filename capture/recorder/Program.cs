@@ -21,6 +21,10 @@ public static class Program {
         var stderr = new StreamWriter(Console.OpenStandardError()) { AutoFlush = true };
         Console.SetError(stderr);
 
+        // Physical pixels for the mouse pointer and UI Automation alike, so the
+        // element under the pointer is found on a scaled display (IntentGate).
+        NativeMethods.UsePhysicalPixels();
+
         var options = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
@@ -45,6 +49,23 @@ public static class Program {
             } catch (Exception e) {
                 Console.Error.WriteLine($"serialize failed: {e.Message}");
             }
+        };
+
+        // Typing the recorder has seen but not written yet (a value waits out
+        // its quiet window): `{"type":"activity","data":{"process_name"}}`, at
+        // most every 2 s per program. The capture app counts it as recorded
+        // input for its "not being recorded" check; it is never written to
+        // events.jsonl. Straight to the synchronized Console.Out (like the
+        // snapshot lines), so the interaction counters stay interactions.
+        Action<string> onActivity = processName => {
+            if (Volatile.Read(ref paused) != 0) return;
+            try {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new {
+                    v = 1, type = "activity",
+                    ts = DateTime.UtcNow.ToString("o"),
+                    data = new { process_name = processName },
+                }, options));
+            } catch { /* best effort: a check's hint, not a record */ }
         };
 
         var writer = Task.Run(() => {
@@ -120,7 +141,7 @@ public static class Program {
                         // captured TWICE -- a silent data-integrity bug found by
                         // the stress harness (4 invokes -> 8 events).
                         subscriber?.Stop();
-                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs, ocr, hostProcess);
+                        subscriber = new UiaSubscriber(options, onEvent, verbose, debounceMs, ocr, hostProcess, onActivity);
                         subscriber.Start();
                         break;
                     }

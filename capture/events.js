@@ -48,6 +48,11 @@ function interactionEvent(sessionId, data) {
     "kind", "control_type", "automation_id", "name", "class_name",
     "framework_id", "window_title", "process_name", "pid",
     "selected_value", "toggle_state", "value",
+    // SECURITY: the recorder never sends a password field's value; this
+    // flag says one was typed (SCHEMA). Without it here a password entry
+    // reached events.jsonl as a value change with no value, read downstream
+    // as "Cleared Password" (lane LF-SME, live finding 1).
+    "value_redacted",
     // E6 / E7 -- recorder-emitted signal-quality fields.
     "coverage_hint", "value_truncated",
     // E8 (§11e) -- desktop-coverage-hardening signal fields. `framework`

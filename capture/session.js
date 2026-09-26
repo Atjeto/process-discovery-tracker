@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { zipPathFor } = require("./zip-folder.js");
+const { zipsOf } = require("./recording-zip.js");
 
 function pad(n) { return String(n).padStart(2, "0"); }
 
@@ -214,13 +215,20 @@ function writeSessionIntegrity(sessionFolder) {
 }
 
 /* B1: stamp an analyst-facing label onto a finished session's manifest,
-   set from the post-session summary panel. A blank label clears it. */
+   set from the post-session summary panel. A blank label clears it.
+   Lane LF-SME (live finding 20): the integrity file lists manifest.json at
+   its size at Stop, and the name changes that size, so the file is written
+   again when there is one: a named recording's list stays true, and the zip
+   made next carries it. */
 function setSessionLabel(sessionFolder, label) {
   const clean = (label || "").trim();
   updateManifest(sessionFolder, (manifest) => {
     if (clean) manifest.label = clean;
     else delete manifest.label;
   });
+  if (fs.existsSync(path.join(sessionFolder, "session-integrity.json"))) {
+    writeSessionIntegrity(sessionFolder);
+  }
 }
 
 /* A recording folder is <baseDir>/<request code>/<timestamp> with a
@@ -236,10 +244,12 @@ function isRecordingFolder(baseDir, folder) {
 
 /* Delete a recording: its folder and the zip made for the analyst next to
    it (the end summary's "Make a zip for the analyst"), so no orphan zip is
-   left behind. */
+   left behind. The zip is named after the recording (recording-zip.js):
+   the zips holding this folder are found before the folder goes. */
 function removeSessionFolder(sessionFolder) {
+  const zips = new Set(zipsOf(sessionFolder).concat([zipPathFor(sessionFolder)]));
   fs.rmSync(sessionFolder, { recursive: true, force: true });
-  fs.rmSync(zipPathFor(sessionFolder), { force: true });
+  for (const z of zips) fs.rmSync(z, { force: true });
 }
 
 module.exports = {

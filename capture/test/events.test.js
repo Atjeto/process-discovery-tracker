@@ -112,6 +112,22 @@ test("interactionEvent passes through the E8 desktop-coverage fields", () => {
   assert.strictEqual(ev.data.framework_id, "Win32");
 });
 
+test("a password entry keeps value_redacted and never carries a value (live finding 1)", () => {
+  // The recorder redacts a password field at capture: no value, the flag.
+  // The allowlist must keep the flag, or the entry reads as "Cleared".
+  const ev = interactionEvent(SID, {
+    kind: "value_changed",
+    control_type: "Edit",
+    automation_id: "si-password",
+    name: "Password",
+    value_redacted: true,
+  });
+  assertEnvelope(ev, "interaction");
+  assert.strictEqual(ev.data.value_redacted, true);
+  assert.ok(!("value" in ev.data), "no value on a redacted entry");
+  assert.strictEqual(ev.data.name, "Password");
+});
+
 test("interactionEvent passes through value_source (recovered value flag)", () => {
   // value_source (§11e) flags a value recovered off the primary ValuePattern
   // path; the allowlist must keep it for transparency about recovery.

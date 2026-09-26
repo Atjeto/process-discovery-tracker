@@ -43,6 +43,52 @@ public class ValueCoalescerTests {
         Assert.Equal(2, emitted.Count);
     }
 
+    // Live finding 5: a value typed 250 ms before a click was written after
+    // the click (it waited out its quiet window). EmitAfterFlush writes the
+    // waiting values first, in the order they were first typed, then the
+    // click; a key the predicate leaves out keeps waiting.
+    [Fact]
+    public void A_click_is_written_after_the_values_typed_before_it() {
+        var emitted = new ConcurrentQueue<object>();
+        var coalescer = new ValueCoalescer(TimeSpan.FromMilliseconds(400), emitted.Enqueue);
+        coalescer.Submit("9|aid|ord-qty", "Quantity 5");
+        coalescer.Submit("9|aid|ord-date", "Delivery 06.10.2026");
+        coalescer.Submit("nav|9|aid|view_1012", "address #order");
+        coalescer.Submit("9|aid|ord-qty", "Quantity 5 (last key)");
+        coalescer.EmitAfterFlush(k => !k.StartsWith("nav|"), "click Save order");
+        Assert.Equal(new object[] { "Quantity 5 (last key)", "Delivery 06.10.2026", "click Save order" }, emitted.ToArray());
+        // The address waits out its own window and comes after.
+        Assert.True(WaitFor(() => emitted.Count == 4), "the left-out key never came");
+        Assert.Equal("address #order", emitted.ToArray()[3]);
+        Thread.Sleep(600);   // the flushed keys' timers are gone
+        Assert.Equal(4, emitted.Count);
+    }
+
+    // The address bar's hold: a key the hold names waits while it is held,
+    // goes out once let go, and a shutdown writes it regardless.
+    [Fact]
+    public void A_held_key_waits_until_it_is_let_go_and_shutdown_writes_it_anyway() {
+        var emitted = new ConcurrentQueue<object>();
+        var held = true;
+        var coalescer = new ValueCoalescer(TimeSpan.FromMilliseconds(60), emitted.Enqueue,
+                                           k => Volatile.Read(ref held) && k.StartsWith("nav|"));
+        coalescer.Submit("nav|9|aid|view_1012", "127.0.0.1:8765/ord");
+        coalescer.Submit("9|aid|ord-qty", "2");
+        Assert.True(WaitFor(() => emitted.Count == 1), "the plain key never came");
+        Thread.Sleep(300);   // several windows while held
+        Assert.Equal(new object[] { "2" }, emitted.ToArray());
+        Volatile.Write(ref held, false);
+        Assert.True(WaitFor(() => emitted.Count == 2), "the let-go key never came");
+
+        var emitted2 = new ConcurrentQueue<object>();
+        var coalescer2 = new ValueCoalescer(TimeSpan.FromMilliseconds(60), emitted2.Enqueue, _ => true);
+        coalescer2.Submit("nav|1|aid|view_1012", "typed, never let go");
+        Thread.Sleep(200);
+        Assert.Empty(emitted2);
+        coalescer2.FlushAll();
+        Assert.Equal(new object[] { "typed, never let go" }, emitted2.ToArray());
+    }
+
     // RP-24: each writer owns one key and pauses about one window after
     // every submit, so the key's timer keeps expiring just as the next
     // submit arrives. The old inline coalescer emitted a value twice when

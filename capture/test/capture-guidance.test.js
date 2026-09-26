@@ -112,6 +112,14 @@ test("bar: a problem is one line in words: the recorder stopped for good or went
   assert.strictEqual(G.barModel({ status: { tracking: false, recorder_state: "dead" } }).problem, null);
 });
 
+test("bar: while the recorder is still starting, the line under the row says so (live finding 15)", () => {
+  assert.strictEqual(G.barModel({ status: { ...RECORDING, recorder_state: "starting" } }).problem, G.STARTING_RECORDER);
+  // It is not a failure: the tray line does not say clicks and typing are not recorded.
+  assert.strictEqual(G.trayStatusLine({ ...RECORDING, recorder_state: "starting" }), "Recording: Transaction 2");
+  assert.strictEqual(G.trayStatusLine({ ...RECORDING, recorder_state: "dead" }),
+    "Recording: Transaction 2 (clicks and typing not recorded)");
+});
+
 test("tray: the status line says Not recording, Recording: Transaction 2, Paused: between transactions", () => {
   assert.strictEqual(G.trayStatusLine({ tracking: false }), "Not recording");
   assert.strictEqual(G.trayStatusLine(RECORDING), "Recording: Transaction 2");
@@ -161,6 +169,7 @@ test("every sentence the SME reads here is free of machine words, the retired ru
   const texts = [];
   for (const status of [RECORDING, { ...RECORDING, paused: true }, { tracking: false },
     { ...RECORDING, openMarkers: [] }, { ...RECORDING, recorder_state: "dead" },
+    { ...RECORDING, recorder_state: "starting" },
     { ...RECORDING, paused: true, pausedMs: 6000 }]) {
     const m = G.barModel({ status, hotkey: "Control+Shift+S", namedRuns: true });
     texts.push(m.stateText, m.runText, m.pauseLabel, m.title, m.problem || "", m.paused, m.pauseNow, G.trayStatusLine(status));

@@ -15,8 +15,10 @@
  *
  * Made for recording during a Teams call:
  *   - it is small, can be dragged anywhere by its text, and remembers where
- *     it was put (userData/recording-bar.json); a position on a monitor that
- *     is gone falls back to the bottom right of the main screen;
+ *     it was put (userData/recording-bar.json); with nothing saved, or a
+ *     position on a monitor that is gone, it opens at the top centre of the
+ *     main screen, over the title bars, where maximized programs keep no
+ *     buttons (the bottom right covered Calculator's "=", live finding 16);
  *   - it appears without taking the keyboard focus (showInactive), so the
  *     transaction key pressed in a program never moves the typing into the bar;
  *   - it asks Windows to leave it out of screen captures
@@ -40,16 +42,17 @@ const BAR_WIDTH = 620;
 const NAMED_RUNS_EXTRA = 30; // the caret next to Next transaction, when named transactions are set up
 const BAR_HEIGHT = 44;       // one row; a problem line makes it taller (fitHeight)
 const BAR_MAX_HEIGHT = 200;
-const MARGIN = 16;
 const STATE_FILE = "recording-bar.json";
 
 let bar = null;
 
 /* Pure: where the bar opens. A saved position is kept when the bar's centre
    is on one of the screens (clamped so the whole bar shows); otherwise, or
-   with nothing saved, the bottom right corner of the main screen's work
-   area (above the taskbar), MARGIN pixels in. */
-function placeBar({ saved, size, workAreas, primary, margin = MARGIN }) {
+   with nothing saved, the top centre of the main screen's work area: a
+   maximized program has its title there (its buttons sit at the left and
+   right ends and below), while the bottom right holds the buttons that
+   finish a form or a sum. */
+function placeBar({ saved, size, workAreas, primary }) {
   const w = size.width;
   const h = size.height;
   if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
@@ -60,8 +63,8 @@ function placeBar({ saved, size, workAreas, primary, margin = MARGIN }) {
     if (area) return clampIntoArea({ x: saved.x, y: saved.y, width: w, height: h }, area);
   }
   return {
-    x: primary.x + primary.width - w - margin,
-    y: primary.y + primary.height - h - margin,
+    x: primary.x + Math.max(0, Math.round((primary.width - w) / 2)),
+    y: primary.y,
   };
 }
 

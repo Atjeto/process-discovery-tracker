@@ -402,6 +402,30 @@ implementation notes
   Calculator, Character Map, Paint and File Explorer read by their names;
   the thin-capture warning counts an app's actions with an id; a map box
   no longer repeats a system its step's name already says.
+- **The recorder writes what the SME did, in the order it was done** (lane
+  LF-SME, from ten recordings of live apps):
+  - Only what the SME acted on is recorded: a value in the field with the
+    keyboard focus, a toggle or a selection there or under the mouse
+    pointer, and every click on a button or link. A screen filling its
+    fields as it loads, the Office ribbon echoing the selected cell, File
+    Explorer's navigation pane refreshing (it named the owner's folders),
+    a desktop icon selected behind the windows and Excel's formula
+    AutoComplete list are left out.
+  - A value typed just before a click is written before the click; an empty
+    field is no longer a typed value; a drop-down choice is written once,
+    as the drop-down's value; the browser's address bar once per address; a
+    check box reads on or off; a click on a button that changes the page
+    keeps the button's name and program (read as the click happens).
+  - A password entry keeps its "redacted" flag (it read "Cleared
+    Password" downstream); the password itself was and is never written.
+  - The capture app: the first Start after an install no longer freezes it
+    (the recorder is started once at launch, and the bar says "Starting
+    the recorder..." if it is not ready yet); the bar opens at the top
+    centre, clear of the buttons maximized programs keep at the bottom
+    right; the "not being recorded" warning for a browser waits for 30 s
+    of use with nothing recorded, so typing and Resume no longer raise it;
+    the zip is named after the recording; the first screenshot is saved
+    once; the integrity file stays true after the recording is named.
 
 ### Removed
 

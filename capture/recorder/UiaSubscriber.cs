@@ -4,17 +4,30 @@
 // that throws on access is omitted).
 //
 // Noise filtering (default mode):
-//   - focus_changed events are dropped. UIA fires them on every Tab
+//   - focus_changed events are not written. UIA fires them on every Tab
 //     keypress, click-shift-focus, menu hover, dialog open/close. The
 //     window_title / process_name semantics we care about ride along
-//     on the next signal event, so we lose nothing analytical.
+//     on the next signal event, so we lose nothing analytical. They are
+//     still followed: the focus is what tells the user's work from what
+//     an application does by itself (below).
 //   - text_changed events are dropped. The C# code already noted they
 //     are "notification only, no payload" -- the actual value comes
 //     from ValueProperty changes.
+//   - Only what the user acted on is written (IntentGate, lane LF-SME): a
+//     value change on the focused element (or one focused within two
+//     seconds), a selection or toggle there or under the mouse pointer,
+//     and every invoke. A screen filling its fields as it loads, the Office
+//     ribbon echoing the selected cell, File Explorer's navigation pane
+//     refreshing and a desktop icon selected behind the windows are left
+//     out.
 //   - value_changed / range_value_changed events are coalesced per
 //     (pid, automation_id || name || runtime_id) within a debounce
 //     window. Typing "Customer Acme Corp" emits one event with the
-//     final value instead of one per keystroke.
+//     final value instead of one per keystroke. An empty value is not
+//     written (an empty web field reads back as U+FFFC), and a click
+//     first writes the values still waiting, so the order is the user's.
+//   - A choice in a drop-down list is written once, as the combo box's
+//     value; the browser's address bar is written once per address.
 //   - Events from low-signal control types (Pane, Group, Window with
 //     framework_id == "Win32") are dropped -- these are desktop shell
 //     / layout chrome, not user actions.
@@ -78,6 +91,66 @@ public sealed class UiaSubscriber {
     // pids that have already emitted an event carrying a coverage_hint.
     private readonly ConcurrentDictionary<int, byte> _coveredPids = new();
 
+    // What the user acted on (IntentGate): the focus history, fed by the
+    // focus-changed handler, which runs in every mode. UI Automation calls
+    // every handler on one thread, one event after another, so the handler
+    // only queues the focused element: a thread of its own reads it. Read on
+    // that one thread, a focus change delayed the click right behind it, and a
+    // button that changes the page was gone before the click was read.
+    private readonly IntentGate _intent = new();
+    private readonly BlockingCollection<(AutomationElement el, DateTime at)> _focusQueue = new(boundedCapacity: 512);
+    private Thread? _focusThread;
+
+    // Typing seen (a value accepted into the coalescer), told to the capture
+    // app at most every ActivityEveryMs per process: its "clicks and typing
+    // are not being recorded" check counts typing that has not been written
+    // yet. Null when the host does not listen.
+    private readonly Action<string>? _onActivity;
+    private readonly ConcurrentDictionary<int, long> _activityAt = new();
+    private readonly ConcurrentDictionary<int, string?> _processNames = new();
+    private const long ActivityEveryMs = 2000;
+
+    // The browser's address bar (Chromium's omnibox in Chrome and Edge, by
+    // its class, which is not translated): one event per address, never the
+    // keystrokes. Its values wait under a "nav|" key while the bar holds the
+    // focus (the user typing), and a click does not flush them.
+    private const string AddressBarClass = "OmniboxViewViews";
+    private const string NavKeyPrefix = "nav|";
+    private readonly ConcurrentDictionary<string, ElementInfo> _navFields = new();
+
+    // Written values per coalescing key, read and written only inside the
+    // coalescer's lock (EmitOut): the same value for the same field within
+    // SameValueWindow is one change reported twice (a drop-down reports its
+    // choice as the combo's value and again as its option's selection); the
+    // address bar is written once per address.
+    private readonly Dictionary<string, (string? value, DateTime at)> _lastValues = new();
+    private static readonly TimeSpan SameValueWindow = TimeSpan.FromSeconds(3);
+
+    // A click reported twice by the provider (Character Map's Search, 5 ms
+    // apart) is written once.
+    private readonly object _clickLock = new();
+    private (string kind, ElementInfo el, DateTime at)? _lastClick;
+    private static readonly TimeSpan RepeatClickWindow = TimeSpan.FromMilliseconds(50);
+
+    // What UI Automation fetches with every event (the cache request of the
+    // handlers, Start), so an element gone by the time its event is read
+    // still says what it was.
+    private static readonly AutomationProperty[] CachedProperties = {
+        AutomationElement.ControlTypeProperty,
+        AutomationElement.AutomationIdProperty,
+        AutomationElement.NameProperty,
+        AutomationElement.ClassNameProperty,
+        AutomationElement.FrameworkIdProperty,
+        AutomationElement.ProcessIdProperty,
+        AutomationElement.IsPasswordProperty,
+    };
+
+    // The element under the pointer, kept for a moment: a burst of echoes
+    // (the ribbon's toggles) asks once.
+    private readonly object _pointerLock = new();
+    private (int x, int y, long at, ElementInfo? hit, Lazy<IReadOnlyList<ElementInfo>> ancestors)? _pointer;
+    private const long PointerReuseMs = 300;
+
     // Chromium accessibility wake-up. Chrome builds its accessibility
     // tree lazily; without an external query, web content fires no UIA
     // events and the recorder sees only the omnibox / browser chrome.
@@ -108,11 +181,14 @@ public sealed class UiaSubscriber {
 
     public UiaSubscriber(JsonSerializerOptions opts, Action<object> onEvent,
                          bool verbose = false, int debounceMs = 750, bool ocr = false,
-                         string? hostProcess = null) {
+                         string? hostProcess = null, Action<string>? onActivity = null) {
         _opts = opts;
         _onEvent = onEvent;
         _verbose = verbose;
-        _values = new ValueCoalescer(TimeSpan.FromMilliseconds(debounceMs > 0 ? debounceMs : 750), onEvent);
+        _onActivity = onActivity;
+        // Every event leaves through the coalescer (EmitOut), in order.
+        _values = new ValueCoalescer(TimeSpan.FromMilliseconds(debounceMs > 0 ? debounceMs : 750),
+                                     EmitOut, HoldAddressBar);
         // Bind the OCR engine once per session when opted in; an unavailable
         // language pack leaves the bridge present-but-inert (Available=false).
         _ocr = ocr ? new OcrBridge() : null;
@@ -146,31 +222,43 @@ public sealed class UiaSubscriber {
         _started = true;
         var root = AutomationElement.RootElement;
 
-        Automation.AddAutomationEventHandler(
-            InvokePattern.InvokedEvent, root, TreeScope.Subtree,
-            (s, e) => EmitFiltered("invoked", (AutomationElement)s, null));
-
-        Automation.AddAutomationEventHandler(
-            SelectionItemPattern.ElementSelectedEvent, root, TreeScope.Subtree,
-            (s, e) => EmitFiltered("selection_changed", (AutomationElement)s,
-                ExtractSelectionPayload((AutomationElement)s)));
-
-        // Property-changed events for Toggle/Value/RangeValue
-        Automation.AddAutomationPropertyChangedEventHandler(
-            root, TreeScope.Subtree,
-            (s, e) => OnPropertyChanged((AutomationElement)s, e),
-            TogglePattern.ToggleStateProperty,
-            ValuePattern.ValueProperty,
-            RangeValuePattern.ValueProperty);
-
-        if (_verbose) {
-            // Forensic mode: include focus + text-change firehose.
-            Automation.AddAutomationFocusChangedEventHandler(
-                (s, e) => EmitFiltered("focus_changed", (AutomationElement)s, null));
+        // The properties the recorder reads, fetched by UI Automation as it
+        // raises each event (the cache request active while the handlers are
+        // added travels with them): a button whose click changes the page is
+        // gone a few milliseconds later, and its name, id and program read
+        // live were lost (live finding 2). Read() takes the cached value first.
+        var cache = new CacheRequest();
+        foreach (var p in CachedProperties) cache.Add(p);
+        _focusThread = new Thread(FocusLoop) { IsBackground = true, Name = "pdt-focus" };
+        _focusThread.Start();
+        using (cache.Activate()) {
+            Automation.AddAutomationEventHandler(
+                InvokePattern.InvokedEvent, root, TreeScope.Subtree,
+                (s, e) => OnClickLike("invoked", (AutomationElement)s, null));
 
             Automation.AddAutomationEventHandler(
-                TextPattern.TextChangedEvent, root, TreeScope.Subtree,
-                (s, e) => EmitFiltered("text_changed", (AutomationElement)s, null));
+                SelectionItemPattern.ElementSelectedEvent, root, TreeScope.Subtree,
+                (s, e) => OnSelection((AutomationElement)s));
+
+            // Property-changed events for Toggle/Value/RangeValue
+            Automation.AddAutomationPropertyChangedEventHandler(
+                root, TreeScope.Subtree,
+                (s, e) => OnPropertyChanged((AutomationElement)s, e),
+                TogglePattern.ToggleStateProperty,
+                ValuePattern.ValueProperty,
+                RangeValuePattern.ValueProperty);
+
+            // The focus, in every mode: what the user acts on (IntentGate).
+            // Forensic mode also writes it as focus_changed.
+            Automation.AddAutomationFocusChangedEventHandler(
+                (s, e) => OnFocusChanged((AutomationElement)s));
+
+            if (_verbose) {
+                // Forensic mode: include the text-change firehose.
+                Automation.AddAutomationEventHandler(
+                    TextPattern.TextChangedEvent, root, TreeScope.Subtree,
+                    (s, e) => EmitFiltered("text_changed", (AutomationElement)s, null));
+            }
         }
 
         // Chromium accessibility wake-up. Wake synchronously NOW so any
@@ -216,6 +304,8 @@ public sealed class UiaSubscriber {
             _chromeWakeTimer = null;
         }
         try { Automation.RemoveAllEventHandlers(); } catch { }
+        _focusQueue.CompleteAdding();
+        try { _focusThread?.Join(500); } catch { }
         // Flush anything still pending in the value coalescer so we
         // don't lose the last keystroke before shutdown.
         _values.FlushAll();
@@ -224,7 +314,11 @@ public sealed class UiaSubscriber {
 
     private void OnPropertyChanged(AutomationElement el, AutomationPropertyChangedEventArgs e) {
         if (e.Property == TogglePattern.ToggleStateProperty) {
-            EmitFiltered("toggle_changed", el, new { toggle_state = e.NewValue?.ToString()?.ToLowerInvariant() });
+            // on | off | indeterminate (SCHEMA): NewValue is the ToggleState
+            // number, and some providers (Character Map's check box) send none,
+            // so the pattern is read then.
+            var state = ToggleStateName(e.NewValue) ?? ReadToggleState(el);
+            OnClickLike("toggle_changed", el, new { toggle_state = state });
         } else if (e.Property == ValuePattern.ValueProperty ||
                    e.Property == RangeValuePattern.ValueProperty) {
             // SECURITY (CRITICAL): a password / masked-secret control's value
@@ -240,7 +334,7 @@ public sealed class UiaSubscriber {
                 EmitValueChanged(el, value: null, truncated: false, valueSource: null, redacted: true);
                 return;
             }
-            var raw = e.NewValue?.ToString() ?? "";
+            var raw = CleanValue(e.NewValue?.ToString());
             // Value-recovery (§11e): when the change signal carries an empty
             // value -- a rich-text / document control that fires the change
             // but exposes its text through TextPattern, not ValuePattern --
@@ -249,10 +343,14 @@ public sealed class UiaSubscriber {
             // Skipped entirely when raw is non-empty, so the common path adds
             // no UIA reads.
             string? valueSource = null;
-            if (string.IsNullOrEmpty(raw)) {
+            if (raw.Length == 0) {
                 var (recovered, src) = RecoverValue(raw, TryReadTextValue(el), "text_pattern");
                 if (recovered != null) { raw = recovered; valueSource = src; }
             }
+            // An empty value is not typed work (live finding 4): a screen
+            // renders its empty fields, and an empty web input reads back as
+            // U+FFFC through TextPattern. No value event for it.
+            if (raw.Length == 0) return;
             // Length-clamp text values (incl. a recovered one); range values
             // are short numerics. Flag the clamp so the analyst knows the
             // stored value is partial.
@@ -275,15 +373,348 @@ public sealed class UiaSubscriber {
             EmitFiltered("value_changed", el, extra);
             return;
         }
-        var key = CoalesceKey(el);
-        if (key == null) {
-            // No stable identity -- emit immediately, no coalescing possible.
-            EmitFiltered("value_changed", el, extra);
-            return;
+        try {
+            var built = BuildEvent("value_changed", el, extra);
+            if (built == null) return;
+            var info = InfoOf(built.Data, el);
+            if (info == null) return;
+            // The address bar changes as a page navigates, while the user is
+            // somewhere else: kept once per address (live finding 25). Any
+            // other field counts only when the user worked in it (IntentGate).
+            var addressBar = info.ClassName == AddressBarClass;
+            if (!addressBar && !UserActedOnValue(el, info)) return;
+            var key = CoalesceKeyOf(info);
+            NoteActivity(info);
+            if (key == null) {
+                // No stable identity: emit immediately, no coalescing possible.
+                _values.Emit(built);
+                return;
+            }
+            if (addressBar) {
+                key = NavKeyPrefix + key;
+                _navFields[key] = info;
+            }
+            built.CoalesceKey = key;
+            _values.Submit(key, built);
+        } catch (Exception ex) {
+            NoteError("value_changed", el, ex);
         }
-        var built = BuildEvent("value_changed", el, extra);
-        if (built == null) return;
-        _values.Submit(key, built);
+    }
+
+    // ---- What the user acted on (IntentGate) ------------------------------
+
+    private void OnFocusChanged(AutomationElement el) {
+        var at = DateTime.UtcNow;
+        try { if (_verbose) EmitFiltered("focus_changed", el, null); } catch { }
+        // Queued, read on the focus thread (a full queue drops this change:
+        // the next one says where the focus is).
+        try { _focusQueue.TryAdd((el, at)); } catch { /* stopping */ }
+    }
+
+    private void FocusLoop() {
+        try {
+            foreach (var (el, at) in _focusQueue.GetConsumingEnumerable()) {
+                try {
+                    var info = Describe(el);
+                    if (info != null) _intent.NoteFocus(info, () => AncestorsOf(el, 2), at);
+                } catch { /* an element gone mid-read: the next focus change says where it is */ }
+            }
+        } catch { /* the queue was disposed while stopping */ }
+    }
+
+    /// <summary>
+    /// An invoke, a toggle or a selection. An invoke is always the user's (a
+    /// click or a key); a toggle or a selection counts only where the user
+    /// acted (IntentGate). Values typed before it are written first.
+    /// </summary>
+    private void OnClickLike(string kind, AutomationElement el, object? extra) {
+        try {
+            if (_verbose) { EmitFiltered(kind, el, extra); return; }
+            if (IsLowSignal(el)) return;
+            // Read the element first and at once: a click that changes the
+            // page replaces it within milliseconds (live finding 2).
+            var built = BuildEvent(kind, el, extra);
+            if (built == null) return;
+            ClickLikeBuilt(kind, el, built);
+        } catch (Exception ex) {
+            NoteError(kind, el, ex);
+        }
+    }
+
+    // The gate, the repeat check and the write, for an event already read.
+    private void ClickLikeBuilt(string kind, AutomationElement el, InteractionLine built) {
+        var info = InfoOf(built.Data, el);
+        if (kind != "invoked" && (info == null || !UserActedOnClick(el, info))) return;
+        if (info != null && IsRepeatClick(kind, info)) return;
+        _values.EmitAfterFlush(k => !k.StartsWith(NavKeyPrefix, StringComparison.Ordinal), built);
+    }
+
+    /// <summary>
+    /// A selection. A choice in a drop-down list (an item inside a combo
+    /// box) is the combo box's value, written once with the combo box as the
+    /// field (live finding 7); any other selection is click-like.
+    /// </summary>
+    private void OnSelection(AutomationElement el) {
+        if (_verbose) { EmitFiltered("selection_changed", el, ExtractSelectionPayload(el)); return; }
+        try {
+            if (IsLowSignal(el)) return;
+            var built = BuildEvent("selection_changed", el, ExtractSelectionPayload(el));
+            if (built == null) return;
+            var combo = ComboBoxAround(el);
+            if (combo != null) {
+                var option = built.Data.TryGetValue("name", out var n) ? n as string : null;
+                var clean = CleanValue(option);
+                if (clean.Length == 0) return;
+                var (v, truncated) = ClampValue(clean);
+                EmitValueChanged(combo, v, truncated);
+                return;
+            }
+            ClickLikeBuilt("selection_changed", el, built);
+        } catch (Exception ex) {
+            NoteError("selection_changed", el, ex);
+        }
+    }
+
+    /// <summary>
+    /// The gate's descriptor from an event already read (its data), plus the
+    /// runtime id when the element is still there. An element whose process
+    /// can no longer be read (Excel's cell right after a paste reports its id
+    /// and value, and nothing else) is taken to be in the program in front,
+    /// for the gate only (the event is written without a pid); null when
+    /// there is none.
+    /// </summary>
+    private static ElementInfo? InfoOf(Dictionary<string, object?> data, AutomationElement el) {
+        int pid;
+        if (data.TryGetValue("pid", out var p) && p is int readPid) pid = readPid;
+        else if (NativeMethods.ForegroundProcessId() is int front) pid = front;
+        else return null;
+        string? rid = null;
+        try {
+            var r = el.GetRuntimeId();
+            if (r != null && r.Length > 0) rid = string.Join("-", r);
+        } catch { }
+        string? Str(string key) => data.TryGetValue(key, out var v) ? v as string : null;
+        return new ElementInfo(pid, rid, Str("automation_id"), Str("name"), Str("control_type"), Str("class_name"));
+    }
+
+    /// <summary>A value change counts when its field has, or just had, the focus (IntentGate.AcceptValue).</summary>
+    private bool UserActedOnValue(AutomationElement el, ElementInfo info) =>
+        _intent.AcceptValue(info, DateTime.UtcNow, LiveFocus,
+            () => NativeMethods.IsForegroundProcess(info.Pid), () => IsShell(info.Pid));
+
+    /// <summary>
+    /// A toggle or a selection counts on the value terms, inside a focused
+    /// list, or under the mouse pointer (a click that moves no focus, like
+    /// the Office ribbon's Bold). IntentGate.AcceptClick.
+    /// </summary>
+    private bool UserActedOnClick(AutomationElement el, ElementInfo info) =>
+        _intent.AcceptClick(info, DateTime.UtcNow, () => AncestorsOf(el, 3), PointerHit,
+            () => NativeMethods.IsForegroundProcess(info.Pid), () => IsShell(info.Pid));
+
+    private static readonly Func<IReadOnlyList<ElementInfo>> NoAncestors = () => Array.Empty<ElementInfo>();
+
+    private static (ElementInfo? focus, Func<IReadOnlyList<ElementInfo>> ancestors) LiveFocus() {
+        try {
+            var focused = AutomationElement.FocusedElement;
+            var f = Describe(focused);
+            return f == null ? (null, NoAncestors) : (f, () => AncestorsOf(focused, 2));
+        } catch {
+            return (null, NoAncestors);
+        }
+    }
+
+    private bool IsShell(int pid) =>
+        string.Equals(ProcessNameOf(pid), "explorer.exe", StringComparison.OrdinalIgnoreCase);
+
+    private string? ProcessNameOf(int pid) =>
+        _processNames.GetOrAdd(pid, p => {
+            try {
+                using var proc = System.Diagnostics.Process.GetProcessById(p);
+                return proc.ProcessName + ".exe";
+            } catch { return null; }
+        });
+
+    /// <summary>
+    /// The element under the mouse pointer, and a reader of its nearest
+    /// ancestors used only when needed (both kept for PointerReuseMs).
+    /// </summary>
+    private (ElementInfo? hit, Func<IReadOnlyList<ElementInfo>> ancestors) PointerHit() {
+        if (!NativeMethods.GetCursorPos(out var p)) return (null, NoAncestors);
+        var now = Environment.TickCount64;
+        lock (_pointerLock) {
+            if (_pointer is { } c && c.x == p.X && c.y == p.Y && now - c.at < PointerReuseMs) {
+                return (c.hit, () => c.ancestors.Value);
+            }
+        }
+        ElementInfo? hit = null;
+        AutomationElement? el = null;
+        try {
+            el = AutomationElement.FromPoint(new System.Windows.Point(p.X, p.Y));
+            hit = Describe(el);
+        } catch { }
+        var hitEl = el;
+        var ancestors = new Lazy<IReadOnlyList<ElementInfo>>(
+            () => hitEl == null ? Array.Empty<ElementInfo>() : AncestorsOf(hitEl, 3));
+        lock (_pointerLock) { _pointer = (p.X, p.Y, now, hit, ancestors); }
+        return (hit, () => ancestors.Value);
+    }
+
+    /// <summary>What IntentGate compares of an element, or null when it cannot be read.</summary>
+    private static ElementInfo? Describe(AutomationElement? el) {
+        if (el == null) return null;
+        int pid;
+        try { pid = Read(el, i => i.ProcessId); } catch { return null; }
+        string? rid = null;
+        try {
+            var r = el.GetRuntimeId();
+            if (r != null && r.Length > 0) rid = string.Join("-", r);
+        } catch { }
+        string? aid = null, name = null, type = null;
+        try { aid = Read(el, i => i.AutomationId); } catch { }
+        try { name = Read(el, i => i.Name); } catch { }
+        try { type = ControlTypeName(el); } catch { }
+        return new ElementInfo(pid, rid, aid, name, type);
+    }
+
+    /// <summary>
+    /// One property of an element: the value UI Automation cached as it raised
+    /// the event (CachedProperties), else a live read, which throws when the
+    /// element is gone (callers omit the field then).
+    /// </summary>
+    private static T Read<T>(AutomationElement el, Func<AutomationElement.AutomationElementInformation, T> get) {
+        try { return get(el.Cached); } catch { /* not cached (an element found, not raised): read it */ }
+        return get(el.Current);
+    }
+
+    private static string? ControlTypeName(AutomationElement el) =>
+        Read(el, i => i.ControlType)?.ProgrammaticName?.Replace("ControlType.", "");
+
+    /// <summary>The nearest <paramref name="levels"/> ancestors, nearest first (fewer at the desktop).</summary>
+    private static IReadOnlyList<ElementInfo> AncestorsOf(AutomationElement el, int levels) {
+        var list = new List<ElementInfo>(levels);
+        try {
+            var walker = TreeWalker.ControlViewWalker;
+            var node = walker.GetParent(el);
+            while (node != null && list.Count < levels && node != AutomationElement.RootElement) {
+                var info = Describe(node);
+                if (info == null) break;
+                list.Add(info);
+                node = walker.GetParent(node);
+            }
+        } catch { }
+        return list;
+    }
+
+    /// <summary>The combo box a list item belongs to (its drop-down list), within three levels, or null.</summary>
+    private static AutomationElement? ComboBoxAround(AutomationElement el) {
+        try {
+            if (Read(el, i => i.ControlType) != ControlType.ListItem) return null;
+            var walker = TreeWalker.ControlViewWalker;
+            var node = walker.GetParent(el);
+            for (var i = 0; i < 3 && node != null && node != AutomationElement.RootElement; i++) {
+                if (node.Current.ControlType == ControlType.ComboBox) return node;
+                node = walker.GetParent(node);
+            }
+        } catch { }
+        return null;
+    }
+
+    private bool IsRepeatClick(string kind, ElementInfo info) {
+        var now = DateTime.UtcNow;
+        lock (_clickLock) {
+            var repeat = _lastClick is { } last && last.kind == kind &&
+                         IntentGate.Same(last.el, info) && now - last.at < RepeatClickWindow;
+            _lastClick = (kind, info, now);
+            return repeat;
+        }
+    }
+
+    // The coalescer's hold: an address-bar value waits while the bar has
+    // the focus (the user typing an address), and goes out once the focus
+    // leaves it (the page navigated): the final address, once.
+    private bool HoldAddressBar(string key) {
+        if (!key.StartsWith(NavKeyPrefix, StringComparison.Ordinal)) return false;
+        if (!_navFields.TryGetValue(key, out var bar)) return false;
+        var focus = _intent.CurrentFocus;
+        return focus != null && IntentGate.Same(bar, focus);
+    }
+
+    // Every event the recorder writes, inside the coalescer's lock.
+    private void EmitOut(object evt) {
+        if (evt is InteractionLine line) {
+            if (line.CoalesceKey != null && IsRepeatValue(line)) return;
+            // E6 / live finding 22: the first interaction WRITTEN for a pid
+            // carries the coverage hint (a coalesced or left-out event must not
+            // take it along).
+            TrySetCoverageHint(line.Data);
+        }
+        _onEvent(evt);
+    }
+
+    private bool IsRepeatValue(InteractionLine line) {
+        var key = line.CoalesceKey!;
+        var value = line.Data.TryGetValue("value", out var v) ? v as string : null;
+        var now = DateTime.UtcNow;
+        var addressBar = key.StartsWith(NavKeyPrefix, StringComparison.Ordinal);
+        if (_lastValues.TryGetValue(key, out var last) && last.value == value &&
+            (addressBar || now - last.at < SameValueWindow)) {
+            return true;
+        }
+        _lastValues[key] = (value, now);
+        return false;
+    }
+
+    private void NoteActivity(ElementInfo info) {
+        if (_onActivity == null) return;
+        var now = Environment.TickCount64;
+        if (_activityAt.TryGetValue(info.Pid, out var last) && now - last < ActivityEveryMs) return;
+        _activityAt[info.Pid] = now;
+        var name = ProcessNameOf(info.Pid);
+        if (name == null) return;
+        try { _onActivity(name); } catch { }
+    }
+
+    private void NoteError(string kind, AutomationElement el, Exception ex) {
+        Interlocked.Increment(ref _errors);
+        _lastError = BuildErrorInfo(kind, el, ex);
+    }
+
+    /// <summary>
+    /// A value as the analyst should read it: without U+FFFC (the object
+    /// replacement character an empty or embedded-object web field reads
+    /// back as) and without a closing paragraph mark (a rich edit's "\r").
+    /// Blank comes back empty: there is no value.
+    /// </summary>
+    internal static string CleanValue(string? raw) {
+        if (string.IsNullOrEmpty(raw)) return "";
+        var s = raw.IndexOf('\uFFFC') >= 0 ? raw.Replace("\uFFFC", "") : raw;
+        s = s.TrimEnd('\r', '\n');
+        return string.IsNullOrWhiteSpace(s) ? "" : s;
+    }
+
+    /// <summary>A ToggleState (the enum, its number, or its name) as on | off | indeterminate; null when unknown.</summary>
+    internal static string? ToggleStateName(object? state) {
+        switch (state) {
+            case null: return null;
+            case ToggleState t: return ToggleStateName((int)t);
+            case int i: return i switch { 0 => "off", 1 => "on", 2 => "indeterminate", _ => null };
+            case string s:
+                if (int.TryParse(s, out var n)) return ToggleStateName(n);
+                var lower = s.Trim().ToLowerInvariant();
+                return lower is "off" or "on" or "indeterminate" ? lower : null;
+            default:
+                try { return ToggleStateName(Convert.ToInt32(state, System.Globalization.CultureInfo.InvariantCulture)); }
+                catch { return null; }
+        }
+    }
+
+    private static string? ReadToggleState(AutomationElement el) {
+        try {
+            if (el.TryGetCurrentPattern(TogglePattern.Pattern, out var p) && p is TogglePattern tp) {
+                return ToggleStateName(tp.Current.ToggleState);
+            }
+        } catch { }
+        return null;
     }
 
     /// <summary>
@@ -344,24 +775,23 @@ public sealed class UiaSubscriber {
         }
     }
 
-    private static string? CoalesceKey(AutomationElement el) {
-        try {
-            var pid = el.Current.ProcessId;
-            var id = el.Current.AutomationId;
-            var name = el.Current.Name;
-            var cls = el.Current.ClassName;
-            var rid = el.GetRuntimeId();
-            return CoalesceKeyFromProps(pid, id, name, cls, rid);
-        } catch {
-            return null;
-        }
+    /// <summary>
+    /// The debounce key of an element already read (its descriptor): the same
+    /// rules and the same key as CoalesceKeyFromProps, the runtime id being
+    /// already joined with "-".
+    /// </summary>
+    internal static string? CoalesceKeyOf(ElementInfo info) {
+        if (!string.IsNullOrEmpty(info.AutomationId)) return $"{info.Pid}|aid|{info.AutomationId}";
+        if (!string.IsNullOrEmpty(info.Name)) return $"{info.Pid}|n|{info.Name}|{info.ClassName}";
+        if (!string.IsNullOrEmpty(info.RuntimeId)) return $"{info.Pid}|rid|{info.RuntimeId}";
+        return null;
     }
 
     /// <summary>
     /// Pure debounce-key derivation: prefer the AutomationId, then
     /// Name+ClassName, then the UIA RuntimeId, else null (no stable
-    /// identity -> caller emits immediately, uncoalesced). Mirrors the
-    /// property reads in CoalesceKey exactly.
+    /// identity -> caller emits immediately, uncoalesced). CoalesceKeyOf
+    /// applies the same rules to an element already read.
     /// </summary>
     internal static string? CoalesceKeyFromProps(int pid, string? automationId,
                                                  string? name, string? className,
@@ -378,7 +808,7 @@ public sealed class UiaSubscriber {
     }
 
     private object? ExtractSelectionPayload(AutomationElement el) {
-        try { return new { selected_value = el.Current.Name }; }
+        try { return new { selected_value = Read(el, i => i.Name) }; }
         catch { return null; }
     }
 
@@ -389,14 +819,14 @@ public sealed class UiaSubscriber {
     private void EmitFiltered(string kind, AutomationElement el, object? extra) {
         if (!_verbose && IsLowSignal(el)) return;
         var built = BuildEvent(kind, el, extra);
-        if (built != null) _onEvent(built);
+        if (built != null) _values.Emit(built);
     }
 
     private static bool IsLowSignal(AutomationElement el) {
         try {
-            var fwk = el.Current.FrameworkId;
-            var ctl = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
-            var aid = el.Current.AutomationId;
+            var fwk = Read(el, i => i.FrameworkId);
+            var ctl = ControlTypeName(el);
+            var aid = Read(el, i => i.AutomationId);
             return IsLowSignalProps(fwk, ctl, aid, null);
         } catch {
             return false;
@@ -451,12 +881,15 @@ public sealed class UiaSubscriber {
     /// (primary value present) so the flag is only emitted when recovery
     /// actually fired -- mirroring the value_truncated convention. Never
     /// overrides a real primary value. The source label is passed in so new
-    /// recovery rungs (e.g. "ocr") reuse this selection unchanged.
+    /// recovery rungs (e.g. "ocr") reuse this selection unchanged. The
+    /// candidate is cleaned first (CleanValue): an empty web input reads back
+    /// through TextPattern as U+FFFC, which is no value (live finding 4).
     /// </summary>
     internal static (string? value, string? source) RecoverValue(
             string? primaryValue, string? candidateValue, string candidateSource) {
         if (!string.IsNullOrEmpty(primaryValue)) return (primaryValue, null);
-        if (!string.IsNullOrEmpty(candidateValue)) return (candidateValue, candidateSource);
+        var candidate = CleanValue(candidateValue);
+        if (candidate.Length > 0) return (candidate, candidateSource);
         return (null, null);
     }
 
@@ -655,21 +1088,21 @@ public sealed class UiaSubscriber {
     /// not a brittle class-name heuristic -- is the gate.
     /// </summary>
     private static bool IsSecretValueElement(AutomationElement el) {
-        try { return el.Current.IsPassword; }
+        try { return Read(el, i => i.IsPassword); }
         catch { return false; }
     }
 
-    private object? BuildEvent(string kind, AutomationElement el, object? extra) {
+    private InteractionLine? BuildEvent(string kind, AutomationElement el, object? extra) {
         try {
             var data = new Dictionary<string, object?> { ["kind"] = kind };
-            TrySet(data, "control_type", () => el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", ""));
-            TrySet(data, "automation_id", () => el.Current.AutomationId);
-            TrySet(data, "name", () => el.Current.Name);
-            TrySet(data, "class_name", () => el.Current.ClassName);
-            TrySet(data, "framework_id", () => el.Current.FrameworkId);
+            TrySet(data, "control_type", () => ControlTypeName(el));
+            TrySet(data, "automation_id", () => Read(el, i => i.AutomationId));
+            TrySet(data, "name", () => Read(el, i => i.Name));
+            TrySet(data, "class_name", () => Read(el, i => i.ClassName));
+            TrySet(data, "framework_id", () => Read(el, i => i.FrameworkId));
             TrySet(data, "window_title", () => GetTopWindowTitle(el));
             TrySet(data, "process_name", () => GetProcessName(el));
-            TrySet(data, "pid", () => el.Current.ProcessId);
+            TrySet(data, "pid", () => Read(el, i => i.ProcessId));
             // Never record PDT's OWN windows (operator panel / dialogs) as
             // interactions. Short-circuit before the OCR/coverage work below.
             if (IsHostProcess(data.TryGetValue("process_name", out var pnv) ? pnv as string : null,
@@ -735,16 +1168,9 @@ public sealed class UiaSubscriber {
             data["identity_source"] = identitySource;
             data["confidence"] = ComputeConfidence(identitySource, data["framework"] as string);
 
-            // E6: the first event emitted for a pid carries a coverage
-            // hint -- how richly UIA exposes that app. rich = a stable
-            // AutomationId, basic = a control type only, minimal = just a
-            // class name.
-            TrySetCoverageHint(data);
-            return new {
-                v = 1, type = "interaction",
-                ts = DateTime.UtcNow.ToString("o"),
-                data,
-            };
+            // E6: the coverage hint is set as the event is written (EmitOut),
+            // on the first one written for the pid.
+            return new InteractionLine { Ts = DateTime.UtcNow.ToString("o"), Data = data };
         } catch (Exception ex) {
             Interlocked.Increment(ref _errors);
             _lastError = BuildErrorInfo(kind, el, ex);
@@ -757,19 +1183,26 @@ public sealed class UiaSubscriber {
         try { var v = get(); if (v is not null) d[key] = v; } catch { }
     }
 
-    // First event per pid gets a coverage_hint describing how richly UIA
-    // exposes that app -- a signal the analyst can use to spot apps that
+    // First event written per pid gets a coverage_hint describing how richly
+    // UIA exposes that app, a signal the analyst can use to spot apps that
     // need a richer integration. Marks the pid so later events skip it.
+    // Called as the event is written (EmitOut), so a value that a later
+    // keystroke replaces in the coalescer, or an event left out, never takes
+    // the hint with it (live finding 22).
     private void TrySetCoverageHint(Dictionary<string, object?> data) {
         if (!data.TryGetValue("pid", out var pidObj) || pidObj is not int pid) return;
         if (!_coveredPids.TryAdd(pid, 0)) return;
-        var aid = data.TryGetValue("automation_id", out var aidV) ? aidV as string : null;
-        string? hint;
-        if (!string.IsNullOrEmpty(aid)) hint = "rich";
-        else if (data.ContainsKey("control_type")) hint = "basic";
-        else if (data.ContainsKey("class_name")) hint = "minimal";
-        else hint = null;
+        var hint = CoverageHintFor(data);
         if (hint != null) data["coverage_hint"] = hint;
+    }
+
+    /// <summary>rich = a stable AutomationId, basic = a control type only, minimal = just a class name.</summary>
+    internal static string? CoverageHintFor(IReadOnlyDictionary<string, object?> data) {
+        var aid = data.TryGetValue("automation_id", out var aidV) ? aidV as string : null;
+        if (!string.IsNullOrEmpty(aid)) return "rich";
+        if (data.ContainsKey("control_type")) return "basic";
+        if (data.ContainsKey("class_name")) return "minimal";
+        return null;
     }
 
     // Snapshot of the element that caused a BuildEvent failure, for the
@@ -781,11 +1214,9 @@ public sealed class UiaSubscriber {
             ["kind"] = kind,
             ["message"] = ex.Message,
         };
-        try { info["pid"] = el.Current.ProcessId; } catch { }
+        try { info["pid"] = Read(el, i => i.ProcessId); } catch { }
         try { info["process_name"] = GetProcessName(el); } catch { }
-        try {
-            info["control_type"] = el.Current.ControlType?.ProgrammaticName?.Replace("ControlType.", "");
-        } catch { }
+        try { info["control_type"] = ControlTypeName(el); } catch { }
         return info;
     }
 
@@ -797,12 +1228,20 @@ public sealed class UiaSubscriber {
             top = node;
             node = walker.GetParent(node);
         }
-        return top?.Current.Name;
+        var title = top?.Current.Name;
+        // A popup (a drop-down list, a context menu, Excel's formula
+        // AutoComplete) is a window without a title: its events belong to
+        // the window in front of the same program, not to a screen of their
+        // own (live finding 13).
+        if (string.IsNullOrEmpty(title)) {
+            try { title = NativeMethods.ForegroundTitleOf(Read(el, i => i.ProcessId)) ?? title; } catch { }
+        }
+        return title;
     }
 
     private static string? GetProcessName(AutomationElement el) {
         try {
-            var pid = el.Current.ProcessId;
+            var pid = Read(el, i => i.ProcessId);
             using var p = System.Diagnostics.Process.GetProcessById(pid);
             return p.ProcessName + ".exe";
         } catch { return null; }
@@ -823,4 +1262,18 @@ public sealed class UiaSubscriber {
             return null;
         }
     }
+}
+
+/// <summary>
+/// One interaction line of the recorder's stdout: <c>{"v":1,"type":"interaction","ts":...,"data":{...}}</c>
+/// (property names in snake case by the serializer). <c>CoalesceKey</c> is
+/// the recorder's own bookkeeping and is never written.
+/// </summary>
+internal sealed class InteractionLine {
+    public int V { get; init; } = 1;
+    public string Type { get; init; } = "interaction";
+    public string Ts { get; init; } = "";
+    public Dictionary<string, object?> Data { get; init; } = new();
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? CoalesceKey { get; set; }
 }
