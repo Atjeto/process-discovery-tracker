@@ -433,7 +433,9 @@ implementation notes
     same program gets one at the next 5 s poll (Settings, "Capture when
     the screen changes"), so a process done in one browser has a picture
     under each step of the PDD, not only under the first step of each
-    transaction.
+    transaction. Such a screenshot is kept only while its window is still
+    in front once the grab is done, so a page left meanwhile never shows
+    under the step before.
   - The packaged apps carry their scoped runtime packages. The packager
     dropped folders such as node_modules/@mapbox, so the packaged capture
     app never saw the foreground window (no time in each application, an

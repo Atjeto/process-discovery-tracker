@@ -153,7 +153,10 @@ without unread counts and the browser's name) is another screen and gets
 a screenshot at the next 5 second poll (lane LF-SHOT): a web process lives
 in one browser, and without it only the first step of each transaction had
 a screenshot for the PDD. A screen shown for less than a poll can be
-missed.
+missed. A grab takes about a second, so a screenshot a poll asked for (an
+app switch, another screen) is kept only while that window is still in
+front when the grab is done; otherwise its file is deleted and nothing is
+written (a page left meanwhile would show under the step before).
 
 ## Recording lifecycle
 

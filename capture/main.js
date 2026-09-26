@@ -31,7 +31,7 @@ const {
 const path = require("node:path");
 const fs = require("node:fs");
 
-const { startTracker, normalizeTitle } = require("./tracker.js");
+const { startTracker, normalizeTitle, readForeground } = require("./tracker.js");
 const {
   createSession,
   closeSession,
@@ -59,7 +59,7 @@ const { showEndSummaryWindow } = require("./end-summary-window.js");
 const { describeZipError } = require("./zip-folder.js");
 const { zipRecording } = require("./recording-zip.js");
 const { createBrowserWatchdog } = require("./browser-watchdog.js");
-const { createScreenshotGate, isAppSwitch, isScreenChange } = require("./screenshot-gate.js");
+const { createScreenshotGate, isAppSwitch, isScreenChange, keepScreenshot } = require("./screenshot-gate.js");
 const { createRecordingControl } = require("./recording-control.js");
 const guidance = require("./capture-guidance.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
@@ -189,7 +189,7 @@ function fireScreenshot(kind, opts) {
     bootLog(`screenshot coalesced (${Math.round(shotGate.msSinceLast())}ms since last, kind=${kind})`);
     return Promise.resolve();
   }
-  const job = takeScreenshot(kind, tracker, session).finally(() => {
+  const job = takeScreenshot(kind, tracker, session, opts && opts.expect).finally(() => {
     shotsInFlight.delete(job);
     shotGate.end();
   });
@@ -197,7 +197,9 @@ function fireScreenshot(kind, opts) {
   return job;
 }
 
-async function takeScreenshot(kind, shotTracker, shotSession) {
+/* `expect`: the window seen at the poll that asked for this screenshot
+   ({ app, screen }), or none (a transaction's start, a screenshot by hand). */
+async function takeScreenshot(kind, shotTracker, shotSession, expect) {
   try {
     // Pass the foreground window bounds so multi-monitor "active"
     // mode can pick the right display. lastStatus is refreshed every
@@ -222,6 +224,16 @@ async function takeScreenshot(kind, shotTracker, shotSession) {
     // event per file so the timeline shows a dot for each display
     // when display="all".
     const paths = Array.isArray(result) ? result : [result];
+    // A grab takes about a second: a page the SME left meanwhile would be
+    // shown under the step before, so a screenshot asked for by the poll is
+    // kept only while its window is still in front (lane LF-SHOT).
+    if (expect && !keepScreenshot(expect, await readForeground())) {
+      for (const p of paths) {
+        try { fs.unlinkSync(path.join(shotSession.sessionFolder, p)); } catch (_) { /* best effort */ }
+      }
+      bootLog(`screenshot dropped: the window changed during the grab (${expect.app})`);
+      return;
+    }
     for (const p of paths) shotTracker.fireSystem(kind || "screenshot", { path: p });
   } catch (e) {
     bootLog(`screenshot failed: ${e && e.message}`);
@@ -302,7 +314,9 @@ async function onTickHandler(status) {
   ) {
     const switched = isAppSwitch(lastTrackedApp, status.currentApp);
     lastTrackedApp = status.currentApp;
-    if (switched) fireScreenshot("screenshot");
+    if (switched) {
+      fireScreenshot("screenshot", { expect: { app: status.currentApp, screen: normalizeTitle(status.currentTitle) } });
+    }
   }
   /* Screen-change screenshot trigger (lane LF-SHOT): another window title
      in the same program is another screen, and the PDD prints a
@@ -312,7 +326,7 @@ async function onTickHandler(status) {
     const screen = { app: status.currentApp, screen: normalizeTitle(status.currentTitle) };
     const changed = isScreenChange(lastTrackedScreen, screen);
     lastTrackedScreen = screen;
-    if (changed && !BrowserWindow.getFocusedWindow()) fireScreenshot("screenshot");
+    if (changed && !BrowserWindow.getFocusedWindow()) fireScreenshot("screenshot", { expect: screen });
   }
 }
 

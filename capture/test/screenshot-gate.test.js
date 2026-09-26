@@ -4,7 +4,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { createScreenshotGate, isAppSwitch, isScreenChange } = require("../screenshot-gate.js");
+const { createScreenshotGate, isAppSwitch, isScreenChange, keepScreenshot } = require("../screenshot-gate.js");
 const { normalizeTitle } = require("../tracker.js");
 
 function clock() {
@@ -63,4 +63,14 @@ test("another page in the same program is a screen change; the first screen, a c
     "an unread count is the same screen");
   assert.strictEqual(isScreenChange(lookup, at("Microsoft Excel", "Orders.xlsx - Excel")), false, "another program is an app switch");
   assert.strictEqual(isScreenChange(lookup, at("Google Chrome", "")), false, "a window without a title");
+});
+
+test("a screenshot the poll asked for is kept only while its window is still in front", () => {
+  const saved = { app: "Google Chrome", screen: "Order SO-48227 saved - Order Desk" };
+  assert.strictEqual(keepScreenshot(saved, { ...saved }), true);
+  assert.strictEqual(keepScreenshot(saved, { app: "Google Chrome", screen: "Customer lookup - Order Desk" }), false,
+    "the SME left the page during the grab");
+  assert.strictEqual(keepScreenshot(saved, { app: "Microsoft Excel", screen: saved.screen }), false);
+  assert.strictEqual(keepScreenshot(saved, null), false, "the window cannot be read");
+  assert.strictEqual(keepScreenshot(null, null), true, "a transaction start or a screenshot by hand");
 });

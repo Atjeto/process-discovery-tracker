@@ -59,4 +59,15 @@ function isScreenChange(previous, current) {
   return previous.app === current.app && previous.screen !== current.screen;
 }
 
-module.exports = { createScreenshotGate, isAppSwitch, isScreenChange };
+/* Whether a screenshot of the window seen at a poll is kept: a grab takes
+   about a second, and a page the SME left meanwhile would be shown under
+   the step before, so it is kept only while that window is still in front
+   when the grab is done. `expected` null (a transaction's start, a
+   screenshot by hand) keeps it; `now` null (the window cannot be read)
+   drops it. Each is { app, screen }. */
+function keepScreenshot(expected, now) {
+  if (!expected) return true;
+  return !!now && now.app === expected.app && now.screen === expected.screen;
+}
+
+module.exports = { createScreenshotGate, isAppSwitch, isScreenChange, keepScreenshot };

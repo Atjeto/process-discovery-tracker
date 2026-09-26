@@ -37,6 +37,20 @@ function getActiveWin() {
   return activeWinPromise;
 }
 
+/* The window in front now, as { app, screen } (its title as normalizeTitle
+   gives it), or null when it cannot be read. Never throws. */
+async function readForeground() {
+  try {
+    const activeWin = await getActiveWin();
+    const win = await activeWin();
+    if (!win) return null;
+    const app = (win.owner && win.owner.name) || win.platform || "unknown";
+    return { app, screen: normalizeTitle(typeof win.title === "string" ? win.title : "") };
+  } catch (_e) {
+    return null;
+  }
+}
+
 /* A window title carries cosmetic churn that isn't a process step: a
    "(3)" unread-count prefix, a "*"/"●" unsaved-changes marker, the
    trailing browser-name suffix. Strip those before deciding whether the
@@ -498,4 +512,4 @@ function startTracker({ sessionId, eventsFile, onTick, interactionsExpected = fa
   return { fireMarker, startRun, fireSystem, fireInteraction, getStatus, pause, resume, stop };
 }
 
-module.exports = { startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun, isUncapturedApp };
+module.exports = { startTracker, POLL_INTERVAL_MS, normalizeTitle, isNewRun, isUncapturedApp, readForeground };
