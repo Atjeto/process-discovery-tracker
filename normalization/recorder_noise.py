@@ -64,6 +64,7 @@ Pure stdlib.
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
@@ -164,6 +165,23 @@ def _desktop(data: dict) -> bool:
         or _text(data.get("class_name")) in ("Progman", "WorkerW"))
 
 
+def _sightings(events: list[dict]) -> dict[Any, list[tuple]]:
+    """{pid: [(start, end, title)]}: the foreground rows the capture app
+    wrote (activity: the window in front of that program, seen at its
+    poll), with their times."""
+    seen: dict[Any, list[tuple]] = {}
+    for ev in events:
+        data = ev.get("data")
+        if ev.get("type") != "activity" or not isinstance(data, dict):
+            continue
+        start, pid, title = _time(ev), data.get("pid"), _text(data.get("title"))
+        dur = data.get("duration_ms")
+        if start is None or pid is None or not title or not isinstance(dur, (int, float)):
+            continue
+        seen.setdefault(pid, []).append((start, start + timedelta(milliseconds=dur), title))
+    return seen
+
+
 def _fill_windows(events: list[dict]) -> dict[int, dict]:
     """{event index: the window title and program an interaction lacks}. A
     title names its program: an interaction with a title and no program
@@ -171,17 +189,37 @@ def _fill_windows(events: list[dict]) -> dict[int, dict]:
     were in. Otherwise both come from the interaction before it in the same
     transaction (a marker starts a new one): the program from the last
     interaction, the title from the last one in the same program; for the
-    first interactions of a transaction, from the one after them."""
+    first interactions of a transaction, from the one after them. The
+    browser's address bar lends no title (it reads the page being left).
+
+    A click that changes the page loses its window (the page is going), and
+    when it is the first thing done on a page, the interaction before it was
+    on the page before. So when the capture app saw that program's window
+    in front after the interaction before (a foreground row of its process
+    covering the click, begun later), the click takes that window's title
+    (the live recording through the packaged app: "New order" on the saved
+    order's page read as done on the order form)."""
     inter = [(i, ev["data"]) for i, ev in enumerate(events)
              if ev.get("type") in ("interaction", "marker") and isinstance(ev.get("data"), dict)]
     program_of: dict[str, str] = {}
     for _i, data in inter:
         if _text(data.get("process_name")) and _text(data.get("window_title")):
             program_of.setdefault(_text(data.get("window_title")), _text(data.get("process_name")))
+    seen = _sightings(events)
     filled: dict[int, dict] = {}
 
-    def fill(order) -> None:
-        titles: dict[str, str] = {}
+    def sighting(i, data):
+        """(start, title) of the foreground row covering interaction i, else None."""
+        at = _time(events[i])
+        if at is None:
+            return None
+        for start, end, title in seen.get(data.get("pid"), ()):
+            if start <= at <= end:
+                return start, title
+        return None
+
+    def fill(order, forward) -> None:
+        titles: dict[str, tuple] = {}      # program: (title, the time it was read)
         last_program = ""
         for i, data in order:
             if events[i].get("type") == "marker":
@@ -194,17 +232,24 @@ def _fill_windows(events: list[dict]) -> dict[int, dict]:
             if not program and (program_of.get(title) or last_program):
                 program = add["process_name"] = program_of.get(title) or last_program
             key = program.lower()
-            if not title and titles.get(key):
-                title = add["window_title"] = titles[key]
+            if not title:
+                known = titles.get(key)
+                front = sighting(i, got) if forward else None
+                if front and (known is None or known[1] is None or front[0] > known[1]):
+                    title = add["window_title"] = front[1]
+                elif known:
+                    title = add["window_title"] = known[0]
             if add:
                 filled[i] = {**filled.get(i, {}), **add}
             if program:
                 last_program = program
-                if title:
-                    titles[key] = title
+                # The address bar's value comes as the page goes, under the
+                # title of the page being left: no source for another's title.
+                if title and not _is_address_bar(got):
+                    titles[key] = (title, _time(events[i]))
 
-    fill(inter)                  # from the interaction before
-    fill(list(reversed(inter)))  # what is still missing, from the one after
+    fill(inter, True)                    # from the interaction before
+    fill(list(reversed(inter)), False)   # what is still missing, from the one after
     return filled
 
 

@@ -123,6 +123,44 @@ def test_a_click_without_window_takes_it_from_the_interaction_before_else_after_
     assert got["back"]["window_title"].startswith("Ticket queue")
 
 
+def test_a_page_changing_click_first_on_its_page_takes_the_window_the_capture_app_saw():
+    """The live recording through the packaged app: "New order" on the saved
+    order's page lost its window (the page was going), and the interaction
+    before it was on the order form, and the address bar's value after Save
+    read the order form's title. The capture app's foreground row, begun
+    after the last interaction on the form, names the saved page. A row begun
+    before the interaction before lends nothing: that interaction is newer."""
+    saved = "Order SO-48213 saved" + SEP + "Order Desk" + SEP + "Google Chrome"
+    bar = {"ct": "Edit", "aid": "view_1012", "name": "Address and search bar", "cls": "OmniboxViewViews"}
+
+    def row(ms, dur, title):
+        return {"event_id": "a" + str(ms), "type": "activity", "timestamp": _ts(ms),
+                "data": {"app": "Google Chrome", "title": title, "pid": 7, "duration_ms": dur}}
+
+    events = [
+        _marker("m1", 0),
+        row(100, 5000, ORDER_TITLE),
+        _ev("notes", 2000, "value_changed", aid="notes", name="Notes", value="Dock 4",
+            title=ORDER_TITLE, pid=7),
+        _ev("save", 3000, "invoked", ct="Button", aid="btn-save", name="Save order",
+            title=ORDER_TITLE, pid=7),
+        row(5100, 4000, saved),
+        _ev("url", 5500, "value_changed", value="127.0.0.1/orderdesk.html#saved",
+            title=ORDER_TITLE, pid=7, **bar),
+        _ev("new", 7000, "invoked", ct="Button", aid="btn-new", name="New order", title=None, pid=7),
+        _ev("print", 8000, "invoked", ct="Hyperlink", aid="lnk-print", name="Print", title=None, pid=7),
+    ]
+    out, _report = clean_recorder_noise(events)
+    got = {e["event_id"]: e["data"] for e in out if e["type"] == "interaction"}
+    assert got["new"]["window_title"] == saved
+    assert got["print"]["window_title"] == saved
+    # Without a row of its own, the click takes the interaction before, as before.
+    plain = [e for e in events if e["type"] != "activity"]
+    out, _report = clean_recorder_noise(plain)
+    got = {e["event_id"]: e["data"] for e in out if e["type"] == "interaction"}
+    assert got["new"]["window_title"] == ORDER_TITLE
+
+
 def test_drafting_a_click_without_identity_ends_no_step_and_no_step_is_named_app():
     """#2: no "(screen)" step in a made-up system "App". A click without
     identity never ends a step as a commit; a step's app is its program or

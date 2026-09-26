@@ -443,6 +443,9 @@ implementation notes
   - A recording without a single foreground row (every recording of the
     packaged capture app before this fix) prints its active time as "Not
     recorded" in the PDD, not 0s.
+  - A click that changes the page, when it is the first thing done on that
+    page, reads as done on it (the window the capture app saw in front),
+    not on the page before ("New order" on the saved order's page).
 
 ### Removed
 

@@ -141,7 +141,11 @@ helpers in `pipeline_stages.py`, in this order:
    navigation). The millisecond rules leave a log without milliseconds
    alone. An interaction without a window title or program gets them: its
    title names its program, else the interaction before it in the same
-   transaction gives both (the one after it, for a transaction's first).
+   transaction gives both (the one after it, for a transaction's first;
+   the address bar lends no title). When the capture app's foreground row
+   of that process covers the interaction and began after the interaction
+   before, the row's window is newer and gives the title: a click that
+   changes the page is often the first thing done on it.
    `annotations.marker_edits` (rename, re-time, delete, insert) are then
    replayed onto the derived marker stream (`marker_edits.py`).
 3. **Runs and vocabulary enrichment** (`_run_case_assignment`).
