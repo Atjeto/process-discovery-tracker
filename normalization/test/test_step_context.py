@@ -153,3 +153,19 @@ def test_a_step_without_a_time_has_no_duration_and_sorts_by_order_after_the_time
              {"n": "t1", **timed("2026-05-14T09:00:01Z", "2026-05-14T09:00:02Z")}]
     assert [s["n"] for s in sorted(steps, key=step_sort_key)] == [
         "t1", "t2", "a", "b", "none", "bool"]
+
+
+def test_a_draft_whose_screen_the_drafting_made_value_free_says_that_screen():
+    """Lane LF-PIPE (#8): a customer's name in the order form's title is left
+    out of the draft's screen across the transactions (the draft_key's
+    screen holds an ellipsis); the PDD's context line, its Data section and
+    Applications and time then say that screen, not this transaction's
+    title. Any other step keeps the screen of its title."""
+    title = "New order for Contoso Ltd - Order Desk - Google Chrome"
+    ctx = _ctx({"q": {"process_name": "chrome.exe", "window_title": title}})
+    drafted = _step("q", draft_key="chrome|New order for \u2026 - Order Desk|Button:btn-save-order")
+    assert ctx.where(drafted) == ("Google Chrome", "New order for \u2026, Order Desk")
+    assert ctx.value_free_screen(drafted, "Google Chrome") == "New order for \u2026, Order Desk"
+    plain = _step("q", draft_key="chrome|New order for Contoso Ltd - Order Desk|(visit)")
+    assert ctx.where(plain) == ("Google Chrome", "New order for Contoso Ltd, Order Desk")
+    assert ctx.value_free_screen(_step("q"), "Google Chrome") == ""

@@ -23,8 +23,8 @@ library (xlsx_writer.py). Its sheets:
   Data fields         one row per field typed or chosen in a step (the
                       rows of the PDD's data table), with the field's
                       identity and one column per transaction holding what
-                      was entered there; a password field reads "(not
-                      recorded: secret field)", as recorded;
+                      was entered there; a password field reads "typed
+                      (hidden)" (pdd_export.SECRET_VALUE), as recorded;
   Re-keyed values     the PDD's re-keyed data (pdd_export.rekey_pairs): a
                       value typed in one system and again in another in the
                       same transaction, as the source system and field, the
@@ -46,8 +46,9 @@ from typing import Any
 from _dt import parse_ts_or_none as _parse_ts
 from capture_detail import _WALL_FRAMEWORKS
 from handoff_versions import version_line
-from pdd_export import (DEFAULT_REQUEST_CODE, DEFAULT_REQUEST_NAME, _Session, _align_key, _members,
-                        _step_name, rekey_pairs)
+from pdd_export import (DEFAULT_REQUEST_CODE, DEFAULT_REQUEST_NAME, SECRET_VALUE, _Session, _align_key,
+                        _members, _step_name, rekey_pairs)
+from recorder_noise import is_blank_value
 from step_context import step_system
 from xlsx_writer import Sheet, write_workbook
 
@@ -58,7 +59,7 @@ REKEYED = "Re-keyed values"
 APPS = "Applications"
 
 # A password field's value (the recorder never read it): the PDD's words.
-SECRET = "(not recorded: secret field)"
+SECRET = SECRET_VALUE
 NOT_RECORDED = "Not recorded"
 
 STEPS_HEADER = ("Step", "Step name", "Action", "Value", "Control type", "Automation id", "Name",
@@ -79,7 +80,7 @@ SHEET_LINES = (
             "of its steps, with the control it acted on, how the recorder identified it and the "
             "library activity its step is, with the activity's code."),
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
-           "transaction. A password field was not recorded."),
+           "transaction. A password field reads \"typed (hidden)\": the recorder never reads it."),
     (REKEYED, "The values typed in one system and typed again in another in the same "
               "transaction, as the PDD's data section lists them."),
     (APPS, "The programs the recording ran in, how much the recorder could see in each, and "
@@ -171,7 +172,10 @@ def _action(data: dict) -> tuple[str, str]:
     if kind == "invoked":
         return "Click", ""
     if kind in ("value_changed", "text_changed"):
-        return "Type", SECRET if data.get("value_redacted") is True else _text(data.get("value"))
+        if data.get("value_redacted") is True:
+            return "Type", SECRET
+        value = _text(data.get("value"))
+        return "Type", "" if is_blank_value(value) else value
     if kind == "selection_changed":
         return "Select", _text(data.get("selected_value"))
     if kind == "toggle_changed":

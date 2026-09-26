@@ -555,7 +555,6 @@ function loadOptionalJson(p) {
 const PIPELINE_ERROR_TRANSLATIONS = [
   [/KeyError: ['"]timestamp['"]/, "Some events are missing timestamps: the capture may have been interrupted."],
   [/KeyError: ['"]case_ids['"]/, "The transactions could not be found: check that the recording has its Start and End markers."],
-  [/InductiveMiner|inductive_miner/, "Process-map mining ran into trouble: try putting noisy apps among the Apps outside the process (the Steps toolbar) to cut complexity."],
   [/FileNotFoundError.*events\.jsonl/, "The events file is missing: was the project folder copied completely?"],
   [/yaml\.scanner\.ScannerError|yaml\.parser\.ParserError/, "A YAML file has a syntax error: check its indentation."],
   [/ModuleNotFoundError|ImportError/, "A Python package the pipeline needs is missing from the bundled runtime."],

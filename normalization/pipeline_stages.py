@@ -31,6 +31,7 @@ from case_assignment import (
     assign_case_ids, collect_cases, needs_implicit_run, add_implicit_run,
 )
 from coalesce import coalesce_typing_bursts
+from recorder_noise import clean_recorder_noise
 from classification import (
     classify_events,
     collapse_adjacent,
@@ -73,17 +74,25 @@ def _run_coalesce(
     raw: list[dict[str, Any]],
     annotations: dict[str, Any],
     cal: dict,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
-    """Stage 1a: coalesce typing bursts, then apply annotation marker edits.
-    Returns (coalesced, edited, edits_applied)."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int, dict[str, Any]]:
+    """Stage 1a: coalesce typing bursts, leave out what the recorder saw
+    that the user did not do (recorder_noise: an empty field, a dropdown's
+    echo, the Office ribbon's, a screen rendering, and the window a click
+    lost filled in), then apply annotation marker edits. Returns (coalesced,
+    edited, edits_applied, noise report)."""
     coalesced = coalesce_typing_bursts(raw, idle_ms=cal["coalesce_idle_ms"])
     if len(coalesced) < len(raw):
         print(f"[normalize] coalesced: {len(raw)} -> {len(coalesced)} events")
+    cleaned, noise = clean_recorder_noise(coalesced)
+    if noise["dropped_total"] or noise["filled"]:
+        print(f"[normalize] recorder noise: left out {noise['dropped_total']} "
+              f"interaction(s) the user did not make {noise['dropped']}, "
+              f"filled the window of {noise['filled']}")
 
-    edited, edits_applied = apply_marker_edits(coalesced, annotations)
+    edited, edits_applied = apply_marker_edits(cleaned, annotations)
     if edits_applied:
         print(f"[normalize] applied {edits_applied} annotation edit(s) from annotations.json")
-    return coalesced, edited, edits_applied
+    return coalesced, edited, edits_applied, noise
 
 
 def _run_case_assignment(
@@ -265,6 +274,7 @@ def _run_stats(
     draft_summary: dict | None = None,
     recorded: bool = True,
     staging: Staging | None = None,
+    recorder_noise: dict | None = None,
 ) -> tuple[dict[str, Any], Path]:
     """Compute the statistics summary and write stats.json. Returns
     (summary, stats_path). `classified` is the classified event stream as
@@ -272,8 +282,10 @@ def _run_stats(
     stretches left out of the analysis out of its rows before they merge
     them (stats_compute.compute_all). `draft_summary` is the structure-only
     numbers of this analyze's drafts (step_suggest.draft_summary), counts
-    only. `recorded` is False for a session without a recording (C16). With
-    a `staging`, stats.json is staged and committed with the run."""
+    only. `recorder_noise` is what stage 1a left out and filled in
+    (recorder_noise.clean_recorder_noise's report), counts only. `recorded`
+    is False for a session without a recording (C16). With a `staging`,
+    stats.json is staged and committed with the run."""
     summary = stats.compute_all(
         classified, cases,
         excluded_ranges=_excluded_ranges(existing_anno),
@@ -305,6 +317,7 @@ def _run_stats(
             "hidden":            sum(1 for s in merged_steps if s.get("state") == "hidden"),
         },
         "draft_summary": draft_summary,
+        "recorder_noise": recorder_noise,
         "coalesced_event_count": len(coalesced),
         "app_vocabularies": vocab_summary.get("vocabs_loaded") or [],
         "app_vocabulary_matches": vocab_summary.get("matched", 0),

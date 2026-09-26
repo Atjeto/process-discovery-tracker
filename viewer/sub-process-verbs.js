@@ -42,6 +42,7 @@ const SPM = require("./sub-process-maps.js");
 const { DRAFT_STATES } = require("./runs-model.js");
 const StepFlow = require("./step-flow.js");
 const AC = require("./analyst-content.js");
+const { isBlankValue } = require("./step-facts.js");
 
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
 const ELLIPSIS = String.fromCharCode(0x2026);
@@ -113,11 +114,11 @@ function actionOf(data, prefix) {
   if (kind === "value_changed" || kind === "text_changed") {
     const secret = d.value_redacted === true;
     const value = _t(d.value);
-    if (!secret && (!value || NOISE.has(value.toLowerCase()))) return null;
+    if (!secret && (!value || NOISE.has(value.toLowerCase()) || isBlankValue(value))) return null;
     const field = _field(d);
     if (!field) return null;
     const raw = _rawField(d);
-    const description = secret ? "Entered a secret value into " + raw + "."
+    const description = secret ? "Typed " + raw + " (hidden)."
       : /^«[^»]*»$/.test(value) ? "Entered a masked value into " + raw + "."
         : "Entered \"" + _clip(value, 160) + "\" into " + raw + ".";
     return { key: pre + "|enter:" + _identity(d), name: "Enter " + field, description };

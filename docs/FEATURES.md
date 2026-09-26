@@ -91,8 +91,9 @@ The Python pipeline the viewer runs by itself; see
   control; purpose, scope, trigger, result and contacts; the As-Is map and
   the reference transaction's steps (each with its system, screen, average
   time, "in N of M transactions", "Transaction 1 at 0:19", "Only when" its
-  condition, its description, the fields it entered, its screenshots and
-  attachments, a waste flag, and where the process goes after it besides
+  condition, its description, the fields it entered, one screenshot (the
+  one chosen for the PDD, else its first) and its attachments, a waste
+  flag, and where the process goes after it besides
   the next step), each step headed "Step 2: <name>" so its number never
   reads as a section's; variations (the lines the Steps level lists: extra,
   reordered, skipped and repeated steps, a conditional step not done, and a

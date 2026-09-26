@@ -81,3 +81,35 @@ test("lane FX2: the systems each application stands for in a recording, the most
   assert.deepEqual(SN.appSystems([], NAMES), {});
   assert.deepEqual(SN.appSystems([ev("chrome.exe", "New Tab")], NAMES), { "chrome.exe": ["Google Chrome"] }, "a browser on no web system is the browser");
 });
+
+test("lane LF-PIPE: the Windows apps read by their names; a page's system is its site when the list knows it, else the browser", () => {
+  assert.equal(SN.systemName("CalculatorApp.exe", "Calculator", {}), "Calculator");
+  assert.equal(SN.systemName("charmap.exe", "Character Map", {}), "Character Map");
+  assert.equal(SN.systemName("mspaint.exe", "Untitled" + SEP + "Paint", {}), "Paint");
+  assert.equal(SN.systemName("explorer.exe", "Documents", {}), "File Explorer");
+  assert.equal(SN.systemName("WINWORD.EXE", "letter.docx" + SEP + "Word", {}), "Word");
+  assert.equal(SN.systemName("OUTLOOK.EXE", "Inbox", {}), "Outlook");
+  assert.equal(SN.systemName("chrome.exe", "Contoso | Account | Salesforce", {}), "Salesforce");
+  assert.equal(SN.systemName("chrome.exe", "Customer lookup" + SEP + "Order Desk", {}), "Google Chrome");
+  assert.equal(SN.systemName("msedge.exe", "Order Desk", {}), "Microsoft Edge");
+  for (const s of ["Calculator", "Character Map", "Paint", "File Explorer"]) assert.ok(SN.knownSystems().includes(s), s);
+});
+
+test("lane LF-PIPE (#24): a map box leaves its system line out when the step's name already names the system", () => {
+  assert.equal(SN.namesSystem("orders.xlsx" + SEP + "Excel: Save", "Excel"), true);
+  assert.equal(SN.namesSystem("Account | Salesforce: Save", "salesforce"), true, "ignoring case");
+  assert.equal(SN.namesSystem("Excelsior orders: Save", "Excel"), false, "whole words only");
+  assert.equal(SN.namesSystem("Customer lookup" + SEP + "Order Desk: Search", "Google Chrome"), false);
+  assert.equal(SN.systemLine("orders.xlsx" + SEP + "Excel: Save", "Excel"), "");
+  assert.equal(SN.systemLine("Customer lookup" + SEP + "Order Desk: Search", "Google Chrome"), "Google Chrome");
+  assert.equal(SN.systemLine("Check the stock", ""), "");
+  assert.equal(SN.systemLine("Log it in SAP (VA01)", "SAP"), "");
+});
+
+test("lane LF-PIPE: a step whose click lost its program in the recording takes the program the pipeline filled in (its grain keys)", () => {
+  const inter = { c: { data: { kind: "invoked", name: "Select", window_title: "Customer lookup" + SEP + "Order Desk" + SEP + "Google Chrome" } } };
+  const step = { evidence: { interaction_event_ids: ["c"] }, grain_keys: { app: "chrome", screen: "Customer lookup" + SEP + "Order Desk" + SEP + "Google Chrome" } };
+  assert.deepEqual(SN.whereOfStep(step, inter, {}), { system: "Google Chrome", screen: "Customer lookup, Order Desk" });
+  const bare = { evidence: { interaction_event_ids: ["c"] }, grain_keys: { app: "(app)", screen: "(screen)" } };
+  assert.deepEqual(SN.whereOfStep(bare, inter, {}), { system: "", screen: "Customer lookup, Order Desk" });
+});

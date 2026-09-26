@@ -127,8 +127,9 @@ function _mostCommon(values) {
 }
 
 /* { system, screen } of a step (step_context.where): its interactions' most
-   common application and window title; without interactions, its grain_keys,
-   else its draft_key. A system the analyst set on the step (step.system, C16:
+   common application and window title (its grain_keys' where they carry
+   none: the pipeline filled in the window a click lost, lane LF-PIPE);
+   without interactions, its grain_keys, else its draft_key. A system the analyst set on the step (step.system, C16:
    a step added by hand) wins over the one derived here. { "", "" } when
    unknown. */
 function whereOfStep(step, interactionsById, names) {
@@ -140,15 +141,18 @@ function whereOfStep(step, interactionsById, names) {
 function _derivedWhere(step, interactionsById, names) {
   const ids = (step && step.evidence && step.evidence.interaction_event_ids) || [];
   const datas = ids.map((id) => interactionsById && interactionsById[id]).filter(Boolean).map((ev) => ev.data || {});
-  const app = _mostCommon(datas.map((d) => d.process_name));
-  const title = _mostCommon(datas.map((d) => d.window_title));
-  if (app || title) return whereData(app, title, names);
   let a = "", t = "";
   const gk = step && step.grain_keys;
   if (gk && typeof gk === "object") {
     a = typeof gk.app === "string" && gk.app !== "(app)" ? gk.app : "";
     t = typeof gk.screen === "string" && gk.screen !== "(screen)" ? gk.screen : "";
   }
+  // Lane LF-PIPE: a click that changed the page lost its window and program
+  // in the recording; the pipeline filled them in, and the step's grain keys
+  // carry them (the raw events here do not).
+  const app = _mostCommon(datas.map((d) => d.process_name)) || (datas.length ? a : "");
+  const title = _mostCommon(datas.map((d) => d.window_title)) || (datas.length ? t : "");
+  if (app || title) return whereData(app, title, names);
   const dk = step && step.draft_key;
   if (!a && !t && typeof dk === "string" && dk.split("|").length >= 3) {
     const first = dk.indexOf("|"), last = dk.lastIndexOf("|");
@@ -190,4 +194,25 @@ function knownSystems() {
   return [...new Set(RULES.map((r) => r.system))];
 }
 
-module.exports = { appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName, knownSystems, appSystems };
+/* True when a step's name already names its system, as whole words,
+   ignoring case ("orders.xlsx - Excel: Save" names Excel). The pipeline's
+   step_context.names_system. */
+function namesSystem(name, system) {
+  const nm = typeof name === "string" ? name : "";
+  const sys = typeof system === "string" ? system.trim() : "";
+  if (!sys || !nm) return false;
+  return new RegExp("(?<![\\w])" + sys.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w])", "i").test(nm);
+}
+
+/* The line a map box shows under its step's name (AD-28): the system, or
+   "" when the name already names it (lane LF-PIPE, #24: "Account |
+   Salesforce: Save" over "Salesforce" said it twice). */
+function systemLine(name, system) {
+  const sys = typeof system === "string" ? system.trim() : "";
+  return sys && !namesSystem(name, sys) ? sys : "";
+}
+
+module.exports = {
+  appKey, displayName, systemName, screenOf, whereData, whereOfStep, fallbackName, knownSystems, appSystems,
+  namesSystem, systemLine,
+};

@@ -11,6 +11,10 @@
     { "name": "Word", "activities": [] },
     { "name": "Outlook", "activities": [] },
     { "name": "Notepad", "activities": [] },
+    { "name": "Calculator", "activities": [] },
+    { "name": "Character Map", "activities": [] },
+    { "name": "Paint", "activities": [] },
+    { "name": "File Explorer", "activities": [] },
     { "name": "Google Chrome", "activities": [] },
     { "name": "Microsoft Edge", "activities": [] },
     { "name": "Firefox", "activities": [] }

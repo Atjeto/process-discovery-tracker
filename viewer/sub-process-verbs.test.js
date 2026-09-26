@@ -441,9 +441,11 @@ test("C19 drafting: the rules for the kinds the demo does not record (toggles, t
   assert.deepEqual(a({ kind: "selection_changed", control_type: "TabItem", name: "Details", selected_value: "Details" }),
     { key: P + "|click:Details", name: "Switch to Details", description: "Switched to Details." });
   assert.deepEqual(a({ kind: "value_changed", name: "Password", automation_id: "pw", value_redacted: true }),
-    { key: P + "|enter:pw", name: "Enter Password", description: "Entered a secret value into Password." });
+    { key: P + "|enter:pw", name: "Enter Password", description: "Typed Password (hidden)." });
   assert.equal(a({ kind: "value_changed", name: "Card", value: "«masked»" }).description, "Entered a masked value into Card.");
   assert.equal(a({ kind: "value_changed", name: "Notes", value: "  " }), null, "an empty value is no action");
+  assert.equal(a({ kind: "value_changed", name: "Notes", value: String.fromCharCode(0xfffc) }), null,
+    "an empty web field (U+FFFC) is no action (lane LF-PIPE)");
   assert.equal(a({ kind: "value_changed", name: "Notes", value: "null" }), null);
   assert.equal(a({ kind: "focus_changed", name: "Notes" }), null, "a focus change is no action");
   assert.equal(a({ kind: "invoked", control_type: "Button" }), null, "a control with no name is no action");

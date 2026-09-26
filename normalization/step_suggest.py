@@ -11,7 +11,6 @@ project's activity library knows becomes one draft named from its activity
 """
 
 from __future__ import annotations
-import bisect
 import json
 import re
 import uuid
@@ -27,6 +26,7 @@ from _dt import parse_ts_or_none as _parse_ts_or_none
 # crashing. The boundary (load_events) already coerces timestamp to a string;
 # this guards the remaining "string but not ISO" case. Mirrors the same choice
 # in case_assignment._parse_ts.
+from app_names import display_name
 from library import collapse
 from recognition import is_browser_chrome
 
@@ -125,8 +125,8 @@ def step_grain_keys(interactions: list[dict[str, Any]]) -> dict[str, str]:
       screen  -- the vocab `screen_id` an App Vocabulary named for the form,
                  else the `window_title` (a decent screen proxy), else
                  "(screen)": the DEFAULT resting notch ("one step per screen").
-      app     -- the `process_name` (.exe stripped), else the window-title app
-                 prefix: one node per application.
+      app     -- the `process_name` (.exe stripped), else "(app)": one node
+                 per application.
 
     The phase and case notches read the step's existing `phase_id` / `case_id`,
     so they are not duplicated here. Raw `events.jsonl` is untouched -- these
@@ -158,7 +158,9 @@ def step_grain_keys(interactions: list[dict[str, Any]]) -> dict[str, str]:
             p = p[:-4]
         if p:
             procs.append(p)
-    app = _most_common(procs) or (_short_app(datas[-1]) if datas else "") or "(app)"
+    # Lane LF-PIPE: the app is a program, never a word of the window title
+    # nor a made-up "App" (the viewer's resolveStepGrainKeys, the same rule).
+    app = _most_common(procs) or "(app)"
     return {"element": element, "screen": screen, "app": app}
 
 
@@ -177,15 +179,25 @@ END_RUN_END = "run_end"
 VISIT = "(visit)"
 
 
+def _has_identity(data: dict[str, Any]) -> bool:
+    """True when the interaction names its control: an automation_id, a name
+    or a class name."""
+    return any(isinstance(data.get(f), str) and data[f].strip()
+               for f in ("automation_id", "name", "class_name"))
+
+
 def _is_commit(data: dict[str, Any]) -> bool:
     """C1 (a): does this interaction end its step, inclusively? An `invoked`
-    event on a commit-type control, or any interaction whose vocab semantics
-    carry the boolean `completion: true`. Decided by the control type and
-    that flag only, never by a word inside a name: the old word match ended a
-    step at a "Lookup" or "Booking" control because the name contains "ok"."""
+    event on a commit-type control that names itself, or any interaction
+    whose vocab semantics carry the boolean `completion: true`. Decided by
+    the control type and that flag only, never by a word inside a name: the
+    old word match ended a step at a "Lookup" or "Booking" control because
+    the name contains "ok". A click without identity (no automation_id, name
+    or class name: a web click whose page had already gone) ends no step:
+    it would end one as a commit named after nothing (lane LF-PIPE)."""
     ct = data.get("control_type")
     if (data.get("kind") == "invoked" and isinstance(ct, str)
-            and ct in COMMIT_CONTROL_TYPES):
+            and ct in COMMIT_CONTROL_TYPES and _has_identity(data)):
         return True
     sem = data.get("vocab_semantics")
     return isinstance(sem, dict) and sem.get("completion") is True
@@ -211,12 +223,17 @@ def _draft_app(data: dict[str, Any]) -> str:
 def _draft_screen(data: dict[str, Any]) -> str:
     """C1 screen: the vocab `screen_id` when present, else the shared
     value-free screen-label rules applied to the window title (the rules the
-    viewer's screen grain applies), else "(screen)" when there is no title."""
+    viewer's screen grain applies), else the program's readable name (lane
+    LF-PIPE: shared/system-names.json, "Excel"), else "(screen)" when there
+    is neither."""
     _f, sid = _first_text(data, ("screen_id",))
     if sid:
         return sid
     _f, title = _first_text(data, ("window_title",))
-    return screen_label(title) or "(screen)"
+    if title:
+        return screen_label(title)
+    _f, program = _first_text(data, ("process_name",))
+    return display_name(program) or "(screen)"
 
 
 def _commit_part(data: dict[str, Any]) -> tuple[str, str]:
@@ -266,44 +283,58 @@ def _screenshot_index(events: list[dict[str, Any]]) -> tuple[list[datetime], lis
     return [t for t, _p in shots], [p for _t, p in shots]
 
 
-def _screenshots_between(index: tuple[list[datetime], list[str]],
-                         start: str, end: str) -> list[str]:
-    """Paths of the screenshots taken inside [start, end], both inclusive."""
+def _attach_screenshots(drafts: list[dict[str, Any]],
+                        index: tuple[list[datetime], list[str]],
+                        excluded: list[tuple[datetime, datetime]]) -> None:
+    """Lane LF-PIPE: every screenshot goes to one draft, the recorder's and
+    the SME's own (the screenshot key) alike: the draft whose time range
+    holds it; else the draft it precedes (the next to start after it: a
+    transaction's first screenshot comes a moment before its first action);
+    else, taken after every draft, the last one. A screenshot inside a
+    stretch left out of the analysis goes to none."""
     times, paths = index
-    lo = bisect.bisect_left(times, parse_ts(start))
-    hi = bisect.bisect_right(times, parse_ts(end))
-    return paths[lo:hi]
+    spans = []
+    for d in drafts:
+        tr = d.get("time_range") or {}
+        start, end = _parse_ts_or_none(tr.get("start")), _parse_ts_or_none(tr.get("end"))
+        if start is not None:
+            spans.append((start, end if end is not None and end >= start else start, d))
+    spans.sort(key=lambda s: (s[0], s[1]))
+    for t, path in zip(times, paths):
+        if not spans or any(a <= t <= b for a, b in excluded):
+            continue
+        holder = (next((d for a, b, d in spans if a <= t <= b), None)
+                  or next((d for a, _b, d in spans if a > t), None)
+                  or spans[-1][2])
+        holder["evidence"]["screenshot_refs"].append(path)
 
 
 def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
-                case_id: str | None, session_id: str,
-                remembered: dict[str, str],
-                shots: tuple[list[datetime], list[str]]) -> dict[str, Any]:
-    """One drafted step (C1) from a stretch of interactions on one screen.
-    The name and the draft_key are built from the screen label and the
-    commit control only, never from a typed value."""
+                case_id: str | None, session_id: str) -> dict[str, Any]:
+    """One drafted step (C1) from a stretch of interactions on one screen,
+    without its name and key yet (_name_drafts gives them, once the
+    screens are value-free across the transactions, and its screenshots
+    come from _attach_screenshots). Its parts are kept in `_parts` until
+    then: (app, screen, commit, commit label)."""
     first, last = stretch[0]["data"], stretch[-1]["data"]
     app = _draft_app(first) or "(app)"
     screen = _draft_screen(first)
     if end_reason == END_COMMIT:
         commit, _rung = _commit_part(last)
         label = _commit_label(last)
-        default_name = f"{screen}: {label}"
     else:
-        commit, label, default_name = VISIT, "", screen
-    draft_key = f"{app}|{screen}|{commit}"
-    remembered_name = remembered.get(draft_key)
+        commit, label = VISIT, ""
     start, end = stretch[0]["timestamp"], stretch[-1]["timestamp"]
     return {
         "step_id": str(uuid.uuid4()),
         "session_id": session_id,
         "case_id": case_id,
-        "name": remembered_name or default_name,
+        "name": "",
         "description": _default_step_description(stretch),
         "time_range": {"start": start, "end": end},
         "evidence": {
             "interaction_event_ids": [ev["event_id"] for ev in stretch],
-            "screenshot_refs": _screenshots_between(shots, start, end),
+            "screenshot_refs": [],
             "video_timecode_range": None,
             "manual_notes": "",
         },
@@ -313,10 +344,95 @@ def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
         "phase_id": None,
         # ADR-0024 containment keys; the viewer still groups on them.
         "grain_keys": step_grain_keys(stretch),
-        "draft_key": draft_key,
-        "name_source": "remembered" if remembered_name else "draft",
+        "draft_key": "",
+        "name_source": "draft",
         "end_reason": end_reason,
+        "_parts": (app, screen, commit, label),
     }
+
+
+# The ellipsis that stands for the value a screen's title held (U+2026), and
+# the separators of a title's segments (a hyphen, a pipe, a colon, an en or
+# em dash, built with chr() so this source holds no dash characters).
+VALUE_MARK = "…"
+_SEPARATORS = {"-", "|", ":", "::", chr(0x2013), chr(0x2014)}
+
+
+def _common_screen(screens: list[str]) -> str:
+    """The words a screen's titles share at their start and at their end,
+    with an ellipsis where the words that differ were: "New order for
+    Contoso Ltd | Order Desk" and "New order for Northwind Traders | Order
+    Desk" are "New order for ... | Order Desk". A value that was a whole
+    segment at an end goes with its separator: "Contoso Ltd | Account |
+    Salesforce" and "Fabrikam | Account | Salesforce" are "Account |
+    Salesforce". "" when the titles share no word, or one of them has
+    nothing between the shared words: then they are not one screen."""
+    words = [s.split() for s in screens]
+    prefix = 0
+    while all(len(w) > prefix for w in words) and len({w[prefix] for w in words}) == 1:
+        prefix += 1
+    suffix = 0
+    while (all(len(w) > prefix + suffix for w in words)
+           and len({w[len(w) - 1 - suffix] for w in words}) == 1):
+        suffix += 1
+    if not prefix + suffix or any(len(w) <= prefix + suffix for w in words):
+        return ""
+    head = words[0][:prefix]
+    tail = words[0][len(words[0]) - suffix:] if suffix else []
+    if head and tail:
+        return " ".join(head + [VALUE_MARK] + tail)
+    if head:
+        kept = head[:-1] if head[-1] in _SEPARATORS else head + [VALUE_MARK]
+    else:
+        kept = tail[1:] if tail[0] in _SEPARATORS else [VALUE_MARK] + tail
+    return " ".join(kept) if any(w not in _SEPARATORS and w != VALUE_MARK for w in kept) else ""
+
+
+def value_free_screens(drafts: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
+    """Lane LF-PIPE (#8): {(app, screen): its value-free screen} for the
+    screens whose window title carries a value the shared rules cannot see
+    (a customer's name: "New order for Contoso Ltd"). Screens are one screen
+    with a value in its title when drafts of different transactions end at
+    the same commit control of one app on them, and no transaction was on
+    two of them; the screen then is the words their titles share
+    (_common_screen). Every draft on such a screen takes it, its visits
+    included."""
+    seen: dict[tuple[str, str], set] = {}
+    groups: dict[tuple[str, str], dict[str, set]] = {}
+    for d in drafts:
+        app, screen, commit, _label = d["_parts"]
+        seen.setdefault((app, screen), set()).add(d.get("case_id"))
+        if commit != VISIT and not commit.endswith(":?"):
+            groups.setdefault((app, commit), {}).setdefault(screen, set()).add(d.get("case_id"))
+    out: dict[tuple[str, str], str] = {}
+    for (app, _commit), screens in groups.items():
+        if len(screens) < 2:
+            continue
+        names = list(screens)
+        cases = [seen[(app, s)] for s in names]
+        if any(cases[a] & cases[b] for a in range(len(cases)) for b in range(a + 1, len(cases))):
+            continue
+        common = _common_screen(names)
+        if common:
+            for s in names:
+                out.setdefault((app, s), common)
+    return out
+
+
+def _name_drafts(drafts: list[dict[str, Any]], remembered: dict[str, str]) -> None:
+    """Give each draft its screen, name and draft_key (C1): the screen made
+    value-free across the transactions (value_free_screens); the name the
+    analyst gave to its key in this session (C4), else "<screen>: <commit
+    label>", or "<screen>" for a step that did not end on a commit."""
+    screens = value_free_screens(drafts)
+    for d in drafts:
+        app, screen, commit, label = d.pop("_parts")
+        screen = screens.get((app, screen), screen)
+        draft_key = f"{app}|{screen}|{commit}"
+        remembered_name = remembered.get(draft_key)
+        d["name"] = remembered_name or (f"{screen}: {label}" if commit != VISIT else screen)
+        d["draft_key"] = draft_key
+        d["name_source"] = "remembered" if remembered_name else "draft"
 
 
 def auto_suggest_steps(
@@ -355,7 +471,10 @@ def auto_suggest_steps(
     that did not end on a commit, with `name_source: "draft"`. (The
     remembered-names store and its `--names` flag were removed with contract
     C21; the project's activity library names runs of drafts afterwards,
-    in _merge_steps.)"""
+    in _merge_steps.) Lane LF-PIPE: a screen whose window title carries a
+    value (a customer's name) is named by the words its titles share across
+    the transactions (value_free_screens), and every screenshot goes to one
+    draft (_attach_screenshots)."""
     remembered = dict(session_names or {})
     excluded = _parse_excluded_ranges(excluded_ranges)
     shots = _screenshot_index(events)
@@ -382,8 +501,7 @@ def auto_suggest_steps(
 
         def close(end_reason: str) -> None:
             steps.append(_draft_step(list(stretch), end_reason, case_id=case_id,
-                                     session_id=session_id,
-                                     remembered=remembered, shots=shots))
+                                     session_id=session_id))
             stretch.clear()
 
         for ev in case_events:
@@ -398,6 +516,8 @@ def auto_suggest_steps(
                 close(END_COMMIT)              # (a): inclusive
         if stretch:
             close(END_RUN_END)                 # (c)
+    _name_drafts(steps, remembered)
+    _attach_screenshots(steps, shots, excluded)
     return steps
 
 
@@ -501,12 +621,18 @@ def session_names(annotations: dict | None) -> dict[str, str]:
     return names
 
 
-def _describe_interaction(data: dict[str, Any]) -> str | None:
+def _describe_interaction(data: dict[str, Any], legacy: bool = False) -> str | None:
     """A short human phrase for one interaction ('entered "X" into Y',
     'clicked Search', 'turned Remember me on'), or None for interactions
     not worth narrating in a step summary (focus changes). Covers every
     recorder event kind; an unrecognised future kind degrades to a
-    generic phrase rather than being dropped."""
+    generic phrase rather than being dropped.
+
+    A secret the recorder redacted (`value_redacted`) reads 'typed Password
+    (hidden)', and a value the recorder did not record (no value at all)
+    'edited Password', never 'cleared' (lane LF-PIPE). `legacy` narrates
+    both as the drafting did before, 'cleared Password', so a description
+    drafted then still reads as the drafting's (is_drafted_description)."""
     kind = data.get("kind")
     name = (data.get("meaningful_name") or data.get("name") or "").strip()
     ctl = data.get("control_type") or ""
@@ -520,13 +646,15 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
             value = value[:159] + "…"
         count = data.get("_coalesced_count") or 0
         keys = f" ({count} keystrokes)" if count > 1 else ""
+        if not legacy and data.get("value_redacted") is True:
+            return f"typed {field} (hidden){keys}"
         if value == MASKED_VALUE_DISPLAY:
             return f"entered a masked value into {field}{keys}"
         if value:
             return f'entered "{value}" into {field}{keys}'
-        if raw:
-            # A junk literal ("null") -- the recorder saw an edit but no
-            # readable value; don't echo the junk into the narration.
+        if raw or (not legacy and data.get("value") is None):
+            # A junk literal ("null") or no value at all: the recorder saw
+            # an edit but no readable value; don't echo the junk.
             return f"edited {field}{keys}"
         return f"cleared {field}{keys}"
 
@@ -570,14 +698,15 @@ def _describe_interaction(data: dict[str, Any]) -> str | None:
     return None
 
 
-def _default_step_description(interactions: list[dict[str, Any]]) -> str:
+def _default_step_description(interactions: list[dict[str, Any]], legacy: bool = False) -> str:
     """A prose summary of what a step did, built from its interactions,
     so an auto-suggested step reads meaningfully without the analyst
     drilling into the raw events. Each interaction is framed as its own
-    sentence. The name stays terse; this carries the detail."""
+    sentence. The name stays terse; this carries the detail. `legacy`: the
+    wording before lane LF-PIPE (_describe_interaction)."""
     phrases: list[str] = []
     for ev in interactions:
-        phrase = _describe_interaction(ev.get("data") or {})
+        phrase = _describe_interaction(ev.get("data") or {}, legacy)
         if phrase:
             phrases.append(phrase)
     if not phrases:
@@ -598,10 +727,12 @@ _OLD_NO_DETAIL = re.compile(r"^\d+ interactions? with no recorded detail\.$")
 
 def is_drafted_description(description: str, interactions: list[dict[str, Any]]) -> bool:
     """True when `description` is what the drafting writes for these
-    interaction events (_default_step_description, or its older wording for a
-    step with nothing to narrate), so it is not the analyst's text."""
+    interaction events (_default_step_description, its wording before lane
+    LF-PIPE, or its older wording for a step with nothing to narrate), so it
+    is not the analyst's text."""
     desc = (description or "").strip()
     return (desc == _default_step_description(interactions).strip()
+            or desc == _default_step_description(interactions, legacy=True).strip()
             or bool(_OLD_NO_DETAIL.match(desc)))
 
 
@@ -622,41 +753,6 @@ def _aggregate_vocab_flags(interactions: list[dict[str, Any]]) -> dict[str, Any]
         if vf.get("waste"):
             out["waste"] = True
     return out
-
-
-def _short_app(data: dict) -> str:
-    """Pull a short readable app or window label.
-
-    Prefers a leading non-punctuation token of the window title (which
-    is usually the app name on Windows: "Salesforce | Search Accounts"
-    becomes "Salesforce"). Falls back to process_name without .exe.
-    """
-    # A corrupt/old capture can carry a non-dict `data` or a non-string
-    # window_title / process_name; `str(... or "")` keeps `.strip()` safe.
-    if not isinstance(data, dict):
-        data = {}
-    title = str(data.get("window_title") or "").strip()
-    if title:
-        # Common Windows separators: " - ", " | ", " :: "
-        for sep in (" — ", " - ", " | ", " :: ", " : "):
-            head, _, _rest = title.partition(sep)
-            if head and head != title:
-                head = head.strip()
-                # Reject leading separators like asterisks (unsaved indicator)
-                if head.startswith("*"):
-                    head = head.lstrip("*").strip()
-                if head:
-                    # ADR-0024 §6a: strip embedded record values so the prefix is
-                    # value-free and the SAME step type collapses across cases at
-                    # the element grain (browser titles put the record id in the
-                    # head: 'Create INC0010010 | Incident | ServiceNow').
-                    return screen_label(head)
-        # No separator: use the title up to ~40 chars
-        return screen_label(title[:40])
-    proc = str(data.get("process_name") or "").strip()
-    if proc.lower().endswith(".exe"):
-        proc = proc[:-4]
-    return proc or "App"
 
 
 # --- Step overlap (I37) ------------------------------------------------
@@ -1148,8 +1244,8 @@ _LABEL_PRE_RULES, _LABEL_RULES = _load_label_rules()
 
 # Value-free SCREEN/window strip (ADR-0024 §6a/§6b), shared with the viewer's
 # process-map-levels.js `screenType` via shared/screen-label-patterns.json -- so
-# the screen-grain key and the window-title-derived step prefix strip embedded
-# record tokens identically, no hand-synced regex to drift. Applied IN ORDER,
+# the screen-grain key and the drafted step's screen strip embedded record
+# tokens (and the browser's name) identically, no hand-synced regex to drift. Applied IN ORDER,
 # each a GLOBAL replace (unlike process_label's first-rule-wins), then end-trim.
 _SCREEN_PATTERNS_PATH = (
     Path(__file__).resolve().parent.parent / "shared" / "screen-label-patterns.json"
@@ -1168,10 +1264,10 @@ _SCREEN_END_TRIM = re.compile(r"^[\s#:\-–—|]+|[\s#:\-–—|]+$")
 
 def screen_label(name: str) -> str:
     """Value-free window/screen string: strip embedded record numbers / id tokens
-    (the JS `screenType` twin). Used for the window-title-derived step-name prefix
-    so the SAME step type collapses across cases at the element grain instead of
-    fanning out per record ('Create INC0010010 | Incident | ServiceNow' ->
-    'Create | Incident | ServiceNow'). Never blanks an all-value string."""
+    (the JS `screenType` twin). Used for the drafted step's screen (_draft_screen)
+    so the SAME step type collapses across cases instead of fanning out per
+    record ('Create INC0010010 | Incident | ServiceNow' -> 'Create | Incident |
+    ServiceNow'). Never blanks an all-value string."""
     s = (name or "").strip()
     if not s:
         return s

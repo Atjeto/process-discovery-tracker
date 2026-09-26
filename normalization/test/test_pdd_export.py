@@ -809,8 +809,9 @@ def test_the_data_table_marks_re_keyed_fields_and_states_the_requirement():
         "To | Outlook, Order confirmation | Mail - Compose: Send | customer@example.com | ",
         "Subject | Outlook, Order confirmation | Mail - Compose: Send | ORD-1 | "
         "from Order number (Contoso CRM)",
+        # Lane LF-PIPE: a redacted secret reads "Password typed (hidden)".
         "Password | Outlook, Order confirmation | Mail - Compose: Send | "
-        "(not recorded: secret field) | ",
+        "typed (hidden) | ",
         "Status | Excel, Order log.xlsx | Sheet - Log: Save | Logged | ",
         "Re-keyed data",
         "Order number (Contoso CRM) is typed again as Subject (Outlook) in 1 of 2 "
@@ -1222,7 +1223,9 @@ def test_the_screenshot_the_analyst_chose_is_the_one_printed():
     step (a recorder screenshot's path or an analyst screenshot's id); a
     recorder screenshot in `hidden_screenshots` is never printed; a choice
     that cannot be printed (hidden, missing, outside the folder) falls back
-    to the step's screenshots, and an analyst file stays in the folder."""
+    to the step's first screenshot, and an analyst file stays in the folder.
+    Lane LF-PIPE: the PDD prints one screenshot per step, the chosen one
+    else the first (recorder screenshots first, then the analyst's)."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -1245,21 +1248,24 @@ def test_the_screenshot_the_analyst_chose_is_the_one_printed():
             step.update(change)
             return _pictures(_render(session, manifest, annotations, stats, analysis, events))
 
-        assert printed() == [sha["screenshots/s1.png"], sha["screenshots/s2.png"]]
+        first = [sha["screenshots/s1.png"]]
+        assert printed() == first
         assert printed(pdd_screenshot="screenshots/s2.png") == [sha["screenshots/s2.png"]]
         assert printed(hidden_screenshots=["screenshots/s1.png"]) == [sha["screenshots/s2.png"]]
         assert printed(pdd_screenshot="screenshots/s1.png",
                        hidden_screenshots=["screenshots/s1.png"]) == [sha["screenshots/s2.png"]]
-        both = [sha["screenshots/s1.png"], sha["screenshots/s2.png"]]
-        assert printed(pdd_screenshot="screenshots/gone.png") == both
-        assert printed(pdd_screenshot="../secret.png") == both
+        assert printed(pdd_screenshot="screenshots/gone.png") == first
+        assert printed(pdd_screenshot="../secret.png") == first
         annotations["analyst_screenshots"] = [
             {"id": "a1", "file": "a1.png", "step_id": step["step_id"]},
             {"id": "evil", "file": "../../secret.png", "step_id": None}]
-        assert printed() == both + [sha["screenshots/analyst/a1.png"]]
+        assert printed() == first
         assert printed(pdd_screenshot="a1") == [sha["screenshots/analyst/a1.png"]]
         # An analyst file name never leaves screenshots/analyst/.
-        assert printed(pdd_screenshot="evil") == both + [sha["screenshots/analyst/a1.png"]]
+        assert printed(pdd_screenshot="evil") == first
+        # The recorder's screenshots taken off the step: the analyst's prints.
+        assert printed(hidden_screenshots=["screenshots/s1.png", "screenshots/s2.png"]) == [
+            sha["screenshots/analyst/a1.png"]]
 
 
 def test_attachments_are_listed_in_a_last_section_and_under_their_step():
@@ -1638,3 +1644,30 @@ if __name__ == "__main__":
             _fn()
             print("ok", _name)
     print("all passed")
+
+
+def test_lane_lf_pipe_what_counts_as_a_field_entered():
+    """The fields the step pane, the Data section and the Technical details
+    list (the viewer's step-facts.js _entered, the same rules): #1 a secret
+    the recorder redacted reads "Password typed (hidden)", never missing or
+    "cleared"; #4 an empty web field (U+FFFC) is no value; #25 the address
+    bar is a navigation, never a field; #7 and #13 a choice named by its
+    own option ("Croatia", a cell "A2") names no field, while the
+    dropdown's own value does."""
+    E = pdd_export._entered
+    assert E({"kind": "value_changed", "name": "Password", "value_redacted": True}) == (
+        "Password", "typed (hidden)")
+    assert pdd_export.SECRET_VALUE == "typed (hidden)"
+    assert E({"kind": "value_changed", "name": "Quantity", "value": "\ufffc"}) is None
+    assert E({"kind": "value_changed", "name": "Quantity", "value": " \ufffc "}) is None
+    assert E({"kind": "value_changed", "name": "Quantity", "value": "2"}) == ("Quantity", "2")
+    assert E({"kind": "value_changed", "name": "Address and search bar",
+              "class_name": "OmniboxViewViews", "value": "127.0.0.1:8765/orderdesk.html#order"}) is None
+    assert E({"kind": "selection_changed", "control_type": "ListItem", "name": "Croatia",
+              "selected_value": "Croatia"}) is None
+    assert E({"kind": "selection_changed", "control_type": "DataItem", "name": "A2",
+              "selected_value": "A2"}) is None
+    assert E({"kind": "value_changed", "control_type": "ComboBox", "name": "Country",
+              "value": "Croatia"}) == ("Country", "Croatia")
+    assert E({"kind": "selection_changed", "name": "Plant", "selected_value": "1000"}) == (
+        "Plant", "1000")

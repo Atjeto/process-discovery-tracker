@@ -25,22 +25,33 @@ from typing import Any
 
 from app_names import display_name
 
-# coverage_hint values that mark reduced capture fidelity (§11e). A
-# remote/terminal framework is the capture "wall": the field data is a proxy
-# for pixels.
-_REDUCED_HINTS = {"basic", "minimal"}
+# A remote/terminal framework is the capture "wall": the field data is a
+# proxy for pixels.
 _WALL_FRAMEWORKS = {"remote", "terminal", "rdp", "citrix"}
 _LOW_CONFIDENCE_MEAN = 0.5
+# The share of an app's interactions that must name their control by an
+# automation id (else by a name) for the app to count as seen in full.
+_IDENTIFIED_SHARE = 0.5
 # The claim names at most this many apps.
 _NAMED_APPS = 4
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
 
 
 def coverage_caveat(events: list[dict[str, Any]] | None,
                     app_names: dict[str, str] | None = None) -> dict[str, Any] | None:
     """The apps whose interactions the recorder saw with less detail, as the
     block above, or None when none was. An app is flagged when an interaction
-    in it came through a remote or terminal framework, carried a reduced
-    coverage hint, or its interactions' mean confidence is below one half."""
+    in it came through a remote or terminal framework, when fewer than half
+    of its interactions that say how their control was identified
+    (identity_source) had an automation id ("basic": most had a name,
+    else "minimal"), or when its interactions' mean confidence is below one
+    half. Lane LF-PIPE: the share of the app's interactions, not the
+    recorder's coverage hint, which only its first interaction carries
+    (Paint was flagged for its first click, though most of its clicks had
+    an id)."""
     per_app: dict[str, dict[str, Any]] = {}
     for ev in events or []:
         if not isinstance(ev, dict) or ev.get("type") != "interaction":
@@ -49,10 +60,17 @@ def coverage_caveat(events: list[dict[str, Any]] | None,
         app = (data.get("process_name") or "").strip() if isinstance(data.get("process_name"), str) else ""
         if not app:
             continue
-        rec = per_app.setdefault(app, {"hints": set(), "frameworks": set(), "confidences": []})
-        hint = data.get("coverage_hint")
-        if isinstance(hint, str) and hint:
-            rec["hints"].add(hint.lower())
+        rec = per_app.setdefault(app, {"count": 0, "ids": 0, "named": 0,
+                                       "frameworks": set(), "confidences": []})
+        # Only an interaction that says how its control was identified
+        # (identity_source, §11e) counts in the share.
+        rung = _text(data.get("identity_source"))
+        if rung:
+            rec["count"] += 1
+            if rung == "automation_id":
+                rec["ids"] += 1
+            if rung in ("automation_id", "name"):
+                rec["named"] += 1
         fw = data.get("framework")
         if isinstance(fw, str) and fw:
             rec["frameworks"].add(fw.lower())
@@ -63,17 +81,17 @@ def coverage_caveat(events: list[dict[str, Any]] | None,
     flagged = []
     for app, rec in sorted(per_app.items()):
         wall = bool(rec["frameworks"] & _WALL_FRAMEWORKS)
-        reduced_hint = bool(rec["hints"] & _REDUCED_HINTS)
+        reduced = rec["count"] > 0 and rec["ids"] < _IDENTIFIED_SHARE * rec["count"]
         mean_conf = (sum(rec["confidences"]) / len(rec["confidences"])
                      if rec["confidences"] else None)
         low_conf = mean_conf is not None and mean_conf < _LOW_CONFIDENCE_MEAN
-        if not (wall or reduced_hint or low_conf):
+        if not (wall or reduced or low_conf):
             continue
         if wall:
             trust = "wall"
             why = "a remote/terminal window: only the screen image crosses it"
-        elif reduced_hint:
-            trust = sorted(rec["hints"] & _REDUCED_HINTS)[0]
+        elif reduced:
+            trust = "basic" if rec["named"] >= _IDENTIFIED_SHARE * rec["count"] else "minimal"
             why = ("the app does not name its fields reliably" if trust == "basic"
                    else "only the window title was readable")
         else:

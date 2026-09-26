@@ -20,12 +20,24 @@
 
 const { valueFree } = require("./process-map-levels.js");
 const { sinceStart } = require("./dom.js");
+const { isBrowserChrome } = require("./recognition.js");
 
 const ELLIPSIS = String.fromCharCode(0x2026);
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
 const MASKED = "(masked value)";
+/* What a secret the recorder redacted (value_redacted) reads as its value:
+   "Password typed (hidden)" (pdd_export.SECRET_VALUE). */
+const SECRET_VALUE = "typed (hidden)";
+/* U+FFFC, the object character Chrome reads from an empty input. */
+const OBJECT_CHAR = String.fromCharCode(0xfffc);
 
 function _text(v) { return typeof v === "string" ? v.trim() : ""; }
+
+/* True for a value made only of U+FFFC and whitespace: an empty field, not a
+   typed value (recorder_noise.is_blank_value). */
+function isBlankValue(v) {
+  return typeof v === "string" && !v.split(OBJECT_CHAR).join("").trim();
+}
 
 /* The interaction data of a step, in its order; null when an id is not in
    the session (then nothing can be recomputed). */
@@ -42,17 +54,22 @@ function stepDatas(step, interactionsById) {
 
 /* ---- the fields typed (pdd_export._entered) -------------------------------- */
 
+/* Lane LF-PIPE: a secret reads SECRET_VALUE; an empty web field (U+FFFC) is
+   no value; the browser's address bar is a navigation, never a field; a
+   choice named by its own option ("Croatia", a cell "A2") names no field. */
 function _entered(d) {
+  if (isBrowserChrome(d)) return null;
   let value;
   if (d.kind === "value_changed" || d.kind === "text_changed") {
-    if (d.value_redacted === true) value = "(not recorded: secret field)";
+    if (d.value_redacted === true) value = SECRET_VALUE;
     else {
       value = _text(d.value);
-      if (!value || NOISE.has(value.toLowerCase())) return null;
+      if (!value || NOISE.has(value.toLowerCase()) || isBlankValue(value)) return null;
     }
   } else if (d.kind === "selection_changed" && d.control_type !== "TabItem" && d.control_type !== "Tab") {
     value = _text(d.selected_value);
-    if (!value) return null;
+    const label = d.meaningful_name || d.name;
+    if (!value || (typeof label === "string" && label.trim() === value)) return null;
   } else return null;
   if (value.length > 200) value = value.slice(0, 199) + ELLIPSIS;
   const field = _text(d.meaningful_name) || _text(d.name) || _text(d.automation_id) || "(unnamed field)";
@@ -84,7 +101,10 @@ function _or(...vals) {
   return v ? String(v).trim() : "";
 }
 
-function _phrase(d) {
+/* `legacy`: the wording before lane LF-PIPE, where a redacted secret and a
+   value the recorder did not record both read "cleared" (step_suggest
+   _describe_interaction). */
+function _phrase(d, legacy) {
   const kind = d.kind;
   const name = _or(d.meaningful_name, d.name);
   const ctl = d.control_type || "";
@@ -96,9 +116,10 @@ function _phrase(d) {
     if (value.length > 160) value = value.slice(0, 159) + ELLIPSIS;
     const count = d._coalesced_count || 0;
     const keys = count > 1 ? " (" + count + " keystrokes)" : "";
+    if (!legacy && d.value_redacted === true) return "typed " + field + " (hidden)" + keys;
     if (value === MASKED) return "entered a masked value into " + field + keys;
     if (value) return "entered \"" + value + "\" into " + field + keys;
-    if (raw) return "edited " + field + keys;
+    if (raw || (!legacy && (d.value === undefined || d.value === null))) return "edited " + field + keys;
     return "cleared " + field + keys;
   }
   if (kind === "text_changed") return "edited " + field;
@@ -126,9 +147,9 @@ function _phrase(d) {
   return null;
 }
 
-function draftedNarration(datas) {
+function draftedNarration(datas, legacy) {
   const list = datas || [];
-  const phrases = list.map((d) => _phrase(d || {})).filter(Boolean);
+  const phrases = list.map((d) => _phrase(d || {}, legacy)).filter(Boolean);
   if (!phrases.length) return list.length + " action" + (list.length === 1 ? "" : "s") + " with no recorded detail.";
   const sentences = phrases.slice(0, 6).map((p) => p.charAt(0).toUpperCase() + p.slice(1) + ".");
   const extra = phrases.length - 6;
@@ -137,12 +158,14 @@ function draftedNarration(datas) {
 }
 
 /* True when `description` is the drafting's own text for these interactions
-   (or its older wording for a step with nothing to narrate): the step pane
-   shows it as a hint and the PDD leaves it out. */
+   (its wording before lane LF-PIPE too, or its older wording for a step with
+   nothing to narrate): the step pane shows it as a hint and the PDD leaves
+   it out. */
 function isDraftedDescription(description, datas) {
   const desc = _text(description);
   if (!desc || !datas) return false;
-  return desc === draftedNarration(datas) || /^\d+ interactions? with no recorded detail\.$/.test(desc);
+  return desc === draftedNarration(datas) || desc === draftedNarration(datas, true)
+    || /^\d+ interactions? with no recorded detail\.$/.test(desc);
 }
 
 /* ---- where a draft ends, and its drafted name -------------------------------- */
@@ -306,4 +329,5 @@ function occurrencesLine(rows, runCount, playable, uncovered) {
 module.exports = {
   stepDatas, typedFields, draftedNarration, isDraftedDescription, commitName, endsAt,
   pointer, duration, formatMs, factLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
+  SECRET_VALUE, isBlankValue,
 };

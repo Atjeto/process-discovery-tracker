@@ -67,8 +67,39 @@ test("the fields typed: each field once, first-typed order, its last value; secr
   ]);
   assert.deepEqual(f, [
     { field: "Quantity", value: "29" }, { field: "Customer", value: "ACME" },
-    { field: "Password", value: "(not recorded: secret field)" }, { field: "Plant", value: "1000" },
+    { field: "Password", value: "typed (hidden)" }, { field: "Plant", value: "1000" },
   ]);
+});
+
+test("lane LF-PIPE: the fields typed leave out an empty web field, the address bar and a choice named by its own option; a secret reads typed (hidden)", () => {
+  const OBJ = String.fromCharCode(0xfffc);
+  const f = SF.typedFields([
+    { kind: "value_changed", name: "Quantity", value: OBJ },
+    { kind: "value_changed", name: "Notes", value: " " + OBJ + " " },
+    { kind: "value_changed", name: "Address and search bar", class_name: "OmniboxViewViews", value: "127.0.0.1:8765/orderdesk.html#order" },
+    { kind: "selection_changed", control_type: "ListItem", name: "Croatia", selected_value: "Croatia" },
+    { kind: "selection_changed", control_type: "DataItem", name: "A2", selected_value: "A2" },
+    { kind: "value_changed", control_type: "ComboBox", name: "Country", value: "Croatia" },
+    { kind: "value_changed", name: "Password", value_redacted: true },
+  ]);
+  assert.deepEqual(f, [{ field: "Country", value: "Croatia" }, { field: "Password", value: SF.SECRET_VALUE }]);
+  assert.equal(SF.SECRET_VALUE, "typed (hidden)");
+  assert.equal(SF.isBlankValue(OBJ + " "), true);
+  assert.equal(SF.isBlankValue("a" + OBJ), false);
+  assert.equal(SF.isBlankValue(undefined), false, "a value the recorder did not record is not an empty one");
+});
+
+test("lane LF-PIPE: a secret narrates Typed Password (hidden), a value not recorded Edited, never Cleared; the older wording still reads as drafted", () => {
+  const secret = [{ kind: "value_changed", name: "User name", value: "test.supplier" },
+    { kind: "value_changed", name: "Password", value_redacted: true }];
+  assert.equal(SF.draftedNarration(secret), "Entered \"test.supplier\" into User name. Typed Password (hidden).");
+  const unrecorded = [{ kind: "value_changed", name: "Password" }];
+  assert.equal(SF.draftedNarration(unrecorded), "Edited Password.");
+  assert.equal(SF.draftedNarration([{ kind: "value_changed", name: "Comment", value: "" }]), "Cleared Comment.");
+  // A description drafted before the lane ("Cleared Password") is still the drafting's.
+  assert.equal(SF.isDraftedDescription("Entered \"test.supplier\" into User name. Cleared Password.", secret), true);
+  assert.equal(SF.isDraftedDescription("Cleared Password.", unrecorded), true);
+  assert.equal(SF.isDraftedDescription("Typed the password.", unrecorded), false);
 });
 
 test("where a draft ends comes from end_reason and its interactions", () => {

@@ -32,7 +32,7 @@ from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
 from app_names import app_key, display_name, system_name
-from step_suggest import screen_label
+from step_suggest import VALUE_MARK, screen_label
 
 # The separators between a window title's segments: a spaced hyphen, pipe,
 # en dash or em dash (built with chr() so this source holds no dash
@@ -165,9 +165,24 @@ class StepContext:
         """(system, screen) of a step: its interactions' (where_datas);
         without interactions, the step's grain_keys (app, screen) or its
         draft_key. ("", "") when unknown. The system the analyst set on the
-        step (C16) wins over the derived one; the screen stays derived."""
+        step (C16) wins over the derived one; the screen stays derived. A
+        draft whose screen the drafting made value-free across the
+        transactions (lane LF-PIPE: "New order for ... | Order Desk", a
+        customer's name left out) says that screen (value_free_screen)."""
         system, screen = self._where(step)
-        return (step_system(step) or system), screen
+        system = step_system(step) or system
+        return system, self.value_free_screen(step, system) or screen
+
+    def value_free_screen(self, step: dict, system: str = "") -> str:
+        """The screen of a draft whose window titles carried a value the
+        drafting left out (step_suggest.value_free_screens: its draft_key's
+        screen holds the ellipsis), without the segments that name
+        `system`; "" for any other step."""
+        dk = step.get("draft_key") if isinstance(step, dict) else None
+        if not isinstance(dk, str) or dk.count("|") < 2:
+            return ""
+        screen = dk.split("|", 1)[1].rsplit("|", 1)[0]
+        return screen_of(screen, [system]) if VALUE_MARK in screen else ""
 
     def _where(self, step: dict) -> tuple[str, str]:
         found = self.where_datas(self._datas(step))

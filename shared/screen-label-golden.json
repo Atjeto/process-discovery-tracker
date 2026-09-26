@@ -21,6 +21,17 @@
     ["SNFI - Enter Serial 57-58227542", "SNFI - Enter Serial"],
     ["Account 12/345/678 review", "Account review"],
     ["Settings: Privacy", "Settings: Privacy"],
-    ["Inbox: 5 unread", "Inbox: 5 unread"]
+    ["Inbox: 5 unread", "Inbox: 5 unread"],
+    ["Customer lookup - Order Desk - Google Chrome", "Customer lookup - Order Desk"],
+    ["New order for Contoso Ltd - Order Desk - Google Chrome", "New order for Contoso Ltd - Order Desk"],
+    ["Order SO-48213 saved - Order Desk - Google Chrome", "Order saved - Order Desk"],
+    ["Invoice INV-2026-0423 - Supplier Portal - Google Chrome", "Invoice - Supplier Portal"],
+    ["Ticket INC0012342 created - Service Desk - Google Chrome", "Ticket created - Service Desk"],
+    ["INC0012342 - Service Desk - Google Chrome", "Service Desk"],
+    ["Contoso Ltd | Account | Salesforce - Microsoft​ Edge", "Contoso Ltd | Account | Salesforce"],
+    ["New tab - Work - Microsoft Edge", "New tab - Work"],
+    ["Inbox — Mozilla Firefox", "Inbox"],
+    ["PO-2026-001 approval", "approval"],
+    ["Google Chrome", "Google Chrome"]
   ]
 }

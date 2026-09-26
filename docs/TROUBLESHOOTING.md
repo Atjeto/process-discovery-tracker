@@ -178,16 +178,16 @@ gives the line number. Typical causes: tab characters (YAML wants spaces),
 an unquoted string starting with `*` or `&`, a regex backslash not doubled
 inside double quotes.
 
-### The step map is missing, or mining failed
+### The step map is missing
 
 The step map (`process_map_step.bpmn`) is built from the steps of the
-marked runs: one run gives a plain sequence, two or more go through pm4py's
-inductive miner, which is fast at this size. When it fails, the analysis
-prints `[normalize] WARNING: step BPMN failed: <error>` and still completes:
-the viewer's Map still draws the runs, Edit as the As-Is map says the
-analysis drew no process map, and the PDD prints the map as a table. The
-viewer's hint for a miner error: put noisy apps among the Apps outside the
-process (the Steps toolbar) to cut the complexity.
+marked runs: one run gives a plain sequence, two or more are drawn from the
+step flow edges (the edges the viewer's live map draws). When it fails, the
+analysis prints `[normalize] WARNING: step BPMN failed: <error>` and still
+completes: the viewer's Map still draws the runs, Edit as the As-Is map
+says the analysis drew no process map, and the PDD prints the map as a
+table. Putting noisy apps among the Apps outside the process (the Steps
+toolbar) makes the map smaller.
 
 ### A BPMN tool rejects the map
 

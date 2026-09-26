@@ -500,3 +500,24 @@ def test_junk_null_value_does_not_leak_into_names():
     assert len(steps) == 1
     assert "null" not in steps[0]["name"].lower()
     assert '"null"' not in steps[0]["description"]
+
+
+def test_lane_lf_pipe_a_secret_is_typed_hidden_and_a_value_not_recorded_is_edited_never_cleared():
+    """#1 (rec10: the sign-in step read "Cleared Password"): a secret the
+    recorder redacted reads "Typed Password (hidden)", a value the recorder
+    did not record "Edited Password"; an empty value still reads "Cleared".
+    A description drafted before, "Cleared Password", is still the
+    drafting's (viewer/step-facts.js draftedNarration, the same words)."""
+    from step_suggest import _default_step_description, is_drafted_description
+    user = {"data": {"kind": "value_changed", "name": "User name", "value": "test.supplier"}}
+    secret = {"data": {"kind": "value_changed", "name": "Password", "value_redacted": True}}
+    unrecorded = {"data": {"kind": "value_changed", "name": "Password"}}
+    empty = {"data": {"kind": "value_changed", "name": "Comment", "value": ""}}
+    assert _default_step_description([user, secret]) == (
+        'Entered "test.supplier" into User name. Typed Password (hidden).')
+    assert _default_step_description([unrecorded]) == "Edited Password."
+    assert _default_step_description([empty]) == "Cleared Comment."
+    assert is_drafted_description('Entered "test.supplier" into User name. Cleared Password.',
+                                  [user, secret])
+    assert is_drafted_description("Cleared Password.", [unrecorded])
+    assert not is_drafted_description("Typed the password.", [unrecorded])

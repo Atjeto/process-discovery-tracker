@@ -118,10 +118,28 @@ helpers in `pipeline_stages.py`, in this order:
    the derived stream.
    `events.jsonl` is never rewritten; what was dropped is recorded in
    `annotations.process_exclusions`.
-2. **Coalesce and marker edits** (`_run_coalesce`). Per-keystroke
-   `value_changed` bursts on one control fold into one final-value event
-   (`coalesce.py`); `annotations.marker_edits` (rename, re-time, delete,
-   insert) are replayed onto the derived marker stream (`marker_edits.py`).
+2. **Coalesce, recorder noise and marker edits** (`_run_coalesce`).
+   Per-keystroke `value_changed` bursts on one control fold into one
+   final-value event (`coalesce.py`). Then what the recorder saw that the
+   user did not do leaves the derived stream (`recorder_noise.py`, lane
+   LF-PIPE; the reasons counted in `stats.json` meta `recorder_noise`): a
+   click, choice or toggle with no identity; an empty value (only U+FFFC
+   and blanks: an empty web field; a value the recorder did not record, a
+   secret, is not empty); a change on the Office ribbon (a NetUI class: it
+   mirrors the selected cell); a desktop choice no click caused; a choice
+   in a window without a title (Excel's formula AutoComplete); one action
+   reported twice (the same element within 50 ms); a screen rendering (a
+   burst of changes from its first empty field on); the screen's reaction
+   (a change within 50 ms after the user's change on another element; a
+   choice or toggle within 150 ms after a click on another element); a
+   dropdown's list item repeating the dropdown's value; the same choice
+   twice in a row; an address-bar value on the way to the next (one
+   navigation). The millisecond rules leave a log without milliseconds
+   alone. An interaction without a window title or program gets them: its
+   title names its program, else the interaction before it in the same
+   transaction gives both (the one after it, for a transaction's first).
+   `annotations.marker_edits` (rename, re-time, delete, insert) are then
+   replayed onto the derived marker stream (`marker_edits.py`).
 3. **Runs and vocabulary enrichment** (`_run_case_assignment`).
    `case_assignment.py` walks the markers. **Runs never nest:** a start that
    arrives while a run is open ends that run first, and the derived start
@@ -137,11 +155,24 @@ helpers in `pipeline_stages.py`, in this order:
    run, `step_suggest.auto_suggest_steps` walks the interactions in time
    order. A step is a stretch on one screen of one app, ending (a) at a commit
    interaction, inclusive (`invoked` on a Button, SplitButton, MenuItem or
-   Hyperlink, or a vocab entry with `completion: true`); (b) at the first
-   interaction on another screen, exclusive; or (c) at the end of the run.
-   Interactions outside every run are drafted the same way with
+   Hyperlink that names itself, or a vocab entry with `completion: true`);
+   (b) at the first interaction on another screen, exclusive; or (c) at the
+   end of the run. A screen is the vocab's `screen_id`, else the window
+   title through the shared value rules (`shared/screen-label-patterns.json`:
+   record numbers and the browser's name go), else the program's readable
+   name. Interactions outside every run are drafted the same way with
    `case_id: null`. Each draft carries `draft_key`, `name_source` and
-   `end_reason`. A draft's name comes from a step the analyst named in this
+   `end_reason`. Lane LF-PIPE: screens whose titles carry a value no rule
+   sees (a customer's name) are one screen when drafts of different
+   transactions end at the same commit of one app on them and no
+   transaction visits two of them (`step_suggest.value_free_screens`: the
+   words the titles share, an ellipsis where the value was: "New order for
+   Contoso Ltd" and "New order for Northwind Traders" read "New order for
+   …"; a record's name in "Contoso Ltd | Account | Salesforce" goes with
+   its separator: "Account | Salesforce"); every screenshot, the recorder's and the SME's, goes
+   to the draft whose span holds it, else the draft it precedes, else the
+   last one (`_attach_screenshots`); a step's `grain_keys.app` is its
+   program or `(app)`, never a word of a title. A draft's name comes from a step the analyst named in this
    session with the same key (`step_suggest.session_names`: typed names
    before accepted ones, the pattern run's first), with `name_source:
    "remembered"`, else from the rule's default name. So names travel with
@@ -251,15 +282,18 @@ reads them.
 `bpmn_observed.write_observed_bpmn` builds one trace per run from the run's
 visible steps, labelled by `process_label`, in the run's step order (time,
 then `order` for the steps without a time), a step repeated back to back
-counted once. One run is drawn as a plain sequence; two or more runs go
-through pm4py's inductive miner (`mining.discover_inductive`). Steps
-outside every run are left out.
+counted once. One run is drawn as a plain sequence; two or more runs are
+drawn from the step flow edges (below): sequence flows and exclusive
+gateways, each branch named by how many transactions took it. Lane LF-PIPE
+(#9): the inductive miner is gone; it read the varying order of steps
+between transactions as parallel work, while every recorded transaction is
+one sequential trace. Steps outside every run are left out.
 
 **The flow the analyst set (C17).** When the steps carry a condition
 (`only_when`) or links (`links`) that change the map
 (`step_flow.changes_map`: an edge with a label, or one no transaction
-took), the map is drawn from the step flow edges instead of the chain or
-the miner. `step_flow.flow_edges` is the rule the viewer's live map uses
+took), the map is drawn from the step flow edges even for one run, with
+room for the labels. `step_flow.flow_edges` is the rule the viewer's live map uses
 too (`shared/flow-links-golden.json` pins both): the consecutive steps of
 each transaction, a condition on the edge into its step with an
 "otherwise" edge around it, a link from its step to the target or to the
@@ -357,7 +391,8 @@ is a plane of the one file (`bpmn_observed._sub_process_planes`, written by
   tasks is a sub-process on each; the first holds the map.
 - The map is chosen as the main one from its own traces (the flow edges
   when the flow set on its steps changes the map, a chain for one trace,
-  else the miner); a sub-process with no steps is a start joined to an end.
+  else the step flow edges); a sub-process with no steps is a start joined
+  to an end.
   Its start and main end are unnamed, its early ends named from their
   `when`. Its counts ("In N of M transactions", the branch names) are over
   the transactions that ran the sub-process, not its visits.
@@ -469,10 +504,11 @@ video time when the video's start is known; in a video session, the video
 time). Each part is left out when it is unknown; a step without a time
 prints no time, never a zero.
 
-**Screenshots.** A step prints the screenshot the analyst chose for the PDD
-(`step.pdd_screenshot`), else all of its screenshots (its recorder
-screenshots, then the ones the analyst added to it), never one taken off the
-step (`step.hidden_screenshots`). A path outside the session folder is never
+**Screenshots.** A step prints one screenshot (lane LF-PIPE: the drafting
+now gives every screenshot a step): the one the analyst chose for the PDD
+(`step.pdd_screenshot`), else its first (its recorder screenshots come
+first, then the ones the analyst added to it), never one taken off the step
+(`step.hidden_screenshots`). A path outside the session folder is never
 embedded.
 
 ## The Technical details (`tech_details.py`, contract C20)
@@ -491,7 +527,7 @@ Its sheets:
   hidden sub-step left out), in step order: the PDD's step number and name
   ("Step 3", and "Step 3.2" for a sub-step its chapter prints), the action
   (Click, Type, Select, Toggle, Focus) and its value (a password field reads
-  "(not recorded: secret field)"), the control type, automation id, name and
+  "typed (hidden)"), the control type, automation id, name and
   class name, the identity source and confidence, the window title, the
   program (`process_name`) and the system (the step's own system first, else
   `shared/system-names.json`), then Activity and Code: the name and the code
@@ -591,6 +627,7 @@ SCHEMA.md.
 | `pipeline_config.py` | Per-session settings from `annotations.json`: the ignored apps, the excluded ranges, and the calibration block (only `coalesce_idle_ms` and `filter_browser_chrome` still apply; the old segmenter's keys are read and ignored). |
 | `process_filter.py` | Drops PDT's own windows and the excluded apps and window titles from the derived stream. |
 | `coalesce.py` | Folds typing bursts into one final-value event. |
+| `recorder_noise.py` | Leaves out of the derived stream what the recorder saw that the user did not do, and fills the window a click lost (stage 2, lane LF-PIPE). |
 | `marker_edits.py` | Replays the analyst's marker edits onto a derived stream; an insert becomes a synthetic marker with event id `insert-<edit_id>`. |
 | `case_assignment.py` | Marker-based runs (never nested), deterministic case ids, `case_ids` stamping, the implicit run (C16). |
 | `app_vocab.py` | Loads the shipped vocabularies (`app_vocabularies/*.yaml`, plus any folder in `PDT_APP_VOCABULARIES`) and enriches matching interactions. `regex_guard.py` refuses authored title patterns that could backtrack catastrophically. |
@@ -603,7 +640,7 @@ SCHEMA.md.
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
 | `case_quality.py` | The transaction check of `analysis.json`: how the runs were found, how many, and the share of the recorded actions inside them. |
 | `capture_detail.py` | `coverage_caveat` of `analysis.json`: the apps the recorder saw with less detail, with one plain claim the Overview shows. |
-| `mining.py` | pm4py's inductive miner and the pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
+| `mining.py` | The pure-Python BPMN writer and layout (`export_bpmn`: task kinds, colours, notes, data objects and the legend placed with the rest; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
 | `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |

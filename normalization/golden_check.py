@@ -86,10 +86,10 @@ _BPMN_NS = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
 # so a user task pins that none is left of the kind every recorded step had
 # before), and the one start and one end event, with the end's name (C18: the
 # Result's first line, else "End"). Gateway and sequence-flow counts are left
-# out on purpose: they come from pm4py's inductive miner, which CI installs
-# unpinned (2.7.11 or newer) while the app bundles 2.7.22.2, so they may move
-# with the miner version. The map's shape is pinned by the viewer e2e
-# connectivity check instead.
+# out: they came from pm4py's inductive miner, which CI installed unpinned;
+# since lane LF-PIPE the map is drawn from the step flow edges and the
+# projection was kept as it was. The map's shape is pinned by the viewer e2e
+# connectivity check.
 _TASK_KINDS = ("task", "userTask", "manualTask")
 _PINNED_BPMN_ELEMENTS = _TASK_KINDS + ("startEvent", "endEvent")
 

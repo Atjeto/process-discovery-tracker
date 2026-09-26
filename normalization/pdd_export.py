@@ -59,11 +59,13 @@ tokens (app_names, step_context); every table has a grid; a map gets a page
 of its own, landscape when it is wide, so it prints legibly.
 
 What the analyst adds (contract C16) prints where it belongs: a step's
-system (`step.system`) wins over the derived one; a step shows the
-screenshot chosen for the PDD (`step.pdd_screenshot`), else all of its
-screenshots, the analyst's included, never a hidden one; a step names its
-attachments. A session without a recording (manifest.source "video" or
-"blank") has one implicit run, not a marked transaction, and says so; a step
+system (`step.system`) wins over the derived one; a step shows one
+screenshot: the one chosen for the PDD (`step.pdd_screenshot`), else its
+first (its recorder screenshots come first, then the analyst's), never a
+hidden one (lane LF-PIPE: the drafting now gives every screenshot a step);
+a step names its attachments. A session without a recording
+(manifest.source "video" or "blank") has one implicit run, not a marked
+transaction, and says so; a step
 without a time (`time_range: null`) orders by its `order` and prints no
 time, never a zero. The notes pinned to steps and moments
 (annotations.analyst_notes) are not printed.
@@ -111,6 +113,8 @@ from step_context import (StepContext, clock, fmt_ms as _fmt_duration, has_video
                           step_duration_ms, step_start, step_system, untimed_key, video_start)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
+from recognition import is_browser_chrome
+from recorder_noise import is_blank_value
 from step_suggest import is_drafted_description, step_identity
 from sub_process_maps import map_tree
 
@@ -121,6 +125,10 @@ _TYPED_KINDS = ("value_changed", "text_changed")
 # Literal junk an old recorder emits as a typed "value": never a business
 # value, so it is neither printed nor compared as re-keyed data.
 _NOISE_VALUES = frozenset({"null", "(null)", "undefined", "(undefined)"})
+# What a secret the recorder redacted (value_redacted) reads as its value in
+# the fields typed, the Data section and the Technical details: "Password
+# typed (hidden)" (lane LF-PIPE; viewer/step-facts.js SECRET_VALUE).
+SECRET_VALUE = "typed (hidden)"
 # The shortest typed value compared as re-keyed data: below it, equal values
 # are noise (single digits, "OK"). A field whose vocabulary entry declares
 # `carries_value: true` is a known business-value carrier, so its values
@@ -721,9 +729,11 @@ class _Session:
 
     def entry_where(self, member, data) -> tuple[str, str]:
         """(system, screen) of one field entry: where its interaction was,
-        the system the analyst set on its step first (C16)."""
+        the system the analyst set on its step first (C16), the screen its
+        step's when the drafting made that one value-free (lane LF-PIPE)."""
         system, screen = self.ctx.where_datas([data])
-        return (step_system(member) or system), screen
+        system = step_system(member) or system
+        return system, self.ctx.value_free_screen(member, system) or screen
 
     def field_names(self, step) -> list[str]:
         """The distinct fields entered in a step, in the order first entered."""
@@ -733,13 +743,16 @@ class _Session:
         return list(seen)
 
     def screenshots(self, step) -> list[str]:
-        """The screenshots (session-relative paths) the document prints under
-        a step (contract C16): the one the analyst chose for the PDD
-        (`pdd_screenshot`: a recorder screenshot's path or an analyst
-        screenshot's id) when that file is in the session folder; else every
-        screenshot of the step, its recorder screenshots and then the ones
-        the analyst added to it. A recorder screenshot the analyst took off
-        the step (`hidden_screenshots`) is never printed."""
+        """The screenshot (session-relative path, in a list of one or none)
+        the document prints under a step (contract C16): the one the analyst
+        chose for the PDD (`pdd_screenshot`: a recorder screenshot's path or
+        an analyst screenshot's id) when that file is in the session folder;
+        else the step's first screenshot whose file is there, its recorder
+        screenshots first and then the ones the analyst added to it (lane
+        LF-PIPE: one per step, as a step now gets every screenshot taken
+        while it ran or before it). A recorder screenshot the analyst took
+        off the step (`hidden_screenshots`) is never printed, nor one
+        outside the folder."""
         hidden = {h for h in step.get("hidden_screenshots") or [] if isinstance(h, str)}
         choice = step.get("pdd_screenshot")
         chosen = self.screenshot_ref(choice)
@@ -752,7 +765,14 @@ class _Session:
         if isinstance(sid, str) and sid:
             refs += [_ANALYST_SHOTS + _file_name(a["file"]) for a in self.analyst_shots
                      if a.get("step_id") == sid and a["id"] not in hidden]
-        return refs
+        for ref in refs:
+            path = _safe_path(self.folder, ref)
+            if path is None:
+                logger.warning("pdd_export: skipping out-of-folder screenshot ref %r for step %s",
+                               ref, step.get("step_id", "?"))
+            elif path.is_file():
+                return [ref]
+        return []
 
     def screenshot_ref(self, ref) -> str:
         """The session-relative path a screenshot reference names: an
@@ -774,22 +794,29 @@ class _Session:
 
 
 def _entered(data) -> tuple[str, str] | None:
-    """(field, value) when this interaction entered a value into a field."""
-    if not isinstance(data, dict):
+    """(field, value) when this interaction entered a value into a field.
+    Lane LF-PIPE: a secret the recorder redacted reads SECRET_VALUE ("typed
+    (hidden)": "Password typed (hidden)"); a value made only of U+FFFC and
+    whitespace (an empty web field) is no value; the browser's address bar
+    is a navigation, never a field; and a choice whose control is named by
+    the option itself (a list item "Croatia", a cell "A2") names no field:
+    the option text is never a field's name."""
+    if not isinstance(data, dict) or is_browser_chrome(data):
         return None
     kind = data.get("kind")
     if kind in _TYPED_KINDS:
         if data.get("value_redacted") is True:
-            value = "(not recorded: secret field)"
+            value = SECRET_VALUE
         else:
             raw = data.get("value")
             value = raw.strip() if isinstance(raw, str) else ""
-            if not value or value.lower() in _NOISE_VALUES:
+            if not value or value.lower() in _NOISE_VALUES or is_blank_value(value):
                 return None
     elif kind == "selection_changed" and data.get("control_type") not in ("TabItem", "Tab"):
         raw = data.get("selected_value")
         value = raw.strip() if isinstance(raw, str) else ""
-        if not value:
+        label = data.get("meaningful_name") or data.get("name")
+        if not value or (isinstance(label, str) and label.strip() == value):
             return None
     else:
         return None

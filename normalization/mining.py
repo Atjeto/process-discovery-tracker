@@ -1,7 +1,8 @@
-"""Process mining + BPMN export (§8).
+"""BPMN export (§8).
 
-Wraps PM4Py's inductive miner and serializes its BPMN with a pure-Python
-layout, wrapped into rows so a long flow prints legibly on a page, with
+Serializes the step map's BPMN (a pm4py BPMN object, drawn by
+bpmn_observed from the step flow edges) with a pure-Python layout, wrapped
+into rows so a long flow prints legibly on a page, with
 what contract C18 puts beside the tasks (their kinds and colours, notes,
 data objects and a legend), and (contract C19) one plane per map: a
 sub-process's map is written inside its collapsed bpmn:subProcess and drawn
@@ -14,15 +15,6 @@ from __future__ import annotations
 import math
 import re
 import xml.etree.ElementTree as ET
-
-import pm4py
-from pm4py.objects.log.obj import EventLog
-
-
-def discover_inductive(log: EventLog, noise_threshold: float = 0.2):
-    """Inductive miner with noise filtering. Returns a BPMN object."""
-    return pm4py.discover_bpmn_inductive(log, noise_threshold=noise_threshold)
-
 
 # Map PM4Py BPMN node classes -> BPMN 2.0 XML element local-names.
 _NODE_TAG = {

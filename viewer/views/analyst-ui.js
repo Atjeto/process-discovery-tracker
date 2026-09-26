@@ -114,16 +114,22 @@ function stepExtrasHtml(step) {
   const shots = shotsOf(step);
   const hidden = AC.hiddenShotCount(step);
   const origin = recordingStartMs(s);
+  // The PDD prints one screenshot per step (lane LF-PIPE): the one chosen,
+  // else the step's first.
+  const chosen = shots.find((sh) => sh.ref === step.pdd_screenshot);
+  const printed = chosen || shots[0] || null;
   const shotHtml = shots.map((sh) => {
-    const inPdd = step.pdd_screenshot === sh.ref;
+    const inPdd = !!printed && printed.ref === sh.ref;
     return '<div class="step-shot-card" data-ref="' + escapeAttr(sh.ref) + '" data-kind="' + sh.kind + '">' +
       '<button type="button" class="step-shot" data-ref="' + escapeAttr(sh.ref) + '" data-rel="' + escapeAttr(sh.rel) + '" title="' +
         escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size") + '"><img src="' + escapeAttr(sh.url) + '" alt="' +
         escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : "")) + '">' + (sh.time ? '<span class="stamp">' + escapeHtml(sh.time) + "</span>" : "") + "</button>" +
       '<div class="step-shot-acts">' +
         '<button type="button" class="link-btn' + (inPdd ? " on" : "") + '" data-shot-act="pdd" aria-pressed="' + inPdd + '" title="' +
-          escapeAttr(inPdd ? "The PDD prints only this screenshot under the step. Click to print all of them again."
-            : "Print only this screenshot under the step in the PDD") + '">' + (inPdd ? "In the PDD" : "Use in PDD") + "</button>" +
+          escapeAttr(!inPdd ? "Print this screenshot under the step in the PDD, in place of the one it prints now"
+            : chosen ? "The PDD prints this screenshot under the step. Click to print the step's first screenshot again."
+              : "The PDD prints one screenshot per step: this one, the step's first. Use in PDD on another prints that one.") +
+          '">' + (inPdd ? "In the PDD" : "Use in PDD") + "</button>" +
         '<button type="button" class="link-btn" data-shot-act="remove" title="' + escapeAttr(sh.kind === "analyst"
           ? "Remove this screenshot you added. Ctrl+Z brings it back." : "Take this screenshot off the step; the recording keeps it.") + '">Remove</button>' +
       "</div></div>";
@@ -347,8 +353,8 @@ function _shotMenu(btn, stepId) {
   }, 0);
 }
 
-/* Use in PDD, and its inverse: the PDD prints this one screenshot under the
-   step (step.pdd_screenshot), or every one again. */
+/* Use in PDD, and its inverse: the PDD prints one screenshot under a step
+   (lane LF-PIPE): this one (step.pdd_screenshot), or the step's first again. */
 async function togglePdd(stepId, ref) {
   const anno = _anno();
   const st = _step(anno, stepId);
@@ -356,8 +362,8 @@ async function togglePdd(stepId, ref) {
   const on = st.pdd_screenshot !== ref;
   if (on) st.pdd_screenshot = ref; else delete st.pdd_screenshot;
   AC.markEdited(st);
-  if (await _save(anno, on ? "use a screenshot in the PDD" : "print every screenshot of the step")) {
-    toast(on ? "The PDD prints this screenshot under the step." : "The PDD prints every screenshot of the step again.", "success");
+  if (await _save(anno, on ? "use a screenshot in the PDD" : "print the step's first screenshot")) {
+    toast(on ? "The PDD prints this screenshot under the step." : "The PDD prints the step's first screenshot again.", "success");
   }
 }
 

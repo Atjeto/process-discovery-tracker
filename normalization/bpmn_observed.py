@@ -1,25 +1,26 @@
 """Observed-flow step BPMN.
 
-This module mines the ACTUAL annotated step flow (one trace per case,
-labelled by step name) into a BPMN with branches/loops: process_map_step.bpmn.
-It is the Process-diagram counterpart of the step Flow diagram
-(viewer/process-map-levels.js `buildAnnotationDfg`), and the two share the
-same trace logic so they agree.
+This module draws the ACTUAL annotated step flow (one trace per case,
+labelled by step name) as a BPMN with branches and loops:
+process_map_step.bpmn. It is the Process-diagram counterpart of the step Flow
+diagram (viewer/process-map-levels.js `buildAnnotationDfg`), and the two
+share the same edges so they agree.
 
-No Process Template is required. The model comes purely from the annotations, mined with the
-PM4Py inductive miner + pure-Python BPMNDI layout in mining.py
-(`mining.discover_inductive` + `mining.export_bpmn`). Each task carries its
-step's description and context as documentation, the start and end events
-take the document's Trigger and Result, and each branch says in how many
+No Process Template is required. The model comes purely from the
+annotations: the step flow edges (step_flow.flow_edges, the rule the
+viewer's live map shares: each transaction's steps one after another, plus
+the flow the analyst set on steps, contract C17: a condition, a loop back, a
+skip ahead, an early end), drawn with sequence flows and exclusive gateways
+(_flow_bpmn: a gateway after a step with several ways out and before a step
+with several ways in, each declared label the name of its flow), laid out
+by mining.export_bpmn. One transaction is a chain of its steps. Lane LF-PIPE
+(#9): the inductive miner is gone; it read the varying order of steps
+between transactions as work done in parallel, while every recorded
+transaction is one sequential trace. Each task carries its step's
+description and context as documentation, the start and end events take the
+document's Trigger and Result, and each branch says in how many
 transactions it was taken (write_observed_bpmn). The names and the
 documentation a person reads say "transaction" for a run (AD-29).
-
-When the analyst has set the flow on steps (contract C17: a condition, a
-loop back, a skip ahead, an early end), the map is drawn from the step flow
-edges instead (step_flow.flow_edges, the rule the viewer's live map shares):
-an exclusive gateway after a step with several ways out and before a step
-with several ways in, each declared label the name of its flow
-(_flow_bpmn).
 
 Contract C18 draws the map the way BPM tools do, from what the session
 already holds: the main end event is named by the outcome (the Result, else
@@ -77,7 +78,8 @@ def _run_steps(anno: dict[str, Any]) -> list[dict[str, Any]]:
 
 def real_case_count(anno: dict[str, Any]) -> int:
     """How many runs the visible steps belong to. Steps outside every run are
-    not counted, so they can never tip a one-run session into the miner."""
+    not counted, so they can never turn a one-run session's chain into a
+    map of several runs."""
     return len({s.get("case_id") for s in _run_steps(anno)})
 
 
@@ -181,11 +183,12 @@ def session_sequence(anno: dict[str, Any]) -> list[str]:
 def _linear_bpmn(labels: list[str]):
     """Render one trace as a literal chain: start -> t1 -> t2 -> ... -> end.
 
-    A single case is one observed path, so there is nothing to generalise. Run
-    through the inductive miner it would wrap any repeated label in branch/loop
-    gateways the lone trace can't justify -- and, being block-structured, smear
-    those diamonds across the whole diagram. A straight chain shows exactly what
-    the one case did; a label that recurs simply appears again in sequence.
+    A single case is one observed path, so there is nothing to generalise:
+    drawn from its edges, a label that recurs would become a loop the lone
+    trace cannot justify (the inductive miner, gone since lane LF-PIPE,
+    smeared such gateways across the whole diagram). A straight chain shows
+    exactly what the one case did; a label that recurs simply appears again
+    in sequence.
     """
     from pm4py.objects.bpmn.obj import BPMN
     bpmn = BPMN()
@@ -321,8 +324,7 @@ def _replay(start_nodes, out_arcs, trace: list[str]):
     """The flows one run's steps take through the model: a breadth-first
     search from a start event to an end event that meets the model's tasks
     in exactly the run's order (gateways and events pass through). None
-    when the model does not fit the run (the miner's noise filter can leave
-    out a rare path)."""
+    when the model does not fit the run."""
     from collections import deque
     from pm4py.objects.bpmn.obj import BPMN
     parent: dict[tuple[int, int], Any] = {}
@@ -777,36 +779,6 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
 
 # ---- contract C19: a map per sub-process, each a plane of the one file ----------
 
-def _plane_log(traces: list[list[dict[str, Any]]]) -> EventLog:
-    """The event log of a sub-process's map: one trace per trace of the map
-    (a visit of the sub-process), labelled by map node, consecutive
-    duplicates collapsed, with the steps' start times (build_annotation_log's
-    rule)."""
-    log = EventLog()
-    for i, steps in enumerate(traces):
-        trace = Trace()
-        trace.attributes["concept:name"] = f"trace-{i}"
-        trace.attributes["case:id"] = f"trace-{i}"
-        prev_label: str | None = None
-        for s in steps:
-            label = _step_label(s)
-            if label == prev_label:
-                continue
-            prev_label = label
-            e = Event()
-            e["concept:name"] = label
-            ts = (s.get("time_range") or {}).get("start")
-            if ts:
-                try:
-                    e["time:timestamp"] = _parse_ts(ts)
-                except (ValueError, TypeError):
-                    pass
-            trace.append(e)
-        if len(trace) > 0:
-            log.append(trace)
-    return log
-
-
 def _per_transaction(edges: list[dict], traces: list[list[dict[str, Any]]],
                      tx: list[int]) -> list[dict]:
     """The step flow edges of a sub-process's map, each counting the
@@ -824,17 +796,15 @@ def _per_transaction(edges: list[dict], traces: list[list[dict[str, Any]]],
     return [dict(e, transactions=len(taken.get((e["from"], e["to"]), ()))) for e in edges]
 
 
-def _plane_model(traces: list[list[dict[str, Any]]], tx: list[int], marked: bool,
-                 noise_threshold: float):
+def _plane_model(traces: list[list[dict[str, Any]]], tx: list[int], marked: bool):
     """(model, {id(flow): name}, {id(flow or end event): documentation},
     {id(early end)}, label room) of a sub-process's map, chosen as the main
-    map's is (contract C19): the step flow edges when the flow set on its
-    steps changes the map (_flow_bpmn), a chain for one trace, else the
-    miner; a sub-process with no steps is a start joined to an end. Its
-    counts are over the transactions `tx` of its traces, and none is said
-    unless one of them is `marked` (not the implicit run of a session
-    without a recording, C16)."""
-    import mining
+    map's is (contract C19): a chain for one trace without flow set on its
+    steps, else the step flow edges (_flow_bpmn, with label room when the
+    flow set on its steps changes the map); a sub-process with no steps is a
+    start joined to an end. Its counts are over the transactions `tx` of
+    its traces, and none is said unless one of them is `marked` (not the
+    implicit run of a session without a recording, C16)."""
     from pm4py.objects.bpmn.obj import BPMN
     if not traces:
         model = _OrderedModel()
@@ -843,22 +813,20 @@ def _plane_model(traces: list[list[dict[str, Any]]], tx: list[int], marked: bool
         model.add_flow(BPMN.Flow(start, end))
         return model, {}, {}, set(), False
     edges = step_flow.flow_edges(traces)
-    if step_flow.changes_map(edges):
+    declared = step_flow.changes_map(edges)
+    if declared or len(traces) > 1:
         model, names, docs, early = _flow_bpmn(_per_transaction(edges, traces, tx),
                                                len(set(tx)), count_runs=marked)
-        return model, names, docs, early, True
+        return model, names, docs, early, declared
     labels = [_collapse(_step_label(s) for s in trace) for trace in traces]
-    if len(traces) == 1:
-        model = _linear_bpmn(labels[0])
-    else:
-        model = mining.discover_inductive(_plane_log(traces), noise_threshold=noise_threshold)
+    model = _linear_bpmn(labels[0])
     names = branch_names(model, labels, groups=tx) if marked else {}
     return model, names, {}, set(), False
 
 
 def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: Any,
                         transactions: list[list[dict[str, Any]]], *, context: Any = None,
-                        implicit_runs: Any = (), noise_threshold: float = 0.2,
+                        implicit_runs: Any = (),
                         palette: dict | None = None, used: set | None = None,
                         app_order: Any = None) -> dict[int, dict]:
     """Contract C19: every map of sub_process_maps.map_tree below the main
@@ -898,7 +866,7 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
             tasks = [n for n in model.get_nodes()
                      if isinstance(n, BPMN.Activity) and n.get_name() == m["path"][-1]]
             if not tasks:
-                continue        # the miner left the node out: no task holds its map
+                continue        # a node the map does not draw: no task holds its map
             for task in tasks:
                 tags[id(task)] = "subProcess"
             planes[id(tasks[0])] = plane(index, m)
@@ -908,7 +876,7 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
         traces, tx = m["traces"], m["transactions"]
         cases = [case_of[t] for t in tx]
         model, flow_names, documentation, early, label_room = _plane_model(
-            traces, tx, not set(cases) <= implicit, noise_threshold)
+            traces, tx, not set(cases) <= implicit)
         groups: dict[str, list[tuple[Any, dict[str, Any]]]] = {}
         for c, trace in zip(cases, traces):
             for s in trace:
@@ -951,7 +919,6 @@ def _sub_process_planes(anno: dict[str, Any], task_tags: dict[int, str], model: 
 def write_observed_bpmn(
     anno: dict[str, Any],
     out_path: str,
-    noise_threshold: float = 0.2,
     *,
     context: Any = None,
     implicit_runs: Any = (),
@@ -959,7 +926,7 @@ def write_observed_bpmn(
     run_spans: Any = None,
     app_order: Any = None,
 ) -> bool:
-    """Mine the observed step flow into BPMN and write it (with layout).
+    """Draw the observed step flow as BPMN and write it (with layout).
 
     Returns True if a model was written, False when there is nothing to mine
     (no visible step in a run).
@@ -969,12 +936,13 @@ def write_observed_bpmn(
     file. Such steps used to pool into a synthetic trace of their own, which
     also tipped a one-run session into the miner.
 
-    A session with at most ONE run is rendered as a literal sequence rather
-    than mined: with one observed path there is nothing to generalise, and the
-    inductive miner would otherwise turn repeated/uncollapsed labels into
-    spurious branch/loop gateways and smear them across the diagram (the
-    "flower model"). The miner runs only with 2+ runs, where variation between
-    runs is a genuine basis for branches.
+    A session with at most ONE run is rendered as a literal sequence: with
+    one observed path there is nothing to generalise, and a label that recurs
+    simply appears again in sequence. With 2+ runs the map is drawn from the
+    step flow edges (_flow_bpmn): sequence flows and exclusive gateways where
+    the transactions went different ways, never a parallel split (lane
+    LF-PIPE, #9: the inductive miner that drew them is gone; every recorded
+    transaction is one sequential trace).
 
     What a process manager moving the map into a BPMN tool gets besides the
     shapes: each task carries its step's description, system, screen, run
@@ -996,9 +964,9 @@ def write_observed_bpmn(
 
     When the analyst has set the flow on steps (contract C17) and it changes
     the map (step_flow.changes_map), the map is drawn from the step flow
-    edges instead of the chain or the miner (_flow_bpmn): the same edges the
-    viewer's live map draws, with the declared labels as flow names and room
-    for them (mining.export_bpmn label_room). `run_order` lists the case
+    edges even for one run (_flow_bpmn): the same edges the viewer's live
+    map draws, with the declared labels as flow names and room for them
+    (mining.export_bpmn label_room). `run_order` lists the case
     ids in the viewer's transaction order, the order the labels of one flow
     are joined in. Each link to the end ends at an end event of its own,
     named by its `when` (C18, _arcs).
@@ -1030,17 +998,14 @@ def write_observed_bpmn(
     flow_names = None
     documentation: dict[int, str] = {}
     early_ends: set[int] = set()
-    if declared:
+    if declared or real_case_count(anno) > 1:
         implicit = set(implicit_runs or ())
         marked = not {s.get("case_id") for t in transactions for s in t} <= implicit
         bpmn, flow_names, documentation, early_ends = _flow_bpmn(
             edges, len(transactions), count_runs=marked)
-    elif real_case_count(anno) <= 1:
-        # One run: one observed path. Linearise its steps in time order
-        # instead of mining.
-        bpmn = _linear_bpmn(session_sequence(anno))
     else:
-        bpmn = mining.discover_inductive(log, noise_threshold=noise_threshold)
+        # One run: one observed path, its steps in time order.
+        bpmn = _linear_bpmn(session_sequence(anno))
     trigger = _first_line(_document_field(anno, "trigger"))
     result = _first_line(_document_field(anno, "result")) or _MAIN_END
     docs_by_label = task_documentation(anno, context, implicit_runs)
@@ -1062,8 +1027,7 @@ def write_observed_bpmn(
                          app_order=app_order)
     planes = _sub_process_planes(anno, extras["task_tags"], bpmn, transactions,
                                  context=context, implicit_runs=implicit_runs,
-                                 noise_threshold=noise_threshold, palette=palette, used=used,
-                                 app_order=app_order)
+                                 palette=palette, used=used, app_order=app_order)
     mining.export_bpmn(bpmn, out_path, documentation=documentation,
                        flow_names=flow_names, label_room=declared,
                        sub_planes=planes or None, **extras)

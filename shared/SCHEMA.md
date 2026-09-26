@@ -185,7 +185,7 @@ Sourced from Windows UI Automation through the C# recorder sidecar. See
 | `selected_value` | string | `selection_changed` only |
 | `toggle_state` | string | `toggle_changed` only: `on` \| `off` \| `indeterminate` |
 | `value` | string | `value_changed` only, clamped to 256 characters. **Omitted entirely when `value_redacted` is set.** |
-| `value_redacted` | bool | `value_changed` only; present (`true`) when the recorder **redacted a secret at capture**: the control was UIA-flagged `IsPassword` (a password or masked-secret field), so the `value` is omitted and the `TextPattern` and OCR recovery are skipped. The raw `events.jsonl` never holds the secret. This is the only redaction in the light version: there is no masking of other values (ADR-0029 D7). |
+| `value_redacted` | bool | `value_changed` only; present (`true`) when the recorder **redacted a secret at capture**: the control was UIA-flagged `IsPassword` (a password or masked-secret field), so the `value` is omitted and the `TextPattern` and OCR recovery are skipped. The raw `events.jsonl` never holds the secret. The step pane's fields typed, the PDD's Data section and the Technical details read it "typed (hidden)" ("Password typed (hidden)"), and a draft's narration "Typed Password (hidden)." (lane LF-PIPE). This is the only redaction in the light version: there is no masking of other values (ADR-0029 D7). |
 | `value_truncated` | bool | `value_changed` only; present (`true`) when the 256-character clamp fired, so the stored value is partial |
 | `value_source` | string | `value_changed` only; present **only when the value was recovered** off the primary UIA ValuePattern path (section 11e): currently `text_pattern` (read through `TextPattern` from a rich-text or document control whose ValuePattern was empty). Omitted on the normal path. |
 | `coverage_hint` | string | First interaction per process only: `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). How richly UIA exposes that app. |
@@ -214,6 +214,18 @@ matches an interaction, the pipeline adds, in its derived stream only:
 
 These fields are additive; the raw `name`, `control_type` and the rest
 always remain.
+
+**The derived stream's noise stage** (lane LF-PIPE,
+`normalization/recorder_noise.py`). Before the runs are found, the pipeline
+leaves out of its derived stream the interactions the user did not make (an
+empty web field, U+FFFC; a click, choice or toggle with no identity; the
+Office ribbon's changes; a desktop choice; a choice in a window without a
+title; one action reported twice; a screen rendering or reacting; a
+dropdown's echo; an address on the way to a page) and fills in the
+`window_title` and `process_name` a click lost (from the interactions with
+that title, else the one before it in its transaction, else the one after).
+`events.jsonl` is never changed; `stats.json` meta `recorder_noise` counts
+what was left out and filled in.
 
 ### Recorder snapshot messages (unused)
 
@@ -734,7 +746,7 @@ delete.
   "grain_keys": {
     "element": "string: the control the step acted on (automation_id or name)",
     "screen":  "string: vocab screen_id, else the value-free screen label (shared/screen-label-patterns.json)",
-    "app":     "string: process_name without .exe"
+    "app":     "string: process_name without .exe, else \"(app)\""
   },
   "description": "string",
   "time_range": { "start": "iso", "end": "iso" },
@@ -789,9 +801,10 @@ other change to a draft does.
   recorder screenshot's session-relative path (one of `screenshot_refs`), or
   the `id` of an entry of `analyst_screenshots`. Absent (or naming a file
   that is not in the session folder, or a hidden one) means the default:
-  every screenshot of the step, its `screenshot_refs` and then the analyst
-  screenshots whose `step_id` is the step. A path outside the session folder
-  is never embedded.
+  the step's first screenshot, its `screenshot_refs` first and then the
+  analyst screenshots whose `step_id` is the step (lane LF-PIPE: the PDD
+  prints one screenshot per step). A path outside the session folder is
+  never embedded.
 - **`hidden_screenshots`**: recorder screenshots (paths as in
   `screenshot_refs`) taken off the step. They are never printed, and the raw
   files are never deleted; removing a screenshot the analyst added deletes
@@ -1563,12 +1576,14 @@ the boxes, the lines and the other names.
 
 - **What it is drawn from.** The visible steps that belong to a run: one
   trace per run, nodes labelled by `process_label`, a step repeated back to
-  back counted once. One run is a plain sequence; two or more are mined.
-  When the flow the analyst set on steps (C17) changes the map (a condition,
-  or a path no transaction took), the map is drawn from the step flow edges
-  instead, the rule the viewer's live map uses: an exclusive gateway after a
-  step with several ways out and before a step with several ways in, loops
-  and early ends included.
+  back counted once. One run is a plain sequence; two or more are drawn
+  from the step flow edges, the rule the viewer's live map uses: sequence
+  flows and an exclusive gateway after a step with several ways out and
+  before a step with several ways in, loops included, never a parallel
+  gateway (lane LF-PIPE: every recorded transaction is one sequential
+  trace). When the flow the analyst set on steps (C17) changes the map (a
+  condition, or a path no transaction took), a single run is drawn from
+  the edges too, early ends included.
 - **Tasks.** Named by the step names; the system stays out of the name. A
   task is a `manualTask` (BPMN's hand marker) when every step it stands for
   was done outside every system: added by hand (manually authored, no
@@ -1626,8 +1641,8 @@ the boxes, the lines and the other names.
   coloured like a task, holding its own map, drawn in a
   `bpmndi:BPMNDiagram` of its own whose plane's `bpmnElement` is the
   sub-process. That map is chosen as the main
-  one (the flow edges when its steps' flow changes the map, a chain for one
-  trace, else the miner) from its own traces; a sub-process with no steps
+  one (a chain for one trace whose steps' flow does not change the map,
+  else the flow edges) from its own traces; a sub-process with no steps
   is a start joined to an end. Its start and main end are unnamed, its
   early ends named from their `when`. Its counts ("In N of M
   transactions", the branch names) are over the transactions that ran the
@@ -1822,6 +1837,7 @@ field") instead of the signature's default.
 | `dropped_jsonl_lines` | Lines that failed to parse. Zero is expected; see [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) otherwise. |
 | `collapsed_activity_count` | Activity events left after the section 7.1 step 7 collapse. |
 | `coalesced_event_count` | Events left after typing bursts were coalesced. |
+| `recorder_noise` | What stage 2 left out of the derived stream as the recorder's noise, not the user's actions, and the windows it filled in (`normalization/recorder_noise.py`, lane LF-PIPE), counts only: `{ dropped: {reason: count}, dropped_total, filled }`. The reasons: `no_identity`, `empty_value`, `office_ribbon`, `desktop`, `popup`, `repeat`, `render`, `reaction`, `after_click`, `dropdown_echo`, `repeat_choice`, `navigation`. |
 | `interaction_count` | Interaction events in the session. |
 | `case_count` | Runs in the session. |
 | `marker_edits_applied` | Edits from `annotations.json` `marker_edits` that took effect this run. |

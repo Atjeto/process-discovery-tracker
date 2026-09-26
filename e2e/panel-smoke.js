@@ -7,7 +7,7 @@
  * kept in the OS temp folder for the next run). Checks:
  *   (a) Attach video copies the video into the project folder (video/) and
  *       stores its path relative to the folder;
- *   (b) the map boxes name their system under the step name;
+ *   (b) the map boxes name their system under the step name, unless the name names it;
  *   (c) the step panel from each of its three doors (a map box, a timeline
  *       step band, a Steps row with Watch) opens with its own video cued to
  *       the row it highlights and plays the right occurrence there, beside
@@ -45,6 +45,7 @@ const { launchViewer, logActionError } = require("./throwaway-profile.js");
 const REPO = path.resolve(__dirname, "..");
 const VIEWER = path.join(REPO, "viewer");
 const StepFacts = require(path.join(VIEWER, "step-facts.js"));
+const SystemNames = require(path.join(VIEWER, "system-names.js"));
 const SRC = path.join(REPO, "sessions", "example-aggregate", "sess-2026-0514-0900");
 const electronPath = require(path.join(VIEWER, "node_modules", "electron"));
 const VIDEO = path.join(os.tmpdir(), "pdt-e2e-synthetic-32s-v1.webm");
@@ -305,8 +306,13 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.locator('#sp-body .sp-occ[data-step-id="' + SAVE.step_id + '"] .sp-play').click({ timeout: T });
     fromMap = Object.assign({ st, cue }, await played(SAVE));
   } catch (e) { map.err = errText(e); }
-  record("(b) V2 item 3: every map box names its system under the step name (Salesforce, SAP, Excel, Outlook, Notepad; never the browser)",
-    !map.err && map.all.length > 0 && map.all.every((n) => n.system && n.label === n.id + "\n" + n.system) &&
+  // Lane LF-PIPE (#24): a box whose step name already names its system
+  // (the demo drafts "Salesforce" and a screen, a colon, the commit) leaves
+  // the system line out; the system stays in the box data.
+  const boxLabel = (n) => [n.id, SystemNames.systemLine(n.id, n.system)].filter(Boolean).join("\n");
+  record("(b) V2 item 3 and lane LF-PIPE: every map box names its system under the step name (Salesforce, SAP, Excel, Outlook, Notepad; never the browser), unless the step name already names it",
+    !map.err && map.all.length > 0 && map.all.every((n) => n.system && n.label === boxLabel(n)) &&
+      map.all.some((n) => n.label === n.id + "\n" + n.system) && map.all.some((n) => n.label === n.id) &&
       map.save.system === "Salesforce" && !map.all.some((n) => /Chrome/.test(n.system)),
     JSON.stringify(map.err || map.all.map((n) => n.system)));
   record("(c1) V2 item 4 + AD-29: a map box opens the step panel beside the map (its name, system, transactions, one row per occurrence, Open in Steps) and plays the Transaction 1 occurrence in its video",

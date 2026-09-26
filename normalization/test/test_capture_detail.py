@@ -67,3 +67,23 @@ def test_no_caveat_without_the_coverage_fields_or_without_interactions():
     junk = [None, {"type": "interaction", "data": None},
             {"type": "interaction", "data": {"process_name": 7, "confidence": "x"}}]
     assert coverage_caveat(junk) is None
+
+
+def test_an_app_is_seen_with_less_detail_by_the_share_of_its_interactions_with_an_id():
+    """#17 (rec06: "The recorder saw less detail in 1 of 2 apps: Mspaint",
+    because Paint's first click, the one carrying the coverage hint, had no
+    id, though most of its clicks had one): the share of an app's
+    interactions that name their control by an automation id decides."""
+    paint = [_click("p1", 1, process_name="mspaint.exe", identity_source="name",
+                    confidence=0.7, coverage_hint="basic")]
+    paint += [_click(f"p{i}", i, process_name="mspaint.exe", identity_source="automation_id",
+                     confidence=0.95) for i in range(2, 6)]
+    assert coverage_caveat(paint) is None
+    named = [_click(f"n{i}", i, process_name="legacy.exe", identity_source="name",
+                    confidence=0.7) for i in range(1, 4)]
+    cav = coverage_caveat(named + [_click("n9", 9, process_name="legacy.exe",
+                                          identity_source="automation_id", confidence=0.95)])
+    assert [(a["app"], a["trust"]) for a in cav["flagged_apps"]] == [("legacy.exe", "basic")]
+    bare = [_click(f"b{i}", i, process_name="bare.exe", identity_source="class_name",
+                   confidence=0.6) for i in range(1, 4)]
+    assert [a["trust"] for a in coverage_caveat(bare)["flagged_apps"]] == ["minimal"]

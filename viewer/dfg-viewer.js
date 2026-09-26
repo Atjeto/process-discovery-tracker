@@ -26,6 +26,7 @@
 
   const PdtTheme = require("./theme.js");
   const Levels = require("./process-map-levels.js");
+  const SystemNames = require("./system-names.js");
   const { START, END, OTHERWISE } = Levels;
   // Joins an edge's two node ids: no step name has this character.
   const SEP = String.fromCharCode(1);
@@ -282,7 +283,8 @@
     if (flow.some((e) => e.from === START)) {
       elements.push({ data: { id: START, label: "Start", kind: "event", role: "start-event" } });
     }
-    // AD-28: a box names its step and, under it, the system it happened in.
+    // AD-28: a box names its step and, under it, the system it happened in,
+    // unless its name already names it (lane LF-PIPE, #24).
     // Lane FX2: a box flagged as waste says so on a last line, quietly.
     const systems = opts.nodeSystems || {};
     const waste = new Set(Array.isArray(opts.wasteNodes) ? opts.wasteNodes : []);
@@ -293,7 +295,7 @@
       elements.push({
         data: {
           id: n,
-          label: [n, system, waste.has(n) ? WASTE_MARK : ""].filter(Boolean).join("\n"),
+          label: [n, SystemNames.systemLine(n, system), waste.has(n) ? WASTE_MARK : ""].filter(Boolean).join("\n"),
           system,
           role: isStart ? "start" : isEnd ? "end" : "activity",
           sub: subs.has(n),

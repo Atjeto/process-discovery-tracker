@@ -198,8 +198,9 @@ def _normalize_staged(
         print(f"[normalize] excluded {exclude_report['excluded_count']} self/"
               f"ignored-process event(s) ({exclude_report['by_process']})")
 
-    # Stage 1a: coalesce typing bursts + apply annotation marker edits.
-    coalesced, edited, edits_applied = _run_coalesce(raw, annotations, cal)
+    # Stage 1a: coalesce typing bursts, leave out the recorder's noise (what
+    # the user did not do) + apply annotation marker edits.
+    coalesced, edited, edits_applied, noise = _run_coalesce(raw, annotations, cal)
 
     # Stage 2a/3: marker-based case assignment + app-vocab enrichment (with
     # the implicit run of a session without a recording, C16).
@@ -226,7 +227,7 @@ def _normalize_staged(
         taxonomy_path, taxonomy_report, worker_id, raw, dropped_lines,
         collapsed, total_interactions, edits_applied, merged_steps,
         coalesced, vocab_summary, draft_summary=draft_summary,
-        recorded=recorded, staging=staging)
+        recorded=recorded, staging=staging, recorder_noise=noise)
 
     # analysis.json: the transaction check, the capture detail, the PDD's
     # rows of sections 5 and 6 and the steps they were measured from.

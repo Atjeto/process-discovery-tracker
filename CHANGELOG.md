@@ -384,6 +384,24 @@ implementation notes
     transaction (not marked)" everywhere, the PDD included; exports are
     named after the project; the capture bar shows Pause and leaves it out
     of the time, and the name field sits above Make a zip.
+- **Real recordings read as the work, not the recorder's noise** (lane
+  LF-PIPE, from ten recordings of live apps). The analysis leaves out what
+  the user did not do: a web page's empty fields as it renders, a
+  dropdown's choice reported twice, the Office ribbon mirroring the
+  selected cell, Excel's formula list, the desktop behind the windows, a
+  click with no identity, an address on the way to a page. A click that
+  lost its window takes it from its page, so no step is named "(screen)"
+  in a made-up system "App". A web page's title loses the browser's
+  name and its record numbers, and a value in it (a customer's name) is
+  left out when the same screen shows other values in other
+  transactions, so identical orders draw one path. The step map draws
+  exclusive gateways only, never parallel ones for work done one step
+  after another. Every screenshot, the SME's own included, belongs to
+  the step it was taken in or before; the PDD prints one per step. A
+  password reads "Password typed (hidden)", never "Cleared Password".
+  Calculator, Character Map, Paint and File Explorer read by their names;
+  the thin-capture warning counts an app's actions with an id; a map box
+  no longer repeats a system its step's name already says.
 
 ### Removed
 

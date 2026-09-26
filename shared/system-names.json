@@ -11,6 +11,10 @@
     { "process": ["outlook", "olk"], "system": "Outlook" },
     { "process": ["winword"], "system": "Word" },
     { "process": ["notepad"], "system": "Notepad" },
+    { "process": ["calculatorapp", "calculator", "calc"], "system": "Calculator" },
+    { "process": ["charmap"], "system": "Character Map" },
+    { "process": ["mspaint", "paint"], "system": "Paint" },
+    { "process": ["explorer"], "system": "File Explorer" },
     { "process": ["chrome"], "system": "Google Chrome" },
     { "process": ["msedge"], "system": "Microsoft Edge" },
     { "process": ["firefox"], "system": "Firefox" }

@@ -189,9 +189,9 @@ keys a release does not know are kept as they are.
 ## BPMN export pivot (Adonis swap-and-go)
 
 The step map (`process_map_step.bpmn`) is BPMN 2.0 with diagram
-interchange: pm4py's inductive miner (`mining.discover_inductive`) builds the
-model from two or more runs, and `mining.export_bpmn` writes it with its own
-pure-Python layout. The edited As-Is and To-Be copies are saved by the
+interchange: `bpmn_observed` draws the model from the step flow edges
+(sequence flows and exclusive gateways; one run is a plain sequence), and
+`mining.export_bpmn` writes it with its own pure-Python layout. The edited As-Is and To-Be copies are saved by the
 viewer's BPMN editor (bpmn-js). The output is meant to import cleanly into a
 BPMN tool such as Adonis, but **that compatibility is not load-bearing**: if
 a tool rejects the file, the export is the place to change, not the design.

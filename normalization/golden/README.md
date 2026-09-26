@@ -24,11 +24,11 @@ A projection, not the full outputs: the full files change on every run
   start and one end event, with the end's name (the Result's first line,
   else "End").
 
-Gateway and flow counts are left out on purpose. They come from pm4py's
-inductive miner, which CI installs unpinned while the app bundles its own
-copy, so they can move with the miner version. The e2e connectivity check in
-`e2e/session-smoke.js` pins the map's shape instead (one connected graph,
-one entry step, one final step).
+Gateway and flow counts are left out on purpose: they came from pm4py's
+inductive miner, which CI installed unpinned. Since lane LF-PIPE the map is
+drawn from the step flow edges (no miner), and the projection was kept as it
+was. The e2e connectivity check in `e2e/session-smoke.js` pins the map's
+shape (one connected graph, one entry step, one final step).
 
 ## Semantics
 

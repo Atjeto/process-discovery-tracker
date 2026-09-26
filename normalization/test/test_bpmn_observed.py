@@ -1369,3 +1369,39 @@ def test_the_waste_mark_is_written_the_same_way_every_time():
 def json_copy(value):
     import json
     return json.loads(json.dumps(value))
+
+
+def test_steps_done_in_another_order_are_never_drawn_as_parallel_work():
+    """Lane LF-PIPE (#9): 7 of the 10 live recordings' step maps drew
+    parallel gateways, for transactions done one step after another (rec01's
+    three orders; rec04, rec11). The inductive miner read the steps' varying
+    order between transactions as concurrency. The map comes from the step
+    flow edges: sequence flows and exclusive gateways, each branch saying in
+    how many transactions it was taken."""
+    anno = {"steps": [
+        _step("A", "Search",      "2026-05-18T09:00:00Z"),
+        _step("A", "Enter items", "2026-05-18T09:00:10Z"),
+        _step("A", "Set address", "2026-05-18T09:00:20Z"),
+        _step("A", "Save",        "2026-05-18T09:00:30Z"),
+        _step("B", "Search",      "2026-05-18T09:10:00Z"),
+        _step("B", "Set address", "2026-05-18T09:10:10Z"),
+        _step("B", "Enter items", "2026-05-18T09:10:20Z"),
+        _step("B", "Save",        "2026-05-18T09:10:30Z"),
+        _step("C", "Search",      "2026-05-18T09:20:00Z"),
+        _step("C", "Enter items", "2026-05-18T09:20:10Z"),
+        _step("C", "Set address", "2026-05-18T09:20:20Z"),
+        _step("C", "Save",        "2026-05-18T09:20:30Z"),
+    ]}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "process_map_step.bpmn")
+        assert write_observed_bpmn(anno, out) is True
+        xml = Path(out).read_text(encoding="utf-8")
+        elements = _process_elements(out)
+    assert "parallelGateway" not in xml
+    tags = [tag for tag, _name in elements]
+    assert set(tags) <= {"startEvent", "endEvent", "task", "exclusiveGateway", "textAnnotation"}
+    assert tags.count("startEvent") == 1 and tags.count("endEvent") == 1
+    assert sorted(name for tag, name in elements if tag == "task") == [
+        "Enter items", "Save", "Search", "Set address"]
+    # A branch says in how many of the transactions it was taken.
+    assert "2 of 3 transactions" in xml and "1 of 3 transactions" in xml

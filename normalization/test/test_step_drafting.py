@@ -244,7 +244,9 @@ def test_commit_identity_falls_back_from_automation_id_to_name_to_class_name():
     assert key_of(aid="save-btn", name="Save", cls="btn") == "crm|CRM - Orders|Button:save-btn"
     assert key_of(aid="", name="Save", cls="btn") == "crm|CRM - Orders|Button:Save"
     assert key_of(aid="", name="", cls="btn-primary") == "crm|CRM - Orders|Button:btn-primary"
-    assert key_of(aid="", name="", cls="") == "crm|CRM - Orders|Button:?"
+    # Lane LF-PIPE (#2): a click without identity ends no step as a commit
+    # named after nothing; its step is a visit of its screen.
+    assert key_of(aid="", name="", cls="") == "crm|CRM - Orders|(visit)"
 
 
 def test_the_vocab_screen_id_and_meaningful_name_win():
@@ -371,23 +373,33 @@ def test_a_step_with_a_draft_key_is_its_own_process_label_in_every_state():
     }
 
 
-def test_screenshots_inside_the_time_range_are_attached():
-    def shot(eid, sec, path):
+def test_every_screenshot_goes_to_the_step_that_holds_it_else_the_step_it_precedes():
+    """Lane LF-PIPE (#10): a screenshot goes to the step whose time range
+    holds it; one taken between steps (a transaction's first screenshot
+    comes a moment before its first action; the SME's own, taken by hand)
+    to the step it precedes; one taken after every step to the last."""
+    def shot(eid, sec, path, kind="screenshot"):
         return {"event_id": eid, "type": "system", "timestamp": _ts(sec),
-                "data": {"kind": "screenshot", "path": path}}
+                "data": {"kind": kind, "path": path}}
     events = [
         shot("s0", 0.5, "screenshots/before.jpg"),
         _ev("e1", 1, "value_changed", aid="a", name="A", value="1"),
         shot("s1", 1.5, "screenshots/inside.jpg"),
         _ev("e2", 2, "invoked", ct="Button", aid="go", name="Go"),
         shot("s2", 2.0, "screenshots/at-end.jpg"),
-        shot("s3", 2.5, "screenshots/between.jpg"),
+        shot("s3", 2.5, "screenshots/by-hand.jpg", kind="screenshot_manual"),
         _ev("e3", 3, "value_changed", aid="a", name="A", value="2"),
+        shot("s4", 9.0, "screenshots/after.jpg"),
     ]
     steps = _by_start(auto_suggest_steps(events))
     assert steps[0]["evidence"]["screenshot_refs"] == [
-        "screenshots/inside.jpg", "screenshots/at-end.jpg"]
-    assert steps[1]["evidence"]["screenshot_refs"] == []
+        "screenshots/before.jpg", "screenshots/inside.jpg", "screenshots/at-end.jpg"]
+    assert steps[1]["evidence"]["screenshot_refs"] == [
+        "screenshots/by-hand.jpg", "screenshots/after.jpg"]
+    # A screenshot inside a stretch left out of the analysis goes to none.
+    left_out = [{"start": _ts(0.4), "end": _ts(0.6)}]
+    steps = _by_start(auto_suggest_steps(events, excluded_ranges=left_out))
+    assert "screenshots/before.jpg" not in steps[0]["evidence"]["screenshot_refs"]
 
 
 # --- re-analysis: preserved one-interaction steps are not re-drafted ---------
@@ -439,7 +451,10 @@ def test_draft_summary_is_numbers_only_in_run_order():
         _ev("a3", 3, "invoked", ct="Hyperlink", aid="", name="", cls="lnk", case="run-a"),
         _ev("a4", 4, "value_changed", aid="n", name="N", value="x", case="run-a",
             window="CRM - Customers"),
-        _ev("o1", 30, "invoked", ct="Button", aid="", name="", case=None),
+        # A button named by nothing but a record number: a commit whose
+        # value-free identity is "?" (a click with no identity at all ends
+        # no step, lane LF-PIPE).
+        _ev("o1", 30, "invoked", ct="Button", aid="", name="INC0010010", case=None),
     ]
     cases = {
         "run-b": {"case_id": "run-b", "parent_case_id": None, "start_ts": _ts(19)},
@@ -532,3 +547,69 @@ def test_the_flow_set_on_a_step_survives_re_analysis_in_every_state():
     redrafted = [s for s in again if _ids(s) == ["e6"]]
     assert len(redrafted) == 1 and redrafted[0]["state"] == "auto_suggested"
     assert "only_when" not in redrafted[0] and "links" not in redrafted[0]
+
+
+# --- lane LF-PIPE (#8): a screen whose title carries a value ------------------
+
+_DASH = " " + chr(45) + " "
+
+
+def test_screens_that_end_at_one_commit_in_different_transactions_are_one_screen():
+    """#8 (rec01: "New order for Contoso Ltd", "... Northwind Traders", "...
+    Tailspin Toys"; the customer's name is in the order form's title, so
+    three identical orders read as three paths). Screens that drafts of
+    different transactions end at the same commit of one app on, and that
+    no transaction visits two of, are one screen: the words their titles
+    share, an ellipsis where the value was, the browser's name gone. A
+    visit of such a screen takes it too."""
+    def order(case, sec, customer):
+        title = "New order for " + customer + _DASH + "Order Desk" + _DASH + "Google Chrome"
+        return [
+            _ev(case + "q", sec, "value_changed", aid="ord-qty", name="Quantity", value="2",
+                window=title, proc="chrome.exe", case=case),
+            _ev(case + "s", sec + 1, "invoked", ct="Button", aid="btn-save-order", name="Save order",
+                window=title, proc="chrome.exe", case=case),
+        ]
+    events = (order("run-1", 1, "Contoso Ltd") + order("run-2", 11, "Northwind Traders")
+              + order("run-3", 21, "Tailspin Toys"))
+    # run-2 also typed on its order form after saving: a visit of the screen.
+    events.append(_ev("late", 13, "value_changed", aid="ord-date", name="Delivery date",
+                      value="06.10.2026", window="New order for Northwind Traders" + _DASH
+                      + "Order Desk" + _DASH + "Google Chrome", proc="chrome.exe", case="run-2"))
+    drafts = _by_start(auto_suggest_steps(events))
+    screen = "New order for \u2026" + _DASH + "Order Desk"
+    assert {d["draft_key"] for d in drafts if d["end_reason"] == "commit"} == {
+        "chrome|" + screen + "|Button:btn-save-order"}
+    assert {d["name"] for d in drafts} == {screen + ": Save order", screen}
+    assert not any("Contoso" in d["name"] or "Chrome" in d["name"] for d in drafts)
+
+
+def test_screens_one_transaction_visits_both_stay_two_screens():
+    """#8: the rule never joins two screens one transaction was on, even
+    when they end at the same commit (a New and an Edit form sharing their
+    Save button)."""
+    new = "New customer" + _DASH + "CRM"
+    edit = "Edit customer" + _DASH + "CRM"
+    events = [
+        _ev("a1", 1, "invoked", ct="Button", aid="save", name="Save", window=new, case="run-1"),
+        _ev("a2", 2, "invoked", ct="Button", aid="save", name="Save", window=edit, case="run-1"),
+        _ev("b1", 11, "invoked", ct="Button", aid="save", name="Save", window=new, case="run-2"),
+    ]
+    names = sorted(d["name"] for d in auto_suggest_steps(events))
+    assert names == ["Edit customer" + _DASH + "CRM: Save", "New customer" + _DASH + "CRM: Save",
+                     "New customer" + _DASH + "CRM: Save"]
+
+
+def test_the_value_at_an_end_of_a_title_goes_with_its_separator():
+    """#8: a record's name as the first segment (Salesforce's "<record> |
+    Account | Salesforce") or a document's name before the program
+    (Word's "<file> | Word") goes whole; a value at the end with no
+    separator before it keeps its ellipsis."""
+    from step_suggest import _common_screen
+    assert _common_screen(["Contoso Ltd | Account | Salesforce",
+                           "Fabrikam | Account | Salesforce"]) == "Account | Salesforce"
+    assert _common_screen(["letter-novak.docx" + _DASH + "Word",
+                           "letter-horvat.docx" + _DASH + "Word"]) == "Word"
+    assert _common_screen(["Invoice for Contoso", "Invoice for Fabrikam"]) == "Invoice for \u2026"
+    assert _common_screen(["Orders", "Orders" + _DASH + "Archive"]) == ""
+    assert _common_screen(["Accounts", "Contacts"]) == ""

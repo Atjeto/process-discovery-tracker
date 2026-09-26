@@ -229,7 +229,8 @@ def test_steps_and_controls_lists_the_reference_transaction_in_step_order(tmp_pa
     assert first["Class name"] == "x-input" and first["Identity source"] == "automation_id"
     assert first["Confidence"] == 0.95 and first["Window title"] == SF
     assert first["Program"] == "chrome.exe" and first["System"] == "Salesforce"
-    assert dict(zip(TD.STEPS_HEADER, body[3]))["Value"] == "(not recorded: secret field)"
+    # Lane LF-PIPE: a redacted secret reads "typed (hidden)".
+    assert dict(zip(TD.STEPS_HEADER, body[3]))["Value"] == "typed (hidden)"
     remote = dict(zip(TD.STEPS_HEADER, body[5]))
     assert remote["Identity source"] == "none" and remote["Confidence"] == 0.1
     assert all(r[4] != "Noise" and r[6] != "Hidden click" for r in body)
@@ -245,8 +246,8 @@ def test_data_fields_hold_one_column_per_transaction(tmp_path):
     assert by_field["Account number"]["Transaction 2: Order 2"] == "ACC-200"
     assert by_field["Account number"]["Automation id"] == "acct-no"
     assert by_field["Account number"]["System and screen"].startswith("Salesforce")
-    # A password stays as recorded: not recorded.
-    assert by_field["Password"]["Transaction 1: Order 1"] == "(not recorded: secret field)"
+    # A password stays as recorded: typed, its value hidden (lane LF-PIPE).
+    assert by_field["Password"]["Transaction 1: Order 1"] == "typed (hidden)"
     assert by_field["Password"].get("Transaction 2: Order 2", "") == ""
 
 

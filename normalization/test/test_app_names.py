@@ -131,3 +131,25 @@ def test_display_name_finds_a_token_with_or_without_exe_in_any_case():
     assert display_name(None, names) == ""
     # Without a map, a listed application still gets its system name.
     assert display_name("EXCEL.EXE") == "Excel"
+
+
+def test_lane_lf_pipe_the_windows_apps_read_by_their_names():
+    """#17 (the live recordings: "CalculatorApp", "Charmap", "Mspaint"): the
+    common Windows apps have readable names; a browser page's system is the
+    site when the list knows it, else the browser."""
+    cases = {
+        ("CalculatorApp.exe", "Calculator"): "Calculator",
+        ("charmap.exe", "Character Map"): "Character Map",
+        ("mspaint.exe", "Untitled - Paint"): "Paint",
+        ("explorer.exe", "Documents"): "File Explorer",
+        ("WINWORD.EXE", "letter.docx - Word"): "Word",
+        ("EXCEL.EXE", "orders.xlsx - Excel"): "Excel",
+        ("OUTLOOK.EXE", "Inbox"): "Outlook",
+        ("notepad.exe", "notes.txt - Notepad"): "Notepad",
+        ("msedge.exe", "Order Desk"): "Microsoft Edge",
+        ("chrome.exe", "Contoso | Account | Salesforce"): "Salesforce",
+        ("chrome.exe", "Customer lookup - Order Desk"): "Google Chrome",
+    }
+    for (app, title), system in cases.items():
+        assert system_name(app, title) == system, (app, title)
+    assert build_app_names([_inter("mspaint.exe", "Untitled - Paint")]) == {"mspaint.exe": "Paint"}
