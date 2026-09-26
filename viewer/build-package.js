@@ -24,7 +24,6 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const { execSync } = require("node:child_process");
-const { packager } = require("@electron/packager");
 
 const PROJECT_DIR = __dirname;
 const OUT_DIR = path.join(PROJECT_DIR, "dist");
@@ -112,7 +111,8 @@ function stripLocales(appDir) {
   return { dropped, mb: (droppedBytes / (1024 * 1024)).toFixed(1) };
 }
 
-(async () => {
+async function main() {
+  const { packager } = require("@electron/packager");
   console.log("[1/3] Enumerating production deps via `npm ls --omit=dev`...");
   const prodDeps = getProdDepDirs();
   console.log(`    ${prodDeps.size} prod-dep package(s) in tree`);
@@ -156,7 +156,13 @@ function stripLocales(appDir) {
   }
 
   console.log("Wrote new app to:", out.join(", "));
-})().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+}
+
+module.exports = { buildIgnore };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

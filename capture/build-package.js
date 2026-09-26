@@ -16,7 +16,6 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const { execSync } = require("node:child_process");
-const { packager } = require("@electron/packager");
 
 const PROJECT_DIR = __dirname;
 const OUT_DIR = path.join(PROJECT_DIR, "dist");
@@ -63,7 +62,18 @@ function buildIgnore(prodDepDirs) {
     const m = norm.match(NM_PREFIX);
     if (m) {
       const pkgPath = m[1].toLowerCase().replace(/\\/g, "/");
-      if (!prodDepDirs.has(pkgPath)) return true;
+      if (/^\/node_modules\/@[^/]+$/.test(pkgPath)) {
+        // A scope folder itself ("/node_modules/@mapbox"): keep it when a
+        // production dependency lives in it, so its packages are judged one
+        // by one. Dropping the folder dropped every scoped runtime package:
+        // active-win could not load @mapbox/node-pre-gyp, so the packaged
+        // app never saw the foreground window (no app time, no app-switch
+        // screenshots), and obs-websocket-js lost @msgpack/msgpack.
+        const inScope = pkgPath + "/";
+        if (![...prodDepDirs].some((d) => d.startsWith(inScope))) return true;
+      } else if (!prodDepDirs.has(pkgPath)) {
+        return true; // devDep tree: drop
+      }
     }
     return IGNORE.some((re) => re.test(filePath));
   };
@@ -84,7 +94,8 @@ function stripLocales(appDir) {
   return { dropped, mb: (droppedBytes / (1024 * 1024)).toFixed(1) };
 }
 
-(async () => {
+async function main() {
+  const { packager } = require("@electron/packager");
   console.log("[1/3] Enumerating production deps via `npm ls --omit=dev`...");
   const prodDeps = getProdDepDirs();
   console.log(`    ${prodDeps.size} prod-dep package(s) in tree`);
@@ -119,7 +130,13 @@ function stripLocales(appDir) {
   }
 
   console.log("Wrote new app to:", out.join(", "));
-})().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+}
+
+module.exports = { buildIgnore };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

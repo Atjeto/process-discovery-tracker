@@ -434,6 +434,12 @@ implementation notes
     the screen changes"), so a process done in one browser has a picture
     under each step of the PDD, not only under the first step of each
     transaction.
+  - The packaged apps carry their scoped runtime packages. The packager
+    dropped folders such as node_modules/@mapbox, so the packaged capture
+    app never saw the foreground window (no time in each application, an
+    active time of 0s in the PDD, no app-switch screenshots, no warning
+    for a program it could not record) and the packaged viewer lost
+    dagre for the live map. Both filters are pinned by unit tests.
 
 ### Removed
 
