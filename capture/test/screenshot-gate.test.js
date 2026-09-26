@@ -4,7 +4,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { createScreenshotGate, isAppSwitch } = require("../screenshot-gate.js");
+const { createScreenshotGate, isAppSwitch, isScreenChange } = require("../screenshot-gate.js");
+const { normalizeTitle } = require("../tracker.js");
 
 function clock() {
   let t = 5_000;
@@ -51,4 +52,15 @@ test("the first program of a recording is not an app switch; a change after it i
   assert.strictEqual(isAppSwitch("Google Chrome", "Google Chrome"), false);
   assert.strictEqual(isAppSwitch("Google Chrome", "Microsoft Excel"), true);
   assert.strictEqual(isAppSwitch("Google Chrome", null), false);
+});
+
+test("another page in the same program is a screen change; the first screen, a count and another program are not", () => {
+  const at = (app, title) => ({ app, screen: normalizeTitle(title) });
+  const lookup = at("Google Chrome", "Customer lookup - Order Desk - Google Chrome");
+  assert.strictEqual(isScreenChange(null, lookup), false, "the first screen of the recording");
+  assert.strictEqual(isScreenChange(lookup, at("Google Chrome", "New order for Contoso Ltd - Order Desk - Google Chrome")), true);
+  assert.strictEqual(isScreenChange(lookup, at("Google Chrome", "(3) Customer lookup - Order Desk - Google Chrome")), false,
+    "an unread count is the same screen");
+  assert.strictEqual(isScreenChange(lookup, at("Microsoft Excel", "Orders.xlsx - Excel")), false, "another program is an app switch");
+  assert.strictEqual(isScreenChange(lookup, at("Google Chrome", "")), false, "a window without a title");
 });

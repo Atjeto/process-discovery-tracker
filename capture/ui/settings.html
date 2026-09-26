@@ -163,6 +163,7 @@
     </div>
   </div>
   <label class="check"><input type="checkbox" id="ss-onswitch" /><span>Capture on app switch</span></label>
+  <label class="check"><input type="checkbox" id="ss-onscreen" /><span>Capture when the screen changes (a new page or window in the same program)</span></label>
   <label class="check"><input type="checkbox" id="ss-onmarker" /><span>Capture when a transaction starts or ends</span></label>
   <label class="fld" for="ss-idle">Capture on resume after idle (minutes)</label>
   <input type="number" id="ss-idle" min="0" max="240" step="1" />
@@ -216,6 +217,7 @@ async function load() {
   $("ss-enabled").checked  = ss.enabled !== false;
   $("ss-quality").value    = Number.isFinite(ss.quality) ? ss.quality : 60;
   $("ss-onswitch").checked = ss.on_app_switch !== false;
+  $("ss-onscreen").checked = ss.on_screen_change !== false;
   $("ss-onmarker").checked = ss.on_marker_fire !== false;
   $("ss-idle").value       = Number.isFinite(ss.on_idle_resume_minutes) ? ss.on_idle_resume_minutes : 5;
   $("ss-display").value    = ss.display || "active";
@@ -248,6 +250,7 @@ function build() {
       enabled:                 $("ss-enabled").checked,
       quality:                 num("ss-quality", 60),
       on_app_switch:           $("ss-onswitch").checked,
+      on_screen_change:        $("ss-onscreen").checked,
       on_marker_fire:          $("ss-onmarker").checked,
       on_idle_resume_minutes:  num("ss-idle", 5),
       display:                 $("ss-display").value || "active",

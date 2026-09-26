@@ -46,4 +46,17 @@ function isAppSwitch(previousApp, currentApp) {
   return !!currentApp && previousApp != null && currentApp !== previousApp;
 }
 
-module.exports = { createScreenshotGate, isAppSwitch };
+/* A screen change: the same program shows another window title (a web
+   page, a form, a dialog), compared as tracker.normalizeTitle gives it, so
+   an unread count or the browser's name is no change. The first screen of
+   a recording is not a change (the transaction start's screenshot shows
+   it), and a change of program is the app switch's (lane LF-SHOT: a web
+   process lives in one browser, so only the first step of each
+   transaction had a screenshot for the PDD). Each argument is
+   { app, screen } or null. */
+function isScreenChange(previous, current) {
+  if (!previous || !current || !current.app || !current.screen) return false;
+  return previous.app === current.app && previous.screen !== current.screen;
+}
+
+module.exports = { createScreenshotGate, isAppSwitch, isScreenChange };

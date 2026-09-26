@@ -429,6 +429,11 @@ implementation notes
     of use with nothing recorded, so typing and Resume no longer raise it;
     the zip is named after the recording; the first screenshot is saved
     once; the integrity file stays true after the recording is named.
+  - A screenshot of every new screen: another page or window title in the
+    same program gets one at the next 5 s poll (Settings, "Capture when
+    the screen changes"), so a process done in one browser has a picture
+    under each step of the PDD, not only under the first step of each
+    transaction.
 
 ### Removed
 

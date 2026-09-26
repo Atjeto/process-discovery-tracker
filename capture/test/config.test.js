@@ -76,6 +76,7 @@ test("loadConfig: always supplies the keys main.js consumes without a fallback",
   assert.strictEqual(typeof config.auto_end_idle_minutes, "number");
   assert.strictEqual(typeof config.screenshots.on_idle_resume_minutes, "number");
   assert.strictEqual(typeof config.screenshots.display, "string");
+  assert.strictEqual(config.screenshots.on_screen_change, true, "a screenshot per screen by default (lane LF-SHOT)");
   assert.strictEqual(typeof config.interactions.max_restarts_per_session, "number");
 });
 

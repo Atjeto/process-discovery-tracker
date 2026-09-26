@@ -42,6 +42,10 @@ const DEFAULTS = {
     enabled: true,
     quality: 60,
     on_app_switch: true,
+    /* Another window title in the same program (a web page, a form, a
+       dialog), seen at the 5 s poll: one screenshot per screen, so the
+       PDD has a picture under each step (lane LF-SHOT). */
+    on_screen_change: true,
     on_marker_fire: true,
     on_idle_resume_minutes: 5,
     /* Multi-monitor screen selection:

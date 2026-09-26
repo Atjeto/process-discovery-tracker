@@ -133,7 +133,7 @@ draining) is absorbed, not queued.
 | UI interactions | The C# UI Automation recorder sidecar | `interaction` events |
 | Transactions (runs) | One start per transaction, End transaction, Stop, a long idle stretch | `marker` events (`start` / `end`) |
 | Lifecycle | Start and stop, pause, idle, OBS, recorder health, dropped writes, programs the recorder cannot see | `system` events |
-| Screen | Electron `desktopCapturer`: on an app switch, when a transaction starts or ends, on resume after a long idle stretch, and by hand | screenshots |
+| Screen | Electron `desktopCapturer`: on an app switch, on another screen in the same program, when a transaction starts or ends, on resume after a long idle stretch, and by hand | screenshots |
 | Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | a video file and `obs/sync.json` |
 
 Events are appended to `events.jsonl` through a small batching queue:
@@ -147,7 +147,13 @@ a millisecond. Screenshot triggers are coalesced by a 2 second leading-edge
 debounce, and nothing new starts while a capture is still being taken
 (`screenshot-gate.js`), so coincident triggers (an app switch landing with
 a run start) collapse to one capture; the first program of a recording is
-not an app switch; a screenshot taken by hand is never suppressed.
+not an app switch; a screenshot taken by hand is never suppressed. Another
+window title in the same program (a web page, a form, a dialog, compared
+without unread counts and the browser's name) is another screen and gets
+a screenshot at the next 5 second poll (lane LF-SHOT): a web process lives
+in one browser, and without it only the first step of each transaction had
+a screenshot for the PDD. A screen shown for less than a poll can be
+missed.
 
 ## Recording lifecycle
 
@@ -323,7 +329,7 @@ Settings come in layers, each merged over the one before:
 | `idle_threshold_seconds` | `60` | OS idle time before an `idle_start` is recorded. |
 | `storage_warn_gb` | `50` | Setup (analyst) flags the recordings on this computer when their total size is above it. |
 | `hotkeys.start_picker`, `.end_innermost`, `.manual_screenshot` | `Control+Shift+S`, `Control+Shift+E`, `Control+Shift+P` | Start recording, then the next transaction; End transaction; Take a screenshot. |
-| `screenshots.enabled`, `.quality`, `.on_app_switch`, `.on_marker_fire`, `.on_idle_resume_minutes`, `.display` | `true`, `60`, `true`, `true`, `5`, `"active"` | The screenshot triggers, JPEG quality, and the monitor: `active` (the display with the focused window), `primary`, or `all` (one screenshot per display). |
+| `screenshots.enabled`, `.quality`, `.on_app_switch`, `.on_screen_change`, `.on_marker_fire`, `.on_idle_resume_minutes`, `.display` | `true`, `60`, `true`, `true`, `true`, `5`, `"active"` | The screenshot triggers, JPEG quality, and the monitor: `active` (the display with the focused window), `primary`, or `all` (one screenshot per display). |
 | `obs.required`, `.websocket_url`, `.websocket_password`, `.scene_name`, `.auto_create_scene` | `false`, `ws://127.0.0.1:4455`, none, the default scene named in `config.js`, `true` | OBS (below). |
 | `consent.mode`, `.version`, `.text` | `"off"`, `2`, the default text | The consent gate (below). |
 | `interactions.enabled`, `.required`, `.auto_restart`, `.max_restarts_per_session` | `true`, `false`, `true`, `3` | The recorder sidecar's lifecycle. |

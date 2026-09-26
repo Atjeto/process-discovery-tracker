@@ -47,6 +47,7 @@ screenshots:
   enabled: true
   quality: 60                 # JPEG quality 1-100
   on_app_switch: true
+  on_screen_change: true      # another window title in the same program (a web page, a form)
   on_marker_fire: true
   on_idle_resume_minutes: 5   # minimum idle duration before resume triggers a screenshot
   # Multi-monitor screen selection:

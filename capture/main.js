@@ -31,7 +31,7 @@ const {
 const path = require("node:path");
 const fs = require("node:fs");
 
-const { startTracker } = require("./tracker.js");
+const { startTracker, normalizeTitle } = require("./tracker.js");
 const {
   createSession,
   closeSession,
@@ -59,7 +59,7 @@ const { showEndSummaryWindow } = require("./end-summary-window.js");
 const { describeZipError } = require("./zip-folder.js");
 const { zipRecording } = require("./recording-zip.js");
 const { createBrowserWatchdog } = require("./browser-watchdog.js");
-const { createScreenshotGate, isAppSwitch } = require("./screenshot-gate.js");
+const { createScreenshotGate, isAppSwitch, isScreenChange } = require("./screenshot-gate.js");
 const { createRecordingControl } = require("./recording-control.js");
 const guidance = require("./capture-guidance.js");
 const { showSessionConfigWindow } = require("./session-config-window.js");
@@ -153,8 +153,9 @@ let idleStartMs = null;
    stretch; it is reset on idle_end so the next idle stretch can fire. */
 let autoEndedThisIdle = false;
 
-// App-switch screenshot tracking
+// App-switch and screen-change screenshot tracking
 let lastTrackedApp = null;
+let lastTrackedScreen = null;   // { app, screen }: the window seen at the last tick
 
 const { notifyUser, trayIconImage, trayWarningImage } = require("./notify.js");
 const { createDeadManMonitor } = require("./dead-man.js");
@@ -302,6 +303,16 @@ async function onTickHandler(status) {
     const switched = isAppSwitch(lastTrackedApp, status.currentApp);
     lastTrackedApp = status.currentApp;
     if (switched) fireScreenshot("screenshot");
+  }
+  /* Screen-change screenshot trigger (lane LF-SHOT): another window title
+     in the same program is another screen, and the PDD prints a
+     screenshot under each step. Not while one of our own windows (the
+     bar) is in front: the grab would show what is behind it. */
+  if (config && config.screenshots.enabled && config.screenshots.on_screen_change && status.currentApp) {
+    const screen = { app: status.currentApp, screen: normalizeTitle(status.currentTitle) };
+    const changed = isScreenChange(lastTrackedScreen, screen);
+    lastTrackedScreen = screen;
+    if (changed && !BrowserWindow.getFocusedWindow()) fireScreenshot("screenshot");
   }
 }
 
@@ -767,6 +778,7 @@ async function startSession() {
   }
 
   lastTrackedApp = null;
+  lastTrackedScreen = null;
   screenshotFailureNotified = false;
   lastStatus = tracker.getStatus();
   startIdleMonitor();
