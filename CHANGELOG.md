@@ -4,10 +4,11 @@ All notable changes to the Process Discovery Tracker. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]: working title 2.0.0, the BA-helper refocus
+## [Unreleased]
 
-Draft notes for everything landed so far in the BA-helper refocus; a later
-release pass finalizes the version number and date. The app is refocused
+## [2.0.0] (2026-09-26): the BA-helper refocus
+
+The app is refocused
 from a product for a buyer into a tool for the owner's own work as a
 process manager / business analyst: an SME records a process a few times,
 one transaction each time, the analyst confirms the recorder's drafted

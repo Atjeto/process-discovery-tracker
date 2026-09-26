@@ -6,10 +6,9 @@ own PC. The analyst opens the recording, confirms the steps the recorder
 drafted for one transaction, reviews how the other transactions differ, and gets a process
 map and a tool-neutral process definition document (PDD).
 
-> **Status.** The light version (2.0.0) is in progress and not released yet.
-> The latest release, v1.5.0, is the earlier product edition; its code is
-> kept on branch `product-edition` (tag `product-edition-v1.5.0`). See
-> [CHANGELOG.md](CHANGELOG.md).
+> **Status.** The current release is v2.0.0 (2026-09-26), the light version.
+> The earlier product edition, v1.5.0, is kept on branch `product-edition`
+> (tag `product-edition-v1.5.0`). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Who uses it
 
