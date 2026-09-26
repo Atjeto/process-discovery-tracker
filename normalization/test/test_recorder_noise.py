@@ -223,6 +223,58 @@ def test_the_office_ribbon_mirrors_the_selection_its_clicks_stay():
     assert report["dropped"] == {"office_ribbon": 2}
 
 
+def test_a_ribbon_change_the_user_made_stays():
+    """rec03 (Word): Transaction 1 was the Font Size typed (14) and Bold on
+    and off (_seq 4 to 6), with nothing else of Word around them: the
+    user's own clicks and keys, which the recording holds no event for.
+    They stay, and the transaction gets its step back. The zoom saying 100
+    as the next letter came to the front (_seq 12 to 14) is the ribbon's
+    state and goes. A ribbon change a click on that control came just
+    before stays even beside a cell's change; one that only follows the
+    selected cell goes."""
+    novak = {"proc": "WINWORD.exe", "title": "letter-novak.docx" + SEP + "Word"}
+    horvat = {"proc": "WINWORD.exe", "title": "letter-horvat.docx" + SEP + "Word"}
+    ribbon = {"ct": "Button", "cls": "NetUIRibbonButton"}
+    t1, t2 = {"case_ids": ["run-1"]}, {"case_ids": ["run-2"]}
+    events = [
+        _ev("size", 557452, "value_changed", name="Font Size", cls="NetUITextbox", value="14",
+            **novak, **t1),
+        _ev("bold1", 566148, "toggle_changed", aid="Bold", name="Bold", toggle_state="1",
+            **ribbon, **novak, **t1),
+        _ev("bold0", 568678, "toggle_changed", aid="Bold", name="Bold", toggle_state="0",
+            **ribbon, **novak, **t1),
+        _ev("out", 582642, "value_changed", ct="Button", name="Zoom Out",
+            cls="NetUIRepeatButton", value="100", **horvat, **t2),
+        _ev("in", 582747, "value_changed", ct="Button", name="Zoom In",
+            cls="NetUIRepeatButton", value="100", **horvat, **t2),
+        _ev("zoom", 582825, "value_changed", ct="Slider", name="Zoom", cls="NetUISlider",
+            value="100", **horvat, **t2),
+        _ev("bold2", 588820, "toggle_changed", aid="Bold", name="Bold", toggle_state="1",
+            **ribbon, **horvat, **t2),
+        _ev("save", 597429, "invoked", aid="FileSave", name="Save", **ribbon, **horvat, **t2),
+    ]
+    kept, report = _kept(events)
+    assert kept == ["size", "bold1", "bold0", "bold2", "save"]
+    assert report["dropped"] == {"office_ribbon": 3}
+    steps = auto_suggest_steps(clean_recorder_noise(events)[0])
+    assert sorted(s["case_id"] for s in steps) == ["run-1", "run-2"]
+    book = {"proc": "EXCEL.exe", "title": "orders-week40.xlsx" + SEP + "Excel"}
+    events = [
+        _ev("cell", 0, "value_changed", ct="DataItem", aid="A2", name="A2", value="SO-48213",
+            **book),
+        _ev("click", 300, "invoked", aid="Bold", name="Bold", **ribbon, **book),
+        _ev("bold", 400, "toggle_changed", aid="Bold", name="Bold", toggle_state="1",
+            **ribbon, **book),
+        _ev("next", 3000, "value_changed", ct="DataItem", aid="B2", name="B2", value="4",
+            **book),
+        _ev("echo", 3300, "toggle_changed", aid="Bold", name="Bold", toggle_state="0",
+            **ribbon, **book),
+    ]
+    kept, report = _kept(events)
+    assert kept == ["cell", "click", "bold", "next"]
+    assert report["dropped"] == {"office_ribbon": 1}
+
+
 # ---- #7: one choice reported twice ----------------------------------------------------
 
 def test_one_action_reported_twice_counts_once():

@@ -178,6 +178,11 @@ END_RUN_END = "run_end"
 # The commit part of a draft_key when the step did not end on a commit.
 VISIT = "(visit)"
 
+# Lane LF-PIPE: the controls that open a record from a list (a link, a list
+# item), and the words of that commit when the record is all its name says.
+_RECORD_TYPES = frozenset({"Hyperlink", "ListItem"})
+OPEN_A_RECORD = "Open a record"
+
 
 def _has_identity(data: dict[str, Any]) -> bool:
     """True when the interaction names its control: an automation_id, a name
@@ -257,13 +262,17 @@ def _commit_label(data: dict[str, Any]) -> str:
     """The commit's words in a default name: the vocab meaningful_name, else
     the control's name, else its control type. The two names are taken
     value-free like the identity (_commit_part), so a draft name never
-    carries the record a link opened."""
+    carries the record a link opened; a link or list item whose name is
+    nothing but a record's number ("INC0010010" in a ServiceNow list) is
+    "Open a record" (lane LF-PIPE)."""
     for field in ("meaningful_name", "name"):
         _f, text = _first_text(data, (field,))
         label = _value_free(text)
         if label:
             return label
     _f, ct = _first_text(data, ("control_type",))
+    if ct in _RECORD_TYPES and _first_text(data, ("name",))[1]:
+        return OPEN_A_RECORD
     return ct or "?"
 
 
@@ -315,15 +324,16 @@ def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
     without its name and key yet (_name_drafts gives them, once the
     screens are value-free across the transactions, and its screenshots
     come from _attach_screenshots). Its parts are kept in `_parts` until
-    then: (app, screen, commit, commit label)."""
+    then: (app, screen, commit, commit label, whether its name identified
+    the commit)."""
     first, last = stretch[0]["data"], stretch[-1]["data"]
     app = _draft_app(first) or "(app)"
     screen = _draft_screen(first)
     if end_reason == END_COMMIT:
-        commit, _rung = _commit_part(last)
+        commit, rung = _commit_part(last)
         label = _commit_label(last)
     else:
-        commit, label = VISIT, ""
+        commit, label, rung = VISIT, "", ""
     start, end = stretch[0]["timestamp"], stretch[-1]["timestamp"]
     return {
         "step_id": str(uuid.uuid4()),
@@ -347,14 +357,14 @@ def _draft_step(stretch: list[dict[str, Any]], end_reason: str, *,
         "draft_key": "",
         "name_source": "draft",
         "end_reason": end_reason,
-        "_parts": (app, screen, commit, label),
+        "_parts": (app, screen, commit, label, rung == "name"),
     }
 
 
 # The ellipsis that stands for the value a screen's title held (U+2026), and
 # the separators of a title's segments (a hyphen, a pipe, a colon, an en or
 # em dash, built with chr() so this source holds no dash characters).
-VALUE_MARK = "…"
+VALUE_MARK = "\u2026"
 _SEPARATORS = {"-", "|", ":", "::", chr(0x2013), chr(0x2014)}
 
 
@@ -400,7 +410,7 @@ def value_free_screens(drafts: list[dict[str, Any]]) -> dict[tuple[str, str], st
     seen: dict[tuple[str, str], set] = {}
     groups: dict[tuple[str, str], dict[str, set]] = {}
     for d in drafts:
-        app, screen, commit, _label = d["_parts"]
+        app, screen, commit, _label, _by_name = d["_parts"]
         seen.setdefault((app, screen), set()).add(d.get("case_id"))
         if commit != VISIT and not commit.endswith(":?"):
             groups.setdefault((app, commit), {}).setdefault(screen, set()).add(d.get("case_id"))
@@ -419,15 +429,56 @@ def value_free_screens(drafts: list[dict[str, Any]]) -> dict[tuple[str, str], st
     return out
 
 
+def value_free_commits(drafts: list[dict[str, Any]],
+                       screens: dict[tuple[str, str], str]) -> dict[int, tuple[str, str]]:
+    """Lane LF-PIPE: {index of a draft: (commit part, commit label)} for the
+    drafts that end on a link or a list item named by a record ("VPN drops
+    every hour (In progress)" in a ticket queue, an account in a list view).
+    Such commits are one commit when their names identify them, they are on
+    one screen of one app (value_free_screens), their names differ, drafts
+    of two transactions or more end on them, and the step after each is on
+    one screen (the record they open). The commit is then named by the
+    words the names share (_common_screen), else "Open a record", and the
+    draft_key takes that name. A link with an automation id, and links that
+    lead to different screens (a menu's Reports and Settings), keep theirs."""
+    def where(d: dict[str, Any]) -> tuple[str, str]:
+        app, screen = d["_parts"][0], d["_parts"][1]
+        return app, screens.get((app, screen), screen)
+
+    groups: dict[tuple, dict[str, list[int]]] = {}
+    for n, d in enumerate(drafts):
+        commit, by_name = d["_parts"][2], d["_parts"][4]
+        ct, _sep, name = commit.partition(":")
+        after = drafts[n + 1] if n + 1 < len(drafts) else None
+        if (not by_name or ct not in _RECORD_TYPES or after is None
+                or after.get("case_id") != d.get("case_id")):
+            continue
+        groups.setdefault((where(d), ct, where(after)), {}).setdefault(name, []).append(n)
+    out: dict[int, tuple[str, str]] = {}
+    for (_here, ct, _there), names in groups.items():
+        cases = {drafts[n].get("case_id") for found in names.values() for n in found}
+        if len(names) < 2 or len(cases) < 2:
+            continue
+        label = _common_screen(list(names)) or OPEN_A_RECORD
+        for found in names.values():
+            for n in found:
+                out[n] = (f"{ct}:{label}", label)
+    return out
+
+
 def _name_drafts(drafts: list[dict[str, Any]], remembered: dict[str, str]) -> None:
     """Give each draft its screen, name and draft_key (C1): the screen made
-    value-free across the transactions (value_free_screens); the name the
-    analyst gave to its key in this session (C4), else "<screen>: <commit
-    label>", or "<screen>" for a step that did not end on a commit."""
+    value-free across the transactions (value_free_screens), and a commit
+    that opens one record or another named by what the records share
+    (value_free_commits); the name the analyst gave to its key in this
+    session (C4), else "<screen>: <commit label>", or "<screen>" for a step
+    that did not end on a commit."""
     screens = value_free_screens(drafts)
-    for d in drafts:
-        app, screen, commit, label = d.pop("_parts")
+    commits = value_free_commits(drafts, screens)
+    for n, d in enumerate(drafts):
+        app, screen, commit, label, _by_name = d.pop("_parts")
         screen = screens.get((app, screen), screen)
+        commit, label = commits.get(n, (commit, label))
         draft_key = f"{app}|{screen}|{commit}"
         remembered_name = remembered.get(draft_key)
         d["name"] = remembered_name or (f"{screen}: {label}" if commit != VISIT else screen)
@@ -473,8 +524,10 @@ def auto_suggest_steps(
     C21; the project's activity library names runs of drafts afterwards,
     in _merge_steps.) Lane LF-PIPE: a screen whose window title carries a
     value (a customer's name) is named by the words its titles share across
-    the transactions (value_free_screens), and every screenshot goes to one
-    draft (_attach_screenshots)."""
+    the transactions (value_free_screens), a link that opens one record or
+    another by the words their names share, else "Open a record"
+    (value_free_commits), and every screenshot goes to one draft
+    (_attach_screenshots)."""
     remembered = dict(session_names or {})
     excluded = _parse_excluded_ranges(excluded_ranges)
     shots = _screenshot_index(events)

@@ -58,7 +58,9 @@ The Python pipeline the viewer runs by itself; see
   one screen, ending at the action that commits the work there (Save,
   Search, Submit) or where the work moves to another screen. A draft is named
   after its screen and that action, or with a name the analyst gave the same
-  step before.
+  step before. A customer's name in a window's title, or a ticket's subject
+  in the link that opened it, is left out when the other transactions show
+  other ones ("New order for …", "Open a record").
 - **The analyst's work is kept.** Confirmed, edited, added and hidden steps
   survive every analysis; only the drafts are redrafted, and a hidden draft
   stays hidden. The raw recording is never changed.

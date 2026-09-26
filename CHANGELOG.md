@@ -394,9 +394,12 @@ implementation notes
   in a made-up system "App". A web page's title loses the browser's
   name and its record numbers, and a value in it (a customer's name) is
   left out when the same screen shows other values in other
-  transactions, so identical orders draw one path. The step map draws
-  exclusive gateways only, never parallel ones for work done one step
-  after another. Every screenshot, the SME's own included, belongs to
+  transactions, so identical orders draw one path; a link named by the
+  ticket or account it opens reads "Open a record" (or the words the
+  names share) when the transactions opened different ones. A ribbon
+  change the user made (Word's Bold, a Font Size typed) stays. The step
+  map draws exclusive gateways only, never parallel ones for work done
+  one step after another. Every screenshot, the SME's own included, belongs to
   the step it was taken in or before; the PDD prints one per step. A
   password reads "Password typed (hidden)", never "Cleared Password".
   Calculator, Character Map, Paint and File Explorer read by their names;

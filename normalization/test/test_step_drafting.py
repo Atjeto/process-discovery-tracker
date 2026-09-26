@@ -264,13 +264,14 @@ def test_a_record_value_in_the_commit_control_stays_out_of_the_name_and_key():
     put the value into the draft name and the draft_key, so every run got a
     key of its own. The shared screen-label value rules now strip it, and a
     rung that is nothing but a value falls through to the next rung: two runs
-    that open different records share one key and one value-free name."""
+    that open different records share one key and one value-free name, "Open
+    a record" for a link named by the record's number alone (lane LF-PIPE)."""
     window = "Incidents | ServiceNow"
     screen_key = "chrome|Incidents | ServiceNow|"
     variants = {
         "the link text is the record": (
             {"aid": "", "name": "INC0010010"}, {"aid": "", "name": "INC0010011"},
-            screen_key + "Hyperlink:?", window + ": Hyperlink", "?"),
+            screen_key + "Hyperlink:?", window + ": Open a record", "?"),
         "the link name embeds the record": (
             {"aid": "", "name": "Open record: INC0010010"},
             {"aid": "", "name": "Open record: INC0010011"},
@@ -278,11 +279,11 @@ def test_a_record_value_in_the_commit_control_stays_out_of_the_name_and_key():
         "the automation_id embeds the record": (
             {"aid": "incident-INC0010010", "name": "INC0010010"},
             {"aid": "incident-INC0010011", "name": "INC0010011"},
-            screen_key + "Hyperlink:incident", window + ": Hyperlink", "automation_id"),
+            screen_key + "Hyperlink:incident", window + ": Open a record", "automation_id"),
         "all-value rungs fall through to the class name": (
             {"aid": "INC0010010", "name": "INC0010010", "cls": "linked formlink"},
             {"aid": "INC0010011", "name": "INC0010011", "cls": "linked formlink"},
-            screen_key + "Hyperlink:linked formlink", window + ": Hyperlink", "class_name"),
+            screen_key + "Hyperlink:linked formlink", window + ": Open a record", "class_name"),
     }
     for label, (first, second, key, name, rung) in variants.items():
         events = [
@@ -613,3 +614,80 @@ def test_the_value_at_an_end_of_a_title_goes_with_its_separator():
     assert _common_screen(["Invoice for Contoso", "Invoice for Fabrikam"]) == "Invoice for \u2026"
     assert _common_screen(["Orders", "Orders" + _DASH + "Archive"]) == ""
     assert _common_screen(["Accounts", "Contacts"]) == ""
+
+
+# --- lane LF-PIPE: a link named by the record it opens --------------------------
+
+_QUEUE = "Ticket queue" + _DASH + "Service Desk" + _DASH + "Google Chrome"
+
+
+def _open_ticket(case, sec, subject, number):
+    """rec09 _seq 44 to 53 (rec11 _seq 22 to 29 the same): search the queue,
+    open a ticket by its link, set its state, Update."""
+    ticket = number + _DASH + "Service Desk" + _DASH + "Google Chrome"
+    web = {"proc": "chrome.exe", "case": case}
+    return [
+        _ev(case + "q", sec, "value_changed", aid="q-search", name="Search tickets",
+            value="VPN", window=_QUEUE, **web),
+        _ev(case + "s", sec + 1, "invoked", ct="Button", aid="btn-q-search", name="Search",
+            window=_QUEUE, **web),
+        _ev(case + "l", sec + 2, "invoked", ct="Hyperlink", name=number + " " + subject,
+            window=_QUEUE, **web),
+        _ev(case + "t", sec + 4, "value_changed", ct="ComboBox", aid="tk-state", name="State",
+            value="Resolved", window=ticket, **web),
+        _ev(case + "u", sec + 10, "invoked", ct="Button", aid="btn-update", name="Update",
+            window=ticket, **web),
+    ]
+
+
+def _opened(drafts):
+    """The drafts that end on a ticket's link."""
+    return [d for d in _by_start(drafts) if _ids(d)[-1].endswith("l")]
+
+
+def test_links_named_by_the_records_they_open_are_one_commit():
+    """Lane LF-PIPE (rec09 _seq 46 "INC0012304 VPN drops every hour (In
+    progress)", rec11 _seq 24 "INC0012310 New starter needs a laptop (New)":
+    the ticket's subject named the step, "Ticket queue: VPN drops every
+    hour", and each transaction's step was a step of its own). Links on one
+    screen whose names differ between transactions and that open one screen
+    are one commit: named by the words their names share, else "Open a
+    record", in the name and in the draft_key."""
+    queue = "Ticket queue" + _DASH + "Service Desk"
+    events = (_open_ticket("run-1", 1, "VPN drops every hour (In progress)", "INC0012304")
+              + _open_ticket("run-2", 21, "New starter needs a laptop (New)", "INC0012310"))
+    drafts = auto_suggest_steps(events)
+    assert [d["draft_key"] for d in _opened(drafts)] == [
+        "chrome|" + queue + "|Hyperlink:Open a record"] * 2
+    assert [d["name"] for d in _opened(drafts)] == [queue + ": Open a record"] * 2
+    assert not any("VPN" in d["name"] or "laptop" in d["name"] for d in drafts)
+    shared = (_open_ticket("run-1", 1, "VPN drops every hour (In progress)", "INC0012304")
+              + _open_ticket("run-2", 21, "VPN drops at login (In progress)", "INC0012305"))
+    assert {d["name"] for d in _opened(auto_suggest_steps(shared))} == {
+        queue + ": VPN drops \u2026 (In progress)"}
+
+
+def test_a_link_one_transaction_opened_and_links_to_other_screens_keep_their_names():
+    """Lane LF-PIPE: rec09 as recorded (one transaction opened a ticket by its
+    link) keeps the link's name, as do links that lead to different screens
+    (a menu's Reports and Settings) and a link with an automation id."""
+    queue = "Ticket queue" + _DASH + "Service Desk"
+    one = _open_ticket("run-1", 1, "VPN drops every hour (In progress)", "INC0012304")
+    assert [d["name"] for d in _opened(auto_suggest_steps(one))] == [
+        queue + ": VPN drops every hour (In progress)"]
+    home = "Home" + _DASH + "Intranet"
+    menu = [
+        _ev("r", 1, "invoked", ct="Hyperlink", name="Reports", window=home, case="run-1"),
+        _ev("r2", 2, "value_changed", aid="period", name="Period", value="Q3",
+            window="Reports" + _DASH + "Intranet", case="run-1"),
+        _ev("s", 11, "invoked", ct="Hyperlink", name="Settings", window=home, case="run-2"),
+        _ev("s2", 12, "value_changed", aid="theme", name="Theme", value="Dark",
+            window="Settings" + _DASH + "Intranet", case="run-2"),
+        _ev("p", 21, "invoked", ct="Hyperlink", aid="lnk-help", name="Help desk",
+            window=home, case="run-3"),
+        _ev("p2", 22, "value_changed", aid="topic", name="Topic", value="VPN",
+            window="Reports" + _DASH + "Intranet", case="run-3"),
+    ]
+    assert sorted(d["draft_key"] for d in auto_suggest_steps(menu) if d["end_reason"] == "commit") == [
+        "crm|" + home + "|Hyperlink:Reports", "crm|" + home + "|Hyperlink:Settings",
+        "crm|" + home + "|Hyperlink:lnk-help"]

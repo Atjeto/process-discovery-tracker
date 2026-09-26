@@ -19,8 +19,17 @@ An interaction is left out when (its reason in the report):
                  reads from an empty input) and whitespace: an empty field
                  is not a typed value. A value the recorder did not record
                  (no value at all: a secret) is not empty;
-  office_ribbon  a change on the Office ribbon (a NetUI class): it mirrors
-                 the selected cell or text. A click on the ribbon stays;
+  office_ribbon  a change on the Office ribbon (a NetUI class) that mirrors
+                 the selection: one within 1 s of a change of its program
+                 outside the ribbon (a cell, a field; before or after it, as
+                 a typed value is written a moment after its keys), with no
+                 click on that control just before it; and any value on a
+                 ribbon button or slider (the zoom saying 100 as another
+                 document comes to the front). A ribbon change with nothing
+                 else of its program around it is the user's own click or key
+                 (Word's Bold, Ctrl+B, the Font Size typed), which the
+                 recording holds no event for, and stays, as do the
+                 ribbon's clicks;
   desktop        a choice on the desktop (explorer.exe, "Program Manager")
                  that no click on that item caused;
   popup          a choice in a window without a title: a transient list
@@ -61,12 +70,16 @@ from _dt import parse_ts_or_none as _parse_ts
 from recognition import is_browser_chrome
 
 # U+FFFC, the object replacement character Chrome's text reads from an input.
-OBJECT_CHAR = "￼"
+OBJECT_CHAR = "\ufffc"
 
 _SAME_ACTION_MS = 50      # repeat, render, reaction
 _AFTER_CLICK_MS = 150     # after_click
-_ECHO_MS = 1000           # dropdown_echo, repeat_choice
+_ECHO_MS = 1000           # dropdown_echo, repeat_choice, office_ribbon
 _NAVIGATION_MS = 3000     # navigation
+
+# The ribbon's fields a user types or picks a value into (Font, Font Size);
+# a value on any other ribbon control is the state it shows.
+_RIBBON_FIELDS = ("Edit", "ComboBox")
 
 _CHANGES = ("value_changed", "selection_changed", "toggle_changed")
 _CLICK_KINDS = ("invoked", "selection_changed", "toggle_changed")
@@ -132,6 +145,11 @@ def _time(ev: dict):
 def _empty(data: dict) -> bool:
     return (data.get("kind") == "value_changed" and data.get("value_redacted") is not True
             and is_blank_value(data.get("value")))
+
+
+def _ribbon(data: dict) -> bool:
+    """True for the Office ribbon and status bar (a NetUI class)."""
+    return _text(data.get("class_name")).startswith("NetUI")
 
 
 def _is_address_bar(data: dict) -> bool:
@@ -246,7 +264,7 @@ def clean_recorder_noise(events: list[dict[str, Any]] | None
             reason = "no_identity"
         elif _empty(d):
             reason = "empty_value"
-        elif kind in _CHANGES and _text(d.get("class_name")).startswith("NetUI"):
+        elif kind in _CHANGES and _ribbon(d) and _ribbon_echo(idx, n, datas, times):
             reason = "office_ribbon"
         elif (kind == "selection_changed" and _desktop(d)
               and not (last_click is not None and _element(datas[last_click]) == _element(d)
@@ -318,6 +336,26 @@ def _near(idx: list[int], n: int, times: dict, within_ms: float):
                 break
             yield m
             m += step
+
+
+def _ribbon_echo(idx: list[int], n: int, datas: dict, times: dict) -> bool:
+    """True when the ribbon change at idx[n] mirrors the selection: a value
+    on a ribbon button or slider, or a change with another change of its
+    program outside the ribbon within 1 s before or after it and no click on
+    the same control within 1 s before it."""
+    d = datas[idx[n]]
+    if d.get("kind") == "value_changed" and _text(d.get("control_type")) not in _RIBBON_FIELDS:
+        return True
+    echoed = clicked = False
+    for m in _near(idx, n, times, _ECHO_MS):
+        o = datas[idx[m]]
+        if _program(o) != _program(d):
+            continue
+        if m < n and o.get("kind") == "invoked" and _element(o) == _element(d):
+            clicked = True
+        elif o.get("kind") in _CHANGES and not _ribbon(o):
+            echoed = True
+    return echoed and not clicked
 
 
 def _dropdown_echo(idx: list[int], n: int, datas: dict, times: dict) -> bool:

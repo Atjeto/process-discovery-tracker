@@ -219,8 +219,9 @@ always remain.
 `normalization/recorder_noise.py`). Before the runs are found, the pipeline
 leaves out of its derived stream the interactions the user did not make (an
 empty web field, U+FFFC; a click, choice or toggle with no identity; the
-Office ribbon's changes; a desktop choice; a choice in a window without a
-title; one action reported twice; a screen rendering or reacting; a
+Office ribbon mirroring the selection, never a ribbon change with nothing
+else of its program around it; a desktop choice; a choice in a window
+without a title; one action reported twice; a screen rendering or reacting; a
 dropdown's echo; an address on the way to a page) and fills in the
 `window_title` and `process_name` a click lost (from the interactions with
 that title, else the one before it in its transaction, else the one after).
@@ -936,8 +937,11 @@ drafted step carries:
   is `"<control_type>:<identity>"` of the commit interaction (identity:
   automation_id, else name, else class_name, else `"?"`, each passed through
   the shared value rules), or the literal `"(visit)"` when the step did not
-  end on a commit. The session's own names (C4) match on it (so did the
-  remembered-names store until contract C21, and the saved processes of C5
+  end on a commit. Lane LF-PIPE: links (or list items) known by their names,
+  on one screen, whose names differ between transactions and whose next
+  steps are on one screen, take the words the names share, else `Open a
+  record` (`step_suggest.value_free_commits`). The session's own names (C4)
+  match on it (so did the remembered-names store until contract C21, and the saved processes of C5
   until they left the app). A key is used whole, never split (a screen label can contain `|`).
 - **`name_source`**: `"remembered"` when the name is one the analyst gave
   before, `"library"` for a draft named from the project's activity library

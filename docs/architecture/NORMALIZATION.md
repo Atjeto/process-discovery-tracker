@@ -125,9 +125,13 @@ helpers in `pipeline_stages.py`, in this order:
    LF-PIPE; the reasons counted in `stats.json` meta `recorder_noise`): a
    click, choice or toggle with no identity; an empty value (only U+FFFC
    and blanks: an empty web field; a value the recorder did not record, a
-   secret, is not empty); a change on the Office ribbon (a NetUI class: it
-   mirrors the selected cell); a desktop choice no click caused; a choice
-   in a window without a title (Excel's formula AutoComplete); one action
+   secret, is not empty); a change on the Office ribbon (a NetUI class)
+   that mirrors the selection: within 1 s of a change of its program
+   outside the ribbon with no click on that control just before it, or a
+   value on a ribbon button or slider (the zoom), while a ribbon change
+   with nothing else of its program around it is the user's (Word's Bold,
+   the Font Size typed) and stays; a desktop choice no click caused; a
+   choice in a window without a title (Excel's formula AutoComplete); one action
    reported twice (the same element within 50 ms); a screen rendering (a
    burst of changes from its first empty field on); the screen's reaction
    (a change within 50 ms after the user's change on another element; a
@@ -169,7 +173,13 @@ helpers in `pipeline_stages.py`, in this order:
    words the titles share, an ellipsis where the value was: "New order for
    Contoso Ltd" and "New order for Northwind Traders" read "New order for
    …"; a record's name in "Contoso Ltd | Account | Salesforce" goes with
-   its separator: "Account | Salesforce"); every screenshot, the recorder's and the SME's, goes
+   its separator: "Account | Salesforce"); links (or list items) named by
+   the record they open ("VPN drops every hour (In progress)" in a ticket
+   queue) are one commit when their names differ between transactions and
+   the step after each is on one screen (`step_suggest.value_free_commits`:
+   the words the names share, else "Open a record", in the name and the
+   `draft_key`), and a link named by a record's number alone reads "Open a
+   record"; every screenshot, the recorder's and the SME's, goes
    to the draft whose span holds it, else the draft it precedes, else the
    last one (`_attach_screenshots`); a step's `grain_keys.app` is its
    program or `(app)`, never a word of a title. A draft's name comes from a step the analyst named in this
