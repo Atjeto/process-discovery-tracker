@@ -16,7 +16,9 @@ bar).
 2. PDT drafts the steps of each transaction and draws the process map.
 3. You fix and name the steps of one transaction, the reference transaction,
    and confirm it.
-4. You write the document fields, and PDT writes the PDD with the map.
+4. You write the document fields, and PDT writes the PDD with the map: the
+   process written down, for the SME to confirm and for whoever asks about
+   it.
 5. You hand the PDD and the whole project to the developers as a numbered
    version.
 
@@ -85,14 +87,15 @@ it is done; its button takes you to the next.
    transactions are not confirmed.
 8. **Fill the document fields on the Overview.** Open *Document* and write
    each field: title, purpose, scope, trigger, result, key contacts,
-   business rules, exceptions, and the improvement and automation scope
-   (notes are optional). For example, the title *Order to cash* and the
-   trigger *A customer order arrives by email*. The PDD prints each field in
-   its own place, and the title names the files PDT makes: *Order to cash
-   PDD.docx*. With a transcript, *Add to* puts a sentence into a field. The
-   *Observations* under the document are measured from the recording (here,
-   the product code is typed again in SAP as the material number), and the
-   PDD prints them too.
+   business rules, exceptions, volume and effort, and the improvement and
+   automation scope (notes are optional). For example, the title *Order to
+   cash*, the trigger *A customer order arrives by email* and the volume and
+   effort *About 40 orders a day, 3 minutes each*. The PDD prints each field
+   in its own place, and the title names the files PDT makes: *Order to cash
+   PDD.docx*. With a transcript, *Add to* puts a sentence into a field.
+   Where a value is typed again in another system (here, the product code
+   in SAP as the material number), the PDD says so under the improvement
+   scope.
 9. **Check the Map.** The Map shows the map the PDD prints: a box per step
    in its system's colour, and the decisions from the flow you set. Click a
    box to see each time the step happened, with its moment in the video and

@@ -44,36 +44,6 @@ test("the facts are no longer shown on the Overview, so a failed facts stage cla
   assert.ok(!control.includes("To say more"));
 });
 
-/* The PDD's sections 5 and 6 as analysis.json carries them (lane CC): no
-   field entry, no transaction marked, one system without a time. */
-const NO_ENTRIES = { heading: "Data", note: "No field entries were recorded in the steps of this process.",
-  header: ["Field", "System and screen", "Step", "Example value", "Re-keyed"], rows: [], rekeyed: [] };
-const TIMES = { heading: "Applications and time",
-  per_transaction: { heading: "Time per transaction", note: "One transaction (not marked), so there is no time per transaction.",
-    header: ["Transaction", "Steps", "Active time", "Elapsed time"], rows: [], after: null },
-  per_application: { heading: "Time in each application", note: null, header: ["System", "Screens", "Steps"],
-    rows: [["Phone", "", "Call the customer"]] } };
-
-test("a failed rows stage makes Data and Applications and time say they could not run, never an empty table", () => {
-  const out = html({ case_quality: CQ, facts: FACTS, findings: [], pdd_data: null, pdd_time: null,
-    stage_errors: [{ stage: "pdd_rows", error: "KeyError: 'rows'" }] });
-  assert.ok(out.includes(STAGE_NOT_RUN + ", so the fields entered are not listed."));
-  assert.ok(out.includes(STAGE_NOT_RUN + ", so the times are not measured."));
-  assert.ok(!out.includes("No field entries were recorded"));
-  assert.ok(!out.includes('class="ov-rows"'));
-});
-
-test("control: rows that ran and found no field entry say the PDD's own sentence, not that the check could not run", () => {
-  const out = html({ case_quality: CQ, facts: FACTS, findings: [], pdd_data: NO_ENTRIES, pdd_time: TIMES, stage_errors: [] });
-  assert.ok(out.includes("No field entries were recorded in the steps of this process."));
-  assert.ok(out.includes("One transaction (not marked), so there is no time per transaction."));
-  assert.ok(!out.includes(STAGE_NOT_RUN));
-  // A failed findings stage no longer touches the Observations: they read the PDD's rows.
-  const findingsFailed = html({ case_quality: CQ, facts: FACTS, findings: null, pdd_data: NO_ENTRIES, pdd_time: TIMES,
-    stage_errors: [{ stage: "findings", error: "not run: depends on failed stage(s) motifs" }] });
-  assert.ok(!findingsFailed.includes(STAGE_NOT_RUN) && findingsFailed.includes("No field entries were recorded"));
-});
-
 test("a failed run check is said on the Overview, not read as 'not analyzed'", () => {
   const out = html({ case_quality: null, facts: FACTS, findings: [FINDING],
     stage_errors: [{ stage: "case_quality", error: "TypeError: bad marker" }] });

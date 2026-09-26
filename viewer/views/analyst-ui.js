@@ -18,7 +18,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { persistAnnotations, ensureAnnoShape, beforeProjectWrite } = require("../session.js");
+const { persistAnnotations, ensureAnnoShape } = require("../session.js");
 const { escapeHtml, escapeAttr, toast, placeMenu, cryptoRandomId, recordingStartMs, sinceStart } = require("../dom.js");
 const { promptModal } = require("../modals.js");
 const AC = require("../analyst-content.js");
@@ -303,9 +303,6 @@ async function addScreenshot(stepId, source, data) {
     data = img.toPNG().toString("base64");
   }
   let r;
-  // Lane FX2: the Overview's rows refresh stops first (main refuses the copy
-  // while an analysis of the project runs).
-  await beforeProjectWrite(s.sessionFolder);
   try { r = await Ipc.addScreenshot({ sessionFolder: s.sessionFolder, source, data }); }
   catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   if (!r) return;   // the file dialog was cancelled
@@ -456,7 +453,6 @@ async function attachFile(stepId) {
   const s = _sess();
   if (!s) return;
   let r;
-  await beforeProjectWrite(s.sessionFolder);   // lane FX2, as for a screenshot
   try { r = await Ipc.addAttachment({ sessionFolder: s.sessionFolder }); }
   catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
   if (!r) return;

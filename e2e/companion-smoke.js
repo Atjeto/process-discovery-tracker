@@ -280,9 +280,8 @@ function zipFiles(buf) {
   // and no video, before its first step. The Timeline offers no control that
   // needs a drawn timeline (the Transaction select, Lanes, the zoom, the video
   // band with a second Attach video, the gallery, Raw events), and its Markers
-  // tab says what makes a timeline; the Observations say they are measured
-  // from the steps added, and an item opened says its one sentence once;
-  // Apps outside the process is not offered; Edit as the As-Is map is
+  // tab says what makes a timeline; the Overview has the document and no
+  // Observations (2.0.1); Apps outside the process is not offered; Edit as the As-Is map is
   // disabled with its reason, and Export's map image says why at once, with
   // no analysis and no file.
   let a3 = {};
@@ -299,19 +298,9 @@ function zipFiles(buf) {
       };
     });
     await level("overview");
-    a3.obs = await page.evaluate(async () => {
-      const who = ((document.querySelector("#ov-observations .ov-block-who") || {}).textContent || "").trim();
-      const d = document.querySelector('#ov-observations details[data-module="data"]');
-      const note = "No field entries were recorded in the steps of this process.";
-      const take = d.querySelector(".analysis-module-takeaway");
-      const closed = !d.open && take.textContent.trim() === note && getComputedStyle(take).visibility !== "hidden";
-      d.open = true;
-      await new Promise((r) => setTimeout(r, 150));
-      const opened = [...d.querySelectorAll(".analysis-module-takeaway, .ov-rows-note")]
-        .filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden" && el.textContent.trim() === note).length;
-      d.open = false;
-      return { who, closed, opened };
-    });
+    a3.obs = await page.evaluate(() => ({
+      host: !!document.getElementById("ov-observations"), doc: !!document.getElementById("ov-doc"),
+    }));
     await level("steps");
     a3.apps = await page.evaluate(() => {
       const b = document.getElementById("btn-ignored-apps");
@@ -337,11 +326,10 @@ function zipFiles(buf) {
     });
     a3.svgFile = fs.existsSync(svgOut);
   } catch (e) { a3.err = errText(e); }
-  record("(a3) lane FX3: no recording and no video: the Timeline offers none of the controls a drawn timeline needs (one Attach video, no Raw events), its Markers tab says a video makes one; the Observations are measured from the steps you added, a sentence read once when opened; no Apps outside the process; Edit as the As-Is map disabled with its reason, and the map image export says why at once, with no analysis and no file",
+  record("(a3) lane FX3: no recording and no video: the Timeline offers none of the controls a drawn timeline needs (one Attach video, no Raw events), its Markers tab says a video makes one; the Overview has the document and no Observations (2.0.1); no Apps outside the process; Edit as the As-Is map disabled with its reason, and the map image export says why at once, with no analysis and no file",
     !a3.err && a3.tl.controls.length === 0 && !a3.tl.raw && a3.tl.attach === 1 &&
       /once a video is attached/.test(a3.tl.markers) && !/right-click the timeline/.test(a3.tl.markers) &&
-      a3.obs.who === "Measured from the steps you added. The PDD prints them in sections 5 and 6." &&
-      a3.obs.closed === true && a3.obs.opened === 1 && !a3.apps &&
+      !a3.obs.host && a3.obs.doc && !a3.apps &&
       a3.fork.disabled && a3.fork.title === "No map to edit yet: add steps in Steps to build the map." &&
       a3.svg.toast === "No process map to export: the transactions have no steps yet." && !/Updating/.test(a3.svg.pills) && !a3.svgFile,
     JSON.stringify(a3));

@@ -79,7 +79,7 @@ def test_the_demo_pdd_prints_no_finding_and_the_analysis_writes_none(tmp_path):
     for key in CUT_KEYS:
         assert key not in analysis, key
     assert analysis["case_quality"]["case_count"] == 4
-    assert analysis["pdd_data"] and analysis["pdd_time"]
+    assert "pdd_data" not in analysis and "pdd_time" not in analysis
     assert analysis["stage_errors"] == []
     text = _text(tmp_path / "pdd.docx")
     for word in ("Findings", "What the recording measured", "To say more"):

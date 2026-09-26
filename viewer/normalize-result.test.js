@@ -110,15 +110,16 @@ test("analysisNeed: a recording with no stats.json or no analysis.json has no an
 
 test("analysisNeed (V2 item 10): the format number the pipeline writes tells an older analysis, not the keys it has", () => {
   const current = { stats: { meta: {} }, analysis: { format: R.ANALYSIS_FORMAT } };
-  assert.equal(R.ANALYSIS_FORMAT, 4, "4 since the analysis nobody read is cut and the capture detail is its own key (lane FX1)");
+  assert.equal(R.ANALYSIS_FORMAT, 5, "5 since the PDD's rows of sections 5 and 6 are the document's alone");
   assert.equal(R.analysisNeed(current), null, "control: today's analysis needs no run");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: R.ANALYSIS_FORMAT + 1 } }), null, "a newer one is read as it is");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 1 } }), "stale");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 2 } }), "stale", "an analysis without the PDD's rows is analyzed again");
   assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 3 } }), "stale", "lane FX1: one without coverage_caveat too");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: 4 } }), "stale", "one that still carries the PDD's rows too");
   assert.equal(R.analysisNeed({ stats: { meta: { draft_summary: { runs: 4 } } },
     analysis: { case_quality: { mode: "markers" }, stage_errors: [] } }), "stale", "every key of today, but no format: an older pipeline");
-  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: "4" } }), null, "read as a number");
+  assert.equal(R.analysisNeed({ stats: {}, analysis: { format: "5" } }), null, "read as a number");
 });
 
 test("analysisNeed: the pipeline writes the same format number the viewer reads", () => {

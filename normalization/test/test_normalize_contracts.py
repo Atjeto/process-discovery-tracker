@@ -137,7 +137,7 @@ def test_the_same_events_normalized_twice_give_identical_case_ids(tmp_path):
     # Every analysis stage ran, so C12's stage_errors is written empty.
     analysis = _read(session, "analysis.json")
     assert analysis["stage_errors"] == []
-    assert analysis["case_quality"] is not None and analysis["pdd_data"] is not None
+    assert analysis["case_quality"] is not None and analysis["coverage_caveat"] is None
 
 
 def test_a_preserved_step_with_a_legacy_case_id_moves_to_the_run_containing_it(tmp_path):
@@ -238,16 +238,17 @@ def test_readable_app_names_reach_the_stats_and_the_capture_detail(tmp_path):
 
 
 def test_analysis_json_holds_what_the_viewer_and_the_pdd_read(tmp_path):
-    """Lane FX1: the analysis layer nobody read is cut. analysis.json holds
-    the transaction check, the capture detail, the PDD's rows of sections 5
-    and 6, the steps they were measured from, the version of the activity
-    library the run used (contract C21: none here) and its format (4)."""
+    """Lane FX1: the analysis layer nobody read is cut; format 5 cut the
+    PDD's rows of sections 5 and 6 and their steps signature too (the
+    Overview no longer shows them). analysis.json holds the transaction
+    check, the capture detail, the version of the activity library the run
+    used (contract C21: none here) and its format (5)."""
     session = _make_session(tmp_path / "s")
     normalize_mod.normalize(session)
     analysis = _read(session, "analysis.json")
-    assert set(analysis) == {"meta", "case_quality", "coverage_caveat", "pdd_data", "pdd_time",
-                             "steps_signature", "library_version", "stage_errors", "format"}
-    assert analysis["format"] == pipeline_stages.ANALYSIS_FORMAT == 4
+    assert set(analysis) == {"meta", "case_quality", "coverage_caveat",
+                             "library_version", "stage_errors", "format"}
+    assert analysis["format"] == pipeline_stages.ANALYSIS_FORMAT == 5
     assert analysis["coverage_caveat"] is None and analysis["stage_errors"] == []
     assert analysis["library_version"] is None
 

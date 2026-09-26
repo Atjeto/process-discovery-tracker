@@ -142,7 +142,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <pre id="normalize-log"></pre>
         </details>
 
-        <!-- ========= OVERVIEW view (the home: the checklist, the project line, the document, the observations) ========= -->
+        <!-- ========= OVERVIEW view (the home: the checklist, the project line, the document) ========= -->
         <div class="session-layout-overview" id="session-layout-overview">
           <div id="overview-content"></div>
         </div>
@@ -451,7 +451,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>The SME records the process a few times: each pass is a transaction, for example one order.</li>
             <li>PDT drafts the steps of each transaction and draws the process map.</li>
             <li>You fix and name the steps of one transaction, the reference transaction, and confirm it.</li>
-            <li>You write the document fields, and PDT writes the PDD with the map.</li>
+            <li>You write the document fields, and PDT writes the PDD with the map: the process written down, for the SME to confirm and for whoever asks about it.</li>
             <li>You hand the PDD and the whole project to the developers as a numbered version.</li>
           </ol>
           <h3>Start a project</h3>
@@ -471,7 +471,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Set the flow where it branches or loops.</strong> Transaction 3 sent no confirmation email. On <em>Send the confirmation email</em>, click <em>Only when...</em> and type <em>the customer asked for a confirmation</em>. In transaction 2 the SME looked up a mapping in Notepad and did the SAP steps again. On <em>Create the sales order in SAP</em>, click <em>Go to...</em>, pick <em>Check the sales order in SAP</em> and type when: <em>SAP rejects the material number</em>. The map draws both.</li>
             <li><strong>Confirm the transaction.</strong> Click <em>Confirm transaction</em> (Ctrl+Enter). The steps you did not change are accepted as they are. <em>Undo confirm</em>, beside the <em>Confirmed</em> badge, takes it back.</li>
             <li><strong>Look at how the other transactions differ.</strong> Open transactions 2, 3 and 4 in Steps. Each lists how it differs from the reference transaction. Transaction 2 has an extra step (the Notepad lookup) and repeated steps. Transaction 3 reads <em>Not done</em> for the email, which is no difference once the email has its condition. Transaction 4 has no differences. The other transactions are not confirmed.</li>
-            <li><strong>Fill the document fields on the Overview.</strong> Open <em>Document</em> and write each field: title, purpose, scope, trigger, result, key contacts, business rules, exceptions, and the improvement and automation scope (notes are optional). For example, the title <em>Order to cash</em> and the trigger <em>A customer order arrives by email</em>. The PDD prints each field in its own place, and the title names the files PDT makes: <em>Order to cash PDD.docx</em>. With a transcript, <em>Add to</em> puts a sentence into a field. The <em>Observations</em> under the document are measured from the recording (here, the product code is typed again in SAP as the material number), and the PDD prints them too.</li>
+            <li><strong>Fill the document fields on the Overview.</strong> Open <em>Document</em> and write each field: title, purpose, scope, trigger, result, key contacts, business rules, exceptions, volume and effort, and the improvement and automation scope (notes are optional). For example, the title <em>Order to cash</em>, the trigger <em>A customer order arrives by email</em> and the volume and effort <em>About 40 orders a day, 3 minutes each</em>. The PDD prints each field in its own place, and the title names the files PDT makes: <em>Order to cash PDD.docx</em>. With a transcript, <em>Add to</em> puts a sentence into a field. Where a value is typed again in another system (here, the product code in SAP as the material number), the PDD says so under the improvement scope.</li>
             <li><strong>Check the Map.</strong> The Map shows the map the PDD prints: a box per step in its system's colour, and the decisions from the flow you set. Click a box to see each time the step happened, with its moment in the video and its screenshots. <em>Show how the transactions ran</em> shows the paths the transactions took; point at a line to see how often.</li>
             <li><strong>Export the PDD.</strong> Choose <em>Export</em>, <em>PDD (.docx)</em> and save it. Its folder opens with the file selected. The PDD is written again from the project each time, so export again after a change.</li>
           </ol>

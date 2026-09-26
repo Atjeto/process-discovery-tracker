@@ -917,68 +917,23 @@ async function unreadableAnnotationsPin() {
     !!(grainGone && !grainGone.err && grainGone.slider === 0 && grainGone.stateGrain === "undefined"),
     JSON.stringify(grainGone));
 
-  // Lane CC (one source with the PDD): the Overview's Observations are the
-  // PDD's sections 5 and 6 as analysis.json holds them. Applications and time
-  // lists the time of each transaction and each system (Salesforce, never
-  // the browser) with its screens, steps and time per transaction; no dot
-  // strip, no business-required editor, no candidate cards.
+  // The Overview holds the Checklist, the project line and the document: no
+  // dot strip, business-required editor or candidate cards, and (2.0.1) no
+  // Observations, the PDD's rows being the document's alone.
   const STATE_TIMEOUT = 15000;
   await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: STATE_TIMEOUT }).catch(() => {});
-  await page.waitForSelector('#ov-observations .analysis-module[data-module="time"]', { timeout: STATE_TIMEOUT }).catch(() => {});
-  const timeGoes = await page.evaluate(() => {
-    const s = require("./state.js").getSession();
-    const t = (s.analysis || {}).pdd_time || null;
-    const mod = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
-    if (!mod) return { present: false };
-    const tables = [...mod.querySelectorAll("table.ov-rows")].map((tb) =>
-      [...tb.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent)));
-    return {
-      present: true, format: (s.analysis || {}).format,
-      tables,
-      want: t ? [[t.per_transaction.header].concat(t.per_transaction.rows), [t.per_application.header].concat(t.per_application.rows)] : null,
-      gone: document.querySelectorAll("#overview-content .ts-dot, #overview-content .ts-strip, #overview-content .waste-row, " +
-        "#overview-content .auto-cards, #overview-content .ov-finding, #overview-evidence, #overview-content table.ov-time").length,
-      takeaway: ((mod.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim(),
-      items: [...document.querySelectorAll("#ov-observations .analysis-module")].map((m) => m.dataset.module),
-    };
-  }).catch((e) => ({ err: e.message }));
-  const apps = timeGoes && timeGoes.tables && timeGoes.tables[1] ? timeGoes.tables[1].slice(1) : [];
-  const tgOk = !!(timeGoes && !timeGoes.err && timeGoes.present && timeGoes.format === 4 && timeGoes.want &&
-    JSON.stringify(timeGoes.tables) === JSON.stringify(timeGoes.want) && timeGoes.tables[0].length === 5 &&
-    JSON.stringify(timeGoes.tables[1][0]) === JSON.stringify(["System", "Screens", "Steps", "Time per transaction"]) &&
-    apps.some((r) => r[0] === "Salesforce") && !apps.some((r) => /Chrome/.test(r[0])) &&
-    timeGoes.gone === 0 && /^Most time in .+: .+ per transaction$/.test(timeGoes.takeaway) &&
-    JSON.stringify(timeGoes.items) === JSON.stringify(["data", "time"]));
-  record("lane CC: the Observations' Applications and time is the PDD's section 6 as analysis.json holds it (Time per transaction for the 4 transactions, Time in each application with Salesforce, never the browser); no dot strip, total, editor or candidate cards",
-    tgOk, JSON.stringify(timeGoes));
-  if (!tgOk) await shot(page, "fail-applications-and-time.png");
-
-  // Item 21: an Observations item's open state persists per analyst
-  // (localStorage, pdt.analysis.* keys); closed is the default. Both
-  // directions, on the "time" item: opening it writes "1" and it comes back
-  // open after a re-render; closing it writes "0" and it comes back closed.
-  const toggleTime = (open) => page.evaluate(async (want) => {
-    const mod = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
-    if (!mod) return { present: false };
-    if (mod.open !== want) mod.querySelector("summary").click();
-    await new Promise((r) => setTimeout(r, 50));           // let the toggle event fire
-    let stored = null;
-    try { stored = localStorage.getItem("pdt.analysis.time"); } catch (_) {}
-    require("./views/overview-view.js").renderOverviewLevel();
-    const after = document.querySelector('#ov-observations .analysis-module[data-module="time"]');
-    return { present: true, stored, afterRerender: after ? after.open : null };
-  }, open).catch((e) => ({ err: e.message }));
-  const opened = await toggleTime(true);
-  const collapsed = await toggleTime(false);
-  record("(disclosure 21) an Observations item's open and closed states both persist across a re-render",
-    !!(opened && opened.present && opened.stored === "1" && opened.afterRerender === true &&
-      collapsed && collapsed.present && collapsed.stored === "0" && collapsed.afterRerender === false),
-    JSON.stringify({ opened, collapsed }));
-  // Restore the default (collapsed) so the persisted key doesn't leak to a human run.
-  await page.evaluate(() => {
-    try { localStorage.removeItem("pdt.analysis.time"); } catch (_) {}
-    require("./views/overview-view.js").renderOverviewLevel();
-  }).catch(() => {});
+  await page.waitForSelector("#ov-doc", { timeout: STATE_TIMEOUT }).catch(() => {});
+  const ovGone = await page.evaluate(() => ({
+    format: (require("./state.js").getSession().analysis || {}).format,
+    gone: document.querySelectorAll("#overview-content .ts-dot, #overview-content .ts-strip, #overview-content .waste-row, " +
+      "#overview-content .auto-cards, #overview-content .ov-finding, #overview-evidence, #overview-content table.ov-time, " +
+      "#ov-observations, #overview-content table.ov-rows").length,
+    doc: !!document.getElementById("ov-doc"),
+  })).catch((e) => ({ err: e.message }));
+  const ovOk = !!(ovGone && !ovGone.err && ovGone.format === 5 && ovGone.gone === 0 && ovGone.doc);
+  record("2.0.1: the Overview holds the document and no Observations (analysis.json format 5); no dot strip, total, editor or candidate cards",
+    ovOk, JSON.stringify(ovGone));
+  if (!ovOk) await shot(page, "fail-overview-no-observations.png");
 
   // Item 1: no recording linked → the tall black video stage collapses to a
   // slim band, and the freed height goes to the timeline + the side panel. On

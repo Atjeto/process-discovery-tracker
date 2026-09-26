@@ -53,8 +53,8 @@
 /** @type {ViewerState} */
 const _s = {
   currentSession: null,
-  // The Overview (the Checklist, the project line, the document, the
-  // Observations) is the level a loaded project opens on.
+  // The Overview (the Checklist, the project line, the document) is the
+  // level a loaded project opens on.
   currentLevel: "overview",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),

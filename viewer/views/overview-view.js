@@ -23,9 +23,6 @@
  *      and the sentences of an attached transcript; collapsed, with a
  *      one-line status that names the empty fields (open by default once
  *      every act is done).
- *   4. Observations, measured from the recording: the rows the PDD prints
- *      in its sections 5 and 6 (analysis-view.js). As the Overview opens,
- *      rows older than the steps are measured again (refreshRowsIfOlder).
  * Until the project is analyzed (the analysis runs by itself, AD-22) the
  * home is one note that says where the analysis is, and the project line.
  */
@@ -35,15 +32,13 @@
 const State = require("../state.js");
 const { escapeHtml, escapeAttr, toast, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
 const TM = require("../transcript-model.js");
-const { persistAnnotations, setBeforeWrite } = require("../session.js");
-const { observationsHtml, wireObservations } = require("./analysis-view.js");
+const { persistAnnotations } = require("../session.js");
 const RunsModel = require("../runs-model.js");
 const RunDiff = require("../run-differences.js");
 const SessionSummary = require("../session-summary.js");
 const { pushRecent } = require("../recent.js");
 const AnalystUI = require("./analyst-ui.js");
 const { isVideoCopy } = require("../analyst-files.js");
-const Fresh = require("../rows-freshness.js");
 const AsIsFresh = require("../asis-freshness.js");
 const AC = require("../analyst-content.js");
 const RO = require("../read-only.js");
@@ -171,6 +166,7 @@ const DOC_FIELDS = [
   { key: "contacts", label: "Key contacts", where: "Key contacts", ask: "Who owns the process, and who can answer questions?" },
   { key: "business_rules", label: "Business rules", where: "Business rules and exceptions", ask: "Which rules decide what happens?" },
   { key: "exceptions", label: "Exceptions", where: "Business rules and exceptions", ask: "What goes differently, and how is it handled?" },
+  { key: "effort", label: "Volume and effort", where: "Volume and effort", ask: "How often is the process done, and how long does one take?" },
   { key: "improvement", label: "Improvement and automation scope", where: "Improvement and automation scope", ask: "What could be improved or automated?" },
   { key: "notes", label: "Notes", where: "the last section, printed only when written", ask: "Anything else the PDD should say?", optional: true },
 ];
@@ -359,14 +355,9 @@ function _openDocument() {
   }
 }
 
-async function _goNext(act) {
+function _goNext(act) {
   const sess = State.getSession();
   if (!sess) return;
-  // The rows' refresh stops first (it would refuse the save a transaction
-  // opened in Steps makes); the document's field stops it as it takes the
-  // cursor (initOverview).
-  if (act !== "document") await stopRowsRefresh();
-  if (State.getSession() !== sess) return;
   const state = pathState(sess);
   if (act === "runs") { openMarkersInFlow(); return; }
   if (act === "pattern") { _openRunInSteps(state.pattern); return; }
@@ -583,7 +574,7 @@ function _wireVideoActs(host) {
 let _docOpen = null;
 let _docFolder = null;
 
-/* "6 of 9 written. To write: Trigger, Result, Improvement and automation
+/* "6 of 10 written. To write: Trigger, Result, Improvement and automation
    scope": the count, and the empty fields by name while some are written
    (with none written, every field is still to write). Commas only: a label
    can hold "and". */
@@ -765,8 +756,8 @@ function _documentHtml(anno, sess, open) {
       '<span class="ov-doc-label">' + escapeHtml(f.label) + (f.optional ? ' <span class="ov-doc-optional">optional</span>' : "") + "</span>" +
       input + "</label>";
   }).join("");
-  // The same disclosure as the Observations (.analysis-module): a title, who
-  // fills it, a one-line status that shows while it is closed, and a chevron.
+  // A disclosure (.analysis-module): a title, who fills it, a one-line status
+  // that shows while it is closed, and a chevron.
   return '<details class="analysis-section analysis-module ov-doc" id="ov-doc"' + (open ? " open" : "") + ">" +
     '<summary class="analysis-module-head" title="The PDD prints each field you write in place of its ' +
       'placeholder; the fields are kept for every later export.">' +
@@ -852,121 +843,6 @@ function _exportPdd() {
   pdd.click();
 }
 
-/* ---- The rows' refresh (lane CC) ------------------------------------------ */
-
-/* The Observations' rows are measured by the analysis, and the steps can
-   change after it (a rename in Steps). As the Overview opens, and only then
-   (renderer.js applyLevel, and a project opening on it), the steps on screen
-   are compared with the ones the rows were measured from
-   (rows-freshness.js): when they differ, the analysis runs once, by the
-   automatic path with its status line, the rows showing meanwhile under
-   "From the last analysis; refreshing", and the project reloads with the
-   new rows. It never runs while the analyst types here: a text field of the
-   Overview (the document, an attachment's label, the transcript search)
-   taking the cursor stops it, and so do leaving the Overview, another
-   project and any save (session.js setBeforeWrite), whose write it would
-   refuse. A refresh stopped so runs again the next time the Overview opens;
-   one that failed or was cancelled from the status line does not, for the
-   same steps. */
-let _deps = { analyze: null, busy: () => false, cancel: null };
-let _refresh = null;   // the refresh under way: { folder, signature, stopped, pipelineDone, done }
-let _tried = null;     // "<folder>|<signature>": the steps the last refresh ran for
-
-/* A field the analyst types in: a text box or a text area. */
-const _TEXT_ENTRY = 'textarea, input:not([type]), input[type="text"], input[type="search"]';
-function _isTextEntry(el) {
-  return !!(el && typeof el.matches === "function" && el.matches(_TEXT_ENTRY));
-}
-function _typingOnOverview() {
-  const host = document.getElementById("overview-content");
-  const el = document.activeElement;
-  return !!(host && el && host.contains(el) && _isTextEntry(el));
-}
-
-/* deps = { analyze(opts): the automatic analysis (flow-view.js
-   analyzeSession; opts.onPipelineEnd is called when the pipeline ends),
-   busy(): an analysis is queued or running, cancel(): stops the running one
-   without a message }. Called once at boot (renderer.js), which also wires
-   the one listener that stops the refresh as a text field of the Overview
-   takes the cursor (#overview-content stays; its content is rendered
-   again). */
-function initOverview(deps) {
-  _deps = Object.assign({ analyze: null, busy: () => false, cancel: null }, deps || {});
-  const host = typeof document !== "undefined" ? document.getElementById("overview-content") : null;
-  if (host && !host.dataset.rowsRefreshWired) {
-    host.dataset.rowsRefreshWired = "1";
-    host.addEventListener("focusin", (e) => { if (_isTextEntry(e.target)) stopRowsRefresh(); });
-  }
-}
-
-/* The line over the rows for `sess`: while the rows are older than the
-   steps, "refreshing" when an analysis of this project measures them now. */
-function _rowsLine(sess) {
-  const run = State.getAnalysisRun();
-  const refreshing = !!(sess && ((_refresh && _refresh.folder === sess.sessionFolder && !_refresh.stopped) ||
-    (run && run.folder === sess.sessionFolder && run.status === "running")));
-  return Fresh.freshnessLine(Fresh.rowsAge(sess), refreshing);
-}
-
-/* The line updated in place: the rest of the Overview, a field being typed
-   in included, is left as it is. */
-function _showRowsLine() {
-  const el = document.getElementById("ov-rows-freshness");
-  if (!el) return;
-  const text = _rowsLine(State.getSession());
-  el.textContent = text;
-  el.hidden = !text;
-}
-
-/* As the Overview opens: analyze once when the rows are older than the
-   steps (Fresh.refreshNeed). Returns whether a refresh started. */
-function refreshRowsIfOlder() {
-  const sess = State.getSession();
-  // Lane HV: a hand-off opened read only shows the rows it came with.
-  if (!sess || !_deps.analyze || RO.isReadOnly(sess)) return false;
-  const signature = Fresh.refreshNeed(sess, { busy: _deps.busy(), typing: _typingOnOverview(), tried: _tried });
-  if (!signature) return false;
-  const folder = sess.sessionFolder;
-  const job = { folder, signature, stopped: false, pipelineDone: false, done: null };
-  _refresh = job;
-  _tried = folder + "|" + signature;
-  let started;
-  try {
-    started = Promise.resolve(_deps.analyze({ onPipelineEnd: () => { job.pipelineDone = true; } }));
-  } catch (e) {
-    started = Promise.reject(e);
-  }
-  job.done = started
-    .catch((e) => { console.error("[overview] the rows were not measured again:", e); return false; })
-    .then(() => {
-      if (_refresh === job) _refresh = null;
-      // Stopped for the analyst: the next time the Overview opens tries again.
-      if (job.stopped && _tried === folder + "|" + signature) _tried = null;
-      _showRowsLine();
-    });
-  _showRowsLine();
-  return true;
-}
-
-/* Stop the rows' refresh (a text field of the Overview takes the cursor,
-   the analyst leaves the Overview or opens another project, a save is about
-   to be written). Resolves once its analysis has ended; at once when none runs,
-   or when its pipeline has already ended (the reload that follows refuses
-   nothing). */
-function stopRowsRefresh() {
-  const job = _refresh;
-  if (!job || job.pipelineDone) return Promise.resolve();
-  if (!job.stopped) {
-    job.stopped = true;
-    try { if (_deps.cancel) _deps.cancel(); } catch (e) { console.error("[overview] the refresh did not stop:", e); }
-    _showRowsLine();
-  }
-  return job.done || Promise.resolve();
-}
-
-// Any save stops the rows' refresh first (its analysis would refuse it).
-setBeforeWrite(() => stopRowsRefresh());
-
 /* ---- Render -------------------------------------------------------------- */
 
 /* Whether analysis.json carries the Overview's blocks at all: the run check
@@ -979,10 +855,9 @@ function hasAnalysisBlocks(analysis) {
    manifest, events, sessionFolder, integrity, recordingAvailable, transcript,
    transcriptError }). `run` is the recording's analysis run state
    (State.getAnalysisRun() for it, or null), `docOpen` whether the document
-   is shown open (null: the default) and `rowsLine` the line over the rows
-   ("" while they are current). Pure (no DOM, no State), so the unit tests
-   render fixture sessions through the same code. */
-function overviewHtml(sess, run, docOpen, rowsLine) {
+   is shown open (null: the default). Pure (no DOM, no State), so the unit
+   tests render fixture sessions through the same code. */
+function overviewHtml(sess, run, docOpen) {
   const analysis = sess && sess.analysis;
   if (!hasAnalysisBlocks(analysis)) {
     const stale = !!(analysis && sess.stats);
@@ -998,7 +873,6 @@ function overviewHtml(sess, run, docOpen, rowsLine) {
   // P1.10: the only typing the home asks for sits under the recording line;
   // once every stage is done it opens by itself, so the home leads with it.
   html += _documentHtml(anno, sess, docOpen == null ? state.ready : !!docOpen);
-  html += observationsHtml(sess, rowsLine);
   return html;
 }
 
@@ -1018,7 +892,7 @@ function renderOverviewLevel() {
   const active = document.activeElement;
   const typing = active && host.contains(active) && active.dataset && active.dataset.doc
     ? { key: active.dataset.doc, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
-  host.innerHTML = overviewHtml(sess, _runOf(sess), _docOpen, _rowsLine(sess));
+  host.innerHTML = overviewHtml(sess, _runOf(sess), _docOpen);
   _wireSummary(host);
   if (!hasAnalysisBlocks(sess.analysis)) return;   // the waiting note has nothing else to wire
 
@@ -1026,7 +900,6 @@ function renderOverviewLevel() {
   _wireDocument(host);
   AnalystUI.wireOverviewAttachments(host);
   _wireTranscript(host);
-  wireObservations(host);
   // Lane HV: the document of a hand-off opened read only is read, not typed in.
   if (RO.isReadOnly(sess)) RO.lockInputs(host.querySelector("#ov-doc"));
   if (typing) {
@@ -1044,7 +917,6 @@ function renderOverviewLevel() {
 
 module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
-  initOverview, refreshRowsIfOlder, stopRowsRefresh,
   mapEmptyText, hasAnalysisBlocks, waitingSentence,
   DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET, ASIS_STALE,
 };

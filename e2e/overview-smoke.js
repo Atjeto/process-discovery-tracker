@@ -10,30 +10,29 @@
  *   (b) the home leads with the Checklist (five acts worded as acts, each
  *       with its tooltip, one button; AD-29), the project line (the
  *       reference transaction's steps, not every one's; the video and the
- *       transcript with their Attach), the document, then the Observations;
- *       the findings feed, its evidence and the "include in PDD" ticks are
- *       gone, and no "More" menu or "Analyze session" button exists anywhere;
- *   (c) the Observations, "Measured from the recording. The PDD prints
- *       them in sections 5 and 6.": Data and Applications and time, the
- *       rows analysis.json holds (pdd_data, pdd_time), cell by cell, and the
- *       exported PDD's own tables equal to them (lane CC, one source);
+ *       transcript with their Attach), then the document; the findings
+ *       feed, its evidence and the "include in PDD" ticks are gone, and no
+ *       "More" menu or "Analyze session" button exists anywhere;
+ *   (c) 2.0.1: no Observations on the Overview, and analysis.json (format
+ *       5) without the PDD's rows (pdd_data, pdd_time, steps_signature);
  *   (c2) the moved controls are where they are used (ids kept);
  *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
  *   (d) the analyst path, walked on the demo: every next act lands where it
  *       says (the reference run open in Steps, each other run open in Steps,
  *       the document open on its first empty field), a done stage shows done,
- *       a field saves undoably, the nine fields (trigger, result and
- *       improvement included) save to annotations.json, the line then shrinks
- *       to one line, the Recents entry takes the title; the export with no
- *       As-Is copy hands the PDD the map from the runs (AD-28), then with an
- *       As-Is and a To-Be copy hands both; the Export menu's map items save
- *       the As-Is copy (P2.12);
+ *       a field saves undoably, the ten fields (trigger, result, volume
+ *       and effort, and improvement included) save to annotations.json, the
+ *       line then shrinks to one line, the Recents entry takes the title; the
+ *       export with no As-Is copy hands the PDD the map from the runs
+ *       (AD-28), and its sections 5 to 7 read as the document's own (the
+ *       systems and the information entered, the volume and effort written,
+ *       the re-keyed data under the improvement scope); then with an As-Is
+ *       and a To-Be copy it hands both; the Export menu's map items save the
+ *       As-Is copy (P2.12);
  *   (h) Attach video syncs with two clicks (click-to-sync), no typed offset;
  *       Cancel leaves the recording as it was;
- *   (k) lane CC: a step renamed in Steps, the Overview opened: its rows are
- *       measured again (the previous rows meanwhile, "From the last
- *       analysis; refreshing"), then show the new name; a document field
- *       taking the cursor stops that, and the next opening measures them;
+ *   (k) 2.0.1: a step renamed in Steps, the Overview opened: nothing is
+ *       analyzed, and a document field typed there saves;
  *   (e) on a marker-STRIPPED copy the Checklist says no transactions are
  *       marked, and its button opens the Timeline with the Markers panel
  *       showing;
@@ -183,6 +182,12 @@ function docxTables(xml) {
     [...t[1].matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g)].map((r) =>
       [...r[1].matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map((c) => text(c[1]))));
 }
+/* The text of a document.xml, its runs joined paragraph by paragraph (no
+   separator: a heading and the paragraph after it read as one string). */
+function docxText(xml) {
+  const dec = (t) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  return [...String(xml || "").matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => dec(m[1])).join("");
+}
 function zipNames(buf) {
   const names = [];
   zipCentral(buf, (n) => { names.push(n); return undefined; });
@@ -249,7 +254,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     JSON.stringify(fullHeight));
 
   // (b) The home: the Checklist first (five acts, one button), the project
-  // line next, then the document and the Observations.
+  // line next, then the document.
   const home = await page.evaluate(() => {
     const host = document.getElementById("overview-content");
     const kids = [...host.children].map((c) => c.id || c.className);
@@ -271,15 +276,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       summaryH: sum ? Math.round(sum.getBoundingClientRect().height) : null,
       removed: document.querySelectorAll(".ov-tile, .ov-facts, .ov-badge, #ov-mark-runs, .ov-export-bar, " +
         "#btn-ov-export-pdd, #session-summary, .ov-tier2").length,
-      // "N of 4 transactions" in the Re-keyed data sentence is how often it happened, not the count.
-      runsSaid: (text.match(/(?<!of )\b4 transactions\b/g) || []).length,
+      runsSaid: (text.match(/\b4 transactions\b/g) || []).length,
       oldWords: (text.match(/\bruns?\b|What is left/gi) || []).length,
       casesSaid: (text.match(/\b4 cases\b/g) || []).length,
       everyRunCount: /\b30 steps\b|steps confirmed/.test(text),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(b) AD-29: the home leads with the Checklist (Mark the transactions, Confirm the reference transaction, Review the other transactions, Write the document, Export the PDD, each with its tooltip; the first ticked, next the reference transaction, one button), then the project line, the document and the Observations",
-    !!(home && !home.err && same(home.kids, ["ov-next", "ov-summary", "ov-doc", "ov-observations"]) &&
+  record("(b) AD-29: the home leads with the Checklist (Mark the transactions, Confirm the reference transaction, Review the other transactions, Write the document, Export the PDD, each with its tooltip; the first ticked, next the reference transaction, one button), then the project line and the document",
+    !!(home && !home.err && same(home.kids, ["ov-next", "ov-summary", "ov-doc"]) &&
       home.lineLabel === "Checklist" &&
       home.next === "pattern" && home.buttons === 1 && home.button === "Confirm transaction 1 in Steps" &&
       home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,export:-" &&
@@ -316,63 +320,22 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       gone.analyze === 0 && gone.actionsBar === 0 && gone.log === "none" && gone.status === ""),
     JSON.stringify(gone));
 
-  // (c) The Observations (lane CC, one source with the PDD): two items,
-  // closed on a fresh profile with their takeaways; opened, Data is the PDD's
-  // section 5 and Applications and time its section 6, table by table, as
-  // analysis.json holds them (the PDD export below compares them with the
-  // document itself).
-  const obs = await page.evaluate(async () => {
-    const host = document.getElementById("ov-observations");
-    if (!host) return { present: false };
-    const items = [...host.querySelectorAll(".analysis-module[data-module]")];
-    const closed = items.filter((m) => !m.open).length;
-    const takeaways = items.map((m) => ((m.querySelector(".analysis-module-takeaway") || {}).textContent || "").trim());
-    for (const m of items) if (!m.open) m.querySelector("summary").click();
-    await new Promise((r) => setTimeout(r, 100));
-    const tablesOf = (el) => [...el.querySelectorAll("table.ov-rows")].map((t) =>
-      [...t.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent)));
-    const data = host.querySelector('[data-module="data"]'), time = host.querySelector('[data-module="time"]');
-    const out = {
-      present: true, title: ((host.querySelector(".ov-section-title") || {}).textContent || "").trim(),
-      who: ((host.querySelector(".ov-section-head .ov-block-who") || {}).textContent || "").trim(),
-      modules: items.map((m) => m.dataset.module),
-      titles: items.map((m) => ((m.querySelector(".analysis-module-title") || {}).textContent || "").trim()),
-      closed, takeaways,
-      dataTables: data ? tablesOf(data) : null,
-      rekeyed: data ? [...data.querySelectorAll(".ov-rekeyed li")].map((li) => li.textContent) : null,
-      subtitles: [...host.querySelectorAll(".ov-rows-title")].map((d) => d.textContent),
-      timeTables: time ? tablesOf(time) : null,
-      after: time ? ((time.querySelector(".ov-rows-after") || {}).textContent || "") : null,
-      analysis: (() => { const a = require("./state.js").getSession().analysis || {}; return { pdd_data: a.pdd_data, pdd_time: a.pdd_time, format: a.format }; })(),
+  // (c) 2.0.1: the PDD's rows are the document's alone. The Overview shows
+  // no Observations, and analysis.json (format 5) no longer carries the rows
+  // or the signature of the steps they were measured from.
+  const obs = await page.evaluate(() => {
+    const a = require("./state.js").getSession().analysis || {};
+    const text = document.getElementById("overview-content").textContent || "";
+    return {
+      host: !!document.getElementById("ov-observations"),
+      rows: document.querySelectorAll("table.ov-rows, #ov-rows-freshness, .ov-rekeyed").length,
+      words: ["Observations", "Applications and time", "Measured from the recording"].filter((w) => text.includes(w)),
+      format: a.format, keys: ["pdd_data", "pdd_time", "steps_signature"].filter((k) => k in a),
     };
-    for (const m of items) m.querySelector("summary").click();   // close again (the default)
-    await new Promise((r) => setTimeout(r, 50));
-    try { for (const k of ["data", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
-    return out;
   }).catch((e) => ({ err: e.message }));
-  record("(c) Observations (\"Measured from the recording. The PDD prints them in sections 5 and 6.\"): two items under the PDD's headings, Data and Applications and time, closed by default with their takeaways",
-    !!(obs && !obs.err && obs.present && obs.title === "Observations" &&
-      obs.who === "Measured from the recording. The PDD prints them in sections 5 and 6." &&
-      same(obs.modules, ["data", "time"]) && same(obs.titles, ["Data", "Applications and time"]) && obs.closed === 2 &&
-      obs.takeaways[0] === "Product code (Salesforce) is typed again as Material number (SAP) in every transaction. (+1 more)" &&
-      /^Most time in Salesforce: \d+s per transaction$/.test(obs.takeaways[1])),
-    JSON.stringify(obs && { title: obs.title, who: obs.who, modules: obs.modules, titles: obs.titles, closed: obs.closed, takeaways: obs.takeaways, err: obs.err }));
-  const A = obs && obs.analysis;
-  record("(c) Data shows analysis.json's pdd_data cell by cell (the PDD's section 5: Field, System and screen, Step, Example value, Re-keyed), then its Re-keyed data sentences",
-    !!(A && A.format === 4 && A.pdd_data && obs.dataTables && obs.dataTables.length === 1 &&
-      same(obs.dataTables[0], [A.pdd_data.header].concat(A.pdd_data.rows)) &&
-      same(obs.dataTables[0][0], ["Field", "System and screen", "Step", "Example value", "Re-keyed"]) &&
-      same(obs.rekeyed, A.pdd_data.rekeyed) && A.pdd_data.rekeyed.length === 2),
-    JSON.stringify(obs && { rows: obs.dataTables && obs.dataTables[0] && obs.dataTables[0].length, rekeyed: obs.rekeyed }));
-  record("(c) Applications and time shows pdd_time cell by cell: Time per transaction (4 transactions, with the walkthrough line) and Time in each application (Salesforce, never the browser; Notepad in its own row)",
-    !!(A && A.pdd_time && obs.timeTables && obs.timeTables.length === 2 &&
-      same(obs.timeTables[0], [A.pdd_time.per_transaction.header].concat(A.pdd_time.per_transaction.rows)) &&
-      same(obs.timeTables[1], [A.pdd_time.per_application.header].concat(A.pdd_time.per_application.rows)) &&
-      obs.timeTables[0].length === 5 && obs.after === A.pdd_time.per_transaction.after &&
-      same(obs.subtitles, ["Re-keyed data", "Time per transaction", "Time in each application"]) &&
-      obs.timeTables[1].some((r) => r[0] === "Salesforce") && obs.timeTables[1].some((r) => r[0] === "Notepad") &&
-      !obs.timeTables[1].some((r) => /Chrome/.test(r[0]))),
-    JSON.stringify(obs && obs.timeTables));
+  record("(c) 2.0.1: the Overview shows no Observations (the PDD's rows are the document's alone), and analysis.json (format 5) carries no pdd_data, pdd_time or steps_signature",
+    !!(obs && !obs.err && !obs.host && obs.rows === 0 && obs.words.length === 0 && obs.format === 5 && obs.keys.length === 0),
+    JSON.stringify(obs));
 
   // (c2) The moved controls, where they are used, with their ids.
   const moved = await page.evaluate(() => {
@@ -532,19 +495,20 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review") &&
       walk.opened.length === 3),
     JSON.stringify({ review: L.review, after: walk.afterReview, opened: walk.opened }));
-  record("(d4) 'Write the document' opens the collapsed document with the cursor in its first empty field ('Document · 0 of 9 written')",
-    !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 9 written" &&
+  record("(d4) 'Write the document' opens the collapsed document with the cursor in its first empty field ('Document · 0 of 10 written')",
+    !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 10 written" &&
       walk.afterReview && walk.afterReview.button === "Write the document"),
     JSON.stringify(L.document));
 
   // 4. A document field saves through the one write path, undoably; then the
-  // nine fields, trigger, result and improvement among them.
+  // ten fields, trigger, result, volume and effort, and improvement among them.
   const PURPOSE = "E2E purpose: settle the monthly supplier invoices";
   const values = {
     title: "E2E order intake", purpose: PURPOSE, scope: "From the order e-mail to the order confirmation",
     trigger: "An order e-mail arrives in the shared mailbox", result: "A sales order in SAP and a confirmation to the customer",
     contacts: "Process owner: E2E Owner", business_rules: "Orders above the credit limit need a check",
-    exceptions: "A blocked customer stops the run", improvement: "Automate the customer lookup and the SAP entry",
+    exceptions: "A blocked customer stops the run", effort: "About 40 orders a day, 3 minutes each",
+    improvement: "Automate the customer lookup and the SAP entry",
   };
   const docProbe = {};
   try {
@@ -553,8 +517,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await purpose.press("Tab");                          // change fires on leaving the field
     // AD-29: the count names the fields still to write.
     await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent ===
-      "1 of 9 written. To write: Title, Scope, Trigger, Result, Key contacts, Business rules, Exceptions, " +
-      "Improvement and automation scope", null, { timeout: T });
+      "1 of 10 written. To write: Title, Scope, Trigger, Result, Key contacts, Business rules, Exceptions, " +
+      "Volume and effort, Improvement and automation scope", null, { timeout: T });
     docProbe.saved = (readAnno().document || {}).purpose;
     // Undo: Ctrl+Z outside a field is the app's undo.
     await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
@@ -570,7 +534,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       await el.fill(v, { timeout: T });
       await el.press("Tab");
     }
-    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "9 of 9 written",
+    await page.waitForFunction(() => (document.getElementById("ov-doc-status") || {}).textContent === "10 of 10 written",
       null, { timeout: T });
     docProbe.onDisk = readAnno().document || {};
     docProbe.line = await lineState();
@@ -596,10 +560,11 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(!docProbe.err && docProbe.saved === PURPOSE && docProbe.afterUndoOnDisk === "" && docProbe.panelStayedOpen),
     JSON.stringify({ saved: docProbe.saved, afterUndoOnDisk: docProbe.afterUndoOnDisk,
       panelStayedOpen: docProbe.panelStayedOpen, err: docProbe.err }));
-  record("(d6) the nine fields save to annotations.json, Trigger, Result and Improvement and automation scope under the keys trigger, result and improvement",
+  record("(d6) the ten fields save to annotations.json, Trigger, Result, Volume and effort and Improvement and automation scope under the keys trigger, result, effort and improvement",
     !!(docProbe.onDisk && Object.entries(values).every(([k, v]) => docProbe.onDisk[k] === v) &&
       docProbe.onDisk.notes === "" && docProbe.onDisk.trigger === values.trigger &&
-      docProbe.onDisk.result === values.result && docProbe.onDisk.improvement === values.improvement),
+      docProbe.onDisk.result === values.result && docProbe.onDisk.effort === values.effort &&
+      docProbe.onDisk.improvement === values.improvement),
     JSON.stringify({ onDisk: docProbe.onDisk }));
   record("(d6) with the document written, the Checklist shrinks to one short line: no act list, the next act Export PDD (AD-28: no As-Is stage)",
     !!(docProbe.line && docProbe.line.next === "export" && docProbe.line.ready && docProbe.line.stages === 0 &&
@@ -717,28 +682,29 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(docChecks.purpose && docChecks.title && docChecks.purposePlaceholderGone && docChecks.keptAfterExport),
     JSON.stringify(Object.assign({ xmlBytes: first.xml ? first.xml.length : 0 }, docChecks)));
 
-  // Lane CC, one source: the Overview's Data and Applications and time, read
-  // after the export (the export's analysis wrote them), are the document's
-  // own tables of sections 5 and 6, cell by cell, and its Re-keyed data lines.
-  const ovAfter = await page.evaluate(async () => {
-    const host = document.getElementById("ov-observations");
-    const items = [...host.querySelectorAll(".analysis-module[data-module]")];
-    for (const m of items) if (!m.open) m.querySelector("summary").click();
-    await new Promise((r) => setTimeout(r, 100));
-    const tables = [...host.querySelectorAll("table.ov-rows")].map((t) =>
-      [...t.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent)));
-    const rekeyed = [...host.querySelectorAll(".ov-rekeyed li")].map((li) => li.textContent);
-    for (const m of items) m.querySelector("summary").click();
-    try { for (const k of ["data", "time"]) localStorage.removeItem("pdt.analysis." + k); } catch (_) {}
-    return { tables, rekeyed };
-  }).catch((e) => ({ err: e.message }));
+  // 2.0.1: the PDD's section 5 names each system with the information
+  // entered in it (no values, no screens, no steps), section 6 prints the
+  // Volume and effort written on the Overview (never the recorded times, in
+  // a step's line neither), and the re-keyed data is said under the
+  // improvement scope.
   const docTables = docxTables(first.xml);
-  const printed = (ovAfter.tables || []).map((ot) => docTables.find((dt) => same(dt[0], ot[0])) || null);
-  record("(d9b) one source: the Overview's three tables (Data, Time per transaction, Time in each application) are the exported PDD's tables of sections 5 and 6 cell by cell, and its Re-keyed data sentences are in the PDD",
-    !!(!ovAfter.err && ovAfter.tables.length === 3 && printed.every((t, i) => t && same(t, ovAfter.tables[i])) &&
-      ovAfter.rekeyed.length === 2 && ovAfter.rekeyed.every((line) => first.xml && first.xml.includes(line))),
-    JSON.stringify({ overview: (ovAfter.tables || []).map((t) => t.length), inPdd: printed.map((t) => (t ? t.length : null)),
-      rekeyed: ovAfter.rekeyed, err: ovAfter.err }));
+  const systemsTable = docTables.find((t) => same(t[0], ["System", "Information entered"])) || null;
+  const pddText = docxText(first.xml);
+  const pdd = {
+    systems: systemsTable ? systemsTable.slice(1).map((r) => r[0]) : null,
+    oldTables: docTables.filter((t) => ["Field", "Transaction"].includes(t[0][0]) || same(t[0].slice(0, 2), ["System", "Screens"])).length,
+    effort: pddText.includes("6. Volume and effort" + values.effort),
+    rekeyed: pddText.includes("Re-keyed data") &&
+      pddText.includes("Product code (Salesforce) is typed again as Material number (SAP) in every transaction."),
+    rekeyedAfterImprovement: pddText.indexOf("Re-keyed data") > pddText.indexOf(values.improvement),
+    times: ["Time per transaction", "Time in each application", "walkthrough", " on average"].filter((w) => pddText.includes(w)),
+  };
+  record("(d9b) 2.0.1: the exported PDD's section 5 lists each system with the information entered in it, section 6 prints the Volume and effort written on the Overview, the re-keyed data is under the improvement scope, and no recorded time or data table is printed",
+    !!(systemsTable && pdd.systems.includes("Salesforce") && pdd.systems.includes("SAP") &&
+      !pdd.systems.some((s) => /Chrome/.test(s)) && systemsTable.slice(1).every((r) => r.length === 2 && r[1]) &&
+      pdd.oldTables === 0 && pdd.effort && pdd.rekeyed && pdd.rekeyedAfterImprovement && pdd.times.length === 0),
+    JSON.stringify({ systems: systemsTable, oldTables: pdd.oldTables, effort: pdd.effort, rekeyed: pdd.rekeyed,
+      after: pdd.rekeyedAfterImprovement, times: pdd.times }));
 
   // 6. The As-Is map is the Map's own act (no stage): an edited As-Is copy
   // and a To-Be copy, then the export hands both.
@@ -996,27 +962,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       vid.undoRemove && vid.undoRemove.stored === "video/first call.webm" && vid.undoRemove.fileBack && vid.lineAfterUndo === "Video"),
     JSON.stringify({ line: vid.line, header: vid.header, confirm: vid.confirm, removed: vid.removed, undoRemove: vid.undoRemove, after: vid.lineAfterUndo }));
 
-  // (k) Lane CC: the Observations' rows are as new as the steps. A step
-  // renamed in Steps makes them older; as the Overview opens they are
-  // measured again (the status line, the previous rows meanwhile under "From
-  // the last analysis; refreshing"), then show the new name, and the Overview
-  // opened again analyzes nothing. A document field taking the cursor stops a
-  // refresh (nothing is analyzed while the analyst types): the rows stay,
-  // saying they are older, the text typed is saved, and the next opening
-  // measures them.
+  // (k) 2.0.1: opening the Overview analyzes nothing. The rows refresh that
+  // measured the PDD's rows again as the Overview opened is gone with them:
+  // a step renamed in Steps, then the Overview opened, starts no analysis
+  // (analysis.json stays as it was), and a document field typed there saves.
   const NAME1 = "E2E renamed: Look up the customer account";
-  const NAME2 = "E2E renamed: Find the customer";
   const idle = () => page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
-  const rowsNow = (name) => page.evaluate((n) => {
-    const line = document.getElementById("ov-rows-freshness");
-    const s = require("./state.js").getSession();
-    return {
-      busy: require("./views/flow-view.js").analysisBusy(),
-      line: line && !line.hidden ? line.textContent : "",
-      hasName: [...document.querySelectorAll("#ov-observations table.ov-rows td")].some((td) => td.textContent.includes(n)),
-      current: require("./rows-freshness.js").stepsSignature(s.annotations) === s.analysis.steps_signature,
-    };
-  }, name);
   const renameFirst = async (name) => {
     await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
     await page.waitForSelector("#step-list .run-group.pattern", { state: "visible", timeout: T });
@@ -1028,67 +979,35 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.waitForFunction((n) => [...document.querySelectorAll("#step-list .step-row .step-name")]
       .some((e) => e.textContent.trim() === n), name, { timeout: T });
   };
-  const openOverview = () => page.evaluate(() => { document.querySelector('.view-mode-btn[data-level="overview"]').click(); });
   const fr = {};
   try {
     await idle();
     await renameFirst(NAME1);
-    await openOverview();
-    fr.opened = await rowsNow(NAME1);
+    const analysisFile = path.join(SESSION_MARKED, "analysis.json");
+    fr.before = fs.statSync(analysisFile).mtimeMs;
+    await page.evaluate(() => { document.querySelector('.view-mode-btn[data-level="overview"]').click(); });
+    await wait(1500);
+    fr.busy = await page.evaluate(() => require("./views/flow-view.js").analysisBusy());
     fr.pills = await page.evaluate(() => (document.getElementById("session-pills").textContent || "").replace(/\s+/g, " ").trim());
-    await idle();
-    await page.waitForFunction((n) => [...document.querySelectorAll("#ov-observations table.ov-rows td")]
-      .some((td) => td.textContent.includes(n)), NAME1, { timeout: T });
-    fr.after = await rowsNow(NAME1);
-    fr.recorded = JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "analysis.json"), "utf-8")).steps_signature ===
-      await page.evaluate(() => require("./rows-freshness.js").stepsSignature(require("./state.js").getSession().annotations));
-    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-    await openOverview();
-    fr.again = await rowsNow(NAME1);
-    // Typing stops the refresh.
-    await renameFirst(NAME2);
-    await openOverview();
-    await page.waitForFunction(() => { const r = require("./state.js").getAnalysisRun(); return !!(r && r.status === "running"); },
-      null, { timeout: T });
+    fr.after = fs.statSync(analysisFile).mtimeMs;
     await page.evaluate(() => {
       const d = document.getElementById("ov-doc");
       d.open = true;
       d.querySelector('[data-doc="notes"]').focus();
     });
-    await idle();
-    fr.stopped = await rowsNow(NAME2);
-    await page.keyboard.type("E2E: typed while the rows were older");
+    await page.keyboard.type("E2E: typed after a rename");
     await page.keyboard.press("Tab");
-    await page.waitForFunction(() => (((require("./state.js").getSession().annotations || {}).document || {}).notes || "")
-      .startsWith("E2E: typed"), null, { timeout: T });
     for (let k = 0; k < 40 && !((readAnno().document || {}).notes || "").startsWith("E2E: typed"); k++) await wait(125);
     fr.typed = (readAnno().document || {}).notes || "";
-    fr.toast = await page.evaluate(() => (document.getElementById("toast") || {}).textContent || "");
-    // The next opening measures them.
-    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-    await openOverview();
-    fr.reopened = await rowsNow(NAME2);
-    await idle();
-    await page.waitForFunction((n) => [...document.querySelectorAll("#ov-observations table.ov-rows td")]
-      .some((td) => td.textContent.includes(n)), NAME2, { timeout: T });
-    fr.final = await rowsNow(NAME2);
   } catch (e) {
-    logActionError("(k) the rows refresh as the Overview opens", e);
+    logActionError("(k) the Overview opened after a rename", e);
     fr.err = String(e.message).split("\n")[0];
-    await shot(page, "fail-overview-rows-refresh.png");
+    await shot(page, "fail-overview-open-after-rename.png");
   }
-  record("(k) lane CC: a step renamed in Steps: as the Overview opens its rows are measured again (the status line; the previous rows meanwhile, \"From the last analysis; refreshing\"), then show the new name; opened again, nothing is analyzed",
-    !!(!fr.err && fr.opened && fr.opened.busy && fr.opened.line === "From the last analysis; refreshing" && !fr.opened.hasName &&
-      /Updating steps and map/.test(fr.pills || "") &&
-      fr.after.hasName && fr.after.line === "" && fr.after.current && fr.recorded &&
-      fr.again && !fr.again.busy && fr.again.line === "" && fr.again.hasName),
-    JSON.stringify({ opened: fr.opened, pills: fr.pills, after: fr.after, recorded: fr.recorded, again: fr.again, err: fr.err }));
-  record("(k) lane CC: a document field taking the cursor stops the refresh (no analysis while the analyst types): the rows stay, \"From the last analysis; the steps changed since.\", the text typed is saved; the next opening measures them",
-    !!(!fr.err && fr.stopped && !fr.stopped.busy && !fr.stopped.hasName &&
-      fr.stopped.line === "From the last analysis; the steps changed since." &&
-      fr.typed === "E2E: typed while the rows were older" && !/not saved|cancelled/i.test(fr.toast || "") &&
-      fr.reopened && fr.reopened.busy && fr.final && fr.final.hasName && fr.final.line === "" && fr.final.current),
-    JSON.stringify({ stopped: fr.stopped, typed: fr.typed, toast: fr.toast, reopened: fr.reopened, final: fr.final, err: fr.err }));
+  record("(k) 2.0.1: a step renamed in Steps, then the Overview opened, analyzes nothing (no status line, analysis.json as it was), and a document field typed there saves",
+    !!(!fr.err && fr.busy === false && !/Updating steps and map/.test(fr.pills || "") && fr.before === fr.after &&
+      fr.typed === "E2E: typed after a rename"),
+    JSON.stringify(fr));
 
   await close();
 

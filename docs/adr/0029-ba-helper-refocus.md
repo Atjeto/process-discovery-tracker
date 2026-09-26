@@ -214,6 +214,15 @@ Removed from `master` (preserved in full on `product-edition`):
   the findings, the waste, time study, segment, automation and efficiency
   estimates, and `pdd_findings`; `analysis.json` keeps the transaction
   check, the coverage caveat and the PDD's rows (format 4).
+- **The PDD's rows on the Overview** (2026-09-26, release 2.0.1): the PDD
+  is the process written down for the SME, who confirms it, and for
+  whoever asks about it; the developers work from the project and the
+  Technical details. So the Overview's Observations, the analysis they ran
+  as the Overview opened, and `analysis.json` `pdd_data`, `pdd_time` and
+  `steps_signature` are cut (format 5). The PDD's section 5 names the
+  systems and the information entered in each, 6 is the analyst's Volume
+  and effort, the re-keyed data is said under 7, and no recorded time is
+  printed.
 
 The CLI surface after this cycle (contract C11,
 `normalization/normalize.py`) keeps `session_folder`, `--taxonomy` (pending

@@ -143,9 +143,8 @@ byte-copies) by hand in the same commit.
   Overview's Checklist is the exception: an amber wash (`--accent-muted`)
   inside an `--accent` border.
 - **Who fills a block**: one short line beside an Overview block's title
-  (`.ov-block-who`, 11px `--fg-3`): "Measured from the recording" for the
-  Observations (in a project without a recording, "Measured from the steps
-  you added"), "You write these. The PDD prints them." for the Document.
+  (`.ov-block-who`, 11px `--fg-3`): "You write these. The PDD prints them."
+  for the Document.
 - **An empty field looks empty**: a document field's placeholder (its
   question) is light and italic (a mix of `--fg-3` and `--fg-4`, about 3:1
   on the field), well apart from written text.

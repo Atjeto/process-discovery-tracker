@@ -379,22 +379,18 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Open the order", "Step 2: Check the stock", "Step 3: Confirm the order"]
     assert _under(blocks, "Step 1: Open the order") == [
-        "30s on average · video 0:10", "Open the order from the customer's mail."]
-    assert _under(blocks, "Step 2: Check the stock") == ["SAP · 30s on average · video 1:00"]
+        "video 0:10", "Open the order from the customer's mail."]
+    assert _under(blocks, "Step 2: Check the stock") == ["SAP · video 1:00"]
     control = _section(blocks, "1. Document control")
     # Lane FX3: the implicit transaction reads as the viewer names it.
     assert ("Transactions recorded | One transaction (not marked)" in control
             and "Video | Attached" in control)
     assert _section(blocks, "4.1 Differences between transactions") == [
         "One transaction (not marked), so there are no transactions to compare."]
-    assert _section(blocks, "6.1 Time per transaction") == [
-        "One transaction (not marked), so there is no time per transaction."]
     # Lane FX3: steps with no system read "No system set", never "Not
-    # recorded" as if it were a system, and no screen leaves its cell empty.
-    assert _section(blocks, "6.2 Time in each application") == [
-        "System | Screens | Steps | Time",
-        "No system set |  | Open the order, Confirm the order | 50s",
-        "SAP |  | Check the stock | 30s"]
+    # recorded" as if it were a system; nothing was typed into a video.
+    assert _section(blocks, "5. Systems and information used") == [
+        "System | Information entered", "No system set | none", "SAP | none"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -424,12 +420,10 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Open the order", "Step 2: Check the stock"]
     assert _under(blocks, "Step 2: Check the stock")[0] == (
-        "SAP · 30s on average · in 1 of 2 transactions · Transaction 1, video 1:00")
-    assert _section(blocks, "6.1 Time per transaction")[:3] == [
-        "Transaction | Steps | Active time | Elapsed time",
-        "Transaction 1: Order 1 | 2 | Not recorded | 1m 45s",
-        "Transaction 2: Order 2 | 1 | Not recorded | "
-        "Not measured: the transaction was not ended"]
+        "SAP · in 1 of 2 transactions · Transaction 1, video 1:00")
+    # The document prints no recorded time (the analyst states the effort).
+    assert _section(blocks, "6. Volume and effort") == [
+        "[To be completed: how often the process is done, and how long one takes]"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -509,11 +503,8 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
     assert steps_text[:2] == [
         "The process runs through SAP.",
         "One transaction (not marked), so every step is listed in order."]
-    assert _section(blocks, "6.2 Time in each application") == [
-        "System | Screens | Steps",
-        "No system set |  | Receive the request, Check the stock, "
-        "Reply to the customer",
-        "SAP |  | Log it in SAP"]
+    assert _section(blocks, "5. Systems and information used") == [
+        "System | Information entered", "No system set | none", "SAP | none"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -573,7 +564,7 @@ def test_a_new_blank_session_without_steps_analyzes_and_exports(tmp_path):
         "No steps have been added to this project yet."]
     assert _section(blocks, "4.1 Differences between transactions") == [
         "One transaction (not marked), so there are no transactions to compare."]
-    assert _section(blocks, "6.2 Time in each application") == [
+    assert _section(blocks, "5. Systems and information used") == [
         "No steps have been added to this project yet."]
 
 
@@ -658,7 +649,7 @@ def test_a_step_without_a_time_in_a_marked_run_of_a_recording(tmp_path):
     assert _under(blocks, "Step 3: Phone the customer") == ["Phone · in 1 of 2 transactions"]
     assert _section(blocks, "4.1 Differences between transactions") == [
         "Transaction 2: Order b",
-        "Skipped: Phone the customer (done in 1 of 2 transactions)."]
+        "Phone the customer is not done here (it is done in 1 of 2 transactions)."]
     variants = {tuple(v["variant"]) for v in _read(session, "stats.json")["step_variants"]}
     assert ("CRM | Orders: Find", "CRM | Orders: Save", "Phone the customer") in variants
 

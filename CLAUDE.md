@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.0** (2026-09-26), the light
+- **Versions.** The current release is **v2.0.1** (2026-09-26), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -66,8 +66,8 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
    project with *New project from a video...* or *New empty project...*
    (New menu). The analysis runs by itself (on open when it is missing or
    older, after Apps outside the process, after a stretch is left out of
-   the analysis or included again, as the Overview opens when its rows are
-   older than the steps, on the Map when the steps are newer than its map,
+   the analysis or included again, on the Map when the steps are newer
+   than its map,
    inside Edit as the As-Is map, before a PDD export, a map export or a
    hand-off), with one status line and Cancel. *Apply N marker changes*
    stays deliberate; Help, Troubleshooting has Re-analyze.
@@ -78,8 +78,8 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
    loops (*Only when*, *Go to*), Confirm transaction.
 4. **Review the other runs**: each lists its differences; they are not
    confirmed.
-5. **Write the document** on the Overview (trigger, result and improvement
-   among its fields).
+5. **Write the document** on the Overview (trigger, result, volume and
+   effort, and improvement among its fields).
 6. **Check the map**: the Map shows the map the PDD prints (the process map,
    or the edited As-Is map), with *Show how the transactions ran* one click
    away; optionally *Edit as the As-Is map* (and a To-Be copy), kept once
@@ -104,7 +104,7 @@ the folder.
 | `normalization/` | Analyst side Python pipeline: `normalize.py` and its stage modules; `transcript_import.py`; `golden_check.py` and `golden/`. |
 | `viewer/` | Analyst side Electron app. `viewer/python/` is the bundled Python (gitignored, built by `scripts/build-python-embeddable.ps1`). |
 | `e2e/` | The in-repo Playwright gate: the smokes against the real viewer, all run by `run-all.js`. |
-| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19); `pdd-rows-golden.json` (pins the PDD's rows of sections 5 and 6 that the Overview shows); `steps-signature-golden.json` (pins the signature of the steps those rows were measured from). |
+| `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
 | `sessions/example-aggregate/` | The committed demo: 10 sessions of one order-to-cash process. |
@@ -126,7 +126,7 @@ the folder.
 | [docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) | The discipline every new verb passes. |
 | [docs/adr/](docs/adr/README.md) | Decisions; the registry is CI-enforced. |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [docs/DEPLOY.md](docs/DEPLOY.md) | Dev setup, build, release, install. |
-| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.0. |
+| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.1. |
 
 ## Key concepts
 
@@ -295,23 +295,26 @@ the folder.
   window lets its project go, and the viewer ends with its last window.
   Dialogs, write reports, the analysis log and Cancel belong to the window
   that asked.
-- **The PDD** (`pdd_export.py`): tool-neutral, built around the confirmed
-  reference run. The document fields (C6) fill their places and survive
-  re-export; a step's `description` (C7) is its text.
+- **The PDD** (`pdd_export.py`): the process written down for the SME, who
+  confirms it, and for whoever asks about it; archived per version (the
+  owner, 2026-09-26). The developers work from the project (a read-only
+  hand-off) and the Technical details, so the PDD holds no values, controls
+  or recorded times: its section 5 names the systems and the information
+  entered in each, 6 is the analyst's *Volume and effort*, and the re-keyed
+  data is said under 7. Tool-neutral, built around the confirmed reference
+  run. The document fields (C6) fill their places and survive re-export; a
+  step's `description` (C7) is its text.
 - **The meeting transcript** (C8): `transcript_import.py` writes
   `transcript.json`. A sentence is placed through its own sync, else the
   attached video's; added to a description or a document field, it reaches
   the PDD.
-- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 4 now):
-  the viewer analyzes a folder on open when it is missing or lower. 4 cut
-  the analysis layer nothing read (facts, findings, the step-based
-  estimates, `pdd_findings`) and gave the Overview's one check its own key,
-  `coverage_caveat` (lane FX1). 3 added `pdd_data` and `pdd_time`, the rows the PDD prints in sections 5 and 6,
-  which the Overview's Observations show as they are (one source, pinned by
-  `shared/pdd-rows-golden.json`), and `steps_signature`, the steps they were
-  measured from: as the Overview opens, rows older than the steps are
-  measured again (`rows-freshness.js`, pinned by
-  `shared/steps-signature-golden.json`; typing on the Overview stops it).
+- **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 5 now):
+  the viewer analyzes a folder on open when it is missing or lower. 5 (2.0.1)
+  cut `pdd_data`, `pdd_time` and `steps_signature`: the Overview no longer
+  shows the PDD's rows (its Observations are gone), so opening it never
+  runs an analysis. 4 cut the analysis layer nothing read (facts, findings,
+  the step-based estimates, `pdd_findings`) and gave the Overview's one
+  check its own key, `coverage_caveat` (lane FX1).
 - **Raw data is immutable.** `events.jsonl` is append-only; analyst edits
   live in `annotations.json`, replaced atomically, the viewer keeping
   `annotations.json.2` (newest) to `.5`; the unreadable banner's *Restore the

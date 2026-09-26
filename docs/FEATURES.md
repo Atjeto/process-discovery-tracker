@@ -70,11 +70,9 @@ The Python pipeline the viewer runs by itself; see
   hand wins.
 - **Statistics and observations.** Times per run and per step, the variants
   of the runs, the data typed again in another system, and the applications
-  the recorder saw with less detail; the rows the PDD prints in its
-  sections 5 and 6, written into `analysis.json` for the viewer's Overview.
-  A transaction's active time is the recorded foreground time inside it. A
-  stretch the analyst left out of the analysis is left out of all of them,
-  exactly its own time.
+  the recorder saw with less detail. A transaction's active time is the
+  recorded foreground time inside it. A stretch the analyst left out of the
+  analysis is left out of all of them, exactly its own time.
   A check that could not run says so, never shows zero.
 - **The step map.** A BPMN 2.0 file of the transactions' steps
   (`process_map_step.bpmn`) that prints legibly: left to right, wrapped into
@@ -89,27 +87,32 @@ The Python pipeline the viewer runs by itself; see
   attachments as files under it, and a colour per system with a legend that
   also says what the hand and the Waste note mean. Task names stay
   the step names, so a BPMN tool imports them clean.
-- **The PDD (.docx).** Tool-neutral, in the reader's order: document
-  control; purpose, scope, trigger, result and contacts; the As-Is map and
-  the reference transaction's steps (each with its system, screen, average
-  time, "in N of M transactions", "Transaction 1 at 0:19", "Only when" its
-  condition, its description, the fields it entered, one screenshot (the
-  one chosen for the PDD, else its first) and its attachments, a waste
-  flag, and where the process goes after it besides
-  the next step), each step headed "Step 2: <name>" so its number never
-  reads as a section's; variations (the lines the Steps level lists: extra,
-  reordered, skipped and repeated steps, a conditional step not done, and a
-  stretch left out of the analysis),
-  business rules and exceptions; one data
-  table; applications and time; improvement and automation scope with the
-  To-Be map; notes; attachments. The analyst's fields survive every
+- **The PDD (.docx).** The process written down for the SME, who
+  confirms it, and for whoever asks about the process; archived per
+  version. The developers work from the project in the viewer and the
+  Technical details, so it holds no values, controls or recorded times.
+  Tool-neutral, in the reader's order: document control; purpose, scope,
+  trigger, result and contacts; the As-Is map and the reference
+  transaction's steps (each with its system, screen, "in N of M
+  transactions", "Transaction 1 at 0:19", "Only when" its condition, its
+  description, the fields it entered, one screenshot (the one chosen for
+  the PDD, else its first) and its attachments, a waste flag, and where the
+  process goes after it besides the next step), each step headed "Step 2:
+  <name>" so its number never reads as a section's; variations in plain
+  sentences (the lines the Steps level lists: extra, reordered, skipped and
+  repeated steps, a conditional step not done, and a stretch left out of
+  the analysis), business rules and exceptions; the systems used, each with
+  the information entered in it (a workbook's cells as one entry); the
+  volume and effort as the analyst writes it; improvement and automation
+  scope with the re-keyed data (a value typed again in another system) and
+  the To-Be map; notes; attachments. The analyst's fields survive every
   re-export; an empty field leaves a visible gap. Every PDD says which
   version it is: "Version 2, handed off <date> by <name>" when made for a
   hand-off, else "Working copy after version 2" (or "Working copy, not
   handed off yet"), with a Version history table once the project was
   handed off.
-- **The Technical details (.xlsx).** For the developers who build from the
-  PDD: every recorded click, entry and choice of the reference transaction
+- **The Technical details (.xlsx).** For the developers, beside the project
+  in the viewer: every recorded click, entry and choice of the reference transaction
   in the PDD's step order (Step 3, Step 3.2), with its control type,
   automation id, name, class name, how the recorder identified it and how
   far that can be trusted, the window, the program and the system; every
@@ -154,25 +157,14 @@ The viewer says *transaction* for one pass through the process and
   transaction's steps, the video and the transcript with Attach, Replace
   and Remove (each taken out with its files in the folder, and back with
   Ctrl+Z), and a warning only when one is needed.
-- **The document** ("You write these. The PDD prints them."): ten fields
+- **The document** ("You write these. The PDD prints them."): eleven fields
   that print in their own places in the PDD (title, purpose, scope,
-  trigger, result, contacts, business rules, exceptions, improvement and
-  automation scope, notes). An empty field looks empty, and the heading
+  trigger, result, contacts, business rules, exceptions, volume and effort,
+  improvement and automation scope, notes). An empty field looks empty, and the heading
   counts the fields written and, once one is, names the ones still empty.
   With it, the project's attachments and the transcript's sentences with
   *Add to* a field; a sentence said before the recording started reads
   "0:28 before".
-- **Observations** ("Measured from the recording. The PDD prints them in
-  sections 5 and 6.", or "Measured from the steps you added." in a project
-  without a recording): *Data*, every field entered with its system, its
-  step and an example value, and the *Re-keyed data* (a value typed again
-  in another system); *Applications and time*, the time of each
-  transaction and each system's screens, steps and time per transaction.
-  They are the PDD's own rows, from the same analysis, so the two say one
-  fact in the same words; they are measured again with each analysis and
-  each PDD export, and as the Overview opens when the steps changed since
-  (a quiet line says "From the last analysis; refreshing" meanwhile; typing
-  in the document stops it).
 
 **Timeline**
 

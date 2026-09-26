@@ -88,9 +88,11 @@ function pddExportOutcome(result, file) {
    ANALYSIS_FORMAT; V2 item 10). 3: the Overview's Data and Applications and
    time read the PDD's rows (`pdd_data`, `pdd_time`; lane CC). 4: the
    project line's warning on the apps recorded with less detail reads
-   `coverage_caveat` (the findings that held it are cut, lane FX1). An older
+   `coverage_caveat` (the findings that held it are cut, lane FX1). 5: the
+   PDD's rows are the document's alone, the Overview no longer shows them
+   (`pdd_data`, `pdd_time` and `steps_signature` are cut). An older
    analysis is analyzed again as the project opens. */
-const ANALYSIS_FORMAT = 4;
+const ANALYSIS_FORMAT = 5;
 
 /* Whether a recording needs an analysis as it opens (AD-22): "missing" when
    it has none (no stats.json or no analysis.json), "stale" when its analysis

@@ -75,20 +75,15 @@ every push.
    the viewer; the step flow's edges (contract C17: the live map and the
    step BPMN) and the maps a project holds (contract C19: one per
    sub-process, their traces and numbers) are rules written in both, each
-   pinned by one golden; the Overview's Observations are the PDD's rows of
-   sections 5 and 6, written by the pipeline and shown as they are (lane
-   CC). *Guards:* the shared goldens
+   pinned by one golden. *Guards:* the shared goldens
    (`process-label-golden.json`, `screen-label-golden.json`,
    `run-differences-golden.json` (the stretches left out of the analysis
-   too), `flow-links-golden.json`, `sub-process-maps-golden.json`,
-   `pdd-rows-golden.json`, `steps-signature-golden.json`) pinned from both sides
-   (`test_process_label.py`, `test_screen_label.py`,
+   too), `flow-links-golden.json`, `sub-process-maps-golden.json`) pinned
+   from both sides (`test_process_label.py`, `test_screen_label.py`,
    `test_run_differences_golden.py`, `test_flow_links_golden.py`,
-   `test_app_names.py`, the pipeline's test of the sub-process maps and
-   `test_pdd_rows_golden.py`, `test_steps_signature.py`;
+   `test_app_names.py` and the pipeline's test of the sub-process maps;
    `process-map-levels.test.js`, `run-differences.test.js`,
-   `system-names.test.js`, `sub-process-maps.test.js`,
-   `overview-observations.test.js`, `rows-freshness.test.js`).
+   `system-names.test.js`, `sub-process-maps.test.js`).
 7. **User-facing copy is plain business English, without dashes.** No
    internal vocabulary in rendered strings (the banned list and its
    replacements are in [DESIGN-SYSTEM.md](architecture/DESIGN-SYSTEM.md), UI
@@ -264,25 +259,14 @@ shown only after a failed run; `#toast`.
   take their files out of the folder and Ctrl+Z brings them back (lane CC;
   a smoke waits for the reload after the undo: the video's
   `State.getSession().recordingPath`, the transcript's `.transcript`).
-- The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"improvement"|"notes"]`
+- The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"effort"|"improvement"|"notes"]`
   (saved on change), who fills it `#ov-doc-who`, `#ov-doc-status` (the
   count, and the empty fields by name); the attachments `#ov-attach`
   (`#btn-ov-attach`, `.att-row[data-att-id]` with `.att-label-input` and
   `[data-att-act="open"|"remove"]`); the transcript `#ov-tr` (`#ov-tr-list`,
   `.tr-add-to[data-seg]` opens `#ov-tr-add-menu [data-doc-target]`).
-- Observations `#ov-observations details[data-module="data"|"time"]`
-  (titled as the PDD's sections 5 and 6, Data and Applications and time),
-  who fills them `#ov-observations .ov-block-who`, the tables
-  `table.ov-rows` (their first row the PDD's header row; Data's one table,
-  then Time per transaction and Time in each application), the sub-titles
-  `.ov-rows-title`, the Re-keyed data `.ov-rekeyed li`, the walkthrough line
-  `.ov-rows-after`. They are `analysis.json` `pdd_data` and `pdd_time` as
-  they are, cell by cell (lane CC). The line on their age
-  `#ov-rows-freshness` (hidden while they are current). Opening the Overview
-  after a change of the steps starts an analysis: wait for
-  `require("./views/flow-view.js").analysisBusy()` to be false before
-  reading the rows; a text field of the Overview taking the cursor, leaving
-  the Overview or a save stops it.
+- No Observations since 2.0.1: the PDD's sections are the document's
+  alone, and opening the Overview never starts an analysis.
 
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
 - Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
@@ -555,7 +539,13 @@ Gone since 2026-09-25 (contract C21): the remembered step names (the
 store `pdt-library/remembered-names.json`, the Remembered step names dialog
 `#btn-remembered-names` and `#remembered-names-dialog`, `--names`), and the
 datalist on the step pane's name (the library's picker took its place; a
-row's rename keeps the names used in the project).
+row's rename keeps the names used in the project). Gone since 2026-09-26
+(2.0.1, the PDD for its readers): the Overview's Observations
+(`#ov-observations`, `table.ov-rows`, `.ov-rekeyed`, `#ov-rows-freshness`,
+`views/analysis-view.js`), the rows refresh as the Overview opens
+(`rows-freshness.js`, `session.js` `setBeforeWrite` and
+`beforeProjectWrite`, `flow-view.js` `cancelAnalysisQuietly`) and
+`analysis.json` `pdd_data`, `pdd_time` and `steps_signature` (format 5).
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

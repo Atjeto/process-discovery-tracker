@@ -449,9 +449,9 @@ const WANT_OFFSET = -30000;
       JSON.stringify(search.rows) === JSON.stringify([S.t0007]) && search.count === "(1)" &&
       during.rows.length === 10 && during.count === "(10)" &&
       field === S.t0007 && disk && disk.document.business_rules === S.t0007 &&
-      JSON.stringify(menu.map((m) => m.key)) === JSON.stringify(["purpose", "scope", "trigger", "result", "business_rules", "exceptions", "improvement", "notes"]) &&
+      JSON.stringify(menu.map((m) => m.key)) === JSON.stringify(["purpose", "scope", "trigger", "result", "business_rules", "exceptions", "effort", "improvement", "notes"]) &&
       br && br.disabled && br.text === "Business rules (added)" && menu.filter((m) => m.disabled).length === 1;
-    record("(f) the Overview lists the talk outside the transactions (7); the speaker filter, the search and the transactions checkbox narrow and widen it; Add to offers every field but the title and contacts (trigger, result and improvement included) and Business rules saves document.business_rules",
+    record("(f) the Overview lists the talk outside the transactions (7); the speaker filter, the search and the transactions checkbox narrow and widen it; Add to offers every field but the title and contacts (trigger, result, volume and effort, and improvement included) and Business rules saves document.business_rules",
       ok, JSON.stringify({ err, def: def && { count: def.count, n: def.rows.length }, analyst: analyst && analyst.rows.length, search: search && search.rows, during: during && during.rows.length, field, menu }));
     if (!ok) await shot(page, "fail-transcript-overview.png");
   }

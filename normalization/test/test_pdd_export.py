@@ -200,8 +200,8 @@ OUTLINE = [
     "3. As-Is process", "3.1 As-Is process map", "3.2 Process steps",
     "4. Variations, rules and exceptions", "4.1 Differences between transactions",
     "4.2 Business rules", "4.3 Exceptions",
-    "5. Data",
-    "6. Applications and time", "6.1 Time per transaction", "6.2 Time in each application",
+    "5. Systems and information used",
+    "6. Volume and effort",
     "7. Improvement and automation scope",
 ]
 
@@ -214,6 +214,7 @@ FIELDS = {"title": "Order intake", "purpose": "Book every customer order.",
           "exceptions": "A blocked customer goes to credit control.\n"
                         "The CRM times out: save again.",
           "improvement": "Automate the order entry; the credit check stays manual.",
+          "effort": "About 40 orders a day, 3 minutes each.",
           "notes": ""}
 
 
@@ -289,26 +290,34 @@ def test_document_fields_replace_their_gaps():
     assert _section(blocks, "4.2 Business rules") == ["Orders over 10,000 need a second approval."]
     assert _section(blocks, "4.3 Exceptions") == [
         "A blocked customer goes to credit control.", "The CRM times out: save again."]
+    assert _section(blocks, "6. Volume and effort") == ["About 40 orders a day, 3 minutes each."]
+    # The re-keyed data is a finding of the improvement scope, after its field.
     assert _section(blocks, "7. Improvement and automation scope") == [
-        "Automate the order entry; the credit check stays manual."]
+        "Automate the order entry; the credit check stays manual.",
+        "Re-keyed data",
+        "Order number (Contoso CRM) is typed again as Subject (Outlook) in 1 of 2 transactions."]
     assert "Process | Order intake" in _section(blocks, "1. Document control")
     assert "[To be completed" not in _all_text(blocks)
 
 
 def test_a_gap_stands_only_for_a_field_the_analyst_fills():
-    """With no document field written, the only gaps are the eight fields the
+    """With no document field written, the only gaps are the nine fields the
     app lets the analyst fill (C6); nothing else in the document is left
     open."""
     if not _HAVE_DOCX:
         return
     blocks = _rendered()
     gaps = [t for _k, t in blocks if "[To be completed" in t]
-    assert len(gaps) == 8
+    assert len(gaps) == 9
     for heading in ("2.1 Purpose", "2.2 Scope", "2.3 Trigger", "2.4 Result",
                     "2.5 Key contacts", "4.2 Business rules", "4.3 Exceptions",
-                    "7. Improvement and automation scope"):
+                    "6. Volume and effort", "7. Improvement and automation scope"):
         texts = _section(blocks, heading)
-        assert len(texts) == 1 and texts[0].startswith("[To be completed:"), heading
+        assert texts[0].startswith("[To be completed:"), heading
+        # 7 goes on with the re-keyed data the recording found.
+        assert len(texts) == 1 or heading.startswith("7."), heading
+    assert _section(blocks, "6. Volume and effort") == [
+        "[To be completed: how often the process is done, and how long one takes]"]
     assert "application errors" in _section(blocks, "4.3 Exceptions")[0]
 
 
@@ -429,7 +438,6 @@ def test_the_document_says_transaction_and_project_never_run_or_session():
             "Each step and the steps that followed it in the transactions:",
             "The map file is process_map_step.bpmn in the project folder.",
             "Transaction 2: Order 2 (the reference transaction)",
-            "Not measured: the transaction was not ended",
             "Transactions were not marked in this recording, so every step is listed in time order.",
             "Only one transaction was recorded.",
             "None of the recorded transactions has steps, so the transactions cannot be compared.",
@@ -522,26 +530,28 @@ def test_without_runs_every_visible_step_is_listed_in_time_order():
         "Step 4: Look up the order", "Step 5: Sheet - Log: Save", "Step 6: CRM - Orders: Save"]
     # A step outside every run is placed by its time in the recording.
     assert steps[steps.index("Step 1: Look up the order") + 1] == (
-        "Contoso CRM, Orders \u00b7 2s \u00b7 0:01 into the recording")
+        "Contoso CRM, Orders \u00b7 0:01 into the recording")
     assert _section(blocks, "4.1 Differences between transactions") == [
         "Transactions were not marked in this recording, so there are no transactions "
         "to compare."]
-    assert _section(blocks, "6.1 Time per transaction") == [
-        "Transactions were not marked in this recording, so there is no time per "
-        "transaction."]
+    # Without transactions, every step's system and information count.
+    assert _section(blocks, "5. Systems and information used")[1:] == [
+        "Contoso CRM | Order number", "Outlook | To, Subject, Password", "Excel | Status"]
 
 
-def test_each_step_carries_its_system_time_runs_and_place_in_the_recording():
+def test_each_step_carries_its_system_runs_and_place_in_the_recording_never_a_time():
+    """The recording's times are a walkthrough with explanations: a step
+    says in how many transactions it happened and where it is, never how
+    long it took (section 6 states the effort as the analyst writes it)."""
     if not _HAVE_DOCX:
         return
     steps = _section(_rendered(), "3.2 Process steps")
     line = lambda heading: steps[steps.index(heading) + 1]  # noqa: E731
     assert line("Step 1: Look up the order") == (
-        "Contoso CRM, Orders \u00b7 2s on average \u00b7 in 2 of 2 transactions \u00b7 "
-        "Transaction 1 at 0:01")
+        "Contoso CRM, Orders \u00b7 in 2 of 2 transactions \u00b7 Transaction 1 at 0:01")
     assert line("Step 3: Mail - Compose: Send") == (
-        "Outlook, Order confirmation \u00b7 2s on average \u00b7 in 1 of 2 transactions \u00b7 "
-        "Transaction 1 at 0:10")
+        "Outlook, Order confirmation \u00b7 in 1 of 2 transactions \u00b7 Transaction 1 at 0:10")
+    assert not any("on average" in t for t in steps)
 
 
 def test_the_video_time_joins_the_place_when_the_video_is_synced():
@@ -663,11 +673,13 @@ def test_the_differences_carry_the_system_the_runs_and_what_was_done():
     if not _HAVE_DOCX:
         return
     diffs = _section(_rendered(), "4.1 Differences between transactions")
+    # Plain sentences for the SME (the owner, 2026-09-26), under the
+    # transaction's name: "here" is that transaction.
     assert diffs == [
         "Transaction 2: Order 2",
-        "Extra step after Look up the order: Sheet - Log: Save (Excel), in 1 of 2 "
+        "Sheet - Log: Save (Excel) is done after Look up the order, in 1 of 2 "
         "transactions. Fields: Status.",
-        "Skipped: Mail - Compose: Send (done in 1 of 2 transactions).",
+        "Mail - Compose: Send is not done here (it is done in 1 of 2 transactions).",
     ]
 
 
@@ -682,7 +694,7 @@ def test_an_extra_step_prints_the_analysts_description():
             st["state"] = "edited"
     diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                      "4.1 Differences between transactions")
-    assert diffs[1] == ("Extra step after Look up the order: Log the order (Excel), "
+    assert diffs[1] == ("Log the order (Excel) is done after Look up the order, "
                         "in 1 of 2 transactions. Only for orders from new customers.")
 
 
@@ -707,12 +719,11 @@ def test_an_order_change_a_repeat_and_a_run_without_differences():
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
     assert _section(blocks, "4.1 Differences between transactions") == [
         "Transaction 2: Order 2",
-        "Different order: Look up the order, done after CRM - Orders: Save in this "
-        "transaction.",
-        "Extra step after Look up the order: Sheet - Log: Save (Excel), in 1 of 3 "
+        "Here Look up the order is done after CRM - Orders: Save.",
+        "Sheet - Log: Save (Excel) is done after Look up the order, in 1 of 3 "
         "transactions. Fields: Status.",
-        "Skipped: Mail - Compose: Send (done in 2 of 3 transactions).",
-        "Repeated: CRM - Orders: Save, 2 times.",
+        "Mail - Compose: Send is not done here (it is done in 2 of 3 transactions).",
+        "CRM - Orders: Save is done 2 times here.",
         "No differences from the reference transaction: Transaction 3: Order 3.",
     ]
 
@@ -730,20 +741,20 @@ def test_a_repeat_counts_against_the_reference_transaction():
     diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                      "4.1 Differences between transactions")
     assert diffs[0] == "Transaction 2: Order 2"
-    assert not any(line.startswith("Repeated: ") for line in diffs), diffs
+    assert not any(line.endswith("times here.") for line in diffs), diffs
     # Transaction 2 looks the order up three times: more often than the reference.
     annotations["steps"] += [_step("b6", R2, "Look up the order", FIND, 100, []),
                              _step("b7", R2, "Look up the order", FIND, 105, [])]
     diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                      "4.1 Differences between transactions")
-    assert diffs[-1] == "Repeated: Look up the order, 3 times."
+    assert diffs[-1] == "Look up the order is done 3 times here."
 
 
 def test_a_conditional_step_a_transaction_did_not_do_reads_not_done():
     """Lane FX1 (report 2, item 13): the reference transaction's Send happens
     only when the customer asks for it; transaction 2 did not send it, which
-    the flow already explains, so the line says Not done with the condition
-    in place of Skipped."""
+    the flow already explains, so the line gives the condition in place of
+    how many transactions did it."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -752,8 +763,9 @@ def test_a_conditional_step_a_transaction_did_not_do_reads_not_done():
             st["only_when"] = "the customer asks for a confirmation."
     diffs = _section(_blocks_of(manifest, annotations, stats, analysis, events),
                      "4.1 Differences between transactions")
-    assert "Not done: Mail - Compose: Send (only when the customer asks for a confirmation)." in diffs
-    assert not any(line.startswith("Skipped: ") for line in diffs), diffs
+    assert ("Mail - Compose: Send is not done here: it is done only when the customer "
+            "asks for a confirmation.") in diffs
+    assert not any("is not done here (it is done in" in line for line in diffs), diffs
 
 
 def test_a_merged_reference_step_matches_the_same_drafts_in_another_run():
@@ -776,15 +788,15 @@ def test_a_merged_reference_step_matches_the_same_drafts_in_another_run():
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
     assert _section(blocks, "4.1 Differences between transactions") == [
         "Transaction 2: Order 2",
-        "Extra step after Look up and save the order: Sheet - Log: Save (Excel), "
+        "Sheet - Log: Save (Excel) is done after Look up and save the order, "
         "in 1 of 2 transactions. Fields: Status.",
-        "Skipped: Mail - Compose: Send (done in 1 of 2 transactions).",
+        "Mail - Compose: Send is not done here (it is done in 1 of 2 transactions).",
     ]
     steps_text = _section(blocks, "3.2 Process steps")
     # The merged step happened in both runs: run 2's two drafts count as one
-    # occurrence of 4s (2s each), run 1's merged step took 2s.
+    # occurrence.
     assert steps_text[steps_text.index("Step 1: Look up and save the order") + 1].startswith(
-        "Contoso CRM, Orders \u00b7 3s on average \u00b7 in 2 of 2 transactions")
+        "Contoso CRM, Orders \u00b7 in 2 of 2 transactions")
 
 
 def test_one_run_has_nothing_to_compare():
@@ -797,29 +809,58 @@ def test_one_run_has_nothing_to_compare():
         "Only one transaction was recorded."]
 
 
-# ---- 5. Data ---------------------------------------------------------------------------
+# ---- 5. Systems and information used, 6. Volume and effort, 7's re-keyed data -------------
 
-def test_the_data_table_marks_re_keyed_fields_and_states_the_requirement():
+def test_section_5_names_each_system_and_the_information_entered_in_it():
+    """The owner, 2026-09-26: the PDD is for the SME and whoever asks about
+    the process being automated, so section 5 names the systems and the
+    information the process takes, never a value (the Technical details and
+    the viewer hold those). The reference transaction's entries first;
+    Excel, which only transaction 2 used, lists what it entered there."""
     if not _HAVE_DOCX:
         return
-    data = _section(_rendered(), "5. Data")
-    assert data == [
-        "Field | System and screen | Step | Example value | Re-keyed",
-        "Order number | Contoso CRM, Orders | Look up the order | ORD-1 | as Subject (Outlook)",
-        "To | Outlook, Order confirmation | Mail - Compose: Send | customer@example.com | ",
-        "Subject | Outlook, Order confirmation | Mail - Compose: Send | ORD-1 | "
-        "from Order number (Contoso CRM)",
-        # Lane LF-PIPE: a redacted secret reads "Password typed (hidden)".
-        "Password | Outlook, Order confirmation | Mail - Compose: Send | "
-        "typed (hidden) | ",
-        "Status | Excel, Order log.xlsx | Sheet - Log: Save | Logged | ",
-        "Re-keyed data",
-        "Order number (Contoso CRM) is typed again as Subject (Outlook) in 1 of 2 "
-        "transactions.",
+    blocks = _rendered()
+    assert _section(blocks, "5. Systems and information used") == [
+        "System | Information entered",
+        "Contoso CRM | Order number",
+        "Outlook | To, Subject, Password",
+        "Excel | Status",
     ]
+    assert "customer@example.com" not in _all_text(blocks)
 
 
-def test_a_value_re_keyed_in_every_run_says_so():
+def test_a_workbooks_cells_are_one_entry_for_the_reader():
+    """A spreadsheet cell's field name is its address: the document names a
+    workbook's cells as one entry, in section 5 and in a step's fields."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    cells = [("c1", 20.1, "B3", "Contoso"), ("c2", 20.2, "A2", "ORD-1"), ("c3", 20.3, "F5", "99,8")]
+    for eid, sec, cell, value in cells:
+        events.append(_inter(eid, sec, "EXCEL.EXE", LOG_TITLE, "value_changed", cell, "DataItem",
+                             value=value))
+    annotations["steps"].append(_step("a5", R1, "Log the order", LOG, 20, [c[0] for c in cells],
+                                      state="confirmed"))
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert "Excel | cells A2 to F5 of Order log.xlsx" in _section(blocks, "5. Systems and information used")
+    assert "Fields: cells A2 to F5 of Order log.xlsx." in _section(blocks, "3.2 Process steps")
+
+
+def test_section_6_is_the_analysts_volume_and_effort_never_the_recorded_times():
+    """The recorded times are a walkthrough with explanations: the document
+    prints the volume and effort the analyst states (C6 `document.effort`),
+    else its gap; the viewer shows the recorded times."""
+    if not _HAVE_DOCX:
+        return
+    blocks = _rendered()
+    assert _section(blocks, "6. Volume and effort") == [
+        "[To be completed: how often the process is done, and how long one takes]"]
+    text = _all_text(blocks)
+    for measured in ("Active time", "Elapsed time", "Time per transaction", "walkthrough"):
+        assert measured not in text, measured
+
+
+def test_a_value_re_keyed_in_every_run_says_so_in_the_improvement_scope():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -832,28 +873,12 @@ def test_a_value_re_keyed_in_every_run_says_so():
             st["evidence"]["interaction_event_ids"].append("f6")
         if st["step_id"] == "a3":
             st["evidence"]["interaction_event_ids"].append("e8")
-    data = _section(_blocks_of(manifest, annotations, stats, analysis, events), "5. Data")
+    scope = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "7. Improvement and automation scope")
     assert ("Order number (Contoso CRM) is typed again as Order (Excel) in every "
-            "transaction.") in data
+            "transaction.") in scope
     # A secret, a noise literal or a short value is never counted.
-    assert not any("Password" in t and "typed again" in t for t in data)
-
-
-# ---- 6. Applications and time ------------------------------------------------------------
-
-def test_the_times_of_the_runs_with_the_walkthrough_line():
-    if not _HAVE_DOCX:
-        return
-    blocks = _rendered()
-    assert _section(blocks, "6.1 Time per transaction") == [
-        "Transaction | Steps | Active time | Elapsed time",
-        "Transaction 1: Order 1 | 3 | 44s | 50s",    # the hidden step is not counted
-        "Transaction 2: Order 2 | 3 | 58s | 1m",
-        "The transactions were recorded during a walkthrough, with explanations, so "
-        "these times show the recording, not the usual handling time.",
-    ]
-    text = _all_text(blocks).lower()
-    assert "median" not in text and "percentile" not in text and "p90" not in text
+    assert not any("Password" in t and "typed again" in t for t in scope)
 
 
 def test_a_label_that_only_repeats_the_transactions_name_is_not_printed():
@@ -867,27 +892,15 @@ def test_a_label_that_only_repeats_the_transactions_name_is_not_printed():
     stats["case_stats"][0]["label"] = " Run 1 "
     stats["case_stats"][1]["label"] = "transaction 2"
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
-    assert _section(blocks, "6.1 Time per transaction")[1:3] == [
-        "Transaction 1 | 3 | 44s | 50s", "Transaction 2 | 3 | 58s | 1m"]
     assert _section(blocks, "3.2 Process steps")[1] == (
         "The steps as done in Transaction 1, the reference transaction.")
     assert _section(blocks, "4.1 Differences between transactions")[0] == "Transaction 2"
     stats["case_stats"][0]["label"] = "Transaction 2"
     stats["case_stats"][1]["label"] = "Run 1"
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
-    assert _section(blocks, "6.1 Time per transaction")[1:3] == [
-        "Transaction 1: Transaction 2 | 3 | 44s | 50s", "Transaction 2: Run 1 | 3 | 58s | 1m"]
-
-
-def test_time_in_each_application_is_per_system_and_per_run():
-    if not _HAVE_DOCX:
-        return
-    assert _section(_rendered(), "6.2 Time in each application") == [
-        "System | Screens | Steps | Time per transaction",
-        "Contoso CRM | Orders | Look up the order, CRM - Orders: Save | 4s",
-        "Outlook | Order confirmation | Mail - Compose: Send | 1s",
-        "Excel | Order log.xlsx | Sheet - Log: Save | 1s",
-    ]
+    assert _section(blocks, "3.2 Process steps")[1] == (
+        "The steps as done in Transaction 1: Transaction 2, the reference transaction.")
+    assert _section(blocks, "4.1 Differences between transactions")[0] == "Transaction 2: Run 1"
 
 
 def test_systems_carry_business_names_never_process_tokens():
@@ -895,8 +908,10 @@ def test_systems_carry_business_names_never_process_tokens():
         return
     manifest, annotations, stats, analysis, events = _session()
     stats["meta"]["app_names"] = {}              # the shared system list still names them
-    text = _all_text(_blocks_of(manifest, annotations, stats, analysis, events))
-    assert "Outlook, Order confirmation" in text and "Excel, Order log.xlsx" in text
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    systems = [row.split(" | ")[0] for row in _section(blocks, "5. Systems and information used")[1:]]
+    assert "Outlook" in systems and "Excel" in systems
+    text = _all_text(blocks)
     assert not re.search(r"\.exe\b", text, re.IGNORECASE)
     assert "(browser)" not in text
 
@@ -910,7 +925,7 @@ def test_every_table_has_a_grid_and_a_repeating_header():
     with tempfile.TemporaryDirectory() as tmp:
         doc = _render(tmp, manifest, annotations, stats, analysis, events)
         tables = list(doc.tables)
-        assert len(tables) == 5          # control, map from the runs, data, runs, systems
+        assert len(tables) == 3          # control, map from the runs, systems and information
         for t in tables:
             assert t.style is not None and t.style.name == "Table Grid"
         for t in tables[1:]:
@@ -1099,8 +1114,9 @@ def test_write_pdd_works_without_analysis_or_events():
     manifest, annotations, stats, _analysis, _events = _session()
     blocks = _blocks_of(manifest, annotations, stats, None, None)
     assert _numbered(blocks) == OUTLINE
-    assert _section(blocks, "5. Data") == [
-        "The recorded field entries were not available to this export."]
+    rows = _section(blocks, "5. Systems and information used")
+    assert rows[0] == "System | Information entered"
+    assert rows[1:] and all(r.endswith(" | not available to this export") for r in rows[1:]), rows
 
 
 def test_failed_analysis_stages_change_nothing_in_the_document():
@@ -1182,7 +1198,7 @@ def _sha(data):
     return hashlib.sha1(data).hexdigest()
 
 
-def test_the_system_set_on_a_step_wins_in_its_line_and_the_data_table():
+def test_the_system_set_on_a_step_wins_in_its_line_and_in_section_5():
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -1191,15 +1207,12 @@ def test_the_system_set_on_a_step_wins_in_its_line_and_the_data_table():
     steps = _section(blocks, "3.2 Process steps")
     assert steps[0] == "The process runs through Order desk, Contoso CRM, Outlook and Excel."
     assert steps[steps.index("Step 1: Look up the order") + 1].startswith("Order desk, Orders \u00b7 ")
-    data = _section(blocks, "5. Data")
-    assert data[1].startswith("Order number | Order desk, Orders | Look up the order | ORD-1")
-    apps = _section(blocks, "6.2 Time in each application")
-    assert any(row.startswith("Order desk | Orders | Look up the order") for row in apps)
+    assert "Order desk | Order number" in _section(blocks, "5. Systems and information used")
 
 
 def test_a_step_without_a_time_says_no_time():
     """C16: a step added by hand without a time (time_range null) prints no
-    time and no place in the recording, never "under 1s"."""
+    place in the recording."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
@@ -1212,10 +1225,8 @@ def test_a_step_without_a_time_says_no_time():
     assert [t for k, t in blocks if k == "Heading 3"][-1] == "Step 4: Phone the customer"
     assert steps[steps.index("Step 4: Phone the customer") + 1] == (
         "Phone \u00b7 in 1 of 2 transactions")
-    apps = _section(blocks, "6.2 Time in each application")
-    # Lane FX3: a step with no screen leaves the Screens cell empty, never
-    # "Not recorded".
-    assert "Phone |  | Phone the customer | Not measured" in apps
+    # Its system is listed, with nothing entered in it; no time anywhere.
+    assert "Phone | none" in _section(blocks, "5. Systems and information used")
 
 
 def test_the_screenshot_the_analyst_chose_is_the_one_printed():
@@ -1405,7 +1416,7 @@ def test_a_step_that_is_a_sub_process_points_at_its_chapter():
     chapter = _section(blocks, _CHAPTERS[0])
     check, save = chapter.index("Step 2.2: Check stock"), chapter.index("Step 2.3: Click Save")
     assert chapter[check + 1:save] == [
-        "under 1s on average · in 1 of 2 transactions · Transaction 1 at 0:04",
+        "in 1 of 2 transactions · Transaction 1 at 0:04",
         "Sub-process: see section 3.4."]
     assert not any(t.startswith("Sub-process:") for t in _section(blocks, _CHAPTERS[1]))
 
@@ -1430,8 +1441,7 @@ def test_a_chapter_prints_its_map_then_the_reference_transactions_first_visit():
         "2 of these 3 steps are drafts not confirmed yet."]
     one = chapter.index("Step 2.1: Enter the order number")
     assert chapter[one + 1:one + 3] == [
-        "Contoso CRM, Orders · under 1s on average · in 2 of 2 transactions "
-        "· Transaction 1 at 0:04",
+        "Contoso CRM, Orders · in 2 of 2 transactions · Transaction 1 at 0:04",
         "Fields: Order number."]
     save = chapter.index("Step 2.3: Click Save")
     assert chapter[save + 1].startswith("Contoso CRM, Orders · ")
@@ -1483,8 +1493,7 @@ def test_a_group_prints_its_name_line_description_flow_and_pointer_not_its_membe
     steps = _section(blocks, "3.2 Process steps")
     at = steps.index("Step 3: Tell the customer")
     assert steps[at + 1:] == [
-        "Outlook, Order confirmation · 2s on average · in 1 of 2 transactions "
-        "· Transaction 1 at 0:10",
+        "Outlook, Order confirmation · in 1 of 2 transactions · Transaction 1 at 0:10",
         "Only when the customer asked for a mail.",
         "Tell the customer the order is booked.",
         "Then goes back to step 1, Look up the order, when the order changes.",
@@ -1493,8 +1502,7 @@ def test_a_group_prints_its_name_line_description_flow_and_pointer_not_its_membe
     chapter = _section(blocks, _CHAPTERS[2])
     send = chapter.index("Step 3.1: Mail - Compose: Send")
     assert chapter[send + 1:] == [
-        "Outlook, Order confirmation · 2s on average · in 1 of 1 transaction "
-        "· Transaction 1 at 0:10",
+        "Outlook, Order confirmation · in 1 of 1 transaction · Transaction 1 at 0:10",
         "Fields: To, Subject, Password.", "Flagged as waste."]
     assert pictures == 1
 
@@ -1572,7 +1580,7 @@ def test_the_sections_after_the_steps_read_the_main_level_only():
     for name in ("Enter the order number", "Check stock", "Open the stock list",
                  "Read the stock", "Click Save"):
         assert name not in after, name
-    assert any("Tell the customer" in row for row in _section(blocks, "6.2 Time in each application"))
+    assert len(_section(blocks, "5. Systems and information used")) > 1
 
 
 def test_the_map_pictures_manifest_gives_each_map_its_picture():

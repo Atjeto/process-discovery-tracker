@@ -1,9 +1,12 @@
 """Generate the Process Definition Document (.docx) from a normalized session.
 
-The PDD is the process manager's hand-over: a document the team can pass on
-as it is, in place of the maps and documents built by hand. Its wording is
-tool-neutral (any automation technology or application work), and it reads
-in the reader's order:
+The PDD is the process explained and agreed, for people who do not open PDT:
+the SME who confirms it, and whoever asks for the details of the process
+being automated; it is archived per version (the owner, 2026-09-26). The
+developer works from the project in the viewer and the Technical details
+(tech_details.py), not from it, so it holds no field-level data, controls or
+recorded times. Its wording is tool-neutral (any automation technology or
+application work), and it reads in the reader's order:
 
   1. Document control: the process, the project folder (a developer's way
      into the recording), who recorded it, the transactions, whether a video
@@ -17,10 +20,10 @@ in the reader's order:
      contract C6): purpose, scope, trigger, result and key contacts.
   3. As-Is process: the systems the process runs through, the As-Is map on
      a page of its own, and the steps of the reference transaction (the
-     pattern run, contract C3). Each step says its system and screen, its
-     average time, in how many transactions it happened and where it is in
-     the recording ("Transaction 1 at 0:19", and the video time when the
-     video's start is known); its description (C7) is its text. The flow
+     pattern run, contract C3). Each step says its system and screen, in
+     how many transactions it happened and where it is in the recording
+     ("Transaction 1 at 0:19", and the video time when the video's start is
+     known), never a time it took; its description (C7) is its text. The flow
      the analyst set on it (C17) prints under it: "Only when" its condition,
      and where the process goes after it besides the next step. A step's
      heading reads "Step 2: <name>", so a step's number never reads as a
@@ -30,18 +33,20 @@ in the reader's order:
      page of its own, then the steps of the reference transaction's first
      visit, "Step 2.1", "Step 2.2", pointing at deeper chapters in turn.
   4. Variations, rules and exceptions: how each other transaction differed
-     from the reference transaction (aligned by draft key: extra steps,
-     another order, skipped steps, steps done more often than the reference
-     did them, and a conditional step not done; the rule is pinned with the
-     viewer's Steps by shared/run-differences-golden.json), then the
-     business rules and the exceptions.
-  5. Data: every field entered, with its system and screen, its step and an
-     example value. Re-keyed data (a value typed again in another system in
-     the same transaction) is marked and stated as a requirement.
-  6. Applications and time: the time of every transaction, and each
-     system's screens, steps and time per transaction.
-  7. Improvement and automation scope: the analyst's field, and the To-Be
-     map when one was chosen.
+     from the reference transaction, in plain sentences (aligned by draft
+     key: extra steps, another order, skipped steps, steps done more often
+     than the reference did them, and a conditional step not done; the rule
+     is pinned with the viewer's Steps by shared/run-differences-golden.json,
+     the wording is the document's own), then the business rules and the
+     exceptions.
+  5. Systems and information used: each system the process uses, with the
+     information the reference transaction entered in it, named for the
+     reader (a workbook's cells as one entry); no values.
+  6. Volume and effort: as the analyst states it (C6 `document.effort`),
+     never the recorded times, which are a walkthrough's.
+  7. Improvement and automation scope: the analyst's field, the re-keyed
+     data (a value typed again in another system in the same transaction),
+     and the To-Be map when one was chosen.
   8. Notes: only when written.
   8 or 9. Attachments: the files the analyst attached (label and file
      name), only when there are any.
@@ -67,7 +72,7 @@ a step names its attachments. A session without a recording
 (manifest.source "video" or "blank") has one implicit run, not a marked
 transaction, and says so; a step
 without a time (`time_range: null`) orders by its `order` and prints no
-time, never a zero. The notes pinned to steps and moments
+place in the recording. The notes pinned to steps and moments
 (annotations.analyst_notes) are not printed.
 
 Sub-processes (contract C19): sections 4 to 9 read the main level only;
@@ -85,7 +90,6 @@ Uses python-docx.
 from __future__ import annotations
 import json
 import logging
-import math
 import re
 from collections import Counter
 from datetime import datetime, timezone
@@ -109,8 +113,8 @@ from _dt import parse_ts_or_none as _parse_ts
 from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
-from step_context import (StepContext, clock, fmt_ms as _fmt_duration, has_video,
-                          step_duration_ms, step_start, step_system, untimed_key, video_start)
+from step_context import (StepContext, clock, has_video, step_start, step_system,
+                          untimed_key, video_start)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
 from recognition import is_browser_chrome
@@ -137,10 +141,6 @@ REKEY_MIN_LEN = 4
 REKEY_MIN_LEN_VOCAB = 2
 # A field value longer than this is cut in the document.
 _VALUE_MAX = 200
-# The line under the times of the transactions (AD-28).
-_WALKTHROUGH = ("The transactions were recorded during a walkthrough, with "
-                "explanations, so these times show the recording, not the usual "
-                "handling time.")
 # The capture app labels an unnamed run "Transaction N" ("Run N" before the
 # AD-29 words): a label that only repeats the transaction's own name is not
 # printed beside it, as in the viewer's list of runs.
@@ -151,9 +151,8 @@ _SEP = " · "
 # words the viewer's Checklist, project line and Timeline use for it
 # (viewer/analyst-content.js IMPLICIT_TRANSACTION, lane FX3).
 _IMPLICIT = "One transaction (not marked)"
-# The System cell of section 6.2 for the steps that have no system (lane FX3):
-# never "Not recorded", which read as the name of a system. The Overview
-# reads this cell to leave the row out of its one line (analysis-view.js).
+# The System cell of section 5 for the steps that have no system (lane FX3):
+# never "Not recorded", which read as the name of a system.
 NO_SYSTEM = "No system set"
 # The capture app's defaults for the request (capture/config.js): a
 # recording made without setting one prints no request.
@@ -178,8 +177,8 @@ def write_pdd(
     library=None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
-    steps' systems, screens and entered fields are read from; without it the
-    data section says the field entries were not available. `analysis` is
+    steps' systems, screens and entered fields are read from; without it
+    section 5 says the information entered was not available. `analysis` is
     accepted for the pipeline's call and not printed: the document holds no
     analysis findings (section 1 of the earlier document is cut). `library`
     is the activity library the steps' `library_activity` names (contract
@@ -213,8 +212,8 @@ def write_pdd(
     _write_purpose_and_scope(doc, s)                    # 2
     _write_as_is(doc, s, process_map_image)             # 3
     _write_variations(doc, s)                           # 4
-    _write_data(doc, s)                                 # 5
-    _write_applications_and_time(doc, s)                # 6
+    _write_information(doc, s)                          # 5
+    _write_effort(doc, s)                               # 6
     _write_improvement(doc, s, tobe_map_image,          # 7
                        notes or bool(s.attachments))
     _write_notes(doc, s)                                # 8, only when written
@@ -293,18 +292,6 @@ def _members(unit) -> list:
     return members if isinstance(members, list) and members else [unit]
 
 
-def _unit_ms(unit) -> float | None:
-    """A unit's measured time: its members' durations added up, leaving out
-    a member without a time range; None when no member has one (C16: a
-    step added by hand may have no time, and it is never shown as 0)."""
-    timed = [ms for ms in (step_duration_ms(m) for m in _members(unit)) if ms is not None]
-    return sum(timed) if timed else None
-
-
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-
-
 # Where the screenshots the analyst adds by hand live in the session folder
 # (C16): screenshots/analyst/<file>, `file` being annotations.analyst_screenshots[].file.
 _ANALYST_SHOTS = "screenshots/analyst/"
@@ -365,9 +352,9 @@ class _Level:
     """One map of the project as the document reads it (contract C19, a
     map of sub_process_maps.map_tree): its path of nodes, its number ("2",
     "2.1"; None for the main map and for a map with no chapter), its traces
-    with the transaction of each, per map node the transactions that ran it
-    and the times of its steps, and `first`, the reference transaction's
-    first trace: the steps its chapter prints."""
+    with the transaction of each, per map node the transactions that ran it,
+    and `first`, the reference transaction's first trace: the steps its
+    chapter prints."""
 
     def __init__(self, m, reference):
         self.path = list(m["path"])
@@ -377,15 +364,11 @@ class _Level:
         self.reference = reference
         self.runs = len(set(self.tx))
         self.node_runs: dict[str, set] = {}
-        self.node_ms: dict[str, list[float]] = {}
         self.node_by_id: dict[str, str] = {}
         for t, trace in zip(self.tx, self.traces):
             for st in trace:
                 node = node_of(st)
                 self.node_runs.setdefault(node, set()).add(t)
-                ms = step_duration_ms(st)
-                if ms is not None:
-                    self.node_ms.setdefault(node, []).append(ms)
                 sid = st.get("step_id")
                 if isinstance(sid, str) and sid:
                     self.node_by_id.setdefault(sid, node)
@@ -463,7 +446,7 @@ class _Session:
         self.has_video = has_video(self.manifest, self.annotations)
 
         # Each run's steps as units aligned to the reference run, and per
-        # unit identity: in how many runs it happened and how long it took.
+        # unit identity: in how many runs it happened.
         pattern = self.run_steps(self.pattern_index) if self.pattern_index is not None else []
         self.units = []
         for i in range(len(self.runs)):
@@ -471,14 +454,9 @@ class _Session:
             self.units.append(steps if i == self.pattern_index or not pattern
                               else _collapse_merged(pattern, steps))
         self.key_runs: Counter = Counter()
-        self.key_ms: dict[str, list[float]] = {}     # the timed units only (C16)
         for units in self.units:
             for key in {_align_key(u) for u in units}:
                 self.key_runs[key] += 1
-            for u in units:
-                ms = _unit_ms(u)
-                if ms is not None:
-                    self.key_ms.setdefault(_align_key(u), []).append(ms)
 
         # C19: the maps of the project (sub_process_maps.map_tree) over the
         # transactions 3.2 prints from, the reference one numbering them;
@@ -630,14 +608,14 @@ class _Session:
 
     def context_line(self, step, level=None) -> str:
         """The line under a step's heading: the code of the library activity
-        the step is (contract C21, "Code SF-01"), system and screen, its
-        average time, in how many transactions it happened ("in 3 of 4
-        transactions"), where it is in the recording. Contract C16: the time
-        leaves out the steps without a time range and is not said when none
-        of them has one; the implicit run (transactions not marked) is not
-        counted. Contract C19: a sub-step of a chapter (`level`, its map) is
-        timed and counted over its map's traces, out of the transactions
-        that ran its sub-process, and placed in the reference transaction."""
+        the step is (contract C21, "Code SF-01"), system and screen, in how
+        many transactions it happened ("in 3 of 4 transactions"), where it
+        is in the recording. No time it took: the recording's times are a
+        walkthrough with explanations, and section 6 states the effort as
+        the analyst writes it. The implicit run (transactions not marked) is
+        not counted. Contract C19: a sub-step of a chapter (`level`, its map)
+        is counted over its map's traces, out of the transactions that ran
+        its sub-process, and placed in the reference transaction."""
         parts = []
         activity = self.activity(step)
         if activity is not None and activity.code:
@@ -645,29 +623,13 @@ class _Session:
         where = self.where(step)
         if where:
             parts.append(where)
-        own = _unit_ms(step)
         sub = level is not None and bool(level.path)
-        if sub and self.pattern_index is not None:
-            node = node_of(step)
-            durations = level.node_ms.get(node) or ([own] if own is not None else [])
-            if durations:
-                parts.append(_duration(sum(durations) / len(durations)) + " on average")
-            if not self.implicit:
-                parts.append(f"in {len(level.node_runs.get(node) or ()) or 1} of "
-                             f"{_plural(level.runs, 'transaction')}")
-        elif sub:
-            if own is not None:
-                parts.append(_duration(own))
-        elif self.runs:
-            key = _align_key(step)
-            durations = self.key_ms.get(key) or ([own] if own is not None else [])
-            if durations:
-                parts.append(_duration(sum(durations) / len(durations)) + " on average")
-            if not self.implicit:
-                parts.append(f"in {self.key_runs.get(key) or 1} of "
-                             f"{_plural(len(self.runs), 'transaction')}")
-        elif own is not None:
-            parts.append(_duration(own))
+        if not self.implicit and sub and self.pattern_index is not None:
+            parts.append(f"in {len(level.node_runs.get(node_of(step)) or ()) or 1} of "
+                         f"{_plural(level.runs, 'transaction')}")
+        elif not self.implicit and not sub and self.runs:
+            parts.append(f"in {self.key_runs.get(_align_key(step)) or 1} of "
+                         f"{_plural(len(self.runs), 'transaction')}")
         position = self.position(step, self.reference_case if sub else None)
         if position:
             parts.append(position)
@@ -736,11 +698,35 @@ class _Session:
         return system, self.ctx.value_free_screen(member, system) or screen
 
     def field_names(self, step) -> list[str]:
-        """The distinct fields entered in a step, in the order first entered."""
-        seen: dict[str, None] = {}
-        for field, _value, _data, _ts, _member in self.entries(step):
-            seen.setdefault(field, None)
-        return list(seen)
+        """The distinct fields entered in a step, in the order first entered,
+        named for the reader (business_names)."""
+        return self.business_names(self.entries(step))
+
+    def business_names(self, entries) -> list[str]:
+        """The fields of `entries` (as entries() gives them), each once in the
+        order first entered, a workbook's cells as one entry: a spreadsheet
+        cell's name is its address, and forty addresses tell a reader
+        nothing, so "cells A2 to F5 of orders-week40.xlsx" (the first and
+        the last column and row entered; "cell B3 of ..." for one)."""
+        names: dict = {}   # a field name, or ("cells", workbook) for its cells
+        books: dict[str, list[tuple[int, int]]] = {}
+        for field, _value, data, _ts, member in entries:
+            cell = _cell_address(field, data)
+            if cell is None:
+                names.setdefault(field, None)
+                continue
+            book = self.entry_where(member, data)[1] or "the workbook"
+            if book not in books:
+                books[book] = []
+                names.setdefault(("cells", book), None)
+            books[book].append(cell)
+        out = []
+        for name in names:
+            if isinstance(name, tuple):
+                out.append(_cell_range(books[name[1]], name[1]))
+            else:
+                out.append(name)
+        return out
 
     def screenshots(self, step) -> list[str]:
         """The screenshot (session-relative path, in a list of one or none)
@@ -953,21 +939,6 @@ def _joined(items):
     if not items:
         return ""
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
-
-
-def _duration(ms) -> str:
-    """A step or run time: "12s", "1m 07s"; "under 1s" below half a second."""
-    if not _num(ms):
-        return "-"
-    return "under 1s" if ms < 500 else _fmt_duration(ms)
-
-
-def _fmt_ms(ms):
-    """A duration ("46s", "1m 07s", step_context.fmt_ms). A non-numeric
-    value (hand-edited annotations, odd analysis) is "-"."""
-    if not _num(ms):
-        return "-"
-    return _fmt_duration(ms)
 
 
 def _image_px(path) -> tuple[int, int] | None:
@@ -1688,17 +1659,20 @@ def _differences(pattern_steps, run_steps, left_out=None, origin=None) -> list[s
 
 
 def _variation_lines(s, run_index) -> list[str]:
-    """The document's lines for one run: first, once, the part of it left
-    out of the analysis (annotations.excluded_ranges, cut to its span), then
-    its differences from the reference transaction (_difference_items, the
-    rule the Steps level follows): each extra step with its system, in how
-    many transactions it happened and what was done; each step in another
-    order; each skipped step with how many transactions did it; a step that
-    happens only under a condition the transaction did not do, with the
-    condition (no difference); each step it did more often than the
-    reference transaction, with how often. A reference step inside a stretch
-    left out is neither skipped nor not done. The reference transaction is
-    compared with nothing: it says only its stretches left out."""
+    """The document's lines for one run, in plain sentences for the SME and
+    whoever reads the document (printed under the transaction's name, so
+    "here" is that transaction): first, once, the part of it left out of the
+    analysis (annotations.excluded_ranges, cut to its span), then its
+    differences from the reference transaction (_difference_items, the rule
+    the Steps level follows; the viewer words the same items its own way,
+    _differences): each extra step with its system, in how many
+    transactions it happened and what was done; each step in another order;
+    each step not done here with how many transactions did it; a step that
+    happens only under a condition the transaction did not meet (no
+    difference); each step done more often than the reference transaction
+    did it. A reference step inside a stretch left out is neither skipped
+    nor not done. The reference transaction is compared with nothing: it
+    says only its stretches left out."""
     m = len(s.runs)
     stretches = s.left_out(run_index)
     lines = [_left_out_text(stretches, s.recording_start, "transaction")] if stretches else []
@@ -1709,24 +1683,23 @@ def _variation_lines(s, run_index) -> list[str]:
         kind, key, step, prev = it["kind"], it["key"], it["step"], it["prev"]
         name = _step_name(step)
         if kind == "extra":
-            where = (f" after {_step_name(prev)}" if prev is not None
-                     else " at the start of the transaction")
+            where = f"after {_step_name(prev)}" if prev is not None else "first"
             system = s.system_of(step)
             shown = f"{name} ({system})" if system and system.lower() not in name.lower() else name
-            line = (f"Extra step{where}: {shown}, in {s.key_runs.get(key) or 1} "
+            line = (f"{shown} is done {where}, in {s.key_runs.get(key) or 1} "
                     f"of {m} transactions.")
             done = s.what_was_done(step)
             lines.append(f"{line} {done}" if done else line)
         elif kind == "order":
             after = f"after {_step_name(prev)}" if prev is not None else "first"
-            lines.append(f"Different order: {name}, done {after} in this transaction.")
+            lines.append(f"Here {name} is done {after}.")
         elif kind == "skipped":
-            lines.append(f"Skipped: {name} (done in {s.key_runs.get(key) or 0} "
+            lines.append(f"{name} is not done here (it is done in {s.key_runs.get(key) or 0} "
                          f"of {m} transactions).")
         elif kind == "not_done":
-            lines.append(f"Not done: {name} (only when {_clause(it['condition'])}).")
+            lines.append(f"{name} is not done here: it is done only when {_clause(it['condition'])}.")
         else:
-            lines.append(f"Repeated: {name}, {it['times']} times.")
+            lines.append(f"{name} is done {it['times']} times here.")
     return lines
 
 
@@ -1821,6 +1794,44 @@ def _rekeyed(s) -> list[tuple[tuple[str, str], tuple[str, str], int]]:
     return [(a, b, n) for a, b, n, _values in rekey_pairs(s)]
 
 
+# A spreadsheet cell: a DataItem named by its address ("A2", "AB12").
+_CELL_NAME = re.compile(r"^\$?([A-Z]{1,3})\$?([1-9][0-9]{0,6})$")
+
+
+def _cell_address(field, data) -> tuple[int, int] | None:
+    """(column number, row) when `field` is a spreadsheet cell's address,
+    else None."""
+    if not isinstance(data, dict) or data.get("control_type") != "DataItem":
+        return None
+    m = _CELL_NAME.match(field or "")
+    if not m:
+        return None
+    col = 0
+    for ch in m.group(1):
+        col = col * 26 + (ord(ch) - 64)
+    return col, int(m.group(2))
+
+
+def _column_letters(col: int) -> str:
+    letters = ""
+    while col > 0:
+        col, rem = divmod(col - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
+
+
+def _cell_range(cells, book) -> str:
+    """"cells A2 to F5 of <book>" over the cells entered, "cell B3 of <book>"
+    for one."""
+    cols = [c for c, _r in cells]
+    rows = [r for _c, r in cells]
+    first = f"{_column_letters(min(cols))}{min(rows)}"
+    last = f"{_column_letters(max(cols))}{max(rows)}"
+    if first == last:
+        return f"cell {first} of {book}"
+    return f"cells {first} to {last} of {book}"
+
+
 def _rekey_sentence(src, dst, n, runs) -> str:
     often = "in every transaction" if n >= runs else f"in {n} of {runs} transactions"
     if src[0] == dst[0]:
@@ -1828,171 +1839,83 @@ def _rekey_sentence(src, dst, n, runs) -> str:
     return f"{src[0]} ({src[1]}) is typed again as {dst[0]} ({dst[1]}) {often}."
 
 
-# The rows sections 5 and 6 print are computed once, as plain data
-# (data_section, time_section), and printed from that data: the pipeline
-# writes the same data into analysis.json (`pdd_data`, `pdd_time`, through
-# pdd_rows), and the viewer's Overview shows it, so the Overview and the PDD
-# say one fact in the same words (shared/pdd-rows-golden.json pins it).
+# ---- 5. Systems and information used, 6. Volume and effort --------------------
 
-DATA_HEADER = ("Field", "System and screen", "Step", "Example value", "Re-keyed")
-_DATA_WIDTHS = (1.15, 1.35, 1.35, 1.15, 1.0)
-
-
-def data_section(s) -> dict:
-    """Section 5, Data, as the document prints it: {"heading": "Data",
-    "note": a sentence printed in place of the table (no field entries, or
-    none available to the export) or None, "header": the table's columns,
-    "rows": one row per distinct field entered across the process (field,
-    its system and screen, its step, an example value, how it is re-keyed:
-    the reference run's first, then what only the other runs and the steps
-    outside the runs entered), "rekeyed": one sentence per re-keying (a value
-    typed in one system and again in another in the same transaction), most
-    frequent first}."""
-    out = {"heading": "Data", "note": None, "header": list(DATA_HEADER), "rows": [], "rekeyed": []}
-    if not s.have_events:
-        out["note"] = "The recorded field entries were not available to this export."
+def information_section(s) -> dict:
+    """Section 5, Systems and information used, as the document prints it:
+    {"heading", "note": a sentence printed in place of the table (no steps)
+    or None, "rows": [system, the information entered in it]}: one row per
+    system the process uses, in the order the reference transaction first
+    uses it, then the systems only the other transactions use (without a
+    reference transaction, the steps' own order), with the information the
+    reference transaction entered in it (business_names), else, for a
+    system only the other transactions entered information in, what the
+    first of them entered there ("none" when no transaction entered
+    anything there). No values: the transactions' entries and every value
+    are the Technical details' and the viewer's."""
+    out = {"heading": "Systems and information used", "note": None, "rows": []}
+    if s.pattern_index is not None:
+        reference = s.units[s.pattern_index]
+        units = s.run_units()
+    else:
+        reference = units = s.steps_by_run.get(None, []) if s.runs else s.steps
+    if not units:
+        out["note"] = ("No steps have been added to this project yet." if not s.recorded
+                       else "No steps have been recorded for this project yet.")
         return out
-    outside = s.steps_by_run.get(None, []) if s.runs else s.steps
-    rows, seen = [], set()
-    for unit in s.run_units() + outside:
-        for field, value, data, _ts, member in s.entries(unit):
-            key = (field, _align_key(unit))
-            if key in seen:
+    systems: dict[str, list] = {}
+    for unit in units:
+        systems.setdefault(s.system_of(unit) or NO_SYSTEM, [])
+
+    def entries_by_system(of_units) -> dict[str, list]:
+        found: dict[str, list] = {}
+        for unit in of_units:
+            for entry in s.entries(unit):
+                _field, _value, data, _ts, member = entry
+                system = s.entry_where(member, data)[0] or s.system_of(unit) or NO_SYSTEM
+                found.setdefault(system, []).append(entry)
+        return found
+
+    for system, entries in entries_by_system(reference).items():
+        systems.setdefault(system, []).extend(entries)
+    # A system the reference transaction entered nothing in: what the first
+    # other transaction that did entered there.
+    if s.pattern_index is not None:
+        for i in range(len(s.runs)):
+            if i == s.pattern_index:
                 continue
-            seen.add(key)
-            system, screen = s.entry_where(member, data)
-            rows.append([field, ", ".join(x for x in (system, screen) if x),
-                         _step_name(unit), value, system])
-    if not rows:
-        out["note"] = "No field entries were recorded in the steps of this process."
-        return out
-    rekeys = _rekeyed(s)
-    marks: dict[tuple[str, str], list[str]] = {}
-    for src, dst, _n in rekeys:
-        marks.setdefault(src, []).append(f"as {dst[0]} ({dst[1]})")
-        marks.setdefault(dst, []).append(f"from {src[0]} ({src[1]})")
-    out["rows"] = [[f, where, step, value, "; ".join(marks.get((f, system), []))]
-                   for f, where, step, value, system in rows]
-    out["rekeyed"] = [_rekey_sentence(src, dst, n, len(s.runs) or 1) for src, dst, n in rekeys]
+            for system, entries in entries_by_system(s.units[i]).items():
+                if system in systems and not systems[system]:
+                    systems[system] = entries
+    for system, entries in systems.items():
+        if not s.have_events:
+            info = "not available to this export"
+        else:
+            info = ", ".join(s.business_names(entries)) or "none"
+        out["rows"].append([system, info])
     return out
 
 
-def _write_data(doc, s):
-    """5: the distinct fields entered across the process, each with its
-    system and screen and its step; re-keyed fields are marked, and each
-    re-keying is stated below the table (data_section)."""
-    d = data_section(s)
+def _write_information(doc, s):
+    """5: each system the process uses and the information entered in it
+    (information_section)."""
+    d = information_section(s)
     doc.add_heading("5. " + d["heading"], level=1)
     if d["note"]:
         doc.add_paragraph(d["note"])
         return
-    _table(doc, d["header"], d["rows"], widths=_DATA_WIDTHS)
-    if d["rekeyed"]:
-        doc.add_paragraph().add_run("Re-keyed data").bold = True
-        for sentence in d["rekeyed"]:
-            doc.add_paragraph(sentence, style="List Bullet")
+    _table(doc, ("System", "Information entered"), d["rows"], widths=(2.0, 4.0))
 
 
-# ---- 6. Applications and time -------------------------------------------------
-
-def time_section(s) -> dict:
-    """Section 6, Applications and time, as the document prints it:
-    {"heading": "Applications and time",
-     "per_transaction": {"heading": "Time per transaction", "note": the
-       sentence printed in place of the table when the transactions are not
-       marked (else None), "header", "rows": one row per transaction (its
-       name, its steps, its active and elapsed time), "after": the line under
-       the table (the times are a walkthrough's) or None},
-     "per_application": {"heading": "Time in each application", "note": the
-       sentence printed when there is no step (else None), "header" (the
-       time column only when a step has a time: "Time per transaction", or
-       "Time" without marked transactions), "rows": one row per system (its
-       screens, its steps, its time per transaction), the most time first}}.
-    Every cell is the text printed."""
-    per_tx = {"heading": "Time per transaction", "note": None,
-              "header": ["Transaction", "Steps", "Active time", "Elapsed time"], "rows": [], "after": None}
-    if not s.runs:
-        per_tx["note"] = ("Transactions were not marked in this recording, so there "
-                          "is no time per transaction.")
-    elif s.implicit:
-        per_tx["note"] = f"{_IMPLICIT}, so there is no time per transaction."
-    else:
-        for i, run in enumerate(s.runs):
-            wall, active = run.get("wall_clock_ms"), run.get("active_ms")
-            per_tx["rows"].append([s.run_label(i), str(len(s.run_steps(i))),
-                                   # C16: a session without a recording measured no active time.
-                                   "Not recorded" if active is None else _fmt_ms(active),
-                                   _fmt_ms(wall) if _num(wall)
-                                   else "Not measured: the transaction was not ended"])
-        # AD-28: the transactions are a walkthrough, not the day-to-day work.
-        per_tx["after"] = _WALKTHROUGH
-    per_app = {"heading": "Time in each application", "note": None,
-               "header": ["System", "Screens", "Steps"], "rows": []}
-    units = s.run_units() if s.runs else s.steps
-    per: dict[str, dict] = {}
-    for unit in units:
-        system = s.system_of(unit) or NO_SYSTEM
-        row = per.setdefault(system, {"screens": {}, "steps": {}, "ms": 0.0, "timed": False})
-        screen = s.ctx.where(_members(unit)[0])[1]
-        if screen:
-            row["screens"].setdefault(screen, None)
-        row["steps"].setdefault(_align_key(unit), _step_name(unit))
-        ms = _unit_ms(unit)
-        if ms is not None:          # C16: a step without a time adds no time
-            row["ms"] += ms
-            row["timed"] = True
-    if not per:
-        per_app["note"] = ("No steps have been added to this project yet." if not s.recorded
-                           else "No steps have been recorded for this project yet.")
-    else:
-        runs = len(s.runs)
-
-        def time_of(row):
-            if not row["timed"]:
-                return "Not measured"
-            return _duration(row["ms"] / runs) if runs else _duration(row["ms"])
-
-        ordered = sorted(per.items(), key=lambda kv: -kv[1]["ms"])
-        rows = [[system, ", ".join(row["screens"]),
-                 ", ".join(row["steps"].values())] for system, row in ordered]
-        if any(row["timed"] for row in per.values()):
-            per_app["header"].append("Time per transaction" if runs and not s.implicit else "Time")
-            rows = [r + [time_of(row)] for r, (_system, row) in zip(rows, ordered)]
-        # else: no step has a time (C16), and the table leaves the time out.
-        per_app["rows"] = rows
-    return {"heading": "Applications and time", "per_transaction": per_tx, "per_application": per_app}
-
-
-def _write_applications_and_time(doc, s):
-    """6: the time of every transaction (6.1) and each system's screens,
-    steps and time per transaction (6.2), from time_section."""
-    t = time_section(s)
-    doc.add_heading("6. " + t["heading"], level=1)
-    tx = t["per_transaction"]
-    doc.add_heading("6.1 " + tx["heading"], level=2)
-    if tx["note"]:
-        doc.add_paragraph(tx["note"])
-    else:
-        _table(doc, tx["header"], tx["rows"], widths=(2.4, 0.8, 1.4, 1.4))
-        if tx["after"]:
-            doc.add_paragraph(tx["after"])
-    app = t["per_application"]
-    doc.add_heading("6.2 " + app["heading"], level=2)
-    if app["note"]:
-        doc.add_paragraph(app["note"])
-        return
-    _table(doc, app["header"], app["rows"],
-           widths=(1.1, 1.6, 2.4, 0.9) if len(app["header"]) == 4 else (1.3, 1.8, 2.9))
-
-
-def pdd_rows(*, session_folder, annotations, stats, manifest, events) -> dict:
-    """What the PDD prints in sections 5 and 6, as the pipeline writes it into
-    analysis.json: {"pdd_data": data_section, "pdd_time": time_section}, for
-    the same inputs write_pdd reads (the derived event stream, the steps,
-    stats.json and the manifest), so the Overview and the PDD print one set of
-    rows. Needs no python-docx."""
-    s = _Session(session_folder, annotations, stats, manifest, events)
-    return {"pdd_data": data_section(s), "pdd_time": time_section(s)}
+def _write_effort(doc, s):
+    """6: the volume and effort as the analyst states it (C6
+    `document.effort`: how often the process is done and how long one
+    takes). The recording's times are a walkthrough with explanations, not
+    the usual handling time, so the document never prints them; the viewer
+    shows them to the analyst."""
+    doc.add_heading("6. Volume and effort", level=1)
+    _field_or_placeholder(doc, s.field("effort"),
+                          "how often the process is done, and how long one takes")
 
 
 # ---- 7. Improvement and automation scope, 8. Notes ---------------------------------
@@ -2001,6 +1924,13 @@ def _write_improvement(doc, s, tobe_map_image, notes_follow):
     doc.add_heading("7. Improvement and automation scope", level=1)
     _field_or_placeholder(doc, s.field("improvement"),
                           "what to improve or automate, what stays manual, and why")
+    # A value typed again in another system in the same transaction: a
+    # finding for the improvement scope, stated once per pair of fields.
+    rekeys = _rekeyed(s)
+    if rekeys:
+        doc.add_paragraph().add_run("Re-keyed data").bold = True
+        for src, dst, n in rekeys:
+            doc.add_paragraph(_rekey_sentence(src, dst, n, len(s.runs) or 1), style="List Bullet")
     _map_page(doc, s, tobe_map_image, "7.1 To-Be process map", "To-Be process map",
               "Proposed To-Be process, drawn by the analyst.", then_portrait=notes_follow)
 

@@ -137,36 +137,13 @@ container. The Overview is the default on load.
   attached), and warning lines only when a marker problem, a
   missing file, a check that could not run or an app recorded with less
   detail needs one); the Document ("You write these. The PDD prints them.":
-  the ten fields of contract C6, an empty one showing its question in light
+  the eleven fields of contract C6, an empty one showing its question in light
   italics, a status that counts the written fields and, once one is
   written, names the empty ones, the Attachments list, and "From the
-  transcript" while one is attached); the Observations
-  ([`views/analysis-view.js`](../../viewer/views/analysis-view.js),
-  "Measured from the recording. The PDD prints them in sections 5 and 6.",
-  in a project without a recording "Measured from the steps you added.",
-  lane CC; an item's one line shows while it is closed, lane FX3): *Data* (the PDD's section 5: every field entered with its
-  system and screen, its step, an example value and how it is re-keyed, then
-  the Re-keyed data sentences) and *Applications and time* (section 6: Time
-  per transaction and Time in each application). Both are the rows the
-  pipeline wrote into `analysis.json` (`pdd_data`, `pdd_time`) with the
-  functions the PDD prints them with, shown as they are, so the Overview and
-  the PDD say one fact in the same words; they follow each analysis, and a
-  PDD export reads them again. As the Overview opens (a level switch to it,
-  or a project opening on it), and only then, the steps on screen are
-  compared with the ones the rows were measured from
-  (`rows-freshness.js`: `analysis.steps_signature` against the same
-  signature of `annotations.steps`, so typing in the document never counts);
-  when they differ the analysis runs once by the automatic path, with its
-  status line, the rows showing meanwhile under "From the last analysis;
-  refreshing" (`#ov-rows-freshness`), and the reload draws the new rows
-  (`overview-view.js` `refreshRowsIfOlder`). No analysis runs while the
-  analyst types there: a text field of the Overview (the document, an
-  attachment's label, the transcript search) taking the cursor stops it, and
-  so do leaving the Overview, another project and any save (`session.js`
-  `setBeforeWrite`), whose write it would refuse; the line then says "From
-  the last analysis; the steps changed since.", and the next opening
-  measures again. A refresh that failed or was cancelled from the status
-  line is not repeated for the same steps. Until the project is analyzed it
+  transcript" while one is attached). The Overview measures nothing: the
+  PDD's own sections (the systems and the information used, the volume and
+  effort) are the document's alone (2.0.1), and opening the Overview never
+  runs an analysis. Until the project is analyzed it
   shows one note that says where the analysis is.
 - **Timeline**: the timeline with its lanes and their header column (a key
   and a name per lane, like a video editor's track headers), the video pane,
@@ -336,7 +313,7 @@ their module as `<name>.test.js`.
 | `styles.css` | Every style rule, the light and dark tokens ([DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)). |
 | `ipc.js` | One typed wrapper per `viewer:*` channel; nothing else touches `ipcRenderer`. |
 | `state.js` | The central store, the topic bus, the undo and redo stacks (section 6). |
-| `session.js` | Annotation saves with undo, `persistAnnotations`, undo and redo in place, `ensureAnnoShape` (section 9); `setBeforeWrite`, awaited before every write (the Overview's rows refresh stops there). |
+| `session.js` | Annotation saves with undo, `persistAnnotations`, undo and redo in place, `ensureAnnoShape` (section 9). |
 | `dom.js` | `$`, `$$`, escaping, `formatDuration`, the one clock (`clock`, `recordingStartMs`, `sinceStart`, `parseClock`), `toast`, `placeMenu` (a menu kept inside the window). |
 | `modals.js` | `promptModal` (`required`: OK waits for some text), `confirmModal`: themed dialogs. |
 | `handoff.js` | Pure (contract C20): the versions of `annotations.handoffs` (`entries`, `latest`, `nextVersion`, `newEntry`), the one line a version says (`handedOffLine`, the PDD's words; `readOnlyLine`), the project's name as the app shows it and made safe for Windows, and the hand-off's file names. |
@@ -370,10 +347,9 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `overview-view.js` | The Overview: the Checklist (`pathState`), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), the note shown while the analysis is missing, and the rows' refresh as it opens (`refreshRowsIfOlder`, `stopRowsRefresh`; lane CC). |
+| `overview-view.js` | The Overview: the Checklist (`pathState`), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), and the note shown while the analysis is missing. |
 | `handoff-ui.js` | Export, Hand off... (contract C20): the dialog, the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
-| `analysis-view.js` | The Overview's Observations: Data and Applications and time, the PDD's rows of sections 5 and 6 from `analysis.json` (`dataItem`, `timeItem`, `rowsTableHtml`). |
-| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running; `cancelAnalysisQuietly` for the Overview's rows refresh), New project from a video and New empty project, the Transaction select, range selection and its card (Insert transaction from selection; Leave out of the analysis, and Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
+| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, range selection and its card (Insert transaction from selection; Leave out of the analysis, and Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
 | `flow-view-timeline.js` | The timeline: the lane stack, the stretches left out of the analysis drawn hatched over the Systems lane (`leftOutBands`), the minimap, the lanes menu, zoom and scroll persistence, the summary line. |
 | `flow-view-video.js` | The video and the timeline: the span a video project runs on, the playhead, seeking, Attach video (Replace) and Sync video (two clicks), each one undoable edit of `external_video`, and Remove video (lane CC). |
 | `flow-view-screenshots.js` | The Screenshots panel, the gallery, and the guarded open of a screenshot. |
@@ -393,7 +369,6 @@ their module as `<name>.test.js`.
 | `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`, `mainMapName`. |
 | `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
 | `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
-| `rows-freshness.js` | Whether the Overview's rows are as new as the steps (lane CC): `stepsSignature` (the pipeline's `steps_signature`, pinned by `shared/steps-signature-golden.json`), `rowsAge`, the rule `refreshNeed` the Overview follows as it opens, and the quiet line `freshnessLine`. Pure. |
 | `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are pending until the next analysis. |
 | `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps, with the Start and End events and the step flow of contract C17 (`buildAnnotationDfg`, `flowEdges`, `stepLinks`, `mapNodeLabel`, where a drafted step or sub-step, with a `draft_key` or an `action_key`, is its name; one rule with the step BPMN, pinned by `shared/flow-links-golden.json`), and the value-free `processLabel` and `screenType` from the shared rule files. |
 | `step-flow.js` | The pure half of the step flow (C17): what the Flow line and the step panel say (`linkReading`, `panelLine`, `inheritedLine`), the steps a link can go to, the edits, and the repairs when a target step is hidden, removed, merged or split. |
@@ -435,7 +410,6 @@ wrappers, so the load order does not matter.
 renderer.js
   initFlowView({ rerenderActiveLevel, addStepAtTimestamp })
   initSession({ renderSessionPills, reloadSession, analyzeSession })
-  initOverview({ analyze, busy, cancel })
   initRecent({ onOpenSession })
   initStepsView({ ensureAnnoShape, persistAnnotations, jumpToStepInFlow,
                   watchStep, analyze })
@@ -572,7 +546,6 @@ the bus. The topics and who listens (`renderer.js`):
 | `pdt.timelineLanes` | `flow-view-timeline.js` | Which lanes are shown. |
 | `pdt.timelineHeight`, `pdt.videoWidth` | `layout-controls.js` | The dragged pane sizes. |
 | `pdt.stepsSplit` | `pane-splitter.js` | The Steps level's divider: the transactions' share of the width. |
-| `pdt.analysis.<item>` | `analysis-view.js` | Whether an Observations item (`data`, `time`) is open. |
 | `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes (and per level below the main map, C19); Reset layout removes it. |
 
 ## 7. Render pipeline
@@ -619,14 +592,11 @@ itself:
 - **On open**, when `normalize-result.analysisNeed(session)` says so: no
   `stats.json` or `analysis.json`, or an `analysis.json` whose `format` is
   missing or lower than `ANALYSIS_FORMAT` (the number
-  `normalization/pipeline_stages.py` writes, 4 now: the Overview's
-  Observations read `pdd_data` and `pdd_time`, and its project line the
-  `coverage_caveat`, lane FX1). Once per folder in a
+  `normalization/pipeline_stages.py` writes, 5 now: 4 gave the project
+  line its `coverage_caveat`, lane FX1, and 5 cut the PDD's rows the
+  Overview no longer shows). Once per folder in a
   window, never from an analysis's own reload, and not while
   `annotations.json` cannot be read.
-- **As the Overview opens**, when its rows are older than the steps (lane
-  CC, above: once per change of the steps, stopped quietly by
-  `cancelAnalysisQuietly` when the analyst types there, leaves or saves).
 - **After a change the drafts depend on**: *Apps outside the process*, a
   stretch left out of the analysis and *Include again*, and an undo or a
   redo of either of those two (`session.js` `revertFollowUp`).

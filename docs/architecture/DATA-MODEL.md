@@ -30,7 +30,7 @@ screenshots/analyst/    screenshots the analyst adds by hand (C16)        viewer
 attachments/            files the analyst attaches (C16)                  viewer
 video/                  an attached video, copied into the folder         viewer
 stats.json              statistics, the runs, draft_summary               pipeline
-analysis.json           the transaction check, the PDD's rows             pipeline
+analysis.json           the transaction check, the capture detail          pipeline
 process_map_step.bpmn   the step-level map (--mine)                       pipeline
 library.json            the project's activity library (C21)              pipeline
 normalize.log           the pipeline's log                                pipeline
@@ -107,7 +107,7 @@ survives every re-analysis.
 | `steps[]` | pipeline (drafts), viewer (analyst edits) | The step entities (below) |
 | `pattern_run` | viewer | The run confirmed as the reference, and the draft-fix counts (contract C3) |
 | `opened_runs[]` | viewer | The case ids of the other runs opened in Steps once the reference run was confirmed; the Checklist ticks *Review the other transactions* when every one is there |
-| `document` | viewer | The PDD's document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions, improvement, notes (C6) |
+| `document` | viewer | The PDD's document fields: title, purpose, scope, trigger, result, contacts, business rules, exceptions, effort (the volume and effort), improvement, notes (C6) |
 | `marker_edits[]` | viewer | Rename, re-time, delete or insert a run marker; replayed on a derived stream, the raw marker stays |
 | `reference_maps[]` | viewer | The editable map copies and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/`. Each row keeps the signature of the maps its steps drew (`forked_from_steps`, lane FX2), so the app says when the steps changed after the copy was made |
 | `external_video` | viewer | The attached video: `{ path, offset_ms, attached_at }` |

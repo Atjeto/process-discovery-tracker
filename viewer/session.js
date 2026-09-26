@@ -86,23 +86,6 @@ function _surfacedError(message) {
   return err;
 }
 
-/* Called, and awaited, before every annotations write: the Overview's rows
-   refresh stops first (overview-view.js), since the analysis it runs would
-   refuse the write. */
-let _beforeWrite = null;
-function setBeforeWrite(fn) { _beforeWrite = typeof fn === "function" ? fn : null; }
-
-/* Wait for that hook before a write of the project folder. Lane FX2: a file
-   copied in (a screenshot, an attachment, a video) waits for it too, since
-   main refuses the copy while an analysis of the project runs; the Overview's
-   rows refresh, which the analyst did not ask for, so stops first, and only
-   an analysis that is not stopped for an edit refuses it. */
-async function beforeProjectWrite(sessionFolder) {
-  if (!_beforeWrite) return;
-  try { await _beforeWrite(sessionFolder); }
-  catch (e) { console.error("[session] before the write:", e); }
-}
-
 /* The one renderer write path for annotations.json (RP-04). Resolves to the
    main-process result ({ ok: true, path }) or rejects with an error that has
    ALREADY been shown to the analyst as an error toast. `what` names the edit
@@ -118,7 +101,6 @@ async function writeAnnotations(sessionFolder, annotations, what) {
     Dom.toast(msg, "error");
     throw _surfacedError(msg);
   }
-  await beforeProjectWrite(sessionFolder);
   let r;
   try {
     r = await Ipc.saveAnnotations({ sessionFolder, annotations });
@@ -395,7 +377,7 @@ function initSession(deps) {
 
 module.exports = {
   initSession, resetUndoStack, captureBaseline, canUndo, canRedo,
-  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct, setBeforeWrite, beforeProjectWrite,
+  writeAnnotations, saveAnnotationsWithUndo, saveAnnotationsDirect, recordFileAct,
   performUndo, performRedo, applyRevertedAnnotations, revertFollowUp, takeBackLastEdit,
   ensureAnnoShape, persistAnnotations,
 };

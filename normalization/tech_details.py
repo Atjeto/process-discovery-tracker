@@ -1,9 +1,10 @@
 """The Technical details workbook (contract C20): what the recording holds for
 a developer, as a spreadsheet (normalize.py --tech-out <file.xlsx>).
 
-The PDD says what the process is; this says what the recording measured of
-the programs it runs in, for the developers who build from it (their
-Solution Design Document is written outside the app). It reads what the PDD
+The PDD says what the process is, for the SME and whoever asks; this says
+what the recording measured of the programs it runs in, for the developers,
+beside the project they open in the viewer (their Solution Design Document
+is written outside the app). It reads what the PDD
 reads, through pdd_export's session: the same steps, the same step numbers,
 the same fields and the same re-keying rule. Written with the standard
 library (xlsx_writer.py). Its sheets:
@@ -20,10 +21,9 @@ library (xlsx_writer.py). Its sheets:
                       the window title, the program and the system, and the
                       library activity the step is with its code (contract
                       C21);
-  Data fields         one row per field typed or chosen in a step (the
-                      rows of the PDD's data table), with the field's
-                      identity and one column per transaction holding what
-                      was entered there; a password field reads "typed
+  Data fields         one row per field typed or chosen in a step, with
+                      the field's identity and one column per transaction
+                      holding what was entered there; a password field reads "typed
                       (hidden)" (pdd_export.SECRET_VALUE), as recorded;
   Re-keyed values     the PDD's re-keyed data (pdd_export.rekey_pairs): a
                       value typed in one system and again in another in the
@@ -82,7 +82,7 @@ SHEET_LINES = (
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
            "transaction. A password field reads \"typed (hidden)\": the recorder never reads it."),
     (REKEYED, "The values typed in one system and typed again in another in the same "
-              "transaction, as the PDD's data section lists them."),
+              "transaction. The PDD says each pair under its improvement scope."),
     (APPS, "The programs the recording ran in, how much the recorder could see in each, and "
            "their steps."),
 )
@@ -227,8 +227,8 @@ def data_rows(s) -> tuple[list[str], list[list[Any]]]:
     """(header, rows) of Data fields: DATA_HEADER, then one column per
     transaction (the PDD's names for them) and, when a step outside the
     transactions entered a field, one for those ("Value" alone when the
-    transactions were not marked). A row per (field, step) as the PDD's
-    data table keys it, in its order: the reference transaction's first."""
+    transactions were not marked). A row per (field, step), the reference
+    transaction's first."""
     rows: dict[tuple, dict] = {}
 
     def add(unit, column):

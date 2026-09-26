@@ -144,11 +144,9 @@ Full procedure: [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md).
   JS; the label goldens in `shared/` pin both sides. The rules written in
   both languages are pinned by one golden each: the differences between
   transactions (`run-differences-golden.json`), the step flow's edges
-  (`flow-links-golden.json`), the maps a project holds
-  (`sub-process-maps-golden.json`), and the signature of the steps the
-  Overview's rows were measured from (`steps-signature-golden.json`);
-  `pdd-rows-golden.json` pins the PDD's rows the Overview shows. Change one
-  side only together with the other and the golden.
+  (`flow-links-golden.json`) and the maps a project holds
+  (`sub-process-maps-golden.json`). Change one side only together with the
+  other and the golden.
 - **Raw capture data is immutable.** `events.jsonl` is append-only; every
   analyst decision is an `annotations.json` entry. Re-analysis stays
   non-destructive, and keys of cut features round-trip untouched.

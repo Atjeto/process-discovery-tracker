@@ -6,6 +6,42 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.1] (2026-09-26): the PDD for its readers
+
+The PDD is the process written down for the SME, who confirms it, and for
+whoever asks about the process being automated; it is archived per
+version. The developers work from the project (a read-only hand-off) and
+the Technical details, so the PDD no longer prints what they read there.
+
+### Changed
+
+- **The PDD's section 5 is *Systems and information used***: each system
+  the process uses, with the information entered in it, named for the
+  reader (a workbook's cells read as one entry, "cells A2 to F5 of
+  orders.xlsx"); no values. It replaces the Data table (every field with
+  its screen, step, example value and re-keyed mark), which the Technical
+  details keeps with every value.
+- **Section 6 is *Volume and effort***, as you write it: a new document
+  field on the Overview ("How often is the process done, and how long does
+  one take?"). The PDD prints no recorded time any more, in section 6 or
+  under a step: the recording is a walkthrough with explanations, not the
+  usual handling time. The app still shows the recorded times.
+- **The re-keyed data** (a value typed again in another system) is said
+  under section 7, *Improvement and automation scope*.
+- **Section 4.1 reads in plain sentences**, for example "Check the stock is
+  done after Save order, in 1 of 3 transactions." and "Send the
+  confirmation is not done here (it is done in 2 of 3 transactions)."
+- **The Overview opens at once.** Its *Observations* (a copy of the PDD's
+  sections 5 and 6) are gone, and with them the analysis that ran as the
+  Overview opened after a change of the steps and stopped when you typed.
+
+### Removed
+
+- `analysis.json` `pdd_data`, `pdd_time` and `steps_signature` (format 5:
+  a project analyzed by 2.0.0 is analyzed again once as it opens), and the
+  goldens that pinned them (`shared/pdd-rows-golden.json`,
+  `shared/steps-signature-golden.json`).
+
 ## [2.0.0] (2026-09-26): the BA-helper refocus
 
 The app is refocused

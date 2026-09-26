@@ -168,7 +168,7 @@ File: `<viewer userData>/pdt-library/processes.json`, written atomically by the 
 
 ```json
 "document": { "title": "", "purpose": "", "scope": "", "trigger": "", "result": "",
-              "contacts": "", "business_rules": "", "exceptions": "",
+              "contacts": "", "business_rules": "", "exceptions": "", "effort": "",
               "improvement": "", "notes": "" }
 ```
 
@@ -187,6 +187,12 @@ the old 6.4 is gone); 7 `improvement`; 8 `notes` (only when written, no gap). A
 the viewer has an input for it (trigger, result and improvement: viewer lane).
 The step-level BPMN names its start event from the first line of `trigger` and
 its end event from the first line of `result` (C15).
+
+2.0.1 (2026-09-26, the PDD for its readers: the SME who confirms it and
+whoever asks) added `effort`, printed as 6 Volume and effort: how often the
+process is done and how long one takes, as the analyst states it. The
+document prints no recorded time (the recording is a walkthrough with
+explanations). A gap is now printed for nine fields.
 
 ## C7. Step notes
 

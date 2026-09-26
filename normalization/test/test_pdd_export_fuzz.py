@@ -7,7 +7,7 @@ can't run pytest). So this fuzzer covers the part that CAN run here: the pure,
 docx-free helpers that shape analyst-editable annotations and measured times
 into display values before rendering --
 
-    _fmt_ms, _duration, step_context.clock, _align_key
+    step_context.clock, _align_key
 
 A hand-edited annotations.json / odd analysis block can hand these a
 non-numeric duration or an odd step; they must degrade rather than crash
@@ -43,12 +43,12 @@ def _scalar(rng: Random):
 
 
 def test_fuzz_duration_formatters_are_total():
-    """_fmt_ms, _duration and clock are total over any scalar and return a
-    string."""
+    """clock (the place of a step in the recording) is total over any scalar
+    and returns a string."""
     for i in range(ITERS):
         rng = Random(BASE + i)
         v = _scalar(rng)
-        for fn in (pdd_export._fmt_ms, pdd_export._duration, step_context.clock):
+        for fn in (step_context.clock,):
             try:
                 out = fn(v)
                 assert isinstance(out, str), f"non-str for {v!r}: {out!r}"

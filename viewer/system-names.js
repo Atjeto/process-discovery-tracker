@@ -4,8 +4,8 @@
  * in shared/system-names.json turn an application and a window title into
  * the business system the work happened in: "Salesforce" for a Chrome window
  * on Salesforce, "SAP", "Excel". The timeline legend and bands, the step fact
- * line, the Observations, the map boxes and the step panel name systems
- * through here, the PDD through app_names.system_name: the same list.
+ * line, the map boxes and the step panel name systems through here, the PDD
+ * through app_names.system_name: the same list.
  *
  * One difference from step_context: the viewer loads no app vocabularies, so
  * a screen is always the value-free window title (a vocabulary's own screen

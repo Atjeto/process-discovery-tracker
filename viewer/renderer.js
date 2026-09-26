@@ -25,12 +25,11 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, cancelAnalysisQuietly, runPipeline, UPDATING, syncRawEventsShown } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, runPipeline, UPDATING, syncRawEventsShown } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
-const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText,
-  initOverview, refreshRowsIfOlder, stopRowsRefresh } = require("./views/overview-view.js");
+const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, mapNodeLabel, flowEdges, wasteNodes } = require("./process-map-levels.js");
 const RunsModel = require("./runs-model.js");
@@ -74,14 +73,6 @@ initSession({
   // analyzes again; one that changes the video reloads the project.
   reloadSession: (folder) => loadSessionIntoView(folder),
   analyzeSession: () => analyzeSession(),
-});
-
-/* ============ The Overview's rows refresh (views/overview-view.js) ====== */
-
-initOverview({
-  analyze: (opts) => analyzeSession(opts),
-  busy: () => analysisBusy(),
-  cancel: () => cancelAnalysisQuietly(),
 });
 
 /* ============ Recent sessions ===================================== */
@@ -431,9 +422,9 @@ State.subscribe("timeline", renderTimeline);
 State.subscribe("markers",  renderMarkersList);
 // Item 6: the top bar's "Apply N marker changes" call to action.
 State.subscribe("markers",  renderSessionPills);
-// The Overview renders the Checklist, the project line and the
-// Observations (the PDD's rows in analysis.json), so it follows markers,
-// analysis and steps.
+// The Overview renders the Checklist, the project line (its warnings read
+// analysis.json) and the document, so it follows markers, analysis and
+// steps.
 State.subscribe("markers",  renderOverviewLevel);
 State.subscribe("analysis", renderOverviewLevel);
 State.subscribe("steps",    renderOverviewLevel);
@@ -495,10 +486,6 @@ function applyLevel(name) {
   } else {
     rerenderActiveLevel();
   }
-  // Lane CC: the Overview measures its rows again as it opens when the steps
-  // changed since; leaving it stops that.
-  if (name === "overview" && prev !== "overview") refreshRowsIfOlder();
-  else if (prev === "overview" && name !== "overview") stopRowsRefresh();
 }
 
 /* ============ Theme toggle ======================================== */
@@ -751,8 +738,8 @@ if ($("#btn-session-tech")) $("#btn-session-tech").addEventListener("click", () 
 HandoffUI.initHandoffUI({ writeDocuments: (target, o) => writeDocuments(target, o) });
 
 /* Read the project's analysis.json again into the project on screen (the
-   PDD's run rewrote it) and redraw what shows it: the Overview's
-   Observations are the rows the PDD printed. */
+   PDD's run rewrote it) and redraw what shows it: the Overview's project
+   line reads its checks. */
 function _rereadAnalysis(target) {
   const now = State.getSession();
   if (!now || !target || now.sessionFolder !== target.sessionFolder) return;

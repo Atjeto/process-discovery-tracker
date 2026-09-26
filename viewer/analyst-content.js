@@ -38,7 +38,7 @@ function derivedState(sources) {
 /* The one words for a project's implicit run (lane FX2, validation pass 3,
    F9): a project without start markers is one transaction, said the same
    way on the Checklist, the project line and the Timeline (and, by the
-   pipeline, in the Observations and the PDD). */
+   pipeline, in the PDD). */
 const IMPLICIT_TRANSACTION = "One transaction (not marked)";
 
 /* Whether the project holds a recording (C16): a capture app's recording

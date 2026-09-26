@@ -61,7 +61,7 @@ function openRuns(sess, ...caseIds) {
 
 const FULL_DOC = { title: "Order intake", purpose: "Why", scope: "What", trigger: "An order e-mail",
   result: "A sales order", contacts: "Who", business_rules: "Rules", exceptions: "Exceptions",
-  improvement: "Automate the lookup", notes: "" };
+  effort: "About 40 a day, 3 minutes each", improvement: "Automate the lookup", notes: "" };
 
 /* ---- pathState: each stage's completion condition -------------------------- */
 
@@ -172,14 +172,14 @@ test("the reference run follows 'Use as reference run': run 1 is then one of the
   assert.equal(st.nextOther.caseId, "c1", "opening the reference run itself counts for nothing");
 });
 
-test("the document stage is done when every field that fills a PDD placeholder is written, trigger, result and improvement included", () => {
+test("the document stage is done when every field that fills a PDD placeholder is written, trigger, result, effort and improvement included", () => {
   const sess = session({});
   confirmRun(sess, "c1");
   openRuns(sess, "c2", "c3");
   sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
   sess.annotations.document = Object.assign({}, FULL_DOC, { exceptions: "   " });
   assert.equal(pathState(sess).next, "document", "a blank field is not written");
-  for (const key of ["trigger", "result", "improvement"]) {
+  for (const key of ["trigger", "result", "effort", "improvement"]) {
     sess.annotations.document = Object.assign({}, FULL_DOC, { [key]: "" });
     assert.equal(pathState(sess).next, "document", key + " is counted");
   }
@@ -225,16 +225,16 @@ test("each stage is shown done on its own, whatever the order it was done in", (
   assert.equal(st.next, "runs");
 });
 
-test("documentStatus counts the nine fields that fill a placeholder and names the empty ones; notes are optional", () => {
+test("documentStatus counts the ten fields that fill a placeholder and names the empty ones; notes are optional", () => {
   const ALL = ["Title", "Purpose", "Scope", "Trigger", "Result", "Key contacts", "Business rules", "Exceptions",
-    "Improvement and automation scope"];
-  assert.deepEqual(documentStatus(null), { filled: 0, total: 9, missing: ALL, firstEmpty: "title" });
-  assert.deepEqual(documentStatus({ title: "T", purpose: "  " }), { filled: 1, total: 9, missing: ALL.slice(1), firstEmpty: "purpose" });
-  assert.equal(documentStatus(FULL_DOC).filled, 9);
+    "Volume and effort", "Improvement and automation scope"];
+  assert.deepEqual(documentStatus(null), { filled: 0, total: 10, missing: ALL, firstEmpty: "title" });
+  assert.deepEqual(documentStatus({ title: "T", purpose: "  " }), { filled: 1, total: 10, missing: ALL.slice(1), firstEmpty: "purpose" });
+  assert.equal(documentStatus(FULL_DOC).filled, 10);
   assert.deepEqual(documentStatus(FULL_DOC).missing, [], "notes are never missing");
   assert.deepEqual(DOC_FIELDS.map((f) => f.key),
-    ["title", "purpose", "scope", "trigger", "result", "contacts", "business_rules", "exceptions", "improvement", "notes"],
-    "contract C6 fields, with trigger, result and improvement");
+    ["title", "purpose", "scope", "trigger", "result", "contacts", "business_rules", "exceptions", "effort", "improvement", "notes"],
+    "contract C6 fields, with trigger, result, the volume and effort, and improvement");
 });
 
 /* ---- overviewHtml: the home's structure ------------------------------------ */
@@ -430,29 +430,31 @@ test("the document is collapsed while acts are left, says who writes it, how man
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc">'), "closed by default");
   assert.ok(html.includes('<span class="analysis-module-title">Document</span>' +
     '<span class="ov-block-who" id="ov-doc-who">You write these. The PDD prints them.</span>'));
-  assert.ok(html.includes('<span class="analysis-module-takeaway" id="ov-doc-status">3 of 9 written. To write: ' +
-    "Scope, Result, Key contacts, Business rules, Exceptions, Improvement and automation scope</span>"));
+  assert.ok(html.includes('<span class="analysis-module-takeaway" id="ov-doc-status">3 of 10 written. To write: ' +
+    "Scope, Result, Key contacts, Business rules, Exceptions, Volume and effort, Improvement and automation scope</span>"));
   // AD-29: an empty field asks its short question; where it lands is its
   // tooltip only (P3.6: never a resident line), never "In the PDD" inside it.
   assert.equal((html.match(/placeholder="In the PDD/g) || []).length, 0);
-  assert.equal((html.match(/title="In the PDD: /g) || []).length, 10);
+  assert.equal((html.match(/title="In the PDD: /g) || []).length, 11);
   assert.ok(!html.includes("ov-doc-where"));
   assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" placeholder="Why is the process done, and for whom?" ' +
     'title="In the PDD: Purpose" rows="3">Why</textarea>'));
   assert.ok(/data-doc="title"[^>]*value="Order intake"/.test(html));
-  for (const [key, label] of [["trigger", "Trigger"], ["result", "Result"], ["improvement", "Improvement and automation scope"]]) {
+  for (const [key, label] of [["trigger", "Trigger"], ["result", "Result"], ["effort", "Volume and effort"],
+    ["improvement", "Improvement and automation scope"]]) {
     assert.ok(html.includes('<span class="ov-doc-label">' + label + "</span>"), label);
     assert.ok(html.includes('data-doc="' + key + '"'), key);
   }
   assert.ok(html.includes('data-doc="trigger" placeholder="What starts the process?" title="In the PDD: Trigger: what starts the process"'));
   assert.ok(html.includes('data-doc="result" placeholder="What does the process end with?"'));
+  assert.ok(html.includes('data-doc="effort" placeholder="How often is the process done, and how long does one take?"'));
   assert.ok(html.includes('data-doc="improvement" placeholder="What could be improved or automated?"'));
   assert.ok(/data-doc="trigger"[^>]*>An order e-mail<\/textarea>/.test(html));
   const none = overviewHtml(session({}));
-  assert.ok(none.includes('id="ov-doc-status">0 of 9 written</span>'), "with nothing written, the count alone");
+  assert.ok(none.includes('id="ov-doc-status">0 of 10 written</span>'), "with nothing written, the count alone");
   const all = session({});
   all.annotations.document = Object.assign({}, FULL_DOC);
-  assert.ok(overviewHtml(all).includes('id="ov-doc-status">9 of 9 written</span>'));
+  assert.ok(overviewHtml(all).includes('id="ov-doc-status">10 of 10 written</span>'));
 });
 
 test("lane FX2: a project without start markers is one transaction, said the same way on the Checklist and the project line", () => {

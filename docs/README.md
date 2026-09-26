@@ -99,7 +99,7 @@ enforces the numbering). The decisions that shape the light version:
 | [../README.md](../README.md) | What the tool is, install, run from source |
 | [../CLAUDE.md](../CLAUDE.md) | Project context for Claude Code: start here, commands, conventions, environment |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Dev setup, test commands, conventions |
-| [../CHANGELOG.md](../CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.0 |
+| [../CHANGELOG.md](../CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.1 |
 | [BUILD-AND-DIST.md](BUILD-AND-DIST.md) | Build pipeline and release zips |
 | [To-Do/BUILD-BOX-VALIDATION.md](To-Do/BUILD-BOX-VALIDATION.md) | Open since 2026-05: a maintained bundled Python, packaged Electron 42 checks |
 | [DEPLOY.md](DEPLOY.md) | Installing on an SME's or an analyst's machine |

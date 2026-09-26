@@ -6,7 +6,7 @@ own PC. The analyst opens the recording, confirms the steps the recorder
 drafted for one transaction, reviews how the other transactions differ, and gets a process
 map and a tool-neutral process definition document (PDD).
 
-> **Status.** The current release is v2.0.0 (2026-09-26), the light version.
+> **Status.** The current release is v2.0.1 (2026-09-26), the light version.
 > The earlier product edition, v1.5.0, is kept on branch `product-edition`
 > (tag `product-edition-v1.5.0`). See [CHANGELOG.md](CHANGELOG.md).
 

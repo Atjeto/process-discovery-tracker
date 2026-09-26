@@ -356,7 +356,7 @@ document-level sections, as fields that survive re-export:
 
 ```json
 "document": { "title": "", "purpose": "", "scope": "", "trigger": "", "result": "",
-              "contacts": "", "business_rules": "", "exceptions": "",
+              "contacts": "", "business_rules": "", "exceptions": "", "effort": "",
               "improvement": "", "notes": "" }
 ```
 
@@ -372,7 +372,8 @@ prints each non-empty field in its place:
 | `contacts` | 2.5 Key contacts |
 | `business_rules` | 4.2 Business rules |
 | `exceptions` | 4.3 Exceptions, the application errors included |
-| `improvement` | 7 Improvement and automation scope |
+| `effort` | 6 Volume and effort: how often the process is done and how long one takes, as the analyst states it (2.0.1). The document prints no recorded time: the recording's times are a walkthrough with explanations |
+| `improvement` | 7 Improvement and automation scope (the re-keyed data follows it) |
 | `notes` | 8 Notes, printed only when written (the attachments, C16, follow it) |
 
 An empty field prints a "[To be completed: ...]" gap in its place, except
@@ -792,14 +793,14 @@ other change to a draft does.
   so Steps and the PDD could number such steps apart). The stats, the
   differences, the map (`process_map_step.bpmn`), the PDD and the viewer use
   that one order. A step without a time has no duration: the timed figures
-  (step stats, the PDD's times, the map's average time) leave it out, and
+  (step stats, the map's average time) leave it out, and
   nothing prints a time for it. A time range the viewer writes is
   read as measured, so it is written only when the analyst placed the step
   on the clock.
 - **`system`**: the business system, set by the analyst (for a step added
   by hand, or to correct a recorded one). It wins over the system derived
   from the step's interactions (C14) in the PDD (the step's line, the
-  systems of the process, the data table, Applications and time) and in the
+  systems of the process, Systems and information used) and in the
   step map's task documentation and colour (C18); the screen stays derived.
 - **`pdd_screenshot`**: the one screenshot the PDD prints under the step: a
   recorder screenshot's session-relative path (one of `screenshot_refs`), or
@@ -1394,15 +1395,17 @@ library never changes an existing project. `analysis.json` records its
 
 ## analysis.json
 
-What the viewer and the PDD read of the analysis, written by every run of
-`normalize.py`: the transaction check, the apps the recorder saw with less
-detail, the rows the PDD prints in its sections 5 and 6, and the steps those
-rows were measured from. Absent on a project that was never analyzed. Lane
-FX1 cut the analysis layer of the product edition that nothing read (the
-facts, the findings and their detectors, the waste, time study, segments,
-automation and efficiency blocks, and the PDD's findings selection
-`pdd_findings`), and raised `format` to 4: the viewer analyzes an older file
-again as the project opens. The keys of an older file are not read.
+What the viewer reads of the analysis, written by every run of
+`normalize.py`: the transaction check and the apps the recorder saw with
+less detail. Absent on a project that was never analyzed. Lane FX1 cut the
+analysis layer of the product edition that nothing read (the facts, the
+findings and their detectors, the waste, time study, segments, automation
+and efficiency blocks, and the PDD's findings selection `pdd_findings`), and
+2.0.1 the rows of the PDD's sections 5 and 6 the Overview showed
+(`pdd_data`, `pdd_time`) with the signature of the steps they were measured
+from (`steps_signature`), raising `format` to 5: the viewer analyzes an
+older file again as the project opens. The keys of an older file are not
+read.
 
 ```json
 {
@@ -1419,31 +1422,9 @@ again as the project opens. The keys of an older file are not read.
                         "why": "plain words", "mean_confidence": 0.2 } ],
     "total_apps": 3
   },
-  "pdd_data": {
-    "heading": "Data",
-    "note": "a sentence printed in place of the table, or null",
-    "header": ["Field", "System and screen", "Step", "Example value", "Re-keyed"],
-    "rows": [["Product code", "Salesforce, Order", "Save order", "SKU-4471", "as Material number (SAP)"]],
-    "rekeyed": ["Product code (Salesforce) is typed again as Material number (SAP) in every transaction."]
-  },
-  "pdd_time": {
-    "heading": "Applications and time",
-    "per_transaction": {
-      "heading": "Time per transaction", "note": null,
-      "header": ["Transaction", "Steps", "Active time", "Elapsed time"],
-      "rows": [["Transaction 1: Order #10900", "7", "42s", "43s"]],
-      "after": "The transactions were recorded during a walkthrough, ..."
-    },
-    "per_application": {
-      "heading": "Time in each application", "note": null,
-      "header": ["System", "Screens", "Steps", "Time per transaction"],
-      "rows": [["Salesforce", "Account lookup, Order", "Search, Save order", "14s"]]
-    }
-  },
-  "steps_signature": "hex",
   "library_version": "the version of the project's library, or null",
   "stage_errors": [],
-  "format": 4
+  "format": 5
 }
 ```
 
@@ -1461,41 +1442,15 @@ again as the project opens. The keys of an older file are not read.
   viewer's Overview shows its `claim` as a warning on the project line. The
   claim names apps by their readable names (`stats.json` `meta.app_names`);
   `trust` keeps the machine's word for tooling.
-- **`pdd_data`** and **`pdd_time`** (lane CC, one source): the rows the PDD
-  prints in its section 5 (Data) and section 6 (Applications and time),
-  computed by `pdd_export.data_section` and `time_section`, the functions
-  the PDD prints the sections with, from the inputs it reads (the steps,
-  `stats.json`, the manifest and the derived events), so every cell is the
-  text printed. The viewer's Overview shows them as they are, under the
-  PDD's headings (`heading`, a table's `heading`, `header`); `note` is the
-  sentence the PDD prints instead of a table (no field entered, no
-  transaction marked, no step), `after` the line under the time per
-  transaction. `per_application.header` has the time column only when a
-  step has a time ("Time per transaction", or "Time" without marked
-  transactions). Written for every session, one without a recording
-  included. A failure writes both `null` with one `stage_errors` entry
-  (`pdd_rows`). Pinned with the viewer by `shared/pdd-rows-golden.json`.
-- **`steps_signature`** (lane CC): the signature of the steps those rows
-  were measured from (`normalization/steps_signature.py`): the SHA-256 (hex)
-  of one JSON text, the reference transaction's case id, then every step in
-  the list's order as the fields the rows read (`step_id`, `case_id`,
-  `name`, `state`, the `time_range` ends, `order`, `system`, `draft_key`,
-  `draft_keys`, `evidence.interaction_event_ids`), its `sub_steps` the same
-  way. The viewer takes the same signature of the steps it has
-  (`viewer/rows-freshness.js`), and the Overview analyzes again as it opens
-  when the two differ. The document, notes, a step's description, flow and
-  screenshots never change it. Pinned with the viewer by
-  `shared/steps-signature-golden.json`. A failure writes `null` with one
-  `stage_errors` entry (`steps_signature`); an analysis without the key reads
-  as older than the steps.
 - **`library_version`** (contract C21): the `version` of the activity
   library the run used (the project's `library.json`, or the app's library
   it copied in this run), `null` when it used none (no library, or one that
   failed a check).
-- **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`: 3
-  since `pdd_data` and `pdd_time`, 4 since lane FX1's cut and
-  `coverage_caveat`); the viewer analyzes a project again as it opens when
-  the number is missing or lower (`normalize-result.js` `analysisNeed`).
+- **`format`**: the layout's number (`pipeline_stages.ANALYSIS_FORMAT`: 4
+  since lane FX1's cut and `coverage_caveat`, 5 since 2.0.1 cut `pdd_data`,
+  `pdd_time` and `steps_signature`); the viewer analyzes a project again as
+  it opens when the number is missing or lower (`normalize-result.js`
+  `analysisNeed`).
 
 The transaction check and the capture detail read the derived stream
 without the stretches the analyst left out (`annotations.excluded_ranges`),
@@ -1510,19 +1465,16 @@ names it:
 "stage_errors": [ { "stage": "case_quality", "error": "KeyError: 'start_ts'" } ]
 ```
 
-The stages that can fail independently: `case_quality`, `coverage_caveat`,
-`pdd_rows` (`pdd_data` and `pdd_time` together) and `steps_signature`. The
-viewer's Overview shows a failed transaction check as "this check could not
-run on this recording", never as a measured negative. The PDD reads no
-analysis stage: it prints sections 5 and 6 with the functions that wrote
-`pdd_data` and `pdd_time`.
+The stages that can fail independently: `case_quality` and
+`coverage_caveat`. The viewer's Overview shows a failed transaction check
+as "this check could not run on this recording", never as a measured
+negative. The PDD reads no analysis stage.
 
 **Nothing recorded (C16).** A session without a recording
 (`manifest.source` `"video"` or `"blank"`) has nothing for the measurements
 of the recording to measure: `case_quality` still counts the runs, with
-`coverage` `null`, `coverage_caveat` is `null` without a `stage_errors`
-entry (nothing failed), and `pdd_data` and `pdd_time` are written as the PDD
-prints them there too.
+`coverage` `null`, and `coverage_caveat` is `null` without a `stage_errors`
+entry (nothing failed).
 
 ## Invariants
 
@@ -1547,7 +1499,7 @@ process ends and by the next run as it starts.
 | File | Contents |
 |---|---|
 | `stats.json` | `{ activity_stats, case_stats, trace_variants, step_variants, step_stats, app_outliers, rework_loops, screenshot_hashes, meta }` |
-| `analysis.json` | `{ meta, case_quality, coverage_caveat, pdd_data, pdd_time, steps_signature, library_version, stage_errors, format }` |
+| `analysis.json` | `{ meta, case_quality, coverage_caveat, library_version, stage_errors, format }` |
 | `annotations.json` | The merged steps (drafts plus the analyst's steps), `process_exclusions`, `version`, `session_id`, `last_modified`; every other key as it was |
 | `process_map_step.bpmn` | With `--mine`: the step map, a BPMN 2.0 file of the transactions' visible steps laid out to print ("The step map" below), one plane per sub-process (C19). "Edit as the As-Is map" copies it; the PDD prints it, and Export saves it as an image or a BPMN file, when no As-Is copy is chosen. |
 | `library.json` | Once, by the first analysis given `--library` in a folder without one: the project's copy of the app's activity library (C21, above), never replaced. |

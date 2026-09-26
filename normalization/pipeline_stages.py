@@ -253,8 +253,10 @@ def _visible_steps(existing_anno: dict) -> list[dict[str, Any]]:
 # Overview shows (lane CC). 4: the analysis layer nobody read is cut (the
 # facts, the findings, the step analysis, `pdd_findings`), and the one check
 # the Overview shows, the apps the recorder saw with less detail, is its own
-# key, `coverage_caveat` (lane FX1).
-ANALYSIS_FORMAT = 4
+# key, `coverage_caveat` (lane FX1). 5: the rows of the PDD's sections 5 and
+# 6 are the document's alone (the Overview no longer shows them, the owner,
+# 2026-09-26): `pdd_data`, `pdd_time` and `steps_signature` are cut.
+ANALYSIS_FORMAT = 5
 
 
 def _run_stats(
@@ -360,10 +362,6 @@ def _run_analysis(
       coverage_caveat  the apps the recorder saw with less detail
                        (capture_detail.py), or null; the Overview's project
                        line warns with its claim.
-      pdd_data,        the rows the PDD prints in sections 5 and 6
-      pdd_time         (pdd_export.pdd_rows), which the Overview shows as
-                       they are.
-      steps_signature  the steps those rows were measured from.
       library_version  the version of the project's activity library the
                        drafts were named from (contract C21), or null when
                        the analysis used no library.
@@ -389,9 +387,6 @@ def _run_analysis(
         print(f"[normalize] WARNING: {stage} failed: {error}")
         stage_errors.append({"stage": stage, "error": error})
 
-    # The PDD's sections 5 and 6 read the same stream the PDD does (a step
-    # the analyst kept inside a stretch left out keeps its fields).
-    pdd_events = classified
     classified = stats._filter_excluded(classified, _excluded_ranges(existing_anno))
 
     steps = _visible_steps(existing_anno)
@@ -420,28 +415,6 @@ def _run_analysis(
     except Exception as e:  # noqa: BLE001 (recorded as a stage error)
         analysis_result["coverage_caveat"] = None
         _failed("coverage_caveat", f"{type(e).__name__}: {e}")
-    # The rows the PDD prints in section 5 (Data) and section 6 (Applications
-    # and time), computed by the function the PDD prints them with, from the
-    # inputs it reads: the Overview shows exactly these (one source). Written
-    # for every session, one without a recording included (the PDD prints the
-    # sections there too).
-    try:
-        from pdd_export import pdd_rows
-        analysis_result.update(pdd_rows(
-            session_folder=session_folder, annotations=existing_anno, stats=summary,
-            manifest=manifest, events=pdd_events))
-    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
-        analysis_result["pdd_data"] = analysis_result["pdd_time"] = None
-        _failed("pdd_rows", f"{type(e).__name__}: {e}")
-    # The steps those rows were measured from, as a signature
-    # (steps_signature.py): the viewer computes it over the steps it has, and
-    # the Overview analyzes again as it opens when the two differ.
-    try:
-        from steps_signature import steps_signature
-        analysis_result["steps_signature"] = steps_signature(existing_anno)
-    except Exception as e:  # noqa: BLE001 (recorded as a stage error)
-        analysis_result["steps_signature"] = None
-        _failed("steps_signature", f"{type(e).__name__}: {e}")
     return _write_analysis(session_folder, analysis_result, stage_errors, staging)
 
 

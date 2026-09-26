@@ -257,20 +257,13 @@ helpers in `pipeline_stages.py`, in this order:
    project line) read the derived stream without the stretches left out of
    the analysis. A stage that fails writes its key as `null` and one entry in
    `stage_errors` (contract C12). Lane FX1 cut the analysis layer nothing read
-   (the facts, the findings, the step-based estimates and `pdd_findings`).
-   Then `pdd_export.pdd_rows` writes `pdd_data` and `pdd_time`: the rows the
-   PDD prints in its sections 5 and 6, computed by the functions it prints
-   them with (`data_section`, `time_section`) from the inputs it reads (the
-   full derived stream, so a step kept inside a stretch left out keeps its
-   fields), for every session; the Overview shows them as they are (one
-   source, pinned by `shared/pdd-rows-golden.json`). `library_version` is
-   the version of the activity library the run used (C21), `null` without
-   one. `steps_signature`
-   (`steps_signature.py`) records the steps they were measured from; the
-   viewer takes the same signature of the steps it has and, as the Overview
-   opens, analyzes again when the two differ (pinned by
-   `shared/steps-signature-golden.json`). `format` is
-   `pipeline_stages.ANALYSIS_FORMAT`, 4: the viewer analyzes a project again
+   (the facts, the findings, the step-based estimates and `pdd_findings`),
+   and 2.0.1 the rows of the PDD's sections 5 and 6 the Overview showed
+   (`pdd_data`, `pdd_time`) with the signature of the steps they were
+   measured from (`steps_signature`): the PDD's sections are the
+   document's alone. `library_version` is the version of the activity
+   library the run used (C21), `null` without one. `format` is
+   `pipeline_stages.ANALYSIS_FORMAT`, 5: the viewer analyzes a project again
    as it opens when its `analysis.json` carries a lower one.
 8. **Step map, PDD and Technical details** (`_run_mining_exports`). With
    `--mine`, `bpmn_observed.py` writes `process_map_step.bpmn` from the
@@ -496,19 +489,21 @@ gaps. The sections, in the reader's order:
    the reference has, before that of the nearest one after it) are not
    listed as skipped.
    4.2 Business rules, 4.3 Exceptions (application errors included).
-5. **Data.** One table: every field entered, with its system and screen, its
-   step, an example value and a Re-keyed mark; below it, one sentence per
-   field whose value is typed in one system and typed again in another in
-   the same run, with the number of runs that did it (`data_section`).
-6. **Applications and time.** 6.1 each run's steps, active time (the
-   recorded foreground time inside its span, `stats.json`) and elapsed
-   time, with a line saying the runs were recorded as a walkthrough, so the
-   times show the recording, not the usual handling time. 6.2 per system:
-   its screens, its steps and its time per run (`time_section`). Sections 5
-   and 6 print the rows these two functions return, the rows the analysis
-   writes into `analysis.json` for the viewer's Overview.
-7. **Improvement and automation scope.** The analyst's field; 7.1 the To-Be
-   map picture when one was passed.
+5. **Systems and information used.** One table, a row per system the
+   process uses (the reference transaction's first, else the steps'): the
+   information the reference transaction entered in it, named for the
+   reader (a field's name; a workbook's cells as one entry, "cells A2 to F5
+   of orders.xlsx"), else the first other transaction's entries in it, else
+   "none"; no values (`information_section`).
+6. **Volume and effort.** The analyst's field (C6 `document.effort`): how
+   often the process is done and how long one takes. The recorded times are
+   a walkthrough with explanations, not the usual handling time, so the
+   document never prints them; the viewer shows them.
+7. **Improvement and automation scope.** The analyst's field; then, when a
+   value is typed in one system and typed again in another in the same
+   transaction, "Re-keyed data" with one sentence per pair of fields and the
+   number of transactions that did it; 7.1 the To-Be map picture when one
+   was passed.
 8. **Notes**, only when written.
 9. **Attachments** (numbered 8 without notes), only when the analyst
    attached files: each file's label and name. Nothing is embedded; the
@@ -516,11 +511,11 @@ gaps. The sections, in the reader's order:
 
 **The step context line** under each step heading: the code of the library
 activity the step is ("Code SF-01", contract C21, when the activity has one),
-system and screen, the average time, "in N of M transactions", and where it is in the recording
+system and screen, "in N of M transactions", and where it is in the recording
 ("Transaction 1 at 0:19", the time since the recording started, plus the
 video time when the video's start is known; in a video session, the video
 time). Each part is left out when it is unknown; a step without a time
-prints no time, never a zero.
+has no place in the recording. No step prints a time it took (section 6).
 
 **Screenshots.** A step prints one screenshot (lane LF-PIPE: the drafting
 now gives every screenshot a step): the one the analyst chose for the PDD
@@ -531,8 +526,8 @@ embedded.
 
 ## The Technical details (`tech_details.py`, contract C20)
 
-A workbook for the developers who build from the PDD (their Solution Design
-Document is written outside the app), written with `--tech-out` and put in
+A workbook for the developers, beside the project they open in the viewer
+(their Solution Design Document is written outside the app), written with `--tech-out` and put in
 every hand-off zip. It reads what the PDD reads, through `pdd_export`'s
 session, so its step numbers, its fields and its re-keying are the PDD's.
 Its sheets:
@@ -550,14 +545,13 @@ Its sheets:
   program (`process_name`) and the system (the step's own system first, else
   `shared/system-names.json`), then Activity and Code: the name and the code
   of the library activity the row's step is (C21), empty when it is none.
-- **Data fields**: one row per field typed or chosen in a step, the rows
-  of the PDD's data table (a field in a step, aligned across the
-  transactions by the step's draft key), with the field's automation id,
+- **Data fields**: one row per field typed or chosen in a step (a field in
+  a step, aligned across the transactions by the step's draft key), with the field's automation id,
   control type, system and screen and step, then one column per transaction
   holding what was entered there (and one for the steps outside the
   transactions when they entered a field).
 - **Re-keyed values**: the PDD's re-keyed pairs (`pdd_export.rekey_pairs`,
-  the rule 5 prints), as the source system and field, the target system and
+  the rule its section 7 says), as the source system and field, the target system and
   field, the values so typed again, and in how many transactions.
 - **Applications**: one row per program and system the recorded
   interactions ran in: the recorder's `coverage_hint` (rich, basic,
@@ -622,8 +616,7 @@ the stages apart:
   prints a time for them.
 - **Nothing recorded.** Each run's `active_ms` is `null`; `coverage_caveat`
   is `null` with no `stage_errors` entry; `case_quality` still counts the
-  runs, coverage `null`; `pdd_data` and `pdd_time` are written as the PDD
-  prints them. The PDD says "One transaction (not marked)" for the implicit
+  runs, coverage `null`. The PDD says "One transaction (not marked)" for the implicit
   run (the viewer's words, lane FX3) and "Nothing recorded" for a blank
   session, and points at the video time in a video session.
 
@@ -662,11 +655,10 @@ SCHEMA.md.
 | `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
-| `pdd_export.py` | The PDD (above), and `pdd_rows` (the rows of its sections 5 and 6 the analysis writes into `analysis.json`). |
+| `pdd_export.py` | The PDD (above), and `rekey_pairs` (the re-keyed data, which the Technical details lists with its values). |
 | `handoff_versions.py` | Contract C20, pure: the one line on a document's version (`version_line`: made for a hand-off, or a working copy) and the version history rows, from `annotations.handoffs`. The PDD and the Technical details read it. |
 | `tech_details.py` | Contract C20: the Technical details workbook (above), its sheets as plain rows. |
 | `xlsx_writer.py` | A minimal `.xlsx` writer on `zipfile` (above). |
-| `steps_signature.py` | `steps_signature`: the signature of the steps the rows were measured from, written into `analysis.json`; the viewer's `rows-freshness.js` takes the same one (lane CC). |
 | `transcript_import.py` | The transcript parser and its CLI (above). |
 | `golden_check.py` | The session golden (above). |
 | `_dt.py`, `log_setup.py` | One ISO 8601 timestamp parser for every module; the rolling `normalize.log`. |
