@@ -153,6 +153,16 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
 
   const rl = readline.createInterface({ input: child.stdout });
   let lastLineMs = Date.now();
+  /* Screenshots asked of the recorder and not answered yet: id -> settle. */
+  const pendingShots = new Map();
+  let shotSeq = 0;
+  function settleShot(id, answer) {
+    const pending = pendingShots.get(id);
+    if (!pending) return;
+    pendingShots.delete(id);
+    clearTimeout(pending.timer);
+    pending.resolve(answer);
+  }
   rl.on("line", (line) => {
     lastLineMs = Date.now();
     if (!line) return;
@@ -176,6 +186,11 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     // snapshot_done per pass. Transient -- never written to events.jsonl.
     else if (msg.type === "snapshot_control" && onSnapshotControl) onSnapshotControl(msg.data);
     else if (msg.type === "snapshot_done" && onSnapshotDone) onSnapshotDone(msg.data);
+    // The answer to a screenshot this process asked for (screenshot() below).
+    else if (msg.type === "screenshot_done") {
+      const d = msg.data || {};
+      settleShot(d.id, { ok: d.ok === true, path: d.path || null, error: d.error || null });
+    }
     else if (msg.type === "ready") {
       if (bootLog) bootLog("[recorder] ready");
       // §E1 readiness probe: positive confirmation the sidecar came up.
@@ -213,6 +228,7 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     exitReported = true;
     exited = true;
     clearInterval(watchdog);
+    for (const id of [...pendingShots.keys()]) settleShot(id, { ok: false, path: null, error: "the recorder ended" });
     if (onExit) onExit(info);
   }
   child.on("exit", (code, signal) => reportExit({ code, signal }));
@@ -231,8 +247,9 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
 
   function safeWrite(obj) {
     try {
-      if (child.stdin.writable) child.stdin.write(JSON.stringify(obj) + "\n");
+      if (child.stdin.writable) { child.stdin.write(JSON.stringify(obj) + "\n"); return true; }
     } catch (_) { /* sidecar already exited */ }
+    return false;
   }
 
   // Send hello. `verbose: true` opts into the raw firehose (focus_changed,
@@ -266,6 +283,22 @@ function spawnRecorder({ sessionId, recorderPath, verbose, debounceMs, ocr, onEv
     // onSnapshotDone callbacks above.
     snapshot: ({ target = "foreground", passes = 2 } = {}) =>
       safeWrite({ cmd: "snapshot", target, passes }),
+    /* A screenshot taken by the recorder in its own process, so this one
+       never waits for it. `path`: the absolute .jpg to write; `screen`:
+       "active" (the screen holding the point x, y, else the window in
+       front) or "primary". Resolves { ok, path, error }: ok false when the
+       recorder could not, did not answer within `timeoutMs`, or ended. */
+    screenshot: ({ path: shotPath, quality = 60, screen = "active", x, y, timeoutMs = 4000 } = {}) =>
+      new Promise((resolve) => {
+        const id = "s" + (++shotSeq);
+        const timer = setTimeout(
+          () => settleShot(id, { ok: false, path: null, error: "no answer within " + timeoutMs + " ms" }), timeoutMs);
+        if (timer.unref) timer.unref();
+        pendingShots.set(id, { resolve, timer });
+        const cmd = { cmd: "screenshot", id, path: shotPath, quality, screen };
+        if (Number.isFinite(x) && Number.isFinite(y)) { cmd.x = Math.round(x); cmd.y = Math.round(y); }
+        if (exited || !safeWrite(cmd)) settleShot(id, { ok: false, path: null, error: "the recorder is not running" });
+      }),
     stop: (opts) => new Promise((resolve) => {
       const drainMs = (opts && opts.drainTimeoutMs) || 1500;
       let done = false;

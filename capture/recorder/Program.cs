@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -102,6 +103,9 @@ public static class Program {
         // Electron parent) optionally carries a `verbose` flag that
         // toggles the firehose-mode subscription set. Subscriber.Start()
         // is deferred until we've seen hello.
+        // Screenshots still being taken: a shutdown waits for them briefly,
+        // so the last one (the end marker's) is written whole and answered.
+        var shots = new ConcurrentDictionary<Task, byte>();
         string? line;
         while ((line = await Console.In.ReadLineAsync()) != null) {
             try {
@@ -194,6 +198,26 @@ public static class Program {
                             l => { try { Console.Out.WriteLine(l); } catch { } }));
                         break;
                     }
+                    case "screenshot": {
+                        // A screenshot for the capture app, taken here so the
+                        // capture app never waits for it (ScreenShooter). Off the
+                        // control loop, like snapshot; the reply goes straight
+                        // to Console.Out (a synchronized writer).
+                        var (shot, why) = ScreenShooter.Parse(doc.RootElement);
+                        if (shot == null) {
+                            var id = doc.RootElement.TryGetProperty("id", out var idEl) &&
+                                     idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+                            if (!string.IsNullOrEmpty(id)) {
+                                Console.Out.WriteLine(ScreenShooter.Reply(id!, false, null, why, options));
+                            }
+                            break;
+                        }
+                        var shotTask = ScreenShooter.RunAsync(shot, l => { try { Console.Out.WriteLine(l); } catch { } }, options);
+                        shots[shotTask] = 0;
+                        _ = shotTask.ContinueWith(t => shots.TryRemove(t, out _), TaskScheduler.Default);
+                        FireAndForget(shotTask);
+                        break;
+                    }
                     case "shutdown": goto done;
                 }
             } catch (Exception e) {
@@ -202,6 +226,7 @@ public static class Program {
         }
 
     done:
+        try { Task.WaitAll(new List<Task>(shots.Keys).ToArray(), TimeSpan.FromMilliseconds(1000)); } catch { }
         statsTimer.Stop();
         subscriber?.Stop();
         queue.CompleteAdding();

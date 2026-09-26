@@ -52,7 +52,7 @@ const {
   stopRecording,
   writeSyncFile,
 } = require("./obs.js");
-const { captureScreenshot } = require("./screenshots.js");
+const { captureScreenshot, timestampFilename, dimOwnWindows } = require("./screenshots.js");
 const { showHelpWindow } = require("./help-window.js");
 const recordingBar = require("./recording-bar.js");
 const { showEndSummaryWindow } = require("./end-summary-window.js");
@@ -197,25 +197,57 @@ function fireScreenshot(kind, opts) {
   return job;
 }
 
+/* The picture itself. The recorder takes it, in its own process (the owner,
+   2026-09-26): Electron's screen capture held this process for about 0.4 s a
+   shot on one screen, longer with more screens, so the bar froze and a
+   transaction key pressed meanwhile was stamped late. It photographs the
+   screen holding the last window the SME worked in (the poll's window
+   position, in the physical pixels the recorder works in too). The old way
+   is the fallback: no recorder, a recorder that could not, or the "all
+   screens" setting. Our own windows are dimmed for the grab except those
+   Windows already leaves out of captures (the bar), so the bar no longer
+   blinks at each screenshot. Returns a relative path, an array of them, or
+   null. */
+async function grabScreen(shotTracker, shotSession) {
+  const folder = path.join(shotSession.sessionFolder, "screenshots");
+  const mode = config.screenshots.display;
+  const work = lastWorkBounds || (lastStatus ? lastStatus.currentBounds : null);
+  const occluding = BrowserWindow.getAllWindows().filter((w) => !w.pdtKeptOutOfCaptures);
+  const live = recorder && recorder.current();
+  if (live && typeof live.screenshot === "function" && mode !== "all") {
+    const name = timestampFilename(null);
+    const hasWork = !!work && Number.isFinite(work.x) && Number.isFinite(work.width);
+    const restore = dimOwnWindows(occluding);
+    let answer = null;
+    try {
+      answer = await live.screenshot({
+        path: path.join(folder, name),
+        quality: config.screenshots.quality,
+        screen: mode === "primary" ? "primary" : "active",
+        x: hasWork ? work.x + work.width / 2 : undefined,
+        y: hasWork ? work.y + work.height / 2 : undefined,
+      });
+    } finally {
+      restore();
+    }
+    if (answer && answer.ok) return "screenshots/" + name;
+    bootLog(`recorder screenshot failed (${answer && answer.error}); the capture app takes it`);
+    if (shotTracker.getStatus().stopped) return null;
+  }
+  return captureScreenshot({
+    screenshotsFolder: folder,
+    quality: config.screenshots.quality,
+    mode,
+    foregroundBounds: work,
+    occludingWindows: occluding,
+  });
+}
+
 /* `expect`: the window seen at the poll that asked for this screenshot
    ({ app, screen }), or none (a transaction's start, a screenshot by hand). */
 async function takeScreenshot(kind, shotTracker, shotSession, expect) {
   try {
-    // Pass the foreground window bounds so multi-monitor "active"
-    // mode can pick the right display. lastStatus is refreshed every
-    // tick via onTickHandler; if we don't have it yet (e.g. fire just
-    // after session_start), screenshots.js falls back to cursor pos
-    // then primary.
-    const result = await captureScreenshot({
-      screenshotsFolder: path.join(shotSession.sessionFolder, "screenshots"),
-      quality: config.screenshots.quality,
-      mode: config.screenshots.display,
-      foregroundBounds: lastWorkBounds || (lastStatus ? lastStatus.currentBounds : null),
-      // D3: our own always-on-top windows are the only BrowserWindows in this
-      // process; screenshots.js dims them during the grab so they don't
-      // occlude the capture on a single monitor.
-      occludingWindows: BrowserWindow.getAllWindows(),
-    });
+    const result = await grabScreen(shotTracker, shotSession);
     if (!result) return;
     // The recording stopped meanwhile (a Stop waits a few seconds at most):
     // nothing is written after its session_end.
@@ -990,6 +1022,9 @@ async function endSessionNow(opts) {
   recorderEpoch += 1;     // a recorder still starting for this recording stands down
   stopIdleMonitor();
   stopDeadManMonitor();   // §E2: a clean end is not a silent death
+  // The last screenshots (the end marker's) are taken by the recorder: let
+  // them land while it still runs.
+  await drainScreenshots();
 
   if (recorder) {
     // recorder_stop only when a recorder is live (not mid-restart or dead).

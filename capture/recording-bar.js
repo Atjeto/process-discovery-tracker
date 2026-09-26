@@ -166,7 +166,12 @@ function openBar(initialView, opts) {
   bar = win;
   // Above other always-on-top windows, so Stop is always reachable.
   win.setAlwaysOnTop(true, "screen-saver");
-  try { win.setContentProtection(true); } catch (_) { /* capture exclusion is best effort */ }
+  try {
+    win.setContentProtection(true);
+    // Left out of captures by Windows, so a screenshot need not hide it
+    // (main.js grabScreen): the bar no longer blinks at each screenshot.
+    win.pdtKeptOutOfCaptures = true;
+  } catch (_) { /* capture exclusion is best effort */ }
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.once("ready-to-show", () => { if (!win.isDestroyed()) win.showInactive(); });

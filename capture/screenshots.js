@@ -138,4 +138,4 @@ async function captureScreenshot({ screenshotsFolder, quality, mode, foregroundB
   }
 }
 
-module.exports = { captureScreenshot };
+module.exports = { captureScreenshot, timestampFilename, dimOwnWindows: _dimOwnWindows };

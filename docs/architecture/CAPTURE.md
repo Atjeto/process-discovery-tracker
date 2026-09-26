@@ -133,7 +133,7 @@ draining) is absorbed, not queued.
 | UI interactions | The C# UI Automation recorder sidecar | `interaction` events |
 | Transactions (runs) | One start per transaction, End transaction, Stop, a long idle stretch | `marker` events (`start` / `end`) |
 | Lifecycle | Start and stop, pause, idle, OBS, recorder health, dropped writes, programs the recorder cannot see | `system` events |
-| Screen | Electron `desktopCapturer`: on an app switch, on another screen in the same program, when a transaction starts or ends, on resume after a long idle stretch, and by hand | screenshots |
+| Screen | The recorder (its `screenshot` command, GDI, in its own process), else Electron `desktopCapturer`: on an app switch, on another screen in the same program, when a transaction starts or ends, on resume after a long idle stretch, and by hand | screenshots |
 | Video (optional) | OBS Studio over `ws://127.0.0.1:4455` | a video file and `obs/sync.json` |
 
 Events are appended to `events.jsonl` through a small batching queue:
@@ -153,10 +153,26 @@ without unread counts and the browser's name) is another screen and gets
 a screenshot at the next 5 second poll (lane LF-SHOT): a web process lives
 in one browser, and without it only the first step of each transaction had
 a screenshot for the PDD. A screen shown for less than a poll can be
-missed. A grab takes about a second, so a screenshot a poll asked for (an
-app switch, another screen) is kept only while that window is still in
-front when the grab is done; otherwise its file is deleted and nothing is
-written (a page left meanwhile would show under the step before).
+missed. A screenshot a poll asked for (an app switch, another screen) is
+kept only while that window is still in front when the grab is done;
+otherwise its file is deleted and nothing is written (a page left meanwhile
+would show under the step before).
+
+The recorder takes the screenshots (the owner, 2026-09-26): Electron's
+`desktopCapturer` held the capture app's main process for about 0.4 s a
+shot on one screen, longer with more screens (it grabs every screen each
+time), so the bar froze and a transaction key pressed meanwhile was stamped
+late. The capture app now sends the recorder a `screenshot` command and
+waits for the answer without blocking; the recorder copies the one screen
+in about 50 ms. The screen is the one holding the middle of the last window
+the SME worked in (the poll's window position, which is in physical pixels
+like the recorder's), else the one holding the window in front, or the main
+screen with `screenshots.display: primary`. The old way is the fallback:
+no recorder, an answer that failed or did not come within 4 s, and the
+`all` setting (one picture per screen). Our own windows are dimmed for a
+grab except the bar, which Windows already leaves out of captures, so the
+bar no longer blinks at each screenshot. A Stop lets the screenshots still
+being taken land before it stops the recorder.
 
 ## Recording lifecycle
 
@@ -248,7 +264,7 @@ cross-cutting modules out of it.
 | `dead-man.js` | The dead-man monitor (pure, injectable clock): no interaction and no recorder heartbeat for over 2 minutes means the recorder went silent (below). |
 | `readiness.js` | The readiness check: free disk on the recordings folder and on the drive the recorder extracts to, the recorder starts and answers, and how much it sees of each open program (rich, basic, minimal, wall). Setup (analyst), Readiness check (only while nothing records), or the `--readiness` command line; both write `readiness-report.json` next to the recordings. Exit codes: 0 ready, 2 not ready, 3 crashed. |
 | `obs.js` | OBS WebSocket: scene set-up, start and stop recording, the clock offset. |
-| `screenshots.js` | Screen capture with `desktopCapturer`, across monitors. |
+| `screenshots.js` | The fallback screen capture with `desktopCapturer`, across monitors, and the screenshot file names. |
 | `notify.js` | `notifyUser()` (the OS toast) and the tray icons, the warning one included. |
 | `window-manager.js` | Keeps each utility window to one instance. |
 | `json-for-script.js` | Serializes a value safely into a window's inline `<script>` (a run name or a path can never break out of it). |
@@ -422,8 +438,8 @@ process (not Node) because UI Automation is a first-party Windows API best
 used from .NET ([ADR-0001](../adr/0001-click-recorder-sidecar-language.md)).
 
 - `Program.cs`: the entry point, an **NDJSON control loop** over stdin and
-  stdout. The capture app sends `hello`, `pause`, `resume`, `snapshot` and
-  `shutdown` (`hello` carries `verbose`, `debounce_ms`, `ocr` and
+  stdout. The capture app sends `hello`, `pause`, `resume`, `snapshot`,
+  `screenshot` and `shutdown` (`hello` carries `verbose`, `debounce_ms`, `ocr` and
   `host_process`, the capture app's own executable, so the recorder never
   records PDT's own windows); the recorder answers with `ready`,
   `interaction`, `stats`, `activity` and `warning` lines. A `stats` line
@@ -442,6 +458,14 @@ used from .NET ([ADR-0001](../adr/0001-click-recorder-sidecar-language.md)).
   cut, so nothing sends it now; the recorder still answers. The traversal
   (`SnapshotWalker` over the `ISnapshotElement` seam) is unit-tested with a
   synthetic tree in `Recorder.Tests`. See `Snapshotter.cs`.
+- **The `screenshot` command** (`ScreenShooter.cs`).
+  `{cmd:"screenshot", id, path, quality, screen:"active"|"primary", x?, y?}`
+  copies one screen with GDI (BitBlt with CAPTUREBLT, so layered menus are
+  in it), off the control loop, and writes a JPEG to `path` (absolute, a
+  `.jpg`, else refused), under a temporary name moved in whole; it answers
+  `screenshot_done` `{id, ok, path | error}`. `active` is the screen holding
+  the point `x, y` (physical pixels), else the one holding the window in
+  front. A shutdown waits up to 1 s for the screenshots still being taken.
 - `UiaSubscriber.cs` subscribes to UI Automation events (invoke, selection,
   toggle, value, and the focus), filters noise (writes no `focus_changed`
   and `text_changed`, coalesces rapid `value_changed` within the debounce

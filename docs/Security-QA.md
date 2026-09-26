@@ -35,7 +35,7 @@ Nothing else. No registry writes beyond Electron's standard "Launch on login" to
 
 ## 8. How are screenshots captured?
 
-Via Electron's built-in `desktopCapturer` API (Chromium internals). **No third-party screen-capture binaries** are bundled. Earlier versions used `screenshot-desktop` which ships a helper exe; we removed it for this reason.
+By PDT's own recorder (the C# sidecar that also reads the UI Automation events), with the Windows GDI API: it copies the one screen the worker is using and writes a JPEG into the session folder. The capture app asks it for each screenshot, so the capture app itself never stalls. When the recorder is not running, the capture app takes the screenshot with Electron's built-in `desktopCapturer` API. **No third-party screen-capture binaries** are bundled. Earlier versions used `screenshot-desktop` which ships a helper exe; we removed it for this reason.
 
 ## 9. What third-party binaries ship?
 

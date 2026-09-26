@@ -441,6 +441,13 @@ implementation notes
     transaction. Such a screenshot is kept only while its window is still
     in front once the grab is done, so a page left meanwhile never shows
     under the step before.
+  - The recorder takes the screenshots, in its own process: Electron's
+    screen capture held the capture app for about 0.4 s a shot (longer with
+    more screens), so the bar froze and a transaction key pressed meanwhile
+    was stamped late, the freeze SMEs knew from the screenshot key. The
+    recorder copies the one screen the SME works on in about 50 ms, the
+    right one on a scaled screen too; the bar no longer blinks at each
+    screenshot. The old way remains the fallback.
   - The packaged apps carry their scoped runtime packages. The packager
     dropped folders such as node_modules/@mapbox, so the packaged capture
     app never saw the foreground window (no time in each application, an

@@ -63,7 +63,7 @@ No data leaves the device unless the operator explicitly moves a session folder.
 |---|---|
 | Foreground window polling | Reads window title + app name via `active-win` every 5 seconds. Does NOT read keyboard input or process memory. |
 | Idle detection | Uses Electron's `powerMonitor.getSystemIdleTime` (system input timestamp delta). Does NOT install keyboard or mouse hooks. |
-| Screenshots | Uses Electron's built-in `desktopCapturer` API. Does NOT use bundled helper executables. No third-party screen-capture binaries shipped. |
+| Screenshots | Taken by PDT's own recorder (the C# sidecar) with the Windows GDI API, one screen at a time; Electron's built-in `desktopCapturer` API when the recorder is not running. No third-party screen-capture binaries shipped. |
 | Global hotkeys | Registered via Electron `globalShortcut`. Default Ctrl+Shift+S/E/P/Y. Configurable. |
 | OBS control | JSON-RPC over WebSocket to `127.0.0.1:4455` only. Authenticatable. |
 | Interaction recording | Subscribes to Windows UI Automation events via the in-box `UIAutomationCore.dll`. Same API used by Narrator, NVDA, Inspect.exe. No `SetWindowsHookEx`, no DLL injection, no keyboard / mouse hooks. C# sidecar runs as a separate process, NDJSON over stdio to the Electron main process. |

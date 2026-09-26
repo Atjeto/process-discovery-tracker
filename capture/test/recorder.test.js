@@ -159,3 +159,44 @@ test("live finding 15: the warm-up starts the recorder once in a worker, asks it
   assert.equal(missing.ok, false);
   assert.match(String(missing.error), /ENOENT/);
 });
+
+test("a screenshot is asked of the recorder and settles on its answer, on no answer, or on its end", async () => {
+  // The recorder takes the screenshots in its own process, so the capture
+  // app never waits for one (the owner, 2026-09-26).
+  const sent = [];
+  let answer = true;
+  const child = fakeChild({
+    onStdin: (text, c) => {
+      for (const line of text.split("\n").filter(Boolean)) {
+        const cmd = JSON.parse(line);
+        if (cmd.cmd !== "screenshot") continue;
+        sent.push(cmd);
+        if (!answer) continue;
+        setImmediate(() => c.stdout.write(JSON.stringify(
+          { v: 1, type: "screenshot_done", data: { id: cmd.id, ok: true, path: cmd.path } }) + "\n"));
+      }
+    },
+  });
+  const rec = spawnRecorder({ sessionId: "t", recorderPath: "fake-recorder.exe", spawnFn: () => child, bootLog: () => {} });
+
+  const shotPath = path.join(os.tmpdir(), "rec", "screenshots", "a.jpg");
+  const ok = await rec.screenshot({ path: shotPath, quality: 70, screen: "active", x: 2879.6, y: 540 });
+  assert.deepEqual(ok, { ok: true, path: shotPath, error: null });
+  assert.equal(sent[0].path, shotPath);
+  assert.equal(sent[0].quality, 70);
+  assert.equal(sent[0].screen, "active");
+  assert.deepEqual([sent[0].x, sent[0].y], [2880, 540], "the point in whole pixels");
+
+  answer = false;
+  const late = await rec.screenshot({ path: shotPath, timeoutMs: 30 });
+  assert.equal(late.ok, false);
+  assert.match(late.error, /no answer/);
+  assert.ok(!("x" in sent[1]), "no point: the recorder takes the window in front");
+
+  const pending = rec.screenshot({ path: shotPath, timeoutMs: 5000 });
+  child.emit("exit", 0, null);
+  const ended = await pending;
+  assert.deepEqual(ended, { ok: false, path: null, error: "the recorder ended" });
+  const after = await rec.screenshot({ path: shotPath });
+  assert.equal(after.ok, false, "a recorder that ended takes no screenshot");
+});
