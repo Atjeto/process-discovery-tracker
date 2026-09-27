@@ -335,24 +335,14 @@
         ${watchBtn}
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
         ${subBtns}
+        <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
+        ${isAdded ? `<button id="btn-step-delete" class="danger" title="${escapeAttr(sub && sub.group ? "Delete this sub-process you made, with its steps" : "Delete this step you added")}">Delete</button>` : ""}
       </div>
       <div class="step-sect step-recorded" id="step-recorded">
         <div class="evidence">${interListHtml}</div>
         <div class="actions">${moreActs}</div>
       </div>
-      ${callbacks.extrasHtml || ""}
-      <details class="step-detail-more">
-        <summary class="step-detail-more-head">
-          <span class="step-detail-more-title">More</span>
-          <span class="step-detail-more-chevron" aria-hidden="true"></span>
-        </summary>
-        <div class="step-detail-more-body">
-          <div class="actions">
-            <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
-            ${isAdded ? `<button id="btn-step-delete" class="danger" title="${escapeAttr(sub && sub.group ? "Delete this sub-process you made, with its steps" : "Delete this step you added")}">Delete</button>` : ""}
-          </div>
-        </div>
-      </details>`;
+      ${callbacks.extrasHtml || ""}`;
     // The name saves on Enter or when the field is left; Escape puts it back.
     const nameEl = document.getElementById("step-name");
     const commitName = () => {

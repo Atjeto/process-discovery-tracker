@@ -389,7 +389,7 @@ const WANT_OFFSET = -30000;
     const resident = await page.evaluate(() => {
       const more = document.querySelector("#step-detail .step-detail-more");
       const said = document.getElementById("step-said");
-      return { moreClosed: !!(more && !more.open), saidOutsideMore: !!(said && !(more && more.contains(said))),
+      return { moreClosed: !more, saidOutsideMore: !!(said && !(more && more.contains(said))),
         descOutsideMore: !!(document.getElementById("step-desc") && !(more && more.contains(document.getElementById("step-desc")))) };
     }).catch((e) => ({ err: e.message }));
     const ok = !err && resident.moreClosed && resident.saidOutsideMore && resident.descOutsideMore &&

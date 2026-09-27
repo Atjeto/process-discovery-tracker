@@ -1312,7 +1312,7 @@ async function unreadableAnnotationsPin() {
         return {
           fact: ((document.querySelector("#step-detail .step-fact") || {}).textContent || "").trim(),
           tiles: document.querySelectorAll("#step-detail .stat-tile, #step-detail .step-suggestion-reason").length,
-          descResident: !!(desc && more && !more.contains(desc) && getComputedStyle(desc).display !== "none"),
+          descResident: !!(desc && !more && getComputedStyle(desc).display !== "none"),
           refs: (step.evidence.screenshot_refs || []).length,
           shots: [...document.querySelectorAll("#step-detail .step-shot")].map((b) => ({
             ref: b.dataset.ref, loaded: (b.querySelector("img") || {}).naturalWidth > 0,

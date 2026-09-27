@@ -572,7 +572,6 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         row: g1.rows.find((r) => r.name === "Check the stock") };
       addedDisk = (await waitDisk(ANNO, (a) => (a.steps || []).some((s) => s.name === "Check the stock")))
         .steps.find((s) => s.name === "Check the stock");
-      await page.locator(".step-detail-more > summary").click({ timeout: T });
       await page.locator("#btn-step-delete").click({ timeout: T });
       await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
       await waitRows(R1, 6);
@@ -784,7 +783,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const outlookRow = rowByName(R4, "Outlook - Order confirmation: Send");
       const oid = await outlookRow.getAttribute("data-step-id", { timeout: T });
       await outlookRow.click({ timeout: T });
-      await page.locator(".step-detail-more > summary").click({ timeout: T });
+      await page.waitForSelector("#btn-step-jump", { timeout: T });
       noDelete = (await page.$("#btn-step-delete")) === null;
       await page.locator("#btn-step-hide", { hasText: /^Hide step$/ }).click({ timeout: T });
       await waitRows(R4, 5);

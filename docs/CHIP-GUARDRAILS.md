@@ -398,12 +398,11 @@ shown only after a failed run; `#toast`.
   [data-src="video_frame"|"paste"|"file"]`; `.step-shot-card[data-ref][data-kind]`
   with `[data-shot-act="pdd"|"remove"]`, and `[data-shot-act="unhide"]`);
   `#step-notes-sect` (`#btn-step-add-note`, `.step-note [data-note-act="edit"|"delete"]`);
-  `#step-atts-sect` (`#btn-step-attach`, `[data-att-act]`); under
-  `.step-detail-more` (a `<details>`): `#btn-step-jump`, `#btn-step-split`
-  (disabled with its reason on a step with fewer than two recorded actions,
-  lane FX3),
-  `#btn-step-merge`, `#btn-step-merge-selected`, `#btn-step-delete` (added
-  steps only).
+  `#step-atts-sect` (`#btn-step-attach`, `[data-att-act]`). Since 2.0.1 there
+  is no More section: `#btn-step-jump` and `#btn-step-delete` (added steps
+  only) sit with Hide step, and `#step-recorded` holds the recorded actions
+  (their `.si-split-btn` scissors split after an action; none on a step with
+  fewer than two), `#btn-step-merge` and `#btn-step-merge-selected`.
 
 **The step panel** (`#step-panel`, `views/step-panel.js`; hidden until a
 door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line

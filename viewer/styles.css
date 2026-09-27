@@ -1543,27 +1543,6 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .editor-detail-pane .danger:hover:not(:disabled) {
   background: var(--bad); color: #fff;
 }
-/* R1 triage economics (APPROACHABILITY-REDESIGN-2026-07-03 §3-5): the step
-   detail's single "More" expand-in-place disclosure -- everything beyond the
-   resident name/facts/Waste/Hide moves here, collapsed by default. Same
-   mechanism as .analysis-module (native <details>, marker suppressed via
-   list-style:none + ::-webkit-details-marker, a dedicated chevron span driven
-   entirely by CSS ::before content) so there is exactly one glyph per row,
-   never a native marker doubled with a text glyph. */
-.step-detail-more { margin-top: 12px; border-top: 1px solid var(--rule-soft); }
-.step-detail-more-head {
-  display: flex; align-items: center; gap: 6px;
-  cursor: pointer; padding: 8px 2px; list-style: none; user-select: none;
-  font-size: 11px; color: var(--fg-3);
-}
-.step-detail-more-head::-webkit-details-marker { display: none; }
-.step-detail-more-head:hover { color: var(--fg-2); }
-.step-detail-more[open] > .step-detail-more-head { color: var(--accent); }
-.step-detail-more-title { text-transform: uppercase; letter-spacing: 0.6px; }
-.step-detail-more-chevron { font-size: 10px; color: var(--fg-4); }
-.step-detail-more-chevron::before { content: "▸"; }
-.step-detail-more[open] .step-detail-more-chevron::before { content: "▾"; }
-.step-detail-more-body { padding-top: 4px; }
 /* The waste flag in the step list: a small tag in the chips' shape, never a
    strikethrough (it read as removed). */
 .step-tag-waste {
