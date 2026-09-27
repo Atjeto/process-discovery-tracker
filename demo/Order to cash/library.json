@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "version": "Order to cash demo 1",
+  "applications": [
+    { "name": "Order Desk", "activities": [
+      { "id": "od-find-customer", "name": "Find the customer", "code": "OD-01",
+        "description": "Search the customer by name or customer number and select the account.",
+        "screens": [
+          ["chrome|Customer lookup - Order Desk|Button:btn-search", "chrome|Customer lookup - Order Desk|Button:Select"],
+          ["chrome|Customer lookup - Order Desk|Button:Select"]
+        ] },
+      { "id": "od-new-customer", "name": "Create the new customer", "code": "OD-02",
+        "description": "When the search finds no account, create the customer with its name, e-mail, phone and country.",
+        "screens": [
+          ["chrome|Customer lookup - Order Desk|Button:btn-new-customer", "chrome|New customer - Order Desk|Button:btn-save-customer"]
+        ] },
+      { "id": "od-enter-order", "name": "Enter the order", "code": "OD-03",
+        "description": "Choose the product, type the quantity and the delivery date, choose the priority and save the order.",
+        "screens": [["chrome|New order for … - Order Desk|Button:btn-save-order"]] },
+      { "id": "od-print", "name": "Print the order confirmation", "code": "OD-04",
+        "description": "Print the confirmation for a customer who asks for one on paper.",
+        "screens": [["chrome|Order Desk|Hyperlink:lnk-print"]] }
+    ] },
+    { "name": "Excel", "activities": [
+      { "id": "xl-tracking", "name": "Add the order to the tracking sheet", "code": "XL-01",
+        "description": "Type the order number, customer, item, quantity and unit price as a new row of the order tracking sheet and save it.",
+        "screens": [["excel|workbook|(visit)"]] }
+    ] },
+    { "name": "Notepad", "activities": [
+      { "id": "np-mapping", "name": "Look up the SAP material", "code": "NP-01",
+        "description": "Find the item's SAP material number in the material mapping file.",
+        "screens": [] }
+    ] }
+  ]
+}

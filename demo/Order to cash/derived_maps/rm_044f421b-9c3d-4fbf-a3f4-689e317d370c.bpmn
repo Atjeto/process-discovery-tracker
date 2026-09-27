@@ -1,0 +1,697 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://process-discovery-tracker/bpmn">
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:startEvent id="node_0_A_customer_order_arrives_by_e-ma" name="A customer order arrives by e-mail.">
+      <bpmn:outgoing>flow_7</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="node_1_Find_the_customer" name="Find the customer">
+      <bpmn:documentation>Search the customer by name or customer number and select the account.
+Order Desk, Customer lookup. In 4 of 4 transactions, 1s on average.</bpmn:documentation>
+      <bpmn:incoming>flow_0</bpmn:incoming>
+      <bpmn:outgoing>flow_1</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:subProcess id="node_2_Enter_the_order" name="Enter the order">
+      <bpmn:documentation>Order Desk, New order for Contoso Ltd. In 4 of 4 transactions, 7s on average.</bpmn:documentation>
+      <bpmn:incoming>flow_2</bpmn:incoming>
+      <bpmn:outgoing>flow_3</bpmn:outgoing>
+      <bpmn:startEvent id="Sub1_node_0">
+        <bpmn:outgoing>Sub1_flow_0</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:task id="Sub1_node_1_Enter_Quantity" name="Enter Quantity">
+        <bpmn:documentation>Order Desk, New order for Contoso Ltd. In 4 of 4 transactions, 2s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_1</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_2</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:task id="Sub1_node_2_Enter_Delivery_date" name="Enter Delivery date">
+        <bpmn:documentation>Order Desk, New order for Contoso Ltd. In 4 of 4 transactions, under 1s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_3</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_4</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:task id="Sub1_node_3_Toggle_Standard" name="Toggle Standard">
+        <bpmn:documentation>Order Desk, New order for Contoso Ltd. In 3 of 4 transactions, 3s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_9</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_5</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:task id="Sub1_node_4_Enter_Notes" name="Enter Notes">
+        <bpmn:documentation>Order Desk, New order for Contoso Ltd. In 1 of 4 transactions, under 1s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_10</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_11</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:task id="Sub1_node_5_Click_Save_order" name="Click Save order">
+        <bpmn:documentation>Order Desk, New order for Contoso Ltd. In 4 of 4 transactions, under 1s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_6</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_12</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:endEvent id="Sub1_node_6">
+        <bpmn:incoming>Sub1_flow_12</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:task id="Sub1_node_7_Enter_Product" name="Enter Product">
+        <bpmn:documentation>Order Desk, New order for Northwind Traders. In 3 of 4 transactions, 2s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_13</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_14</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:task id="Sub1_node_8_Toggle_Express" name="Toggle Express">
+        <bpmn:documentation>Order Desk, New order for Northwind Traders. In 1 of 4 transactions, under 1s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_15</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_16</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:task id="Sub1_node_9_Toggle_Gift_wrap" name="Toggle Gift wrap">
+        <bpmn:documentation>Order Desk, New order for Northwind Traders. In 1 of 4 transactions, 3s on average.</bpmn:documentation>
+        <bpmn:incoming>Sub1_flow_16</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_17</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:exclusiveGateway id="Sub1_node_10">
+        <bpmn:incoming>Sub1_flow_0</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_7</bpmn:outgoing>
+        <bpmn:outgoing>Sub1_flow_13</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:exclusiveGateway id="Sub1_node_11">
+        <bpmn:incoming>Sub1_flow_7</bpmn:incoming>
+        <bpmn:incoming>Sub1_flow_14</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_1</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:exclusiveGateway id="Sub1_node_12">
+        <bpmn:incoming>Sub1_flow_2</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_8</bpmn:outgoing>
+        <bpmn:outgoing>Sub1_flow_15</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:exclusiveGateway id="Sub1_node_13">
+        <bpmn:incoming>Sub1_flow_8</bpmn:incoming>
+        <bpmn:incoming>Sub1_flow_17</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_3</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:exclusiveGateway id="Sub1_node_14">
+        <bpmn:incoming>Sub1_flow_4</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_9</bpmn:outgoing>
+        <bpmn:outgoing>Sub1_flow_18</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:exclusiveGateway id="Sub1_node_15">
+        <bpmn:incoming>Sub1_flow_5</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_10</bpmn:outgoing>
+        <bpmn:outgoing>Sub1_flow_19</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:exclusiveGateway id="Sub1_node_16">
+        <bpmn:incoming>Sub1_flow_11</bpmn:incoming>
+        <bpmn:incoming>Sub1_flow_18</bpmn:incoming>
+        <bpmn:incoming>Sub1_flow_19</bpmn:incoming>
+        <bpmn:outgoing>Sub1_flow_6</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:sequenceFlow id="Sub1_flow_0" sourceRef="Sub1_node_0" targetRef="Sub1_node_10" />
+      <bpmn:sequenceFlow id="Sub1_flow_1" sourceRef="Sub1_node_11" targetRef="Sub1_node_1_Enter_Quantity" />
+      <bpmn:sequenceFlow id="Sub1_flow_2" sourceRef="Sub1_node_1_Enter_Quantity" targetRef="Sub1_node_12" />
+      <bpmn:sequenceFlow id="Sub1_flow_3" sourceRef="Sub1_node_13" targetRef="Sub1_node_2_Enter_Delivery_date" />
+      <bpmn:sequenceFlow id="Sub1_flow_4" sourceRef="Sub1_node_2_Enter_Delivery_date" targetRef="Sub1_node_14" />
+      <bpmn:sequenceFlow id="Sub1_flow_5" sourceRef="Sub1_node_3_Toggle_Standard" targetRef="Sub1_node_15" />
+      <bpmn:sequenceFlow id="Sub1_flow_6" sourceRef="Sub1_node_16" targetRef="Sub1_node_5_Click_Save_order" />
+      <bpmn:sequenceFlow id="Sub1_flow_7" name="1 of 4 transactions" sourceRef="Sub1_node_10" targetRef="Sub1_node_11" />
+      <bpmn:sequenceFlow id="Sub1_flow_8" name="3 of 4 transactions" sourceRef="Sub1_node_12" targetRef="Sub1_node_13" />
+      <bpmn:sequenceFlow id="Sub1_flow_9" name="3 of 4 transactions" sourceRef="Sub1_node_14" targetRef="Sub1_node_3_Toggle_Standard" />
+      <bpmn:sequenceFlow id="Sub1_flow_10" name="1 of 4 transactions" sourceRef="Sub1_node_15" targetRef="Sub1_node_4_Enter_Notes" />
+      <bpmn:sequenceFlow id="Sub1_flow_11" sourceRef="Sub1_node_4_Enter_Notes" targetRef="Sub1_node_16" />
+      <bpmn:sequenceFlow id="Sub1_flow_12" sourceRef="Sub1_node_5_Click_Save_order" targetRef="Sub1_node_6" />
+      <bpmn:sequenceFlow id="Sub1_flow_13" name="3 of 4 transactions" sourceRef="Sub1_node_10" targetRef="Sub1_node_7_Enter_Product" />
+      <bpmn:sequenceFlow id="Sub1_flow_14" sourceRef="Sub1_node_7_Enter_Product" targetRef="Sub1_node_11" />
+      <bpmn:sequenceFlow id="Sub1_flow_15" name="1 of 4 transactions" sourceRef="Sub1_node_12" targetRef="Sub1_node_8_Toggle_Express" />
+      <bpmn:sequenceFlow id="Sub1_flow_16" sourceRef="Sub1_node_8_Toggle_Express" targetRef="Sub1_node_9_Toggle_Gift_wrap" />
+      <bpmn:sequenceFlow id="Sub1_flow_17" sourceRef="Sub1_node_9_Toggle_Gift_wrap" targetRef="Sub1_node_13" />
+      <bpmn:sequenceFlow id="Sub1_flow_18" name="1 of 4 transactions" sourceRef="Sub1_node_14" targetRef="Sub1_node_16" />
+      <bpmn:sequenceFlow id="Sub1_flow_19" name="2 of 4 transactions" sourceRef="Sub1_node_15" targetRef="Sub1_node_16" />
+      <bpmn:textAnnotation id="Sub1_TextAnnotation_system">
+        <bpmn:text>System: Order Desk</bpmn:text>
+      </bpmn:textAnnotation>
+    </bpmn:subProcess>
+    <bpmn:task id="node_3_Add_the_order_to_the_tracking_sh" name="Add the order to the tracking sheet">
+      <bpmn:documentation>Type the new order as a row of the order tracking sheet (order, customer, item, quantity, unit price) and save the sheet. The weekly sales report reads it; every value is already in Order Desk.
+Excel, order-tracking.xlsx. In 4 of 4 transactions, 5s on average.</bpmn:documentation>
+      <bpmn:incoming>flow_4</bpmn:incoming>
+      <bpmn:outgoing>flow_10</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="node_4_The_order_is_saved_in_Order_Desk" name="The order is saved in Order Desk and listed in the order tracking sheet.">
+      <bpmn:incoming>flow_10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:task id="node_5_Print_the_order_confirmation" name="Print the order confirmation">
+      <bpmn:documentation>Order Desk, Order saved. In 1 of 4 transactions, under 1s on average.</bpmn:documentation>
+      <bpmn:incoming>flow_11</bpmn:incoming>
+      <bpmn:outgoing>flow_5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="node_6_Look_up_the_SAP_material" name="Look up the SAP material">
+      <bpmn:documentation>Find the item's SAP material number in the material mapping file.
+Notepad. In 1 of 4 transactions, 3s on average.</bpmn:documentation>
+      <bpmn:incoming>flow_6</bpmn:incoming>
+      <bpmn:outgoing>flow_13</bpmn:outgoing>
+      <bpmn:property id="Property_node_6_Look_up_the_SAP_material" name="__targetRef_placeholder" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_70246b6a-5193-4750-b25c-b7d95efbe4b2">
+        <bpmn:sourceRef>DataObjectReference_70246b6a-5193-4750-b25c-b7d95efbe4b2</bpmn:sourceRef>
+        <bpmn:targetRef>Property_node_6_Look_up_the_SAP_material</bpmn:targetRef>
+      </bpmn:dataInputAssociation>
+    </bpmn:task>
+    <bpmn:task id="node_7_Create_the_new_customer" name="Create the new customer">
+      <bpmn:documentation>Order Desk, New customer. In 1 of 4 transactions, 14s on average.</bpmn:documentation>
+      <bpmn:incoming>flow_14</bpmn:incoming>
+      <bpmn:outgoing>flow_15</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="node_8_the_customer_s_credit_is_blocked" name="the customer&#39;s credit is blocked">
+      <bpmn:incoming>flow_17</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="node_9">
+      <bpmn:incoming>flow_7</bpmn:incoming>
+      <bpmn:incoming>flow_16</bpmn:incoming>
+      <bpmn:outgoing>flow_0</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="node_10">
+      <bpmn:incoming>flow_1</bpmn:incoming>
+      <bpmn:outgoing>flow_8</bpmn:outgoing>
+      <bpmn:outgoing>flow_14</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="node_11">
+      <bpmn:incoming>flow_8</bpmn:incoming>
+      <bpmn:incoming>flow_15</bpmn:incoming>
+      <bpmn:outgoing>flow_2</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="node_12">
+      <bpmn:incoming>flow_3</bpmn:incoming>
+      <bpmn:outgoing>flow_9</bpmn:outgoing>
+      <bpmn:outgoing>flow_11</bpmn:outgoing>
+      <bpmn:outgoing>flow_16</bpmn:outgoing>
+      <bpmn:outgoing>flow_17</bpmn:outgoing>
+      <bpmn:outgoing>flow_18</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="node_13">
+      <bpmn:incoming>flow_9</bpmn:incoming>
+      <bpmn:incoming>flow_13</bpmn:incoming>
+      <bpmn:incoming>flow_19</bpmn:incoming>
+      <bpmn:outgoing>flow_4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="node_14">
+      <bpmn:incoming>flow_5</bpmn:incoming>
+      <bpmn:outgoing>flow_12</bpmn:outgoing>
+      <bpmn:outgoing>flow_19</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="node_15">
+      <bpmn:incoming>flow_12</bpmn:incoming>
+      <bpmn:incoming>flow_18</bpmn:incoming>
+      <bpmn:outgoing>flow_6</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="flow_0" sourceRef="node_9" targetRef="node_1_Find_the_customer" />
+    <bpmn:sequenceFlow id="flow_1" sourceRef="node_1_Find_the_customer" targetRef="node_10" />
+    <bpmn:sequenceFlow id="flow_2" sourceRef="node_11" targetRef="node_2_Enter_the_order" />
+    <bpmn:sequenceFlow id="flow_3" sourceRef="node_2_Enter_the_order" targetRef="node_12" />
+    <bpmn:sequenceFlow id="flow_4" sourceRef="node_13" targetRef="node_3_Add_the_order_to_the_tracking_sh" />
+    <bpmn:sequenceFlow id="flow_5" sourceRef="node_5_Print_the_order_confirmation" targetRef="node_14" />
+    <bpmn:sequenceFlow id="flow_6" sourceRef="node_15" targetRef="node_6_Look_up_the_SAP_material" />
+    <bpmn:sequenceFlow id="flow_7" sourceRef="node_0_A_customer_order_arrives_by_e-ma" targetRef="node_9" />
+    <bpmn:sequenceFlow id="flow_8" name="3 of 4 transactions" sourceRef="node_10" targetRef="node_11" />
+    <bpmn:sequenceFlow id="flow_9" name="3 of 4 transactions" sourceRef="node_12" targetRef="node_13" />
+    <bpmn:sequenceFlow id="flow_10" sourceRef="node_3_Add_the_order_to_the_tracking_sh" targetRef="node_4_The_order_is_saved_in_Order_Desk" />
+    <bpmn:sequenceFlow id="flow_11" name="the customer asks for a printed confirmation" sourceRef="node_12" targetRef="node_5_Print_the_order_confirmation" />
+    <bpmn:sequenceFlow id="flow_12" name="the item is new in the tracking sheet" sourceRef="node_14" targetRef="node_15" />
+    <bpmn:sequenceFlow id="flow_13" sourceRef="node_6_Look_up_the_SAP_material" targetRef="node_13" />
+    <bpmn:sequenceFlow id="flow_14" name="the search finds no account" sourceRef="node_10" targetRef="node_7_Create_the_new_customer" />
+    <bpmn:sequenceFlow id="flow_15" sourceRef="node_7_Create_the_new_customer" targetRef="node_11" />
+    <bpmn:sequenceFlow id="flow_16" name="the wrong customer was selected" sourceRef="node_12" targetRef="node_9" />
+    <bpmn:sequenceFlow id="flow_17" sourceRef="node_12" targetRef="node_8_the_customer_s_credit_is_blocked" />
+    <bpmn:sequenceFlow id="flow_18" name="otherwise" sourceRef="node_12" targetRef="node_15" />
+    <bpmn:sequenceFlow id="flow_19" name="otherwise" sourceRef="node_14" targetRef="node_13" />
+    <bpmn:dataObject id="DataObject_70246b6a-5193-4750-b25c-b7d95efbe4b2" />
+    <bpmn:dataObjectReference id="DataObjectReference_70246b6a-5193-4750-b25c-b7d95efbe4b2" name="Material mapping.txt" dataObjectRef="DataObject_70246b6a-5193-4750-b25c-b7d95efbe4b2">
+      <bpmn:documentation>attachments/Material mapping.txt</bpmn:documentation>
+    </bpmn:dataObjectReference>
+    <bpmn:textAnnotation id="TextAnnotation_system_1">
+      <bpmn:text>Order Desk</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_system_2">
+      <bpmn:text>Order Desk</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_system_3">
+      <bpmn:text>Excel</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_system_4">
+      <bpmn:text>Order Desk</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_system_5">
+      <bpmn:text>Notepad</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_system_6">
+      <bpmn:text>Order Desk</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_1">
+      <bpmn:text>Finance asked to keep the sheet until the weekly report can read Order Desk directly.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_waste_1">
+      <bpmn:documentation>Flagged as waste: this step should not be needed.</bpmn:documentation>
+      <bpmn:text>Waste</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_system_1" associationDirection="None" sourceRef="node_1_Find_the_customer" targetRef="TextAnnotation_system_1" />
+    <bpmn:association id="Association_system_2" associationDirection="None" sourceRef="node_2_Enter_the_order" targetRef="TextAnnotation_system_2" />
+    <bpmn:association id="Association_system_3" associationDirection="None" sourceRef="node_3_Add_the_order_to_the_tracking_sh" targetRef="TextAnnotation_system_3" />
+    <bpmn:association id="Association_system_4" associationDirection="None" sourceRef="node_5_Print_the_order_confirmation" targetRef="TextAnnotation_system_4" />
+    <bpmn:association id="Association_system_5" associationDirection="None" sourceRef="node_6_Look_up_the_SAP_material" targetRef="TextAnnotation_system_5" />
+    <bpmn:association id="Association_system_6" associationDirection="None" sourceRef="node_7_Create_the_new_customer" targetRef="TextAnnotation_system_6" />
+    <bpmn:association id="Association_1" associationDirection="None" sourceRef="node_3_Add_the_order_to_the_tracking_sh" targetRef="TextAnnotation_1" />
+    <bpmn:association id="Association_waste_1" associationDirection="None" sourceRef="node_3_Add_the_order_to_the_tracking_sh" targetRef="TextAnnotation_waste_1" />
+    <bpmn:textAnnotation id="TextAnnotation_13mncd3">
+      <bpmn:text>The team lead checks the tracking sheet every Friday.</bpmn:text>
+    </bpmn:textAnnotation>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="Shape_node_0_A_customer_order_arrives_by_e-ma" bpmnElement="node_0_A_customer_order_arrives_by_e-ma">
+        <dc:Bounds x="84" y="117" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="60" y="156" width="85" height="42" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_1_Find_the_customer" bpmnElement="node_1_Find_the_customer">
+        <dc:Bounds x="315" y="99" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_2_Enter_the_order" bpmnElement="node_2_Enter_the_order" isExpanded="false">
+        <dc:Bounds x="60" y="326" width="120" height="88" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_3_Add_the_order_to_the_tracking_sh" bpmnElement="node_3_Add_the_order_to_the_tracking_sh">
+        <dc:Bounds x="190" y="623" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_4_The_order_is_saved_in_Order_Desk" bpmnElement="node_4_The_order_is_saved_in_Order_Desk">
+        <dc:Bounds x="413" y="641" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="390" y="680" width="83" height="68" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_5_Print_the_order_confirmation" bpmnElement="node_5_Print_the_order_confirmation">
+        <dc:Bounds x="446" y="301" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_6_Look_up_the_SAP_material" bpmnElement="node_6_Look_up_the_SAP_material">
+        <dc:Bounds x="942" y="334" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_7_Create_the_new_customer" bpmnElement="node_7_Create_the_new_customer">
+        <dc:Bounds x="701" y="99" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_8_the_customer_s_credit_is_blocked" bpmnElement="node_8_the_customer_s_credit_is_blocked">
+        <dc:Bounds x="488" y="403" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="463" y="442" width="87" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_9" bpmnElement="node_9" isMarkerVisible="true">
+        <dc:Bounds x="205" y="110" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_10" bpmnElement="node_10" isMarkerVisible="true">
+        <dc:Bounds x="495" y="110" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_11" bpmnElement="node_11" isMarkerVisible="true">
+        <dc:Bounds x="881" y="110" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_12" bpmnElement="node_12" isMarkerVisible="true">
+        <dc:Bounds x="240" y="345" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_13" bpmnElement="node_13" isMarkerVisible="true">
+        <dc:Bounds x="60" y="634" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_14" bpmnElement="node_14" isMarkerVisible="true">
+        <dc:Bounds x="626" y="345" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_node_15" bpmnElement="node_15" isMarkerVisible="true">
+        <dc:Bounds x="832" y="345" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DataObjectReference_70246b6a-5193-4750-b25c-b7d95efbe4b2" bpmnElement="DataObjectReference_70246b6a-5193-4750-b25c-b7d95efbe4b2">
+        <dc:Bounds x="984" y="422" width="36" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="971" y="472" width="63" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_system_1" bpmnElement="TextAnnotation_system_1">
+        <dc:Bounds x="315" y="54" width="86" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_system_2" bpmnElement="TextAnnotation_system_2">
+        <dc:Bounds x="60" y="281" width="86" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_system_3" bpmnElement="TextAnnotation_system_3">
+        <dc:Bounds x="190" y="578" width="51" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_system_4" bpmnElement="TextAnnotation_system_4">
+        <dc:Bounds x="446" y="256" width="86" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_system_5" bpmnElement="TextAnnotation_system_5">
+        <dc:Bounds x="942" y="289" width="68" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_system_6" bpmnElement="TextAnnotation_system_6">
+        <dc:Bounds x="701" y="54" width="86" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_1" bpmnElement="TextAnnotation_1">
+        <dc:Bounds x="190" y="711" width="140" height="86" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TextAnnotation_waste_1" bpmnElement="TextAnnotation_waste_1">
+        <dc:Bounds x="249" y="578" width="56" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_DataInputAssociation_70246b6a-5193-4750-b25c-b7d95efbe4b2" bpmnElement="DataInputAssociation_70246b6a-5193-4750-b25c-b7d95efbe4b2">
+        <di:waypoint x="1002" y="422" />
+        <di:waypoint x="1002" y="406" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_0" bpmnElement="flow_0">
+        <di:waypoint x="255" y="135" />
+        <di:waypoint x="315" y="135" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_1" bpmnElement="flow_1">
+        <di:waypoint x="435" y="135" />
+        <di:waypoint x="495" y="135" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_2" bpmnElement="flow_2">
+        <di:waypoint x="906" y="160" />
+        <di:waypoint x="906" y="220" />
+        <di:waypoint x="39" y="220" />
+        <di:waypoint x="39" y="370" />
+        <di:waypoint x="60" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_3" bpmnElement="flow_3">
+        <di:waypoint x="180" y="370" />
+        <di:waypoint x="240" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_4" bpmnElement="flow_4">
+        <di:waypoint x="110" y="659" />
+        <di:waypoint x="190" y="659" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_5" bpmnElement="flow_5">
+        <di:waypoint x="566" y="337" />
+        <di:waypoint x="651" y="337" />
+        <di:waypoint x="651" y="345" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_6" bpmnElement="flow_6">
+        <di:waypoint x="882" y="370" />
+        <di:waypoint x="942" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_7" bpmnElement="flow_7">
+        <di:waypoint x="120" y="135" />
+        <di:waypoint x="205" y="135" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_8" bpmnElement="flow_8">
+        <di:waypoint x="520" y="160" />
+        <di:waypoint x="520" y="210" />
+        <di:waypoint x="854" y="210" />
+        <di:waypoint x="854" y="135" />
+        <di:waypoint x="881" y="135" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="526" y="166" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_9" bpmnElement="flow_9">
+        <di:waypoint x="265" y="395" />
+        <di:waypoint x="265" y="522" />
+        <di:waypoint x="85" y="522" />
+        <di:waypoint x="85" y="634" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="271" y="401" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_10" bpmnElement="flow_10">
+        <di:waypoint x="310" y="659" />
+        <di:waypoint x="413" y="659" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_11" bpmnElement="flow_11">
+        <di:waypoint x="265" y="345" />
+        <di:waypoint x="265" y="337" />
+        <di:waypoint x="446" y="337" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="271" y="278" width="90" height="55" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_12" bpmnElement="flow_12">
+        <di:waypoint x="676" y="370" />
+        <di:waypoint x="832" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="682" y="324" width="90" height="42" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_13" bpmnElement="flow_13">
+        <di:waypoint x="1062" y="370" />
+        <di:waypoint x="1113" y="370" />
+        <di:waypoint x="1113" y="542" />
+        <di:waypoint x="51" y="542" />
+        <di:waypoint x="51" y="659" />
+        <di:waypoint x="60" y="659" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_14" bpmnElement="flow_14">
+        <di:waypoint x="545" y="135" />
+        <di:waypoint x="701" y="135" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="551" y="103" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_15" bpmnElement="flow_15">
+        <di:waypoint x="821" y="135" />
+        <di:waypoint x="881" y="135" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_16" bpmnElement="flow_16">
+        <di:waypoint x="290" y="370" />
+        <di:waypoint x="410" y="370" />
+        <di:waypoint x="410" y="244" />
+        <di:waypoint x="230" y="244" />
+        <di:waypoint x="230" y="160" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="170" y="248" width="90" height="42" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_17" bpmnElement="flow_17">
+        <di:waypoint x="290" y="370" />
+        <di:waypoint x="368" y="370" />
+        <di:waypoint x="368" y="421" />
+        <di:waypoint x="488" y="421" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_18" bpmnElement="flow_18">
+        <di:waypoint x="290" y="370" />
+        <di:waypoint x="413" y="370" />
+        <di:waypoint x="413" y="512" />
+        <di:waypoint x="857" y="512" />
+        <di:waypoint x="857" y="395" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="296" y="351" width="90" height="15" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_19" bpmnElement="flow_19">
+        <di:waypoint x="651" y="395" />
+        <di:waypoint x="651" y="532" />
+        <di:waypoint x="45" y="532" />
+        <di:waypoint x="45" y="659" />
+        <di:waypoint x="60" y="659" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="657" y="401" width="90" height="15" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_system_1" bpmnElement="Association_system_1">
+        <di:waypoint x="325" y="99" />
+        <di:waypoint x="325" y="83" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_system_2" bpmnElement="Association_system_2">
+        <di:waypoint x="70" y="326" />
+        <di:waypoint x="70" y="310" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_system_3" bpmnElement="Association_system_3">
+        <di:waypoint x="200" y="623" />
+        <di:waypoint x="200" y="607" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_system_4" bpmnElement="Association_system_4">
+        <di:waypoint x="456" y="301" />
+        <di:waypoint x="456" y="285" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_system_5" bpmnElement="Association_system_5">
+        <di:waypoint x="952" y="334" />
+        <di:waypoint x="952" y="318" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_system_6" bpmnElement="Association_system_6">
+        <di:waypoint x="711" y="99" />
+        <di:waypoint x="711" y="83" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_1" bpmnElement="Association_1">
+        <di:waypoint x="200" y="695" />
+        <di:waypoint x="200" y="711" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Association_waste_1" bpmnElement="Association_waste_1">
+        <di:waypoint x="300" y="623" />
+        <di:waypoint x="259" y="607" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="TextAnnotation_13mncd3_di" bpmnElement="TextAnnotation_13mncd3">
+        <dc:Bounds x="795" y="720" width="300" height="46" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="Sub1_BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="Sub1_BPMNPlane_1" bpmnElement="node_2_Enter_the_order">
+      <bpmndi:BPMNShape id="Sub1_Shape_node_0" bpmnElement="Sub1_node_0">
+        <dc:Bounds x="60" y="72" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_1_Enter_Quantity" bpmnElement="Sub1_node_1_Enter_Quantity">
+        <dc:Bounds x="606" y="54" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_2_Enter_Delivery_date" bpmnElement="Sub1_node_2_Enter_Delivery_date">
+        <dc:Bounds x="690" y="184" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_3_Toggle_Standard" bpmnElement="Sub1_node_3_Toggle_Standard">
+        <dc:Bounds x="220" y="314" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_4_Enter_Notes" bpmnElement="Sub1_node_4_Enter_Notes">
+        <dc:Bounds x="560" y="314" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_5_Click_Save_order" bpmnElement="Sub1_node_5_Click_Save_order">
+        <dc:Bounds x="60" y="454" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_6" bpmnElement="Sub1_node_6">
+        <dc:Bounds x="240" y="472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_7_Enter_Product" bpmnElement="Sub1_node_7_Enter_Product">
+        <dc:Bounds x="316" y="54" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_8_Toggle_Express" bpmnElement="Sub1_node_8_Toggle_Express">
+        <dc:Bounds x="220" y="184" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_9_Toggle_Gift_wrap" bpmnElement="Sub1_node_9_Toggle_Gift_wrap">
+        <dc:Bounds x="400" y="184" width="120" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_10" bpmnElement="Sub1_node_10" isMarkerVisible="true">
+        <dc:Bounds x="156" y="65" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_11" bpmnElement="Sub1_node_11" isMarkerVisible="true">
+        <dc:Bounds x="496" y="65" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_12" bpmnElement="Sub1_node_12" isMarkerVisible="true">
+        <dc:Bounds x="60" y="195" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_13" bpmnElement="Sub1_node_13" isMarkerVisible="true">
+        <dc:Bounds x="580" y="195" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_14" bpmnElement="Sub1_node_14" isMarkerVisible="true">
+        <dc:Bounds x="60" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_15" bpmnElement="Sub1_node_15" isMarkerVisible="true">
+        <dc:Bounds x="400" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_node_16" bpmnElement="Sub1_node_16" isMarkerVisible="true">
+        <dc:Bounds x="740" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Sub1_Shape_TextAnnotation_system" bpmnElement="Sub1_TextAnnotation_system">
+        <dc:Bounds x="712" y="497" width="137" height="29" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_0" bpmnElement="Sub1_flow_0">
+        <di:waypoint x="96" y="90" />
+        <di:waypoint x="156" y="90" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_1" bpmnElement="Sub1_flow_1">
+        <di:waypoint x="546" y="90" />
+        <di:waypoint x="606" y="90" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_2" bpmnElement="Sub1_flow_2">
+        <di:waypoint x="726" y="90" />
+        <di:waypoint x="765" y="90" />
+        <di:waypoint x="765" y="148" />
+        <di:waypoint x="85" y="148" />
+        <di:waypoint x="85" y="195" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_3" bpmnElement="Sub1_flow_3">
+        <di:waypoint x="630" y="220" />
+        <di:waypoint x="690" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_4" bpmnElement="Sub1_flow_4">
+        <di:waypoint x="810" y="220" />
+        <di:waypoint x="849" y="220" />
+        <di:waypoint x="849" y="278" />
+        <di:waypoint x="85" y="278" />
+        <di:waypoint x="85" y="325" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_5" bpmnElement="Sub1_flow_5">
+        <di:waypoint x="340" y="350" />
+        <di:waypoint x="400" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_6" bpmnElement="Sub1_flow_6">
+        <di:waypoint x="765" y="375" />
+        <di:waypoint x="765" y="418" />
+        <di:waypoint x="45" y="418" />
+        <di:waypoint x="45" y="490" />
+        <di:waypoint x="60" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_7" bpmnElement="Sub1_flow_7">
+        <di:waypoint x="181" y="115" />
+        <di:waypoint x="181" y="138" />
+        <di:waypoint x="521" y="138" />
+        <di:waypoint x="521" y="115" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="211" y="106" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_8" bpmnElement="Sub1_flow_8">
+        <di:waypoint x="85" y="245" />
+        <di:waypoint x="85" y="268" />
+        <di:waypoint x="605" y="268" />
+        <di:waypoint x="605" y="245" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="-11" y="251" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_9" bpmnElement="Sub1_flow_9">
+        <di:waypoint x="110" y="350" />
+        <di:waypoint x="220" y="350" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="116" y="318" width="84" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_10" bpmnElement="Sub1_flow_10">
+        <di:waypoint x="450" y="350" />
+        <di:waypoint x="560" y="350" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="456" y="318" width="84" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_11" bpmnElement="Sub1_flow_11">
+        <di:waypoint x="680" y="350" />
+        <di:waypoint x="740" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_12" bpmnElement="Sub1_flow_12">
+        <di:waypoint x="180" y="490" />
+        <di:waypoint x="240" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_13" bpmnElement="Sub1_flow_13">
+        <di:waypoint x="206" y="90" />
+        <di:waypoint x="316" y="90" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="212" y="58" width="84" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_14" bpmnElement="Sub1_flow_14">
+        <di:waypoint x="436" y="90" />
+        <di:waypoint x="496" y="90" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_15" bpmnElement="Sub1_flow_15">
+        <di:waypoint x="110" y="220" />
+        <di:waypoint x="220" y="220" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="116" y="188" width="84" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_16" bpmnElement="Sub1_flow_16">
+        <di:waypoint x="340" y="220" />
+        <di:waypoint x="400" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_17" bpmnElement="Sub1_flow_17">
+        <di:waypoint x="520" y="220" />
+        <di:waypoint x="580" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_18" bpmnElement="Sub1_flow_18">
+        <di:waypoint x="85" y="375" />
+        <di:waypoint x="85" y="398" />
+        <di:waypoint x="713" y="398" />
+        <di:waypoint x="713" y="350" />
+        <di:waypoint x="740" y="350" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="-11" y="381" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sub1_Edge_flow_19" bpmnElement="Sub1_flow_19">
+        <di:waypoint x="425" y="375" />
+        <di:waypoint x="425" y="408" />
+        <di:waypoint x="719" y="408" />
+        <di:waypoint x="719" y="350" />
+        <di:waypoint x="740" y="350" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="329" y="405" width="90" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

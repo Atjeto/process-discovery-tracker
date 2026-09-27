@@ -23,6 +23,11 @@ function openSessionFolder() {
   return ipcRenderer.invoke("viewer:openSessionFolder");
 }
 
+/** 2.0.1: a fresh copy of the demo project. @returns {Promise<any>} { ok, folder | error } */
+function openDemo() {
+  return ipcRenderer.invoke("viewer:openDemo");
+}
+
 /** Lane HV. @returns {Promise<any>} the chosen hand-off zip's path, or null */
 function openHandoffDialog() {
   return ipcRenderer.invoke("viewer:openHandoffDialog");
@@ -235,7 +240,7 @@ function onProjectWrite(fn) {
 }
 
 module.exports = {
-  loadSession, openSessionFolder, openHandoffDialog, openInNewWindow,
+  loadSession, openSessionFolder, openHandoffDialog, openInNewWindow, openDemo,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
   readAppLibrary, libraryAddProjects, libraryAddZips, saveLibrary,

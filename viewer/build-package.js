@@ -146,6 +146,9 @@ async function main() {
          pipeline's --library read resources/library/activities.json, a
          sibling of normalization/ and shared/ as in the dev tree. */
       path.join(PROJECT_DIR, "..", "library"),
+      /* 2.0.1: the demo project (demo-project.js), copied out of
+         resources/demo each time Open the demo project opens it. */
+      path.join(PROJECT_DIR, "..", "demo"),
     ],
   });
 

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "generated_at": "2026-09-27T18:24:27.954839+00:00",
+    "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+    "step_count": 15
+  },
+  "library_version": "Order to cash demo 1",
+  "case_quality": {
+    "mode": "markers",
+    "case_count": 4,
+    "coverage": 1.0,
+    "tier2_unlocked": true
+  },
+  "coverage_caveat": null,
+  "stage_errors": [],
+  "format": 5
+}

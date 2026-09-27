@@ -1,0 +1,487 @@
+{
+  "activity_stats": [
+    {
+      "activity_label": "Text entry -- Google Chrome",
+      "frequency": 5,
+      "frequency_pct": 31.25,
+      "total_duration_ms": 85069,
+      "mean_ms": 17013,
+      "median_ms": 15002,
+      "p90_ms": 24026,
+      "p99_ms": 29403
+    },
+    {
+      "activity_label": "Data grid -- Microsoft Excel",
+      "frequency": 4,
+      "frequency_pct": 25.0,
+      "total_duration_ms": 32772,
+      "mean_ms": 8193,
+      "median_ms": 8886,
+      "p90_ms": 9799,
+      "p99_ms": 9979
+    },
+    {
+      "activity_label": "Unclassified -- Calculator",
+      "frequency": 1,
+      "frequency_pct": 6.25,
+      "total_duration_ms": 10001,
+      "mean_ms": 10001,
+      "median_ms": 10001,
+      "p90_ms": 10001,
+      "p99_ms": 10001
+    },
+    {
+      "activity_label": "Data grid -- Google Chrome",
+      "frequency": 2,
+      "frequency_pct": 12.5,
+      "total_duration_ms": 9999,
+      "mean_ms": 4999,
+      "median_ms": 4999,
+      "p90_ms": 4999,
+      "p99_ms": 4999
+    },
+    {
+      "activity_label": "Unclassified -- Google Chrome",
+      "frequency": 3,
+      "frequency_pct": 18.75,
+      "total_duration_ms": 9550,
+      "mean_ms": 3183,
+      "median_ms": 2860,
+      "p90_ms": 4572,
+      "p99_ms": 4958
+    },
+    {
+      "activity_label": "Notes -- Notepad",
+      "frequency": 1,
+      "frequency_pct": 6.25,
+      "total_duration_ms": 5001,
+      "mean_ms": 5001,
+      "median_ms": 5001,
+      "p90_ms": 5001,
+      "p99_ms": 5001
+    }
+  ],
+  "case_stats": [
+    {
+      "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+      "label": "Transaction 1",
+      "parent_case_id": null,
+      "start_ts": "2026-09-27T17:59:01.219Z",
+      "end_ts": "2026-09-27T17:59:40.460Z",
+      "wall_clock_ms": 39241,
+      "active_ms": 39241,
+      "end_reason": "auto_close_for_sibling"
+    },
+    {
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "label": "Transaction 2",
+      "parent_case_id": null,
+      "start_ts": "2026-09-27T17:59:40.460Z",
+      "end_ts": "2026-09-27T18:00:14.569Z",
+      "wall_clock_ms": 34109,
+      "active_ms": 33442,
+      "end_reason": "auto_close_for_sibling"
+    },
+    {
+      "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+      "label": "Transaction 3",
+      "parent_case_id": null,
+      "start_ts": "2026-09-27T18:00:14.569Z",
+      "end_ts": "2026-09-27T18:01:07.820Z",
+      "wall_clock_ms": 53251,
+      "active_ms": 51690,
+      "end_reason": "auto_close_for_sibling"
+    },
+    {
+      "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+      "label": "Transaction 4",
+      "parent_case_id": null,
+      "start_ts": "2026-09-27T18:01:07.821Z",
+      "end_ts": "2026-09-27T18:01:43.991Z",
+      "wall_clock_ms": 36170,
+      "active_ms": 27924,
+      "end_reason": null
+    }
+  ],
+  "trace_variants": [
+    {
+      "variant": [
+        "Text entry -- Google Chrome",
+        "Data grid -- Google Chrome",
+        "Data grid -- Microsoft Excel"
+      ],
+      "frequency": 1,
+      "length": 3
+    },
+    {
+      "variant": [
+        "Text entry -- Google Chrome",
+        "Unclassified -- Google Chrome",
+        "Notes -- Notepad",
+        "Data grid -- Microsoft Excel"
+      ],
+      "frequency": 1,
+      "length": 4
+    },
+    {
+      "variant": [
+        "Text entry -- Google Chrome",
+        "Unclassified -- Calculator",
+        "Data grid -- Microsoft Excel",
+        "Unclassified -- Google Chrome"
+      ],
+      "frequency": 1,
+      "length": 4
+    },
+    {
+      "variant": [
+        "Text entry -- Google Chrome",
+        "Data grid -- Google Chrome",
+        "Data grid -- Microsoft Excel",
+        "Unclassified -- Google Chrome"
+      ],
+      "frequency": 1,
+      "length": 4
+    }
+  ],
+  "step_variants": [
+    {
+      "variant": [
+        "Find the customer",
+        "Enter the order",
+        "Add the order to the tracking sheet"
+      ],
+      "frequency": 2,
+      "length": 3
+    },
+    {
+      "variant": [
+        "Find the customer",
+        "Enter the order",
+        "Print the order confirmation",
+        "Look up the SAP material",
+        "Add the order to the tracking sheet"
+      ],
+      "frequency": 1,
+      "length": 5
+    },
+    {
+      "variant": [
+        "Find the customer",
+        "Create the new customer",
+        "Enter the order",
+        "Add the order to the tracking sheet"
+      ],
+      "frequency": 1,
+      "length": 4
+    }
+  ],
+  "step_stats": [
+    {
+      "step_name": "Enter the order",
+      "frequency": 4,
+      "frequency_pct": 26.67,
+      "total_duration_ms": 29337,
+      "mean_ms": 7334,
+      "median_ms": 6560,
+      "p90_ms": 8999,
+      "p99_ms": 9849
+    },
+    {
+      "step_name": "Add the order to the tracking sheet",
+      "frequency": 4,
+      "frequency_pct": 26.67,
+      "total_duration_ms": 18314,
+      "mean_ms": 4578,
+      "median_ms": 4609,
+      "p90_ms": 5442,
+      "p99_ms": 5604
+    },
+    {
+      "step_name": "Create the new customer",
+      "frequency": 1,
+      "frequency_pct": 6.67,
+      "total_duration_ms": 14429,
+      "mean_ms": 14429,
+      "median_ms": 14429,
+      "p90_ms": 14429,
+      "p99_ms": 14429
+    },
+    {
+      "step_name": "Find the customer",
+      "frequency": 4,
+      "frequency_pct": 26.67,
+      "total_duration_ms": 5290,
+      "mean_ms": 1322,
+      "median_ms": 1544,
+      "p90_ms": 1937,
+      "p99_ms": 2010
+    },
+    {
+      "step_name": "Look up the SAP material",
+      "frequency": 1,
+      "frequency_pct": 6.67,
+      "total_duration_ms": 3470,
+      "mean_ms": 3470,
+      "median_ms": 3470,
+      "p90_ms": 3470,
+      "p99_ms": 3470
+    },
+    {
+      "step_name": "Print the order confirmation",
+      "frequency": 1,
+      "frequency_pct": 6.67,
+      "total_duration_ms": 0,
+      "mean_ms": 0,
+      "median_ms": 0,
+      "p90_ms": 0,
+      "p99_ms": 0
+    }
+  ],
+  "app_outliers": [],
+  "rework_loops": [],
+  "screenshot_hashes": [],
+  "meta": {
+    "normalization_run_at": "2026-09-27T18:24:27.889182+00:00",
+    "taxonomy_version": "v1",
+    "taxonomy_path": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\normalization\\taxonomy.yaml",
+    "taxonomy_report": [
+      {
+        "label": "CRM -- Salesforce",
+        "app": "chrome.exe",
+        "title_regex": ".*Salesforce.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Email -- Outlook Web",
+        "app": "chrome.exe",
+        "title_regex": ".*Outlook.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Docs -- Confluence",
+        "app": "chrome.exe",
+        "title_regex": ".*Confluence.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Tickets -- Jira",
+        "app": "chrome.exe",
+        "title_regex": ".*Jira.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Docs -- SharePoint",
+        "app": "chrome.exe",
+        "title_regex": ".*SharePoint.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "SAP -- Sales Order",
+        "app": "SAPGUI.exe",
+        "title_regex": ".*Sales Order.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "SAP -- Sales Order",
+        "app": "saplogon.exe",
+        "title_regex": ".*Sales Order.*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "SAP -- Other",
+        "app": "SAPGUI.exe",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "SAP -- Other",
+        "app": "saplogon.exe",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Spreadsheet -- Excel",
+        "app": "EXCEL.EXE",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Email -- Outlook Desktop",
+        "app": "OUTLOOK.EXE",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Document -- Word",
+        "app": "WINWORD.EXE",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Slides -- PowerPoint",
+        "app": "POWERPNT.EXE",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Notes -- Notepad",
+        "app": "notepad.exe",
+        "title_regex": ".*",
+        "matches": 1,
+        "zero_match": false
+      },
+      {
+        "label": "Comms -- Teams",
+        "app": "Teams.exe",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "Comms -- Slack",
+        "app": "Slack.exe",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      },
+      {
+        "label": "OS -- File Explorer",
+        "app": "explorer.exe",
+        "title_regex": ".*",
+        "matches": 0,
+        "zero_match": true
+      }
+    ],
+    "session_folder": "D:\\Game Development\\Process Mining\\process-discovery-tracker\\demo\\Order to cash",
+    "worker_id": "maria.keller",
+    "raw_event_count": 160,
+    "dropped_jsonl_lines": 0,
+    "collapsed_activity_count": 20,
+    "interaction_count": 81,
+    "case_count": 4,
+    "annotations_present": true,
+    "marker_edits_applied": 0,
+    "step_count": 19,
+    "step_state_breakdown": {
+      "auto_suggested": 6,
+      "manually_authored": 1,
+      "edited": 8,
+      "confirmed": 0,
+      "hidden": 4
+    },
+    "draft_summary": {
+      "runs": 4,
+      "steps_per_run": [
+        5,
+        5,
+        6,
+        5
+      ],
+      "out_of_run_steps": 0,
+      "end_reason": {
+        "commit": 17,
+        "screen_change": 4,
+        "run_end": 0
+      },
+      "name_source": {
+        "remembered": 15,
+        "draft": 6
+      },
+      "commit_identity": {
+        "automation_id": 14,
+        "name": 3,
+        "class_name": 0,
+        "?": 0
+      }
+    },
+    "recorder_noise": {
+      "dropped": {
+        "not_the_users": 15,
+        "repeat": 8
+      },
+      "dropped_total": 23,
+      "filled": 13
+    },
+    "coalesced_event_count": 145,
+    "app_vocabularies": [
+      {
+        "id": "chrome",
+        "version": 2
+      },
+      {
+        "id": "edge",
+        "version": 1
+      },
+      {
+        "id": "excel",
+        "version": 2
+      },
+      {
+        "id": "jira",
+        "version": 1
+      },
+      {
+        "id": "outlook",
+        "version": 2
+      },
+      {
+        "id": "salesforce",
+        "version": 2
+      },
+      {
+        "id": "sap-gui",
+        "version": 1
+      },
+      {
+        "id": "servicenow",
+        "version": 2
+      },
+      {
+        "id": "word",
+        "version": 1
+      },
+      {
+        "id": "zendesk",
+        "version": 1
+      }
+    ],
+    "app_vocabulary_matches": 15,
+    "app_vocabulary_hits_by_id": {
+      "chrome": 15
+    },
+    "vocab_coverage": {
+      "chrome.exe": {
+        "total_interactions": 60,
+        "enriched": 15,
+        "coverage_pct": 25.0
+      },
+      "EXCEL.exe": {
+        "total_interactions": 21,
+        "enriched": 0,
+        "coverage_pct": 0.0
+      }
+    },
+    "app_names": {
+      "Google Chrome": "Google Chrome",
+      "chrome.exe": "Google Chrome",
+      "EXCEL.exe": "Excel",
+      "Microsoft Excel": "Excel",
+      "Notepad.exe": "Notepad",
+      "Calculator": "Calculator"
+    }
+  }
+}

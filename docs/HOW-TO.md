@@ -35,6 +35,11 @@ bar).
   You add the steps as you watch.
 - **From nothing.** Choose *New*, *New empty project...* and name the
   project. You add the steps by hand.
+- **The demo.** Choose *Open*, *Open the demo project*. A finished project
+  opens: four orders entered in the Order Desk web app and an Excel
+  tracking sheet, with its video, transcript, flow, sub-process, notes,
+  attachments, document and maps. Each time you get a fresh copy in
+  *Documents\PDT demo*, so change anything.
 
 Help, *Recording keys*, lists what to tell the SME before they record.
 

@@ -1,0 +1,93 @@
+{
+  "files": [
+    {
+      "name": "config.yaml",
+      "size": 1490
+    },
+    {
+      "name": "events.jsonl",
+      "size": 72697
+    },
+    {
+      "name": "manifest.json",
+      "size": 2551
+    },
+    {
+      "name": "screenshots/20260927-195901-220.jpg",
+      "size": 70210
+    },
+    {
+      "name": "screenshots/20260927-195911-129.jpg",
+      "size": 75587
+    },
+    {
+      "name": "screenshots/20260927-195926-129.jpg",
+      "size": 69938
+    },
+    {
+      "name": "screenshots/20260927-195931-131.jpg",
+      "size": 217566
+    },
+    {
+      "name": "screenshots/20260927-195940-460.jpg",
+      "size": 70896
+    },
+    {
+      "name": "screenshots/20260927-195946-131.jpg",
+      "size": 75851
+    },
+    {
+      "name": "screenshots/20260927-195956-132.jpg",
+      "size": 70071
+    },
+    {
+      "name": "screenshots/20260927-200001-132.jpg",
+      "size": 92938
+    },
+    {
+      "name": "screenshots/20260927-200006-135.jpg",
+      "size": 220757
+    },
+    {
+      "name": "screenshots/20260927-200014-569.jpg",
+      "size": 70980
+    },
+    {
+      "name": "screenshots/20260927-200021-134.jpg",
+      "size": 73126
+    },
+    {
+      "name": "screenshots/20260927-200036-134.jpg",
+      "size": 80271
+    },
+    {
+      "name": "screenshots/20260927-200046-136.jpg",
+      "size": 85032
+    },
+    {
+      "name": "screenshots/20260927-200056-135.jpg",
+      "size": 220913
+    },
+    {
+      "name": "screenshots/20260927-200106-135.jpg",
+      "size": 70436
+    },
+    {
+      "name": "screenshots/20260927-200111-135.jpg",
+      "size": 73438
+    },
+    {
+      "name": "screenshots/20260927-200121-135.jpg",
+      "size": 75568
+    },
+    {
+      "name": "screenshots/20260927-200136-135.jpg",
+      "size": 224850
+    },
+    {
+      "name": "screenshots/20260927-200141-136.jpg",
+      "size": 69784
+    }
+  ],
+  "created_at": "2026-09-27T18:01:45.323Z"
+}

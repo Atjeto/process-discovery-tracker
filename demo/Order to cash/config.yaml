@@ -1,0 +1,49 @@
+engagement_id: REQ-2026-101
+engagement_name: Order entry at the sales desk
+worker:
+  id: maria.keller
+  name: Maria Keller
+  bu: Sales operations
+  role: Sales assistant
+auto_end_idle_minutes: 30
+auto_end_on_idle: true
+poll_interval_seconds: 5
+idle_threshold_seconds: 60
+obs:
+  required: false
+  websocket_url: null
+  websocket_password: null
+  scene_name: Process Discovery -- Default
+  auto_create_scene: true
+hotkeys:
+  start_picker: Control+Shift+S
+  end_innermost: Control+Shift+E
+  manual_screenshot: Control+Shift+P
+taxonomy_version: v0
+screenshots:
+  enabled: true
+  quality: 60
+  on_app_switch: true
+  on_screen_change: true
+  on_marker_fire: true
+  on_idle_resume_minutes: 5
+  display: active
+interactions:
+  enabled: true
+  required: false
+  auto_restart: true
+  max_restarts_per_session: 3
+  exclude_processes: []
+  verbose: false
+  debounce_ms: 750
+  ocr: false
+consent:
+  mode: 'off'
+  version: 2
+  text: >-
+    This recording captures how you work: the programs and windows you use, your clicks and typing,
+    screenshots and, if it is set up, a screen video. It is used only to map and improve this
+    business process. What you type into password fields (fields Windows marks as password fields)
+    is not recorded; everything else you type is recorded as you type it. The recording stays on
+    this computer until you hand the recording folder to the analyst; nothing is sent over the
+    network. You can stop recording at any time. Do you consent to this recording?

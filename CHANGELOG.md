@@ -65,6 +65,14 @@ change, and the SME's app loses its setup.
   again when the step panel opens beside it.
 - **The PDD says who still has to confirm**: "The analyst has not yet
   confirmed 2 of these 4 steps."
+- **The demo project ships with the app**: *Open*, *Open the demo
+  project* (also on the page shown while no project is open) opens a fresh
+  copy of a finished project in *Documents\PDT demo*: four orders recorded
+  live in the Order Desk web app and an Excel tracking sheet, with its
+  video and transcript synced, names from an activity library, the flow
+  (Only when, a loop, an early end, a choice), a sub-process, a step added
+  by hand, waste, notes, attachments, an app outside the process, a stretch
+  left out, the document, an As-Is and a To-Be map and a hand-off.
 - **Split where you choose**: the step pane lists a step's recorded
   actions, each with its scissors; Split no longer cuts at the midpoint.
   After *Merge with next* the place where the two steps met is marked, so

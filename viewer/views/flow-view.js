@@ -207,6 +207,19 @@ async function openHandoffFlow() {
 if ($("#btn-open-handoff-hero")) $("#btn-open-handoff-hero").addEventListener("click", openHandoffFlow);
 if ($("#btn-open-handoff")) $("#btn-open-handoff").addEventListener("click", openHandoffFlow);
 
+/* 2.0.1: Open the demo project: a fresh copy of the finished demo that ships
+   with the app (main.js viewer:openDemo), opened like any project. */
+async function openDemoFlow() {
+  let r;
+  try { r = await Ipc.openDemo(); }
+  catch (e) { r = { ok: false, error: ipcErrorText(e) }; }
+  if (!r || !r.ok) { toast("The demo project did not open: " + ((r && r.error) || "no reason was given"), "error"); return; }
+  await loadSessionIntoView(r.folder);
+  toast("The demo project, a fresh copy in " + r.folder + ". Change anything: the next Open the demo project starts from the same demo again.", "success");
+}
+if ($("#btn-open-demo-hero")) $("#btn-open-demo-hero").addEventListener("click", openDemoFlow);
+if ($("#btn-open-demo")) $("#btn-open-demo").addEventListener("click", openDemoFlow);
+
 /* New project from a video / New empty project (C16; the New menu, AD-29):
    the main process asks for the video, then the project's name and folder,
    makes the folder and copies the video in; the project opens and is

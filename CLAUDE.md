@@ -17,7 +17,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-43, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-44, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
   Data contracts C1 to C21:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
@@ -107,7 +107,8 @@ the folder.
 | `shared/` | Cross-layer contracts: [SCHEMA.md](shared/SCHEMA.md) (authoritative); `recognition-patterns.json`; `system-names.json`; `process-label-patterns.json` and `screen-label-patterns.json` with their goldens; `run-differences-golden.json` (pins the viewer and the PDD to one alignment rule); `flow-links-golden.json` (pins the live map and the step BPMN to one step flow rule); `sub-process-maps-golden.json` (pins the maps a project holds, C19). |
 | `docs/` | Docs, ADRs, plans and audits; index at [docs/README.md](docs/README.md). |
 | `scripts/` | Build and release scripts, plus the structure-only data scripts. |
-| `sessions/example-aggregate/` | The committed demo: 10 sessions of one order-to-cash process. |
+| `demo/` | The demo project that ships with the viewer (`Order to cash`, recorded live, finished by a script driving the viewer; see `demo/README.md`). Open, *Open the demo project* copies it into Documents\PDT demo, a fresh copy each time (`viewer/demo-project.js`, `PDT_DEMO_DIR` for tests). |
+| `sessions/example-aggregate/` | The committed test sessions: 10 sessions of one order-to-cash process (synthetic, used by the golden and the smokes). |
 | `corpus/` | Product-era test scenarios; no test or gate reads them. |
 | `.claude/agent-findings/` | Cycle records: contracts, resume state, findings register, cut map. |
 | `sessions/` (rest), `dist/` | Gitignored: captured sessions and build output. |
@@ -432,7 +433,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 - UI bugs are invisible to the unit suites: validate behaviour in the real
   viewer. `e2e/run-all.js` runs the smokes: `session`, `overview`, `runs`,
   `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`,
-  `library` and `windows` (each `<name>-smoke.js`;
+  `library`, `windows` and `demo` (each `<name>-smoke.js`;
   [e2e/README.md](e2e/README.md) says what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles

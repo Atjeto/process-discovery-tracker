@@ -1,0 +1,6 @@
+Order Desk item          SAP material
+Laptop stand LS-200      MAT-100245
+USB-C dock UD-12         MAT-100311
+Office chair OC-7        MAT-200417
+Monitor arm MA-3         MAT-200562
+Desk lamp DL-5           MAT-300118

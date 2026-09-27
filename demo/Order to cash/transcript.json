@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "source_file": "transcript/Order to cash demo.vtt",
+  "format": "vtt",
+  "clock": "video",
+  "offset_ms": null,
+  "segments": [
+    {
+      "id": "t0001",
+      "start_s": 1.0,
+      "end_s": 5.0,
+      "speaker": "Analyst",
+      "text": "Maria, please walk us through how you enter an order."
+    },
+    {
+      "id": "t0002",
+      "start_s": 5.5,
+      "end_s": 12.0,
+      "speaker": "Maria Keller",
+      "text": "Every order arrives by email. First I find the customer in Order Desk."
+    },
+    {
+      "id": "t0003",
+      "start_s": 13.0,
+      "end_s": 21.0,
+      "speaker": "Maria Keller",
+      "text": "Then I choose the product, type the quantity and the delivery date, and save the order."
+    },
+    {
+      "id": "t0004",
+      "start_s": 27.0,
+      "end_s": 35.0,
+      "speaker": "Maria Keller",
+      "text": "After saving, I copy the order line into our tracking sheet in Excel, by hand."
+    },
+    {
+      "id": "t0005",
+      "start_s": 36.0,
+      "end_s": 40.0,
+      "speaker": "Maria Keller",
+      "text": "Then New order, and Order Desk is ready for the next one."
+    },
+    {
+      "id": "t0006",
+      "start_s": 41.0,
+      "end_s": 46.0,
+      "speaker": "Maria Keller",
+      "text": "Northwind I find by their customer number."
+    },
+    {
+      "id": "t0007",
+      "start_s": 54.0,
+      "end_s": 59.0,
+      "speaker": "Maria Keller",
+      "text": "Northwind wants a printed confirmation with every order, so I print it."
+    },
+    {
+      "id": "t0008",
+      "start_s": 60.0,
+      "end_s": 66.0,
+      "speaker": "Maria Keller",
+      "text": "The office chair is new in the sheet, so I look up its SAP material in the mapping file."
+    },
+    {
+      "id": "t0009",
+      "start_s": 76.0,
+      "end_s": 83.0,
+      "speaker": "Maria Keller",
+      "text": "Brightline is a new customer, so I create them first."
+    },
+    {
+      "id": "t0010",
+      "start_s": 105.0,
+      "end_s": 111.0,
+      "speaker": "Maria Keller",
+      "text": "I check the total in Calculator before I type it into the sheet."
+    },
+    {
+      "id": "t0011",
+      "start_s": 112.0,
+      "end_s": 116.0,
+      "speaker": "Analyst",
+      "text": "Is that check part of the process?"
+    },
+    {
+      "id": "t0012",
+      "start_s": 116.5,
+      "end_s": 120.0,
+      "speaker": "Maria Keller",
+      "text": "No, it is just my habit."
+    },
+    {
+      "id": "t0013",
+      "start_s": 130.0,
+      "end_s": 136.0,
+      "speaker": "Maria Keller",
+      "text": "That is the wrong customer, I cancel and search again."
+    },
+    {
+      "id": "t0014",
+      "start_s": 152.0,
+      "end_s": 157.0,
+      "speaker": "Maria Keller",
+      "text": "And the Fabrikam line goes into the sheet as well."
+    },
+    {
+      "id": "t0015",
+      "start_s": 159.0,
+      "end_s": 163.0,
+      "speaker": "Analyst",
+      "text": "Thank you, that is all four orders."
+    }
+  ]
+}

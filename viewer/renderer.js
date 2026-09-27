@@ -1339,7 +1339,7 @@ function toggleRecentMenu(force) {
     e.stopPropagation();
     toggleRecentMenu();
   });
-  for (const id of ["btn-open-session", "btn-open-new-window", "btn-open-handoff"]) {
+  for (const id of ["btn-open-session", "btn-open-new-window", "btn-open-handoff", "btn-open-demo"]) {
     const item = document.getElementById(id);
     if (item) item.addEventListener("click", () => toggleRecentMenu(false));
   }

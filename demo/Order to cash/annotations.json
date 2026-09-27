@@ -1,0 +1,1542 @@
+{
+  "annotations": [],
+  "notes": [],
+  "marker_edits": [],
+  "reference_maps": [
+    {
+      "map_id": "rm_044f421b-9c3d-4fbf-a3f4-689e317d370c",
+      "name": "As-Is map",
+      "kind": "as_is",
+      "file": "derived_maps/rm_044f421b-9c3d-4fbf-a3f4-689e317d370c.bpmn",
+      "source": {
+        "notation": "bpmn",
+        "level": "step",
+        "scope": null
+      },
+      "forked_from_hash": "5671b0e287f1c1bc",
+      "forked_from_sig": "d25b591af61ece9d",
+      "forked_from_steps": "179dd0ab7fa539c7a17b38c4c4a66fb9cb50e2fd8593e9615880c160d3af23ac",
+      "forked_at": "2026-09-27T18:24:21.539Z",
+      "edited_at": "2026-09-27T18:24:21.539Z",
+      "pdd_role": "as_is",
+      "notes": ""
+    },
+    {
+      "map_id": "rm_bd7b7f47-ff4c-43ea-afad-109ee58b3583",
+      "name": "To-Be map",
+      "kind": "to_be",
+      "file": "derived_maps/rm_bd7b7f47-ff4c-43ea-afad-109ee58b3583.bpmn",
+      "source": {
+        "notation": "bpmn",
+        "level": "step",
+        "scope": null
+      },
+      "forked_from_hash": "5671b0e287f1c1bc",
+      "forked_from_sig": "d25b591af61ece9d",
+      "forked_from_steps": "179dd0ab7fa539c7a17b38c4c4a66fb9cb50e2fd8593e9615880c160d3af23ac",
+      "forked_at": "2026-09-27T18:24:24.071Z",
+      "edited_at": "2026-09-27T18:24:24.071Z",
+      "pdd_role": "to_be",
+      "notes": ""
+    }
+  ],
+  "version": 1,
+  "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+  "process_exclusions": {
+    "excluded_count": 6,
+    "by_process": {
+      "calculatorapp": 6
+    },
+    "process_names": [
+      "calculatorapp",
+      "process discovery tracker",
+      "process discovery viewer"
+    ],
+    "window_substrings": [],
+    "self_window_pattern": "\\b(?:capture|viewer)-v\\d+(?:\\.\\d+)*\\b"
+  },
+  "steps": [
+    {
+      "step_id": "6e9cccc1-615a-4e36-810e-17c98f046bfb",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "name": "Look up the SAP material",
+      "description": "Find the item's SAP material number in the material mapping file.",
+      "time_range": {
+        "start": "2026-09-27T18:00:01.851Z",
+        "end": "2026-09-27T18:00:05.321Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "manually_authored",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "system": "Notepad",
+      "library_activity": "np-mapping",
+      "process_label": "Look up the SAP material",
+      "only_when": "the item is new in the tracking sheet",
+      "pdd_screenshot": "596a048c-8c42-48c2-a73c-a54c05bc9531",
+      "grain_keys": {
+        "element": "(element)",
+        "screen": "(screen)",
+        "app": "(app)"
+      }
+    },
+    {
+      "step_id": "bf57acc9-001e-4660-a56b-881b3e4bbe6a",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+      "name": "Find the customer",
+      "description": "Entered \"Contoso\" into Customer name or number. Clicked Search. Clicked Select.",
+      "time_range": {
+        "start": "2026-09-27T17:59:08.113Z",
+        "end": "2026-09-27T17:59:10.132Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "3f2109c4-bdc1-4723-b497-7a221ad1fe54",
+          "c4bb5deb-ec1a-41e5-a397-2073ddd58498",
+          "169bd543-ad79-4a34-bb38-fc7e02f706c2"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-195901-220.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cust-query",
+        "screen": "Customer lookup - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|Customer lookup - Order Desk|Button:btn-search",
+        "chrome|Customer lookup - Order Desk|Button:Select"
+      ],
+      "name_source": "library",
+      "library_activity": "od-find-customer",
+      "end_reason": "commit",
+      "process_label": "Find the customer",
+      "links": [
+        {
+          "to": "701189d1-6d6f-4efa-8324-675a14c61fef",
+          "when": "the search finds no account"
+        }
+      ]
+    },
+    {
+      "step_id": "1c3e03c6-9e49-4eeb-8652-387c3d99e485",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+      "name": "Enter the order",
+      "description": "Entered \"2\" into Quantity. Entered \"02.10.2026\" into Delivery date. Turned Standard on. Entered \"Deliver to the loading dock, ask for Marko.\" into Notes. Clicked Save order.",
+      "time_range": {
+        "start": "2026-09-27T17:59:15.640Z",
+        "end": "2026-09-27T17:59:25.584Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "f17fd3a0-48ac-4edd-aad2-9509b03c921a",
+          "446e31db-4fb6-4bc3-b8cc-0ee051ad569c",
+          "b2f9207f-ab76-4518-9f14-71e27f69054a",
+          "ed21f833-0561-4478-8d80-a99b9cd4ef38",
+          "75f68317-605a-404c-8142-14c89df364e5"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-195911-129.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "ord-qty",
+        "screen": "New order for Contoso Ltd - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|New order for … - Order Desk|Button:btn-save-order"
+      ],
+      "name_source": "library",
+      "library_activity": "od-enter-order",
+      "end_reason": "commit",
+      "process_label": "Enter the order",
+      "links": [
+        {
+          "to": "bf57acc9-001e-4660-a56b-881b3e4bbe6a",
+          "when": "the wrong customer was selected"
+        },
+        {
+          "to": "end",
+          "when": "the customer's credit is blocked"
+        }
+      ],
+      "sub_steps": [
+        {
+          "step_id": "78002e67-8313-4583-94c6-3675d53e0132",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+          "name": "Enter Quantity",
+          "description": "Entered \"2\" into Quantity.",
+          "time_range": {
+            "start": "2026-09-27T17:59:15.640Z",
+            "end": "2026-09-27T17:59:18.345Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "f17fd3a0-48ac-4edd-aad2-9509b03c921a"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "confirmed",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Contoso Ltd - Order Desk|enter:ord-qty",
+          "name_source": "action",
+          "process_label": "Enter Quantity"
+        },
+        {
+          "step_id": "8ca6f3f2-a455-4e3b-9d62-a6db28bd1e0b",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+          "name": "Enter Delivery date",
+          "description": "Entered \"02.10.2026\" into Delivery date.",
+          "time_range": {
+            "start": "2026-09-27T17:59:18.345Z",
+            "end": "2026-09-27T17:59:18.670Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "446e31db-4fb6-4bc3-b8cc-0ee051ad569c"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "confirmed",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Contoso Ltd - Order Desk|enter:ord-date",
+          "name_source": "action",
+          "process_label": "Enter Delivery date"
+        },
+        {
+          "step_id": "308d0ec2-e3b8-4c6e-bcfd-8ab3356e7cc9",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+          "name": "Toggle Standard",
+          "description": "Turned Standard on.",
+          "time_range": {
+            "start": "2026-09-27T17:59:18.670Z",
+            "end": "2026-09-27T17:59:24.710Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "b2f9207f-ab76-4518-9f14-71e27f69054a"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "confirmed",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Contoso Ltd - Order Desk|click:pri-std",
+          "name_source": "action",
+          "process_label": "Toggle Standard"
+        },
+        {
+          "step_id": "a226b932-815a-405d-a583-7268ced2c047",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+          "name": "Enter Notes",
+          "description": "Entered \"Deliver to the loading dock, ask for Marko.\" into Notes.",
+          "time_range": {
+            "start": "2026-09-27T17:59:24.710Z",
+            "end": "2026-09-27T17:59:25.584Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "ed21f833-0561-4478-8d80-a99b9cd4ef38"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "confirmed",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Contoso Ltd - Order Desk|enter:ord-notes",
+          "name_source": "action",
+          "process_label": "Enter Notes"
+        },
+        {
+          "step_id": "126e6d65-7be4-4a5f-a9a0-0c0820121dc0",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+          "name": "Click Save order",
+          "description": "Clicked Save order.",
+          "time_range": {
+            "start": "2026-09-27T17:59:25.584Z",
+            "end": "2026-09-27T17:59:25.584Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "75f68317-605a-404c-8142-14c89df364e5"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "confirmed",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Contoso Ltd - Order Desk|click:btn-save-order",
+          "name_source": "action",
+          "process_label": "Click Save order"
+        }
+      ]
+    },
+    {
+      "step_id": "a46d6270-d08e-41f2-8063-2d7e5b354d2f",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+      "name": "Add the order to the tracking sheet",
+      "description": "Type the new order as a row of the order tracking sheet (order, customer, item, quantity, unit price) and save the sheet. The weekly sales report reads it; every value is already in Order Desk.",
+      "time_range": {
+        "start": "2026-09-27T17:59:29.299Z",
+        "end": "2026-09-27T17:59:34.921Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "e412a9e2-35ea-4bb5-b0bf-731f90d3859a",
+          "005f5cb0-47fb-47bf-a3cc-bc5eb76da106",
+          "4bea3abf-3da5-4358-856c-ad6297a12b85",
+          "2e36698b-0102-46e0-ae1d-4ef2f6e059fa",
+          "96e9372f-638e-4b95-ae5f-c9d1258af5b7",
+          "c0fa0013-892e-4671-92ff-f5ff9a8c9a1f"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-195926-129.jpg",
+          "screenshots/20260927-195931-131.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": true
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "A2",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "draft_keys": [
+        "excel|workbook|(visit)"
+      ],
+      "name_source": "library",
+      "library_activity": "xl-tracking",
+      "end_reason": "screen_change",
+      "process_label": "Add the order to the tracking sheet"
+    },
+    {
+      "step_id": "9b6529b3-2f31-47a9-95f3-e29507079515",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "name": "Enter the order",
+      "description": "Entered \"Office chair OC-7\" into Product. Entered \"5\" into Quantity. Turned Express on. Turned Gift wrap on. Entered \"06.10.2026\" into Delivery date. Clicked Save order.",
+      "time_range": {
+        "start": "2026-09-27T17:59:47.580Z",
+        "end": "2026-09-27T17:59:54.376Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "18063cd9-7cbe-4ee0-abf9-55054e239b90",
+          "a0ecd1db-9f61-4463-90d1-ba9acae717f5",
+          "5ca449c0-9efa-48a2-993d-c125b192a742",
+          "289081b5-52e7-48ef-8566-978aad66f245",
+          "b892ac91-ab04-4411-9d1e-bf65636a6daf",
+          "1188a917-d354-492b-8b8c-973e62f36267"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-195946-131.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "ord-product",
+        "screen": "New order for Northwind Traders - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|New order for … - Order Desk|Button:btn-save-order"
+      ],
+      "name_source": "library",
+      "library_activity": "od-enter-order",
+      "end_reason": "commit",
+      "process_label": "Enter the order",
+      "sub_steps": [
+        {
+          "step_id": "9c08c77c-d4ff-4386-bb51-5448fb49e28f",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+          "name": "Enter Product",
+          "description": "Entered \"Office chair OC-7\" into Product.",
+          "time_range": {
+            "start": "2026-09-27T17:59:47.580Z",
+            "end": "2026-09-27T17:59:49.779Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "18063cd9-7cbe-4ee0-abf9-55054e239b90"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Northwind Traders - Order Desk|enter:ord-product",
+          "name_source": "action",
+          "process_label": "Enter Product"
+        },
+        {
+          "step_id": "e759d50d-7140-4f2e-b0c0-4375fa2f1f4a",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+          "name": "Enter Quantity",
+          "description": "Entered \"5\" into Quantity.",
+          "time_range": {
+            "start": "2026-09-27T17:59:49.779Z",
+            "end": "2026-09-27T17:59:50.080Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "a0ecd1db-9f61-4463-90d1-ba9acae717f5"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Northwind Traders - Order Desk|enter:ord-qty",
+          "name_source": "action",
+          "process_label": "Enter Quantity"
+        },
+        {
+          "step_id": "942c1495-c953-4c3f-ad60-8687d6e217af",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+          "name": "Toggle Express",
+          "description": "Turned Express on.",
+          "time_range": {
+            "start": "2026-09-27T17:59:50.080Z",
+            "end": "2026-09-27T17:59:50.857Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "5ca449c0-9efa-48a2-993d-c125b192a742"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Northwind Traders - Order Desk|click:pri-exp",
+          "name_source": "action",
+          "process_label": "Toggle Express"
+        },
+        {
+          "step_id": "34eb6b2d-dc93-4bd4-8420-d5f522335cef",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+          "name": "Toggle Gift wrap",
+          "description": "Turned Gift wrap on.",
+          "time_range": {
+            "start": "2026-09-27T17:59:50.857Z",
+            "end": "2026-09-27T17:59:53.930Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "289081b5-52e7-48ef-8566-978aad66f245"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Northwind Traders - Order Desk|click:ord-gift",
+          "name_source": "action",
+          "process_label": "Toggle Gift wrap"
+        },
+        {
+          "step_id": "dbddc506-0191-4506-a6ad-b2d9e59a4fb5",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+          "name": "Enter Delivery date",
+          "description": "Entered \"06.10.2026\" into Delivery date.",
+          "time_range": {
+            "start": "2026-09-27T17:59:53.930Z",
+            "end": "2026-09-27T17:59:54.376Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "b892ac91-ab04-4411-9d1e-bf65636a6daf"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Northwind Traders - Order Desk|enter:ord-date",
+          "name_source": "action",
+          "process_label": "Enter Delivery date"
+        },
+        {
+          "step_id": "9de685a2-7107-48e6-8799-2e95c694a288",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+          "name": "Click Save order",
+          "description": "Clicked Save order.",
+          "time_range": {
+            "start": "2026-09-27T17:59:54.376Z",
+            "end": "2026-09-27T17:59:54.376Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "1188a917-d354-492b-8b8c-973e62f36267"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Northwind Traders - Order Desk|click:btn-save-order",
+          "name_source": "action",
+          "process_label": "Click Save order"
+        }
+      ]
+    },
+    {
+      "step_id": "120e6b44-cc4a-4fc5-98e8-7be3d66b96f8",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "name": "Print the order confirmation",
+      "description": "Followed Print confirmation.",
+      "time_range": {
+        "start": "2026-09-27T17:59:56.456Z",
+        "end": "2026-09-27T17:59:56.456Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "2dfefb0f-29ab-4e5b-a891-316224343878"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-195956-132.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "lnk-print",
+        "screen": "Order SO-48220 saved - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|Order Desk|Hyperlink:lnk-print"
+      ],
+      "name_source": "library",
+      "library_activity": "od-print",
+      "end_reason": "commit",
+      "process_label": "Print the order confirmation",
+      "only_when": "the customer asks for a printed confirmation"
+    },
+    {
+      "step_id": "ba7f02cd-cd6c-4191-a404-95cbd3d7bc71",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+      "name": "Find the customer",
+      "description": "Search the customer by name or customer number and select the account.",
+      "time_range": {
+        "start": "2026-09-27T18:00:18.044Z",
+        "end": "2026-09-27T18:00:18.226Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "620b21e0-25e3-4e66-87a0-d0332e933a8e",
+          "50200a24-14e3-4057-bf5a-0ce314bec188"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200014-569.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cust-query",
+        "screen": "Customer lookup - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_key": "chrome|Customer lookup - Order Desk|Button:btn-search",
+      "name_source": "draft",
+      "end_reason": "commit",
+      "process_label": "Find the customer",
+      "system": "Order Desk",
+      "library_activity": "od-find-customer"
+    },
+    {
+      "step_id": "0220b27f-924c-480a-9a48-7495b26eff2d",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+      "name": "Enter the order",
+      "description": "Entered \"USB-C dock UD-12\" into Product. Entered \"6\" into Quantity. Entered \"09.10.2026\" into Delivery date. Turned Standard on. Clicked Save order.",
+      "time_range": {
+        "start": "2026-09-27T18:00:37.079Z",
+        "end": "2026-09-27T18:00:43.403Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "10ffb651-0280-465d-95b3-0c7ea91a35a5",
+          "7be16cae-56ff-4cda-86c9-c718d78fcb7f",
+          "2575bd3c-1cb9-4e1e-9b9e-c89c4e2ec0a2",
+          "2d0668a6-b0d5-460c-b949-eb37c4361650",
+          "72fe110b-1813-4de9-83d9-14277fc31f82"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200036-134.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "ord-product",
+        "screen": "New order for Brightline Logistics d.o.o. - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|New order for … - Order Desk|Button:btn-save-order"
+      ],
+      "name_source": "library",
+      "library_activity": "od-enter-order",
+      "end_reason": "commit",
+      "process_label": "Enter the order",
+      "sub_steps": [
+        {
+          "step_id": "46cf5f07-3966-4ee6-83c9-1828ae58ab5a",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+          "name": "Enter Product",
+          "description": "Entered \"USB-C dock UD-12\" into Product.",
+          "time_range": {
+            "start": "2026-09-27T18:00:37.079Z",
+            "end": "2026-09-27T18:00:39.584Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "10ffb651-0280-465d-95b3-0c7ea91a35a5"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Brightline Logistics d.o.o. - Order Desk|enter:ord-product",
+          "name_source": "action",
+          "process_label": "Enter Product"
+        },
+        {
+          "step_id": "a5b698fd-608e-4d28-b0ef-6e6f62219567",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+          "name": "Enter Quantity",
+          "description": "Entered \"6\" into Quantity.",
+          "time_range": {
+            "start": "2026-09-27T18:00:39.584Z",
+            "end": "2026-09-27T18:00:41.962Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "7be16cae-56ff-4cda-86c9-c718d78fcb7f"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Brightline Logistics d.o.o. - Order Desk|enter:ord-qty",
+          "name_source": "action",
+          "process_label": "Enter Quantity"
+        },
+        {
+          "step_id": "2d9e7543-1b1b-46eb-a891-84b7629423c0",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+          "name": "Enter Delivery date",
+          "description": "Entered \"09.10.2026\" into Delivery date.",
+          "time_range": {
+            "start": "2026-09-27T18:00:41.962Z",
+            "end": "2026-09-27T18:00:42.224Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "2575bd3c-1cb9-4e1e-9b9e-c89c4e2ec0a2"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Brightline Logistics d.o.o. - Order Desk|enter:ord-date",
+          "name_source": "action",
+          "process_label": "Enter Delivery date"
+        },
+        {
+          "step_id": "09352e59-182e-4aa4-8d70-8216d5f3f661",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+          "name": "Toggle Standard",
+          "description": "Turned Standard on.",
+          "time_range": {
+            "start": "2026-09-27T18:00:42.224Z",
+            "end": "2026-09-27T18:00:43.403Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "2d0668a6-b0d5-460c-b949-eb37c4361650"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Brightline Logistics d.o.o. - Order Desk|click:pri-std",
+          "name_source": "action",
+          "process_label": "Toggle Standard"
+        },
+        {
+          "step_id": "009a7e02-38c6-44a6-a85f-3c4161564846",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+          "name": "Click Save order",
+          "description": "Clicked Save order.",
+          "time_range": {
+            "start": "2026-09-27T18:00:43.403Z",
+            "end": "2026-09-27T18:00:43.403Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "72fe110b-1813-4de9-83d9-14277fc31f82"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|(screen)|click:btn-save-order",
+          "name_source": "action",
+          "process_label": "Click Save order"
+        }
+      ]
+    },
+    {
+      "step_id": "2dff8a35-02bd-460e-884f-7a95847807f0",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+      "name": "Enter the order",
+      "description": "Entered \"Desk lamp DL-5\" into Product. Entered \"10\" into Quantity. Entered \"10.10.2026\" into Delivery date. Turned Standard on. Clicked Save order.",
+      "time_range": {
+        "start": "2026-09-27T18:01:23.078Z",
+        "end": "2026-09-27T18:01:29.351Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "87bcd9d7-3d54-433c-b711-d78a2213f3e5",
+          "2c5c6c77-5a56-428f-bf6a-add3b9a8363b",
+          "99cc1184-ba9c-4133-a3fa-3c04700181b7",
+          "84d17574-ef21-4a0e-b2d9-3f3440fd10c8",
+          "108cd8ac-7243-4518-b2db-a9c1d21f8437"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200121-135.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "edited",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "ord-product",
+        "screen": "New order for Fabrikam Inc - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|New order for … - Order Desk|Button:btn-save-order"
+      ],
+      "name_source": "library",
+      "library_activity": "od-enter-order",
+      "end_reason": "commit",
+      "process_label": "Enter the order",
+      "sub_steps": [
+        {
+          "step_id": "16965db8-9863-43b8-a621-9c2766efdd43",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+          "name": "Enter Product",
+          "description": "Entered \"Desk lamp DL-5\" into Product.",
+          "time_range": {
+            "start": "2026-09-27T18:01:23.078Z",
+            "end": "2026-09-27T18:01:25.497Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "87bcd9d7-3d54-433c-b711-d78a2213f3e5"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Fabrikam Inc - Order Desk|enter:ord-product",
+          "name_source": "action",
+          "process_label": "Enter Product"
+        },
+        {
+          "step_id": "4763d5b2-1b3b-425c-8a28-9cef67f31e01",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+          "name": "Enter Quantity",
+          "description": "Entered \"10\" into Quantity.",
+          "time_range": {
+            "start": "2026-09-27T18:01:25.497Z",
+            "end": "2026-09-27T18:01:28.031Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "2c5c6c77-5a56-428f-bf6a-add3b9a8363b"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Fabrikam Inc - Order Desk|enter:ord-qty",
+          "name_source": "action",
+          "process_label": "Enter Quantity"
+        },
+        {
+          "step_id": "cf7d5f78-2861-4662-b0e5-98e9d5527aaa",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+          "name": "Enter Delivery date",
+          "description": "Entered \"10.10.2026\" into Delivery date.",
+          "time_range": {
+            "start": "2026-09-27T18:01:28.031Z",
+            "end": "2026-09-27T18:01:28.244Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "99cc1184-ba9c-4133-a3fa-3c04700181b7"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Fabrikam Inc - Order Desk|enter:ord-date",
+          "name_source": "action",
+          "process_label": "Enter Delivery date"
+        },
+        {
+          "step_id": "e2a090df-e0d7-44ed-9ba3-964a5a38a1a9",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+          "name": "Toggle Standard",
+          "description": "Turned Standard on.",
+          "time_range": {
+            "start": "2026-09-27T18:01:28.244Z",
+            "end": "2026-09-27T18:01:29.351Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "84d17574-ef21-4a0e-b2d9-3f3440fd10c8"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|New order for Fabrikam Inc - Order Desk|click:pri-std",
+          "name_source": "action",
+          "process_label": "Toggle Standard"
+        },
+        {
+          "step_id": "a4489157-b5df-451e-9d1a-92070a47d12a",
+          "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+          "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+          "name": "Click Save order",
+          "description": "Clicked Save order.",
+          "time_range": {
+            "start": "2026-09-27T18:01:29.351Z",
+            "end": "2026-09-27T18:01:29.351Z"
+          },
+          "evidence": {
+            "interaction_event_ids": [
+              "108cd8ac-7243-4518-b2db-a9c1d21f8437"
+            ],
+            "screenshot_refs": [],
+            "video_timecode_range": null,
+            "manual_notes": ""
+          },
+          "state": "auto_suggested",
+          "canonical_step_id": null,
+          "flags": {
+            "waste": false
+          },
+          "phase_id": null,
+          "action_key": "chrome|(screen)|click:btn-save-order",
+          "name_source": "action",
+          "process_label": "Click Save order"
+        }
+      ]
+    },
+    {
+      "step_id": "8a284cd9-1266-4158-8ae4-c13ff716cfe3",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+      "name": "New order for … - Order Desk: New order",
+      "description": "Clicked New order.",
+      "time_range": {
+        "start": "2026-09-27T17:59:38.618Z",
+        "end": "2026-09-27T17:59:38.618Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "f28d24fb-c5a1-4d1e-a31f-36fe8b7ad231"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "hidden",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "btn-new-order",
+        "screen": "New order for Contoso Ltd - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_key": "chrome|New order for … - Order Desk|Button:btn-new-order",
+      "name_source": "draft",
+      "end_reason": "commit",
+      "process_label": "New order for … - Order Desk: New order",
+      "_prev_state": "auto_suggested"
+    },
+    {
+      "step_id": "0340ee23-e76c-4c46-843b-b58c952be95c",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "name": "Order Desk: New order",
+      "description": "Clicked New order.",
+      "time_range": {
+        "start": "2026-09-27T18:00:13.029Z",
+        "end": "2026-09-27T18:00:13.029Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "a72e4c89-831c-462a-88fb-1bdddf750844"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "hidden",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "btn-new-order",
+        "screen": "Order SO-48220 saved - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_key": "chrome|Order Desk|Button:btn-new-order",
+      "name_source": "draft",
+      "end_reason": "commit",
+      "process_label": "Order Desk: New order",
+      "_prev_state": "auto_suggested"
+    },
+    {
+      "step_id": "c2464ccf-4615-4a26-ae07-c218d4ad8adb",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+      "name": "Order Desk: New order",
+      "description": "Clicked New order.",
+      "time_range": {
+        "start": "2026-09-27T18:01:06.279Z",
+        "end": "2026-09-27T18:01:06.279Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "e6b48f29-2f6e-4593-bd25-752331a8a9a8"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200106-135.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "hidden",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "btn-new-order",
+        "screen": "Order SO-48227 saved - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_key": "chrome|Order Desk|Button:btn-new-order",
+      "name_source": "draft",
+      "end_reason": "commit",
+      "process_label": "Order Desk: New order",
+      "_prev_state": "auto_suggested"
+    },
+    {
+      "step_id": "24fd4ed3-7074-4ece-99be-29789b8ceb39",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+      "name": "Order Desk: New order",
+      "description": "Clicked New order.",
+      "time_range": {
+        "start": "2026-09-27T18:01:41.624Z",
+        "end": "2026-09-27T18:01:41.624Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "29b7851b-f05a-4c17-a6ce-657b4b2cb687"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200141-136.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "hidden",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "btn-new-order",
+        "screen": "Order SO-48234 saved - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_key": "chrome|Order Desk|Button:btn-new-order",
+      "name_source": "draft",
+      "end_reason": "commit",
+      "process_label": "Order Desk: New order",
+      "_prev_state": "auto_suggested"
+    },
+    {
+      "step_id": "490fb258-3afe-48a4-8fac-225dbb96268b",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "name": "Find the customer",
+      "description": "Entered \"C-1103\" into Customer name or number. Clicked Select.",
+      "time_range": {
+        "start": "2026-09-27T17:59:43.521Z",
+        "end": "2026-09-27T17:59:44.863Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "53a08282-58f3-4d6b-af6b-8bf5e73decbd",
+          "c13689f5-a044-4086-8d91-8d0e5f2fadd3"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-195940-460.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cust-query",
+        "screen": "Customer lookup - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|Customer lookup - Order Desk|Button:Select"
+      ],
+      "name_source": "library",
+      "library_activity": "od-find-customer",
+      "end_reason": "commit",
+      "process_label": "Find the customer"
+    },
+    {
+      "step_id": "fb252674-1083-4368-b1a8-d72bcacea0cc",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+      "name": "Add the order to the tracking sheet",
+      "description": "Entered \"SO-48220\" into A3. Entered \"Northwind Traders\" into B3. Entered \"Office chair OC-7\" into C3. Entered \"5\" into D3. Entered \"189\" into E3.",
+      "time_range": {
+        "start": "2026-09-27T18:00:05.321Z",
+        "end": "2026-09-27T18:00:09.517Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "65d19230-80a9-4206-ad3a-e1d4deca6d88",
+          "687f8cd3-a034-4097-a057-c0533b063bda",
+          "c8cf5a6b-7778-486f-88cb-a471c33e3960",
+          "686840e5-a4ee-4901-b922-b1141ae05680",
+          "51c83b13-c268-4923-bc16-8c4df2eb75e8"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200001-132.jpg",
+          "screenshots/20260927-200006-135.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "A3",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "draft_keys": [
+        "excel|workbook|(visit)"
+      ],
+      "name_source": "library",
+      "library_activity": "xl-tracking",
+      "end_reason": "screen_change",
+      "process_label": "Add the order to the tracking sheet"
+    },
+    {
+      "step_id": "701189d1-6d6f-4efa-8324-675a14c61fef",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+      "name": "Create the new customer",
+      "description": "Clicked New customer. Entered \"Brightline Logistics d.o.o.\" into Company name. Entered \"orders@brightline.example\" into E-mail. Entered \"+385 1 555 0142\" into Phone. Clicked Save customer.",
+      "time_range": {
+        "start": "2026-09-27T18:00:19.827Z",
+        "end": "2026-09-27T18:00:34.256Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "8380baff-e577-4b46-b6d7-173fcb4d6d5b",
+          "9060d016-bdab-4171-bb3c-3b0d9aa8a9e8",
+          "4c16c9e6-5c6a-4676-97d2-2e159cffbf0e",
+          "4f3e1c77-1518-4a58-be0f-e44d110c170a",
+          "ae855e08-b2b2-4b3b-9629-c6a5fe0bc736"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200021-134.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "nc-name",
+        "screen": "New customer - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|Customer lookup - Order Desk|Button:btn-new-customer",
+        "chrome|New customer - Order Desk|Button:btn-save-customer"
+      ],
+      "name_source": "library",
+      "library_activity": "od-new-customer",
+      "end_reason": "commit",
+      "process_label": "Create the new customer"
+    },
+    {
+      "step_id": "f7ec9ea1-5309-4e56-9674-c758fedbf58e",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+      "name": "Add the order to the tracking sheet",
+      "description": "Entered \"SO-48227\" into A4. Entered \"Brightline Logistics d.o.o.\" into B4. Entered \"USB-C dock UD-12\" into C4. Entered \"6\" into D4. Entered \"129\" into E4.",
+      "time_range": {
+        "start": "2026-09-27T18:00:57.572Z",
+        "end": "2026-09-27T18:01:02.595Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "a9382511-4d96-4348-ae02-8b26b3116d80",
+          "8c1f9fc5-a130-4d27-882e-493971797c07",
+          "7ca3ff48-1f38-4713-9ca8-9aa4751ca5a5",
+          "d62e747d-50f5-4df5-8d68-adabd3d1a06a",
+          "59fc9a61-bfb6-4d8f-a04b-44c90d526acd"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200046-136.jpg",
+          "screenshots/20260927-200056-135.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "A4",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "draft_keys": [
+        "excel|workbook|(visit)"
+      ],
+      "name_source": "library",
+      "library_activity": "xl-tracking",
+      "end_reason": "screen_change",
+      "process_label": "Add the order to the tracking sheet"
+    },
+    {
+      "step_id": "42c11ae6-6ae2-46b7-84a8-47e5988bf896",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+      "name": "Find the customer",
+      "description": "Entered \"Fabrikam\" into Customer name or number. Clicked Search. Clicked Select.",
+      "time_range": {
+        "start": "2026-09-27T18:01:18.609Z",
+        "end": "2026-09-27T18:01:20.356Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "6246a7d6-89e8-48e5-b3e8-74e2af41c2e7",
+          "5238e218-fd6f-437c-9ee3-c852add95bec",
+          "8f74b743-59bd-46bd-b840-1d26b1c70e96"
+        ],
+        "screenshot_refs": [],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "cust-query",
+        "screen": "Customer lookup - Order Desk - Google Chrome",
+        "app": "chrome"
+      },
+      "draft_keys": [
+        "chrome|Customer lookup - Order Desk|Button:btn-search",
+        "chrome|Customer lookup - Order Desk|Button:Select"
+      ],
+      "name_source": "library",
+      "library_activity": "od-find-customer",
+      "end_reason": "commit",
+      "process_label": "Find the customer"
+    },
+    {
+      "step_id": "b9e0948e-71ad-482e-b778-a6a42a4c1da6",
+      "session_id": "85c9399c-1c51-484c-a019-9240b31bf6d7",
+      "case_id": "860960ad-75a8-588b-adc7-e4e87f6b3dae",
+      "name": "Add the order to the tracking sheet",
+      "description": "Entered \"SO-48234\" into A5. Entered \"Fabrikam Inc\" into B5. Entered \"Desk lamp DL-5\" into C5. Entered \"10\" into D5. Entered \"22,4\" into E5.",
+      "time_range": {
+        "start": "2026-09-27T18:01:34.623Z",
+        "end": "2026-09-27T18:01:38.096Z"
+      },
+      "evidence": {
+        "interaction_event_ids": [
+          "8205cfd3-e4ca-4472-8557-b965c45aa059",
+          "a92f426a-5d49-4538-be5d-37def34cb8b3",
+          "f747ac25-a1b7-4716-a451-a500ebf42086",
+          "7c16bf2e-b41e-4217-8fbd-e85bb4d91f03",
+          "0784af2b-2293-43cc-b077-b7ae77857537"
+        ],
+        "screenshot_refs": [
+          "screenshots/20260927-200136-135.jpg"
+        ],
+        "video_timecode_range": null,
+        "manual_notes": ""
+      },
+      "state": "auto_suggested",
+      "canonical_step_id": null,
+      "flags": {
+        "waste": false
+      },
+      "phase_id": null,
+      "grain_keys": {
+        "element": "A5",
+        "screen": "workbook",
+        "app": "EXCEL"
+      },
+      "draft_keys": [
+        "excel|workbook|(visit)"
+      ],
+      "name_source": "library",
+      "library_activity": "xl-tracking",
+      "end_reason": "screen_change",
+      "process_label": "Add the order to the tracking sheet"
+    }
+  ],
+  "last_modified": "2026-09-27T18:24:27.793610+00:00",
+  "external_video": {
+    "path": "video/Order to cash demo.webm",
+    "offset_ms": -37,
+    "attached_at": "2026-09-27T18:23:31.280Z"
+  },
+  "excluded_ranges": [
+    {
+      "start": "2026-09-27T18:01:08.892Z",
+      "end": "2026-09-27T18:01:16.067Z",
+      "reason": "manual"
+    }
+  ],
+  "step_filters": {
+    "ignored_processes": [
+      "CalculatorApp.exe"
+    ],
+    "ignored_window_titles": []
+  },
+  "pattern_run": {
+    "case_id": "60170196-74c5-5a4b-b9e4-d37ce756df5e",
+    "confirmed_at": "2026-09-27T18:24:11.181Z",
+    "draft_fixes": {
+      "merge": 0,
+      "split": 0,
+      "add": 0,
+      "drop": 1
+    },
+    "drafted_steps": 4
+  },
+  "analyst_notes": [
+    {
+      "id": "39c7ce7b-83bd-4b2b-bd0e-8e8d449681f4",
+      "text": "Finance asked to keep the sheet until the weekly report can read Order Desk directly.",
+      "step_id": "a46d6270-d08e-41f2-8063-2d7e5b354d2f",
+      "at": null,
+      "added_at": "2026-09-27T18:24:03.280Z"
+    },
+    {
+      "id": "bfc0313f-4ece-43ae-9d65-8e70d15b038b",
+      "text": "Maria checks the total in Calculator out of habit: not part of the process, so Calculator is left out.",
+      "step_id": null,
+      "at": "2026-09-27T18:00:51.439Z",
+      "added_at": "2026-09-27T18:24:04.564Z"
+    }
+  ],
+  "attachments": [
+    {
+      "id": "70246b6a-5193-4750-b25c-b7d95efbe4b2",
+      "file": "Material mapping.txt",
+      "label": "Material mapping.txt",
+      "step_id": "6e9cccc1-615a-4e36-810e-17c98f046bfb",
+      "added_at": "2026-09-27T18:24:06.214Z"
+    },
+    {
+      "id": "5c010c5c-2419-44c8-9551-cb9ac8de9204",
+      "file": "Order tracking sheet.xlsx",
+      "label": "Order tracking sheet.xlsx",
+      "step_id": null,
+      "added_at": "2026-09-27T18:24:17.752Z"
+    }
+  ],
+  "analyst_screenshots": [
+    {
+      "id": "596a048c-8c42-48c2-a73c-a54c05bc9531",
+      "file": "596a048c-8c42-48c2-a73c-a54c05bc9531.jpg",
+      "step_id": "6e9cccc1-615a-4e36-810e-17c98f046bfb",
+      "at": null,
+      "source": "file",
+      "added_at": "2026-09-27T18:24:07.083Z"
+    }
+  ],
+  "opened_runs": [
+    "b5a3135b-7aee-5378-9a54-6af1eb3fa5d8",
+    "cbc06435-a3db-5bfe-b3d4-cb437f7f6ec5",
+    "860960ad-75a8-588b-adc7-e4e87f6b3dae"
+  ],
+  "document": {
+    "title": "Order to cash: enter a customer order",
+    "request": "Order entry review (REQ-2026-101)",
+    "purpose": "Document how the sales desk enters a customer order, so the team can agree on it and decide what to automate.",
+    "scope": "From the order e-mail to the order saved in Order Desk and listed in the tracking sheet. Invoicing and delivery are out of scope.",
+    "trigger": "A customer order arrives by e-mail.",
+    "result": "The order is saved in Order Desk and listed in the order tracking sheet.",
+    "contacts": "Process owner: Head of sales operations. SME: Maria Keller, sales assistant. Analyst: the process management team.",
+    "business_rules": "Every order is entered on the day it arrives. A new customer is created before the order. Customers who ask for it get a printed confirmation.",
+    "exceptions": "The wrong customer selected: cancel and search again. The customer's credit is blocked: the order is not entered and the customer is called.",
+    "effort": "About 40 orders a day, 2 to 3 minutes each.",
+    "improvement": "Retire the tracking sheet: the weekly report can read the orders from Order Desk. Keep the new customer check manual.",
+    "notes": "Recorded with Maria at her desk; the orders are test orders in the training copy of Order Desk."
+  },
+  "handoffs": [
+    {
+      "version": 1,
+      "handed_off_at": "2026-09-27T18:24:27.228Z",
+      "by": "Process team",
+      "note": "First version for the team's review"
+    }
+  ]
+}

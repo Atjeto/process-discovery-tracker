@@ -40,6 +40,7 @@ const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
 const ProjectZip = require("./project-zip.js");
 const ProjectFolder = require("./project-folder.js");
+const DemoProject = require("./demo-project.js");
 const HandoffZip = require("./handoff-zip.js");
 const HandoffOpen = require("./handoff-open.js");
 const WindowRegistry = require("./window-registry.js");
@@ -280,6 +281,21 @@ ipcMain.handle("viewer:openInNewWindow", (_e, { folder } = {}) => {
   catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
   createWindow(root);
   return { ok: true, folder: root };
+});
+
+/* 2.0.1: Open, Open the demo project. A fresh copy of the demo that ships
+   with the app, in Documents\PDT demo (PDT_DEMO_DIR for tests), which then
+   opens like any project (demo-project.js). Result { ok: true, folder } or
+   { ok: false, error }. */
+ipcMain.handle("viewer:openDemo", () => {
+  const src = DemoProject.demoSource(process.resourcesPath, __dirname);
+  if (!src) return { ok: false, error: "the demo project is not part of this installation" };
+  const root = process.env.PDT_DEMO_DIR || path.join(app.getPath("documents"), "PDT demo");
+  try {
+    return { ok: true, folder: DemoProject.copyDemo(src, root) };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
 });
 
 /* Lane HV: Open a hand-off (.zip). Windows' folder dialog, the one Open

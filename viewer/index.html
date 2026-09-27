@@ -51,6 +51,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              openInNewWindowFlow); a recent project's own button does the same. -->
         <button class="project-menu-item" id="btn-open-new-window" type="button" title="Open another project folder in a new window: the project on screen stays open. A project already open for editing in another window opens read only in the new one.">Open in a new window...</button>
         <button class="project-menu-item" id="btn-open-handoff" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only, to look at, play and read, with the PDD and the Technical details it came with.">Open a hand-off (.zip)...</button>
+        <button class="project-menu-item" id="btn-open-demo" type="button" title="Open a finished example project, four orders at a sales desk, that shows every part of PDT. Each time you get a fresh copy in Documents\PDT demo, so change anything.">Open the demo project</button>
         <div class="recent-menu-section" id="recent-menu-content"></div>
       </div>
     </div>
@@ -120,6 +121,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <p>Open the folder the SME's capture app saved, or a project you made. New, in the top bar, starts a project from a video or an empty one.</p>
         <button class="primary" id="btn-open-session-hero">Open project...</button>
         <button id="btn-open-handoff-hero" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only.">Open a hand-off (.zip)...</button>
+        <button id="btn-open-demo-hero" type="button" title="Open a finished example project that shows every part of PDT: a fresh copy each time, in Documents\PDT demo.">Open the demo project</button>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
         <div class="recent-sessions">
           <div class="recent-header">
@@ -459,6 +461,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>From the SME's recording.</strong> The SME records with the capture app and sends you the zip it makes (<em>Make a zip for the analyst</em>). Right-click the zip and choose <em>Extract All</em>. In PDT, choose <em>Open</em>, <em>Open project...</em> and pick the folder it made. PDT analyzes the recording by itself: the top bar says <em>Updating steps and map...</em> until it is done.</li>
             <li><strong>From a video.</strong> Choose <em>New</em>, <em>New project from a video...</em> and pick the video, for example a Teams recording of the SME at work. Then name the project: its folder is made where you save it, with a copy of the video. You add the steps as you watch.</li>
             <li><strong>From nothing.</strong> Choose <em>New</em>, <em>New empty project...</em> and name the project. You add the steps by hand.</li>
+            <li><strong>The demo.</strong> Choose <em>Open</em>, <em>Open the demo project</em>. A finished project opens: four orders entered in the Order Desk web app and an Excel tracking sheet, with its video, transcript, flow, sub-process, notes, attachments, document and maps. Each time you get a fresh copy in <em>Documents\PDT demo</em>, so change anything.</li>
           </ul>
           <p>Help, <em>Recording keys</em>, lists what to tell the SME before they record.</p>
           <h3>Your first hour</h3>
