@@ -255,8 +255,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .sp-about p { margin: 0 0 4px; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .sp-about .sp-system { color: var(--fg); font-weight: 600; }
 .sp-about .sp-count { color: var(--fg-3); }
-/* C17: the step's condition and links, one short line (whole on hover). */
-.sp-about .sp-flow { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* C17: the step's condition and links, whole: it wraps in a narrow panel
+   rather than being cut. */
+.sp-about .sp-flow { color: var(--fg); overflow-wrap: anywhere; }
 .sp-video { width: 100%; max-height: 240px; background: #000; border-radius: var(--radius-sm); }
 .sp-video[hidden] { display: none; }
 /* Lane FX2: the video has no moment of the highlighted row (not covered, or
