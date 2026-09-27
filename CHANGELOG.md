@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.2] (2026-09-28): the start page and the step panel's flow line
+
 ### Changed
 
 - **The page shown while no project is open** offers *New project from a
