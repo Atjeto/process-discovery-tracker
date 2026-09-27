@@ -782,6 +782,37 @@ function zipFiles(buf) {
       j.steps.every((x) => x.state === "manually_authored"),
     JSON.stringify(j));
 
+  // (j2) 2.0.1: the Timeline adds a step at a right-click; a step band's
+  // right-click deletes a step added by hand (asked first); a band click
+  // then Steps shows that step selected, its row in view.
+  let j2 = {};
+  try {
+    await level("flow");
+    const n0 = ((await session()).anno.steps || []).length;
+    await rightClickItem(0.9, "Add a step here");
+    await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k + 1, n0, { timeout: T });
+    j2.added = true;
+    const newest = (await session()).anno.steps.slice().sort((x, y) => Date.parse(y.time_range.start) - Date.parse(x.time_range.start))[0];
+    const band = page.locator('.tl-step-band[data-step-id="' + newest.step_id + '"]');
+    await band.click({ button: "right", timeout: T });
+    j2.items = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => (d.textContent || "").trim()));
+    await page.locator("#tl-ctx-menu div", { hasText: /^Delete step$/ }).click({ timeout: T });
+    await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+    await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k, n0, { timeout: T });
+    j2.deleted = true;
+    const target = (await session()).anno.steps.slice().sort((x, y) => Date.parse(x.time_range.start) - Date.parse(y.time_range.start))[0];
+    await page.locator('.tl-step-band[data-step-id="' + target.step_id + '"]').click({ timeout: T });
+    await level("steps");
+    await wait(600);
+    j2.shown = await page.evaluate((sid) => {
+      const row = document.querySelector('#step-list .step-row.selected[data-step-id="' + sid + '"]');
+      return !!row && row.getBoundingClientRect().height > 0;
+    }, target.step_id);
+  } catch (x) { j2.err = errText(x); }
+  record("(j2) 2.0.1: right-click the Timeline, Add a step here adds a step; a step band's right-click offers Open in Steps and Delete step, which deletes it (asked first); a band click then Steps shows that step selected",
+    !j2.err && j2.added && JSON.stringify(j2.items) === JSON.stringify(["Open in Steps", "Select + seek here", "Delete step"]) &&
+      j2.deleted && j2.shown, JSON.stringify(j2));
+
   // (k) A frame of the video as a screenshot of the first step.
   let k = {};
   try {

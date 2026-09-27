@@ -762,6 +762,13 @@ async function addStepAtPlayhead() {
   const video = $("#video");
   const tsISO = video ? videoTimeToSessionTs(video.currentTime) : null;
   if (!tsISO) { toast("No video timing: can't place a step at the playhead", "error"); return; }
+  await addStepAt(tsISO);
+}
+
+/* A step at the moment `tsISO` (+ Step at the playhead, and 2.0.1 the
+   Timeline's right-click Add a step here), with the steps lane shown so the
+   new step is seen at once. */
+async function addStepAt(tsISO) {
   setLaneToggle("steps", true);
   const cb = document.querySelector('#lanes-popup input[data-lane="steps"]');
   if (cb) cb.checked = true;
@@ -953,6 +960,8 @@ function showMarkerInsertMenu(x, y, ts) {
     addItem("End the transaction here",  () => queueSyntheticMarker(ts, "end"));
     // C16: a note pinned to this moment (the Notes lane; never printed).
     addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
+    // 2.0.1: the step at this moment, as + Step adds one at the playhead.
+    addItem("Add a step here",           () => addStepAt(ts));
   }
   addItem("Jump to step here",         () => {
     State.setPendingStepJump(ts);

@@ -121,7 +121,10 @@ it is done; its button takes you to the next.
 2. Click *+ Add step* (or press N), type its name and click *Add step*.
 3. In the step pane, set its *System*. Alt+Up and Alt+Down move it.
 4. With a video, you can instead pause the video at that moment on the
-   Timeline and click *+ Step* (or press S): the step gets that time.
+   Timeline and click *+ Step* (or press S), or right-click the timeline
+   there and choose *Add a step here*: the step gets that time. Right-click
+   a step on the Timeline to open it in Steps, or to delete it (a recorded
+   step is hidden).
 
 ### Split or merge steps
 

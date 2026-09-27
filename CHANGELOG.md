@@ -73,6 +73,9 @@ change, and the SME's app loses its setup.
   (Only when, a loop, an early end, a choice), a sub-process, a step added
   by hand, waste, notes, attachments, an app outside the process, a stretch
   left out, the document, an As-Is and a To-Be map and a hand-off.
+- **Steps on the Timeline**: right-click the timeline, *Add a step here*;
+  right-click a step's band to delete it (a recorded step is hidden), as
+  in Steps. A step clicked on the Timeline is the one Steps opens on.
 - **Split where you choose**: the step pane lists a step's recorded
   actions, each with its scissors; Split no longer cuts at the midpoint.
   After *Merge with next* the place where the two steps met is marked, so

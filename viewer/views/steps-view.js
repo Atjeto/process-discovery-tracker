@@ -2611,7 +2611,7 @@ function showStepContextMenu(stepId, x, y) {
 
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
-  deleteSelectedSteps, splitStep, mergeStepWithNext, mergeSelectedSteps,
+  deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp,
   // C19: the level shown, and the way into a sub-process (the step panel).
   goToLevel, openSubProcessAction,

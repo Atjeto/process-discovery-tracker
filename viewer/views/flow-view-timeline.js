@@ -393,6 +393,15 @@ function _showStepBandMenu(x, y, stepId, ts) {
     if (stepId) State.setSelectedStepId(stepId);
     if (ts) seekToTimestamp(ts);
   });
+  // 2.0.1: take the step out here, as in Steps: a step added by hand is
+  // deleted (asked first), a recorded one hidden; Ctrl+Z brings it back.
+  const sess = State.getSession();
+  const hit = stepId && sess && !RO.isReadOnly(sess)
+    ? SPM.findStep((sess.annotations && sess.annotations.steps) || [], stepId) : null;
+  if (hit && hit.step.state !== "hidden") {
+    addItem(hit.step.state === "manually_authored" ? "Delete step" : "Hide step",
+      () => require("./steps-view.js").deleteStep(stepId));
+  }
   document.body.appendChild(menu);
   placeMenu(menu, x, y);   // at (x, y), kept inside the window
   // A press ON the menu is a choice, not a dismissal (see showMarkerInsertMenu
@@ -1113,7 +1122,7 @@ function renderTimeline() {
         const lbl = s.label || s.step_id || "";
         band.textContent = lbl;
         band.title = lbl + " · " + formatDuration(sEnd - sStart) +
-          "\nClick: the step panel, and seek · Right-click: Open in Steps";
+          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: Open in Steps, Hide or Delete";
         if (s.step_id) band.dataset.stepId = s.step_id;
         if (s.step_id && s.step_id === State.getSelectedStepId()) {
           band.classList.add("tl-step-selected");
@@ -1131,6 +1140,13 @@ function renderTimeline() {
             .forEach((b) => b.classList.remove("tl-step-selected"));
           band.classList.add("tl-step-selected");
           if (s.time_range && s.time_range.start) seekToTimestamp(s.time_range.start);
+          // 2.0.1: Steps opens on this step (its transaction open, the row in
+          // view), not on the step a seek would park for it.
+          if (s.step_id) {
+            State.consumePendingStepJump();
+            State.setSelectedStepId(s.step_id);
+            State.setPendingStepReveal();
+          }
           // V2 item 4: the step panel opens beside the timeline (lazy: the
           // panel requires the video module this one requires too).
           const hit = SPM.findStep(_anno.steps || [], s.step_id);
