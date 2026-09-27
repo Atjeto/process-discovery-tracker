@@ -89,7 +89,7 @@ change, and the SME's app loses its setup.
   the Map and in the Checklist, with *Copy again*.
 - **Easier to read on a small screen**: the pane and section titles and a
   transaction's step count and time are a size larger, and *Dissolve
-  sub-process* is a button in the breadcrumb, as in the step pane.
+  sub-process* is a button in the breadcrumb, as in the Steps toolbar.
 - **The Steps page is an editor** (the owner's review): the toolbar acts
   on the selected step (*Split...*, *Merge with next*, *Hide step*, the
   sub-process verbs, *Delete*), or on the ticked steps. The selected step
