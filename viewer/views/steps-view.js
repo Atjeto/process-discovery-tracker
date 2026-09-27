@@ -88,7 +88,7 @@ let analyze = async () => false;
 let _mergedLine = { stepId: null, after: null };
 
 /* Split never guesses where (it cut at the midpoint before 2.0.1). */
-const SPLIT_WHERE = "Click the scissors after the action where the first part ends, in the step's Recorded actions.";
+const SPLIT_WHERE = "Click the scissors after the action where the first part ends, under Recorded.";
 
 /* The runs view's own state, per session folder: `open` is the group whose
    steps show (a run's case_id, OUTSIDE, or null for none; undefined until
@@ -358,32 +358,34 @@ function _diffMeta(diffs, compared) {
   return " · " + (n ? _plural(n, "difference", "differences") : "no differences");
 }
 
-/* The tooltip of the lines said about a comparison that are no differences. */
-const NOTES_TITLE = "No differences: a part left out of the analysis (the Timeline shows it), " +
-  "or a step that happens only under a condition and was not done";
+/* The tooltip of the line on a stretch left out of the analysis. */
+const NOTES_TITLE = "No difference: a part of this transaction left out of the analysis (the Timeline shows it hatched)";
 
-/* A transaction's lines under its head, after `after` in `body`: the lines
-   said about the comparison (a stretch left out, a conditional step not
-   done) in `.run-notes`, then its differences in `.run-diffs`, so the count
-   in the head is the number of `.run-diffs` lines (lane FX1). */
-function _appendDiffLists(body, after, diffs, diffTitle) {
-  let anchor = after;
-  const parts = [["run-notes", diffs.filter((d) => !RunDiff.isDifference(d)), NOTES_TITLE],
-    ["run-diffs", diffs.filter((d) => RunDiff.isDifference(d)), diffTitle]];
-  for (const [cls, items, title] of parts) {
-    if (!items.length) continue;
-    const list = document.createElement("ul");
-    list.className = cls;
-    list.title = title;
-    for (const d of items) {
-      const li = document.createElement("li");
-      li.dataset.kind = d.kind;
-      li.textContent = d.text;
-      list.appendChild(li);
-    }
-    body.insertBefore(list, anchor.nextSibling);
-    anchor = list;
+/* A transaction's one line under its head, after `after` in `body`, when a
+   stretch of it was left out of the analysis. 2.0.1 (the owner's review):
+   its differences are on its rows (run-differences.js rowMarks, _groupBody),
+   where they happen; the count in the head counts them (lane FX1). */
+function _appendDiffLists(body, after, diffs) {
+  const items = (diffs || []).filter((d) => d.kind === "left_out");
+  if (!items.length) return;
+  const list = document.createElement("ul");
+  list.className = "run-notes";
+  list.title = NOTES_TITLE;
+  for (const d of items) {
+    const li = document.createElement("li");
+    li.dataset.kind = d.kind;
+    li.textContent = d.text;
+    list.appendChild(li);
   }
+  body.insertBefore(list, after.nextSibling);
+}
+
+/* A run's differences placed on its rows, or null for a run compared with
+   nothing (run-differences.js rowMarks). */
+function _rowMarks(ref, run) {
+  if (!ref || (ref.kind === "pattern" && run.caseId === ref.caseId)) return null;
+  return RunDiff.rowMarks(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT,
+    leftOut: _leftOut(run), originMs: recordingStartMs(State.getSession()) });
 }
 
 /* ===== The Steps level ================================================== */
@@ -475,6 +477,7 @@ function renderStepsLevel() {
 
   const selId = State.getSelectedStepId();
   const selected = selId && visibleIds.has(selId) ? _findStep(selId) : null;
+  _syncStepVerbs(selected);
   const title = $("#step-detail-title");
   // The name or the description being typed in keeps what was typed and the
   // cursor across a redraw (an autosave redraws the pane); leaving the field
@@ -486,7 +489,8 @@ function renderStepsLevel() {
       active.id === "step-only-when" || /^flow-link-when-\d+$/.test(active.id))
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   if (selected) {
-    if (title) title.textContent = "Selected step";
+    // 2.0.1: the step's name is the editor's title.
+    if (title) title.textContent = "";
     PdtSteps.renderStepDetail(detail, selected, stepDetailCallbacks(selected, interactionsById));
     // Lane HV: in a hand-off opened read only the pane's fields are read, not
     // typed in (its acts are hidden, styles.css .read-only).
@@ -498,7 +502,7 @@ function renderStepsLevel() {
       el.focus();
       try { el.setSelectionRange(typing.start, typing.end); } catch (_) { /* not a text field */ }
     }
-    // V2 item 4: the step panel beside the list follows the selected row.
+    // V2 item 4: the step panel beside the editor follows the selected row.
     if (State.getLevel() === "steps") StepPanel.followSteps(selected);
   } else {
     _detailStepId = null;
@@ -617,6 +621,8 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
   const meta = _plural(n, "step", "steps") + (dur != null ? " · " + StepFacts.formatMs(dur) : "") +
     _diffMeta(diffs, !!diffs);
   const status = !isRef ? null : !n ? "empty" : confirmed ? "confirmed" : "draft";
+  const rm = refVisit && !isRef
+    ? RunDiff.rowMarks(refVisit.visible, c.visible, { reference: RunDiff.REFERENCE_RUN, unit: RunDiff.RUN_UNIT }) : null;
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title + (c.index ? ", again" : "")) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
@@ -630,7 +636,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
   const hidden = c.members.length - n;
   const body = _groupBody(visible, hidden,
     hidden ? "Every step here is hidden." : "No steps yet: + Add step adds one here.",
-    status || RunsModel.runStatus(c.members));
+    status || RunsModel.runStatus(c.members), rm);
   const acts = body.querySelector(".run-actions");
   const buttons = [];
   if (isRef && !confirmed && run.visible.length > 0) {
@@ -639,7 +645,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
       () => confirmRunAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  if (diffs && diffs.length) _appendDiffLists(body, acts, diffs, "How this visit differs from the reference transaction's");
+  _appendDiffLists(body, acts, diffs);
   g.appendChild(body);
   return g;
 }
@@ -706,22 +712,20 @@ function goToLevel(path, opts) {
   State.emit("timeline");
 }
 
-/* What a transaction is, in the one line under the list's title (AD-29):
-   in a recording the SME marks each one with the transaction key; a project
-   without a recording (C16, manifest.source video or blank) is one
-   transaction until the Timeline marks where each one starts. An empty
-   project without a video has no timeline to mark them on (the Timeline says
-   to attach a video, flow-view-timeline.js timelineDrawable), so its line
-   says that first (lane FX4). Pure. */
-const NOTE_RECORDED = "One pass through the process: the SME presses the transaction key at the start of each.";
+/* The one line under the list's title while a project without a recording
+   (C16, manifest.source video or blank) is one transaction: what to do to
+   mark more. An empty project without a video has no timeline to mark them
+   on (the Timeline says to attach a video, flow-view-timeline.js
+   timelineDrawable), so its line says that first (lane FX4). 2.0.1 (the
+   owner's review): no line otherwise; Help says what a transaction is.
+   Pure. */
 const NOTE_UNRECORDED = "The whole project is one transaction until you mark where each one starts on the Timeline.";
 const NOTE_UNRECORDED_NO_VIDEO = "The whole project is one transaction. To mark where each one starts, attach a video first: the Timeline then follows it.";
-const NOTE_UNRECORDED_MARKED = "One pass through the process: each starts where you marked it on the Timeline.";
 function transactionNote(session) {
   const m = (session && session.manifest) || {};
   const recorded = ((session && session.events) || []).length > 0 || !["video", "blank"].includes(m.source);
-  if (recorded) return NOTE_RECORDED;
-  if (!(AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats)) return NOTE_UNRECORDED_MARKED;
+  if (recorded) return "";
+  if (!(AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats)) return "";
   return session && session.recordingAvailable ? NOTE_UNRECORDED : NOTE_UNRECORDED_NO_VIDEO;
 }
 
@@ -820,8 +824,9 @@ function _wireHead(group, key) {
 
 /* The open group's steps and its "Show hidden steps (N)" switch. `baseline`
    is the chip class the run's status stands for (a row with that chip shows
-   none, P1.9), null for the steps outside runs. */
-function _groupBody(visible, hiddenCount, emptyText, baseline) {
+   none, P1.9), null for the steps outside runs. `rm`: its differences from
+   the reference on its rows (2.0.1, run-differences.js rowMarks), or null. */
+function _groupBody(visible, hiddenCount, emptyText, baseline, rm) {
   const body = document.createElement("div");
   body.className = "run-body";
   const acts = document.createElement("div");
@@ -871,6 +876,9 @@ function _groupBody(visible, hiddenCount, emptyText, baseline) {
       onOpenSub: (step) => openSubProcessAction(step.step_id),
       // 2.0.1: each row shows when its step starts, on the one clock.
       originMs: recordingStartMs(State.getSession()),
+      // 2.0.1: the differences from the reference, where they happen.
+      marks: rm ? rm.marks : null,
+      ghosts: rm ? rm.ghosts : null,
     });
   return body;
 }
@@ -887,8 +895,10 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   g.dataset.caseId = run.caseId;
   const n = run.visible.length;
   // Item 3: the run's differences from its reference, counted in its meta
-  // (no count on the reference run the others are compared with).
+  // (no count on the reference run the others are compared with), and on
+  // its rows (2.0.1).
   const diffs = _runDiffs(ref, run);
+  const rm = _rowMarks(ref, run);
   const meta = _plural(n, "step", "steps") + (run.durationMs != null ? " · " + StepFacts.formatMs(run.durationMs) : "") +
     _diffMeta(diffs, !isPattern);
   // AD-28: only the reference run is confirmed, so only it carries a status,
@@ -922,7 +932,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   const recorded = ((State.getSession() || {}).events || []).length > 0;
   const body = _groupBody(visible, run.hiddenCount,
     run.hiddenCount ? "Every step of this transaction is hidden." : recorded ? "No steps in this transaction."
-      : "No steps yet: + Add step adds one after the selected step.", status || run.status);
+      : "No steps yet: + Add step adds one after the selected step.", status || run.status, rm);
   const acts = body.querySelector(".run-actions");
   const canConfirm = !ro && isPattern && !reads && run.visible.length > 0;
   const buttons = [];
@@ -933,19 +943,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   }
   // Its inverse, Undo confirm, is beside the Confirmed badge (_addUndoConfirm).
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
-  // One line per run says how many steps were named for the analyst (from
-  // the project's library, C21, or from the name given to the same drafted
-  // step elsewhere in this project), in place of a tag on every row.
-  const saved = run.visible.filter((s) => (s.name_source === "remembered" || s.name_source === "library") &&
-    (RunsModel.DRAFT_STATES.has(s.state) || s.state === "confirmed")).length;
-  if (saved) {
-    const line = document.createElement("p");
-    line.className = "run-names-note";
-    line.title = "These steps were named for you: from the project's library, or from the name you gave the same screen and button elsewhere in this project.";
-    line.textContent = "Named for you: " + saved + " of " + _plural(n, "step", "steps");
-    acts.appendChild(line);
-  }
-  if (diffs && diffs.length) _appendDiffLists(body, acts, diffs, "How this transaction differs from the reference transaction");
+  _appendDiffLists(body, acts, diffs);
   g.appendChild(body);
   return g;
 }
@@ -1097,10 +1095,13 @@ function _transcriptSaid(step) {
     originMs: recordingStartMs(s) };
 }
 
-/* What the step pane says about the step (2.0.1, the owner's review: each
-   fact once), from its own fields and interactions: the library code beside
-   the name, the Recorded line (how many actions on which screen, how long,
-   where a draft ends: its end_reason and commit) and the description. */
+/* What the step editor says about the step (2.0.1, the owner's review: each
+   fact once, in words), from its own fields and interactions: the library
+   code beside the name; the head's line of facts after the system (the
+   screen, where the step is, how long it took, in how many transactions it
+   happens: its map box's occurrences, step-panel.js); the Recorded line (how
+   many actions, where a draft ends: its end_reason and commit) and the
+   description. */
 function stepFacts(step, interactionsById) {
   const s = State.getSession();
   const origin = recordingStartMs(s);
@@ -1109,11 +1110,18 @@ function stepFacts(step, interactionsById) {
   // The system the recording gives, the System field's placeholder (C16).
   const derived = SystemNames.whereOfStep(Object.assign({}, step, { system: "" }), interactionsById, _appNames()).system;
   const drafted = StepFacts.isDraftedDescription(step.description, datas);
+  const runs = _model().runs;
+  const loc = _locate(step.step_id);
+  const occ = StepPanel.occurrences(mapNodeLabel(step), runs, step, loc ? loc.path : []);
+  const inRuns = new Set(occ.filter((o) => o.run).map((o) => o.run.caseId)).size;
+  const took = StepFacts.duration(step.time_range);
   return {
     // C21: a step named from the library shows its code beside its name.
     code: Library.codeOf(_library(), step),
+    facts: [where.screen, StepFacts.pointer(step, runs, origin), took ? "took " + took : "",
+      runs.length > 1 && inRuns ? "in " + inRuns + " of " + runs.length + " transactions" : ""],
     recorded: StepFacts.recordedLine({ actions: ((step.evidence && step.evidence.interaction_event_ids) || []).length,
-      screen: where.screen, duration: StepFacts.duration(step.time_range), ends: StepFacts.endsAt(step, datas || []) }),
+      ends: StepFacts.endsAt(step, datas || []) }),
     // A draft's narration is never the description: the PDD leaves it out,
     // so the pane does not pretend it is written (its actions are Recorded).
     description: drafted ? "" : (step.description || ""),
@@ -1124,30 +1132,32 @@ function stepFacts(step, interactionsById) {
   };
 }
 
-/* The callbacks the per-step detail editor needs. */
+/* The callbacks the per-step detail editor needs. The verbs that change the
+   step's shape are the toolbar's (_syncStepVerbs), the scissors excepted. */
 function stepDetailCallbacks(selected, interactionsById) {
   const facts = stepFacts(selected, interactionsById);
   return {
     onRename: (stepId, name) => inlineRenameStep(stepId, name, false),
     onDescription: describeStepAction,
     onToggleWaste: (stepId) => toggleStepFlag(stepId, "waste"),
-    onDelete: deleteStep,
     onSplitAt: (after) => { if (selected) splitStep(selected.step_id, after); },
-    onMerge: mergeStepWithNext,
-    onMergeSelected: mergeSelectedSteps,
-    multiSelectedCount: State.getMultiSelectedStepIds().size,
     onJumpToFlow: (step) => jumpToStepInFlow(step),
+    // Play: the step in the step panel's video (it opens the panel again
+    // when it was closed).
     onWatchStep: (step) => watchStep(step),
-    onToggleHide: toggleStepHidden,
-    interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
+    interactionsById,
     mergedAfterIndex: (selected && _mergedLine.stepId === selected.step_id) ? _mergedLine.after : null,
-    code: facts.code, recorded: facts.recorded, description: facts.description,
+    code: facts.code, recorded: facts.recorded, description: facts.description, facts: facts.facts,
     originMs: facts.originMs,
-    // C16: the System field, then the step's screenshots (recorded and
-    // added), notes and attachments (views/analyst-ui.js).
+    // Lane HV: a hand-off opened read only shows its recorded actions open.
+    readOnly: RO.isReadOnly(State.getSession()),
+    // C16: the System field (first on the line of facts), the step's
+    // screenshots (recorded and added) and what is attached to it: its
+    // attachments, notes and the adds (views/analyst-ui.js).
     systemHtml: AnalystUI.systemFieldHtml(selected, facts.derived),
-    extrasHtml: AnalystUI.stepExtrasHtml(selected),
+    shotsHtml: AnalystUI.stepShotsHtml(selected),
+    attachedHtml: AnalystUI.stepAttachedHtml(selected),
     wireExtras: (host, isRendering) => AnalystUI.wireStepPane(host, selected, isRendering),
     // C21: the name field offers the activities of the step's system from
     // the project's library; a pick names the step from it.
@@ -1162,17 +1172,69 @@ function stepDetailCallbacks(selected, interactionsById) {
     onFlowLinkTarget: (id, i, to) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkTarget(s, i, to)),
     onFlowLinkWhen: (id, i, when) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkWhen(s, i, when)),
     onFlowRemoveLink: (id, i) => _flowEdit(id, "remove a link", (s) => StepFlow.removeLink(s, i)),
-    // C19: open it (a sub-process), or make it one (a step of a transaction).
+    // C19: a sub-process has no scissors (its steps are split, inside it).
     subProcess: SPM.isSubProcess(selected)
       ? { count: selected.sub_steps.filter((x) => x && x.state !== "hidden").length, group: selected.group === true } : null,
-    canOpenAsSub: !SPM.isSubProcess(selected) && selected.state !== "hidden" && _inTransaction(selected),
-    // 2.0.1: a step of one recorded action has nothing to open (a sheet's
-    // cells filled one after another are one action): the verb says so.
-    openAsSubWhy: _oneAction(selected, interactionsById),
-    onOpenAsSub: openAsSubProcessAction,
-    onOpenSub: openSubProcessAction,
-    onDissolve: dissolveStepAction,
   };
+}
+
+/* 2.0.1 (the owner's review of the Steps page): the verbs that change a
+   step's shape are the toolbar's, acting on the selected step: Split...,
+   Merge with next, Hide step or Unhide, Open as a sub-process or Open
+   sub-process and Dissolve sub-process, and Delete on a step added by hand.
+   With two or more steps ticked the toolbar offers the verbs on the ticked
+   ones instead (syncMultiSelectButtons). A verb that cannot act is disabled
+   and says why in its title. */
+const VERB_TITLES = {
+  "btn-step-split": "Split this step where you choose: under Recorded, click the scissors after the action where the first part ends (S)",
+  "btn-step-merge": "Merge this step with the whole next step of its transaction (M). To move the line between them, merge, then click the scissors where this step should end.",
+  "btn-step-make-sub": "Give this step its own steps, one per action recorded in it (a field typed, a click, a sheet's cells), in every transaction where it happens, and show them",
+};
+function _syncStepVerbs(selected) {
+  const bar = $("#step-verbs");
+  if (!bar) return;
+  bar.hidden = !selected || State.getMultiSelectedStepIds().size >= 2;
+  if (bar.hidden) return;
+  const isSub = SPM.isSubProcess(selected);
+  const hidden = selected.state === "hidden";
+  const set = (id, show, why, title, label) => {
+    const b = $("#" + id);
+    if (!b) return;
+    b.hidden = !show;
+    b.disabled = !!why;
+    b.title = why || title || VERB_TITLES[id] || "";
+    if (label) b.textContent = label;
+  };
+  set("btn-step-split", !isSub, PdtSteps.splitBlocker(selected));
+  set("btn-step-merge", !isSub, "");
+  set("btn-step-hide", true, "", hidden ? "Bring this step back into the list"
+    : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again.", hidden ? "Unhide" : "Hide step");
+  set("btn-step-make-sub", !isSub && !hidden && _inTransaction(selected), _oneAction(selected));
+  const count = isSub ? selected.sub_steps.filter((x) => x && x.state !== "hidden").length : 0;
+  set("btn-step-open-sub", isSub, "", "Show the " + _plural(count, "step", "steps") + " of this sub-process, in every transaction that goes through it");
+  set("btn-step-dissolve", isSub, "", selected.group === true
+    ? "Put its steps back in its place, in every transaction. Ctrl+Z undoes it."
+    : "Drop its sub-steps, in every transaction; what you added to them moves to this step. Ctrl+Z undoes it.");
+  set("btn-step-delete", selected.state === "manually_authored", "",
+    isSub && selected.group === true ? "Delete this sub-process you made, with its steps" : "Delete this step you added");
+}
+
+/* Split where the analyst chooses (2.0.1): Recorded opens (and stays open,
+   as a click on it keeps it), its first scissors take the focus, and one
+   line says what to click. */
+function beginSplit(stepId) {
+  if (State.getSelectedStepId() !== stepId) {
+    State.setSelectedStepId(stepId);
+    renderStepsLevel();
+  }
+  const rec = document.getElementById("step-recorded");
+  if (rec) {
+    if (!rec.open) { rec.open = true; PdtSteps.keepRecordedOpen(true); }
+    rec.scrollIntoView({ block: "nearest" });
+    const first = rec.querySelector(".si-split-btn");
+    if (first) first.focus();
+  }
+  toast(SPLIT_WHERE, "success");
 }
 
 /* A step of a transaction, at any level (a sub-step has its parent's
@@ -1227,6 +1289,8 @@ function _flowFor(step) {
     links: StepFlow.links(step).map((l) => ({
       to: l.to, when: typeof l.when === "string" ? l.when : "",
       reading: StepFlow.linkReading(list, step, l, others),
+      // 2.0.1: the words before the row's fields.
+      verb: StepFlow.linkVerb(list, step, l, others),
       missing: StepFlow.linkPlace(list, step, l, others).kind === "missing",
     })),
     choices: StepFlow.linkChoices(list, step, [...others].map(([value, name]) => ({ value, name }))),
@@ -1563,9 +1627,10 @@ async function splitStep(stepId, after) {
   // Lane FX3 (validation pass 3, F16): why it cannot, in the analyst's words.
   const why = PdtSteps.splitBlocker(s);
   if (why) { toast(why, "error"); return; }
-  // Split after the action the analyst chose (the first part is [0..after]).
+  // Split after the action the analyst chose (the first part is [0..after]);
+  // without one (S, Split..., the step menu), the scissors say where.
   if (!Number.isInteger(after) || after < 0 || after >= ids.length - 1) {
-    toast(SPLIT_WHERE, "success");
+    beginSplit(stepId);
     return;
   }
   const mid = after + 1;
@@ -1907,6 +1972,13 @@ function syncMultiSelectButtons() {
     const b = $("#" + id);
     if (b) b.hidden = n < 2;
   }
+  // 2.0.1: the verbs on the ticked steps say how many they act on.
+  const merge = $("#btn-merge-selected");
+  if (merge && n >= 2) merge.textContent = "Merge " + n + " selected";
+  const group = $("#btn-group-selected");
+  if (group && n >= 2) group.textContent = "Group " + n + " into a sub-process…";
+  const bar = $("#step-verbs");
+  if (bar && n >= 2) bar.hidden = true;
   // Item 5: the ticked drafted steps are hidden, the added ones deleted; the
   // button says which.
   const del = $("#btn-delete-selected-steps");
@@ -2435,6 +2507,18 @@ function initStepsView(deps) {
   analyze = deps.analyze || (async () => false);
 
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
+  // 2.0.1: the toolbar's verbs on the selected step (_syncStepVerbs).
+  const onSelected = (id, fn) => {
+    const b = $("#" + id);
+    if (b) b.addEventListener("click", () => { const sid = visibleSelectedStepId(); if (sid) fn(sid); });
+  };
+  onSelected("btn-step-split", beginSplit);
+  onSelected("btn-step-merge", mergeStepWithNext);
+  onSelected("btn-step-hide", toggleStepHidden);
+  onSelected("btn-step-make-sub", openAsSubProcessAction);
+  onSelected("btn-step-open-sub", openSubProcessAction);
+  onSelected("btn-step-dissolve", dissolveStepAction);
+  onSelected("btn-step-delete", deleteStep);
   if ($("#btn-delete-selected-steps")) $("#btn-delete-selected-steps").addEventListener("click", deleteSelectedSteps);
   if ($("#btn-merge-selected")) $("#btn-merge-selected").addEventListener("click", mergeSelectedSteps);
   if ($("#btn-group-selected")) $("#btn-group-selected").addEventListener("click", groupSelectedAction);
@@ -2558,10 +2642,7 @@ function showStepContextMenu(stepId, x, y) {
     // Lane FX3 (F16): offered only on a step with two recorded actions to
     // split between, in the analyst's words.
     if (!PdtSteps.splitBlocker(step)) {
-      addItem("Split at a recorded action…", () => {
-        renderStepsLevel();
-        toast(SPLIT_WHERE, "success");
-      });
+      addItem("Split at a recorded action…", () => beginSplit(stepId));
     }
     addItem("Merge with next", () => mergeStepWithNext(stepId));
   }

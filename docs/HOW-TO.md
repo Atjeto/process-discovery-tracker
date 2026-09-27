@@ -63,17 +63,20 @@ it is done; its button takes you to the next.
 3. **Name the steps of the reference transaction, or pick them from the
    library.** In Steps, transaction 1 is the reference transaction. Where
    the recorder cut a step wrongly, split or merge it first (see *Everyday
-   tasks*). Then click each step and type its name in the step pane: the
-   step that ends at *Save order* becomes *Enter the order in Salesforce*.
+   tasks*). Then click each step and type its name, the title of the
+   selected step: the step that ends at *Save order* becomes *Enter the
+   order in Salesforce*.
    The same drafted step in the other transactions takes the name too. Where
    the library has activities for the step's system, the *Name* field lists
    them: pick one instead of typing.
-4. **Write short descriptions.** *Description* in the step pane is the text
-   the PDD prints under the step. One or two sentences are enough, for
-   example: *Search the account by customer ID and open it.* What the
-   recorder saw is under *Recorded*, at the foot of the step pane. With a
-   transcript, *Said during this step* lists what the SME
-   said then, and *Add* copies a sentence into the description.
+4. **Write short descriptions.** *Description*, under the step's name, is
+   the text the PDD prints under the step. One or two sentences are enough,
+   for example: *Search the account by customer ID and open it.* With a
+   transcript, what the SME said during the step is right under it: *Add*
+   copies a sentence into the description. The step panel on the right
+   plays the step (*Play*) and shows every time it happened, with its
+   screenshots, what was said and notes. What the recorder saw is under
+   *Recorded*.
 5. **Set the flow where it branches or loops.** Transaction 3 sent no
    confirmation email. On *Send the confirmation email*, click *Only
    when...* and type *the customer asked for a confirmation*. In transaction
@@ -85,8 +88,11 @@ it is done; its button takes you to the next.
    The steps you did not change are accepted as they are. *Undo confirm*,
    beside the *Confirmed* badge, takes it back.
 7. **Look at how the other transactions differ.** Open transactions 2, 3 and
-   4 in Steps. Each lists how it differs from the reference transaction.
-   Transaction 2 has an extra step (the Notepad lookup) and repeated steps.
+   4 in Steps. Their rows show how each differs from the reference
+   transaction: *Extra*, *Again* or *Moved* on a step, and a greyed
+   *Skipped* row where a step of the reference transaction is missing
+   (point at one to read it whole). Transaction 2 has an extra step (the
+   Notepad lookup) and repeated steps.
    Transaction 3 reads *Not done* for the email, which is no difference once
    the email has its condition. Transaction 4 has no differences. Where the
    recorder drafted the same work as another step, give it the name of the
@@ -122,7 +128,8 @@ it is done; its button takes you to the next.
 
 1. In Steps, select the step it comes after.
 2. Click *+ Add step* (or press N), type its name and click *Add step*.
-3. In the step pane, set its *System*. Alt+Up and Alt+Down move it.
+3. Set its system: type it first on the line under the step's name.
+   Alt+Up and Alt+Down move the step.
 4. With a video, you can instead pause the video at that moment on the
    Timeline and click *+ Step* (or press S), or right-click the timeline
    there and choose *Add a step here*: the step gets that time. Right-click
@@ -131,12 +138,13 @@ it is done; its button takes you to the next.
 
 ### Split or merge steps
 
-1. Select the step in Steps. *Recorded*, at the foot of the step pane,
-   lists its actions (a click on *Recorded* opens or closes it, on every
-   step).
-2. To split it, click the scissors after the recorded action where the first
-   part ends.
-3. To merge it with the next step, click *Merge with next*. To merge
+1. Select the step in Steps. The toolbar above the list acts on it:
+   *Split...*, *Merge with next*, *Hide step*, *Open as a sub-process*, and
+   *Delete* on a step you added.
+2. To split it, click *Split...* (or press S): *Recorded*, under the step,
+   lists its actions, and you click the scissors after the action where the
+   first part ends. *Recorded* stays open or closed as you last left it.
+3. To merge it with the next step, click *Merge with next* (or press M). To merge
    several, tick them in the list and click *Merge selected*. To move the
    line between two steps, merge them, then click the scissors where the
    first should end: the place where they met is marked.
@@ -168,7 +176,7 @@ it is done; its button takes you to the next.
 ### Make a sub-process
 
 1. To give a step its own steps, select it and click *Open as a
-   sub-process*: *Enter the order in Salesforce* gets one step per field and
+   sub-process* in the toolbar: *Enter the order in Salesforce* gets one step per field and
    click, from *Enter Product code* to *Click Save order*.
 2. To group steps, tick steps that follow one another, click *Group into a
    sub-process...* and name it, for example *Book the order in SAP*.
@@ -246,7 +254,7 @@ back; its zip stays.
 ## The library
 
 The library lists named activities for each system: for SAP, for example,
-*Create sales order*. In the step pane, click the *Name* field: it lists the
+*Create sales order*. Click the selected step's name: it lists the
 activities of the step's system, and a pick gives the step its name, its
 system and, when you wrote none, its description. You can still type any
 name. Where the library has no activities for the system yet, the field says

@@ -94,6 +94,14 @@ function linkPlace(list, step, link, others) {
 
 const VERB = { back: "Goes back to", next: "Goes on to", skip: "Skips to", to: "Goes to" };
 
+/* The words before a link row's fields in the step editor (2.0.1: the row
+   is one sentence of fields): "Goes back to [step] when [condition]",
+   "Then [End the process] when [condition]". */
+function linkVerb(list, step, link, others) {
+  const p = linkPlace(list, step, link, others);
+  return p.kind === "end" ? "Then" : VERB[p.kind] || "Goes to";
+}
+
 /* The sentence a link row reads: "Goes back to step 4, Enter the sales order
    in SAP, when the check fails", "Skips to step 6, ..., when ...", "Ends here
    when ...". Without its `when` the sentence stops before it. */
@@ -267,7 +275,7 @@ function mergedLinks(members) {
 
 module.exports = {
   END, DEFAULT_LINE, onlyWhen, links, isDefault, nextLine,
-  linkChoices, linkPlace, linkReading, linkShort, inheritedLine, panelLine,
+  linkChoices, linkPlace, linkReading, linkShort, linkVerb, inheritedLine, panelLine,
   setOnlyWhen, addLink, setLinkTarget, setLinkWhen, removeLink,
   dropLinksTo, retargetLinks, splitFlow, mergedLinks,
 };

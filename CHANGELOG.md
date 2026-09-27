@@ -6,7 +6,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [2.0.1] (2026-09-27): the PDD for its readers, and maps a PM can keep
+## [2.0.1] (2026-09-28): the PDD for its readers, and maps a PM can keep
 
 The PDD is the process written down for the SME, who confirms it, and for
 whoever asks about the process being automated; it is archived per
@@ -90,14 +90,23 @@ change, and the SME's app loses its setup.
 - **Easier to read on a small screen**: the pane and section titles and a
   transaction's step count and time are a size larger, and *Dissolve
   sub-process* is a button in the breadcrumb, as in the step pane.
-- **The step pane in parts, each fact once**: the name and the acts on the
-  step at the top; *In the PDD* (System, Description, what was said,
-  the Flow line, Waste); Screenshots, Notes and Attachments; *Recorded* at
-  the foot (how many actions on which screen, how long, where the draft
-  ends, then the actions one per line), open or closed as you last left
-  it, on every step. The fact line, the fields typed (the actions say
-  them), the colour code of the actions and its legend are gone; a library
-  activity's code sits beside the name.
+- **The Steps page is an editor** (the owner's review): the toolbar acts
+  on the selected step (*Split...*, *Merge with next*, *Hide step*, the
+  sub-process verbs, *Delete*), or on the ticked steps. The selected step
+  reads in one column, in the order of the work: its name as the title
+  with its state and library code, one line of facts (the system, which
+  you change there, the screen, where, how long, in how many transactions,
+  *Play* and *Show on timeline*), what you write (Description with what was
+  said under it, Flow, Waste), the screenshots, *Recorded* (the actions
+  with the control each acted on, and the scissors), open or closed as you
+  last left it, and what is attached. The step panel stays beside it. The
+  fact line, the fields typed, the colour code of the actions and the
+  dividers are gone, and a transaction's differences are marked on its
+  rows (*Extra*, *Again*, *Moved*, a greyed *Skipped* row) in place of a
+  list above them.
+- **Accessibility**: link text and field edges pass WCAG AA contrast in the
+  light theme, fields show a clear focus ring, the scissors and play
+  buttons have names, and a row's tick works from the keyboard.
 - **What was said shows under one step**: a sentence belongs to the step
   during which it starts, or to the next one within 10 seconds, never
   past the step before, in the step pane and the step panel.

@@ -409,6 +409,78 @@ function differences(refSteps, runSteps, opts) {
   return out;
 }
 
+/* The run's steps a unit stands for, as step ids: a folded or named-alike
+   unit stands for its members. */
+function _unitIds(unit) {
+  const list = Array.isArray(unit && unit.members) && unit.members.length ? unit.members : [unit];
+  return list.map((m) => m && m.step_id).filter((id) => typeof id === "string" && id);
+}
+
+/* The differences of a run placed on its rows (2.0.1, the owner's review:
+   the Steps list marks them where they happen, in place of a list of lines
+   above the rows). The same alignment as `differences`, so a row's mark and
+   the PDD's 4.1 line never disagree: { marks, ghosts }
+     marks   Map of step id => { kind: "extra" | "order" | "repeated", text }:
+             every run step a unit stands for carries its unit's mark; a
+             repeated step carries "repeated" on each time past the
+             reference's own count (its first time keeps "extra" when the
+             reference lacks it);
+     ghosts  [{ after, kind: "skipped" | "not_done", name, text }]: a
+             reference step the run did not do, shown after the run's step
+             `after` (a step id; null before the first row): the place of
+             the nearest earlier reference step the run did.
+   `text` is the line `differences` writes for it. Same opts; a stretch left
+   out of the analysis is the caller's one line (leftOutText). */
+function rowMarks(refSteps, runSteps, opts) {
+  const reference = (opts && opts.reference) || PATTERN_REFERENCE;
+  const unit = (opts && opts.unit) || "run";
+  const stretches = (opts && Array.isArray(opts.leftOut)) ? opts.leftOut : [];
+  const ref = Array.isArray(refSteps) ? refSteps : [];
+  const units = collapseToReference(ref, runSteps);
+  const pat = firstOccurrences(ref);
+  const run = firstOccurrences(units);
+  const patSet = new Set(pat.map((x) => x.key));
+  const runSet = new Set(run.map((x) => x.key));
+  const inOrder = commonOrder(pat.map((x) => x.key), run.map((x) => x.key));
+  const marks = new Map();
+  const mark = (u, m) => { for (const id of _unitIds(u)) if (!marks.has(id)) marks.set(id, m); };
+  for (const { key, step, index } of run) {
+    const where = index ? "after " + stepName(units[index - 1]) : "at the start of the " + unit;
+    const name = stepName(step);
+    if (!patSet.has(key)) mark(step, { kind: "extra", text: "Extra step: " + name + " (" + where + ")." });
+    else if (!inOrder.has(key)) mark(step, { kind: "order", text: "Different order: " + name + " (in this " + unit + " " + where + ")." });
+  }
+  const patCount = _keyCounts(ref), runCount = _keyCounts(units);
+  const seen = new Map();
+  for (const u of units) {
+    const key = alignKey(u);
+    const n = runCount.get(key) || 0;
+    const k = seen.get(key) || 0;
+    seen.set(key, k + 1);
+    if (n >= 2 && n > (patCount.get(key) || 0) && k >= Math.max(1, patCount.get(key) || 0)) {
+      mark(u, { kind: "repeated", text: "Repeated: " + stepName(run.find((x) => x.key === key).step) + ", " + n + " times." });
+    }
+  }
+  const inside = stretches.length
+    ? _insideStretches(units, new Map(pat.map((x) => [x.key, x.index])), ref.length, stretches) : new Set();
+  const firstUnit = new Map(run.map((x) => [x.key, x.step]));
+  const ghosts = [];
+  pat.forEach(({ key, step, index }, i) => {
+    if (runSet.has(key) || inside.has(index)) return;
+    let after = null;
+    for (let j = i - 1; j >= 0; j--) {
+      const u = firstUnit.get(pat[j].key);
+      if (u) { const ids = _unitIds(u); after = ids.length ? ids[ids.length - 1] : null; break; }
+    }
+    const name = stepName(step);
+    const condition = _conditionOf(ref, key);
+    ghosts.push(condition
+      ? { after, kind: "not_done", name, text: "Not done: " + name + " (only when " + _clause(condition) + ")." }
+      : { after, kind: "skipped", name, text: "Skipped: " + name + " (step " + (index + 1) + " of " + reference + ")." });
+  });
+  return { marks, ghosts };
+}
+
 /* How many of `diffs` are differences: the left-out line and a Not done line
    are not (pdd_export.difference_count). */
 function differenceCount(diffs) {
@@ -423,6 +495,6 @@ function isDifference(d) {
 
 module.exports = {
   PATTERN_REFERENCE, REFERENCE_RUN, RUN_UNIT,
-  stepKeys, mergeKey, alignKey, stepName, collapseToReference, namedAlike, firstOccurrences, commonOrder, differences,
+  stepKeys, mergeKey, alignKey, stepName, collapseToReference, namedAlike, firstOccurrences, commonOrder, differences, rowMarks,
   leftOutStretches, leftOutText, differenceCount, isDifference, isoMs: _ms,
 };

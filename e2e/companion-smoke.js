@@ -429,7 +429,7 @@ function zipFiles(buf) {
     await shotMenu("file");
     await page.waitForFunction(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === 1, null, { timeout: T });
     await app.evaluate(({ clipboard, nativeImage }, p) => clipboard.writeImage(nativeImage.createFromPath(p)), PNG_B);
-    await page.click("#step-shots-sect .step-sect-title");
+    await page.click("#step-detail .step-state");
     await page.keyboard.press("Control+V");
     await page.waitForFunction(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === 2, null, { timeout: T });
     const shots = (await session()).anno.analyst_screenshots;
@@ -489,7 +489,7 @@ function zipFiles(buf) {
     await page.locator('#step-detail .step-shot-card[data-ref="' + third.id + '"] [data-shot-act="remove"]').click({ timeout: T });
     await page.waitForFunction(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === 2, null, { timeout: T });
     d.removed = { entry: (await session()).anno.analyst_screenshots.some((x) => x.id === third.id), file: fs.existsSync(file) };
-    await page.click("#step-detail .step-sect-title");
+    await page.click("#step-detail .step-state");
     await page.keyboard.press("Control+Z");
     await page.waitForFunction(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === 3, null, { timeout: T });
     d.undone = { entry: true, file: fs.existsSync(file) };
@@ -772,7 +772,7 @@ function zipFiles(buf) {
   record("(i) two transactions marked by right-click on the video's Timeline (Start a transaction here) and applied: the implicit run gives way to two, listed as Transaction 1 and 2, and the Steps list says each starts where it was marked",
     !i.err && JSON.stringify(i.runs) === '[{"label":"Order A","implicit":false},{"label":"Order B","implicit":false}]' &&
       JSON.stringify(i.titles) === '["Transaction 1","Transaction 2"]' &&
-      i.note === "One pass through the process: each starts where you marked it on the Timeline.", JSON.stringify(i));
+      i.note === "", JSON.stringify(i));
 
   // (j) Two steps added at the playhead.
   let j = {};
@@ -958,7 +958,7 @@ function zipFiles(buf) {
     y.deletable = [];
     for (const half of halves) {
       await selectStep(half.step_id);
-      y.deletable.push(await page.evaluate(() => !!document.getElementById("btn-step-delete")));
+      y.deletable.push(await page.evaluate(() => { const b = document.getElementById("btn-step-delete"); return !!b && !b.hidden; }));
     }
     await selectStep(halves[0].step_id);
     await page.evaluate(() => { const d = document.querySelector("#step-detail details.step-detail-more"); if (d) d.open = true; });
@@ -967,7 +967,7 @@ function zipFiles(buf) {
     const merged = (await session()).anno.steps.find((x) => x.step_id === halves[0].step_id) || {};
     y.merged = { state: merged.state, from: secs(merged.time_range.start), to: secs(merged.time_range.end), name: merged.name };
     await selectStep(merged.step_id);
-    y.mergedDeletable = await page.evaluate(() => !!document.getElementById("btn-step-delete"));
+    y.mergedDeletable = await page.evaluate(() => { const b = document.getElementById("btn-step-delete"); return !!b && !b.hidden; });
     // The step map, once the Map has analyzed the changed steps.
     const BPMN = path.join(VPROJ, "process_map_step.bpmn");
     const annoAt = fs.statSync(path.join(VPROJ, "annotations.json")).mtimeMs;
@@ -1016,7 +1016,8 @@ function zipFiles(buf) {
     return sect ? {
       line: ((document.getElementById("step-flow-line") || {}).textContent || "").trim(),
       cond: !!document.getElementById("step-only-when"),
-      rows: [...sect.querySelectorAll(".flow-link .flow-link-text")].map((x) => x.textContent.trim()),
+      // 2.0.1: a row is one sentence of fields; the whole sentence is its title.
+      rows: [...sect.querySelectorAll(".flow-link")].map((x) => (x.getAttribute("title") || "").trim()),
       acts: [...sect.querySelectorAll(".step-sect-head .link-btn")].map((x) => x.textContent.trim()),
     } : null;
   });

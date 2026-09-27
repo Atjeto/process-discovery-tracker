@@ -257,15 +257,17 @@ test("renderInteractionList: not splittable by default (back-compat)", () => {
 
 /* ---- TASK 3: identityLine in the interaction rows ------------------- */
 
-test("2.0.1: a row names its control and window in its title, not in a second line", () => {
+test("2.0.1: a row names the control it acted on under the action; its window is only in the title (the screen is the head's)", () => {
   const events = [inter({
     kind: "invoked", control_type: "Button", name: "Search",
     window_title: "Customer lookup · CRM",
   })];
   const html = renderInteractionList(events, 1);
   assert.ok(html.includes("Clicked Search"));
-  assert.ok(!html.includes("si-identity"), "no identity line under the action");
+  assert.ok(html.includes('<span class="si-control">Button · &quot;Search&quot;</span>'));
   assert.ok(/<li class="step-interaction" data-idx="0" title="Button · [^"]*Search[^"]*Customer lookup/.test(html));
+  const two = renderInteractionList([events[0], events[0]], 2, { splittable: true });
+  assert.ok(two.includes('aria-label="Split the step after this action"'), "the scissors have a name");
 });
 
 test("renderInteractionList: the identity carries no marker, whatever the control's identity (a project is recorded once)", () => {
@@ -299,22 +301,27 @@ test("the step pane has no Save button: the name saves on Enter and blur, the de
   assert.ok(!src.includes("step-remembered"), "no remembered tag on a row: the run says it in one line");
 });
 
-test("2.0.1: the step pane in parts: the name and its acts, In the PDD, then Screenshots, Notes, Attachments and Recorded; no fields typed, no fact line", () => {
+test("2.0.1: the step editor in the order of the work: the head (with Play and Show on timeline), what you write (with what was said), the screenshots, what it is made of, what is attached; only the scissors change the step's shape", () => {
   const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
   const at = (s) => src.indexOf(s);
-  assert.ok(at("${nameFieldHtml(step, callbacks.picker, callbacks.code)}") < at('<div class="actions step-acts">'));
-  assert.ok(at('<div class="actions step-acts">') < at('<div class="step-part step-doc" id="step-doc">'));
-  assert.ok(at('<span class="step-part-title">In the PDD</span>') < at("${callbacks.systemHtml") &&
-    at("${callbacks.systemHtml") < at('<textarea id="step-desc"') && at('<textarea id="step-desc"') < at("${flowSectionHtml(") &&
-    at("${flowSectionHtml(") < at('id="flag-waste"') && at('id="flag-waste"') < at("${callbacks.extrasHtml") &&
-    at("${callbacks.extrasHtml") < at("${recordedHtml("));
-  assert.ok(!/stepFieldsHtml|Fields typed|step-fact|descriptionHint/.test(src));
+  const order = ['<div class="step-head">', "${nameFieldHtml(step, callbacks.picker)}", 'step-state"', '<span class="step-code" id="step-code"',
+    'id="step-facts"', "${callbacks.systemHtml", 'id="btn-step-watch"', 'id="btn-step-jump"',
+    '<div class="step-write" id="step-doc">', '<textarea id="step-desc"', "${saidDuringStepHtml(", "${flowSectionHtml(", 'id="flag-waste"',
+    "${callbacks.shotsHtml", '<div class="step-made">', "${recordedHtml(", '<div class="step-attached">'];
+  for (let i = 1; i < order.length; i++) {
+    assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), "in order: " + order[i]);
+  }
+  for (const gone of ["btn-step-hide", "btn-step-merge", "btn-step-delete", "btn-step-make-sub", "step-look-slot",
+    "stepFieldsHtml", "descriptionHint", "In the PDD<"]) {
+    assert.ok(!src.includes(gone), "not in the editor: " + gone);
+  }
 });
 
-test("C21: a step named from the library shows the activity's code beside its name", () => {
-  const html = nameFieldHtml({ name: "Save the order" }, null, "SO-01");
-  assert.ok(html.includes('<label>Name<span class="step-code" id="step-code" title="The code of the library activity this step is named from">SO-01</span><input'));
-  assert.ok(!nameFieldHtml({ name: "x" }, null, "").includes("step-code"));
+test("2.0.1: the name is the editor's title, labelled for a screen reader; the library code is beside it, not in the field", () => {
+  const html = nameFieldHtml({ name: "Save the order" }, null);
+  assert.ok(html.includes('<label class="sr-only" for="step-name">Name</label>'));
+  assert.ok(html.includes('id="step-name" class="step-title-input" value="Save the order"'));
+  assert.ok(!html.includes("step-code"));
 });
 
 /* Lane FX3 (validation pass 3, F16): Split says why it cannot act, in the
@@ -341,11 +348,11 @@ const LIB = { format: 1, version: "1", applications: [
 test("C21: the name field offers the activities of the step's system as a list under it, and any name can still be typed", () => {
   const picker = Library.pickerFor(LIB, "Salesforce", { library_activity: "a2" });
   const html = nameFieldHtml({ name: "Salesforce - Order: Save order" }, picker);
-  assert.ok(html.includes('id="step-name" value="Salesforce - Order: Save order"'), "the name field keeps the step's name");
+  assert.ok(html.includes('value="Salesforce - Order: Save order"'), "the name field keeps the step's name");
   assert.ok(html.includes('role="combobox"') && html.includes('aria-controls="step-activity-list"'));
   assert.ok(html.includes('<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="Activities of Salesforce" hidden></ul>'));
   assert.ok(!html.includes("step-lib-note"), "no quiet line when there are activities");
-  assert.ok(/title="Pick an activity of Salesforce from the library, or type any name./.test(html));
+  assert.ok(/title="The name of this step. Pick an activity of Salesforce from the library, or type any name./.test(html));
   assert.ok(!html.includes(" list="), "no datalist on the step pane's name: the picker is the list");
 });
 

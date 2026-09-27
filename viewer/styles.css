@@ -46,6 +46,10 @@
   --accent: #c07830;
   --accent-hover: #a86828;
   --accent-muted: rgba(192, 120, 48, 0.10);
+  /* 2.0.1 (accessibility review): link text at 4.5:1 or more on the light
+     fills (--accent is 3.5:1 on white), and the edge of a field at 3:1. */
+  --link: #99591c;
+  --field-border: #948771;
   --accent-text: #fff8f0;
   --accent-2: #5a7a8a;
   --accent-3: #b08040;
@@ -100,6 +104,8 @@
   --accent: #2dd4bf;
   --accent-hover: #5ee0d0;
   --accent-muted: rgba(45, 212, 191, 0.12);
+  --link: var(--accent);
+  --field-border: #66708f;
   --accent-text: #0a2020;
   --accent-2: #6a93c4;
   --accent-3: #fbbf24;
@@ -179,7 +185,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
   padding: 1px 4px; font-size: 10px; font-family: var(--font-mono);
   outline: none; max-width: 180px;
 }
-.link-btn { background: transparent; border: 0; padding: 2px 4px; color: var(--accent);
+.link-btn { background: transparent; border: 0; padding: 2px 4px; color: var(--link);
   font-family: inherit; font-size: 11px; cursor: pointer; text-decoration: underline;
   text-underline-offset: 2px; transition: color 0.12s; }
 .link-btn:hover:not(:disabled) { color: var(--fg); background: transparent; border-color: transparent; }
@@ -1120,6 +1126,12 @@ details.analysis-module { padding: 0; }
   padding: 0;
 }
 .editor-toolbar .hint { font-size: 11px; color: var(--fg-3); margin: 0; }
+/* 2.0.1: the verbs on the selected step, beside + Add step. */
+.editor-toolbar .step-verbs { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.editor-toolbar .step-verbs[hidden] { display: none; }
+.editor-toolbar .step-verbs > [hidden] { display: none; }
+.editor-toolbar .danger { background: transparent; border-color: var(--bad); color: var(--bad); }
+.editor-toolbar .danger:hover:not(:disabled) { background: var(--bad); color: #fff; }
 /* A quiet text tool beside the main work (the Steps level's tool, the apps
    outside the process; lane FX3: the Map's Fit, Reset layout and Edited
    maps, and the edited maps' row acts):
@@ -1295,6 +1307,21 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .step-row .step-sub-open:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-muted); }
 /* Hidden steps render dimmed in the list so they're visibly suppressed. */
 .step-row.step-hidden { opacity: 0.4; }
+/* 2.0.1: a transaction's differences from the reference on its rows (the
+   whole line on hover), and a greyed row where a step of the reference is
+   missing. */
+.step-diff {
+  flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 8px;
+  font-size: 10px; color: var(--fg); border: 1px dashed var(--fg-3); white-space: nowrap;
+}
+.step-diff-extra { border-color: var(--accent-2); }
+.step-diff-repeated { border-color: var(--accent); }
+.step-ghost {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin-bottom: 1px; min-height: 26px;
+  border: 1px dashed var(--rule); border-radius: 3px; font-size: 12px; color: var(--fg-3); cursor: default;
+}
+.step-ghost .step-name { flex: 1; min-width: 0; color: var(--fg-2); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-ghost .multi-check-space { flex: 0 0 14px; }
 
 /* A step's state as a word (Draft / Confirmed / Edited / Added / Hidden).
    The text stays --fg / --fg-3 so small labels keep AA contrast in both
@@ -1377,17 +1404,66 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .run-notes { margin: 0 0 4px; padding: 0 0 0 16px; list-style: none; font-size: 11px; font-style: italic; color: var(--fg-3); }
 .run-notes li { margin: 1px 0; overflow-wrap: anywhere; }
 
-/* ===== Step detail editor (compact) ===== */
+/* ===== Step detail editor ===== */
+/* 2.0.1 (the owner's review of the Steps page): an editor in the order the
+   work goes (step-editor.js _renderStepDetail): the head (the name as the
+   title, the state, the library code, one line of facts), what you write,
+   the screenshots, what the step is made of and what is attached, in one
+   column. No rules: space parts the groups, and the text keeps a readable
+   width. The step panel stays beside it, in its own column. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+#step-detail .step-head, #step-detail .step-body { max-width: 860px; }
+.step-head { margin-bottom: 14px; }
+.step-title-row { display: flex; align-items: center; gap: 10px; }
+.step-title-row .step-name-field { flex: 0 1 auto; min-width: 0; }
+.step-title-row .step-state { flex: none; }
 /* C21: the name field and its picker (step-editor.js nameFieldHtml): the one
-   quiet line beside the label while the field has the focus, and the list of
+   quiet line under the title while the field has the focus, and the list of
    the library's activities under the field, over what follows it. */
-.step-name-field { position: relative; margin-bottom: 10px; }
-.editor-detail-pane .step-name-field > label { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; margin-bottom: 0; }
-.editor-detail-pane .step-name-field > label input[type=text] { flex: 1 0 100%; }
+.step-name-field { position: relative; }
+.editor-detail-pane input.step-title-input {
+  display: block; field-sizing: content; min-width: 12ch; max-width: 100%; margin: 0; padding: 3px 6px;
+  font-family: var(--font-ui); font-size: 18px; font-weight: 600; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+}
+.editor-detail-pane input.step-title-input:hover { border-color: var(--field-border); }
+.editor-detail-pane input.step-title-input:focus { background: var(--bg-2); border-color: var(--field-border); outline: 2px solid var(--accent-2); outline-offset: 1px; }
 /* C21: the code of the library activity the step is named from. */
-.step-code { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--fg-2); }
-.step-lib-note { margin-left: auto; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--fg-3); visibility: hidden; }
-.step-name-field:focus-within .step-lib-note { visibility: visible; }
+.step-code { flex: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--fg-2); }
+.step-lib-note { display: block; padding: 2px 7px 0; font-size: 11px; color: var(--fg-3); visibility: hidden; height: 0; }
+.step-name-field:focus-within .step-lib-note { visibility: visible; height: auto; }
+/* The line of facts: the system (a field that reads as the line's first
+   fact until it is changed), the screen, where, how long, how common. */
+.step-facts {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin: 2px 0 0 1px;
+  font-size: 12px; color: var(--fg-2);
+}
+.editor-detail-pane input.step-system-inline {
+  field-sizing: content; min-width: 9ch; max-width: 100%; margin: 0; padding: 1px 22px 1px 5px;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+}
+.editor-detail-pane input.step-system-inline::placeholder { color: var(--fg-2); opacity: 1; }
+.editor-detail-pane input.step-system-inline:hover { border-color: var(--field-border); }
+.editor-detail-pane input.step-system-inline:focus { background: var(--bg-2); border-color: var(--field-border); outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.step-facts-rest { overflow-wrap: anywhere; }
+.step-facts .step-system-inline + datalist + .step-facts-rest::before { content: "\00B7\00A0"; }
+.step-facts .link-btn { font-size: 12px; }
+/* The body: one column, its groups parted by space. */
+.step-body { display: flex; flex-direction: column; gap: 18px; }
+.step-body > * { min-width: 0; }
+.step-attached:empty { display: none; }
+/* A small lead over a list (screenshots, attachments, notes) and over a
+   field: sentence case, a size up from the old capitals. */
+.step-lead, .editor-detail-pane label.step-field, .step-write .step-sect-title, .step-write .tr-more-title {
+  font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--fg-2);
+}
+.step-lead { margin: 0 0 4px; }
+.step-adds { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; }
+.step-adds .link-btn { font-size: 12px; padding: 2px 0; }
 .step-activity-list {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
   margin: 2px 0 0; padding: 4px 0; list-style: none; max-height: 240px; overflow-y: auto;
@@ -1421,30 +1497,23 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   background: rgba(0, 0, 0, 0.62); color: #fff; font-family: var(--font-mono); font-size: 10px;
 }
 .editor-detail-pane label {
-  display: block; margin-bottom: 10px; font-size: 11px;
-  letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3);
+  display: block; margin-bottom: 10px; font-size: 12px; color: var(--fg-2);
 }
-.editor-detail-pane label input[type=text],
 .editor-detail-pane label textarea {
   display: block; width: 100%; margin-top: 4px;
-  padding: 6px 9px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg); font-family: inherit; font-size: 12px;
-  text-transform: none; letter-spacing: 0;
+  padding: 7px 9px; background: var(--bg-2);
+  border: 1px solid var(--field-border); border-radius: 3px;
+  color: var(--fg); font-family: inherit; font-size: 13px; line-height: 1.45;
 }
-.editor-detail-pane label input[type=text]:focus,
-.editor-detail-pane label textarea:focus {
-  outline: none; border-color: var(--accent);
+.editor-detail-pane label textarea:focus { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+/* The description grows with its text. */
+.editor-detail-pane textarea { field-sizing: content; min-height: 72px; max-height: 320px; resize: vertical; }
+/* Waste, the last line of what you write. */
+.editor-detail-pane label.step-waste {
+  display: inline-flex; gap: 6px; align-items: center; margin: 8px 0 0; font-size: 12px; color: var(--fg);
 }
-.editor-detail-pane textarea { min-height: 76px; resize: vertical; }
-/* Waste, the last line of In the PDD. */
-.editor-detail-pane .flags { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; }
-.editor-detail-pane .flags label {
-  display: inline-flex; gap: 6px; align-items: center;
-  margin: 0; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--fg);
-}
-/* Recorded: the actions one line each (what happened, when), the control in
-   the row's title; the verb says the kind, so no colour code. */
+/* Recorded: the actions one line each (what happened, the control it acted
+   on, when); the verb says the kind, so no colour code. */
 .editor-detail-pane .evidence { margin: 0; font-size: 12px; }
 .editor-detail-pane .evidence p { margin: 3px 0; color: var(--fg-2); }
 .editor-detail-pane .step-interaction-list {
@@ -1468,15 +1537,15 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .editor-detail-pane .si-split-btn.active { opacity: 1; color: var(--accent); }
 /* 2.0.1: where the two steps of a Merge with next met. */
 .editor-detail-pane .step-interaction.was-boundary { border-bottom: 2px dashed var(--accent); }
-.editor-detail-pane .si-text { flex: 1; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
+.editor-detail-pane .si-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.editor-detail-pane .si-text { color: var(--fg); overflow-wrap: anywhere; }
+.editor-detail-pane .si-control { font-size: 11px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-detail-pane .si-time {
   flex: none; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px;
 }
 .editor-detail-pane .actions {
   display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
 }
-/* The acts on the whole step, under its name. */
-.editor-detail-pane .actions.step-acts { margin-top: 0; }
 /* C19: why a sub-process has no Split or Merge, in one line. */
 .step-sub-note { flex: 1 1 100%; margin: 2px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
 .editor-detail-pane .danger {
@@ -1576,12 +1645,15 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .app.read-only #btn-group-selected,
 .app.read-only #btn-ignored-apps,
 .app.read-only .step-lib-note,
+.app.read-only .step-adds,
 .app.read-only .multi-check,
 .app.read-only #btn-dissolve-level,
 .app.read-only #btn-flow-only-when,
 .app.read-only #btn-flow-go-to,
 .app.read-only #btn-flow-remove-condition,
 .app.read-only .flow-link-remove,
+.app.read-only #step-verbs,
+.app.read-only #btn-step-split,
 .app.read-only #btn-step-hide,
 .app.read-only #btn-step-make-sub,
 .app.read-only #btn-step-dissolve,
@@ -1608,13 +1680,17 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .app.read-only .help-action,
 .app.read-only #btn-restore-annotations { display: none !important; }
 /* A field that is read, not typed in: no fill, a dashed edge. */
-.app.read-only #step-detail :is(input, textarea)[readonly],
 .app.read-only #ov-doc :is(input, textarea)[readonly] { background: transparent; border-style: dashed; resize: none; }
+/* 2.0.1: a hand-off opened read only reads the selected step as a record:
+   its fields as text, an empty description and an unset Waste left out. */
+.app.read-only #step-detail :is(input, textarea)[readonly] { background: transparent; border-color: transparent; resize: none; }
+.app.read-only #step-detail label.step-field:has(> textarea:placeholder-shown),
+.app.read-only #step-detail label.step-waste:has(> input:not(:checked)) { display: none; }
 
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {
   flex: 0 0 14px; width: 14px; height: 14px;
-  border: 1.5px solid var(--fg-4); border-radius: 3px;
+  border: 1.5px solid var(--fg-3); border-radius: 3px;
   background: transparent;
   position: relative;
   /* P2.14: a per-row control shows only where it can be used: on the row
@@ -1625,7 +1701,9 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 }
 .step-row:hover .multi-check,
 .step-row.selected .multi-check,
-.step-row.multi-selected .multi-check { opacity: 1; }
+.step-row.multi-selected .multi-check,
+.step-row .multi-check:focus-visible { opacity: 1; }
+.step-row .multi-check:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
 .step-row.multi-selected .multi-check {
   background: var(--accent-2);
   border-color: var(--accent-2);
@@ -2249,33 +2327,32 @@ button.danger:disabled {
 
 /* ===== C16: what the analyst adds (views/analyst-ui.js) ===== */
 #step-detail:focus { outline: none; }
-/* The step pane's Screenshots, Notes and Attachments: a small title with its
-   add act on the same line. */
+/* The step editor's lists (screenshots, attachments, notes) and the Flow
+   line: a small lead, then the list. */
 .step-sect { margin-top: 12px; }
+.step-shots-part > .step-sect, .step-attached > .step-sect:first-child { margin-top: 0; }
 .step-sect-head { display: flex; align-items: baseline; gap: 8px; }
 .step-sect-title { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
-/* 2.0.1 (the owner's review): the step pane in parts, each fact said once:
-   the name and the acts on the step, then In the PDD, Screenshots, Notes,
-   Attachments and Recorded, each under a rule and a title that reads above
-   the fields' own labels. */
-.step-part { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--rule); }
-.step-part-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin-bottom: 8px; }
-.step-part-title, .step-part > .step-sect-head > .step-sect-title {
-  font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-2);
-}
-.step-part-hint { font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
-/* Recorded opens and closes on its summary, its chevron the transcript's. */
+/* Recorded opens and closes on its summary, its chevron the transcript's; it
+   is the one part with a line of its own. */
+.step-part-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
+.step-part-title { font-size: 12px; font-weight: 600; color: var(--fg-2); }
+.step-part-hint { font-size: 12px; color: var(--fg-3); overflow-wrap: anywhere; }
 .step-recorded > summary { cursor: pointer; list-style: none; user-select: none; margin-bottom: 0; }
 .step-recorded > summary::-webkit-details-marker { display: none; }
 .step-recorded > summary:hover .step-part-title { color: var(--fg); }
+.step-recorded > summary:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 .step-recorded[open] > summary { margin-bottom: 6px; }
 .step-recorded[open] > summary .tr-more-chevron::before { content: "\25BE"; }
-/* Said during this step, inside In the PDD: a field's label, no rule. */
-.step-doc .tr-more { margin-top: 0; border-top: 0; }
-.step-doc .tr-more-head { padding: 0 0 6px; letter-spacing: 1px; }
-.step-doc .tr-more[open] > .tr-more-head { color: var(--fg-3); }
-.step-doc .tr-more-title { letter-spacing: 1px; }
-.step-sect .step-shots { margin-top: 6px; }
+/* Said during this step, under the description it feeds: a lead, each
+   sentence with its Add. */
+.step-write .tr-more { margin: 0 0 8px; border-top: 0; }
+.step-write .tr-more-head { padding: 0 0 4px; }
+.step-write .tr-more[open] > .tr-more-head { color: var(--fg-2); }
+#step-said .tr-row { justify-content: flex-start; }
+#step-said .tr-text { flex: 0 1 auto; }
+.step-sect .step-shots { margin-top: 4px; }
+
 .step-shot-card { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .step-shot-acts { display: flex; gap: 6px; font-size: 11px; }
 .step-shot-acts .link-btn { font-size: 11px; }
@@ -2304,9 +2381,13 @@ button.danger:disabled {
 .step-flow input[type=text]:focus, .step-flow select:focus { outline: none; border-color: var(--accent); }
 .step-flow input[type=text]:disabled { opacity: 0.55; }
 #step-only-when, .flow-link-when { flex: 1 1 140px; }
+.flow-link .flow-link-to { max-width: 50%; }
 .flow-link-to { flex: 0 1 auto; max-width: 100%; }
 .flow-links { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.flow-link { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* 2.0.1: a link row is one sentence of fields: "Goes back to [step] when
+   [condition] Remove" (the whole sentence in its title). */
+.flow-link { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.flow-link .flow-link-edit { display: contents; }
 .flow-link-text { font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
 .flow-link.pending .flow-link-text { color: var(--fg-3); }
 .att-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

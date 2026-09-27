@@ -153,6 +153,18 @@ function endsAt(step, datas) {
   return "";
 }
 
+/* ---- where a step is in the recording ------------------------------------- */
+
+/* "Transaction 1 at 0:19" (the run's title, AD-29), or "0:19 into the
+   recording" for a step outside every run; "" without a time. `runs` as
+   runs-model.buildRuns returns them. */
+function pointer(step, runs, originMs) {
+  const at = sinceStart(step && step.time_range && step.time_range.start, originMs);
+  if (!at) return "";
+  const run = (runs || []).find((r) => r.caseId === (step && step.case_id));
+  return run ? run.title + " at " + at : at + " into the recording";
+}
+
 /* The step's time on screen: "42s", "2m 17s", "1h 04m". */
 function duration(tr) {
   return formatMs(Date.parse(tr && tr.end) - Date.parse(tr && tr.start));
@@ -165,15 +177,12 @@ function formatMs(ms) {
 }
 
 /* The step pane's Recorded line (2.0.1, the owner's review: each fact once,
-   in words): how many actions on which screen, how long the step took and
-   where a draft ends. The system is the System field's, the code sits by
-   the name, the transaction and the start are the step's row. */
+   in words): how many actions and where a draft ends. The screen, the time
+   and how long are the head's line. */
 function recordedLine(parts) {
   const p = parts || {};
   const n = p.actions || 0;
-  const what = n ? (n === 1 ? "1 action" : n + " actions") + (p.screen ? " on " + p.screen : "")
-    : p.screen ? "on " + p.screen : "";
-  return [what, p.duration ? "took " + p.duration : "", p.ends].filter(Boolean).join(" · ");
+  return [n ? (n === 1 ? "1 action" : n + " actions") : "", p.ends].filter(Boolean).join(" · ");
 }
 
 /* The step panel's rows and the line above them (the owner's review of the
@@ -280,6 +289,6 @@ function occurrencesLine(rows, runCount, playable, uncovered) {
 
 module.exports = {
   stepDatas, draftedNarration, isDraftedDescription, commitName, endsAt,
-  duration, formatMs, recordedLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
+  pointer, duration, formatMs, recordedLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
   SECRET_VALUE, isBlankValue,
 };

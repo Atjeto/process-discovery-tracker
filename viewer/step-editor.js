@@ -85,7 +85,23 @@
                plain step), onOpenSub(step), readOnly (lane HV: a hand-off
                opened read only, where a row is neither renamed nor
                ticked), originMs (when the recording started, for the
-               moment each row shows) } */
+               moment each row shows), marks (2.0.1: a Map of step id =>
+               { kind, text }, a run's differences from the reference on its
+               rows, run-differences.js rowMarks), ghosts ([{ after, kind,
+               name, text }]: the reference steps the run did not do, each a
+               greyed row after the row `after`, first when null) } */
+  const DIFF_LABELS = { extra: "Extra", order: "Moved", repeated: "Again", skipped: "Skipped", not_done: "Not done" };
+  function _ghostRow(g) {
+    const row = document.createElement("div");
+    row.className = "step-ghost";
+    row.dataset.ghost = g.kind;
+    row.title = g.text;
+    row.setAttribute("aria-disabled", "true");
+    row.innerHTML = `<span class="multi-check-space" aria-hidden="true"></span>` +
+      `<span class="step-name">${escapeHtml(g.name)}</span>` +
+      `<span class="step-diff step-diff-${escapeAttr(g.kind)}">${escapeHtml(DIFF_LABELS[g.kind] || g.kind)}</span>`;
+    return row;
+  }
   function renderStepList(host, steps, selectedId, onSelect, onMultiSelect, onInlineRename, multiSelectedSet, onContextMenu, opts) {
     const o = opts || {};
     host.innerHTML = "";
@@ -98,6 +114,9 @@
       return;
     }
     const ms = multiSelectedSet || new Set();
+    const marks = o.marks instanceof Map ? o.marks : new Map();
+    const ghosts = Array.isArray(o.ghosts) ? o.ghosts : [];
+    for (const g of ghosts) if (g.after === null) host.appendChild(_ghostRow(g));
     for (const s of steps) {
       const row = document.createElement("div");
       const isMulti = ms.has(s.step_id);
@@ -126,10 +145,15 @@
       const subHtml = Number.isInteger(subCount)
         ? `<button type="button" class="step-sub-open" title="Open this sub-process: its steps, in every transaction that goes through it">▸ ${subCount} ${subCount === 1 ? "sub-step" : "sub-steps"}</button>`
         : "";
+      const diff = marks.get(s.step_id);
+      const diffHtml = diff
+        ? `<span class="step-diff step-diff-${escapeAttr(diff.kind)}" title="${escapeAttr(diff.text)}">${escapeHtml(DIFF_LABELS[diff.kind] || diff.kind)}</span>` : "";
+      // 2.0.1: the tick is a checkbox a keyboard reaches (Space ticks it).
       row.innerHTML = `
-        <span class="multi-check" title="Click to select for merge or to hide several steps at once"></span>
+        <span class="multi-check" role="checkbox" tabindex="${o.readOnly ? "-1" : "0"}" aria-checked="${isMulti ? "true" : "false"}"
+          aria-label="${escapeAttr("Tick " + (s.name || "this step") + ", to act on several steps")}" title="Tick to merge, group or hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${subHtml}${flagBadges}${chipHtml}
+        ${subHtml}${diffHtml}${flagBadges}${chipHtml}
         <span class="step-time">${escapeHtml(sinceStart(s.time_range && s.time_range.start, o.originMs))}</span>
       `;
       if (subHtml) {
@@ -165,6 +189,12 @@
         e.stopPropagation();
         if (onMultiSelect && !o.readOnly) onMultiSelect(s.step_id);
       });
+      checkEl.addEventListener("keydown", (e) => {
+        if (e.key !== " " && e.key !== "Enter") return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (onMultiSelect && !o.readOnly) onMultiSelect(s.step_id);
+      });
       // Right-click a row for the full step context menu (Split / Merge /
       // Rename / Hide / Jump / flags), the same menu the Steps timeline
       // blocks open.
@@ -184,6 +214,7 @@
         beginInlineRename(nameEl, s, onInlineRename, steps, o.nameListId);
       };
       host.appendChild(row);
+      for (const g of ghosts) if (g.after === s.step_id) host.appendChild(_ghostRow(g));
     }
   }
 
@@ -260,30 +291,37 @@
   /* What the Description field shows while it is empty. */
   const DESC_HINT = "What the person does in this step";
 
-  /* The selected step's editor (P1.7; 2.0.1, the owner's review: in parts,
-     each fact said once). Nothing waits for a Save button: the name saves on
-     Enter or when the field is left, the description when it is left, Waste
-     on its click; each is one undoable edit.
-       the head: the name (C21: the code of the library activity it is named
-         from beside it) and the acts on the whole step: Watch (with a video:
-         it plays the step in the step panel), Show on timeline, Hide, (C19)
-         Open as a sub-process, or on a sub-process Open sub-process and
-         Dissolve sub-process, and Delete (added steps only);
-       In the PDD: what the document says about the step: the System (C16),
-         the Description (C7; the drafting's narration is not its hint: the
-         actions are under Recorded) with "Said during this step" under it
-         while a transcript is attached (C8), the Flow line (C17: Only when
-         and Decision) and Waste;
-       Screenshots, Notes and Attachments (C16, views/analyst-ui.js);
-       Recorded (a native <details>, open or closed as the analyst last left
-         it): one line (how many actions, on which screen, how long, where a
-         draft ends), the actions, each but the last with the scissors that
-         split the step after it, and Merge with next, Merge selected (on a
-         sub-process one line saying why neither applies).
-     Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the code,
-     the Recorded line, the description, (C16) the System field and the
-     screenshots, notes and attachments (views/analyst-ui.js), and (C21) the
-     name field's picker: `picker` (library.js pickerFor) and
+  /* The selected step's editor (P1.7; 2.0.1, the owner's review of the Steps
+     page: an editor for the analyst, in the order the work goes, each fact
+     once). Nothing waits for a Save button: the name saves on Enter or when
+     the field is left, the description when it is left, Waste on its click;
+     each is one undoable edit. The verbs that change the step's shape are
+     the Steps toolbar's (steps-view.js), the scissors excepted.
+       the head: the name as the title (C21: the library's picker under it),
+         the step's state and (C21) the code of the library activity it is
+         named from; then one line of facts: the system (C16, a field: the
+         recording's until the analyst types another), the screen, where the
+         step is, how long it took, in how many transactions, then Play
+         (with a video: the step in the step panel's video, the panel beside
+         the editor opening again when it was closed) and Show on timeline;
+       what you write: the Description (C7; the drafting's narration is not
+         its hint: the actions are under Recorded) with what was said during
+         the step under it (C8), each sentence with Add, the Flow line (C17:
+         Only when and Decision, each a sentence of fields) and Waste;
+       the step's screenshots, the one the PDD prints marked;
+       what it is made of: Recorded (a native <details>, open or closed as
+         the analyst last left it; open in a hand-off opened read only): how
+         many actions and where a draft ends, then the actions with the
+         control each acted on, each but the last with the scissors that
+         split the step after it;
+       what is attached: its attachments and notes, when it has some, and
+         one row of adds (views/analyst-ui.js).
+     One column of a readable width; the step panel beside it (step-panel.js)
+     shows every time the step happened, with its video, screenshots, what
+     was said and notes. Callbacks (steps-view.js stepDetailCallbacks) carry
+     the facts, the state, the code, the Recorded line, the description, the
+     System field, the screenshots and what is attached, and (C21) the name
+     field's picker: `picker` (library.js pickerFor) and
      onPickActivity(stepId, activityId). */
   function renderStepDetail(host, step, callbacks) {
     _rendering = true;
@@ -294,68 +332,41 @@
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
-    // C19: a sub-process is not split or merged (its steps are, inside it).
+    // C19: a sub-process is not split (its steps are, inside it).
     const sub = callbacks.subProcess || null;
-    // P0.1: merge is the inverse of split, shown right beside it. "Merge with
-    // next" always merges this step + the following one; the count-labelled
-    // "Merge N selected" appears only when 2+ steps are ticked, so one button
-    // never silently does two things.
-    const mergeSelCount = (callbacks && callbacks.multiSelectedCount) || 0;
-    const mergeSelectedBtn = mergeSelCount >= 2
-      ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
-      : "";
-    const isHidden = step.state === "hidden";
-    // Item 5 (L12b): a drafted step is hidden, never deleted (the next Analyze
-    // would draft it again; a hidden one stays out). Only a step the analyst
-    // added has Delete.
-    const isAdded = step.state === "manually_authored";
     // The analyst's description; a draft's narration is not a description.
     const desc = typeof callbacks.description === "string" ? callbacks.description : (step.description || "");
-    const watchBtn = callbacks.recordingAvailable
-      ? `<button id="btn-step-watch" title="Play this step in the video of the step panel">▶ Watch</button>` : "";
-    // C19: the way into a sub-process and its inverse, or the verb that makes
-    // one of this step.
-    const subBtns = sub
-      ? `<button id="btn-step-open-sub" title="Show the ${sub.count} ${sub.count === 1 ? "step" : "steps"} of this sub-process, in every transaction that goes through it">▸ Open sub-process</button>` +
-        `<button id="btn-step-dissolve" title="${escapeAttr(sub.group
-          ? "Put its steps back in its place, in every transaction. Ctrl+Z undoes it."
-          : "Drop its sub-steps, in every transaction; what you added to them moves to this step. Ctrl+Z undoes it.")}">Dissolve sub-process</button>`
-      : callbacks.canOpenAsSub
-        ? (callbacks.openAsSubWhy
-          ? `<button id="btn-step-make-sub" disabled title="${escapeAttr(callbacks.openAsSubWhy)}">Open as a sub-process</button>`
-          : `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click, a sheet's cells), in every transaction where it happens, and show them">Open as a sub-process</button>`)
-        : "";
-    const mergeActs = sub
-      ? `<p class="step-sub-note" id="step-sub-note">A sub-process is not split or merged: dissolve it first, or work on its steps inside.</p>`
-      : `<button id="btn-step-merge" title="Merge this step with the whole next step of its transaction. To move the line between them, merge, then click the scissors where this step should end.">Merge with next</button>
-            ${mergeSelectedBtn}`;
+    const chip = stepChip(step.state);
+    const facts = (callbacks.facts || []).filter(Boolean);
     host.innerHTML = `
-      ${nameFieldHtml(step, callbacks.picker, callbacks.code)}
-      <div class="actions step-acts">
-        ${watchBtn}
-        <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
-        <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
-        ${subBtns}
-        ${isAdded ? `<button id="btn-step-delete" class="danger" title="${escapeAttr(sub && sub.group ? "Delete this sub-process you made, with its steps" : "Delete this step you added")}">Delete</button>` : ""}
-      </div>
-      <div class="step-part step-doc" id="step-doc">
-        <div class="step-part-head"><span class="step-part-title">In the PDD</span><span class="step-part-hint">what the document says about this step</span></div>
-        ${callbacks.systemHtml || ""}
-        <label>Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
-        ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
-        ${flowSectionHtml(step, callbacks.flow)}
-        <div class="flags">
-          <label title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste: this step should not be needed</label>
+      <div class="step-head">
+        <div class="step-title-row">
+          ${nameFieldHtml(step, callbacks.picker)}
+          <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
+          ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel's video, beside the editor">▶ Play</button>` : ""}<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button></p>
       </div>
-      ${callbacks.extrasHtml || ""}
-      ${recordedHtml(resolvedInter, interIds.length, {
-        // 2.0.1: each action but the last has its scissors (a click splits
-        // after that action; there is no split at a guess), and after Merge
-        // with next the place where the two steps met is marked.
-        splittable: !sub, mergedAfter: callbacks.mergedAfterIndex, originMs: callbacks.originMs,
-        line: callbacks.recorded, actsHtml: mergeActs, open: recordedOpen(interIds.length, _keptRecordedOpen()),
-      })}`;
+      <div class="step-body">
+        <div class="step-write" id="step-doc">
+          <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
+          ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
+          ${flowSectionHtml(step, callbacks.flow)}
+          <label class="step-waste" title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste: this step should not be needed</label>
+        </div>
+        ${callbacks.shotsHtml ? `<div class="step-shots-part">${callbacks.shotsHtml}</div>` : ""}
+        <div class="step-made">
+          ${recordedHtml(resolvedInter, interIds.length, {
+            // 2.0.1: each action but the last has its scissors (a click
+            // splits after that action; there is no split at a guess), and
+            // after Merge with next the place where the two steps met is
+            // marked. A hand-off opened read only shows the actions open.
+            splittable: !sub, mergedAfter: callbacks.mergedAfterIndex, originMs: callbacks.originMs,
+            line: callbacks.recorded, open: callbacks.readOnly || recordedOpen(interIds.length, _keptRecordedOpen()),
+          })}
+        </div>
+        <div class="step-attached">${callbacks.attachedHtml || ""}</div>
+      </div>`;
     // 2.0.1: Recorded stays open or closed as the analyst last left it.
     const recEl = document.getElementById("step-recorded");
     const recHead = recEl && recEl.querySelector("summary");
@@ -395,17 +406,6 @@
     wireFlow(host, step, callbacks);
     // C16: the System field, the screenshots, notes and attachments.
     if (callbacks.wireExtras) callbacks.wireExtras(host, () => _rendering);
-    const deleteBtn = document.getElementById("btn-step-delete");
-    if (deleteBtn) deleteBtn.addEventListener("click", () =>
-      callbacks.onDelete && callbacks.onDelete(step.step_id));
-    const hideBtn = document.getElementById("btn-step-hide");
-    if (hideBtn) hideBtn.addEventListener("click", () =>
-      callbacks.onToggleHide && callbacks.onToggleHide(step.step_id));
-    // C19: the sub-process verbs.
-    const onClick = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
-    onClick("btn-step-open-sub", () => callbacks.onOpenSub && callbacks.onOpenSub(step.step_id));
-    onClick("btn-step-dissolve", () => callbacks.onDissolve && callbacks.onDissolve(step.step_id));
-    onClick("btn-step-make-sub", () => callbacks.onOpenAsSub && callbacks.onOpenAsSub(step.step_id));
     // The scissors after an action split the step there (Ctrl+Z undoes it).
     host.querySelectorAll(".si-split-btn").forEach((b) => {
       b.addEventListener("click", (e) => {
@@ -414,19 +414,15 @@
         if (callbacks.onSplitAt && Number.isInteger(after)) callbacks.onSplitAt(after);
       });
     });
-    onClick("btn-step-merge", () => callbacks.onMerge && callbacks.onMerge(step.step_id));
-    const _mergeSelBtn = document.getElementById("btn-step-merge-selected");
-    if (_mergeSelBtn) _mergeSelBtn.addEventListener("click", () =>
-      callbacks.onMergeSelected && callbacks.onMergeSelected());
     const jumpBtn = document.getElementById("btn-step-jump");
     if (jumpBtn) {
       jumpBtn.addEventListener("click", () => callbacks.onJumpToFlow && callbacks.onJumpToFlow(step));
       jumpBtn.disabled = !(step.time_range && step.time_range.start);
     }
-    const watchEl = document.getElementById("btn-step-watch");
-    if (watchEl) {
-      watchEl.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
-      watchEl.disabled = !(step.time_range && step.time_range.start);
+    const playBtn = document.getElementById("btn-step-watch");
+    if (playBtn) {
+      playBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
+      playBtn.disabled = !(step.time_range && step.time_range.start);
     }
   }
 
@@ -439,17 +435,18 @@
      step's system (or no system yet, on a step added by hand) the field says
      so in one quiet line while it has the focus (styles.css), and no list
      opens. */
-  function nameFieldHtml(step, picker, code) {
+  function nameFieldHtml(step, picker) {
     const acts = picker && Array.isArray(picker.activities) ? picker.activities : [];
     const note = picker && picker.note ? `<span class="step-lib-note" id="step-lib-note">${escapeHtml(picker.note)}</span>` : "";
-    // C21: the code of the library activity the step is named from.
-    const codeHtml = code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(code)}</span>` : "";
     const title = acts.length
-      ? "Pick an activity of " + picker.system + " from the library, or type any name. Saved when you press Enter or leave the field"
-      : "Saved when you press Enter or leave the field";
+      ? "The name of this step. Pick an activity of " + picker.system + " from the library, or type any name. Saved when you press Enter or leave the field"
+      : "The name of this step. Saved when you press Enter or leave the field";
     const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="step-activity-list"` : "";
+    // 2.0.1: the name is the editor's title; its label is for a screen reader.
     return `<div class="step-name-field">` +
-      `<label>Name${codeHtml}${note}<input type="text" id="step-name" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}"></label>` +
+      `<label class="sr-only" for="step-name">Name</label>` +
+      `<input type="text" id="step-name" class="step-title-input" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}">` +
+      note +
       (acts.length ? `<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="${escapeAttr("Activities of " + picker.system)}" hidden></ul>` : "") +
       `</div>`;
   }
@@ -590,12 +587,15 @@
     return html + opt(StepFlow.END, "End the process", selected === StepFlow.END, false);
   }
 
+  /* A link row is one sentence made of its fields (2.0.1: the sentence and the
+     fields once said the same thing twice): "Goes back to [step] when
+     [condition] Remove"; the whole sentence is the row's title. */
   function _linkRowHtml(i, link, choices) {
     const isNew = link == null;
     const key = isNew ? "new" : String(i);
     const reading = isNew ? "Choose where the process goes after this step." : link.reading;
-    return '<li class="flow-link' + (isNew ? " pending" : "") + '" data-i="' + key + '">' +
-      '<span class="flow-link-text">' + escapeHtml(reading) + "</span>" +
+    return '<li class="flow-link' + (isNew ? " pending" : "") + '" data-i="' + key + '" title="' + escapeAttr(reading) + '">' +
+      '<span class="flow-link-text">' + escapeHtml(isNew ? "Goes to" : link.verb || "Goes to") + "</span>" +
       '<span class="flow-link-edit">' +
         '<select class="flow-link-to" id="flow-link-to-' + key + '" aria-label="Goes to" title="' + escapeAttr(FLOW_TITLES.target) + '">' +
           _targetOptions(choices, isNew ? null : link.to, !isNew && link.missing) + "</select>" +
@@ -891,11 +891,16 @@
       const t = sinceStart(ev.timestamp, opts.originMs);
       const wasLine = met === i && i < events.length - 1;
       const splitBtn = (splittable && i < events.length - 1)
-        ? `<button type="button" class="si-split-btn" data-after="${i}" title="Split the step here: the first part ends after this action">&#9988;</button>`
+        ? `<button type="button" class="si-split-btn" data-after="${i}" title="Split the step here: the first part ends after this action" aria-label="Split the step after this action">&#9988;</button>`
         : "";
-      const title = identityLine((ev && ev.data) || {}).text + (wasLine ? "\nThe two merged steps met here" : "");
+      const data = (ev && ev.data) || {};
+      const title = identityLine(data).text + (wasLine ? "\nThe two merged steps met here" : "");
+      // 2.0.1: the control it acted on (the developer's reading); its window
+      // is the screen on the head's line.
+      const control = identityLine(Object.assign({}, data, { window_title: "", window_title_regex: "" })).text;
       return `<li class="step-interaction${wasLine ? " was-boundary" : ""}" data-idx="${i}" title="${escapeAttr(title)}">` +
-        `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
+        `<span class="si-body"><span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
+        (control ? `<span class="si-control">${escapeHtml(control)}</span>` : "") + `</span>` +
         `<span class="si-time">${escapeHtml(t)}</span>${splitBtn}</li>`;
     });
     const missing = total - events.length;
@@ -910,7 +915,7 @@
 
   module.exports = {
     renderStepList, renderStepDetail,
-    describeInteraction, renderInteractionList, recordedHtml, recordedOpen, splitBlocker,
+    describeInteraction, renderInteractionList, recordedHtml, recordedOpen, keepRecordedOpen: _keepRecordedOpen, splitBlocker,
     nameFieldHtml, activityListHtml,
   };
 })();

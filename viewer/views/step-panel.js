@@ -216,7 +216,8 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
   return '<li class="sp-occ' + (focus ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '"' +
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
-      (m && m.kind === "covered" ? '<button type="button" class="sp-play" title="Play this occurrence in the video above">▶</button>' : "") +
+      (m && m.kind === "covered" ? '<button type="button" class="sp-play" title="Play this occurrence in the video above" aria-label="' +
+        escapeAttr("Play " + StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun())) + '">▶</button>' : "") +
       '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun())) + "</span>" +
       (waste ? '<span class="step-tag-waste sp-waste-tag" title="Flagged as waste: this step should not be needed">Waste</span>' : "") +
     "</div>" +

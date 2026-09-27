@@ -360,36 +360,43 @@ shown only after a failed run; `#toast`.
   `.run-status`; on the open, confirmed reference transaction Undo confirm
   in the head, right after the status: `.run-row [data-act="reopen-run"]`
   (`.run-undo-confirm`); `.run-actions [data-act="confirm-run"]`;
-  `.run-diffs li[data-kind]` (the differences, `extra`, `order`, `skipped`,
-  `repeated`: exactly what the head's count counts) and above them
-  `.run-notes li[data-kind]` (said apart, no difference: `left_out`, a
-  stretch left out of the analysis, and `not_done`, a step that happens
-  only under a condition and was not done; lane FX1); `.run-names-note`
-  ("Named for you: N of M steps", from the library or the project's own names); `.run-show-hidden`.
+  `.run-notes li[data-kind="left_out"]` (a stretch left out of the
+  analysis, no difference); `.run-show-hidden`. 2.0.1: the differences are
+  on the rows: `.step-row .step-diff.step-diff-<kind>` (`extra`, `order`,
+  `repeated`; its title the line the PDD's 4.1 prints) and a greyed row
+  `.step-ghost[data-ghost="skipped"|"not_done"]` (not a `.step-row`) where a step of
+  the reference is missing (run-differences.js `rowMarks`).
 - The step rows `.step-row[data-step-id]` (double-click renames the row its
   first click landed on; right-click opens `#step-ctx-menu`; `.step-time`
-  is when the step starts, m:ss on the one clock, 2.0.1). A sub-process
-  row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
-  sub-steps", a click opens its level).
-- The step pane `#step-detail` (focus it before Ctrl+V), in parts since
-  2.0.1 (`.step-part`, each under a `.step-part-title`): the head,
-  `#step-code` (the library activity's code, C21, when the step is named
-  from one), `#step-name` (Enter or leaving it saves; contract C21: a click, typing or
-  Down opens the library's activities of the step's system under it,
-  `#step-activity-list .step-activity` (`.step-activity-name`,
-  `.step-activity-code`, `.step-activity-desc`; `.current` the step's own,
-  `.active` the keys' row), a click or Enter picks one; with none, the quiet
-  line `#step-lib-note`, shown only while the name has the focus) and the
-  acts `.step-acts`: `#btn-step-watch` (only with a video), `#btn-step-jump`,
-  `#btn-step-hide`, C19: `#btn-step-make-sub` (Open as a sub-process, on a
-  step of a transaction; 2.0.1: disabled with its reason in its title on a
-  recorded step with fewer than two actions, a sheet's cells filled one
-  after another counting as one, and then left out of `#step-ctx-menu`) or
-  on a sub-process `#btn-step-open-sub` and `#btn-step-dissolve`, and
-  `#btn-step-delete` (added steps only); In the PDD `#step-doc`:
-  `#step-system` (with `#step-system-list`), `#step-desc` (leaving it
-  saves), `#step-said` (the sentences that start in the step's window, the
-  step before bounding its lead),
+  is when the step starts, m:ss on the one clock, 2.0.1; the tick
+  `.multi-check`, a checkbox a keyboard reaches: Space ticks it). A
+  sub-process row carries `data-sub-process="true"` and `.step-sub-open`
+  ("▸ N sub-steps", a click opens its level).
+- The Steps toolbar's verbs on the selected step (2.0.1, `#step-verbs`,
+  hidden while none is selected or two or more are ticked; a verb that
+  cannot act is disabled with its reason in its title): `#btn-step-split`
+  (Recorded opens and its first scissors take the focus), `#btn-step-merge`,
+  `#btn-step-hide` (Hide step, or Unhide), `#btn-step-make-sub` (Open as a
+  sub-process, on a step of a transaction; disabled on a recorded step with
+  fewer than two actions, a sheet's cells filled one after another counting
+  as one) or on a sub-process `#btn-step-open-sub` and `#btn-step-dissolve`,
+  and `#btn-step-delete` (added steps only). With two or more ticked:
+  `#btn-merge-selected`, `#btn-delete-selected-steps`, `#btn-group-selected`.
+- The step editor `#step-detail` (focus it before Ctrl+V; 2.0.1, one
+  column): the head `.step-head`: `#step-name` (the title; Enter or leaving
+  it saves; contract C21: a click, typing or Down opens the library's
+  activities of the step's system under it, `#step-activity-list
+  .step-activity` (`.step-activity-name`, `.step-activity-code`,
+  `.step-activity-desc`; `.current` the step's own, `.active` the keys'
+  row), a click or Enter picks one; with none, the quiet line
+  `#step-lib-note`, shown only while the name has the focus), `.step-state`
+  (the step's chip), `#step-code` (the library activity's code, C21, when
+  the step is named from one), the line of facts `#step-facts`: `#step-system`
+  (with `#step-system-list`), `.step-facts-rest`, `#btn-step-watch` (Play,
+  only with a video: the step in the step panel) and `#btn-step-jump`; what
+  you write `#step-doc`: `#step-desc` (leaving it saves), `#step-said` (the
+  sentences that start in the step's window, the step before bounding its
+  lead),
   the Flow line `#step-flow` (contract C17: `#step-flow-line`,
   `#btn-flow-only-when`, `#btn-flow-go-to`; the condition `#step-only-when`
   with `#btn-flow-remove-condition`; the links `.flow-links
@@ -398,17 +405,19 @@ shown only after a failed run; `#toast`.
   (`#flow-link-to-<i>`, its options the transaction's steps and `end`),
   `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
   `#flag-waste`;
-  `#step-shots-sect` (`#btn-step-add-shot` opens `#shot-src-menu
-  [data-src="video_frame"|"paste"|"file"]`; `.step-shot-card[data-ref][data-kind]`
-  with `[data-shot-act="pdd"|"remove"]`, and `[data-shot-act="unhide"]`);
-  `#step-notes-sect` (`#btn-step-add-note`, `.step-note [data-note-act="edit"|"delete"]`);
-  `#step-atts-sect` (`#btn-step-attach`, `[data-att-act]`); Recorded
-  `details#step-recorded` (a click on its summary opens or closes it on
-  every step, kept in `localStorage` `pdt.recordedOpen`; its line
-  `summary .step-part-hint`): the actions `.step-interaction` (their
-  `.si-split-btn` scissors split after an action; none on a step with fewer
-  than two), `#btn-step-merge` and `#btn-step-merge-selected`, or on a
-  sub-process `#step-sub-note` in their place.
+  `#step-shots-sect` (only when the step has screenshots;
+  `.step-shot-card[data-ref][data-kind]` with `[data-shot-act="pdd"|"remove"]`,
+  and `[data-shot-act="unhide"]`); Recorded `details#step-recorded` (a
+  click on its summary opens or closes it on every step, kept in
+  `localStorage` `pdt.recordedOpen`; its line `summary .step-part-hint`):
+  the actions `.step-interaction` (`.si-text`, `.si-control`, `.si-time`;
+  their `.si-split-btn` scissors split after an action; none on a step with
+  fewer than two, nor on a sub-process); what is attached:
+  `#step-atts-sect` (`[data-att-act]`) and `#step-notes-sect`
+  (`.step-note [data-note-act="edit"|"delete"]`), each only when it has
+  some, then `.step-adds`: `#btn-step-add-shot` (opens `#shot-src-menu
+  [data-src="video_frame"|"paste"|"file"]`), `#btn-step-add-note`,
+  `#btn-step-attach`.
 
 **The step panel** (`#step-panel`, `views/step-panel.js`; hidden until a
 door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line

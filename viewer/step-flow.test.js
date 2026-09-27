@@ -49,6 +49,16 @@ test("a link row reads where it goes, relative to its step", () => {
   assert.equal(F.linkReading(LIST, mk("h", "Hidden"), { to: "s2", when: "" }), "Goes to step 2, Check the customer");
 });
 
+test("2.0.1: the words before a link row's fields in the step editor", () => {
+  const s4 = LIST[3];
+  assert.equal(F.linkVerb(LIST, s4, { to: "s3" }), "Goes back to");
+  assert.equal(F.linkVerb(LIST, LIST[0], { to: "s2" }), "Goes on to");
+  assert.equal(F.linkVerb(LIST, LIST[0], { to: "s4" }), "Skips to");
+  assert.equal(F.linkVerb(LIST, LIST[2], { to: "end" }), "Then", "Then [End the process] when ...");
+  assert.equal(F.linkVerb(LIST, s4, { to: "gone" }), "Goes to");
+  assert.equal(F.linkVerb(LIST, s4, { to: "x9" }, new Map([["x9", "Create the customer"]])), "Goes to", "another transaction's step");
+});
+
 test("a condition set on the same step in another transaction reads as set there", () => {
   assert.equal(F.inheritedLine([{ text: "a new customer", where: "Transaction 1" }]),
     "Only when a new customer (set in Transaction 1) · then the next step");

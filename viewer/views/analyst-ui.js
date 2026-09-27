@@ -90,30 +90,32 @@ function _sessionSystems() {
   return (((s && s.annotations) || {}).steps || []).map((st) => SystemNames.whereOfStep(st, inter, names).system);
 }
 
-/* The System field: pick a system of this session or the shared list, or
-   type one. `derived` is the system the recording gives (its placeholder). */
+/* The System field, first on the step editor's line of facts (2.0.1): the
+   system this step is done in, read as the line's first fact. Pick a system
+   of this session or the shared list, or type one; `derived` is the system
+   the recording gives, shown while the step has none of its own. */
 function systemFieldHtml(step, derived) {
   const own = typeof step.system === "string" ? step.system : "";
   const choices = AC.systemChoices(_sessionSystems(), SystemNames.knownSystems());
-  return '<label>System <input type="text" id="step-system" list="step-system-list" value="' + escapeAttr(own) + '"' +
-    ' placeholder="' + escapeAttr(derived && !own ? derived : "Pick or type the system") + '"' +
-    ' title="The system this step happens in. Saved when you press Enter or leave the field; empty gives back the recorded one."></label>' +
+  return '<input type="text" class="step-system-inline" id="step-system" list="step-system-list" value="' + escapeAttr(own) + '"' +
+    ' placeholder="' + escapeAttr(derived && !own ? derived : "Set the system") + '" aria-label="System"' +
+    ' title="' + escapeAttr("The system this step is done in" + (derived ? " (the recording says " + derived + ")" : "") +
+      ". Type another to change it; empty gives back the recorded one. Saved when you press Enter or leave the field.") + '">' +
     '<datalist id="step-system-list">' + choices.map((c) => '<option value="' + escapeAttr(c) + '"></option>').join("") + "</datalist>";
 }
 
-function _sectHead(title, btnId, btnLabel, btnTitle, headTitle) {
-  return '<div class="step-sect-head"' + (headTitle ? ' title="' + escapeAttr(headTitle) + '"' : "") + ">" +
-    '<span class="step-sect-title">' + escapeHtml(title) + "</span>" +
-    '<button type="button" class="link-btn" id="' + btnId + '" title="' + escapeAttr(btnTitle) + '">' + escapeHtml(btnLabel) + "</button></div>";
+/* A small lead over a list of the step editor (2.0.1). */
+function _lead(title, headTitle) {
+  return '<div class="step-lead" role="heading" aria-level="4"' + (headTitle ? ' title="' + escapeAttr(headTitle) + '"' : "") + ">" +
+    escapeHtml(title) + "</div>";
 }
 
-/* The step pane's Screenshots, Notes and Attachments. */
-function stepExtrasHtml(step) {
-  const s = _sess();
-  const anno = (s && s.annotations) || {};
+/* The step's screenshots (C16), in the step editor beside the video: each
+   with the one the PDD prints marked; nothing when the step has none. */
+function stepShotsHtml(step) {
   const shots = shotsOf(step);
   const hidden = AC.hiddenShotCount(step);
-  const origin = recordingStartMs(s);
+  if (!shots.length && !hidden) return "";
   // The PDD prints one screenshot per step (lane LF-PIPE): the one chosen,
   // else the step's first.
   const chosen = shots.find((sh) => sh.ref === step.pdd_screenshot);
@@ -134,6 +136,19 @@ function stepExtrasHtml(step) {
           ? "Remove this screenshot you added. Ctrl+Z brings it back." : "Take this screenshot off the step; the recording keeps it.") + '">Remove</button>' +
       "</div></div>";
   }).join("");
+  return '<div class="step-sect" id="step-shots-sect">' + (shots.length ? _lead("Screenshots") : "") +
+      (shotHtml ? '<div class="step-shots">' + shotHtml + "</div>" : "") +
+      (hidden ? '<button type="button" class="link-btn step-unhide-shots" data-shot-act="unhide">Show hidden screenshots (' + hidden + ")</button>" : "") +
+    "</div>";
+}
+
+/* What is attached to the step (C16): its attachments and its notes, each
+   list only when it has some, then one row of the adds (a screenshot, a
+   note, a file). */
+function stepAttachedHtml(step) {
+  const s = _sess();
+  const anno = (s && s.annotations) || {};
+  const origin = recordingStartMs(s);
   const notes = notesOf(step).map((n) => '<li class="step-note" data-note-id="' + escapeAttr(n.id) + '">' +
     '<span class="step-note-text">' + escapeHtml(n.text) + "</span>" +
     (n.at ? '<span class="step-note-at">at ' + escapeHtml(sinceStart(n.at, origin)) + "</span>" : "") +
@@ -144,20 +159,12 @@ function stepExtrasHtml(step) {
     escapeHtml(a.label || a.file) + "</span>" +
     '<button type="button" class="link-btn" data-att-act="open">Open</button>' +
     '<button type="button" class="link-btn" data-att-act="remove">Remove</button></li>').join("");
-  return '<div class="step-sect step-part" id="step-shots-sect">' +
-      _sectHead("Screenshots", "btn-step-add-shot", "Add screenshot ▾",
-        "Add a screenshot to this step: a frame of the video, a pasted image (Ctrl+V in this pane) or a file") +
-      (shotHtml ? '<div class="step-shots">' + shotHtml + "</div>" : "") +
-      (hidden ? '<button type="button" class="link-btn step-unhide-shots" data-shot-act="unhide">Show hidden screenshots (' + hidden + ")</button>" : "") +
-    "</div>" +
-    '<div class="step-sect step-part" id="step-notes-sect">' +
-      _sectHead("Notes", "btn-step-add-note", "Add note", "Add a note to this step", NOT_PRINTED) +
-      (notes ? '<ul class="step-notes">' + notes + "</ul>" : "") +
-    "</div>" +
-    '<div class="step-sect step-part" id="step-atts-sect">' +
-      _sectHead("Attachments", "btn-step-attach", "Attach file...",
-        "Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the project folder; the PDD lists it and its export carries it.") +
-      (atts ? '<ul class="att-list">' + atts + "</ul>" : "") +
+  return (atts ? '<div class="step-sect" id="step-atts-sect">' + _lead("Attachments") + '<ul class="att-list">' + atts + "</ul></div>" : "") +
+    (notes ? '<div class="step-sect" id="step-notes-sect">' + _lead("Notes", NOT_PRINTED) + '<ul class="step-notes">' + notes + "</ul></div>" : "") +
+    '<div class="step-adds">' +
+      '<button type="button" class="link-btn" id="btn-step-add-shot" title="Add a screenshot to this step: a frame of the video, a pasted image (Ctrl+V in this pane) or a file">Add screenshot ▾</button>' +
+      '<button type="button" class="link-btn" id="btn-step-add-note" title="Add a note to this step. ' + escapeAttr(NOT_PRINTED) + '">Add note</button>' +
+      '<button type="button" class="link-btn" id="btn-step-attach" title="Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the project folder; the PDD lists it and its export carries it.">Attach file…</button>' +
     "</div>";
 }
 
@@ -166,13 +173,26 @@ function stepExtrasHtml(step) {
 function wireStepPane(host, step, isRendering) {
   const sys = host.querySelector("#step-system");
   if (!sys) return;
+  // The list offers only the systems that match what the field holds, so
+  // while the field has the focus it is emptied, the system set shown as
+  // its placeholder, and the whole list opens; left untouched, the system
+  // set comes back and nothing is saved.
+  const shown = { value: sys.value, placeholder: sys.placeholder };
+  let edited = false;
+  const restore = () => { sys.value = shown.value; sys.placeholder = shown.placeholder; edited = false; };
+  sys.addEventListener("focus", () => {
+    edited = false;
+    if (sys.value) { sys.placeholder = sys.value; sys.value = ""; }
+  });
+  sys.addEventListener("input", () => { edited = true; });
   const commit = () => {
     if ((isRendering && isRendering()) || !sys.isConnected) return;
+    if (!edited) { restore(); return; }
     setSystem(step.step_id, sys.value);
   };
   sys.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); commit(); }
-    else if (e.key === "Escape") { e.preventDefault(); sys.value = step.system || ""; }
+    else if (e.key === "Escape") { e.preventDefault(); restore(); sys.blur(); }
   });
   sys.addEventListener("blur", commit);
 }
@@ -531,7 +551,7 @@ function wireOverviewAttachments(host) {
 }
 
 module.exports = {
-  fileUrl, shotsOf, notesOf, systemFieldHtml, stepExtrasHtml, wireStepPane, setSystem,
+  fileUrl, shotsOf, notesOf, systemFieldHtml, stepShotsHtml, stepAttachedHtml, wireStepPane, setSystem,
   addScreenshot, togglePdd, removeShot, addNote, editNote, deleteNote,
   attachFile, openAttachment, removeAttachment, overviewAttachmentsHtml, wireOverviewAttachments,
 };

@@ -63,6 +63,34 @@ for (const c of GOLDEN.cases) {
   });
 }
 
+/* 2.0.1: the rows carry the differences: every line of a golden case is a
+   row's mark or a greyed row, with the same text, and nothing else is. */
+for (const c of GOLDEN.cases) {
+  test("golden rows: " + c.name, () => {
+    const pattern = inOrder(c.pattern), run = inOrder(c.run).map((s, i) => Object.assign({ step_id: "r" + i }, s));
+    const opts = caseOpts(c);
+    const { marks, ghosts } = RD.rowMarks(pattern, run, opts);
+    const said = new Set([...marks.values()].map((m) => m.text).concat(ghosts.map((g) => g.text)));
+    const want = new Set(RD.differences(pattern, run, opts).filter((d) => d.kind !== "left_out").map((d) => d.text));
+    assert.deepEqual([...said].sort(), [...want].sort());
+    for (const id of marks.keys()) assert.ok(run.some((s) => s.step_id === id), "a mark stands on a row of the run");
+    for (const g of ghosts) assert.ok(g.after === null || run.some((s) => s.step_id === g.after), "a greyed row follows a row of the run");
+  });
+}
+
+test("2.0.1: a skipped step is placed after the step before it in the reference; a repeated step is marked from its second time", () => {
+  const ref = [{ name: "A", draft_key: "a" }, { name: "B", draft_key: "b" }, { name: "C", draft_key: "c" }];
+  const run = [{ step_id: "1", name: "A", draft_key: "a" }, { step_id: "2", name: "C", draft_key: "c" },
+    { step_id: "3", name: "C", draft_key: "c" }, { step_id: "4", name: "X", draft_key: "x" }];
+  const { marks, ghosts } = RD.rowMarks(ref, run);
+  assert.deepEqual(ghosts.map((g) => [g.after, g.kind, g.name]), [["1", "skipped", "B"]]);
+  assert.equal(marks.get("2"), undefined, "the first C is the reference's C");
+  assert.equal(marks.get("3").kind, "repeated");
+  assert.equal(marks.get("4").kind, "extra");
+  assert.equal(RD.rowMarks([{ name: "A", draft_key: "a" }], [{ step_id: "1", name: "B", draft_key: "b" }]).ghosts[0].after, null,
+    "a reference step with nothing done before it goes first");
+});
+
 /* Lane FX1: the default reference transaction, the PDD's rule
    (pdd_export._Session._pick_pattern). */
 for (const c of GOLDEN.reference_cases) {

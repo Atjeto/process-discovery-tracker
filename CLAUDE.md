@@ -17,7 +17,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-44, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-46, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
   Data contracts C1 to C21:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.1** (2026-09-27), the light
+- **Versions.** The current release is **v2.0.1** (2026-09-28), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -157,7 +157,7 @@ the folder.
   as `library.json` and keeps it (`--library`). The step pane's name field
   offers the activities of the step's system (`library.js` `pickerFor`): a
   pick sets the name, the system, `library_activity` and, when the step has
-  none, the description, and the name shows the activity's code. Any
+  none, the description, and the title shows the activity's code. Any
   name can still be typed; a rename still names the project's other drafts
   of its key (the session's own names). Help, *Build the library...*
   (`views/library-builder-ui.js`) is the owner's tool: it reads projects and
@@ -230,6 +230,14 @@ the folder.
   small video, screenshots, what was said, notes. How the transactions ran
   fits again when the panel opens or closes beside it (`dfg-viewer.js`
   `resize`).
+- **The Steps page is an editor** (2.0.1, the owner's review): the toolbar
+  acts on the selected step (Split..., Merge with next, Hide step, the
+  sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a
+  transaction's differences (`rowMarks`), and the selected step reads in
+  one column in the order of the work: name as the title, one line of
+  facts (with Play, into the step panel beside it), what you write, the
+  screenshots, Recorded, what is attached (`step-editor.js`
+  `_renderStepDetail`).
 - **The map** (lane MV, `map-view.js`, `refmap-ui.js`). The Map shows the map
   the PDD prints: the As-Is copy chosen for the PDD, else
   `process_map_step.bpmn` (written by `--mine`), drawn by bpmn-js and linked

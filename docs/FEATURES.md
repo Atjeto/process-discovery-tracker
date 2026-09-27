@@ -220,15 +220,24 @@ The viewer says *transaction* for one pass through the process and
   4.1 lists the same lines). A step named like a step of the reference
   transaction is that step, whatever the recorder drafted (the map already
   draws them as one box).
-- **The step pane**, in parts, each fact once: the name (with the library
-  activity's code) and the acts on the step (Watch, Show on timeline,
-  Hide, the sub-process verbs, Delete); *In the PDD*: System, Description
-  (with what was said during the step, each sentence under one step), the
-  Flow line and Waste; Screenshots (a video frame, a pasted image or a
-  file, and the one the PDD prints), Notes and Attachments; *Recorded*:
-  one line (the actions, the screen, how long, where a draft ends), the
-  actions with their scissors, and Merge, open or closed as you last left
-  it. Everything saves as you go, and Ctrl+Z undoes it.
+- **The Steps page is an editor**: the toolbar acts on the selected step
+  (*+ Add step*, *Split...*, *Merge with next*, *Hide step*, *Open as a
+  sub-process* or *Open sub-process* and *Dissolve sub-process*, *Delete*
+  on a step you added), or on the ticked steps once two or more are
+  ticked. The list marks each transaction's differences from the reference
+  on its rows (*Extra*, *Again*, *Moved*, a greyed *Skipped* or *Not done*
+  row).
+- **The selected step**, one column in the order of the work, each fact
+  once: its name as the title, its state and its library code; one line of
+  facts (the system, a field, then the screen, where the step is, how long
+  it took, in how many transactions) with *Play* and *Show on timeline*;
+  what you write (Description with what was said under it, each sentence
+  under one step, with *Add*; the Flow line; Waste); the screenshots, the
+  one the PDD prints marked; *Recorded* (the actions with the control each
+  acted on, the scissors to split), open or closed as you last left it; the
+  attachments and notes, and one row of adds. The step panel stays beside
+  it. Everything saves as you go, and Ctrl+Z undoes it. A hand-off opened
+  read only reads it as a record.
 - **Step flow**: the Flow line reads "Always · then the next step" until
   the analyst sets *Only when...* (a condition: the map draws a decision
   with an "otherwise" path around the step) or *Go to...* (after the step,
@@ -261,7 +270,7 @@ The viewer says *transaction* for one pass through the process and
 - **The activity library** (contract C21): the step pane's name offers the
   activities of the step's system from the project's library (a step added
   by hand picks its system first); a pick sets the name, the system and,
-  when the step has none, the description, and the name shows the
+  when the step has none, the description, and the title shows the
   activity's code. Any name can still be typed. A project keeps the
   library it started with (its `library.json`). Help, *Build the
   library...* (the owner's tool) reads projects and hand-off zips, lists

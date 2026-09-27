@@ -201,7 +201,10 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     fixes: ((g.querySelector(".run-fixes") || {}).textContent || "").trim(),
     namesNote: ((g.querySelector(".run-names-note") || {}).textContent || "").trim(),
     meta: ((g.querySelector(".run-meta") || {}).textContent || "").trim(),
-    diffs: [...g.querySelectorAll(".run-diffs li")].map((li) => li.textContent.trim()),
+    // 2.0.1: the differences are on the rows (a mark, a greyed Skipped row),
+    // each with the line the PDD's 4.1 prints as its title.
+    diffs: [...new Set([...g.querySelectorAll('.step-row:not(.step-ghost) .step-diff, .step-ghost[data-ghost="skipped"]')]
+      .map((el) => (el.getAttribute("title") || "").trim()))].sort(),
     // The open transaction's acts: its buttons, and Undo confirm in its head.
     acts: [...g.querySelectorAll(".run-actions > button, .run-row button[data-act]")].map((b) => b.dataset.act),
     showHidden: (() => { const cb = g.querySelector('[data-act="show-hidden"]'); return cb ? { checked: cb.checked, label: (cb.parentElement.textContent || "").trim() } : null; })(),
@@ -276,10 +279,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       note: ((document.getElementById("runs-pane-note") || {}).textContent || "").trim(),
       confirm: ((document.querySelector('#step-list .run-group.open [data-act="confirm-run"]') || {}).textContent || "").trim(),
     }));
-    const okPane = pane.title === "Transactions · 4" &&
-      pane.note === "One pass through the process: the SME presses the transaction key at the start of each." &&
-      pane.confirm === "Confirm transaction";
-    record("AD-29: the Steps list is headed Transactions · 4, with one line saying what a transaction is in a recording; the reference transaction's button reads Confirm transaction",
+    const okPane = pane.title === "Transactions · 4" && pane.note === "" && pane.confirm === "Confirm transaction";
+    record("AD-29: the Steps list is headed Transactions · 4 (2.0.1: no standing line under it in a recording; Help says what a transaction is); the reference transaction's button reads Confirm transaction",
       okPane, JSON.stringify(pane));
     const ok = st.length === 4 && st.map((g) => g.caseId).join() === RUNS.join() &&
       st.map((g) => g.title).join() === "Transaction 1,Transaction 2,Transaction 3,Transaction 4" &&
@@ -386,9 +387,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     await openRun(R2);
     const g2 = await group(R2);
     const row2 = g2.rows.find((r) => r.id === searchIds[R2]) || {};
-    const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && g2.rows.every((r) => r.tags === 0) &&
-      g2.namesNote === "Named for you: 1 of 10 steps";
-    record("run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row: one line on the run says how many names are remembered names), without a re-analysis",
+    const ok2 = row2.name === NAME_SEARCH && row2.chip === "" && g2.rows.every((r) => r.tags === 0) && g2.namesNote === "";
+    record("run 2 shows the new name on its draft right away (no chip, it matches its drafts; no tag on the row, and no line counting the names given for the analyst), without a re-analysis",
       ok2, JSON.stringify({ row2, namesNote: g2.namesNote }));
     if (!(ok && ok2)) await shot(page, "fail-runs-rename.png");
 
@@ -693,9 +693,9 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     } catch (e) { err = errText(e); }
     const st = await runsState();
     const metas = RUNS.map((r) => metaDiffs((st.find((g) => g.caseId === r) || {}).meta));
-    const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
+    const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r].slice().sort())) &&
       metas.join() === ",2 differences,1 difference,no differences";
-    record("L12b item 3: each other transaction lists its differences from the confirmed reference transaction (2: an extra step and a repeated one, 3: a skipped step, 4: none) and its line counts them",
+    record("L12b item 3 (2.0.1: on the rows): each other transaction marks its differences from the confirmed reference transaction on its rows (2: an extra step and a repeated one, 3: a greyed skipped step, 4: none), each mark titled with the PDD's line, and its head counts them",
       ok, JSON.stringify({ err, seen: [R2, R3, R4].map((r) => seen[r]), metas }));
     if (!ok) await shot(page, "fail-runs-differences.png");
     // AD-28: only the reference run is confirmed; opening another run is its
@@ -784,7 +784,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const oid = await outlookRow.getAttribute("data-step-id", { timeout: T });
       await outlookRow.click({ timeout: T });
       await page.waitForSelector("#btn-step-jump", { timeout: T });
-      noDelete = (await page.$("#btn-step-delete")) === null;
+      noDelete = await page.evaluate(() => { const b = document.getElementById("btn-step-delete"); return !b || b.hidden; });
       await page.locator("#btn-step-hide", { hasText: /^Hide step$/ }).click({ timeout: T });
       await waitRows(R4, 5);
       const openId = await rowByName(R4, "Salesforce - Account lookup: Open customer record").getAttribute("data-step-id", { timeout: T });
@@ -984,7 +984,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       [R4]: ["Extra step: Call the customer (after Salesforce - Account lookup: Open customer record).",
         "Skipped: Salesforce - Order: Save order (step 3 of the reference transaction)."],
     };
-    const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r])) &&
+    const ok = !err && [R2, R3, R4].every((r) => JSON.stringify(seen[r]) === JSON.stringify(WANT[r].slice().sort())) &&
       metas(st).join() === ",3 differences,1 difference,2 differences" &&
       shown && !shown.text && shown.acts === 0 &&
       fs.readFileSync(path.join(S2, "annotations.json"), "utf-8") === before;

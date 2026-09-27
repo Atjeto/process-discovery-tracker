@@ -1310,9 +1310,16 @@ async function unreadableAnnotationsPin() {
         for (const e of s.events || []) if (e.type === "system" && e.data && e.data.path) at[e.data.path] = e.timestamp;
         const desc = document.getElementById("step-desc");
         const sys = document.getElementById("step-system");
-        const parts = ["step-doc", "step-shots-sect", "step-notes-sect", "step-atts-sect", "step-recorded"].map((id) => document.getElementById(id));
+        const parts = ["step-doc", "step-shots-sect", "step-recorded"].map((id) => document.getElementById(id));
         return {
           recorded: ((document.querySelector("#step-recorded > summary .step-part-hint") || {}).textContent || "").trim(),
+          facts: ((document.querySelector("#step-facts .step-facts-rest") || {}).textContent || "").trim(),
+          // Where the step is: its run's number and its start on the one clock.
+          wantWhere: (() => {
+            const runs = ((s.stats && s.stats.case_stats) || []).filter((c) => !c.parent_case_id)
+              .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
+            return "Transaction " + (runs.findIndex((c) => c.case_id === step.case_id) + 1) + " at " + local(step.time_range.start);
+          })(),
           system: sys ? (sys.value || sys.placeholder) : "",
           parts: parts.every(Boolean) && parts.every((el, i) => !i || !!(parts[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)),
           gone: document.querySelectorAll("#step-detail .step-fact, #step-detail .step-fields, #step-detail .si-legend, #step-detail .si-identity").length,
@@ -1341,13 +1348,13 @@ async function unreadableAnnotationsPin() {
       }, detail.stepId));
     } catch (e) { logActionError("P1.7 + P2.16 step detail", e); detail.err = String(e.message).split("\n")[0]; }
     const detailOk = !!(!detail.err && /^(Salesforce|SAP|Excel|Outlook|Notepad)$/.test(detail.system || "") &&
-      new RegExp("^" + detail.actions + " actions? on \\S[^\u00b7]* \u00b7 took [^\u00b7]+ \u00b7 ").test(detail.recorded || "") &&
-      detail.wantEnds && (detail.recorded || "").endsWith(" \u00b7 " + detail.wantEnds) &&
+      detail.wantEnds && detail.recorded === detail.actions + " action" + (detail.actions === 1 ? "" : "s") + " \u00b7 " + detail.wantEnds &&
+      (detail.facts || "").includes(detail.wantWhere + " \u00b7 took ") &&
       detail.parts && detail.gone === 0 &&
       detail.tiles === 0 && detail.descResident && !detail.saveButton &&
       detail.shots && detail.shots.length === detail.refs && detail.refs > 0 && detail.shots.every((x) => x.loaded) &&
       JSON.stringify(detail.shots.map((x) => x.stamp)) === JSON.stringify(detail.wantStamps));
-    record("P1.7 + P2.16 + V2 item 1 + 2.0.1: the step detail in parts (In the PDD, Screenshots, Notes, Attachments, Recorded), each fact once: the system in its field, the Recorded line (N actions on the screen · took the time · ends at its commit), no fact line, no fields typed, no legend, no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
+    record("P1.7 + P2.16 + V2 item 1 + 2.0.1: the step editor in the order of the work (what you write, the screenshots, Recorded), each fact once: the system in its field first on the line of facts (then the screen, Transaction N at m:ss, took the time), the Recorded line (N actions · ends at its commit), no fact line, no fields typed, no legend, no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
       detailOk, JSON.stringify(detail));
     if (!detailOk) await shot(page, "fail-step-detail.png");
 
@@ -1959,12 +1966,16 @@ async function unreadableAnnotationsPin() {
         require("./state.js").setSelectedStepId(first ? first.step_id : null);
       }, RUN.caseId);
       await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-      // Lane FX1: the left-out line is said above the differences, in its own
-      // list, so the head counts only the differences.
+      // Lane FX1: the left-out line is said above the steps, in its own
+      // list, so the head counts only the differences (2.0.1: those are on
+      // the rows, each titled with its line).
       await page.waitForSelector("#step-list .run-group.open .run-notes li", { timeout: T });
-      lo.diffs = await page.evaluate(() => [...document.querySelectorAll(
-        "#step-list .run-group.open .run-notes li, #step-list .run-group.open .run-diffs li")]
-        .map((li) => ({ kind: li.dataset.kind, text: li.textContent, list: li.parentElement.className })));
+      lo.diffs = await page.evaluate(() => [...document.querySelectorAll("#step-list .run-group.open .run-notes li")]
+        .map((li) => ({ kind: li.dataset.kind, text: li.textContent, list: "run-notes" }))
+        .concat([...document.querySelectorAll("#step-list .run-group.open .step-row:not(.step-ghost) .step-diff")]
+          .map((el) => ({ kind: (/step-diff-(\w+)/.exec(el.className) || [])[1], text: el.getAttribute("title") || "", list: "row" })))
+        .concat([...document.querySelectorAll("#step-list .run-group.open .step-ghost")]
+          .map((el) => ({ kind: el.dataset.ghost, text: el.getAttribute("title") || "", list: "row" }))));
       lo.openRun = await page.evaluate(() => (document.querySelector("#step-list .run-group.open .run-title") || {}).textContent);
       lo.head = await page.evaluate(() => ((document.querySelector("#step-list .run-group.open .run-meta") || {}).textContent || "").trim());
       // Lane FX1 (report 2, item 3): the stretch opens transaction 2, so its
@@ -2037,10 +2048,10 @@ async function unreadableAnnotationsPin() {
     record("lane FX1: a stretch left out at a transaction's start cuts its trace: neither the live map nor the step BPMN draws a path from the start into the step after the stretch",
       cutOk, JSON.stringify({ after: A, liveStarts: lo.liveStarts, bpmnStarts: lo.bpmnStarts }));
     const notes = (lo.diffs || []).filter((d) => d.list === "run-notes");
-    const counted = (lo.diffs || []).filter((d) => d.list === "run-diffs");
+    const counted = [...new Set((lo.diffs || []).filter((d) => d.list === "row" && d.kind !== "not_done").map((d) => d.text))];
     const headN = /· (\d+) differences?$/.exec(lo.head || "");
-    record("lane FX1: the transaction's head counts exactly its difference lines; the left-out line is said apart, above them",
-      !!(!lo.err && notes.length === 1 && notes[0].kind === "left_out" && counted.every((d) => d.kind !== "left_out") &&
+    record("lane FX1: the transaction's head counts exactly its differences (2.0.1: marked on its rows); the left-out line is said apart, above them",
+      !!(!lo.err && notes.length === 1 && notes[0].kind === "left_out" &&
         (headN ? Number(headN[1]) === counted.length : / · no differences$/.test(lo.head || "") && counted.length === 0)),
       JSON.stringify({ head: lo.head, diffs: lo.diffs }));
     record("lane CC: a click on the band offers Include again, which takes the stretch out of excluded_ranges and drafts its steps again; Ctrl+Z leaves it out again and Ctrl+Y includes it again, each analyzed",

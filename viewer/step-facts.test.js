@@ -103,14 +103,17 @@ test("one clock: the time since the recording started, as the PDD prints it", ()
   for (const bad of ["", "1:5", "1:60", "11:02pm", "1:61:00"]) assert.equal(parseClock(bad), null, JSON.stringify(bad));
 });
 
-test("2.0.1: the Recorded line says how many actions on which screen, how long and where a draft ends, in words", () => {
-  const step = { time_range: { start: "2026-05-14T09:00:19Z", end: "2026-05-14T09:00:25Z" } };
+test("2.0.1: the Recorded line says how many actions and where a draft ends; the pointer says where the step is", () => {
+  const origin = Date.parse("2026-05-14T09:00:00Z");
+  const step = { case_id: "c1", time_range: { start: "2026-05-14T09:00:19Z", end: "2026-05-14T09:00:25Z" } };
   assert.equal(SF.duration(step.time_range), "6s");
-  assert.equal(SF.recordedLine({ actions: 6, screen: "Account lookup", duration: "6s", ends: "ends at Search" }),
-    "6 actions on Account lookup · took 6s · ends at Search");
-  assert.equal(SF.recordedLine({ actions: 1, screen: "", duration: "under 1s" }), "1 action · took under 1s");
-  assert.equal(SF.recordedLine({ actions: 0, duration: "3s" }), "took 3s", "a step added by hand");
-  assert.equal(SF.recordedLine({}), "");
+  assert.equal(SF.recordedLine({ actions: 6, ends: "ends at Search" }), "6 actions · ends at Search");
+  assert.equal(SF.recordedLine({ actions: 1 }), "1 action");
+  assert.equal(SF.recordedLine({}), "", "a step added by hand");
+  const runs = [{ caseId: "c1", title: "Transaction 1" }];
+  assert.equal(SF.pointer(step, runs, origin), "Transaction 1 at 0:19");
+  assert.equal(SF.pointer(Object.assign({}, step, { case_id: null }), runs, origin), "0:19 into the recording");
+  assert.equal(SF.pointer({ time_range: null }, runs, origin), "");
 });
 
 /* The step panel's rows and the line above them (the owner's review: "It
