@@ -42,6 +42,7 @@ const ProjectZip = require("./project-zip.js");
 const ProjectFolder = require("./project-folder.js");
 const DemoProject = require("./demo-project.js");
 const HandoffZip = require("./handoff-zip.js");
+const PddZip = require("./pdd-zip.js");
 const HandoffOpen = require("./handoff-open.js");
 const WindowRegistry = require("./window-registry.js");
 const UserActed = require("./user-acted.js");
@@ -424,6 +425,34 @@ ipcMain.handle("viewer:exportHandoffZip", async (_e, { sessionFolder, base, vers
   }
 });
 
+/* Export, PDD of a project with attachments (2.0.1, pdd-zip.js): the save
+   dialog for "<name>.zip", then the zip of the PDD the renderer had the
+   pipeline write at `pdd` (its attachment names linking into Attachments/)
+   with the project's attached files, which main finds itself from the
+   project's annotations.json. Result { ok: true, path, files }, null when
+   the dialog was cancelled, or { ok: false, error } (a sentence). */
+ipcMain.handle("viewer:exportPddZip", async (_e, { sessionFolder, pdd, name } = {}) => {
+  const root = _sessionRoot(sessionFolder);
+  if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
+  if (typeof pdd !== "string" || !fs.existsSync(pdd)) return { ok: false, error: "The PDD was not written." };
+  const read = AnnoStore.readAnnotationsFile(root);
+  const files = PddZip.attachedFiles(root, read.status === "ok" ? (read.annotations || {}).attachments : []);
+  const base = String(name || "PDD").replace(/[\\/:*?"<>|]/g, " ").trim() || "PDD";
+  const r = await dialog.showSaveDialog(_winOf(_e), {
+    title: "Export the PDD with its attachments",
+    defaultPath: base + ".zip",
+    filters: [{ name: "Zip", extensions: ["zip"] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  try {
+    const out = await PddZip.writePddZip({ pdd, name: base, files, zipPath: r.filePath });
+    return { ok: true, path: out.zipPath, files: out.files };
+  } catch (e) {
+    console.error("[viewer:exportPddZip] not made:", e && (e.stack || e.message));
+    return { ok: false, error: ProjectZip.describeZipError(e) };
+  }
+});
+
 /* Lane HV: the PDD or the Technical details (kind "pdd" or "tech") a
    hand-off opened read only came with, opened in its program (Word, Excel).
    Result { ok: true, path } or { ok: false, error }. */
@@ -646,6 +675,8 @@ ipcMain.handle("viewer:runNormalizeExtended", async (_e, opts) => {
       // documents are made for.
       techOut: opts.techOut || null,
       handoff: Number.isInteger(opts.handoff) && opts.handoff >= 1 ? opts.handoff : null,
+      // 2.0.1: the folder beside the PDD its attachments travel in.
+      pddAttachments: typeof opts.pddAttachments === "string" && opts.pddAttachments ? opts.pddAttachments : null,
       libraryPath,
       onLog: (text) => { if (!sender.isDestroyed()) sender.send("viewer:normalizeLog", translatePipelineError(text)); },
       onProc: (h) => { run.handle = h; },

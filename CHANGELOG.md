@@ -90,6 +90,21 @@ change, and the SME's app loses its setup.
 - **Easier to read on a small screen**: the pane and section titles and a
   transaction's step count and time are a size larger, and *Dissolve
   sub-process* is a button in the breadcrumb, as in the step pane.
+- **The step pane in parts, each fact once**: the name and the acts on the
+  step at the top; *In the PDD* (System, Description, what was said,
+  the Flow line, Waste); Screenshots, Notes and Attachments; *Recorded* at
+  the foot (how many actions on which screen, how long, where the draft
+  ends, then the actions one per line), open or closed as you last left
+  it, on every step. The fact line, the fields typed (the actions say
+  them), the colour code of the actions and its legend are gone; a library
+  activity's code sits beside the name.
+- **What was said shows under one step**: a sentence belongs to the step
+  during which it starts, or to the next one within 10 seconds, never
+  past the step before, in the step pane and the step panel.
+- **The attachments go with the PDD**: the PDD of a project with attached
+  files exports as one zip, the PDD and an *Attachments* folder, and each
+  attachment's name in the PDD opens its file. A hand-off's PDD links to
+  the files in the project folder beside it in the zip.
 
 ### Removed
 

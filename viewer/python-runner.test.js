@@ -54,6 +54,13 @@ test("buildNormalizeArgs passes the sub-processes' map pictures as --pdd-map-ima
     "no manifest, no flag");
 });
 
+test("2.0.1: buildNormalizeArgs passes the PDD's attachments folder as --pdd-attachments, only with a PDD to write", () => {
+  assert.deepEqual(
+    buildNormalizeArgs("n.py", { sessionFolder: "S", pddOut: "o.docx", pddAttachments: "Attachments" }),
+    ["n.py", "S", "--pdd-out", "o.docx", "--pdd-attachments", "Attachments"]);
+  assert.deepEqual(buildNormalizeArgs("n.py", { sessionFolder: "S", pddAttachments: "Attachments" }), ["n.py", "S"]);
+});
+
 /* Contract C8: what the viewer makes of one transcript_import.py run. */
 test("transcriptImportResult: exit 0 is a success carrying the summary line", () => {
   assert.deepEqual(

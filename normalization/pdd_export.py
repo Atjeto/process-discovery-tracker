@@ -94,19 +94,21 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     from docx import Document
     from docx.enum.section import WD_ORIENT, WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.image.image import Image as _DocxImage
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Pt, Inches, RGBColor
 except ImportError:
     Document = None
     WD_ORIENT = WD_SECTION = WD_ALIGN_PARAGRAPH = None
-    _DocxImage = OxmlElement = qn = None
+    _DocxImage = OxmlElement = qn = RT = None
     Pt = Inches = RGBColor = None
 
 from _dt import parse_ts_or_none as _parse_ts
@@ -175,6 +177,7 @@ def write_pdd(
     map_file: bool | None = None,
     handoff: int | None = None,
     library=None,
+    attachments_dir: str | None = None,
 ) -> None:
     """Write the PDD to `out_path`. `events` is the derived event stream the
     steps' systems, screens and entered fields are read from; without it
@@ -193,7 +196,11 @@ def write_pdd(
     writes the PDD may have written it too, not yet in place); None looks in
     the folder. `handoff` (contract C20, `--handoff`) is the version of
     annotations.handoffs the document is made for; without it the document
-    is a working copy (handoff_versions.version_line)."""
+    is a working copy (handoff_versions.version_line). `attachments_dir`
+    (2.0.1, `--pdd-attachments`) is the folder beside the document its
+    attachments travel in (the viewer's PDD zip: Attachments; a hand-off:
+    the project folder's attachments): each attachment's name then links to
+    its file there; without it the names are plain text."""
     if Document is None:
         raise RuntimeError(
             "python-docx is not installed. Add `python-docx>=1.1.0` to "
@@ -202,6 +209,7 @@ def write_pdd(
     s = _Session(session_folder, annotations, stats, manifest, events, map_images,
                  library=library)
     s.handoff = handoff
+    s.attachments_dir = _attachments_dir(attachments_dir)
     if map_file is not None:
         s.map_file = bool(map_file)
     doc = Document()
@@ -312,6 +320,53 @@ def _attachment_label(entry) -> str:
     return label.strip() if isinstance(label, str) and label.strip() else _file_name(entry.get("file"))
 
 
+def _attachments_dir(value) -> str | None:
+    """`--pdd-attachments` as a folder relative to the document, with forward
+    slashes ("Attachments", "Order to cash/attachments"), or None when there
+    is none or it would leave the document's folder (absolute, or `..`)."""
+    if not isinstance(value, str):
+        return None
+    parts = [p for p in re.split(r"[\\/]", value.strip()) if p not in ("", ".")]
+    if not parts or ".." in parts or ":" in parts[0] or value.strip().startswith(("/", "\\")):
+        return None
+    return "/".join(parts)
+
+
+def _add_link(paragraph, text, target):
+    """`text` at the end of `paragraph` as a link to `target`, a path
+    relative to the document that Word opens from the document's folder;
+    blue and underlined, as Word draws a link."""
+    r_id = paragraph.part.relate_to(quote(target, safe="/"), RT.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), r_id)
+    run = OxmlElement("w:r")
+    props = OxmlElement("w:rPr")
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "0563C1")
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    props.append(color)
+    props.append(underline)
+    run.append(props)
+    t = OxmlElement("w:t")
+    t.set(qn("xml:space"), "preserve")
+    t.text = text
+    run.append(t)
+    link.append(run)
+    paragraph._p.append(link)
+
+
+def _attachment_name(paragraph, s, entry):
+    """An attachment's name at the end of `paragraph`: a link to its file in
+    the folder beside the document when the document says where its
+    attachments travel (`s.attachments_dir`), else plain text."""
+    label = _attachment_label(entry)
+    if s.attachments_dir:
+        _add_link(paragraph, label, f"{s.attachments_dir}/{_file_name(entry.get('file'))}")
+    else:
+        paragraph.add_run(label)
+
+
 def _text_of(v) -> str:
     return v.strip() if isinstance(v, str) else ""
 
@@ -393,6 +448,8 @@ class _Session:
         self.portrait = None
         # C20: the hand-off version the document is made for (None: a working copy).
         self.handoff = None
+        # 2.0.1: the folder beside the document its attachments travel in.
+        self.attachments_dir = None
         meta = self.stats.get("meta") or {}
         self.app_names = meta.get("app_names") or {}
         config = self.manifest.get("config")
@@ -777,12 +834,12 @@ class _Session:
                 return _ANALYST_SHOTS + _file_name(shot["file"])
         return ref
 
-    def step_attachments(self, step) -> list[str]:
-        """The labels of the attachments on a step (C16), in their order."""
+    def step_attachments(self, step) -> list[dict]:
+        """The attachments on a step (C16), in their order."""
         sid = step.get("step_id")
         if not isinstance(sid, str) or not sid:
             return []
-        return [_attachment_label(a) for a in self.attachments if a.get("step_id") == sid]
+        return [a for a in self.attachments if a.get("step_id") == sid]
 
 
 def _entered(data) -> tuple[str, str] | None:
@@ -1371,7 +1428,12 @@ def _write_step(doc, s, step, number, steps, level=None):
         doc.add_paragraph("Fields: " + ", ".join(fields) + ".")
     attached = s.step_attachments(step)
     if attached:
-        doc.add_paragraph("Attachments: " + ", ".join(attached) + ".")
+        p = doc.add_paragraph("Attachments: ")
+        for i, entry in enumerate(attached):
+            if i:
+                p.add_run(", ")
+            _attachment_name(p, s, entry)
+        p.add_run(".")
     # Lane FX3: each screenshot's alternative text names its step, as the
     # map pictures' name their map.
     alt = f"Screenshot of step {_step_number(number, level)}: {_step_name(step)}"
@@ -2003,13 +2065,24 @@ def _write_notes(doc, s):
 def _write_attachments(doc, s, number):
     """The last section, only when the analyst attached files (contract
     C16, annotations.attachments): each attachment's label and file name.
-    Nothing is embedded; the files stay in the session folder's
-    attachments/ folder. A step's attachments are also named under that
-    step (_write_step)."""
+    Nothing is embedded. 2.0.1: the files travel in a folder beside the
+    document (`s.attachments_dir`: the viewer's PDD zip, a hand-off), and
+    each name links to its file there; without one they are in the project
+    folder's attachments folder. A step's attachments are also named under
+    that step (_write_step)."""
     if not s.attachments:
         return
     doc.add_heading(f"{number}. Attachments", level=1)
-    doc.add_paragraph("The files are in the project folder's attachments folder.")
-    _table(doc, ("Attachment", "File"),
-           [(_attachment_label(a), _file_name(a.get("file"))) for a in s.attachments],
-           widths=(3.0, 3.0))
+    doc.add_paragraph(
+        f"The files are in the {s.attachments_dir} folder beside this document: "
+        "click a name to open its file." if s.attachments_dir
+        else "The files are in the project folder's attachments folder.")
+    t = _table(doc, ("Attachment", "File"),
+               [(_attachment_label(a), _file_name(a.get("file"))) for a in s.attachments],
+               widths=(3.0, 3.0))
+    if s.attachments_dir:
+        for row, entry in zip(t.rows[1:], s.attachments):
+            p = row.cells[0].paragraphs[0]
+            for run in list(p.runs):
+                p._p.remove(run._r)
+            _attachment_name(p, s, entry)

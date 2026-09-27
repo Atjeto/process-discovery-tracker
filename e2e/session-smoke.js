@@ -1280,10 +1280,11 @@ async function unreadableAnnotationsPin() {
     record("reference-map round-trip (skipped — session not re-normalized)", true,
       "no deps-Python for a temp copy; not forking into the committed demo folder");
   } else {
-    // P1.7 + P2.16: the step detail shows what the analyst edits and what the
-    // PDD prints: one fact line (no Start, End or Run tiles, no drafting
-    // reason), the Description resident (not behind More), and the step's own
-    // screenshots, stamped in local time.
+    // P1.7 + P2.16 + 2.0.1: the step detail in parts, each fact once: In the
+    // PDD (the system in its field, the Description resident), Screenshots,
+    // Notes, Attachments and Recorded (its line: the actions, the screen, the
+    // time, where the draft ends); no fact line, no fields typed, no Start,
+    // End or Run tiles; the step's own screenshots, stamped on the one clock.
     const detail = {};
     try {
       await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: STATE_TIMEOUT });
@@ -1307,12 +1308,17 @@ async function unreadableAnnotationsPin() {
         const local = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
         const at = {};
         for (const e of s.events || []) if (e.type === "system" && e.data && e.data.path) at[e.data.path] = e.timestamp;
-        const more = document.querySelector("#step-detail .step-detail-more");
         const desc = document.getElementById("step-desc");
+        const sys = document.getElementById("step-system");
+        const parts = ["step-doc", "step-shots-sect", "step-notes-sect", "step-atts-sect", "step-recorded"].map((id) => document.getElementById(id));
         return {
-          fact: ((document.querySelector("#step-detail .step-fact") || {}).textContent || "").trim(),
+          recorded: ((document.querySelector("#step-recorded > summary .step-part-hint") || {}).textContent || "").trim(),
+          system: sys ? (sys.value || sys.placeholder) : "",
+          parts: parts.every(Boolean) && parts.every((el, i) => !i || !!(parts[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          gone: document.querySelectorAll("#step-detail .step-fact, #step-detail .step-fields, #step-detail .si-legend, #step-detail .si-identity").length,
+          actions: ((step.evidence && step.evidence.interaction_event_ids) || []).length,
           tiles: document.querySelectorAll("#step-detail .stat-tile, #step-detail .step-suggestion-reason").length,
-          descResident: !!(desc && !more && getComputedStyle(desc).display !== "none"),
+          descResident: !!(desc && getComputedStyle(desc).display !== "none"),
           refs: (step.evidence.screenshot_refs || []).length,
           shots: [...document.querySelectorAll("#step-detail .step-shot")].map((b) => ({
             ref: b.dataset.ref, loaded: (b.querySelector("img") || {}).naturalWidth > 0,
@@ -1330,24 +1336,18 @@ async function unreadableAnnotationsPin() {
             const label = String(d.meaningful_name || d.name || d.control_type || "").trim();
             return label ? "ends at " + label : null;
           })(),
-          fields: [...document.querySelectorAll("#step-detail .step-fields dt")].length,
           saveButton: !!document.getElementById("btn-step-save"),
-          // Where the step is: its run's number and its start on the one clock.
-          wantWhere: (() => {
-            const runs = ((s.stats && s.stats.case_stats) || []).filter((c) => !c.parent_case_id)
-              .sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
-            return "Transaction " + (runs.findIndex((c) => c.case_id === step.case_id) + 1) + " at " + local(step.time_range.start);
-          })(),
         };
       }, detail.stepId));
     } catch (e) { logActionError("P1.7 + P2.16 step detail", e); detail.err = String(e.message).split("\n")[0]; }
-    const detailOk = !!(!detail.err && /^(Salesforce|SAP|Excel|Outlook|Notepad) · \S.* · \d+(s|:\d{2}) · ends at .+ · Transaction [1-4] at \d+:\d{2}$/.test(detail.fact || "") &&
+    const detailOk = !!(!detail.err && /^(Salesforce|SAP|Excel|Outlook|Notepad)$/.test(detail.system || "") &&
+      new RegExp("^" + detail.actions + " actions? on \\S[^\u00b7]* \u00b7 took [^\u00b7]+ \u00b7 ").test(detail.recorded || "") &&
+      detail.wantEnds && (detail.recorded || "").endsWith(" \u00b7 " + detail.wantEnds) &&
+      detail.parts && detail.gone === 0 &&
       detail.tiles === 0 && detail.descResident && !detail.saveButton &&
-      detail.wantEnds && (detail.fact || "").includes(" · " + detail.wantEnds + " · ") &&
-      (detail.fact || "").endsWith(" · " + detail.wantWhere) && !detail.saveButton &&
       detail.shots && detail.shots.length === detail.refs && detail.refs > 0 && detail.shots.every((x) => x.loaded) &&
       JSON.stringify(detail.shots.map((x) => x.stamp)) === JSON.stringify(detail.wantStamps));
-    record("P1.7 + P2.16 + V2 item 1: the step detail shows one fact line led by the system (system · screen · time · ends at its commit · Transaction N at m:ss), no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
+    record("P1.7 + P2.16 + V2 item 1 + 2.0.1: the step detail in parts (In the PDD, Screenshots, Notes, Attachments, Recorded), each fact once: the system in its field, the Recorded line (N actions on the screen · took the time · ends at its commit), no fact line, no fields typed, no legend, no Save button, the Description resident, and the step's own screenshots (loaded, stamped with the time since the recording started); no Start, End or Run tiles",
       detailOk, JSON.stringify(detail));
     if (!detailOk) await shot(page, "fail-step-detail.png");
 

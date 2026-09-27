@@ -117,8 +117,12 @@ async function handOff() {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-handoff-"));
     const pdd = path.join(dir, names.pdd);
     const tech = path.join(dir, names.tech);
+    // 2.0.1: the PDD's attachment names link to the files in the project
+    // folder the zip holds beside it.
+    const atts = ((State.getSession().annotations || {}).attachments || []).some((a) => a && a.file);
     const made = await _deps.writeDocuments(State.getSession(), {
       pddOut: pdd, techOut: tech, handoff: version, label: "Handing off version " + version + "...",
+      pddAttachments: atts ? path.basename(sess.sessionFolder) + "/attachments" : null,
     });
     if (!made.ok) {
       await _takeBack(tag, entry);

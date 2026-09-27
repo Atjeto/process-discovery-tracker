@@ -1,7 +1,7 @@
 /*
- * Unit tests for step-editor.js -- describeInteraction (the readable
- * one-line phrasing of an interaction) and renderInteractionList (the
- * collapsible interaction list markup in the step detail pane).
+ * Unit tests for step-editor.js: describeInteraction (the readable one-line
+ * phrasing of an interaction), renderInteractionList and recordedHtml (the
+ * step pane's Recorded part).
  *
  * Run with `npm test` (Node's built-in `node:test` runner).
  */
@@ -12,7 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker,
+const { describeInteraction, renderInteractionList, recordedHtml, recordedOpen, splitBlocker,
   nameFieldHtml, activityListHtml } = require("./step-editor.js");
 const Library = require("./library.js");
 
@@ -183,57 +183,43 @@ test("renderInteractionList: no interactions yields a plain note (lane FX3: in t
   assert.ok(!html.includes("<details"));
 });
 
-test("renderInteractionList: lists every interaction with the claimed count", () => {
+test("renderInteractionList: lists every interaction, one line each, with no legend and no colour code", () => {
   const events = [
     inter({ kind: "invoked", control_type: "Button", name: "Open" }),
-    inter({ kind: "invoked", control_type: "Button", name: "Save" }),
+    inter({ kind: "value_changed", control_type: "Edit", name: "Quantity", value: "5" }),
   ];
   const html = renderInteractionList(events, 2);
-  assert.ok(html.includes("Recorded actions (2)"));
   assert.ok(html.includes("Clicked Open"));
-  assert.ok(html.includes("Clicked Save"));
+  assert.ok(html.includes("Typed &quot;5&quot; into Quantity") || html.includes('Typed "5" into Quantity'));
+  assert.equal((html.match(/class="step-interaction"/g) || []).length, 2);
+  assert.ok(!/si-legend|si-value|si-action|<details/.test(html));
 });
 
-test("renderInteractionList: a small step's list is open by default", () => {
-  const events = [inter({ kind: "invoked", control_type: "Button", name: "X" })];
-  const html = renderInteractionList(events, 1);
-  assert.ok(/<details[^>]*\bopen\b/.test(html));
+test("2.0.1: the Recorded part says what the recording holds in its summary, lists the actions and holds Merge", () => {
+  const events = [inter({ kind: "invoked", control_type: "Button", name: "Save" })];
+  const html = recordedHtml(events, 1, { line: "1 action on Order <new> · took 7s", actsHtml: '<button id="btn-step-merge">Merge with next</button>', open: true });
+  assert.ok(html.startsWith('<details class="step-part step-recorded" id="step-recorded" open>'));
+  assert.ok(html.includes('<span class="step-part-title">Recorded</span><span class="step-part-hint">1 action on Order &lt;new&gt; · took 7s</span>'));
+  assert.ok(html.includes("Clicked Save") && html.includes('id="btn-step-merge"'));
+  assert.ok(!recordedHtml(events, 1, { open: false }).includes(" open>"), "closed");
+  assert.ok(recordedHtml([], 0, {}).includes("No action was recorded in this step."));
 });
 
-test("renderInteractionList: a big step's list is collapsed by default", () => {
-  const events = Array.from({ length: 20 }, () =>
-    inter({ kind: "invoked", control_type: "Button", name: "X" }));
-  const html = renderInteractionList(events, 20);
-  assert.ok(html.includes("<details"));
-  assert.ok(!/<details[^>]*\bopen\b/.test(html));
+test("2.0.1: Recorded is open or closed as the analyst last left it; until then open for 15 actions or fewer", () => {
+  assert.equal(recordedOpen(1, null), true);
+  assert.equal(recordedOpen(15, null), true);
+  assert.equal(recordedOpen(20, null), false);
+  assert.equal(recordedOpen(20, "1"), true, "opened on another step, open here too");
+  assert.equal(recordedOpen(1, "0"), false, "closed on another step, closed here too");
+  const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  assert.ok(src.includes('recHead.addEventListener("click", () => _keepRecordedOpen(!recEl.open))'), "the click on its summary is kept");
+  assert.ok(src.includes('const RECORDED_KEY = "pdt.recordedOpen"'));
 });
 
 test("renderInteractionList: unresolved ids surface as a missing-count note", () => {
   const events = [inter({ kind: "invoked", control_type: "Button", name: "X" })];
   const html = renderInteractionList(events, 3);
   assert.ok(html.includes("2 recorded actions are not in this project"));
-});
-
-/* ---- A1: interaction kind colour-coding ---------------------------- */
-
-test("siKindClass: buckets each interaction kind", () => {
-  assert.equal(siKindClass(inter({ kind: "value_changed" })), "si-value");
-  assert.equal(siKindClass(inter({ kind: "text_changed" })), "si-value");
-  assert.equal(siKindClass(inter({ kind: "invoked" })), "si-action");
-  assert.equal(siKindClass(inter({ kind: "selection_changed" })), "si-select");
-  assert.equal(siKindClass(inter({ kind: "toggle_changed" })), "si-toggle");
-  assert.equal(siKindClass(inter({ kind: "focus_changed" })), "si-other");
-  assert.equal(siKindClass(inter({})), "si-other");
-});
-
-test("renderInteractionList: rows carry the kind class", () => {
-  const events = [
-    inter({ kind: "value_changed", name: "Serial", value: "X" }),
-    inter({ kind: "invoked", control_type: "Button", name: "Search" }),
-  ];
-  const html = renderInteractionList(events, 2);
-  assert.ok(html.includes("step-interaction si-value"));
-  assert.ok(html.includes("step-interaction si-action"));
 });
 
 /* ---- A2: split-point affordance ------------------------------------ */
@@ -257,7 +243,8 @@ test("2.0.1: renderInteractionList marks where two merged steps met, and every a
   const events = [inter({ kind: "invoked", name: "A" }), inter({ kind: "invoked", name: "B" }), inter({ kind: "invoked", name: "C" })];
   const html = renderInteractionList(events, 3, { splittable: true, mergedAfter: 0 });
   assert.equal((html.match(/was-boundary/g) || []).length, 1);
-  assert.ok(html.includes('title="The two merged steps met here"'));
+  assert.ok(html.includes("The two merged steps met here"));
+  assert.ok(html.includes("The scissors after an action split the step there."), "the scissors say what they do");
   assert.equal((html.match(/class="si-split-btn"/g) || []).length, 2);
   assert.ok(!renderInteractionList(events, 3, { splittable: true }).includes("was-boundary"));
 });
@@ -270,21 +257,18 @@ test("renderInteractionList: not splittable by default (back-compat)", () => {
 
 /* ---- TASK 3: identityLine in the interaction rows ------------------- */
 
-test("renderInteractionList: each row carries a composed identity line", () => {
+test("2.0.1: a row names its control and window in its title, not in a second line", () => {
   const events = [inter({
     kind: "invoked", control_type: "Button", name: "Search",
-    window_title: "Customer lookup — CRM",
+    window_title: "Customer lookup · CRM",
   })];
   const html = renderInteractionList(events, 1);
-  // The verb sentence is still there (what happened) ...
   assert.ok(html.includes("Clicked Search"));
-  // ... plus the composed identity line (control type · "identity" · window).
-  assert.ok(html.includes("si-identity"));
-  assert.ok(html.includes("Button"));
-  assert.ok(html.includes("Customer lookup"));
+  assert.ok(!html.includes("si-identity"), "no identity line under the action");
+  assert.ok(/<li class="step-interaction" data-idx="0" title="Button · [^"]*Search[^"]*Customer lookup/.test(html));
 });
 
-test("renderInteractionList: the identity line carries no marker, whatever the control's identity (a project is recorded once)", () => {
+test("renderInteractionList: the identity carries no marker, whatever the control's identity (a project is recorded once)", () => {
   for (const data of [
     { kind: "invoked", control_type: "Button", automation_id: "btn-4821" },   // a counter-like id
     { kind: "invoked", control_type: "Pane", class_name: "TfrmMain" },       // a class name only
@@ -292,17 +276,16 @@ test("renderInteractionList: the identity line carries no marker, whatever the c
     { kind: "invoked" },                                                      // nothing to name it by
   ]) {
     const html = renderInteractionList([inter(data)], 1);
-    assert.ok(html.includes("si-identity"), "the identity line stays");
     assert.ok(!html.includes("si-marker"), "no marker glyph");
     assert.ok(!/change between recordings|auto-generated|Weak identity/.test(html), "no marker note");
   }
   const html = renderInteractionList([inter({ kind: "invoked", control_type: "Button", automation_id: "btn-4821" })], 1);
-  assert.ok(html.includes("Button · &quot;btn-4821&quot;") || html.includes('Button · "btn-4821"'), "the identity reads as it is");
+  assert.ok(html.includes("Button · &quot;btn-4821&quot;"), "the identity reads as it is");
 });
 
-/* ---- the step pane: no Save button, the fields typed ----------------- */
-// The draft's why moved into the structured fact line (step-facts.js endsAt,
-// pinned in step-facts.test.js). The pane saves as the analyst goes: the name
+/* ---- the step pane: no Save button ------------------------------------ */
+// The draft's why is the Recorded line's (step-facts.js endsAt, pinned in
+// step-facts.test.js). The pane saves as the analyst goes: the name
 // on Enter or when the field is left, the description when it is left, Waste
 // on its click (steps-view.js makes each one undoable edit). The forms need a
 // DOM, so the wiring is pinned by scanning the source.
@@ -316,12 +299,22 @@ test("the step pane has no Save button: the name saves on Enter and blur, the de
   assert.ok(!src.includes("step-remembered"), "no remembered tag on a row: the run says it in one line");
 });
 
-test("the fields typed show as a compact list of field and value, escaped", () => {
-  assert.equal(stepFieldsHtml([]), "");
-  const html = stepFieldsHtml([{ field: "Quantity", value: "29" }, { field: "<b>", value: "a & b" }]);
-  assert.ok(html.includes('<span class="step-fields-title">Fields typed</span>'));
-  assert.ok(html.includes('<dt title="Quantity">Quantity</dt><dd title="29">29</dd>'));
-  assert.ok(html.includes("&lt;b&gt;") && html.includes("a &amp; b"), "escaped");
+test("2.0.1: the step pane in parts: the name and its acts, In the PDD, then Screenshots, Notes, Attachments and Recorded; no fields typed, no fact line", () => {
+  const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  const at = (s) => src.indexOf(s);
+  assert.ok(at("${nameFieldHtml(step, callbacks.picker, callbacks.code)}") < at('<div class="actions step-acts">'));
+  assert.ok(at('<div class="actions step-acts">') < at('<div class="step-part step-doc" id="step-doc">'));
+  assert.ok(at('<span class="step-part-title">In the PDD</span>') < at("${callbacks.systemHtml") &&
+    at("${callbacks.systemHtml") < at('<textarea id="step-desc"') && at('<textarea id="step-desc"') < at("${flowSectionHtml(") &&
+    at("${flowSectionHtml(") < at('id="flag-waste"') && at('id="flag-waste"') < at("${callbacks.extrasHtml") &&
+    at("${callbacks.extrasHtml") < at("${recordedHtml("));
+  assert.ok(!/stepFieldsHtml|Fields typed|step-fact|descriptionHint/.test(src));
+});
+
+test("C21: a step named from the library shows the activity's code beside its name", () => {
+  const html = nameFieldHtml({ name: "Save the order" }, null, "SO-01");
+  assert.ok(html.includes('<label>Name<span class="step-code" id="step-code" title="The code of the library activity this step is named from">SO-01</span><input'));
+  assert.ok(!nameFieldHtml({ name: "x" }, null, "").includes("step-code"));
 });
 
 /* Lane FX3 (validation pass 3, F16): Split says why it cannot act, in the

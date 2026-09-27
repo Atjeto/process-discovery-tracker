@@ -1,8 +1,8 @@
 "use strict";
 /*
- * step-facts.js: the step pane's fact line from the step's structured fields,
- * the fields typed, the drafting's own description (a hint in the pane), the
- * drafted name and the pointer "Transaction 1 at 0:19". The narration and the
+ * step-facts.js: the step pane's Recorded line from the step's structured
+ * fields, the drafting's own description (never shown as the description)
+ * and where a draft ends. The narration and the
  * drafted name below were printed by normalization/step_suggest.py on the
  * same interactions, so the pane and the PDD agree on which descriptions are
  * the drafting's.
@@ -54,35 +54,8 @@ test("a description is the drafting's when it equals the narration (or the older
   assert.equal(SF.stepDatas({ evidence: { interaction_event_ids: ["a", "gone"] } }, { a: { data: {} } }), null);
 });
 
-test("the fields typed: each field once, first-typed order, its last value; secret fields and selections as the PDD lists them", () => {
-  const f = SF.typedFields([
-    { kind: "value_changed", name: "Quantity", value: "2" },
-    { kind: "value_changed", meaningful_name: "Customer", name: "txtCust", value: "ACME" },
-    { kind: "value_changed", name: "Quantity", value: "29" },
-    { kind: "value_changed", name: "Password", value_redacted: true },
-    { kind: "selection_changed", name: "Plant", selected_value: "1000" },
-    { kind: "selection_changed", control_type: "TabItem", selected_value: "Items" },
-    { kind: "value_changed", name: "Note", value: "undefined" },
-    { kind: "invoked", name: "Save" },
-  ]);
-  assert.deepEqual(f, [
-    { field: "Quantity", value: "29" }, { field: "Customer", value: "ACME" },
-    { field: "Password", value: "typed (hidden)" }, { field: "Plant", value: "1000" },
-  ]);
-});
-
-test("lane LF-PIPE: the fields typed leave out an empty web field, the address bar and a choice named by its own option; a secret reads typed (hidden)", () => {
+test("lane LF-PIPE: an empty web field is no value; a secret reads typed (hidden)", () => {
   const OBJ = String.fromCharCode(0xfffc);
-  const f = SF.typedFields([
-    { kind: "value_changed", name: "Quantity", value: OBJ },
-    { kind: "value_changed", name: "Notes", value: " " + OBJ + " " },
-    { kind: "value_changed", name: "Address and search bar", class_name: "OmniboxViewViews", value: "127.0.0.1:8765/orderdesk.html#order" },
-    { kind: "selection_changed", control_type: "ListItem", name: "Croatia", selected_value: "Croatia" },
-    { kind: "selection_changed", control_type: "DataItem", name: "A2", selected_value: "A2" },
-    { kind: "value_changed", control_type: "ComboBox", name: "Country", value: "Croatia" },
-    { kind: "value_changed", name: "Password", value_redacted: true },
-  ]);
-  assert.deepEqual(f, [{ field: "Country", value: "Croatia" }, { field: "Password", value: SF.SECRET_VALUE }]);
   assert.equal(SF.SECRET_VALUE, "typed (hidden)");
   assert.equal(SF.isBlankValue(OBJ + " "), true);
   assert.equal(SF.isBlankValue("a" + OBJ), false);
@@ -130,18 +103,14 @@ test("one clock: the time since the recording started, as the PDD prints it", ()
   for (const bad of ["", "1:5", "1:60", "11:02pm", "1:61:00"]) assert.equal(parseClock(bad), null, JSON.stringify(bad));
 });
 
-test("the pointer and the fact line: the system first, then the library code, the screen, the time, where it ends and where it is", () => {
-  const origin = Date.parse("2026-05-14T09:00:00Z");
-  const runs = [{ caseId: "c1", title: "Transaction 1" }];
-  const step = { case_id: "c1", time_range: { start: "2026-05-14T09:00:19Z", end: "2026-05-14T09:00:25Z" } };
-  assert.equal(SF.pointer(step, runs, origin), "Transaction 1 at 0:19");
-  assert.equal(SF.pointer(Object.assign({}, step, { case_id: null }), runs, origin), "0:19 into the recording");
+test("2.0.1: the Recorded line says how many actions on which screen, how long and where a draft ends, in words", () => {
+  const step = { time_range: { start: "2026-05-14T09:00:19Z", end: "2026-05-14T09:00:25Z" } };
   assert.equal(SF.duration(step.time_range), "6s");
-  assert.equal(SF.factLine({ system: "Salesforce", screen: "Account lookup", duration: "6s", ends: "ends at Search",
-    pointer: "Transaction 1 at 0:19" }), "Salesforce · Account lookup · 6s · ends at Search · Transaction 1 at 0:19");
-  assert.equal(SF.factLine({ system: "", screen: "", duration: "6s" }), "6s");
-  // C21: a step named from the library shows its code next to the system.
-  assert.equal(SF.factLine({ system: "Salesforce", code: "SO-01", screen: "Order", duration: "6s" }), "Salesforce · SO-01 · Order · 6s");
+  assert.equal(SF.recordedLine({ actions: 6, screen: "Account lookup", duration: "6s", ends: "ends at Search" }),
+    "6 actions on Account lookup · took 6s · ends at Search");
+  assert.equal(SF.recordedLine({ actions: 1, screen: "", duration: "under 1s" }), "1 action · took under 1s");
+  assert.equal(SF.recordedLine({ actions: 0, duration: "3s" }), "took 3s", "a step added by hand");
+  assert.equal(SF.recordedLine({}), "");
 });
 
 /* The step panel's rows and the line above them (the owner's review: "It

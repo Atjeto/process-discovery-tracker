@@ -457,6 +457,7 @@ def _run_mining_exports(
     tech_out: str | None = None,
     handoff: int | None = None,
     library: Any = None,
+    pdd_attachments: str | None = None,
 ) -> None:
     """The step-level observed-flow BPMN (when `mine` is set) plus the
     requested PDD and Technical details exports. The BPMN keeps its
@@ -468,7 +469,9 @@ def _run_mining_exports(
     Technical details workbook's path and `handoff` the hand-off version both
     documents are made for (contract C20; None: a working copy). `library`
     is the activity library the run uses (contract C21, library.Library):
-    the PDD and the workbook print its activities' codes and descriptions. With a
+    the PDD and the workbook print its activities' codes and descriptions.
+    `pdd_attachments` is the folder beside the PDD its attachments travel in
+    (2.0.1, --pdd-attachments): the PDD links their names there. With a
     `staging`, the step BPMN is staged and committed with the run."""
     map_written = False
     if mine:
@@ -528,6 +531,7 @@ def _run_mining_exports(
                 map_file=map_written or None,
                 handoff=handoff,
                 library=library,
+                attachments_dir=pdd_attachments,
             )
         except Exception as e:  # noqa: BLE001 -- any failure fails the export
             # The traceback goes to normalize.log only (INFO is below the

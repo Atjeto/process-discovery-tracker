@@ -1076,41 +1076,47 @@ function _appNames() {
   return (s && s.stats && s.stats.meta && s.stats.meta.app_names) || {};
 }
 
+/* The steps of a step's own level, in order: at the main level its
+   transaction's, inside a sub-process its visit's (C19). */
+function _levelSteps(step) {
+  const loc = _locate(step.step_id);
+  const places = _containers(_model(), loc ? loc.path : []).filter((c) => c.run);
+  const place = _containerOf(places, step.step_id);
+  return place ? place.visible : [];
+}
+
 /* C8: what the step editor's "Said during this step" shows: null without a
-   transcript, else whether it is synced and the sentences of the step's
-   window (transcript-model.js), timed from the recording's start. */
+   transcript, else whether it is synced and the sentences said during the
+   step (transcript-model.js: 2.0.1, the step before it bounds its window),
+   timed from the recording's start. */
 function _transcriptSaid(step) {
   const s = State.getSession();
   const placed = TM.forSession(s);
   if (!placed) return null;
-  return { synced: placed.synced, sentences: placed.synced ? TM.sentencesForStep(placed.sentences, step) : [],
+  return { synced: placed.synced, sentences: placed.synced ? TM.sentencesForStep(placed.sentences, step, _levelSteps(step)) : [],
     originMs: recordingStartMs(s) };
 }
 
-/* The step pane's fact line, fields and description (companion critique,
-   section 3), from the step's own fields and interactions: the system first
-   (the one vocabulary, C14), the screen, the time, where a draft ends (its
-   end_reason and commit) and where it is in the recording. */
+/* What the step pane says about the step (2.0.1, the owner's review: each
+   fact once), from its own fields and interactions: the library code beside
+   the name, the Recorded line (how many actions on which screen, how long,
+   where a draft ends: its end_reason and commit) and the description. */
 function stepFacts(step, interactionsById) {
   const s = State.getSession();
   const origin = recordingStartMs(s);
   const datas = StepFacts.stepDatas(step, interactionsById);
-  const known = ((step.evidence && step.evidence.interaction_event_ids) || [])
-    .map((id) => interactionsById[id]).filter(Boolean).map((ev) => ev.data || {});
   const where = SystemNames.whereOfStep(step, interactionsById, _appNames());
   // The system the recording gives, the System field's placeholder (C16).
   const derived = SystemNames.whereOfStep(Object.assign({}, step, { system: "" }), interactionsById, _appNames()).system;
   const drafted = StepFacts.isDraftedDescription(step.description, datas);
   return {
-    // C21: a step named from the library shows its code next to the system.
-    factLine: StepFacts.factLine({ system: where.system, code: Library.codeOf(_library(), step), screen: where.screen,
-      duration: StepFacts.duration(step.time_range),
-      ends: StepFacts.endsAt(step, datas || []), pointer: StepFacts.pointer(step, _model().runs, origin) }),
-    fields: StepFacts.typedFields(known),
-    // A draft's narration is the description's hint, never its text: the PDD
-    // leaves it out, so the pane does not pretend it is written.
+    // C21: a step named from the library shows its code beside its name.
+    code: Library.codeOf(_library(), step),
+    recorded: StepFacts.recordedLine({ actions: ((step.evidence && step.evidence.interaction_event_ids) || []).length,
+      screen: where.screen, duration: StepFacts.duration(step.time_range), ends: StepFacts.endsAt(step, datas || []) }),
+    // A draft's narration is never the description: the PDD leaves it out,
+    // so the pane does not pretend it is written (its actions are Recorded).
     description: drafted ? "" : (step.description || ""),
-    descriptionHint: drafted ? String(step.description).trim() : "",
     system: where.system, derived, originMs: origin,
     // What the step's own description is: nothing the analyst wrote (C21: a
     // pick from the library fills it then).
@@ -1136,8 +1142,8 @@ function stepDetailCallbacks(selected, interactionsById) {
     interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
     mergedAfterIndex: (selected && _mergedLine.stepId === selected.step_id) ? _mergedLine.after : null,
-    factLine: facts.factLine, fields: facts.fields, description: facts.description,
-    descriptionHint: facts.descriptionHint, originMs: facts.originMs,
+    code: facts.code, recorded: facts.recorded, description: facts.description,
+    originMs: facts.originMs,
     // C16: the System field, then the step's screenshots (recorded and
     // added), notes and attachments (views/analyst-ui.js).
     systemHtml: AnalystUI.systemFieldHtml(selected, facts.derived),

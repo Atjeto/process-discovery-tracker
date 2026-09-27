@@ -1378,18 +1378,14 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .run-notes li { margin: 1px 0; overflow-wrap: anywhere; }
 
 /* ===== Step detail editor (compact) ===== */
-/* P1.7: one fact line above the name: the system, the screen, the time,
-   where a draft ends and where the step is. It wraps rather than cutting. */
-.step-fact {
-  margin: 0 0 10px; font-size: 12px; color: var(--fg-2);
-  overflow-wrap: anywhere;
-}
 /* C21: the name field and its picker (step-editor.js nameFieldHtml): the one
    quiet line beside the label while the field has the focus, and the list of
    the library's activities under the field, over what follows it. */
 .step-name-field { position: relative; margin-bottom: 10px; }
 .editor-detail-pane .step-name-field > label { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; margin-bottom: 0; }
 .editor-detail-pane .step-name-field > label input[type=text] { flex: 1 0 100%; }
+/* C21: the code of the library activity the step is named from. */
+.step-code { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--fg-2); }
 .step-lib-note { margin-left: auto; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--fg-3); visibility: hidden; }
 .step-name-field:focus-within .step-lib-note { visibility: visible; }
 .step-activity-list {
@@ -1408,18 +1404,6 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .step-activity.current .step-activity-name { font-weight: 600; }
 .step-activity-code { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); }
 .step-activity-desc { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--fg-3); }
-/* The fields typed in the step: a compact two-column list. */
-.step-fields { margin: 0 0 10px; }
-.step-fields-title {
-  display: block; margin-bottom: 4px; font-size: 10px;
-  letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3);
-}
-.step-fields dl {
-  display: grid; grid-template-columns: minmax(80px, max-content) minmax(0, 1fr); gap: 2px 12px;
-  margin: 0; font-size: 12px;
-}
-.step-fields dt { color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
-.step-fields dd { margin: 0; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* P2.16: the step's screenshots, large enough to check the step against. */
 .step-shots {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1437,7 +1421,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   background: rgba(0, 0, 0, 0.62); color: #fff; font-family: var(--font-mono); font-size: 10px;
 }
 .editor-detail-pane label {
-  display: block; margin-bottom: 10px; font-size: 10px;
+  display: block; margin-bottom: 10px; font-size: 11px;
   letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3);
 }
 .editor-detail-pane label input[type=text],
@@ -1453,43 +1437,25 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   outline: none; border-color: var(--accent);
 }
 .editor-detail-pane textarea { min-height: 76px; resize: vertical; }
-.editor-detail-pane .flags {
-  display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0;
-  padding: 8px 10px; background: var(--bg-2); border-radius: 3px;
-}
+/* Waste, the last line of In the PDD. */
+.editor-detail-pane .flags { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; }
 .editor-detail-pane .flags label {
   display: inline-flex; gap: 6px; align-items: center;
-  margin: 0; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--fg);
+  margin: 0; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--fg);
 }
-.editor-detail-pane .evidence {
-  margin: 10px 0; padding: 6px 10px;
-  background: var(--bg-2); border-left: 2px solid var(--accent-2);
-  border-radius: 0 3px 3px 0; font-size: 11px;
-}
+/* Recorded: the actions one line each (what happened, when), the control in
+   the row's title; the verb says the kind, so no colour code. */
+.editor-detail-pane .evidence { margin: 0; font-size: 12px; }
 .editor-detail-pane .evidence p { margin: 3px 0; color: var(--fg-2); }
-.editor-detail-pane .step-interactions { margin: 3px 0; }
-.editor-detail-pane .step-interactions > summary {
-  cursor: pointer; color: var(--fg-2); font-size: 11px;
-}
 .editor-detail-pane .step-interaction-list {
-  margin: 6px 0 2px; padding: 0; list-style: none;
+  margin: 0; padding: 0; list-style: none;
   max-height: 240px; overflow-y: auto;
 }
 .editor-detail-pane .step-interaction {
   display: flex; gap: 10px; align-items: baseline;
-  padding: 2px 0 2px 8px; border-top: 1px solid var(--rule);
-  border-left: 3px solid transparent;
+  padding: 3px 2px; border-top: 1px solid var(--rule-soft);
 }
 .editor-detail-pane .step-interaction:first-child { border-top: 0; }
-/* A1: colour-code interactions by kind. Left border + faint tint mark
-   value entry (amber), actions (blue), selections (teal) and toggles
-   (purple); navigational/other stays muted. The hues are theme-neutral --
-   they read the same on the light and dark backgrounds (theme parity). */
-.editor-detail-pane .step-interaction.si-value  { border-left-color: #C8862A; background: rgba(200,134,42,0.09); }
-.editor-detail-pane .step-interaction.si-action { border-left-color: #4A78B0; background: rgba(74,120,176,0.09); }
-.editor-detail-pane .step-interaction.si-select { border-left-color: #3E9E96; background: rgba(62,158,150,0.09); }
-.editor-detail-pane .step-interaction.si-toggle { border-left-color: #8A6CB0; background: rgba(138,108,176,0.09); }
-.editor-detail-pane .step-interaction.si-other  { border-left-color: var(--rule); }
 /* A2: per-interaction split affordance + the chosen boundary. */
 .editor-detail-pane .si-split-btn {
   flex: none; border: 0; background: transparent; cursor: pointer;
@@ -1497,44 +1463,20 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   opacity: 0.8; transition: opacity 0.12s, color 0.12s;
 }
 .editor-detail-pane .step-interaction:hover .si-split-btn { opacity: 1; }
-.editor-detail-pane .si-split-hint { color: var(--fg-3); }
+.editor-detail-pane .evidence .si-split-hint { margin: 0 0 4px; font-size: 11px; color: var(--fg-3); }
 .editor-detail-pane .si-split-btn:hover { opacity: 1; color: var(--accent); }
 .editor-detail-pane .si-split-btn.active { opacity: 1; color: var(--accent); }
 /* 2.0.1: where the two steps of a Merge with next met. */
 .editor-detail-pane .step-interaction.was-boundary { border-bottom: 2px dashed var(--accent); }
-/* The interaction row body stacks the action verb over the composed element
-   identity line (App Library pass identityLine). .si-text keeps its colour;
-   the identity is muted + smaller so the verb still leads the row. */
-.editor-detail-pane .si-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.editor-detail-pane .si-text { color: var(--fg-2); word-break: break-word; }
-/* The identity line (ellipsized, shrinks) under the verb. */
-.editor-detail-pane .si-identity {
-  color: var(--fg-3); font-size: 10px; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.editor-detail-pane .si-text { flex: 1; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
 .editor-detail-pane .si-time {
-  flex: none; color: var(--fg-4); font-family: var(--font-mono); font-size: 10px;
+  flex: none; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px;
 }
-/* P0.4: colour key for the A1 interaction bars, under the list summary. Solid
-   swatches in the same hues as the rows' left borders, so the code is no
-   longer unexplained. Only kinds present in the step are rendered (step-editor.js).
-   The hues are theme-neutral -- they read the same on light and dark. */
-.editor-detail-pane .si-legend {
-  display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 4px 0 2px;
-  font-size: 10px; color: var(--fg-3);
-}
-.editor-detail-pane .si-legend .si-lg-item { display: inline-flex; align-items: center; gap: 5px; }
-.editor-detail-pane .si-legend .si-sw {
-  width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none;
-}
-.editor-detail-pane .si-legend .si-sw.si-value  { background: #C8862A; }
-.editor-detail-pane .si-legend .si-sw.si-action { background: #4A78B0; }
-.editor-detail-pane .si-legend .si-sw.si-select { background: #3E9E96; }
-.editor-detail-pane .si-legend .si-sw.si-toggle { background: #8A6CB0; }
-.editor-detail-pane .si-legend .si-sw.si-other  { background: var(--fg-4); }
 .editor-detail-pane .actions {
   display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
 }
+/* The acts on the whole step, under its name. */
+.editor-detail-pane .actions.step-acts { margin-top: 0; }
 /* C19: why a sub-process has no Split or Merge, in one line. */
 .step-sub-note { flex: 1 1 100%; margin: 2px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
 .editor-detail-pane .danger {
@@ -1651,7 +1593,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .app.read-only #step-shots-sect:not(:has(.step-shot-card)),
 .app.read-only #step-notes-sect:not(:has(.step-note)),
 .app.read-only #step-atts-sect:not(:has(.att-row)),
-.app.read-only #btn-step-split,
+.app.read-only .si-split-hint,
 .app.read-only #btn-step-merge,
 .app.read-only #btn-step-merge-selected,
 .app.read-only #btn-step-delete,
@@ -2312,6 +2254,27 @@ button.danger:disabled {
 .step-sect { margin-top: 12px; }
 .step-sect-head { display: flex; align-items: baseline; gap: 8px; }
 .step-sect-title { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
+/* 2.0.1 (the owner's review): the step pane in parts, each fact said once:
+   the name and the acts on the step, then In the PDD, Screenshots, Notes,
+   Attachments and Recorded, each under a rule and a title that reads above
+   the fields' own labels. */
+.step-part { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.step-part-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin-bottom: 8px; }
+.step-part-title, .step-part > .step-sect-head > .step-sect-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-2);
+}
+.step-part-hint { font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
+/* Recorded opens and closes on its summary, its chevron the transcript's. */
+.step-recorded > summary { cursor: pointer; list-style: none; user-select: none; margin-bottom: 0; }
+.step-recorded > summary::-webkit-details-marker { display: none; }
+.step-recorded > summary:hover .step-part-title { color: var(--fg); }
+.step-recorded[open] > summary { margin-bottom: 6px; }
+.step-recorded[open] > summary .tr-more-chevron::before { content: "\25BE"; }
+/* Said during this step, inside In the PDD: a field's label, no rule. */
+.step-doc .tr-more { margin-top: 0; border-top: 0; }
+.step-doc .tr-more-head { padding: 0 0 6px; letter-spacing: 1px; }
+.step-doc .tr-more[open] > .tr-more-head { color: var(--fg-3); }
+.step-doc .tr-more-title { letter-spacing: 1px; }
 .step-sect .step-shots { margin-top: 6px; }
 .step-shot-card { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .step-shot-acts { display: flex; gap: 6px; font-size: 11px; }

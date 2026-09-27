@@ -95,11 +95,11 @@ function occurrences(label, runs, focus, path) {
   const out = [];
   if (path && path.length) {
     for (const v of SPM.levelVisits(runs.map((r) => r.members), path)) {
-      for (const st of v.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: runs[v.t] });
+      for (const st of v.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: runs[v.t], list: v.visible });
     }
   } else {
     for (const r of runs) {
-      for (const st of r.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: r });
+      for (const st of r.visible) if (mapNodeLabel(st) === label) out.push({ step: st, run: r, list: r.visible });
     }
   }
   if (focus && !out.some((o) => o.step.step_id === focus.step_id)) out.push({ step: focus, run: null });
@@ -206,7 +206,9 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
   // the ones added) and its notes (its own and those at a moment inside it).
   const shots = AnalystUI.shotsOf(st);
   const notes = AnalystUI.notesOf(st);
-  const said = placed && placed.synced ? TM.sentencesForStep(placed.sentences, st) : [];
+  // 2.0.1: the step before it in its transaction bounds its window, as in
+  // the step pane, so a sentence shows under one step only.
+  const said = placed && placed.synced ? TM.sentencesForStep(placed.sentences, st, o.list) : [];
   const focus = st.step_id === focusId;
   // Lane FX2: a moment the video does not cover says so, and has no play.
   const m = hasVideo ? _moment(st) : null;

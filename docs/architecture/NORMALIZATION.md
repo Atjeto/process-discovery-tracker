@@ -27,7 +27,7 @@ A project opened read only (a hand-off, contract C20) is never analyzed.
 python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
     [--pdd-out <path.docx>] [--pdd-map-image <path.png>] [--pdd-map-images <maps.json>]
     [--pdd-tobe-image <path.png>] [--library <activities.json>]
-    [--tech-out <path.xlsx>] [--handoff <N>]
+    [--tech-out <path.xlsx>] [--handoff <N>] [--pdd-attachments <dir>]
 ```
 
 | Flag | Effect |
@@ -40,6 +40,7 @@ python normalize.py <session_folder> [--taxonomy <taxonomy.yaml>] [--mine]
 | `--pdd-tobe-image` | A picture of the To-Be map, printed as section 7.1. The viewer passes the copy chosen as To-Be. |
 | `--library` | Contract C21: the app's activity library, `library/activities.json` (`resources/library/activities.json` in the packaged viewer). A project folder without its own `library.json` gets a copy of it with this analysis (staged with the other outputs, so only a run that succeeds leaves it); from then on the project's copy is used, with or without the flag, and never replaced, so a newer app library never changes an existing project. A file that is missing or fails a check prints one warning, is not copied, and the run uses no library (the drafting below is then unchanged). The viewer passes it on every run. It replaced `--names`, the remembered-names store of contract C4, which is removed: `--names` is now a usage error. |
 | `--tech-out` | Contract C20: write the Technical details workbook (`.xlsx`) to this path (`tech_details.py`, below): the reference transaction's recorded controls, the data fields per transaction, the re-keyed values and the applications. A requested export like the PDD: a failure exits 3 and changes nothing. The viewer passes it for Export, Technical details (.xlsx) and for a hand-off. |
+| `--pdd-attachments` | 2.0.1: the folder beside the PDD its attachments travel in, relative to the PDD. Each attachment's name, under its step and in the last section, becomes a link to `<dir>/<file>` (the path encoded), and the section says where the files are. The viewer passes `Attachments` when it exports the PDD of a project with attachments as a zip (`pdd-zip.js`), and `<project folder>/attachments` for a hand-off, whose zip holds the project folder beside the PDD. A value that leaves the PDD's folder (absolute, or `..`) is ignored; without it the names are plain text. |
 | `--handoff` | Contract C20: the hand-off version (an entry of `annotations.handoffs`) the PDD and the Technical details are made for: they read "Version N, handed off <date> by <name>". Without it (or for a version the project does not hold) they are a working copy: "Working copy after version N", or "Working copy, not handed off yet". A value below 1 is a usage error. The viewer passes it only for Export, Hand off... |
 
 Exit codes (contract C13): **0** success; **1** a usage error or a folder

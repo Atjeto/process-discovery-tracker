@@ -157,7 +157,7 @@ the folder.
   as `library.json` and keeps it (`--library`). The step pane's name field
   offers the activities of the step's system (`library.js` `pickerFor`): a
   pick sets the name, the system, `library_activity` and, when the step has
-  none, the description, and the fact line shows the activity's code. Any
+  none, the description, and the name shows the activity's code. Any
   name can still be typed; a rename still names the project's other drafts
   of its key (the session's own names). Help, *Build the library...*
   (`views/library-builder-ui.js`) is the owner's tool: it reads projects and
@@ -185,7 +185,10 @@ the folder.
   `analyst_notes` (on a step or a moment; out of the PDD's text and its map
   pictures, on the Map, the map exports and the step map beside their step;
   the old `notes` key round-trips), attachments
-  in `attachments/` (listed in the PDD), and `step.system`. Removing one
+  in `attachments/` (listed in the PDD, and carried with it: a project with
+  any exports its PDD as one zip, the PDD and `Attachments/`, the names
+  linking there, `pdd-zip.js`, `--pdd-attachments`; a hand-off's PDD links
+  into the project folder beside it), and `step.system`. Removing one
   deletes its entry and file; Undo restores both.
 - **Step flow** (C17, AD-31). A step may carry `only_when` (a condition)
   and `links` (`[{ to: step_id | "end", when }]`: a loop back, a skip or an
@@ -200,7 +203,7 @@ the folder.
 - **System names** (C14): `shared/system-names.json` turns an application
   and a window title into the business system (Salesforce for a Chrome
   window on Salesforce), read by `app_names.py` and `system-names.js` for
-  the Timeline's legend, the fact line, the map boxes, the panel and the
+  the Timeline's legend, the step pane's System, the map boxes, the panel and the
   PDD. Its site
   rule (2.0.1, `site_name`, `siteName`) names a browser window on a site no
   rule names by the site its title ends with, the browser's name dropped

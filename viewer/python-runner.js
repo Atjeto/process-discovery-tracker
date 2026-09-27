@@ -73,11 +73,12 @@ function resolveDefaultTaxonomy() {
    `pddMapImages` is the manifest of the sub-processes' map pictures
    (contract C19). `techOut` is the Technical details workbook and `handoff`
    the hand-off version the PDD and the workbook are made for (contract C20,
-   lane HV). */
+   lane HV). `pddAttachments` is the folder beside the PDD its attachments
+   travel in (2.0.1): the PDD links their names there. */
 function buildNormalizeArgs(script, opts) {
   const {
     sessionFolder, taxonomyPath, mine, pddOut, pddMapImage, pddTobeImage, pddMapImages, libraryPath,
-    techOut, handoff,
+    techOut, handoff, pddAttachments,
   } = opts || {};
   const args = [script, sessionFolder];
   if (taxonomyPath) args.push("--taxonomy", taxonomyPath);
@@ -88,6 +89,7 @@ function buildNormalizeArgs(script, opts) {
   if (pddMapImages) args.push("--pdd-map-images", pddMapImages);
   if (techOut) args.push("--tech-out", techOut);
   if (Number.isInteger(handoff) && handoff >= 1) args.push("--handoff", String(handoff));
+  if (pddOut && pddAttachments) args.push("--pdd-attachments", pddAttachments);
   if (libraryPath) args.push("--library", libraryPath);
   return args;
 }

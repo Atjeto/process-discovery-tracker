@@ -569,15 +569,44 @@ async function exportArtifact(kind) {
     return;
   }
 
-  // PDD: normalize writes the document straight to a temp path.
+  // PDD: normalize writes the document straight to a temp path. 2.0.1: the
+  // attachments go with the PDD: a project with any exports one zip, the PDD
+  // and an Attachments folder its attachment names link to (pdd-zip.js).
   const os = require("os");
   const tmpPath = path.join(os.tmpdir(), "pdt-export-" + Date.now() + ".docx");
-  const made = await writeDocuments(target, { pddOut: tmpPath, label: "Writing the PDD..." });
+  const attached = hasAttachments(target);
+  const made = await writeDocuments(target, { pddOut: tmpPath, pddAttachments: attached ? "Attachments" : null,
+    label: "Writing the PDD..." });
   if (!made.ok) {
     if (made.message) toast(made.message, "error");
     return;
   }
-  await _offerExport(tmpPath, _exportName(target, "PDD.docx"));
+  if (attached) await _offerPddZip(target, tmpPath);
+  else await _offerExport(tmpPath, _exportName(target, "PDD.docx"));
+}
+
+/* Whether the project on screen has attached files (annotations.attachments). */
+function hasAttachments(sess) {
+  const list = sess && sess.annotations && sess.annotations.attachments;
+  return Array.isArray(list) && list.some((a) => a && typeof a.file === "string" && a.file.trim());
+}
+
+/* 2.0.1: offer the PDD at `tmpPath` with its attachments as one zip: the
+   save dialog, then its folder opens with the zip selected; the temp file
+   goes either way. */
+async function _offerPddZip(target, tmpPath) {
+  let r = null;
+  try {
+    r = await Ipc.exportPddZip({ sessionFolder: target.sessionFolder, pdd: tmpPath, name: _exportName(target, "PDD") });
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  }
+  try { fs.unlinkSync(tmpPath); } catch (_) {}
+  if (!r) return;
+  if (!r.ok) { toast("Export failed: the PDD and its attachments were not saved. " + (r.error || ""), "error"); return; }
+  await Ipc.revealFile(r.path);
+  toast("Exported: " + path.basename(r.path) + " (the PDD and " +
+    (r.files === 1 ? "its attachment" : "its " + r.files + " attachments") + ")", "success");
 }
 
 /* Offer a document an export wrote to a temp path: the save dialog, then its
@@ -605,7 +634,7 @@ async function _offerExport(tmpPath, suggested) {
    Resolves { ok: true } once every file asked for is written, else
    { ok: false, message } (message null when the analysis before it has
    already said why); a file written by a run that failed is removed. */
-async function writeDocuments(target, { pddOut, techOut, handoff, label } = {}) {
+async function writeDocuments(target, { pddOut, techOut, handoff, label, pddAttachments } = {}) {
   const os = require("os");
   const outs = [pddOut, techOut].filter(Boolean);
   // RP-09: nothing may sit at an output path before the run, so a file found
@@ -619,6 +648,8 @@ async function writeDocuments(target, { pddOut, techOut, handoff, label } = {}) 
   const opts = { sessionFolder: target.sessionFolder, mine: false };
   if (techOut) opts.techOut = techOut;
   if (Number.isInteger(handoff) && handoff >= 1) opts.handoff = handoff;
+  // 2.0.1: the folder beside the PDD its attachments travel in.
+  if (pddAttachments) opts.pddAttachments = pddAttachments;
   let mapImgPath = null, tobeImgPath = null, picsDir = null;
   if (pddOut) {
     opts.pddOut = pddOut;

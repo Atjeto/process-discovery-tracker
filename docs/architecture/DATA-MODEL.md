@@ -233,7 +233,7 @@ renderer keeps it in `viewer/state.js` (`State.getSession()`):
 | `integrity` | `session-integrity.json` | `{ missing: [...] }`: files that did not survive the copy |
 | `transcript`, `transcriptError` | `transcript.json` | The parsed transcript, or `null`; a file that exists but cannot be used is reported in one line and otherwise ignored |
 | `readOnly` | | A hand-off opened read only (contract C20): a folder under `<userData>/handoffs`, or a hand-off unzipped by hand; nothing in it is written |
-| `library` | `library.json`, else the app's `library/activities.json` | Contract C21 (`library.js` `projectLibrary`): `{ source, status, path, library, error }`; a missing or invalid file is an empty library. The step pane's picker and the fact line's code read it |
+| `library` | `library.json`, else the app's `library/activities.json` | Contract C21 (`library.js` `projectLibrary`): `{ source, status, path, library, error }`; a missing or invalid file is an empty library. The step pane's picker and the code beside the name read it |
 
 Every surface places transcript sentences through `viewer/transcript-model.js`,
 the one implementation of the time rule in SCHEMA.md (contract C8).

@@ -8,11 +8,10 @@
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
   // C21: the activities the name field's picker keeps as the analyst types.
   const { filterActivities } = require("./library.js");
-  // One composed human identity line per element (App Library pass, R1). Reused
-  // here for the step-detail interaction rows so a control with no accessible
-  // name reads as `<ControlType> · "<best identity>" · <window>` with the
-  // volatility/weak marker + tooltip -- never a bare automation_id or a raw
-  // window title. The matcher stays ground truth; this is presentation only.
+  // One composed human identity line per element (App Library pass, R1):
+  // `<ControlType> · "<best identity>" · <window>`, the title of a recorded
+  // action's row in the step pane (2.0.1: the window is the Recorded line's
+  // screen, so the row itself reads only what happened).
   const { identityLine } = require("./identity-line.js");
 
   /* True while the step pane is being drawn again: a field removed from the
@@ -238,36 +237,53 @@
       : "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it.";
   }
 
-  /* The fields typed in the step, as a compact list: [{ field, value }]. */
-  function stepFieldsHtml(fields) {
-    if (!Array.isArray(fields) || !fields.length) return "";
-    return `<div class="step-fields"><span class="step-fields-title">Fields typed</span><dl>` +
-      fields.map((f) => `<dt title="${escapeAttr(f.field)}">${escapeHtml(f.field)}</dt><dd title="${escapeAttr(f.value)}">${escapeHtml(f.value)}</dd>`).join("") +
-      `</dl></div>`;
+  /* 2.0.1 (the owner's review): Recorded is open or closed as the analyst
+     last left it, on any step, kept on this computer; until then it is open
+     for a step of 15 actions or fewer. `kept`: "1", "0" or null. */
+  const RECORDED_KEY = "pdt.recordedOpen";
+  let _recordedChoice = null;
+  function recordedOpen(total, kept) {
+    return kept === "1" ? true : kept === "0" ? false : total <= 15;
+  }
+  function _keptRecordedOpen() {
+    try {
+      const v = localStorage.getItem(RECORDED_KEY);
+      if (v === "1" || v === "0") return v;
+    } catch (_) { /* nothing kept on this computer */ }
+    return _recordedChoice;
+  }
+  function _keepRecordedOpen(open) {
+    _recordedChoice = open ? "1" : "0";
+    try { localStorage.setItem(RECORDED_KEY, _recordedChoice); } catch (_) { /* kept until the viewer closes */ }
   }
 
-  /* The selected step's editor (P1.7; companion critique, section 3): what
-     the analyst edits and what the PDD prints, resident; the rest one click
-     away. Nothing waits for a Save button: the name saves on Enter or when
-     the field is left, the description when it is left, Waste on its click;
-     each is one undoable edit.
-       resident: one fact line (the system, the screen, the time, where a
-         draft ends, where the step is in the recording), the name, the
-         fields typed, the Description (the text the PDD prints under the
-         step, C7; the drafting's own narration is its hint, not its text)
-         with "Said during this step" under it while a transcript is
-         attached, the Flow line (C17: Only when and Go to), Waste, Watch
-         (with a video: it plays the step in the step panel), Hide and (C19)
+  /* What the Description field shows while it is empty. */
+  const DESC_HINT = "What the person does in this step";
+
+  /* The selected step's editor (P1.7; 2.0.1, the owner's review: in parts,
+     each fact said once). Nothing waits for a Save button: the name saves on
+     Enter or when the field is left, the description when it is left, Waste
+     on its click; each is one undoable edit.
+       the head: the name (C21: the code of the library activity it is named
+         from beside it) and the acts on the whole step: Watch (with a video:
+         it plays the step in the step panel), Show on timeline, Hide, (C19)
          Open as a sub-process, or on a sub-process Open sub-process and
-         Dissolve sub-process, and the step's screenshots;
-       "More" (a native <details>, collapsed on every selection): the
-         interactions the step is made of, Show on timeline, Split, Merge with
-         next, Merge selected (on a sub-process one line saying why neither
-         applies), Delete (added steps only).
-     Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the fact
-     line, the fields, the description and its hint, (C16) the System field
-     and the screenshots, notes and attachments (views/analyst-ui.js), and
-     (C21) the name field's picker: `picker` (library.js pickerFor) and
+         Dissolve sub-process, and Delete (added steps only);
+       In the PDD: what the document says about the step: the System (C16),
+         the Description (C7; the drafting's narration is not its hint: the
+         actions are under Recorded) with "Said during this step" under it
+         while a transcript is attached (C8), the Flow line (C17: Only when
+         and Decision) and Waste;
+       Screenshots, Notes and Attachments (C16, views/analyst-ui.js);
+       Recorded (a native <details>, open or closed as the analyst last left
+         it): one line (how many actions, on which screen, how long, where a
+         draft ends), the actions, each but the last with the scissors that
+         split the step after it, and Merge with next, Merge selected (on a
+         sub-process one line saying why neither applies).
+     Callbacks (steps-view.js stepDetailCallbacks) carry the verbs, the code,
+     the Recorded line, the description, (C16) the System field and the
+     screenshots, notes and attachments (views/analyst-ui.js), and (C21) the
+     name field's picker: `picker` (library.js pickerFor) and
      onPickActivity(stepId, activityId). */
   function renderStepDetail(host, step, callbacks) {
     _rendering = true;
@@ -279,12 +295,7 @@
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
     // C19: a sub-process is not split or merged (its steps are, inside it).
-    // 2.0.1: the recorded actions show in the pane, each with its scissors
-    // (a click splits after that action; there is no split at a guess), and
-    // after Merge with next the place where the two steps met is marked.
     const sub = callbacks.subProcess || null;
-    const interListHtml = renderInteractionList(resolvedInter, interIds.length,
-      { splittable: !sub, mergedAfter: callbacks.mergedAfterIndex, originMs: callbacks.originMs });
     // P0.1: merge is the inverse of split, shown right beside it. "Merge with
     // next" always merges this step + the following one; the count-labelled
     // "Merge N selected" appears only when 2+ steps are ticked, so one button
@@ -293,15 +304,13 @@
     const mergeSelectedBtn = mergeSelCount >= 2
       ? `<button id="btn-step-merge-selected" title="Merge the ${mergeSelCount} ticked steps into one">Merge ${mergeSelCount} selected</button>`
       : "";
-    const fact = callbacks.factLine || "";
     const isHidden = step.state === "hidden";
     // Item 5 (L12b): a drafted step is hidden, never deleted (the next Analyze
     // would draft it again; a hidden one stays out). Only a step the analyst
     // added has Delete.
     const isAdded = step.state === "manually_authored";
-    // The analyst's description; a draft's narration is only its hint.
+    // The analyst's description; a draft's narration is not a description.
     const desc = typeof callbacks.description === "string" ? callbacks.description : (step.description || "");
-    const hint = callbacks.descriptionHint || "The text the PDD prints under this step";
     const watchBtn = callbacks.recordingAvailable
       ? `<button id="btn-step-watch" title="Play this step in the video of the step panel">▶ Watch</button>` : "";
     // C19: the way into a sub-process and its inverse, or the verb that makes
@@ -316,33 +325,41 @@
           ? `<button id="btn-step-make-sub" disabled title="${escapeAttr(callbacks.openAsSubWhy)}">Open as a sub-process</button>`
           : `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click, a sheet's cells), in every transaction where it happens, and show them">Open as a sub-process</button>`)
         : "";
-    const moreActs = sub
+    const mergeActs = sub
       ? `<p class="step-sub-note" id="step-sub-note">A sub-process is not split or merged: dissolve it first, or work on its steps inside.</p>`
       : `<button id="btn-step-merge" title="Merge this step with the whole next step of its transaction. To move the line between them, merge, then click the scissors where this step should end.">Merge with next</button>
             ${mergeSelectedBtn}`;
     host.innerHTML = `
-      ${fact ? `<p class="step-fact">${escapeHtml(fact)}</p>` : ""}
-      ${nameFieldHtml(step, callbacks.picker)}
-      ${callbacks.systemHtml || ""}
-      ${stepFieldsHtml(callbacks.fields)}
-      <label>Description <textarea id="step-desc" placeholder="${escapeAttr(hint)}" title="Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
-      ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
-      ${flowSectionHtml(step, callbacks.flow)}
-      <div class="flags">
-        <label title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste</label>
-      </div>
-      <div class="actions">
+      ${nameFieldHtml(step, callbacks.picker, callbacks.code)}
+      <div class="actions step-acts">
         ${watchBtn}
+        <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
         ${subBtns}
-        <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
         ${isAdded ? `<button id="btn-step-delete" class="danger" title="${escapeAttr(sub && sub.group ? "Delete this sub-process you made, with its steps" : "Delete this step you added")}">Delete</button>` : ""}
       </div>
-      <div class="step-sect step-recorded" id="step-recorded">
-        <div class="evidence">${interListHtml}</div>
-        <div class="actions">${moreActs}</div>
+      <div class="step-part step-doc" id="step-doc">
+        <div class="step-part-head"><span class="step-part-title">In the PDD</span><span class="step-part-hint">what the document says about this step</span></div>
+        ${callbacks.systemHtml || ""}
+        <label>Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
+        ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
+        ${flowSectionHtml(step, callbacks.flow)}
+        <div class="flags">
+          <label title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste: this step should not be needed</label>
+        </div>
       </div>
-      ${callbacks.extrasHtml || ""}`;
+      ${callbacks.extrasHtml || ""}
+      ${recordedHtml(resolvedInter, interIds.length, {
+        // 2.0.1: each action but the last has its scissors (a click splits
+        // after that action; there is no split at a guess), and after Merge
+        // with next the place where the two steps met is marked.
+        splittable: !sub, mergedAfter: callbacks.mergedAfterIndex, originMs: callbacks.originMs,
+        line: callbacks.recorded, actsHtml: mergeActs, open: recordedOpen(interIds.length, _keptRecordedOpen()),
+      })}`;
+    // 2.0.1: Recorded stays open or closed as the analyst last left it.
+    const recEl = document.getElementById("step-recorded");
+    const recHead = recEl && recEl.querySelector("summary");
+    if (recHead) recHead.addEventListener("click", () => _keepRecordedOpen(!recEl.open));
     // The name saves on Enter or when the field is left; Escape puts it back.
     const nameEl = document.getElementById("step-name");
     const commitName = () => {
@@ -422,15 +439,17 @@
      step's system (or no system yet, on a step added by hand) the field says
      so in one quiet line while it has the focus (styles.css), and no list
      opens. */
-  function nameFieldHtml(step, picker) {
+  function nameFieldHtml(step, picker, code) {
     const acts = picker && Array.isArray(picker.activities) ? picker.activities : [];
     const note = picker && picker.note ? `<span class="step-lib-note" id="step-lib-note">${escapeHtml(picker.note)}</span>` : "";
+    // C21: the code of the library activity the step is named from.
+    const codeHtml = code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(code)}</span>` : "";
     const title = acts.length
       ? "Pick an activity of " + picker.system + " from the library, or type any name. Saved when you press Enter or leave the field"
       : "Saved when you press Enter or leave the field";
     const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="step-activity-list"` : "";
     return `<div class="step-name-field">` +
-      `<label>Name${note}<input type="text" id="step-name" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}"></label>` +
+      `<label>Name${codeHtml}${note}<input type="text" id="step-name" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}"></label>` +
       (acts.length ? `<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="${escapeAttr("Activities of " + picker.system)}" hidden></ul>` : "") +
       `</div>`;
   }
@@ -838,52 +857,26 @@
     return `${kind ? kind.replace(/_/g, " ") : "Event"}: ${label}`;
   }
 
-  /* The collapsible list of a step's constituent interactions. `events`
-     are the resolved interaction events in step order; `total` is the
-     count the step claims (may exceed events.length when some ids are
-     not in this session's event stream). */
-  /* A1: bucket an interaction by kind so the list can colour-code value
-     entry vs. actions vs. selections vs. toggles (ADR-0010 A1). An unknown
-     or navigational kind (focus_changed, ...) stays muted. Exported for
-     unit tests. */
-  function siKindClass(ev) {
-    const k = (ev && ev.data && ev.data.kind) || "";
-    if (k === "value_changed" || k === "text_changed") return "si-value";
-    if (k === "invoked") return "si-action";
-    if (k === "selection_changed") return "si-select";
-    if (k === "toggle_changed") return "si-toggle";
-    return "si-other";
+  /* The Recorded part of the step pane (2.0.1): its summary says what the
+     recording holds of the step (`line`, steps-view.js: "6 actions on New
+     order · took 7s · ends at Save order"), its body lists the actions and
+     holds `actsHtml` (Merge with next); open when `open`. */
+  function recordedHtml(events, total, opts) {
+    opts = opts || {};
+    return `<details class="step-part step-recorded" id="step-recorded"${opts.open ? " open" : ""}>` +
+      `<summary class="step-part-head"><span class="step-part-title">Recorded</span>` +
+      (opts.line ? `<span class="step-part-hint">${escapeHtml(opts.line)}</span>` : "") +
+      `<span class="tr-more-chevron" aria-hidden="true"></span></summary>` +
+      `<div class="evidence">${renderInteractionList(events, total, opts)}</div>` +
+      (opts.actsHtml ? `<div class="actions">${opts.actsHtml}</div>` : "") +
+      `</details>`;
   }
 
-  /* P0.4: a colour key for the A1 interaction bars, so the hues are not an
-     unexplained code. Only the kinds actually present in this step are shown;
-     if every interaction is the muted "other", there is nothing to explain. */
-  const SI_LEGEND_LABELS = {
-    "si-value": "Value entry", "si-action": "Action",
-    "si-select": "Selection", "si-toggle": "Toggle", "si-other": "Other",
-  };
-  function interactionLegendHtml(events) {
-    const present = new Set((events || []).map(siKindClass));
-    if (!present.size || (present.size === 1 && present.has("si-other"))) return "";
-    const order = ["si-value", "si-action", "si-select", "si-toggle", "si-other"];
-    const items = order.filter((k) => present.has(k)).map((k) =>
-      `<span class="si-lg-item"><span class="si-sw ${k}"></span>${SI_LEGEND_LABELS[k]}</span>`).join("");
-    return `<div class="si-legend">${items}</div>`;
-  }
-
-  /* The one composed human identity line for an interaction row, via the
-     shared identityLine (App Library pass): `<ControlType> · "<best identity>"
-     · <window>`. The event's own `data` blob carries exactly the signature
-     fields identityLine reads (control_type / automation_id / name /
-     class_name / window_title), so it is passed straight through. Kept
-     alongside the action verb (describeInteraction) so a row reads "what
-     happened" AND "on which control". */
-  function interactionIdentityHtml(ev) {
-    const data = (ev && ev.data) || {};
-    const line = identityLine(data);
-    return `<span class="si-identity" title="${escapeAttr(line.text)}">${escapeHtml(line.text)}</span>`;
-  }
-
+  /* The list of a step's recorded actions, one line each: what happened and
+     when; the control and its window are the row's title. `events` are the
+     resolved interaction events in step order; `total` is the count the step
+     claims (may exceed events.length when some ids are not in this session's
+     event stream). */
   function renderInteractionList(events, total, opts) {
     // Lane FX3 (validation pass 3, F16): the analyst's words, "action" (a
     // click, a field typed), as Split and Open as a sub-process say it.
@@ -900,12 +893,9 @@
       const splitBtn = (splittable && i < events.length - 1)
         ? `<button type="button" class="si-split-btn" data-after="${i}" title="Split the step here: the first part ends after this action">&#9988;</button>`
         : "";
-      return `<li class="step-interaction ${siKindClass(ev)}${wasLine ? " was-boundary" : ""}" data-idx="${i}"` +
-        (wasLine ? ` title="The two merged steps met here"` : "") + `>` +
-        `<span class="si-body">` +
-          `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
-          interactionIdentityHtml(ev) +
-        `</span>` +
+      const title = identityLine((ev && ev.data) || {}).text + (wasLine ? "\nThe two merged steps met here" : "");
+      return `<li class="step-interaction${wasLine ? " was-boundary" : ""}" data-idx="${i}" title="${escapeAttr(title)}">` +
+        `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
         `<span class="si-time">${escapeHtml(t)}</span>${splitBtn}</li>`;
     });
     const missing = total - events.length;
@@ -914,16 +904,13 @@
         `<span class="si-text meta">${missing === 1 ? "1 recorded action is" : missing + " recorded actions are"} not in this project</span>` +
         `</li>`);
     }
-    return `<details class="step-interactions"${total <= 15 ? " open" : ""}>` +
-      `<summary>Recorded actions (${total})${splittable ? `<span class="si-split-hint"> · the scissors split after an action</span>` : ""}</summary>` +
-      interactionLegendHtml(events) +
-      `<ol class="step-interaction-list">${rows.join("")}</ol>` +
-      `</details>`;
+    return (splittable ? `<p class="si-split-hint">The scissors after an action split the step there.</p>` : "") +
+      `<ol class="step-interaction-list">${rows.join("")}</ol>`;
   }
 
   module.exports = {
     renderStepList, renderStepDetail,
-    describeInteraction, renderInteractionList, siKindClass, stepFieldsHtml, splitBlocker,
+    describeInteraction, renderInteractionList, recordedHtml, recordedOpen, splitBlocker,
     nameFieldHtml, activityListHtml,
   };
 })();

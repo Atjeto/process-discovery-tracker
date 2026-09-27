@@ -371,14 +371,25 @@ shown only after a failed run; `#toast`.
   is when the step starts, m:ss on the one clock, 2.0.1). A sub-process
   row carries `data-sub-process="true"` and `.step-sub-open` ("▸ N
   sub-steps", a click opens its level).
-- The step pane `#step-detail` (focus it before Ctrl+V): `.step-fact`,
-  `#step-name` (Enter or leaving it saves; contract C21: a click, typing or
+- The step pane `#step-detail` (focus it before Ctrl+V), in parts since
+  2.0.1 (`.step-part`, each under a `.step-part-title`): the head,
+  `#step-code` (the library activity's code, C21, when the step is named
+  from one), `#step-name` (Enter or leaving it saves; contract C21: a click, typing or
   Down opens the library's activities of the step's system under it,
   `#step-activity-list .step-activity` (`.step-activity-name`,
   `.step-activity-code`, `.step-activity-desc`; `.current` the step's own,
   `.active` the keys' row), a click or Enter picks one; with none, the quiet
-  line `#step-lib-note`, shown only while the name has the focus), `#step-system` (with
-  `#step-system-list`), `#step-desc` (leaving it saves), `#step-said`,
+  line `#step-lib-note`, shown only while the name has the focus) and the
+  acts `.step-acts`: `#btn-step-watch` (only with a video), `#btn-step-jump`,
+  `#btn-step-hide`, C19: `#btn-step-make-sub` (Open as a sub-process, on a
+  step of a transaction; 2.0.1: disabled with its reason in its title on a
+  recorded step with fewer than two actions, a sheet's cells filled one
+  after another counting as one, and then left out of `#step-ctx-menu`) or
+  on a sub-process `#btn-step-open-sub` and `#btn-step-dissolve`, and
+  `#btn-step-delete` (added steps only); In the PDD `#step-doc`:
+  `#step-system` (with `#step-system-list`), `#step-desc` (leaving it
+  saves), `#step-said` (the sentences that start in the step's window, the
+  step before bounding its lead),
   the Flow line `#step-flow` (contract C17: `#step-flow-line`,
   `#btn-flow-only-when`, `#btn-flow-go-to`; the condition `#step-only-when`
   with `#btn-flow-remove-condition`; the links `.flow-links
@@ -386,23 +397,18 @@ shown only after a failed run; `#toast`.
   `.flow-link-text`, the dropdown `select.flow-link-to`
   (`#flow-link-to-<i>`, its options the transaction's steps and `end`),
   `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
-  `#flag-waste`, `#btn-step-watch` (only with a video), `#btn-step-hide`,
-  C19: `#btn-step-make-sub` (Open as a sub-process, on a step of a
-  transaction; 2.0.1: disabled with its reason in its title on a recorded
-  step with fewer than two actions, a sheet's cells filled one after
-  another counting as one, and then left out of `#step-ctx-menu`) or on a
-  sub-process `#btn-step-open-sub` and
-  `#btn-step-dissolve` (its More shows `#step-sub-note` in place of Split
-  and Merge);
+  `#flag-waste`;
   `#step-shots-sect` (`#btn-step-add-shot` opens `#shot-src-menu
   [data-src="video_frame"|"paste"|"file"]`; `.step-shot-card[data-ref][data-kind]`
   with `[data-shot-act="pdd"|"remove"]`, and `[data-shot-act="unhide"]`);
   `#step-notes-sect` (`#btn-step-add-note`, `.step-note [data-note-act="edit"|"delete"]`);
-  `#step-atts-sect` (`#btn-step-attach`, `[data-att-act]`). Since 2.0.1 there
-  is no More section: `#btn-step-jump` and `#btn-step-delete` (added steps
-  only) sit with Hide step, and `#step-recorded` holds the recorded actions
-  (their `.si-split-btn` scissors split after an action; none on a step with
-  fewer than two), `#btn-step-merge` and `#btn-step-merge-selected`.
+  `#step-atts-sect` (`#btn-step-attach`, `[data-att-act]`); Recorded
+  `details#step-recorded` (a click on its summary opens or closes it on
+  every step, kept in `localStorage` `pdt.recordedOpen`; its line
+  `summary .step-part-hint`): the actions `.step-interaction` (their
+  `.si-split-btn` scissors split after an action; none on a step with fewer
+  than two), `#btn-step-merge` and `#btn-step-merge-selected`, or on a
+  sub-process `#step-sub-note` in their place.
 
 **The step panel** (`#step-panel`, `views/step-panel.js`; hidden until a
 door opens it): `#sp-name`, `#sp-about` (`.sp-system`, the flow line

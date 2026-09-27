@@ -83,20 +83,43 @@ test("stepWindow starts 10 s before the step and ends with it", () => {
   assert.equal(TM.stepWindow({ time_range: {} }), null);
 });
 
-test("sentencesForStep: the overlap edges of the window, in time order", () => {
+test("sentencesForStep: the sentences that start in the window, its edges included, in time order", () => {
   const step = { time_range: { start: "2026-05-14T09:00:29Z", end: "2026-05-14T09:00:37Z" } };
   const list = [
     placed("inside", "09:00:32", "09:00:36"),
     placed("lead-in", "09:00:20", "09:00:24"),
-    placed("ends-at-window-start", "09:00:15", "09:00:19"),
-    { ...placed("ends-just-before", "09:00:15", "09:00:19"), endMs: at("09:00:19") - 1 },
+    placed("starts-at-window-start", "09:00:19", "09:00:21"),
+    { ...placed("starts-just-before", "09:00:19", "09:00:21"), startMs: at("09:00:19") - 1 },
     placed("starts-at-step-end", "09:00:37", "09:00:40"),
     { ...placed("starts-just-after", "09:00:37", "09:00:40"), startMs: at("09:00:37") + 1 },
-    placed("spans-the-step", "09:00:10", "09:00:50"),
+    placed("started-before-the-lead", "09:00:10", "09:00:50"),
     { id: "unplaced", startMs: null, endMs: null },
   ];
   assert.deepEqual(TM.sentencesForStep(list, step).map((s) => s.id),
-    ["spans-the-step", "ends-at-window-start", "lead-in", "inside", "starts-at-step-end"]);
+    ["starts-at-window-start", "lead-in", "inside", "starts-at-step-end"]);
+});
+
+test("2.0.1: the step before bounds the lead, so a sentence shows under one step only", () => {
+  const a = { step_id: "a", time_range: { start: "2026-05-14T09:00:20Z", end: "2026-05-14T09:00:27Z" } };
+  const b = { step_id: "b", time_range: { start: "2026-05-14T09:00:29Z", end: "2026-05-14T09:00:37Z" } };
+  const added = { step_id: "x", time_range: null };
+  const steps = [a, added, b];
+  assert.equal(TM.prevEndMs(steps, b), at("09:00:27"), "the timed step before, past one without a time");
+  assert.ok(Number.isNaN(TM.prevEndMs(steps, a)), "nothing before the first");
+  assert.deepEqual(TM.stepWindow(b, undefined, at("09:00:27")), { startMs: at("09:00:27") + 1, endMs: at("09:00:37") });
+  // A step that starts before the one before it ends keeps its own start.
+  assert.deepEqual(TM.stepWindow(b, undefined, at("09:00:31")), { startMs: at("09:00:29"), endMs: at("09:00:37") });
+  const said = [
+    placed("before-a", "09:00:12", "09:00:14"),
+    placed("during-a", "09:00:24", "09:00:30"),
+    placed("at-a-end", "09:00:27", "09:00:28"),
+    placed("between", "09:00:28", "09:00:29"),
+    placed("during-b", "09:00:33", "09:00:34"),
+  ];
+  assert.deepEqual(TM.sentencesForStep(said, a, steps).map((s) => s.id), ["before-a", "during-a", "at-a-end"]);
+  assert.deepEqual(TM.sentencesForStep(said, b, steps).map((s) => s.id), ["between", "during-b"]);
+  // Without the list, the lead is the full 10 s.
+  assert.deepEqual(TM.sentencesForStep(said, b).map((s) => s.id), ["during-a", "at-a-end", "between", "during-b"]);
 });
 
 test("outsideRuns: before, between and after the runs are outside; a boundary spanned is inside", () => {

@@ -3,15 +3,15 @@
  * built from the step's structured fields and its recorded interactions,
  * never by reading the pipeline's reason sentence (companion critique,
  * section 3):
- *   factLine   "Salesforce · SO-01 · Account lookup · 6s · ends at Search · Transaction 1 at 0:19"
- *   typedFields the fields typed in the step, (field, value) as the PDD lists them
+ *   recordedLine  the step pane's Recorded line, "6 actions on Account
+ *              lookup · took 6s · ends at Search" (2.0.1)
  *   draftedNarration / isDraftedDescription  the drafting's own description,
- *              which the step pane shows as a hint, not as the description
+ *              which the step pane does not show as the description
  *   occurrenceLine / occurrencesLine  the step panel's rows and the line
  *              above them ("Transaction 2, again · 2:14 into the recording ·
  *              took 9s"; "This step happened 5 times: ...")
  * Twins of normalization/step_suggest.py (_default_step_description,
- * _draft_screen, _commit_label) and pdd_export.py (_entered, position).
+ * _draft_screen, _commit_label).
  *
  * Pure: no DOM, no State.
  */
@@ -20,7 +20,6 @@
 
 const { valueFree } = require("./process-map-levels.js");
 const { sinceStart, formatDuration } = require("./dom.js");
-const { isBrowserChrome } = require("./recognition.js");
 
 const ELLIPSIS = String.fromCharCode(0x2026);
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
@@ -50,41 +49,6 @@ function stepDatas(step, interactionsById) {
     out.push(ev.data || {});
   }
   return out;
-}
-
-/* ---- the fields typed (pdd_export._entered) -------------------------------- */
-
-/* Lane LF-PIPE: a secret reads SECRET_VALUE; an empty web field (U+FFFC) is
-   no value; the browser's address bar is a navigation, never a field; a
-   choice named by its own option ("Croatia", a cell "A2") names no field. */
-function _entered(d) {
-  if (isBrowserChrome(d)) return null;
-  let value;
-  if (d.kind === "value_changed" || d.kind === "text_changed") {
-    if (d.value_redacted === true) value = SECRET_VALUE;
-    else {
-      value = _text(d.value);
-      if (!value || NOISE.has(value.toLowerCase()) || isBlankValue(value)) return null;
-    }
-  } else if (d.kind === "selection_changed" && d.control_type !== "TabItem" && d.control_type !== "Tab") {
-    value = _text(d.selected_value);
-    const label = d.meaningful_name || d.name;
-    if (!value || (typeof label === "string" && label.trim() === value)) return null;
-  } else return null;
-  if (value.length > 200) value = value.slice(0, 199) + ELLIPSIS;
-  const field = _text(d.meaningful_name) || _text(d.name) || _text(d.automation_id) || "(unnamed field)";
-  return { field, value };
-}
-
-/* [{ field, value }] of the fields typed in a step: each field once, in the
-   order first typed, with the last value it got. */
-function typedFields(datas) {
-  const byField = new Map();
-  for (const d of datas || []) {
-    const e = _entered(d || {});
-    if (e) byField.set(e.field, e.value);
-  }
-  return [...byField].map(([field, value]) => ({ field, value }));
 }
 
 /* ---- the drafting's narration (step_suggest._default_step_description) ---- */
@@ -189,18 +153,6 @@ function endsAt(step, datas) {
   return "";
 }
 
-/* ---- where a step is in the recording ------------------------------------- */
-
-/* "Transaction 1 at 0:19" (the PDD's pointer; the run's title, AD-29), or
-   "0:19 into the recording" for a step outside every run; `runs` as
-   runs-model.buildRuns returns them. */
-function pointer(step, runs, originMs) {
-  const at = sinceStart(step && step.time_range && step.time_range.start, originMs);
-  if (!at) return "";
-  const run = (runs || []).find((r) => r.caseId === (step && step.case_id));
-  return run ? run.title + " at " + at : at + " into the recording";
-}
-
 /* The step's time on screen: "42s", "2m 17s", "1h 04m". */
 function duration(tr) {
   return formatMs(Date.parse(tr && tr.end) - Date.parse(tr && tr.start));
@@ -212,12 +164,16 @@ function formatMs(ms) {
   return formatDuration(ms);
 }
 
-/* The step pane's one fact line: the system first, then the code of the
-   activity the step is named from (contract C21), the screen, the time,
-   where a draft ends and where the step is in the recording. */
-function factLine(parts) {
+/* The step pane's Recorded line (2.0.1, the owner's review: each fact once,
+   in words): how many actions on which screen, how long the step took and
+   where a draft ends. The system is the System field's, the code sits by
+   the name, the transaction and the start are the step's row. */
+function recordedLine(parts) {
   const p = parts || {};
-  return [p.system, p.code, p.screen, p.duration, p.ends, p.pointer].filter(Boolean).join(" · ");
+  const n = p.actions || 0;
+  const what = n ? (n === 1 ? "1 action" : n + " actions") + (p.screen ? " on " + p.screen : "")
+    : p.screen ? "on " + p.screen : "";
+  return [what, p.duration ? "took " + p.duration : "", p.ends].filter(Boolean).join(" · ");
 }
 
 /* The step panel's rows and the line above them (the owner's review of the
@@ -323,7 +279,7 @@ function occurrencesLine(rows, runCount, playable, uncovered) {
 }
 
 module.exports = {
-  stepDatas, typedFields, draftedNarration, isDraftedDescription, commitName, endsAt,
-  pointer, duration, formatMs, factLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
+  stepDatas, draftedNarration, isDraftedDescription, commitName, endsAt,
+  duration, formatMs, recordedLine, occurrenceLine, occurrencesLine, videoMoment, NOT_COVERED,
   SECRET_VALUE, isBlankValue,
 };

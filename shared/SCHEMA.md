@@ -186,7 +186,7 @@ Sourced from Windows UI Automation through the C# recorder sidecar. See
 | `selected_value` | string | `selection_changed` only |
 | `toggle_state` | string | `toggle_changed` only: `on` \| `off` \| `indeterminate` |
 | `value` | string | `value_changed` only, clamped to 256 characters. **Omitted entirely when `value_redacted` is set.** |
-| `value_redacted` | bool | `value_changed` only; present (`true`) when the recorder **redacted a secret at capture**: the control was UIA-flagged `IsPassword` (a password or masked-secret field), so the `value` is omitted and the `TextPattern` and OCR recovery are skipped. The raw `events.jsonl` never holds the secret. The step pane's fields typed, the PDD's Data section and the Technical details read it "typed (hidden)" ("Password typed (hidden)"), and a draft's narration "Typed Password (hidden)." (lane LF-PIPE). This is the only redaction in the light version: there is no masking of other values (ADR-0029 D7). |
+| `value_redacted` | bool | `value_changed` only; present (`true`) when the recorder **redacted a secret at capture**: the control was UIA-flagged `IsPassword` (a password or masked-secret field), so the `value` is omitted and the `TextPattern` and OCR recovery are skipped. The raw `events.jsonl` never holds the secret. The Technical details read it "typed (hidden)" ("Password typed (hidden)"), and a draft's narration "Typed Password (hidden)." (lane LF-PIPE). This is the only redaction in the light version: there is no masking of other values (ADR-0029 D7). |
 | `value_truncated` | bool | `value_changed` only; present (`true`) when the 256-character clamp fired, so the stored value is partial |
 | `value_source` | string | `value_changed` only; present **only when the value was recovered** off the primary UIA ValuePattern path (section 11e): currently `text_pattern` (read through `TextPattern` from a rich-text or document control whose ValuePattern was empty). Omitted on the normal path. |
 | `coverage_hint` | string | First interaction per process only: `rich` (stable `automation_id`) \| `basic` (control type, no id) \| `minimal` (class name only). How richly UIA exposes that app. |
@@ -482,7 +482,9 @@ spreadsheet, an SOP, a form):
 - The PDD lists every attachment (label and file name) in a last section,
   "Attachments", and names a step's attachments by label under that step
   ("Attachments: Example order email."); an empty label prints the file
-  name. Nothing is embedded.
+  name. Nothing is embedded: the files travel beside the PDD (2.0.1, the
+  viewer's PDD zip and a hand-off), and each name links to its file there
+  (`normalize.py --pdd-attachments`).
 - The step map shows each attachment on a step as a data object joined to
   the step's task (contract C18), named by its label (else its file name);
   its id is `DataObjectReference_<attachment id>`.
@@ -1045,7 +1047,7 @@ get theirs by the same rule, at every depth, a drafted sub-step's
 [ADR-0024](../docs/adr/0024-step-grain-as-view-time-rollup.md)). The grain
 slider they once fed is cut; the keys stay and are recomputed on every run,
 so they track the current evidence. The viewer reads a step's `app` and
-`screen` from them (the step pane's fact line, the time per application on
+`screen` from them (the step pane's Recorded line, the time per application on
 the Overview). The drafting rule's `screen` is the same value-free label. A
 step with no interactions carries `(element)`, `(screen)` and `(app)`
 placeholders.

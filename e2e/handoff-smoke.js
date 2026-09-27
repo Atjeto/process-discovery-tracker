@@ -16,6 +16,10 @@
  *       version 2 back (the zip stays), Ctrl+Y brings it again;
  *   (c) between hand-offs, Export's PDD reads "Working copy after version 2"
  *       and Technical details (.xlsx) writes the workbook on its own;
+ *       2.0.1: the project has an attached file, so the PDD goes with it:
+ *       one zip, "Order entry PDD/" holding the PDD and Attachments/, the
+ *       PDD's attachment name linking there (a hand-off's PDD links to the
+ *       project folder's attachments beside it in the zip);
  *   (d) a developer's viewer (another profile) opens the v2 zip with Open a
  *       hand-off (.zip): extracted under its userData and opened read only: the
  *       project line "Version 2, handed off <date> by <user> · Read only",
@@ -93,6 +97,12 @@ function docxRows(docxBuf) {
   return { rows, text };
 }
 
+/* The targets of a .docx's links (word/_rels/document.xml.rels). */
+function docxLinks(docxBuf) {
+  const rels = zipFiles(docxBuf)["word/_rels/document.xml.rels"].toString("utf8");
+  return [...rels.matchAll(/<Relationship [^>]*Type="[^"]*\/hyperlink"[^>]*>/g)].map((m) => (m[0].match(/Target="([^"]*)"/) || [])[1]);
+}
+
 /* The sheet names of an .xlsx, and the text of its sheets. */
 function xlsxInfo(buf) {
   const files = zipFiles(buf);
@@ -128,6 +138,10 @@ function freshProject() {
   }
   const anno = readJson(path.join(folder, "annotations.json"));
   anno.document = Object.assign({}, anno.document || {}, { title: "Order entry" });
+  // 2.0.1: a file attached to the project travels with its PDD.
+  fs.mkdirSync(path.join(folder, "attachments"));
+  fs.writeFileSync(path.join(folder, "attachments", "Order form.txt"), "An example order form.\n");
+  anno.attachments = [{ id: "att-1", file: "Order form.txt", label: "Order form", step_id: null, added_at: "2026-05-14T10:00:00.000Z" }];
   fs.writeFileSync(path.join(folder, "annotations.json"), JSON.stringify(anno, null, 2));
   const bundled = path.join(VIEWER, "python", "python.exe");
   for (const py of fs.existsSync(bundled) ? [bundled] : ["python", "python3"]) {
@@ -309,6 +323,12 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       pdd.rows.includes("Version | Date | By | What changed") &&
       pdd.rows.includes("1 | " + entry1.handed_off_at.slice(0, 10) + " | " + entry1.by + " | First hand-off") &&
       pdd.rows.filter((r) => /^\d+ \| \d{4}-/.test(r)).length === 1, pdd.rows.filter((r) => r.startsWith("Version")).join(" / "));
+    record("(a) 2.0.1: its PDD's attachment links to the file in the project folder beside it in the zip",
+      !!files[root + "attachments/Order form.txt"] &&
+      JSON.stringify(docxLinks(files["Order entry v1 PDD.docx"])) === JSON.stringify([root + "attachments/Order%20form.txt"]) &&
+      pdd.rows.includes("Order form | Order form.txt") &&
+      pdd.text.includes("The files are in the " + root + "attachments folder beside this document"),
+      JSON.stringify(docxLinks(files["Order entry v1 PDD.docx"])));
     const x = xlsxInfo(files["Order entry v1 Technical details.xlsx"]);
     record("(a) its Technical details hold the five sheets, and the About sheet names the version",
       JSON.stringify(x.names) === JSON.stringify(["About", "Steps and controls", "Data fields", "Re-keyed values", "Applications"]) &&
@@ -363,14 +383,23 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
   /* ---- (c) exports between hand-offs ---- */
   try {
     await idle();
-    const between = path.join(BASE, "between.docx");
+    const between = path.join(BASE, "between.zip");
     await setSave(between);
     await exportItem("btn-session-pdd");
     await waitFor(() => fs.existsSync(between) && fs.statSync(between).size > 0, 120000, 300);
-    const pdd = docxRows(fs.readFileSync(between));
+    const inZip = zipFiles(fs.readFileSync(between));
+    const doc = inZip["Order entry PDD/Order entry PDD.docx"];
+    const pdd = docxRows(doc);
     record("(c) a PDD exported between hand-offs reads Working copy after version 2, with the history",
       pdd.rows.includes("Version | Working copy after version 2") &&
       pdd.rows.filter((r) => /^\d+ \| \d{4}-/.test(r)).length === 2, pdd.rows.filter((r) => r.startsWith("Version")).join(" / "));
+    record("(c) 2.0.1: the PDD goes with its attachments: one zip, Order entry PDD/ holding the PDD and Attachments/, its link pointing there, shown in its folder",
+      JSON.stringify(Object.keys(inZip).filter((n) => !n.endsWith("/")).sort()) ===
+        JSON.stringify(["Order entry PDD/Attachments/Order form.txt", "Order entry PDD/Order entry PDD.docx"]) &&
+      inZip["Order entry PDD/Attachments/Order form.txt"].toString("utf8") === "An example order form.\n" &&
+      JSON.stringify(docxLinks(doc)) === JSON.stringify(["Attachments/Order%20form.txt"]) &&
+      pdd.text.includes("The files are in the Attachments folder beside this document") &&
+      (await shown()).includes(between), JSON.stringify({ entries: Object.keys(inZip), links: docxLinks(doc) }));
     await idle();
     const tech = path.join(BASE, "tech-alone.xlsx");
     await setSave(tech);

@@ -109,6 +109,7 @@ def normalize(
     pdd_map_images: str | None = None,
     tech_out: str | None = None,
     handoff: int | None = None,
+    pdd_attachments: str | None = None,
 ) -> dict[str, Any]:
     """Run the pipeline on one session folder. `library_path` is the app's
     activity library (contract C21, --library): a project without its own
@@ -117,7 +118,9 @@ def normalize(
     `pdd_map_images` is the manifest of the maps' pictures for the PDD
     (contract C19): the main map's, and one per sub-process. `tech_out` is
     the Technical details workbook to write and `handoff` the hand-off
-    version the PDD and the workbook are made for (contract C20)."""
+    version the PDD and the workbook are made for (contract C20).
+    `pdd_attachments` is the folder beside the PDD its attachments travel
+    in: the PDD links their names there (2.0.1)."""
     events_file = session_folder / "events.jsonl"
     if not events_file.exists():
         raise FileNotFoundError(f"events.jsonl not found in {session_folder}")
@@ -146,7 +149,7 @@ def normalize(
             taxonomy_path=taxonomy_path, mine=mine, pdd_out=pdd_out,
             pdd_map_image=pdd_map_image, pdd_tobe_image=pdd_tobe_image,
             library_path=library_path, pdd_map_images=pdd_map_images,
-            tech_out=tech_out, handoff=handoff)
+            tech_out=tech_out, handoff=handoff, pdd_attachments=pdd_attachments)
     except BaseException:
         staging.discard()
         raise
@@ -173,6 +176,7 @@ def _normalize_staged(
     pdd_map_images: str | None,
     tech_out: str | None = None,
     handoff: int | None = None,
+    pdd_attachments: str | None = None,
 ) -> dict[str, Any]:
     """The pipeline's stages, each output staged (normalize() commits them)."""
     # Contract C21: the project's activity library (its library.json, else a
@@ -243,7 +247,8 @@ def _normalize_staged(
         session_folder, existing_anno, mine, summary, manifest,
         analysis_result, pdd_out, pdd_map_image, pdd_tobe_image,
         events=classified, pdd_map_images=pdd_map_images, staging=staging,
-        tech_out=tech_out, handoff=handoff, library=library)
+        tech_out=tech_out, handoff=handoff, library=library,
+        pdd_attachments=pdd_attachments)
 
     return {
         "session_folder": str(session_folder),
@@ -323,6 +328,11 @@ def main():
                         help="The hand-off version (annotations.handoffs) the PDD and the Technical "
                              "details are made for: they read \"Version N, handed off <date> by "
                              "<name>\". Without it they are a working copy.")
+    parser.add_argument("--pdd-attachments", type=str, default=None, metavar="DIR",
+                        help="The folder beside the PDD its attachments travel in, relative to "
+                             "the PDD (the viewer's PDD zip: Attachments; a hand-off: the project "
+                             "folder's attachments): each attachment's name in the PDD links to its "
+                             "file there. Without it the names are plain text.")
     args = parser.parse_args()
 
     setup_logging()
@@ -342,6 +352,7 @@ def main():
             pdd_map_images=args.pdd_map_images,
             tech_out=args.tech_out,
             handoff=args.handoff,
+            pdd_attachments=args.pdd_attachments,
         )
     except AnnotationsUnreadable as exc:
         _fail(2, str(exc))

@@ -1319,6 +1319,37 @@ def test_attachments_are_listed_in_a_last_section_and_under_their_step():
         "Attachment | File", "Order desk SOP | sop.pdf", "form.docx | form.docx"]
 
 
+def test_2_0_1_attachments_travel_beside_the_pdd_and_their_names_link_to_them():
+    """--pdd-attachments: the names under the step and in the last section
+    link to the files in the folder beside the document, the path encoded."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["attachments"] = [
+        {"id": "x1", "file": "Order desk SOP.pdf", "label": "Order desk SOP", "step_id": None},
+        {"id": "x2", "file": "form.docx", "label": "", "step_id": "a1"}]
+    with tempfile.TemporaryDirectory() as tmp:
+        doc = _render(tmp, manifest, annotations, stats, analysis, events, attachments_dir="Attachments")
+        blocks = _blocks(doc)
+        links = [(h.text, h.address) for p in doc.paragraphs for h in p.hyperlinks]
+        cells = [(h.text, h.address) for t in doc.tables for row in t.rows
+                 for p in row.cells[0].paragraphs for h in p.hyperlinks]
+    steps = _section(blocks, "3.2 Process steps")
+    assert "Attachments: form.docx." in steps
+    assert links == [("form.docx", "Attachments/form.docx")]
+    assert _section(blocks, "8. Attachments") == [
+        "The files are in the Attachments folder beside this document: click a name to open its file.",
+        "Attachment | File", "Order desk SOP | Order desk SOP.pdf", "form.docx | form.docx"]
+    assert cells == [("Order desk SOP", "Attachments/Order%20desk%20SOP.pdf"), ("form.docx", "Attachments/form.docx")]
+
+
+def test_2_0_1_the_attachments_folder_stays_beside_the_document():
+    assert pdd_export._attachments_dir("Attachments") == "Attachments"
+    assert pdd_export._attachments_dir("Order to cash\\attachments\\") == "Order to cash/attachments"
+    for bad in (None, "", "  ", "../x", "a/../b", "C:/x", "/x", "\\\\server\\x"):
+        assert pdd_export._attachments_dir(bad) is None, bad
+
+
 # ---- sub-processes (contract C19) ------------------------------------------------------
 
 def _sub_step(sid, case_id, name, start, end, eids, **extra):

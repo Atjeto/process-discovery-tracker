@@ -166,6 +166,7 @@ const WANT_OFFSET = -30000;
   const stepNamed = (name) => (pre.steps || []).find((s) => s.case_id === run1.case_id && s.name === name) || {};
   const SAVE = stepNamed("Salesforce - Order: Save order");
   const EXCEL = stepNamed("Excel - Order Tracking.xlsx: Save workbook");
+
   const preOk = !!(SAVE.step_id && EXCEL.step_id && !fs.existsSync(TRANSCRIPT) &&
     SAVE.time_range.start === "2026-05-14T09:00:29Z" && SAVE.time_range.end === "2026-05-14T09:00:37Z");
   record("precondition: the demo analyzes to run 1 with its Save order step at 09:00:29 to 09:00:37, and no transcript",
@@ -356,8 +357,17 @@ const WANT_OFFSET = -30000;
 
   // ---- (e) the step editor ------------------------------------------------
   {
-    let err = null, listed = null, desc = null, after = null, empty = null, hint = null, panelSaid = null;
+    let err = null, listed = null, desc = null, after = null, empty = null, hint = null, panelSaid = null, before = null;
     try {
+      // 2.0.1: a sentence shows under one step only: every step of run 1
+      // with the sentences said during it, as the step pane lists them.
+      before = await page.evaluate((caseId) => {
+        const s = require("./state.js").getSession();
+        const TM = require("./transcript-model.js");
+        const run = require("./runs-model.js").buildRuns(s.stats, (s.annotations || {}).steps || []).runs.find((r) => r.caseId === caseId);
+        const placed = TM.forSession(s);
+        return run.visible.map((st) => ({ id: st.step_id, said: TM.sentencesForStep(placed.sentences, st, run.visible).map((x) => x.id) }));
+      }, run1.case_id);
       await openStep(SAVE.step_id);
       listed = (await surfaces()).said;
       // The step panel beside the list shows the same sentences in the
@@ -367,7 +377,8 @@ const WANT_OFFSET = -30000;
         return r ? { leads: [...r.querySelectorAll(".sp-lead")].map((l) => (l.textContent || "").trim()),
           lines: [...r.querySelectorAll(".sp-said .tr-text")].map((e) => e.textContent) } : null;
       }, SAVE.step_id);
-      // Item 1: the drafting's narration is the description's hint, not its text.
+      // Item 1: the drafting's narration is not the description's text (2.0.1:
+      // nor its hint; the actions are under Recorded).
       hint = await page.$eval("#step-desc", (el) => ({ value: el.value, placeholder: el.placeholder }));
       // Add saves the description at once (no Save button).
       await page.locator('#step-said .tr-add[data-seg="t0005"]').click({ timeout: T });
@@ -382,9 +393,9 @@ const WANT_OFFSET = -30000;
       empty = (await surfaces()).said;
     } catch (e) { err = errText(e); }
     const saved = ((readJson(ANNO).steps || []).find((s) => s.step_id === SAVE.step_id) || {});
-    // The draft's narration is only the hint, so the description holds the sentence alone.
+    // The draft's narration is not the description, so it holds the sentence alone.
     const appended = typeof desc === "string" && desc === S.t0005;
-    const hintOk = !!hint && hint.value === "" && hint.placeholder === String(SAVE.description || "").trim() && hint.placeholder.length > 0;
+    const hintOk = !!hint && hint.value === "" && hint.placeholder === "What the person does in this step";
     const button = (list, seg) => ((list && list.buttons) || []).find((b) => b.seg === seg) || {};
     const resident = await page.evaluate(() => {
       const more = document.querySelector("#step-detail .step-detail-more");
@@ -393,14 +404,17 @@ const WANT_OFFSET = -30000;
         descOutsideMore: !!(document.getElementById("step-desc") && !(more && more.contains(document.getElementById("step-desc")))) };
     }).catch((e) => ({ err: e.message }));
     const ok = !err && resident.moreClosed && resident.saidOutsideMore && resident.descOutsideMore &&
-      !!listed && JSON.stringify(listed.rows) === JSON.stringify([S.t0004, S.t0005]) &&
+      !!before && before.every((b) => b.said.every((id) => before.filter((c) => c.said.includes(id)).length === 1)) &&
+      before.filter((b) => b.said.includes("t0004")).length === 1 &&
+      !before.find((b) => b.id === SAVE.step_id).said.includes("t0004") &&
+      !!listed && JSON.stringify(listed.rows) === JSON.stringify([S.t0005]) &&
       listed.buttons.every((b) => b.text === "Add" && !b.disabled) && appended && hintOk &&
       typeof saved.description === "string" && saved.description === S.t0005 && saved.state === "edited" &&
-      button(after, "t0005").text === "Added" && button(after, "t0004").text === "Add" &&
+      button(after, "t0005").text === "Added" &&
       !!empty && empty.note === "Nothing was said during this step." && empty.rows.length === 0 &&
-      !!panelSaid && JSON.stringify(panelSaid.leads) === '["Said:"]' && JSON.stringify(panelSaid.lines) === JSON.stringify([S.t0004, S.t0005]);
-    record("(e) the step editor lists the sentences of the step's window (10 s lead) under the resident Description (More stays closed; the draft's narration is its hint, not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so; the step panel's row shows them under a Said: lead",
-      ok, JSON.stringify({ err, resident, listed, panelSaid, hint, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
+      !!panelSaid && JSON.stringify(panelSaid.leads) === '["Said:"]' && JSON.stringify(panelSaid.lines) === JSON.stringify([S.t0005]);
+    record("(e) the step editor lists the sentences that start in the step's window (10 s lead, not past the step before) under the resident Description (the draft's narration is not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so; the step panel's row shows them under a Said: lead; each sentence of run 1 shows under one step only, t0004 not under Save order",
+      ok, JSON.stringify({ err, resident, before, listed, panelSaid, hint, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
     if (!ok) await shot(page, "fail-transcript-step.png");
   }
 

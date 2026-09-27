@@ -124,6 +124,13 @@ function exportProjectZip(payload) {
   return ipcRenderer.invoke("viewer:exportProjectZip", payload);
 }
 
+/** 2.0.1: the PDD with its attachments, one zip where the analyst saves it.
+ *  @param {{sessionFolder: string, pdd: string, name: string}} payload
+ *  @returns {Promise<{ok: boolean, path?: string, files?: number, error?: string}|null>} */
+function exportPddZip(payload) {
+  return ipcRenderer.invoke("viewer:exportPddZip", payload);
+}
+
 /** Lane HV (contract C20): the hand-off's zip next to the project folder.
  *  @param {{sessionFolder: string, base: string, version: number, pdd: string, tech: string}} payload
  *  @returns {Promise<{ok: boolean, path?: string, size?: string, error?: string}>} */
@@ -244,7 +251,7 @@ module.exports = {
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
   readAppLibrary, libraryAddProjects, libraryAddZips, saveLibrary,
-  exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip, exportHandoffZip, openHandoffFile,
+  exportFile, saveSvgFile, revealFile, openExternal, exportProjectZip, exportPddZip, exportHandoffZip, openHandoffFile,
   attachExternalVideo, copyVideoIn,
   importTranscript, removeTranscript, restoreTranscript, saveTranscriptSync,
   chooseNewProject, createProject, addScreenshot, addAttachment, openAttachment,

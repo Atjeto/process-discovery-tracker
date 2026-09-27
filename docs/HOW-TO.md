@@ -70,9 +70,9 @@ it is done; its button takes you to the next.
    them: pick one instead of typing.
 4. **Write short descriptions.** *Description* in the step pane is the text
    the PDD prints under the step. One or two sentences are enough, for
-   example: *Search the account by customer ID and open it.* The grey text
-   in an empty *Description* is what the recorder saw; the PDD does not
-   print it. With a transcript, *Said during this step* lists what the SME
+   example: *Search the account by customer ID and open it.* What the
+   recorder saw is under *Recorded*, at the foot of the step pane. With a
+   transcript, *Said during this step* lists what the SME
    said then, and *Add* copies a sentence into the description.
 5. **Set the flow where it branches or loops.** Transaction 3 sent no
    confirmation email. On *Send the confirmation email*, click *Only
@@ -110,8 +110,11 @@ it is done; its button takes you to the next.
    its screenshots. *Show how the transactions ran* shows the paths the
    transactions took; point at a line to see how often.
 10. **Export the PDD.** Choose *Export*, *PDD (.docx)* and save it. Its
-    folder opens with the file selected. The PDD is written again from the
-    project each time, so export again after a change.
+    folder opens with the file selected. With attached files, the PDD comes
+    as one zip with an *Attachments* folder: the attachment names in the
+    PDD open the files once the zip is extracted, so the SME gets them with
+    the document. The PDD is written again from the project each time, so
+    export again after a change.
 
 ## Everyday tasks
 
@@ -128,7 +131,9 @@ it is done; its button takes you to the next.
 
 ### Split or merge steps
 
-1. Select the step in Steps. The step pane lists its *Recorded actions*.
+1. Select the step in Steps. *Recorded*, at the foot of the step pane,
+   lists its actions (a click on *Recorded* opens or closes it, on every
+   step).
 2. To split it, click the scissors after the recorded action where the first
    part ends.
 3. To merge it with the next step, click *Merge with next*. To merge
@@ -146,7 +151,8 @@ it is done; its button takes you to the next.
 3. *Add note*: notes stay in the app, beside the step on the Map; the PDD
    does not print them.
 4. *Attach file...*: for example the input data set or an example email. It
-   is copied into the project folder, and the PDD lists it. For a file of
+   is copied into the project folder, the PDD lists it, and the PDD's export
+   carries it. For a file of
    the whole project, use *Add file...* under the document fields on the
    Overview.
 

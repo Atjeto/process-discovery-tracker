@@ -201,7 +201,7 @@ const st = (id, state, name, more) => Object.assign({ step_id: id, state, name, 
       note: note ? note.textContent.trim() : null,
       noteShown: !!note && getComputedStyle(note).visibility === "visible",
       list: !!list, open: !!list && !list.hidden, rows,
-      fact: ((document.querySelector("#step-detail .step-fact") || {}).textContent || "").trim(),
+      code: ((document.getElementById("step-code") || {}).textContent || "").trim(),
       name: (document.getElementById("step-name") || {}).value || "",
       focused: document.activeElement && document.activeElement.id,
     };
@@ -251,15 +251,15 @@ const st = (id, state, name, more) => Object.assign({ step_id: id, state, name, 
         JSON.stringify([["Call the customer", "PH-01", "Calls the customer to confirm the order."], ["Leave a voicemail", "", ""]]) &&
       a.open.note === null,
     JSON.stringify({ err: a.err, noSystem: a.noSystem, open: a.open && a.open.rows }));
-  record("(a) the pick sets the name, the system, library_activity and the activity's description (the step had none), on disk; the fact line shows the code next to the system; Ctrl+Z takes it back, Ctrl+Y makes it again",
+  record("(a) the pick sets the name, the system, library_activity and the activity's description (the step had none), on disk; the code shows beside the name; Ctrl+Z takes it back, Ctrl+Y makes it again",
     !a.err && a.picked && a.picked.name === "Call the customer" && a.picked.system === "Phone" && a.picked.library_activity === "phone-call" &&
       a.picked.description === "Calls the customer to confirm the order." && a.picked.state === "manually_authored" &&
       a.disk && a.disk.library_activity === "phone-call" && a.disk.name === "Call the customer" &&
-      /^Phone · PH-01( ·|$)/.test(a.after.fact) && a.after.name === "Call the customer" && !a.after.open &&
+      a.after.code === "PH-01" && a.after.name === "Call the customer" && !a.after.open &&
       a.undone && a.undone.name === "Call" && !a.undone.library_activity && !a.undone.description &&
       a.redone && a.redone.name === "Call the customer" && a.redone.library_activity === "phone-call",
     JSON.stringify({ picked: a.picked && [a.picked.name, a.picked.system, a.picked.library_activity, a.picked.description, a.picked.state],
-      fact: a.after && a.after.fact, undone: a.undone && [a.undone.name, a.undone.library_activity || null], redone: a.redone && a.redone.name }));
+      code: a.after && a.after.code, undone: a.undone && [a.undone.name, a.undone.library_activity || null], redone: a.redone && a.redone.name }));
 
   // ================= (b) typing stays possible; the keys =================
   let b = {};
@@ -271,7 +271,7 @@ const st = (id, state, name, more) => Object.assign({ step_id: id, state, name, 
       callId, { timeout: T });
     await wait(200);
     b.typed = await stepById(callId);
-    b.typedFact = (await pickerState()).fact;
+    b.typedCode = (await pickerState()).code;
     await page.fill("#step-name", "leave a VOICEMAIL");
     await page.press("#step-name", "Enter");
     await page.waitForFunction((sid) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === sid) || {}).library_activity === "phone-voicemail",
@@ -296,14 +296,14 @@ const st = (id, state, name, more) => Object.assign({ step_id: id, state, name, 
     b.keyedState = await pickerState();
   } catch (e) { b.err = errText(e); }
   record("(b) typing any name stays possible (the step leaves the library: no library_activity, no code); a typed name that is an activity's names the step from the library; a filtered list, Down and Enter pick an activity, whose missing description leaves the step's as it is",
-    !b.err && b.typed && b.typed.name === "Call back later" && !b.typed.library_activity && !/PH-01/.test(b.typedFact) &&
+    !b.err && b.typed && b.typed.name === "Call back later" && !b.typed.library_activity && !b.typedCode &&
       b.typedActivity && b.typedActivity.name === "Leave a voicemail" && b.typedActivity.library_activity === "phone-voicemail" &&
       JSON.stringify(b.filtered) === '["Find the customer"]' && JSON.stringify(b.lit) === '["Find the customer"]' &&
       b.keyed && b.keyed.name === "Find the customer" && b.keyed.system === "Salesforce" && !b.keyed.description &&
-      /^Salesforce · SO-02/.test(b.keyedState.fact) && !b.keyedState.open,
-    JSON.stringify({ err: b.err, typed: b.typed && [b.typed.name, b.typed.library_activity || null], typedFact: b.typedFact,
+      b.keyedState.code === "SO-02" && !b.keyedState.open,
+    JSON.stringify({ err: b.err, typed: b.typed && [b.typed.name, b.typed.library_activity || null], typedCode: b.typedCode,
       typedActivity: b.typedActivity && [b.typedActivity.name, b.typedActivity.library_activity], filtered: b.filtered, lit: b.lit,
-      keyed: b.keyed && [b.keyed.name, b.keyed.system, b.keyed.description || ""], fact: b.keyedState && b.keyedState.fact }));
+      keyed: b.keyed && [b.keyed.name, b.keyed.system, b.keyed.description || ""], code: b.keyedState && b.keyedState.code }));
 
   // ================= (c) a system without activities =================
   let c = {};

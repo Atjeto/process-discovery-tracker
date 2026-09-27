@@ -122,14 +122,29 @@ function _byTime(a, b) {
   return (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.startS - b.startS);
 }
 
-/* A step's window: [start - STEP_LEAD_MS, end], or null without a start. */
-function stepWindow(step, leadMs) {
+/* A step's window: [start - STEP_LEAD_MS, end], or null without a start.
+   2.0.1: `prevEndMs`, the end of the step before it, bounds the lead: talk
+   before that end belongs to that step. */
+function stepWindow(step, leadMs, prevEndMs) {
   const tr = step && step.time_range;
   const s = Date.parse(tr && tr.start);
   if (!Number.isFinite(s)) return null;
   const e = Date.parse(tr && tr.end);
   const lead = typeof leadMs === "number" ? leadMs : STEP_LEAD_MS;
-  return { startMs: s - lead, endMs: Number.isFinite(e) && e >= s ? e : s };
+  let from = s - lead;
+  if (Number.isFinite(prevEndMs) && prevEndMs >= from) from = Math.min(s, prevEndMs + 1);
+  return { startMs: from, endMs: Number.isFinite(e) && e >= s ? e : s };
+}
+
+/* The end of the timed step before `step` in `list` (its transaction's
+   steps, or its visit's inside a sub-process, in order), or NaN. */
+function prevEndMs(list, step) {
+  const i = (list || []).findIndex((x) => x && step && x.step_id === step.step_id);
+  for (let j = i - 1; j >= 0; j--) {
+    const e = Date.parse(list[j] && list[j].time_range && list[j].time_range.end);
+    if (Number.isFinite(e)) return e;
+  }
+  return NaN;
 }
 
 /* The placed sentences whose time range overlaps the window, in time order. */
@@ -141,8 +156,17 @@ function sentencesInWindow(sentences, win) {
     .sort(_byTime);
 }
 
-function sentencesForStep(sentences, step) {
-  return sentencesInWindow(sentences, stepWindow(step));
+/* The sentences said during a step (the step editor's "Said during this
+   step", the step panel's rows): those that start in its window, in time
+   order. `list`, the steps of its transaction (or its visit), bounds the
+   window by the step before it, so a sentence shows under one step only
+   (2.0.1: adjacent steps showed the same sentences). */
+function sentencesForStep(sentences, step, list) {
+  const win = stepWindow(step, undefined, prevEndMs(list, step));
+  if (!win) return [];
+  return (sentences || [])
+    .filter((x) => Number.isFinite(x.startMs) && x.startMs >= win.startMs && x.startMs <= win.endMs)
+    .sort(_byTime);
 }
 
 /* The runs' spans ({ startMs, endMs }) from runs-model buildRuns. A run left
@@ -268,7 +292,7 @@ function attachedMessage(transcript, synced) {
 module.exports = {
   VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE,
   validateTranscript, segmentsOf, effectiveOffsetMs, wallMs, placeTranscript, forSession,
-  overlaps, stepWindow, sentencesInWindow, sentencesForStep, runSpans, outsideRuns,
+  overlaps, stepWindow, prevEndMs, sentencesInWindow, sentencesForStep, runSpans, outsideRuns,
   normalizeSpace, isAdded, appendText, formatClock, speakersOf, filterSentences,
   offsetForSync, attachedMessage, sentenceRowHtml, sentenceClock,
 };

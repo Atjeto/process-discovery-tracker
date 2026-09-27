@@ -111,7 +111,8 @@ The Python pipeline the viewer runs by itself; see
   the information entered in it (a workbook's cells as one entry); the
   volume and effort as the analyst writes it; improvement and automation
   scope with the re-keyed data (a value typed again in another system) and
-  the To-Be map; notes; attachments. The analyst's fields survive every
+  the To-Be map; notes; attachments (each name a link to its file where
+  the files travel with the PDD). The analyst's fields survive every
   re-export; an empty field leaves a visible gap. Every PDD says which
   version it is: "Version 2, handed off <date> by <name>" when made for a
   hand-off, else "Working copy after version 2" (or "Working copy, not
@@ -219,11 +220,15 @@ The viewer says *transaction* for one pass through the process and
   4.1 lists the same lines). A step named like a step of the reference
   transaction is that step, whatever the recorder drafted (the map already
   draws them as one box).
-- **The step pane**: a fact line led by the system, Name, System, the fields
-  typed, Description (with what was said during the step), the Flow line,
-  Waste, Watch and Hide; screenshots (a video frame, a pasted image or a
-  file, and the one the PDD prints), notes and attachments. Everything
-  saves as you go, and Ctrl+Z undoes it.
+- **The step pane**, in parts, each fact once: the name (with the library
+  activity's code) and the acts on the step (Watch, Show on timeline,
+  Hide, the sub-process verbs, Delete); *In the PDD*: System, Description
+  (with what was said during the step, each sentence under one step), the
+  Flow line and Waste; Screenshots (a video frame, a pasted image or a
+  file, and the one the PDD prints), Notes and Attachments; *Recorded*:
+  one line (the actions, the screen, how long, where a draft ends), the
+  actions with their scissors, and Merge, open or closed as you last left
+  it. Everything saves as you go, and Ctrl+Z undoes it.
 - **Step flow**: the Flow line reads "Always · then the next step" until
   the analyst sets *Only when...* (a condition: the map draws a decision
   with an "otherwise" path around the step) or *Go to...* (after the step,
@@ -256,7 +261,7 @@ The viewer says *transaction* for one pass through the process and
 - **The activity library** (contract C21): the step pane's name offers the
   activities of the step's system from the project's library (a step added
   by hand picks its system first); a pick sets the name, the system and,
-  when the step has none, the description, and the fact line shows the
+  when the step has none, the description, and the name shows the
   activity's code. Any name can still be typed. A project keeps the
   library it started with (its `library.json`). Help, *Build the
   library...* (the owner's tool) reads projects and hand-off zips, lists
@@ -317,7 +322,9 @@ The viewer says *transaction* for one pass through the process and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.
 - **Export**: the PDD (with a picture of each sub-process's map in its
-  chapter; its pictures leave the steps' notes out), the process map as an
+  chapter; its pictures leave the steps' notes out; with attached files,
+  one zip holding the PDD and an *Attachments* folder its attachment names
+  link to, so the files go with the document), the process map as an
   image (SVG, the map the Map shows first, of the level it shows, with the
   steps' notes) and as BPMN (one file with every map), the *Technical
   details (.xlsx)*, and the

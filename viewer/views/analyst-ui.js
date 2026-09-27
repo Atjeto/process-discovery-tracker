@@ -144,19 +144,19 @@ function stepExtrasHtml(step) {
     escapeHtml(a.label || a.file) + "</span>" +
     '<button type="button" class="link-btn" data-att-act="open">Open</button>' +
     '<button type="button" class="link-btn" data-att-act="remove">Remove</button></li>').join("");
-  return '<div class="step-sect" id="step-shots-sect">' +
+  return '<div class="step-sect step-part" id="step-shots-sect">' +
       _sectHead("Screenshots", "btn-step-add-shot", "Add screenshot ▾",
         "Add a screenshot to this step: a frame of the video, a pasted image (Ctrl+V in this pane) or a file") +
       (shotHtml ? '<div class="step-shots">' + shotHtml + "</div>" : "") +
       (hidden ? '<button type="button" class="link-btn step-unhide-shots" data-shot-act="unhide">Show hidden screenshots (' + hidden + ")</button>" : "") +
     "</div>" +
-    '<div class="step-sect" id="step-notes-sect">' +
+    '<div class="step-sect step-part" id="step-notes-sect">' +
       _sectHead("Notes", "btn-step-add-note", "Add note", "Add a note to this step", NOT_PRINTED) +
       (notes ? '<ul class="step-notes">' + notes + "</ul>" : "") +
     "</div>" +
-    '<div class="step-sect" id="step-atts-sect">' +
+    '<div class="step-sect step-part" id="step-atts-sect">' +
       _sectHead("Attachments", "btn-step-attach", "Attach file...",
-        "Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the project folder and listed in the PDD.") +
+        "Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the project folder; the PDD lists it and its export carries it.") +
       (atts ? '<ul class="att-list">' + atts + "</ul>" : "") +
     "</div>";
 }
@@ -507,7 +507,7 @@ function overviewAttachmentsHtml(anno) {
   }).join("");
   return '<div class="ov-attach" id="ov-attach">' +
     '<div class="step-sect-head"><span class="ov-doc-label">Attachments</span>' +
-      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project (an example email, an input spreadsheet, an SOP). It is copied into the project folder and listed in the PDD.">Add file...</button></div>' +
+      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project (an example email, an input spreadsheet, an SOP). It is copied into the project folder; the PDD lists it and its export carries it.">Add file...</button></div>' +
     (rows ? '<ul class="att-list">' + rows + "</ul>" : '<p class="ov-attach-empty">No files attached. The PDD lists the files you attach here.</p>') +
     "</div>";
 }

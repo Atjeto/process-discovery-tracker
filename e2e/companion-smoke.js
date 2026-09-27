@@ -180,8 +180,12 @@ function zipFiles(buf) {
     await page.locator("#btn-step-add-shot").click({ timeout: T });
     await page.locator('#shot-src-menu [data-src="' + src + '"]').click({ timeout: T });
   };
+  // 2.0.1: a project with attachments exports one zip, a folder holding the
+  // PDD and Attachments/ (pdd-zip.js); the PDD inside is what the checks
+  // read, and `pddPackage` keeps the zip's entries (null for a lone .docx).
+  let pddPackage = null;
   const exportPdd = async (tag) => {
-    const out = path.join(TMP, tag + ".docx");
+    const out = path.join(TMP, tag + " PDD export");
     await stubSave(out);
     await page.click("#btn-session-export-menu");
     await page.click("#btn-session-pdd");
@@ -189,7 +193,13 @@ function zipFiles(buf) {
     while (Date.now() < deadline) {
       if (fs.existsSync(out)) {
         const b = fs.readFileSync(out);
-        if (b.length > 1000 && b[0] === 0x50 && b[1] === 0x4b) { await wait(500); return zipFiles(fs.readFileSync(out)); }
+        if (b.length > 1000 && b[0] === 0x50 && b[1] === 0x4b) {
+          await wait(500);
+          const outer = zipFiles(fs.readFileSync(out));
+          const inner = Object.keys(outer).find((n) => /^[^/]+\/[^/]+\.docx$/.test(n));
+          pddPackage = inner ? outer : null;
+          return inner ? zipFiles(outer[inner]) : outer;
+        }
       }
       await wait(500);
     }
@@ -547,10 +557,17 @@ function zipFiles(buf) {
     g.notChosen = media.has(hashOf(shots.find((x) => x.source === "file")));
     g.hiddenRec = media.has(sha1(fs.readFileSync(path.join(BLANK, "screenshots", "rec-1.png"))));
     g.note = xml.includes("credit check is still needed");
+    // 2.0.1: the attachments go with the PDD, and its names link to them.
+    g.package = pddPackage ? Object.keys(pddPackage).filter((n) => !n.endsWith("/")).map((n) => n.split("/").slice(1).join("/")).sort() : null;
+    const rels = (files["word/_rels/document.xml.rels"] || Buffer.from("")).toString("utf8");
+    g.links = [...rels.matchAll(/Target="(Attachments\/[^"]*)"/g)].map((x) => x[1]).sort();
   } catch (x) { g.err = errText(x); }
-  record("(g) the PDD (word/document.xml) lists the steps in their order, names the systems set by hand, ends with the Attachments section (labels and files), prints only the screenshot chosen for the PDD (not the other added one, not the hidden recorder one) and no note",
+  record("(g) the PDD (word/document.xml) lists the steps in their order, names the systems set by hand, ends with the Attachments section (labels and files), prints only the screenshot chosen for the PDD (not the other added one, not the hidden recorder one) and no note; 2.0.1: it comes as one zip with its Attachments folder, its names linking there",
     !g.err && g.order.every((i) => i > 0) && g.order.every((i, k) => k === 0 || i > g.order[k - 1]) &&
-      g.systems.every(Boolean) && g.attach.every(Boolean) && g.chosen && !g.notChosen && !g.hiddenRec && !g.note,
+      g.systems.every(Boolean) && g.attach.every(Boolean) && g.chosen && !g.notChosen && !g.hiddenRec && !g.note &&
+      !!g.package && g.package.includes("Attachments/order-email.txt") && g.package.includes("Attachments/input.csv") &&
+      g.package.filter((n) => n.endsWith(".docx")).length === 1 &&
+      JSON.stringify([...new Set(g.links)].sort()) === JSON.stringify(["Attachments/input.csv", "Attachments/order-email.txt"]),
     JSON.stringify(g));
 
   // (n) Attach video on the blank project's Timeline.
