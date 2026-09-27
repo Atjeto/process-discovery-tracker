@@ -295,8 +295,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .empty-state h2 { margin-bottom: 8px; color: var(--fg); }
 .empty-state p { color: var(--fg-3); font-size: 13px; margin: 8px 0 20px; }
-/* Lane HV: the developer's way in, beside Open project. */
-#btn-open-handoff-hero { margin-left: 8px; }
+/* The ways in while no project is open: Open project and Open a hand-off,
+   then the two New projects, the demo a link under them. */
+.hero-acts { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.hero-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.empty-state p.hero-demo { margin: 14px 0 0; font-size: 12px; color: var(--fg-2); }
+.hero-demo .link-btn { font-size: 12px; padding: 0; }
 .recent-sessions { margin-top: 36px; text-align: left; }
 .recent-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .recent-header h3 { margin: 0; }

@@ -64,7 +64,7 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 
 1. **Open** a recording folder (*Open project...*, Open menu), or start a
    project with *New project from a video...* or *New empty project...*
-   (New menu). The analysis runs by itself (on open when it is missing or
+   (New menu, and the page shown while no project is open). The analysis runs by itself (on open when it is missing or
    older, after Apps outside the process, after a stretch is left out of
    the analysis or included again, on the Map when the steps are newer
    than its map,

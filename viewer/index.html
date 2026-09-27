@@ -118,10 +118,20 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       <div class="empty-state" id="session-empty">
         <div class="empty-icon">⌬</div>
         <h2>No project open</h2>
-        <p>Open the folder the SME's capture app saved, or a project you made. New, in the top bar, starts a project from a video or an empty one.</p>
-        <button class="primary" id="btn-open-session-hero">Open project...</button>
-        <button id="btn-open-handoff-hero" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only.">Open a hand-off (.zip)...</button>
-        <button id="btn-open-demo-hero" type="button" title="Open a finished example project that shows every part of PDT: a fresh copy each time, in Documents\PDT demo.">Open the demo project</button>
+        <p>Open the folder the SME's capture app saved, or a project you made, or start a new one: from a video of the process, or empty.</p>
+        <!-- The same acts as the Open and New menus: the ways into your own
+             work as buttons (Open project first), the demo as a link. -->
+        <div class="hero-acts">
+          <div class="hero-row">
+            <button class="primary" id="btn-open-session-hero">Open project...</button>
+            <button id="btn-open-handoff-hero" type="button" title="Open a version the analyst handed off (the zip Hand off made): it opens read only.">Open a hand-off (.zip)...</button>
+          </div>
+          <div class="hero-row">
+            <button id="btn-new-video-hero" type="button" title="Start a project from a video of the process: the video is copied into a new folder, and the Timeline follows it.">New project from a video...</button>
+            <button id="btn-new-blank-hero" type="button" title="Start an empty project: you add its steps by hand in Steps.">New empty project...</button>
+          </div>
+        </div>
+        <p class="hero-demo"><button type="button" class="link-btn" id="btn-open-demo-hero" title="Open a finished example project that shows every part of PDT: a fresh copy each time, in Documents\PDT demo.">Open the demo project</button> to see every part of PDT on a finished example.</p>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
         <div class="recent-sessions">
           <div class="recent-header">

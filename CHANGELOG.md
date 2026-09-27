@@ -6,6 +6,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The page shown while no project is open** offers *New project from a
+  video* and *New empty project* beside *Open project* and *Open a
+  hand-off*; the demo project is a link under them.
+
 ## [2.0.1] (2026-09-28): the PDD for its readers, and maps a PM can keep
 
 The PDD is the process written down for the SME, who confirms it, and for

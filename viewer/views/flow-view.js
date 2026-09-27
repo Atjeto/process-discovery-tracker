@@ -237,6 +237,9 @@ async function newProject(kind) {
 }
 if ($("#btn-new-from-video")) $("#btn-new-from-video").addEventListener("click", () => newProject("video"));
 if ($("#btn-new-blank")) $("#btn-new-blank").addEventListener("click", () => newProject("blank"));
+// The page shown while no project is open offers the same two.
+if ($("#btn-new-video-hero")) $("#btn-new-video-hero").addEventListener("click", () => newProject("video"));
+if ($("#btn-new-blank-hero")) $("#btn-new-blank-hero").addEventListener("click", () => newProject("blank"));
 
 /* ============ Analysis: it runs by itself (AD-22) ===================
    The pipeline runs on open when the recording has no analysis or one from an
