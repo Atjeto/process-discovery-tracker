@@ -1493,13 +1493,15 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 /* A2: per-interaction split affordance + the chosen boundary. */
 .editor-detail-pane .si-split-btn {
   flex: none; border: 0; background: transparent; cursor: pointer;
-  color: var(--fg-4); font-size: 12px; line-height: 1; padding: 0 2px;
-  opacity: 0; transition: opacity 0.12s, color 0.12s;
+  color: var(--fg-3); font-size: 13px; line-height: 1; padding: 0 2px;
+  opacity: 0.8; transition: opacity 0.12s, color 0.12s;
 }
-.editor-detail-pane .step-interaction:hover .si-split-btn { opacity: 0.65; }
+.editor-detail-pane .step-interaction:hover .si-split-btn { opacity: 1; }
+.editor-detail-pane .si-split-hint { color: var(--fg-3); }
 .editor-detail-pane .si-split-btn:hover { opacity: 1; color: var(--accent); }
 .editor-detail-pane .si-split-btn.active { opacity: 1; color: var(--accent); }
-.editor-detail-pane .step-interaction.split-boundary { border-bottom: 2px solid var(--accent); }
+/* 2.0.1: where the two steps of a Merge with next met. */
+.editor-detail-pane .step-interaction.was-boundary { border-bottom: 2px dashed var(--accent); }
 /* The interaction row body stacks the action verb over the composed element
    identity line (App Library pass identityLine). .si-text keeps its colour;
    the identity is muted + smaller so the verb still leads the row. */

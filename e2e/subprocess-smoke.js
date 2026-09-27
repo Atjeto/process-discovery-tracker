@@ -505,8 +505,8 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       return { heads, text: sec ? sec.textContent : "" };
     });
     const ok = help.heads.includes("Sub-processes") && help.heads.includes("The flow of the steps") &&
-      /Open as a sub-process/.test(help.text) && /Dissolve sub-process/.test(help.text) && /Only when/.test(help.text) && /Go to/.test(help.text);
-    record("Help: one paragraph on sub-processes (make, open, dissolve) and one on the flow verbs (Only when, Go to)", ok, JSON.stringify(help.heads));
+      /Open as a sub-process/.test(help.text) && /Dissolve sub-process/.test(help.text) && /Only when/.test(help.text) && /Decision/.test(help.text);
+    record("Help: one paragraph on sub-processes (make, open, dissolve) and one on the flow verbs (Only when, Decision)", ok, JSON.stringify(help.heads));
   }
 
   // ---- 9. The Map at a level (lane SUB-V2) -----------------------------------

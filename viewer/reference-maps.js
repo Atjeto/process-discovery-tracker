@@ -285,6 +285,15 @@ function isStale(entry, currentSourceHash, currentSourceSig) {
    (TextAnnotation_system, or TextAnnotation_system_<k>) since. Such a copy
    offers Copy again in those words once the process map changes
    (refmap-ui.js). */
+/* A copy drawn before the system labels (2.0.1): a colour or the legend,
+   and no system label. The Map and the Checklist treat it as made before
+   the steps changed, so Copy again gives the labels. */
+function predatesLabels(xml) {
+  const s = String(xml || "");
+  return (/\s[\w.-]+:fill="/.test(s) || /\sid="(?:Sub\d+_)?TextAnnotation_legend"/.test(s)) &&
+    !/\sid="(?:Sub\d+_)?TextAnnotation_system(?:_\d+)?"/.test(s);
+}
+
 function predatesRichMap(xml) {
   const s = String(xml || "");
   return !/<(?:[\w.-]+:)?(?:userTask|manualTask)[\s/>]/.test(s) &&
@@ -389,7 +398,7 @@ function destroy({ sessionFolder, anno, id }) {
 module.exports = {
   KINDS, PDD_ROLES, DERIVED_DIR,
   hashContent, fileHash, processSignature, sourceMarks, genId,
-  ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale, predatesRichMap,
+  ensure, list, find, buildEntry, upsert, remove, rename, setPddRole, setRole, pddPick, isStale, predatesRichMap, predatesLabels,
   derivedDir, absPath, fileExists, writeBpmn, readBpmn, deleteBpmn,
   forkEntry, fork, duplicate, destroy,
 };

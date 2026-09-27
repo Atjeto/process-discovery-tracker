@@ -17,7 +17,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-42, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-43, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
   Data contracts C1 to C21:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
@@ -188,7 +188,8 @@ the folder.
   deletes its entry and file; Undo restores both.
 - **Step flow** (C17, AD-31). A step may carry `only_when` (a condition)
   and `links` (`[{ to: step_id | "end", when }]`: a loop back, a skip or an
-  early end), set in the step pane's Flow line (*Only when...*, *Go to...*).
+  early end), set in the step pane's Flow line (*Only when...*, *Decision...*,
+  its targets grouped back, ahead, another transaction's step and End).
   A draft that gets either becomes `edited`. One edge rule for the live map
   (`process-map-levels.js`) and the step BPMN (`step_flow.py`), pinned by
   `shared/flow-links-golden.json`. The live map draws Start and End circles,

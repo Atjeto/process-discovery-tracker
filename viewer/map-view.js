@@ -42,6 +42,8 @@ const TO_COPY = "Show the As-Is map";
 /* Lane FX2: the chosen As-Is copy was made before the steps changed
    (asis-freshness.js); the header says so, before its Copy again. */
 const STALE = "Made before the steps changed: check it, or";
+/* 2.0.1: a copy drawn in colours, before the system labels. */
+const STALE_LABELS = "Drawn in colours, before the system labels:";
 const RECOPY = "Copy again";
 
 /* What the Map shows. `o`:
@@ -98,11 +100,11 @@ function line(p, copy, copyName) {
   const r = p || {};
   if (r.view === "bpmn" && r.source === "copy") {
     return { title: String(copyName || "").trim() || TITLE.COPY, note: NOTE.COPY, edit: true,
-      stale: copy && copy.stale ? STALE : "", toRuns: TO_RUNS, toMap: "" };
+      stale: copy && copy.stale ? (copy.stale === "labels" ? STALE_LABELS : STALE) : "", toRuns: TO_RUNS, toMap: "" };
   }
   if (r.view === "bpmn") return { title: TITLE.STEP, note: NOTE.STEP, edit: false, stale: "", toRuns: TO_RUNS, toMap: "" };
   const toMap = !r.back ? "" : copy && copy.plane !== false ? TO_COPY : TO_STEP;
   return { title: TITLE.RUNS, note: NOTE.RUNS, edit: false, stale: "", toRuns: "", toMap };
 }
 
-module.exports = { WHY, TITLE, NOTE, TO_RUNS, TO_STEP, TO_COPY, STALE, RECOPY, pick, line };
+module.exports = { WHY, TITLE, NOTE, TO_RUNS, TO_STEP, TO_COPY, STALE, STALE_LABELS, RECOPY, pick, line };

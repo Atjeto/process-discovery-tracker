@@ -47,7 +47,8 @@
  *         FX2: + Step inside an added step and Merge with next keep the steps
  *         added (Delete, manual tasks on the step map).
  *   Step flow (contract C17), in another empty project with four steps:
- *     (o) each step's Flow line reads "Always · then the next step";
+ *     (o) each step's Flow line names the step after it ("Then: ...",
+ *         "Then: the end" after the last), with Only when and Decision;
  *     (p) "Only when" on step 2; "Go to" step 2 on step 4 (the dropdown lists
  *         the transaction's other steps in order, numbered, and End the
  *         process); "Go to" End the process on step 3; each row reads where it
@@ -381,11 +382,11 @@ function zipFiles(buf) {
     const s = await session();
     const id = s.anno.steps.find((x) => x.name === NAMES[0]).step_id;
     await selectStep(id);
+    // 2.0.1: the recorded actions show in the pane; no action, no scissors.
     b2.btn = await page.evaluate(() => {
-      const d = document.querySelector("#step-detail .step-detail-more");
-      if (d) d.open = true;
-      const b = document.getElementById("btn-step-split");
-      return b ? { disabled: b.disabled, title: b.title } : null;
+      const rec = document.getElementById("step-recorded");
+      return rec ? { scissors: rec.querySelectorAll(".si-split-btn").length,
+        text: ((rec.querySelector(".evidence") || {}).textContent || "").trim() } : null;
     });
     await page.locator('#step-list .step-row[data-step-id="' + id + '"] .step-name').click({ button: "right", timeout: T });
     await page.waitForSelector("#step-ctx-menu", { timeout: T });
@@ -402,11 +403,10 @@ function zipFiles(buf) {
       null, { timeout: 180000 });
     await level("steps");
   } catch (e) { b2.err = errText(e); }
-  record("(b2) lane FX3: Split on a step added by hand is disabled with the reason in plain words, is not in the step menu, and S says why; Edit as the As-Is map acts once there are steps",
-    !b2.err && !!b2.btn && b2.btn.disabled &&
-      b2.btn.title === "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it." &&
+  record("(b2) lane FX3 + 2.0.1: a step added by hand shows no recorded action and no scissors, is not split from the step menu, and S says why; Edit as the As-Is map acts once there are steps",
+    !b2.err && !!b2.btn && b2.btn.scissors === 0 && b2.btn.text === "No action was recorded in this step." &&
       b2.menu.length > 0 && !b2.menu.some((t) => /Split/.test(t)) && b2.toast.startsWith("No action (a click, a field typed) was recorded in this step") &&
-      !/interaction|\u2265/.test(b2.toast + b2.btn.title) && b2.fork,
+      !/interaction|\u2265/.test(b2.toast) && b2.fork,
     JSON.stringify(b2));
 
   // (c) A screenshot from a file, one pasted; the pasted one for the PDD.
@@ -1016,9 +1016,10 @@ function zipFiles(buf) {
     o.panes = [];
     for (const n of FN) { await selectStep(ids[n]); o.panes.push(await flowPane()); }
   } catch (x) { o.err = errText(x); }
-  record("(o) C17: four steps added by hand; each step's Flow line is one line, Always · then the next step, with Only when and Go to",
-    !o.err && o.panes.length === 4 && o.panes.every((q) => q && q.line === "Always · then the next step" && !q.cond && !q.rows.length &&
-      JSON.stringify(q.acts) === JSON.stringify(["Only when…", "Go to…"])),
+  record("(o) C17 + 2.0.1: four steps added by hand; each step's Flow line is one line naming the step after it, with Only when and Decision",
+    !o.err && o.panes.length === 4 &&
+      JSON.stringify(o.panes.map((q) => q && q.line)) === JSON.stringify(["Then: " + FN[1], "Then: " + FN[2], "Then: " + FN[3], "Then: the end"]) &&
+      o.panes.every((q) => q && !q.cond && !q.rows.length && JSON.stringify(q.acts) === JSON.stringify(["Only when…", "Decision…"])),
     JSON.stringify(o));
 
   let p = {};
@@ -1060,7 +1061,7 @@ function zipFiles(buf) {
     while (!(p.disk = onDisk())[2].links && Date.now() < deadline) await wait(200);
   } catch (x) { p.err = errText(x); }
   record("(p) C17: Only when on step 2, Go to step 2 on step 4 and Go to End the process on step 3: the dropdown lists the transaction's other steps in order, numbered, and End the process; each row reads where it goes; annotations.json holds only_when and the links by step id, and the steps stay added",
-    !p.err && p.step2.cond && p.step2.line === "Then the next step" &&
+    !p.err && p.step2.cond && p.step2.line === "Then: " + FN[2] &&
       JSON.stringify(p.options.map((x) => x.text)) === JSON.stringify(["Choose a step or the end", "1. Receive the order email",
         "2. Check the customer", "3. Enter the sales order in SAP", "End the process"]) && p.options[0].disabled &&
       JSON.stringify(p.step4.rows) === JSON.stringify(["Goes back to step 2, Check the customer, when " + LOOP]) &&

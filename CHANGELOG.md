@@ -65,6 +65,17 @@ change, and the SME's app loses its setup.
   again when the step panel opens beside it.
 - **The PDD says who still has to confirm**: "The analyst has not yet
   confirmed 2 of these 4 steps."
+- **Split where you choose**: the step pane lists a step's recorded
+  actions, each with its scissors; Split no longer cuts at the midpoint.
+  After *Merge with next* the place where the two steps met is marked, so
+  moving the line between two steps is a merge and one click.
+- **Decision** replaces *Go to*: after a step, the process goes back to an
+  earlier step, ahead to a later one, to a step another transaction did
+  (the other side of a choice) or to the end, the targets grouped that way.
+  The Flow line names the next step ("Then: Save order"), and *Only when*
+  says it is for a step some transactions skip.
+- **An As-Is map drawn in colours** (before the system labels) says so on
+  the Map and in the Checklist, with *Copy again*.
 - **Easier to read on a small screen**: the pane and section titles and a
   transaction's step count and time are a size larger, and *Dissolve
   sub-process* is a button in the breadcrumb, as in the step pane.

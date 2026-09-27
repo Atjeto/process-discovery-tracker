@@ -82,10 +82,13 @@ let jumpToStepInFlow = () => {};
 let watchStep = () => {};
 let analyze = async () => false;
 
-/* A2: the analyst-chosen split boundary for the currently-selected step --
-   { stepId, index } where index means "split AFTER this interaction". Null
-   index when no boundary is picked (Split then falls back to the midpoint). */
-let _splitAfter = { stepId: null, index: null };
+/* 2.0.1: where the two steps of the last Merge with next met, marked in the
+   merged step's recorded actions ({ stepId, after }: after that action), so
+   moving the line between two steps is Merge, then the scissors. */
+let _mergedLine = { stepId: null, after: null };
+
+/* Split never guesses where (it cut at the midpoint before 2.0.1). */
+const SPLIT_WHERE = "Click the scissors after the action where the first part ends, in the step's Recorded actions.";
 
 /* The runs view's own state, per session folder: `open` is the group whose
    steps show (a run's case_id, OUTSIDE, or null for none; undefined until
@@ -1123,7 +1126,7 @@ function stepDetailCallbacks(selected, interactionsById) {
     onDescription: describeStepAction,
     onToggleWaste: (stepId) => toggleStepFlag(stepId, "waste"),
     onDelete: deleteStep,
-    onSplit: splitStep,
+    onSplitAt: (after) => { if (selected) splitStep(selected.step_id, after); },
     onMerge: mergeStepWithNext,
     onMergeSelected: mergeSelectedSteps,
     multiSelectedCount: State.getMultiSelectedStepIds().size,
@@ -1132,17 +1135,7 @@ function stepDetailCallbacks(selected, interactionsById) {
     onToggleHide: toggleStepHidden,
     interactionsById,
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
-    // A2: the chosen split boundary for this step (if any) + the picker.
-    splitAfterIndex: (selected && _splitAfter.stepId === selected.step_id) ? _splitAfter.index : null,
-    onPickSplit: (idx) => {
-      if (!selected) return;
-      if (_splitAfter.stepId === selected.step_id && _splitAfter.index === idx) {
-        _splitAfter = { stepId: null, index: null };   // toggle the boundary off
-      } else {
-        _splitAfter = { stepId: selected.step_id, index: idx };
-      }
-      renderStepsLevel();
-    },
+    mergedAfterIndex: (selected && _mergedLine.stepId === selected.step_id) ? _mergedLine.after : null,
     factLine: facts.factLine, fields: facts.fields, description: facts.description,
     descriptionHint: facts.descriptionHint, originMs: facts.originMs,
     // C16: the System field, then the step's screenshots (recorded and
@@ -1211,6 +1204,7 @@ function _flowFor(step) {
   const place = _containerOf(places, step.step_id);
   if (!place) return null;
   const list = place.visible;
+  const others = _otherSteps(places, list);
   const inherited = [];
   if (!StepFlow.onlyWhen(step)) {
     const node = mapNodeLabel(step);
@@ -1226,11 +1220,29 @@ function _flowFor(step) {
     inherited,
     links: StepFlow.links(step).map((l) => ({
       to: l.to, when: typeof l.when === "string" ? l.when : "",
-      reading: StepFlow.linkReading(list, step, l),
-      missing: StepFlow.linkPlace(list, step, l).kind === "missing",
+      reading: StepFlow.linkReading(list, step, l, others),
+      missing: StepFlow.linkPlace(list, step, l, others).kind === "missing",
     })),
-    choices: StepFlow.linkChoices(list, step),
+    choices: StepFlow.linkChoices(list, step, [...others].map(([value, name]) => ({ value, name }))),
+    next: StepFlow.nextLine(list, step),
   };
+}
+
+/* The process's steps (one per map box) that the transaction `list` did
+   not do, at the same level: a Decision can point at one (the other side of
+   a choice, 2.0.1). Map of step_id to name. */
+function _otherSteps(places, list) {
+  const here = new Set((list || []).map((s) => mapNodeLabel(s)));
+  const out = new Map();
+  for (const c of places) {
+    for (const s of c.visible) {
+      const node = mapNodeLabel(s);
+      if (here.has(node)) continue;
+      here.add(node);
+      out.set(s.step_id, String(s.name || "").trim() || node);
+    }
+  }
+  return out;
 }
 
 /* One change of a step's flow is one undoable edit, and the step becomes the
@@ -1534,7 +1546,7 @@ async function hideInAllRuns(stepId) {
     (dropped ? " " + _linksDroppedText(dropped, true) : " Ctrl+Z undoes it."), "success");
 }
 
-async function splitStep(stepId) {
+async function splitStep(stepId, after) {
   if (!State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const loc = _locate(stepId);
@@ -1545,15 +1557,12 @@ async function splitStep(stepId) {
   // Lane FX3 (validation pass 3, F16): why it cannot, in the analyst's words.
   const why = PdtSteps.splitBlocker(s);
   if (why) { toast(why, "error"); return; }
-  // A2: split at the analyst-picked boundary (split AFTER index i -> first
-  // chunk is [0..i]) when one is set for THIS step; else the midpoint.
-  let mid;
-  if (_splitAfter.stepId === stepId && Number.isInteger(_splitAfter.index)
-      && _splitAfter.index >= 0 && _splitAfter.index < ids.length - 1) {
-    mid = _splitAfter.index + 1;
-  } else {
-    mid = Math.floor(ids.length / 2);
+  // Split after the action the analyst chose (the first part is [0..after]).
+  if (!Number.isInteger(after) || after < 0 || after >= ids.length - 1) {
+    toast(SPLIT_WHERE, "success");
+    return;
   }
+  const mid = after + 1;
   const firstIds = ids.slice(0, mid);
   const secondIds = ids.slice(mid);
   const interMap = Object.fromEntries(State.getSession().events.filter(e => e.type === "interaction").map(e => [e.event_id, e]));
@@ -1583,7 +1592,6 @@ async function splitStep(stepId) {
   // C17: the condition stays with the first half, the links leave the second.
   StepFlow.splitFlow(first, second);
   loc.list.splice(loc.list.indexOf(s), 1, first, second);
-  _splitAfter = { stepId: null, index: null };
   await persistAnnotations(anno, 'split step');
   toast("Step split", "success");
 }
@@ -1848,7 +1856,12 @@ async function mergeStepWithNext(stepId) {
   if (!next) { toast("This is the last step of its transaction: there is no next step to merge with.", "error"); return; }
   if (SPM.isSubProcess(step) || SPM.isSubProcess(next)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
   const toMerge = [step, next];
+  const firstCount = ((step.evidence && step.evidence.interaction_event_ids) || []).length;
   const r = await commitMerge(anno, toMerge, 'merge step with next');
+  if (r && r.merged && firstCount) {
+    _mergedLine = { stepId: r.merged.step_id, after: firstCount - 1 };
+    renderStepsLevel();
+  }
   toast((r.carriedRuns ? _carriedToast(r.carriedRuns) : 'Merged "' + toMerge[0].name + '" + "' + toMerge[1].name + '"') +
     _selfLinksText(r.selfLinks), "success");
 }
@@ -2541,7 +2554,7 @@ function showStepContextMenu(stepId, x, y) {
     if (!PdtSteps.splitBlocker(step)) {
       addItem("Split at a recorded action…", () => {
         renderStepsLevel();
-        toast("In the step pane's More, click the scissors after the action where the first part ends, then Split.", "success");
+        toast(SPLIT_WHERE, "success");
       });
     }
     addItem("Merge with next", () => mergeStepWithNext(stepId));

@@ -73,9 +73,9 @@ it is done; its button takes you to the next.
    confirmation email. On *Send the confirmation email*, click *Only
    when...* and type *the customer asked for a confirmation*. In transaction
    2 the SME looked up a mapping in Notepad and did the SAP steps again. On
-   *Create the sales order in SAP*, click *Go to...*, pick *Check the sales
-   order in SAP* and type when: *SAP rejects the material number*. The map
-   draws both.
+   *Create the sales order in SAP*, click *Decision...*, pick *Check the
+   sales order in SAP* under *Back to* and type when: *SAP rejects the
+   material number*. The map draws both.
 6. **Confirm the transaction.** Click *Confirm transaction* (Ctrl+Enter).
    The steps you did not change are accepted as they are. *Undo confirm*,
    beside the *Confirmed* badge, takes it back.
@@ -120,11 +120,13 @@ it is done; its button takes you to the next.
 
 ### Split or merge steps
 
-1. Select the step in Steps and open *More* in the step pane.
+1. Select the step in Steps. The step pane lists its *Recorded actions*.
 2. To split it, click the scissors after the recorded action where the first
    part ends.
 3. To merge it with the next step, click *Merge with next*. To merge
-   several, tick them in the list and click *Merge selected*.
+   several, tick them in the list and click *Merge selected*. To move the
+   line between two steps, merge them, then click the scissors where the
+   first should end: the place where they met is marked.
 4. A merge is made in the other transactions too, and a name you then give
    the merged step reaches them, so the map keeps one box.
 

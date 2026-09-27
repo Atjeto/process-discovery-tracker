@@ -117,7 +117,14 @@ test("the analyst's live view never analyzes", () => {
 
 test("the Map's words carry no dash between clauses", () => {
   const texts = [].concat(Object.values(MV.WHY), Object.values(MV.TITLE), Object.values(MV.NOTE),
-    [MV.TO_RUNS, MV.TO_STEP, MV.TO_COPY, MV.STALE, MV.RECOPY]);
+    [MV.TO_RUNS, MV.TO_STEP, MV.TO_COPY, MV.STALE, MV.STALE_LABELS, MV.RECOPY]);
   const dash = new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]| - |--");
   for (const t of texts) assert.doesNotMatch(t, dash, t);
+});
+
+test("2.0.1: a copy drawn in colours, before the system labels, says so before Copy again", () => {
+  const p = { view: "bpmn", source: "copy" };
+  assert.equal(MV.line(p, { plane: null, stale: "labels" }, "As-Is map").stale, MV.STALE_LABELS);
+  assert.equal(MV.line(p, { plane: null, stale: true }, "As-Is map").stale, MV.STALE);
+  assert.equal(MV.line(p, { plane: null, stale: false }, "As-Is map").stale, "");
 });

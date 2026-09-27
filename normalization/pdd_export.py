@@ -1299,7 +1299,9 @@ def _link_lines(s, step, number, steps, level=None) -> list[str]:
     printed steps): its own, else that of the first printed step with its
     map node (another transaction's copy of a printed step). A link to its
     own step, to a hidden or removed step, or to a step with no printed copy
-    is left out. Contract C19: in a sub-process's chapter (`level`, its map)
+    is left out; a step of the process no printed step stands for (the other
+    side of a choice, 2.0.1) reads by its name, "Then goes to <name>, when
+    <when>.". Contract C19: in a sub-process's chapter (`level`, its map)
     a target is numbered as the chapter numbers it ("step 2.1"), and an end
     ends the sub-process only ("The sub-process ends here ...")."""
     sub = level is not None and bool(level.path)
@@ -1321,6 +1323,9 @@ def _link_lines(s, step, number, steps, level=None) -> list[str]:
         if n is None and to in node_by_id:
             n = by_node.get(node_by_id[to])
         if n is None:
+            if node_by_id.get(to):
+                target = f"Then goes to {node_by_id[to]}"
+                lines.append(f"{target}, when {_sentence(when)}" if when else f"{target}.")
             continue
         verb = ("goes back to" if n <= number
                 else "goes on to" if n == number + 1 else "skips to")

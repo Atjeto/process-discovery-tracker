@@ -665,6 +665,20 @@ def test_a_step_prints_the_flow_set_on_it():
     assert not any("never printed" in t for t in steps)
 
 
+def test_a_decision_to_a_step_only_another_transaction_did_reads_its_name():
+    """2.0.1: a Decision may point at a step of the process the reference
+    transaction did not do (the other side of a choice); the document prints
+    no number for it, so the line names it."""
+    if not _HAVE_DOCX:
+        return
+
+    def link(a):
+        steps = {s["step_id"]: s for s in a["steps"]}
+        steps["a1"]["links"] = [{"to": "b2", "when": "the order needs logging"}]
+    _blocks_, steps = _steps_section(link)
+    assert "Then goes to Sheet - Log: Save, when the order needs logging." in steps
+
+
 def test_a_step_without_flow_prints_no_flow_line():
     if not _HAVE_DOCX:
         return

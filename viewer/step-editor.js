@@ -278,18 +278,13 @@
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
-    // A2: a boundary index chosen by the analyst (split AFTER this index).
-    const splitAfterIndex = (callbacks && Number.isInteger(callbacks.splitAfterIndex))
-      ? callbacks.splitAfterIndex : null;
     // C19: a sub-process is not split or merged (its steps are, inside it).
+    // 2.0.1: the recorded actions show in the pane, each with its scissors
+    // (a click splits after that action; there is no split at a guess), and
+    // after Merge with next the place where the two steps met is marked.
     const sub = callbacks.subProcess || null;
     const interListHtml = renderInteractionList(resolvedInter, interIds.length,
-      { splittable: !sub, splitAfterIndex, originMs: callbacks.originMs });
-    const _hasSplitPoint = splitAfterIndex !== null;
-    const splitBtnLabel = _hasSplitPoint ? "Split here" : "Split";
-    const splitBtnTitle = _hasSplitPoint
-      ? "Split this step after action " + (splitAfterIndex + 1)
-      : "Split this step in two. Click the scissors after an action to choose where; otherwise it splits at the midpoint.";
+      { splittable: !sub, mergedAfter: callbacks.mergedAfterIndex, originMs: callbacks.originMs });
     // P0.1: merge is the inverse of split, shown right beside it. "Merge with
     // next" always merges this step + the following one; the count-labelled
     // "Merge N selected" appears only when 2+ steps are ticked, so one button
@@ -321,11 +316,9 @@
           ? `<button id="btn-step-make-sub" disabled title="${escapeAttr(callbacks.openAsSubWhy)}">Open as a sub-process</button>`
           : `<button id="btn-step-make-sub" title="Give this step its own steps, one per action recorded in it (a field typed, a click, a sheet's cells), in every transaction where it happens, and show them">Open as a sub-process</button>`)
         : "";
-    const splitWhy = sub ? "" : splitBlocker(step);
     const moreActs = sub
       ? `<p class="step-sub-note" id="step-sub-note">A sub-process is not split or merged: dissolve it first, or work on its steps inside.</p>`
-      : `<button id="btn-step-split" title="${escapeAttr(splitWhy || splitBtnTitle)}"${splitWhy ? " disabled" : ""}>${splitBtnLabel}</button>
-            <button id="btn-step-merge" title="Merge this step with the next step of its transaction (the inverse of Split)">Merge with next</button>
+      : `<button id="btn-step-merge" title="Merge this step with the whole next step of its transaction. To move the line between them, merge, then click the scissors where this step should end.">Merge with next</button>
             ${mergeSelectedBtn}`;
     host.innerHTML = `
       ${fact ? `<p class="step-fact">${escapeHtml(fact)}</p>` : ""}
@@ -343,6 +336,10 @@
         <button id="btn-step-hide" title="${isHidden ? "Bring this step back into the list" : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again."}">${isHidden ? "Unhide" : "Hide step"}</button>
         ${subBtns}
       </div>
+      <div class="step-sect step-recorded" id="step-recorded">
+        <div class="evidence">${interListHtml}</div>
+        <div class="actions">${moreActs}</div>
+      </div>
       ${callbacks.extrasHtml || ""}
       <details class="step-detail-more">
         <summary class="step-detail-more-head">
@@ -350,10 +347,8 @@
           <span class="step-detail-more-chevron" aria-hidden="true"></span>
         </summary>
         <div class="step-detail-more-body">
-          <div class="evidence">${interListHtml}</div>
           <div class="actions">
             <button id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>
-            ${moreActs}
             ${isAdded ? `<button id="btn-step-delete" class="danger" title="${escapeAttr(sub && sub.group ? "Delete this sub-process you made, with its steps" : "Delete this step you added")}">Delete</button>` : ""}
           </div>
         </div>
@@ -404,13 +399,12 @@
     onClick("btn-step-open-sub", () => callbacks.onOpenSub && callbacks.onOpenSub(step.step_id));
     onClick("btn-step-dissolve", () => callbacks.onDissolve && callbacks.onDissolve(step.step_id));
     onClick("btn-step-make-sub", () => callbacks.onOpenAsSub && callbacks.onOpenAsSub(step.step_id));
-    onClick("btn-step-split", () => callbacks.onSplit && callbacks.onSplit(step.step_id));
-    // A2: scissors on each interaction pick the split boundary.
+    // The scissors after an action split the step there (Ctrl+Z undoes it).
     host.querySelectorAll(".si-split-btn").forEach((b) => {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         const after = parseInt(b.dataset.after, 10);
-        if (callbacks.onPickSplit && Number.isInteger(after)) callbacks.onPickSplit(after);
+        if (callbacks.onSplitAt && Number.isInteger(after)) callbacks.onSplitAt(after);
       });
     });
     onClick("btn-step-merge", () => callbacks.onMerge && callbacks.onMerge(step.step_id));
@@ -563,8 +557,8 @@
   }
 
   const FLOW_TITLES = {
-    onlyWhen: "This step happens only under a condition. The map draws a decision: the condition on the way into the step and an \"otherwise\" path around it.",
-    goTo: "After this step, when a condition holds, the process goes back to an earlier step, skips to a later one or ends.",
+    onlyWhen: "For a step some transactions skip: say when it is done. The map draws a decision before it, with an \"otherwise\" path around it. For a choice between two steps, use Decision on the step before them.",
+    goTo: "A decision after this step: when a condition holds, the process goes back to an earlier step (a loop), ahead to a later one (a skip), to a step another transaction did (the other side of a choice) or to the end. Otherwise it goes on to the next step.",
     condition: "The condition under which this step happens. Saved when you press Enter or leave the field; empty removes it.",
     removeCondition: "Remove the condition: the step always happens",
     target: "Where the process goes after this step",
@@ -578,7 +572,12 @@
       (on ? " selected" : "") + (disabled ? " disabled" : "") + ">" + escapeHtml(label) + "</option>";
     let html = selected == null ? opt("", "Choose a step or the end", true, true)
       : missing ? opt(selected, "A step no longer in this transaction", true, true) : "";
-    for (const c of choices || []) html += opt(c.value, c.label, c.value === selected, false);
+    // 2.0.1: grouped by where they lie from this step.
+    for (const [kind, label] of [["back", "Back to (a loop)"], ["ahead", "Ahead to"], ["other", "Steps another transaction did"]]) {
+      const items = (choices || []).filter((c) => (c.kind || "ahead") === kind);
+      if (items.length) html += '<optgroup label="' + escapeAttr(label) + '">' +
+        items.map((c) => opt(c.value, c.label, c.value === selected, false)).join("") + "</optgroup>";
+    }
     return html + opt(StepFlow.END, "End the process", selected === StepFlow.END, false);
   }
 
@@ -608,10 +607,10 @@
     // (C17): it reads as set there, and is changed there.
     const inherited = showCond ? "" : StepFlow.inheritedLine(flow.inherited);
     const lineAttrs = ' id="step-flow-line"' + (inherited ? ' title="' + escapeAttr(FLOW_TITLES.inherited) + '"' : "");
-    const line = escapeHtml(inherited || StepFlow.DEFAULT_LINE);
+    const line = escapeHtml(inherited || flow.next || StepFlow.DEFAULT_LINE);
     const onlyBtn = showCond || inherited ? "" : '<button type="button" class="link-btn" id="btn-flow-only-when" title="' +
       escapeAttr(FLOW_TITLES.onlyWhen) + '">Only when…</button>';
-    const goBtn = '<button type="button" class="link-btn" id="btn-flow-go-to" title="' + escapeAttr(FLOW_TITLES.goTo) + '">Go to…</button>';
+    const goBtn = '<button type="button" class="link-btn" id="btn-flow-go-to" title="' + escapeAttr(FLOW_TITLES.goTo) + '">Decision…</button>';
     // Nothing set on the step: one line.
     if (!showCond && !links.length && !open.link) {
       return '<div class="step-sect step-flow" id="step-flow"><div class="step-sect-head step-flow-head">' +
@@ -624,7 +623,7 @@
         '<input type="text" id="step-only-when" value="' + escapeAttr(cond) + '" placeholder="for example: a new customer" title="' +
           escapeAttr(FLOW_TITLES.condition) + '">' +
         '<button type="button" class="link-btn" id="btn-flow-remove-condition" title="' + escapeAttr(FLOW_TITLES.removeCondition) + '">Remove</button></div>' +
-        '<p class="flow-line" id="step-flow-line">Then the next step</p>'
+        '<p class="flow-line" id="step-flow-line">' + escapeHtml(flow.next || StepFlow.DEFAULT_LINE) + '</p>'
       : '<p class="flow-line"' + lineAttrs + ">" + line + "</p>";
     const rows = links.map((l, i) => _linkRowHtml(i, l, flow.choices)).join("") +
       (open.link ? _linkRowHtml(links.length, null, flow.choices) : "");
@@ -900,17 +899,19 @@
     // click, a field typed), as Split and Open as a sub-process say it.
     if (!total) return `<p class="meta">No action was recorded in this step.</p>`;
     opts = opts || {};
-    // A2: when splittable, every interaction except the last carries a
-    // scissors control that picks the boundary the Split action cuts at.
+    // When splittable, every action but the last carries scissors: a click
+    // splits the step after it. `mergedAfter` marks where two merged steps
+    // met (2.0.1).
     const splittable = !!opts.splittable && events.length >= 2;
-    const splitAfter = Number.isInteger(opts.splitAfterIndex) ? opts.splitAfterIndex : null;
+    const met = Number.isInteger(opts.mergedAfter) ? opts.mergedAfter : null;
     const rows = events.map((ev, i) => {
       const t = sinceStart(ev.timestamp, opts.originMs);
-      const isBoundary = splittable && splitAfter === i;
+      const wasLine = met === i && i < events.length - 1;
       const splitBtn = (splittable && i < events.length - 1)
-        ? `<button type="button" class="si-split-btn${isBoundary ? " active" : ""}" data-after="${i}" tabindex="-1" title="Split the step here, after this action">&#9988;</button>`
+        ? `<button type="button" class="si-split-btn" data-after="${i}" title="Split the step here: the first part ends after this action">&#9988;</button>`
         : "";
-      return `<li class="step-interaction ${siKindClass(ev)}${isBoundary ? " split-boundary" : ""}" data-idx="${i}">` +
+      return `<li class="step-interaction ${siKindClass(ev)}${wasLine ? " was-boundary" : ""}" data-idx="${i}"` +
+        (wasLine ? ` title="The two merged steps met here"` : "") + `>` +
         `<span class="si-body">` +
           `<span class="si-text">${escapeHtml(describeInteraction(ev))}</span>` +
           interactionIdentityHtml(ev) +
@@ -924,7 +925,7 @@
         `</li>`);
     }
     return `<details class="step-interactions"${total <= 15 ? " open" : ""}>` +
-      `<summary>Recorded actions (${total})</summary>` +
+      `<summary>Recorded actions (${total})${splittable ? `<span class="si-split-hint"> · the scissors split after an action</span>` : ""}</summary>` +
       interactionLegendHtml(events) +
       `<ol class="step-interaction-list">${rows.join("")}</ol>` +
       `</details>`;

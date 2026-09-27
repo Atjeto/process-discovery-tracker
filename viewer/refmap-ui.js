@@ -149,7 +149,7 @@ function _asIsMap(s) {
    steps are analyzed. A copy made from another map than the step map (the
    activity-level map of old) claims no drift. */
 function driftFor(map) {
-  return AsIsFresh.copyStale(session(), map);
+  return AsIsFresh.copyPredatesLabels(session(), map) ? "labels" : AsIsFresh.copyStale(session(), map);
 }
 
 /* ---- the Map's edit act ---------------------------------------------------- */
@@ -398,7 +398,11 @@ const RECOPY_TITLE = "Make a new copy of the process map as it is now, named lik
 /* What Copy again gives a copy the process map changed after (C18): a copy
    made before the map had its systems, notes and attachments gets them. */
 function copyAgainLine(m, s) {
-  return RefStore.predatesRichMap(RefStore.readBpmn(s.sessionFolder, m))
+  const xml = RefStore.readBpmn(s.sessionFolder, m);
+  if (RefStore.predatesLabels(xml)) {
+    return "Copy again to get the system labels in place of the colours; your edits to this copy are not carried over.";
+  }
+  return RefStore.predatesRichMap(xml)
     ? "Copy again to get the systems, notes and attachments on the map; your edits to this copy are not carried over."
     : "Copy again to get the map as it is now; your edits to this copy are not carried over.";
 }

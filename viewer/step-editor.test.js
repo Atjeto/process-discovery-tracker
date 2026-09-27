@@ -253,11 +253,13 @@ test("renderInteractionList: splittable renders scissors for all but the last ro
   assert.ok(!html.includes('data-after="2"'));
 });
 
-test("renderInteractionList: a chosen boundary marks the row and its scissors active", () => {
-  const events = [inter({ kind: "invoked", name: "A" }), inter({ kind: "invoked", name: "B" })];
-  const html = renderInteractionList(events, 2, { splittable: true, splitAfterIndex: 0 });
-  assert.ok(html.includes("split-boundary"));
-  assert.ok(html.includes("si-split-btn active"));
+test("2.0.1: renderInteractionList marks where two merged steps met, and every action but the last has scissors", () => {
+  const events = [inter({ kind: "invoked", name: "A" }), inter({ kind: "invoked", name: "B" }), inter({ kind: "invoked", name: "C" })];
+  const html = renderInteractionList(events, 3, { splittable: true, mergedAfter: 0 });
+  assert.equal((html.match(/was-boundary/g) || []).length, 1);
+  assert.ok(html.includes('title="The two merged steps met here"'));
+  assert.equal((html.match(/class="si-split-btn"/g) || []).length, 2);
+  assert.ok(!renderInteractionList(events, 3, { splittable: true }).includes("was-boundary"));
 });
 
 test("renderInteractionList: not splittable by default (back-compat)", () => {

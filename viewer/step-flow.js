@@ -17,7 +17,7 @@ const { stepLinks } = require("./process-map-levels.js");
 /* A link's `to` for the end of the process. */
 const END = "end";
 
-const DEFAULT_LINE = "Always · then the next step";
+const DEFAULT_LINE = "Then: the next step";
 
 /* The analyst's text as one line, whitespace collapsed, as the map and the
    pipeline read it. */
@@ -34,16 +34,36 @@ function isDefault(step) { return !onlyWhen(step) && !links(step).length; }
 
 /* ---- Where a link goes ---------------------------------------------------- */
 
+/* The Flow line of a step with nothing set, naming where the process goes
+   next (2.0.1): "Then: Save order", "Then: the end". */
+function nextLine(list, step) {
+  const steps = list || [];
+  const i = steps.findIndex((s) => s && step && s.step_id === step.step_id);
+  if (i < 0) return DEFAULT_LINE;
+  const next = steps[i + 1];
+  return next ? "Then: " + (_text(next.name) || "(unnamed step)") : "Then: the end";
+}
+
 /* The steps a link of `step` can go to: the transaction's steps in order
    (`list`: its visible steps, as the Steps list shows them), numbered from 1,
-   the step itself left out. [{ value: step_id, number, name, label }] */
-function linkChoices(list, step) {
+   the step itself left out, each an earlier one (`kind` "back") or a later
+   one ("ahead"); then `others`, the process's steps this transaction did not
+   do ([{ value, name }], "other", 2.0.1: the other side of a choice).
+   [{ value: step_id, number, name, label, kind }] */
+function linkChoices(list, step, others) {
   const out = [];
+  const at = (list || []).findIndex((s) => s && step && s.step_id === step.step_id);
   (list || []).forEach((s, i) => {
     if (!s || !step || s.step_id === step.step_id) return;
     const name = _text(s.name) || "(unnamed step)";
-    out.push({ value: s.step_id, number: i + 1, name, label: (i + 1) + ". " + name });
+    out.push({ value: s.step_id, number: i + 1, name, label: (i + 1) + ". " + name,
+      kind: at >= 0 && i < at ? "back" : "ahead" });
   });
+  for (const o of others || []) {
+    if (!o || !o.value || out.some((c) => c.value === o.value)) continue;
+    const name = _text(o.name) || "(unnamed step)";
+    out.push({ value: o.value, number: null, name, label: name, kind: "other" });
+  }
   return out;
 }
 
@@ -53,12 +73,19 @@ function linkChoices(list, step) {
                                              step right after, a later one
      { kind: "to", number, name }            a step of the list while the
                                              step itself is not in it (hidden)
+     { kind: "other", name }                 a step of the process this
+                                             transaction did not do (`others`,
+                                             a Map of step_id to name)
      { kind: "missing" }                     a step no longer in the list */
-function linkPlace(list, step, link) {
+function linkPlace(list, step, link, others) {
   if (link && link.to === END) return { kind: "end" };
   const steps = list || [];
   const t = steps.findIndex((s) => s && link && s.step_id === link.to);
-  if (t < 0 || (step && steps[t].step_id === step.step_id)) return { kind: "missing" };
+  if (t < 0) {
+    const name = others && link && typeof others.get === "function" ? _text(others.get(link.to)) : "";
+    return name ? { kind: "other", name } : { kind: "missing" };
+  }
+  if (step && steps[t].step_id === step.step_id) return { kind: "missing" };
   const name = _text(steps[t].name) || "(unnamed step)";
   const i = steps.findIndex((s) => s && step && s.step_id === step.step_id);
   const kind = i < 0 ? "to" : t < i ? "back" : t === i + 1 ? "next" : "skip";
@@ -70,19 +97,21 @@ const VERB = { back: "Goes back to", next: "Goes on to", skip: "Skips to", to: "
 /* The sentence a link row reads: "Goes back to step 4, Enter the sales order
    in SAP, when the check fails", "Skips to step 6, ..., when ...", "Ends here
    when ...". Without its `when` the sentence stops before it. */
-function linkReading(list, step, link) {
-  const p = linkPlace(list, step, link);
+function linkReading(list, step, link, others) {
+  const p = linkPlace(list, step, link, others);
   const when = _text(link && link.when);
   if (p.kind === "end") return "Ends here" + (when ? " when " + when : "");
+  if (p.kind === "other") return "Goes to " + p.name + (when ? ", when " + when : "");
   if (p.kind === "missing") return "Goes to a step no longer in this transaction" + (when ? ", when " + when : "");
   return VERB[p.kind] + " step " + p.number + ", " + p.name + (when ? ", when " + when : "");
 }
 
 /* The short form (the step panel): "Goes back to step 2 when the check fails". */
-function linkShort(list, step, link) {
-  const p = linkPlace(list, step, link);
+function linkShort(list, step, link, others) {
+  const p = linkPlace(list, step, link, others);
   const when = _text(link && link.when);
   const head = p.kind === "end" ? "Ends here"
+    : p.kind === "other" ? "Goes to " + p.name
     : p.kind === "missing" ? "Goes to a step no longer in this transaction"
       : VERB[p.kind] + " step " + p.number;
   return head + (when ? " when " + when : "");
@@ -104,11 +133,11 @@ function inheritedLine(inherited) {
 /* The step panel's one line: "Only when X · Goes back to step 2 when Y", or
    "" when nothing is set. The panel shows a map box, so `conditions` (when
    given) are the ones set on any of its steps; the links are the step's. */
-function panelLine(list, step, conditions) {
+function panelLine(list, step, conditions, others) {
   const conds = Array.isArray(conditions) ? conditions.map(_text).filter(Boolean) : [onlyWhen(step)].filter(Boolean);
   const parts = [];
   if (conds.length) parts.push("Only when " + [...new Set(conds)].join(" or "));
-  for (const l of links(step)) parts.push(linkShort(list, step, l));
+  for (const l of links(step)) parts.push(linkShort(list, step, l, others));
   return parts.join(" · ");
 }
 
@@ -237,7 +266,7 @@ function mergedLinks(members) {
 }
 
 module.exports = {
-  END, DEFAULT_LINE, onlyWhen, links, isDefault,
+  END, DEFAULT_LINE, onlyWhen, links, isDefault, nextLine,
   linkChoices, linkPlace, linkReading, linkShort, inheritedLine, panelLine,
   setOnlyWhen, addLink, setLinkTarget, setLinkWhen, removeLink,
   dropLinksTo, retargetLinks, splitFlow, mergedLinks,

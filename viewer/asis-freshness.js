@@ -98,8 +98,15 @@ function stepsMapSignature(annotations, stats) {
    steps than `sess`'s now: its steps' signature when it kept one, else the
    process of process_map_step.bpmn against the one it was copied from (a
    copy made from another map than the step map claims nothing). */
+/* A copy drawn before the system labels (reference-maps.js predatesLabels). */
+function copyPredatesLabels(sess, entry) {
+  if (!sess || !entry || !sess.sessionFolder) return false;
+  try { return RefStore.predatesLabels(RefStore.readBpmn(sess.sessionFolder, entry)); } catch (_) { return false; }
+}
+
 function copyStale(sess, entry) {
   if (!sess || !entry) return false;
+  if (copyPredatesLabels(sess, entry)) return true;
   if (typeof entry.forked_from_steps === "string" && entry.forked_from_steps) {
     return entry.forked_from_steps !== stepsMapSignature(sess.annotations, sess.stats);
   }
@@ -120,4 +127,4 @@ function chosenAsIsStale(sess) {
   return !!e && copyStale(sess, e);
 }
 
-module.exports = { stepsMapSignature, copyStale, chosenAsIs, chosenAsIsStale };
+module.exports = { stepsMapSignature, copyStale, copyPredatesLabels, chosenAsIs, chosenAsIsStale };

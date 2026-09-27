@@ -274,7 +274,8 @@ function render() {
   const leadPlace = path.length ? SPM.placeOf(txs, path, lead.step_id) : null;
   const leadRun = runs.find((r) => r.caseId === lead.case_id);
   const flowList = path.length ? (leadPlace ? leadPlace.visible : []) : (leadRun ? leadRun.visible : []);
-  const flow = StepFlow.panelLine(flowList, lead, occ.map((o) => StepFlow.onlyWhen(o.step)));
+  const flow = StepFlow.panelLine(flowList, lead, occ.map((o) => StepFlow.onlyWhen(o.step)),
+    new Map(SPM.allSteps((s.annotations && s.annotations.steps) || []).map((x) => [x.step_id, x.name])));
   const isSub = SPM.isSubProcessNode(txs, path, _state.label);
   // Lane FX2 (validation pass 2, F21): the waste flag shows here too, as in
   // Steps and the PDD.

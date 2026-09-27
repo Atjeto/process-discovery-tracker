@@ -489,18 +489,21 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     record("C3 + L12b: ONE Ctrl+Z takes the merge, its count and the 4 carried merges back (every step a draft again); Ctrl+Y brings them all back",
       !err2 && undoneClean && redoneAll, err2 || JSON.stringify({ undoneClean, redoneAll }));
 
-    // S splits the selected (visible) step: a split; Ctrl+Z takes it back.
+    // 2.0.1: S says where to split; the scissors after an action in the step
+    // pane's Recorded actions split there (a split); Ctrl+Z takes it back.
     let err3 = null;
     try {
       await rowByName(R1, "Excel - Order Tracking.xlsx: Save workbook").click({ timeout: T });
       await page.keyboard.press("s");
+      await page.waitForFunction(() => /Click the scissors after the action/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: T });
+      await page.locator("#step-recorded .si-split-btn").first().click({ timeout: T });
       await waitRows(R1, 7);
       await waitFixes(fx(1, 1, 0, 0));
       await page.keyboard.press("Control+z");
       await waitRows(R1, 6);
       await waitFixes(fx(1, 0, 0, 0));
     } catch (e) { err3 = errText(e); }
-    record("C3: S splits the selected step and counts a split; Ctrl+Z takes the split and its count back",
+    record("C3 + 2.0.1: S says where to split; the scissors after an action split the selected step there and count a split; Ctrl+Z takes the split and its count back",
       !err3, err3 || "7 rows / split 1, then 6 rows / split 0");
 
     // Hide a draft (a drop), list it with Show hidden steps, Unhide (drop back).
@@ -1076,7 +1079,10 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const okKeys = !errKeys && !!k && !!k.enter &&
         near(k.end.detail, g0.minDetail, 1) && k.end.aria.now === k.end.aria.max &&
         near(k.left.list, k.end.list - k.step, 1) &&
-        near(k.home.list, g0.minList, 1) && k.home.aria.now === k.home.aria.min &&
+        // 2.0.1: the step pane lists its recorded actions, so at its
+        // minimum width its text wraps taller and the level may scroll: the
+        // share is kept, so the list ends within a scrollbar of its minimum.
+        near(k.home.list, g0.minList, 1 + Math.abs(k.home.total - k.end.total)) && k.home.aria.now === k.home.aria.min &&
         near(k.enter.list, g0.list, 1) && k.enter.stored === null && k.enter.focus === "steps-splitter" && !k.enter.renaming;
       record("Steps divider, keys: End gives the selected step its minimum (" + g0.minDetail + " px), Left moves the edge back a small step, Home gives the transactions their minimum (" + g0.minList + " px), each end read by aria-valuenow; Enter gives the usual widths back and does not rename the selected step",
         okKeys, JSON.stringify({ err: errKeys, step: k && k.step, end: k && at(k.end), left: k && at(k.left), home: k && at(k.home),

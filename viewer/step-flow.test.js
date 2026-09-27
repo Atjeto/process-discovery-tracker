@@ -19,7 +19,7 @@ const LIST = [
 ];
 
 test("the Flow line's default, and a step with a condition or a link is not default", () => {
-  assert.equal(F.DEFAULT_LINE, "Always · then the next step");
+  assert.equal(F.DEFAULT_LINE, "Then: the next step");
   assert.ok(F.isDefault(mk("a", "A")));
   assert.ok(F.isDefault(mk("a", "A", { only_when: "   ", links: [] })), "blank text and an empty list are nothing set");
   assert.ok(!F.isDefault(mk("a", "A", { only_when: "a new customer" })));
@@ -134,4 +134,23 @@ test("a split keeps the condition on the first half and moves the links to the s
   F.splitFlow(first, second);
   assert.deepEqual([first.only_when, first.links], ["a new customer", undefined]);
   assert.deepEqual([second.only_when, second.links], [undefined, [{ to: "end", when: "rejected" }]]);
+});
+
+test("2.0.1: the Flow line names the next step, and the end after the last", () => {
+  assert.equal(F.nextLine(LIST, LIST[1]), "Then: Enter the sales order in SAP");
+  assert.equal(F.nextLine(LIST, LIST[4]), "Then: the end");
+  assert.equal(F.nextLine([], LIST[0]), F.DEFAULT_LINE);
+});
+
+test("2.0.1: a Decision's targets say where they lie, and a step another transaction did is offered and read by its name", () => {
+  const choices = F.linkChoices(LIST, LIST[2], [{ value: "x1", name: "Order from the supplier" }, { value: "s1", name: "dup" }]);
+  assert.deepEqual(choices.map((c) => [c.value, c.kind]),
+    [["s1", "back"], ["s2", "back"], ["s4", "ahead"], ["s5", "ahead"], ["x1", "other"]]);
+  const others = new Map([["x1", "Order from the supplier"]]);
+  assert.deepEqual(F.linkPlace(LIST, LIST[2], { to: "x1" }, others), { kind: "other", name: "Order from the supplier" });
+  assert.equal(F.linkReading(LIST, LIST[2], { to: "x1", when: "the stock is short" }, others),
+    "Goes to Order from the supplier, when the stock is short");
+  assert.equal(F.linkShort(LIST, LIST[2], { to: "x1", when: "the stock is short" }, others),
+    "Goes to Order from the supplier when the stock is short");
+  assert.equal(F.linkPlace(LIST, LIST[2], { to: "x1" }).kind, "missing", "without the process's other steps it is missing, as before");
 });

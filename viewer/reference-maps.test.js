@@ -368,3 +368,14 @@ test("2.0.1: a copy with system labels (above a task, or once for the map) is a 
   assert.equal(RM.predatesRichMap(head + '<bpmn:textAnnotation id="TextAnnotation_system"><bpmn:text>System: SAP</bpmn:text></bpmn:textAnnotation>' + tail), false);
   assert.equal(RM.predatesRichMap(head + '<bpmn:textAnnotation id="Sub1_TextAnnotation_system_2" />' + tail), false, "on a sub-process's plane");
 });
+
+test("2.0.1: a copy drawn in colours or with the legend, and no system label, predates the labels", () => {
+  const RM = require("./reference-maps.js");
+  const task = '<bpmn:task id="Task_1" name="Save" />';
+  assert.equal(RM.predatesLabels('<x><bpmndi:BPMNShape bpmnElement="Task_1" bioc:fill="#bfdbfe" /></x>'), true);
+  assert.equal(RM.predatesLabels('<x><bpmn:textAnnotation id="TextAnnotation_legend" /></x>'), true);
+  assert.equal(RM.predatesLabels('<x><bpmn:textAnnotation id="Sub1_TextAnnotation_legend" /></x>'), true);
+  assert.equal(RM.predatesLabels('<x>' + task + '<bpmn:textAnnotation id="TextAnnotation_system_1" /></x>'), false);
+  assert.equal(RM.predatesLabels('<x>' + task + '<bpmn:textAnnotation id="TextAnnotation_system" /></x>'), false);
+  assert.equal(RM.predatesLabels('<x>' + task + '</x>'), false, "a map with no colour says nothing about labels");
+});
