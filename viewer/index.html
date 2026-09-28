@@ -483,7 +483,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Start a project</h3>
           <ul class="help-list">
             <li><strong>From the SME's recording.</strong> The SME records with the capture app and sends you the zip it makes (<em>Make a zip for the analyst</em>). Right-click the zip and choose <em>Extract All</em>. In PDT, choose <em>Open</em>, <em>Open project...</em> and pick the folder it made. PDT analyzes the recording by itself: the top bar says <em>Updating steps and map...</em> until it is done.</li>
-            <li><strong>From a video.</strong> Choose <em>New</em>, <em>New project from a video...</em> and pick the video, for example a Teams recording of the SME at work. Then name the project: its folder is made where you save it, with a copy of the video. You add the steps as you watch.</li>
+            <li><strong>From a video.</strong> Choose <em>New</em>, <em>New project from a video...</em> and pick the video, for example a Teams recording of the SME at work. Then name the project: its folder is made where you save it, with a copy of the video. You mark the steps as you watch (<em>Mark a video as you watch it</em>, below).</li>
             <li><strong>From nothing.</strong> Choose <em>New</em>, <em>New empty project...</em> and name the project. You add the steps by hand.</li>
             <li><strong>The demo.</strong> Choose <em>Open</em>, <em>Open the demo project</em>. A finished project opens: four orders entered in the Order Desk web app and an Excel tracking sheet, with its video, transcript, flow, sub-process, notes, attachments, document and maps. Each time you get a fresh copy in <em>Documents\PDT demo</em>, so change anything.</li>
           </ul>
@@ -503,18 +503,26 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li><strong>Export the PDD.</strong> Choose <em>Export</em>, <em>PDD (.docx)</em> and save it. Its folder opens with the file selected. With attached files, the PDD comes as one zip with an <em>Attachments</em> folder: the attachment names in the PDD open the files once the zip is extracted, so the SME gets them with the document. The PDD is written again from the project each time, so export again after a change.</li>
           </ol>
           <h3>Everyday tasks</h3>
+          <p><strong>Mark a video as you watch it</strong></p>
+          <ol class="help-steps">
+            <li>Play the video on the Timeline. Where the SME starts the work, right-click the timeline and choose <em>Start a transaction here</em>.</li>
+            <li>As each step starts, press S (or click <em>+ Step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
+            <li>Where the transaction ends, right-click and choose <em>End the transaction here</em>: its last step ends there too. <em>Start a transaction here</em> for the next one ends the one before it the same way.</li>
+            <li>Name the steps in Steps as you go, or afterwards. Ctrl+Z takes back a mark put in the wrong place.</li>
+          </ol>
           <p><strong>Add a step the recorder missed</strong></p>
           <ol class="help-steps">
             <li>In Steps, select the step it comes after.</li>
             <li>Click <em>+ Add step</em> (or press N), type its name and click <em>Add step</em>.</li>
             <li>Set its system: type it first on the line under the step's name. Alt+Up and Alt+Down move the step.</li>
-            <li>With a video, you can instead pause the video at that moment on the Timeline and click <em>+ Step</em> (or press S), or right-click the timeline there and choose <em>Add a step here</em>: the step gets that time. Right-click a step on the Timeline to open it in Steps, or to delete it (a recorded step is hidden).</li>
+            <li>With a video, you can instead pause the video at that moment on the Timeline and click <em>+ Step</em> (or press S), or right-click the timeline there and choose <em>Add a step here</em>: the step gets that time. Right-clicking a step on the Timeline also offers to open it in Steps, or to delete it (a recorded step is hidden).</li>
           </ol>
           <p><strong>Change when a transaction or a step starts or ends</strong></p>
           <ol class="help-steps">
-            <li>In Steps, open the transaction: <em>Starts at</em> and <em>Ends at</em> are under its name. Type a time the way the timeline shows it, for example <em>0:09</em> or <em>1:05.5</em>, and press Enter. Up and Down change it by a second. An empty <em>Ends at</em> runs until the next transaction starts, or to the end. The change shows dashed until you click <em>Apply marker changes</em>, right beside it.</li>
-            <li>A step you added has its times on the line under its name, for example <em>Transaction 1 · 0:09 to 0:31</em>: type a time there and press Enter. A step you added without a time says <em>no time yet</em>: type when it starts. The step then belongs to the transaction its start is in, and a step right against it moves along. A step the recorder drafted keeps the time of its recorded actions: split or merge it instead.</li>
-            <li>On the Timeline you can instead drag the start or the end of a transaction's band, or of a step you added. Near a step's start or the playhead it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a change.</li>
+            <li>In Steps, open the transaction: <em>Starts at</em> and <em>Ends at</em> are under its name. Type a time the way the timeline shows it, for example <em>0:09</em> or <em>1:05.5</em>, and press Enter. Up and Down change it by a second. An empty <em>Ends at</em> runs until the next transaction starts, or to the end. In a project made from a video or from nothing, the change applies by itself a moment later; in a recording it shows dashed until you click <em>Apply marker changes</em>, right beside it.</li>
+            <li>What you marked together moves together: a step that starts or ends where the transaction does moves with its <em>Starts at</em> or <em>Ends at</em>. A step you delete gives its time back to the step before it.</li>
+            <li>A step you added has its times on the line under its name, for example <em>Transaction 1 · 0:09 to 0:31</em>: type a time there and press Enter. Emptied, its end goes back to where the next step starts or its transaction ends. A step added without a time says <em>no time yet</em>: type when it starts. The step then belongs to the transaction its start is in, and a step right against it moves along. A step the recorder drafted keeps the time of its recorded actions: split or merge it instead.</li>
+            <li>On the Timeline you can instead drag the start or the end of a transaction's band, or of a step you added; a transaction that runs to the end gets its end that way too. Near a step's start or the playhead it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a change.</li>
           </ol>
           <p><strong>Split or merge steps</strong></p>
           <ol class="help-steps">
@@ -587,7 +595,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <dt>"This recording has no transactions marked."</dt>
             <dd>The SME did not press the transaction key. On the Timeline, right-click where each transaction starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em>.</dd>
             <dt>A step is listed under Outside the transactions.</dt>
-            <dd>It starts before or after every transaction. In Steps, open the transaction and type an earlier <em>Starts at</em>, then click <em>Apply marker changes</em>. A step you added can instead be given a start inside the transaction.</dd>
+            <dd>It starts before or after every transaction. In Steps, open the transaction and type an earlier <em>Starts at</em>; in a recording, then click <em>Apply marker changes</em>. A step you added can instead be given a start inside the transaction.</dd>
             <dt>"The analysis failed, so the steps and the map are not drafted."</dt>
             <dd>The log at the top says why. Choose Help, <em>Troubleshooting</em>, <em>Re-analyze</em>: your confirmed, edited, added and hidden steps are kept.</dd>
             <dt>"The As-Is map was made before the steps changed: check it, or Copy again."</dt>
@@ -675,9 +683,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>A transaction starts at a start marker and ends at its end marker; the SME places them with the recording bar or the recording keys. An edited marker changes the transactions once you apply it; the recording itself never changes.</p>
           <ul class="help-list">
             <li><strong>Add</strong>: right-click the timeline at that moment and choose <em>Start a transaction here</em> or <em>End the transaction here</em>.</li>
-            <li><strong>Move</strong>: in Steps, open the transaction and type its <em>Starts at</em> or <em>Ends at</em>; an empty <em>Ends at</em> takes its end marker out. Or drag the start or the end of its band on the Timeline: near a step's start or the playhead it snaps there, and Esc puts it back.</li>
+            <li><strong>Move</strong>: in Steps, open the transaction and type its <em>Starts at</em> or <em>Ends at</em>; an empty <em>Ends at</em> takes its end marker out. Or drag the start or the end of its band on the Timeline: near a step's start or the playhead it snaps there, and Esc puts it back. A step that starts or ends where the marker is moves with it.</li>
             <li><strong>Rename, move or delete</strong>: in the Timeline's Markers panel. Double-click a Start marker to rename it.</li>
-            <li><strong>Apply</strong>: a changed marker shows at once as pending, its transaction's band dashed. <em>Apply marker changes</em>, in the bar at the top, updates the transactions, the steps and the map.</li>
+            <li><strong>Apply</strong>: a changed marker shows at once as pending, its transaction's band dashed. <em>Apply marker changes</em>, in the bar at the top, updates the transactions, the steps and the map. In a project made from a video or from nothing, a change applies by itself a moment later.</li>
           </ul>
           <p class="help-hint">To join two transactions, delete the End of the first and the Start of the second. To split a transaction, start a transaction where its second part begins: a Start ends the transaction before it.</p>
         </section>

@@ -29,11 +29,13 @@ const Ipc = require("./ipc.js");
 const RO = require("./read-only.js");
 // Property access (not destructuring) so the unit tests can stub Dom.toast.
 const Dom = require("./dom.js");
+const AC = require("./analyst-content.js");
 
 /* Injected by renderer.js. */
 let renderSessionPills = () => {};
 let reloadSession = async () => {};
 let analyzeSession = async () => {};
+let beforeWrite = async () => {};
 
 function resetUndoStack() { State.resetUndo(); }
 function canUndo() {
@@ -91,6 +93,9 @@ function _surfacedError(message) {
    ALREADY been shown to the analyst as an error toast. `what` names the edit
    in that message. */
 async function writeAnnotations(sessionFolder, annotations, what) {
+  // 2.0.3: an automatic Apply of marker changes under way gives way to the
+  // save (flow-view.js yieldAutoApply); main refuses a save meanwhile.
+  await beforeWrite();
   // Lane HV: a hand-off opened read only is never written (main.js refuses it
   // too); no control offers a change there, so this says one slipped through.
   // Lane MW: nor is a project open for editing in another window.
@@ -284,6 +289,11 @@ function revertFollowUp(before, after) {
   const ranges = (a) => JSON.stringify((a && Array.isArray(a.excluded_ranges) && a.excluded_ranges.length) ? a.excluded_ranges : []);
   if (ranges(before) !== ranges(after)) return "analyze";
   if (!same("external_video")) return "reload";
+  // 2.0.3: the markers changed; a project that applies its marker changes
+  // itself (one without a recording) analyzes again, a recording waits for
+  // Apply marker changes (applyRevertedAnnotations).
+  const marks = (a) => JSON.stringify((a && Array.isArray(a.marker_edits) && a.marker_edits.length) ? a.marker_edits : []);
+  if (marks(before) !== marks(after)) return "markers";
   return null;
 }
 
@@ -304,7 +314,8 @@ function applyRevertedAnnotations(annotations) {
   renderSessionPills();
   // Not awaited: the write chain this runs in must not wait for an analysis
   // (which reloads the project when it ends).
-  if (follow === "analyze") Promise.resolve(analyzeSession()).catch((e) => console.error("[session] the analysis after the undo failed:", e));
+  const analyzes = follow === "analyze" || (follow === "markers" && !AC.hasRecording(sess));
+  if (analyzes) Promise.resolve(analyzeSession()).catch((e) => console.error("[session] the analysis after the undo failed:", e));
   else if (follow === "reload") Promise.resolve(reloadSession(sess.sessionFolder)).catch((e) => console.error("[session] the reload after the undo failed:", e));
 }
 
@@ -373,6 +384,7 @@ function initSession(deps) {
   renderSessionPills = deps.renderSessionPills || (() => {});
   reloadSession = deps.reloadSession || (async () => {});
   analyzeSession = deps.analyzeSession || (async () => {});
+  beforeWrite = deps.beforeWrite || (async () => {});
 }
 
 module.exports = {

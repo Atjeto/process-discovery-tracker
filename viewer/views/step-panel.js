@@ -49,6 +49,8 @@ const Video = require("./flow-view-video.js");
 const AnalystUI = require("./analyst-ui.js");
 const SPM = require("../sub-process-maps.js");
 const AC = require("../analyst-content.js");
+const MarkerEdits = require("../marker-edits.js");
+const TE = require("../time-edits.js");
 
 /* { label, path, focusId }: the map box shown, the level it is at (C19, []
    the main level) and the occurrence the foot's act and a play act on; null
@@ -107,16 +109,30 @@ function occurrences(label, runs, focus, path) {
 }
 
 /* "In 4 of 4 transactions, about 8s each" (a run is a transaction to the
-   reader, AD-29). */
-function countLine(occ, runCount) {
+   reader, AD-29). An open occurrence (`open`, a Set of step ids) has no
+   length to count. */
+function countLine(occ, runCount, open) {
   const inRuns = new Set(occ.filter((o) => o.run).map((o) => o.run.caseId)).size;
-  const ms = occ.map((o) => Date.parse(o.step.time_range && o.step.time_range.end) - Date.parse(o.step.time_range && o.step.time_range.start))
+  const ms = occ.filter((o) => !(open && open.has(o.step.step_id)))
+    .map((o) => Date.parse(o.step.time_range && o.step.time_range.end) - Date.parse(o.step.time_range && o.step.time_range.start))
     .filter((x) => isFinite(x) && x >= 0);
   // 2.0.1: a step that takes under a second has no "about ... each".
   const mean = ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : NaN;
   const avg = mean >= 1000 ? StepFacts.formatMs(mean) : "";
   return (runCount ? "In " + inRuns + " of " + runCount + " transaction" + (runCount === 1 ? "" : "s") : "Outside the transactions") +
     (avg ? ", about " + avg + " each" : "");
+}
+
+/* The occurrences open (time-edits.js isOpen; the owner, after 2.0.3: "you
+   always add steps sequentially"): a step of the analyst's being marked,
+   nothing after it yet, at the main level (`path` []). A Set of step ids. */
+function _openIds(occ, path) {
+  const s = _session();
+  const sp = Video.timelineSpan();
+  if (!s || !sp || (path && path.length)) return new Set();
+  const moments = TE.markerMoments(MarkerEdits.currentMarkerEvents(MarkerEdits.sessionMarkerView(s)));
+  return new Set(occ.filter((o) => AC.stepTimeMovable(o.step) && TE.isOpen({ startMs: Date.parse(o.step.time_range.start),
+    endMs: Date.parse(o.step.time_range.end) }, sp.endMs, moments)).map((o) => o.step.step_id));
 }
 
 function _interactions() {
@@ -200,7 +216,7 @@ function _noTime() {
    took 9s"), its play button, then its screenshots, what was said and its
    notes, each under a small lead. `again`: an earlier row is in the same
    transaction. */
-function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
+function _rowHtml(o, again, origin, placed, hasVideo, focusId, open) {
   const st = o.step;
   // C16: the screenshots the step shows (recorded less the hidden ones, then
   // the ones added) and its notes (its own and those at a moment inside it).
@@ -217,8 +233,8 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId) {
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
       (m && m.kind === "covered" ? '<button type="button" class="sp-play" title="Play this occurrence in the video above" aria-label="' +
-        escapeAttr("Play " + StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun())) + '">▶</button>' : "") +
-      '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun())) + "</span>" +
+        escapeAttr("Play " + StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun(), open)) + '">▶</button>' : "") +
+      '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun(), open)) + "</span>" +
       (waste ? '<span class="step-tag-waste sp-waste-tag" title="Flagged as waste: this step should not be needed">Waste</span>' : "") +
     "</div>" +
     (m && m.kind === "outside" ? '<p class="sp-nocover">' + escapeHtml(StepFacts.NOT_COVERED) + "</p>" : "") +
@@ -261,6 +277,7 @@ function render() {
   const path = _state.path || [];
   const occ = occurrences(_state.label, runs, focus, path);
   if (!occ.length) { close(); return; }
+  const open = _openIds(occ, path);
   if (!occ.some((o) => o.step.step_id === _state.focusId)) _state.focusId = occ[0].step.step_id;
   const lead = (occ.find((o) => o.step.step_id === _state.focusId) || occ[0]).step;
   const origin = recordingStartMs(s);
@@ -290,7 +307,7 @@ function render() {
       escapeHtml(wasted === occ.length ? "Flagged as waste" : "Flagged as waste in " + wasted + " of " + occ.length) + "</p>" : "") +
     (desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
     (flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
-    '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length)) + "</p>";
+    '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length, open)) + "</p>";
   const video = $("sp-video");
   const src = hasVideo ? "file:///" + String(s.recordingPath).replace(/\\/g, "/") : "";
   // Lane FX2 (validation pass 2, F7; pass 3, F14): the video shows only a
@@ -321,7 +338,7 @@ function render() {
   const rows = occ.map((o) => {
     const again = !!o.run && inRun.has(o.run.caseId);
     if (o.run) inRun.add(o.run.caseId);
-    return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId);
+    return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId, open.has(o.step.step_id));
   });
   const kinds = hasVideo ? occ.map((o) => _moment(o.step).kind) : [];
   const playable = kinds.filter((k) => k === "covered").length;

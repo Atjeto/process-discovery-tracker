@@ -228,6 +228,8 @@ test("revertFollowUp: a change of the stretches left out analyzes again; a chang
   assert.equal(Session.revertFollowUp({}, { external_video: V }), "reload", "Remove video undone");
   assert.equal(Session.revertFollowUp({ external_video: V }, { external_video: Object.assign({}, V, { offset_ms: 900 }) }), "reload", "a sync undone");
   assert.equal(Session.revertFollowUp({ excluded_ranges: [], steps: [1] }, { steps: [2] }), null, "a step edit: refreshed in place");
+  assert.equal(Session.revertFollowUp({ marker_edits: [{ id: "m" }] }, { marker_edits: [] }), "markers",
+    "2.0.3: a marker change undone (analyzed again where marker changes apply themselves)");
 });
 
 test("an undo of Leave out of the analysis analyzes again; an undo of Remove video reloads the project", async () => {

@@ -222,9 +222,18 @@ The viewer says *transaction* for one pass through the process and
   typed where it has none adds its End, emptied takes it out), dashed with
   *Apply marker changes* beside it until applied. A step whose time is the
   analyst's shows its start and end as fields on its line of facts, and one
-  added without a time a start field; the rules are the Timeline's drag's.
-  Up and Down change a time by a second; a text that is no time, or a time
-  out of range, is refused with the range it can take.
+  added without a time a start field (its end waiting for it); the rules
+  are the Timeline's drag's. Up and Down change a time by a second; a text
+  that is no time, or a time out of range, is refused with the range it can
+  take. Steps are marked one after another: each step added ends the step
+  before it, and a transaction's end, or the next one's start, ends its last
+  step; until then the newest is open ("to open", no length; fading out on
+  the Timeline), as is a transaction with no end ("Ends at: open"). A step
+  side joined to a transaction's side moves with it; a step deleted gives
+  its time back to the step before it; an end emptied runs on to the next
+  step or the transaction's end. In a project made from a video or from
+  nothing, marker changes apply by themselves a moment later (no Apply
+  button there); its one unmarked transaction shows both fields too.
 - **The transactions and their steps**, under one line that says what a
   transaction is; a row shows when its step starts, a transaction's head
   its time ("under 1s", "42s", "2m 07s"). Confirm the reference transaction

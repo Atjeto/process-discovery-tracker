@@ -1490,6 +1490,7 @@ input.time-field::placeholder { color: var(--fg-2); opacity: 1; font-style: ital
 input.time-field:hover { background: var(--bg-2); }
 input.time-field:focus { background: var(--bg-2); outline: 2px solid var(--accent-2); outline-offset: 1px; }
 input.time-field.pending { border-style: dashed; border-color: var(--warn); }
+input.time-field:disabled { border-style: dotted; background: transparent; cursor: not-allowed; }
 .run-times { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--fg-2); }
 .run-times label { display: inline-flex; align-items: center; gap: 5px; }
 .run-times-note { color: var(--fg); }
@@ -2076,6 +2077,13 @@ button.danger:disabled {
   cursor: pointer;
 }
 .tl-step-band:hover { opacity: 0.8; }
+/* The owner, after 2.0.3: "you always add steps sequentially". The step
+   being marked has nothing after it yet: open, it fades out after its start
+   instead of running solid to the end of the video (time-edits.js isOpen). */
+.tl-step-band.open {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 72px, transparent 180px);
+  mask-image: linear-gradient(to right, #000 0, #000 72px, transparent 180px);
+}
 /* NAV-AUDIT §A3: the selected steps-lane band (plain click = select + seek). */
 .tl-step-band.tl-step-selected {
   opacity: 1; outline: 1.5px solid var(--accent); outline-offset: -1px;

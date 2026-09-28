@@ -24,8 +24,10 @@ const State = require("../state.js");
 const { $, escapeHtml, cryptoRandomId, toast, recordingStartMs, sinceStart, parseClock } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { persistAnnotations } = require("../session.js");
-const { seekToTimestamp, videoStartTs } = require("./flow-view-video.js");
+const { seekToTimestamp, videoStartTs, timelineSpan } = require("./flow-view-video.js");
 const MarkerEdits = require("../marker-edits.js");
+const AC = require("../analyst-content.js");
+const TE = require("../time-edits.js");
 
 /* The label shown for one captured marker event (renames applied). */
 function effectiveLabel(markerEvent) {
@@ -37,6 +39,61 @@ function effectiveLabel(markerEvent) {
 /* ============ Markers list + per-marker edits ===================== */
 
 const APPLY_NOTE = "it applies to the transactions when you click Apply marker changes";
+
+/* 2.0.3: marker changes apply by themselves in a project made from a video
+   or from nothing (flow-view.js scheduleAutoApply): it has no drafts that an
+   analysis would draft again, so nothing there asks to be applied. In a
+   recording, Apply marker changes stays the analyst's act. */
+function appliesItself(sess) {
+  return !!sess && !AC.hasRecording(sess);
+}
+
+/* What a message about a marker change adds on how it reaches the
+   transactions: nothing where it applies itself. */
+function applyNote(sess) {
+  return appliesItself(sess) ? "" : "; " + APPLY_NOTE;
+}
+
+/* The steps of the analyst's follow a marker change, in the same edit, read
+   on the markers as they are with it (time-edits.js): a transaction's end,
+   or the next one's start, ends the step that runs past it (2.0.3, the
+   owner: "the duration is endless"); and (the owner: "you always add steps
+   sequentially") a step side joined to a transaction's side goes with it
+   when `change` moves it ({ type, fromMs, toMs }) or takes it out
+   ({ type, fromMs, removed: true }). Returns how many steps changed. */
+function clipStepsToTransactions(anno, change) {
+  const sess = State.getSession();
+  if (!sess || !anno) return 0;
+  const view = MarkerEdits.markerView(sess.events || [], anno.marker_edits, MarkerEdits.lastAnalysisMs(sess));
+  const moments = TE.markerMoments(MarkerEdits.currentMarkerEvents(view));
+  const main = (anno.steps || []).filter((s) => s && s.state !== "hidden" && AC.hasTime(s));
+  const span = (s) => ({ id: s.step_id, startMs: Date.parse(s.time_range.start), endMs: Date.parse(s.time_range.end) });
+  const others = main.map(span).filter((o) => Number.isFinite(o.startMs) && Number.isFinite(o.endMs));
+  const mine = main.filter((s) => AC.stepTimeMovable(s));
+  const byId = new Map(mine.map((s) => [s.step_id, s]));
+  const changed = new Set();
+  const set = (id, startMs, endMs) => {
+    const s = byId.get(id);
+    s.time_range = { start: new Date(startMs).toISOString(), end: new Date(endMs).toISOString() };
+    AC.markEdited(s);
+    changed.add(id);
+  };
+  if (change && Number.isFinite(change.fromMs)) {
+    const sp = timelineSpan();
+    const moves = change.removed
+      ? TE.followRemoval(mine.map(span), others, change.fromMs, moments, sp ? sp.endMs : NaN)
+      : TE.followMarker(mine.map(span), others, change.type, change.fromMs, change.toMs);
+    for (const m of moves) set(m.id, m.startMs, m.endMs);
+  }
+  for (const c of TE.cutAtBoundaries(mine.map(span), moments)) set(c.id, Date.parse(byId.get(c.id).time_range.start), c.endMs);
+  return changed.size;
+}
+
+/* The topics a marker change draws again: the steps too when it cut one. */
+function _topics(topics, cut) {
+  const t = topics || ["markers", "timeline"];
+  return cut && !t.includes("steps") ? t.concat("steps") : t;
+}
 
 /* Why the capture app ended a transaction by itself, in plain words (lane
    FX3, validation pass 3, F20): the next transaction started (the SME's key
@@ -168,7 +225,7 @@ async function adjustMarkerToVideoTime(m) {
     newTs = sinceStartToIso(origin, input);
     if (!newTs) { toast("Type a time such as " + now + ".", "error"); return; }
   }
-  if (await moveMarker(m, newTs)) toast("Marker moved; " + APPLY_NOTE + ".", "success");
+  if (await moveMarker(m, newTs)) toast("Marker moved" + applyNote(State.getSession()) + ".", "success");
 }
 
 /* Move one marker (a row of the marker view) to `newTs`, an ISO time: the
@@ -203,22 +260,31 @@ async function moveMarker(m, newTs, topics) {
       });
     }
   }
-  await persistAnnotations(anno, 'move marker', topics || ["markers", "timeline"]);
+  const cut = clipStepsToTransactions(anno, { type: m.markerType, fromMs: Date.parse(m.timestamp), toMs: Date.parse(newTs) });
+  await persistAnnotations(anno, 'move marker', _topics(topics, cut));
   return true;
 }
 
-/* A marker added at `ts` (2.0.3: an End or a Start typed in Steps), with no
-   question asked: an insert edit, pending until Apply marker changes. One
-   undoable edit. Resolves true when saved. */
-async function insertMarker(markerType, ts, label, topics) {
-  if (!State.getSession()) return false;
+/* Markers added (2.0.3: an End or a Start typed in Steps, an end dragged
+   on the Timeline), with no question asked: `adds` [{ type, ts, label }],
+   insert edits, pending until they are applied. One undoable edit. Resolves
+   true when saved. */
+async function insertMarkers(adds, topics) {
+  if (!State.getSession() || !(adds || []).length) return false;
   const anno = _annotations();
-  anno.marker_edits.push({
-    id: cryptoRandomId(), op: "insert", marker_type: markerType === "end" ? "end" : "start",
-    label: label || null, timestamp: ts, ts: new Date().toISOString(),
-  });
-  await persistAnnotations(anno, "insert " + markerType + " marker", topics || ["markers", "timeline"]);
+  const now = new Date().toISOString();
+  for (const a of adds) {
+    anno.marker_edits.push({
+      id: cryptoRandomId(), op: "insert", marker_type: a.type === "end" ? "end" : "start",
+      label: a.label || null, timestamp: a.ts, ts: now,
+    });
+  }
+  const cut = clipStepsToTransactions(anno);
+  await persistAnnotations(anno, adds.length === 1 ? "insert " + adds[0].type + " marker" : "insert markers", _topics(topics, cut));
   return true;
+}
+function insertMarker(markerType, ts, label, topics) {
+  return insertMarkers([{ type: markerType, ts, label }], topics);
 }
 
 /* Take one marker out (a row of the marker view): an added one's insert edit
@@ -243,7 +309,8 @@ async function removeMarker(m, topics) {
   } else {
     anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.eventId, op: "delete", ts: now });
   }
-  await persistAnnotations(anno, 'delete marker', topics || ["markers", "timeline"]);
+  const cut = clipStepsToTransactions(anno, { type: m.markerType, fromMs: Date.parse(m.timestamp), removed: true });
+  await persistAnnotations(anno, 'delete marker', _topics(topics, cut));
   return true;
 }
 
@@ -254,13 +321,13 @@ async function deleteMarker(m) {
     message: m.inserted
       ? `Remove this added ${m.markerType} marker?`
       : `Delete this ${m.markerType} marker from the analysis?`,
-    detail: "The recording itself is not changed; the change is saved with the project and " +
-      APPLY_NOTE + ". Ctrl+Z restores it.",
+    detail: "The recording itself is not changed; the change is saved with the project" +
+      (appliesItself(State.getSession()) ? " and the transactions follow it" : " and " + APPLY_NOTE) + ". Ctrl+Z restores it.",
     okLabel: "Delete",
     danger: true,
   });
   if (!ok) return;
-  if (await removeMarker(m)) toast("Marker deleted; " + APPLY_NOTE + ".", "success");
+  if (await removeMarker(m)) toast("Marker deleted" + applyNote(State.getSession()) + ".", "success");
 }
 
 async function renameMarker(m, newLabel) {
@@ -286,9 +353,10 @@ async function renameMarker(m, newLabel) {
   // The "markers"/"timeline" topics re-render the side panel and the
   // marker labels on the timeline.
   await persistAnnotations(anno, 'rename marker', ["markers", "timeline"]);
-  toast("Marker renamed; " + APPLY_NOTE + ".", "success");
+  toast("Marker renamed" + applyNote(State.getSession()) + ".", "success");
 }
 
 module.exports = {
-  effectiveLabel, renderMarkersList, sinceStartToIso, markerReasonText, moveMarker, insertMarker, removeMarker, keepApplied, APPLY_NOTE,
+  effectiveLabel, renderMarkersList, sinceStartToIso, markerReasonText, moveMarker, insertMarker, insertMarkers, removeMarker,
+  keepApplied, clipStepsToTransactions, appliesItself, applyNote, APPLY_NOTE,
 };

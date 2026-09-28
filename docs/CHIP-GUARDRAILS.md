@@ -315,13 +315,20 @@ shown only after a failed run; `#toast`.
   and `[data-side="end"]` (`.pending` while its change waits, then
   `.run-times-note` "Not applied yet" and `.run-times-apply`); the selected
   step's `#step-start` and `#step-end` in `#step-facts .step-facts-rest`
-  (a step without a time: `#step-start` alone). A field saves on Enter or
-  when left; set it with a click, Ctrl+A, Backspace, the text, Enter.
+  (a step without a time: `#step-start`, and `#step-end` disabled until a
+  start is typed; the step being marked, nothing after it yet: `#step-end`
+  empty with the placeholder "open", its band `.tl-step-band.open`). A field saves on Enter or when left; set it with a
+  click, Ctrl+A, Backspace, the text, Enter. In a project made from a video
+  or from nothing a marker change applies itself about 1.2 s after the
+  analyst stops (no Apply button there): wait for no pending change, no
+  `#run-status` and `analysisBusy()` false instead of clicking.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
   text: "Start a transaction here…", "End the transaction here", "Add note
   here…", "Add a step here", "Jump to step here"; the transaction and step
   items start at a step's start or the playhead within 8 px of the click,
-  2.0.3; on a step band "Open in Steps"; on a
+  2.0.3; a step's or a transaction's band gives the same items first, then
+  its name as `.tl-ctx-head` and its own: "Open in Steps", "Select + seek
+  here", "Delete step" or "Hide step"; "Jump to start", "Jump to end"; on a
   stretch left out "Include again", "Go to its start"). A Shift-drag
   range shows `#tl-selection-stats` (`#tl-selection-case`,
   `#tl-selection-exclude` "Leave out of the analysis", only with a

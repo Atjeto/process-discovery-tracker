@@ -88,7 +88,13 @@ different from "away"). **Pending markers**: a marker change waiting for
 drawn by its transaction's band, dashed (2.0.3); a marker deleted, and any
 change while the Transactions lane is off, as a dashed bar on the activity
 row, labelled "(pending)" on a Start. The steps and the Transaction select
-follow the last analysis until then.
+follow the last analysis until then. In a project made from a video or from
+nothing (no drafts to draft again) marker changes apply by themselves
+(`flow-view.js` `scheduleAutoApply`): 1.2 s after the change, once no
+dialog is open, no key was pressed for as long, no side is being dragged
+and no field holds unsaved typing; a save while it runs stops it first
+(`yieldAutoApply`, through `session.js` `writeAnnotations`) and it runs
+again after. An undo that changes the markers there analyzes again.
 
 **The lanes menu** (`#btn-lanes`) turns lanes on and off: Idle, Screenshots,
 Transactions, Steps, and Transcript and Notes while they exist. A fresh
@@ -133,7 +139,8 @@ saves it. Esc puts it back and saves nothing; the click the release makes is
 not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
 
 - **A transaction's side** is a marker: its Start, and the End or the next
-  Start that ends it (a transaction running to the end has no end to drag).
+  Start that ends it; a transaction running to the end gets its End from
+  its end dragged (`endAddDrag`).
   The marker moves between its neighbours, 100 ms from each, so the
   transactions keep their order (`markerDragBounds`); it snaps to a step's
   start or the playhead. The move is a marker change (`moveMarker`: an
@@ -150,6 +157,35 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
   (`steps-view.js` `setStepTimes`): a step of the main level then belongs to
   the transaction that holds its new start, or to none (*Outside the
   transactions*), without an analysis.
+- **Steps are marked one after another** (the owner: "the duration is
+  endless", then "you always add steps sequentially"): a new step (+ Step,
+  *Add a step here*, a start typed for a step without a time) inside a
+  step of the analyst's ends that one there (`time-edits.js`
+  `cutForNewStep`, neither part running over a boundary); in open space it
+  lasts until the next step starts or the next transaction boundary. A
+  marker added or moved ends a step of the analyst's that starts in a
+  marked transaction and runs past its end (`cutAtBoundaries`), in the same
+  edit (`flow-view-markers.js` `clipStepsToTransactions`); a step that
+  starts outside every transaction is left whole. The step being marked,
+  running to the end of the timeline with no boundary after its start, is
+  open (`isOpen`, main level): its band has `.open` (a mask fades it out
+  after its start, and it has no end to drag), its tooltip, the Steps line
+  (`#step-end` empty, placeholder "open") and the step panel's row say
+  "open", never a length, and the panel's average leaves it out.
+- **Joined sides move together.** A marker moved takes the step sides that
+  sit on it along (`followMarker`: a step's start on a Start, a step's end
+  on a Start or an End; never over another step, never under 100 ms); one
+  taken out lets the step that ended there run on to the next step or
+  boundary (`followRemoval`). A step of the analyst's deleted gives its
+  time to the step that ended where it started, up to that one's
+  transaction's end (`handBack`, `steps-view.js` `deleteStep`); an end
+  emptied in Steps runs on the same way (`naturalEnd`).
+- **Every right-click marks there.** A step's or a transaction's band opens
+  the Timeline's menu (`flow-view.js` `showMarkerInsertMenu` with a `band`:
+  the moment's items, then a rule, the band's name as `.tl-ctx-head` and its
+  own items: *Open in Steps*, *Select + seek here*, *Delete step* or *Hide
+  step*; *Jump to start*, *Jump to end*), so the next step is added on the
+  band of the open one before it.
 
 **Range selection.** Shift-drag on the background selects a range; a card
 shows its length, events, markers, screenshots and systems, with *Insert

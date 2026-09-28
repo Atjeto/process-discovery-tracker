@@ -17,7 +17,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-47, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-49, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
   Data contracts C1 to C21:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.3** (2026-09-28), the light
+- **Versions.** The current release is **v2.0.4** (2026-09-28), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -127,7 +127,7 @@ the folder.
 | [docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) | The discipline every new verb passes. |
 | [docs/adr/](docs/adr/README.md) | Decisions; the registry is CI-enforced. |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [docs/DEPLOY.md](docs/DEPLOY.md) | Dev setup, build, release, install. |
-| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.3. |
+| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.4. |
 
 ## Key concepts
 
@@ -194,7 +194,16 @@ the folder.
   change), the selected step's start and end on its line of facts (a step
   without a time gets a start field); one rule set, `time-edits.js`. An
   insert edit the last analysis used keeps `applied_timestamp` and
-  `applied_label` while a change to it waits (`keepApplied`).
+  `applied_label` while a change to it waits (`keepApplied`). Steps are
+  marked one after another (the owner: "you always add steps
+  sequentially"): each step added ends the one before it, a transaction's
+  end or the next one's start ends its last step, and until then the
+  newest is open (`time-edits.js` `isOpen`: "open", no length, fading out
+  on the Timeline). Joined sides move together (`followMarker`,
+  `followRemoval`, `handBack`), and every Timeline right-click marks
+  there, on a band too. A project without a recording applies its marker
+  changes itself (`flow-view.js` `scheduleAutoApply`, giving way to a
+  save); a recording keeps Apply marker changes.
 - **What the analyst adds** (C16), inside the folder: screenshots in
   `screenshots/analyst/` (a video frame, a pasted image or a file;
   `step.pdd_screenshot` picks the one the PDD prints), notes in

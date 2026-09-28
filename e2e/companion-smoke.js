@@ -36,7 +36,7 @@
  *     (h) the video is copied into video/ (relative path, offset 0) and the
  *         Timeline runs on its length, with no activity bands;
  *     (i) two transactions marked by right-click (Start a transaction here),
- *         applied, and the Steps list then says where each starts; (j) two
+ *         applied by themselves, and the Steps list then says where each starts; (j) two
  *         steps added at the
  *         playhead; (k) a frame of the video captured as a screenshot; (l) a
  *         note at a moment, in the Notes lane (named at the timeline's left);
@@ -761,7 +761,7 @@ function zipFiles(buf) {
       await rightClickItem(f, "Start a transaction here");
       await prompt(label);
     }
-    await page.locator("#btn-apply-marker-edits").click({ timeout: T });
+    // 2.0.3: a project made from a video applies its marker changes itself.
     await page.waitForFunction(() => { const s = require("./state.js").getSession();
       return ((s.stats && s.stats.case_stats) || []).length === 2 && !document.getElementById("run-status"); }, null, { timeout: 120000 });
     i.runs = ((await session()).stats.case_stats || []).map((r) => ({ label: r.label, implicit: !!r.implicit }));
@@ -769,7 +769,7 @@ function zipFiles(buf) {
     i.note = await page.evaluate(() => ((document.getElementById("runs-pane-note") || {}).textContent || "").trim());
     i.titles = await page.$$eval("#step-list .run-group .run-title", (els) => els.map((e) => (e.textContent || "").trim()));
   } catch (x) { i.err = errText(x); }
-  record("(i) two transactions marked by right-click on the video's Timeline (Start a transaction here) and applied: the implicit run gives way to two, listed as Transaction 1 and 2, and the Steps list says each starts where it was marked",
+  record("(i) two transactions marked by right-click on the video's Timeline (Start a transaction here), applied by themselves (2.0.3): the implicit run gives way to two, listed as Transaction 1 and 2, and the Steps list says each starts where it was marked",
     !i.err && JSON.stringify(i.runs) === '[{"label":"Order A","implicit":false},{"label":"Order B","implicit":false}]' &&
       JSON.stringify(i.titles) === '["Transaction 1","Transaction 2"]' &&
       i.note === "", JSON.stringify(i));
@@ -803,6 +803,7 @@ function zipFiles(buf) {
   // right-click deletes a step added by hand (asked first); a band click
   // then Steps shows that step selected, its row in view.
   let j2 = {};
+  let newestName = null;
   try {
     await level("flow");
     const n0 = ((await session()).anno.steps || []).length;
@@ -810,9 +811,11 @@ function zipFiles(buf) {
     await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k + 1, n0, { timeout: T });
     j2.added = true;
     const newest = (await session()).anno.steps.slice().sort((x, y) => Date.parse(y.time_range.start) - Date.parse(x.time_range.start))[0];
+    newestName = newest.name;
     const band = page.locator('.tl-step-band[data-step-id="' + newest.step_id + '"]');
     await band.click({ button: "right", timeout: T });
     j2.items = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => (d.textContent || "").trim()));
+    j2.head = await page.evaluate(() => ((document.querySelector("#tl-ctx-menu .tl-ctx-head") || {}).textContent || ""));
     await page.locator("#tl-ctx-menu div", { hasText: /^Delete step$/ }).click({ timeout: T });
     await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
     await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k, n0, { timeout: T });
@@ -826,8 +829,9 @@ function zipFiles(buf) {
       return !!row && row.getBoundingClientRect().height > 0;
     }, target.step_id);
   } catch (x) { j2.err = errText(x); }
-  record("(j2) 2.0.1: right-click the Timeline, Add a step here adds a step; a step band's right-click offers Open in Steps and Delete step, which deletes it (asked first); a band click then Steps shows that step selected",
-    !j2.err && j2.added && JSON.stringify(j2.items) === JSON.stringify(["Open in Steps", "Select + seek here", "Delete step"]) &&
+  record("(j2) 2.0.1: right-click the Timeline, Add a step here adds a step; a step band's right-click marks there first (Add a step here: steps are added one after another, on the band of the one before), then, under the step's name, Open in Steps and Delete step, which deletes it (asked first); a band click then Steps shows that step selected",
+    !j2.err && j2.added && j2.items.includes("Add a step here") && j2.head === newestName &&
+      JSON.stringify(j2.items.slice(-3)) === JSON.stringify(["Open in Steps", "Select + seek here", "Delete step"]) &&
       j2.deleted && j2.shown, JSON.stringify(j2));
 
   // (k) A frame of the video as a screenshot of the first step.

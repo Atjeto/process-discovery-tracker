@@ -6,6 +6,46 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.4] (2026-09-28): steps marked one after another
+
+### Changed
+
+- **Steps are marked one after another** (the owner's reports: "the
+  duration is endless", then "you always add steps sequentially"). Each
+  step added ends the step before it, and *End the transaction here*, or
+  the next transaction's start, ends its last step. Until then the newest
+  step is open: it reads *open* in Steps and in the step panel, with no
+  length, and fades out on the Timeline instead of running solid to the end
+  of the video. A transaction with no end reads *Ends at: open*.
+- **Every right-click on the Timeline marks there**, on a step's or a
+  transaction's band too: *Add a step here* and *End the transaction here*
+  are on the band that runs on over where the next mark goes, with the
+  band's own items (*Open in Steps*, *Delete step*, *Jump to start*) under
+  its name.
+- **What was marked together moves together**: a transaction's start or
+  end typed or dragged takes the step that starts or ends there along, so a
+  corrected start never leaves the first step outside the transaction.
+  Taking an End out lets its last step run on again. A step you delete
+  gives its time back to the step before it, and a step's end emptied in
+  Steps goes back to where the next step starts or its transaction ends.
+- **Help: *Mark a video as you watch it***, a new everyday task (and in the
+  How-to guide).
+- **A project made from a video or from nothing applies its marker changes
+  itself**, a moment after the change: a transaction added, moved or ended
+  is in Steps with both of its times without clicking *Apply marker
+  changes*. It waits while a dialog is open or something is being typed,
+  and a change saved meanwhile goes first. A recording keeps *Apply marker
+  changes*, because it drafts the recorder's steps again. An undo of a
+  marker change there applies too.
+- **The one unmarked transaction of a new project shows *Starts at* and
+  *Ends at***: typing its start marks it; typing its end marks it from the
+  start of the video. A step added without a time shows its end field
+  beside its start (the end waits for the start).
+- **A transaction that runs to the end gets an end handle on the
+  Timeline**: dragging it adds its End.
+- **The step selected stays selected** when the project comes back from an
+  analysis.
+
 ## [2.0.3] (2026-09-28): transactions and steps moved and timed
 
 ### Changed

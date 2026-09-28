@@ -209,15 +209,17 @@ function _numberList(ns) {
    (validation pass 3, F22): `clock` names what the time is in, "recording"
    (the default), "video" in a project made from a video, or "" in a project
    with neither, where a step added by hand reads "no time". */
-function occurrenceLine(step, run, again, originMs, clock) {
+function occurrenceLine(step, run, again, originMs, clock, open) {
   const tr = step && step.time_range;
   const at = sinceStart(tr && tr.start, originMs);
-  const took = duration(tr);
+  // The step being marked, nothing after it yet (time-edits.js isOpen): open,
+  // never as long as the rest of the video.
+  const took = open ? "" : duration(tr);
   const noun = clock === undefined || clock === null ? "recording" : String(clock);
   return [
     run ? run.title + (again ? ", again" : "") : "Outside the transactions",
     at ? at + (noun ? " into the " + noun : "") : noun ? "no time in the " + noun : "no time",
-    took ? "took " + took : "",
+    open ? "open" : took ? "took " + took : "",
   ].filter(Boolean).join(" · ");
 }
 

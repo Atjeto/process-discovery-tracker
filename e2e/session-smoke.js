@@ -663,7 +663,7 @@ async function unreadableAnnotationsPin() {
     "first-hour acts (ten) and glossary words, every sentence of the page found in the document, no dash punctuation, nothing wider than the Help",
     !helpStart.err && hs.active === "start" && hs.first === "start" && hs.firstLabel === "Getting started" && hs.shown &&
       hd.heads.length === 9 && same(hs.heads, hd.heads) &&
-      hd.tasks.length === 9 && same(hs.tasks, hd.tasks) &&
+      hd.tasks.length === 10 && same(hs.tasks, hd.tasks) &&
       hd.acts.length === 10 && same(hs.acts, hd.acts) &&
       hd.terms.length >= 10 && same(hs.terms, hd.terms) &&
       (hs.blocks || []).length > 60 && unmatched.length === 0 &&

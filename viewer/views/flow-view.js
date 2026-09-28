@@ -359,6 +359,7 @@ async function analyzeSession(opts) {
   const sess = State.getSession();
   // Lane HV: nothing is analyzed in a hand-off opened read only.
   if (!sess || RO.isReadOnly(sess)) return false;
+  const auto = !!(opts && opts.auto);
   const kind = opts && opts.confirm;
   // Apply marker changes drafts the changed transactions again: it asks only
   // while a step is a draft (2.0.3: a project made from a video or from
@@ -375,13 +376,78 @@ async function analyzeSession(opts) {
   const onScreen = !!(State.getSession() && State.getSession().sessionFolder === folder);
   if (!onScreen) return false;
   if (r.cancelled) {
-    toast("Update cancelled: the steps and the map are as they were.");
+    // An automatic Apply that gave way to a change says nothing: it runs
+    // again once the change is saved.
+    if (!(auto && _autoYielding)) toast("Update cancelled: the steps and the map are as they were.");
     return false;
   }
   if (!r.ok) { toast(r.error, "error"); return false; }
   toast("Steps and map updated.", "success");
   await loadSessionIntoView(folder, { afterAnalysis: true });
   return true;
+}
+
+/* 2.0.3 (the owner: a new project's transaction had no end to type until
+   its marker change was applied): marker changes apply by themselves in a
+   project made from a video or from nothing. Apply marker changes stays a
+   deliberate act in a recording, because it drafts the recorder's steps
+   again; such a project has no drafts, so a transaction added, moved or
+   ended there is applied once the analyst pauses: AUTO_APPLY_MS after the
+   change, with no dialog open, no key pressed for that long and no field
+   holding typing not saved yet (else it waits again). A save while it runs stops it first (a stopped run leaves the
+   project as it was; main refuses a save while a project is analyzed) and
+   it runs again after, so it never refuses the analyst a change. */
+const AUTO_APPLY_MS = 1200;
+let _autoTimer = null;
+let _autoRunning = false;
+let _autoYielding = false;
+
+function _autoApplies(sess) {
+  return !!sess && !RO.isReadOnly(sess) && !sess.annotationsError && FlowMarkers.appliesItself(sess) &&
+    MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess)) > 0;
+}
+
+/* The analyst is in the middle of something: a dialog is open, a side is
+   being dragged, a key was pressed a moment ago, or the field with the
+   keyboard holds typing not saved yet (a field merely left focused does not
+   hold the update back). */
+let _lastKeyAt = 0;
+if (typeof document !== "undefined") document.addEventListener("keydown", () => { _lastKeyAt = Date.now(); }, true);
+function _analystBusy() {
+  if ([...document.querySelectorAll(".modal-backdrop")].some((m) => m.getClientRects().length > 0)) return true;
+  // A side being dragged on the Timeline (flow-view-timeline.js wireEdgeDrag).
+  if (document.body.classList.contains("tl-edge-dragging")) return true;
+  if (Date.now() - _lastKeyAt < AUTO_APPLY_MS) return true;
+  const a = document.activeElement;
+  return !!a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT") && !a.readOnly && !a.disabled &&
+    typeof a.defaultValue === "string" && a.value !== a.defaultValue;
+}
+
+/* Apply the marker changes of a project that applies them itself, once the
+   analyst pauses (see above). Called after every marker change and as a
+   project opens; nothing happens where nothing waits. */
+function scheduleAutoApply() {
+  if (_autoTimer) clearTimeout(_autoTimer);
+  _autoTimer = _autoApplies(State.getSession()) ? setTimeout(_autoApplyNow, AUTO_APPLY_MS) : null;
+}
+async function _autoApplyNow() {
+  _autoTimer = null;
+  if (!_autoApplies(State.getSession())) return;
+  if (_analystBusy() || analysisBusy()) { _autoTimer = setTimeout(_autoApplyNow, AUTO_APPLY_MS); return; }
+  _autoRunning = true;
+  try { await analyzeSession({ auto: true }); } finally { _autoRunning = false; }
+}
+
+/* Before anything is saved: an automatic Apply under way stops, so the save
+   goes through, and runs again after it (session.js writeAnnotations). */
+async function yieldAutoApply() {
+  if (!_autoRunning || !_running) return;
+  _autoYielding = true;
+  try {
+    await Ipc.cancelNormalize();
+    await _runQueue;   // the stopped run has ended
+  } finally { _autoYielding = false; }
+  scheduleAutoApply();
 }
 
 /* The status line in the top bar (#session-pills): while a run lasts, what it
@@ -524,8 +590,10 @@ async function loadSessionIntoView(folder, opts) {
   renderScreenshots();
   renderMarkersList();
   renderTimelineSummary();
-  // Phase B+ surfaces
-  State.setSelectedStepId(null);
+  // Phase B+ surfaces. 2.0.3: the step selected stays selected when the
+  // same project comes back from an analysis (a transaction's change applied
+  // by itself must not take the analyst off the step being worked on).
+  if (prevFolder !== folder || !(opts && opts.afterAnalysis)) State.setSelectedStepId(null);
   State.setMultiSelectedStepIds(new Set());
   renderStepsLevel();
   // The Overview is the default level on load; it reads the freshly loaded
@@ -563,6 +631,8 @@ async function loadSessionIntoView(folder, opts) {
   // an analysis, while the Map is on screen is drawn again (after the
   // analysis above is asked for, so the Map does not ask for another).
   if (State.getLevel() === "map") rerenderActiveLevel();
+  // 2.0.3: marker changes left waiting in a project that applies them itself.
+  scheduleAutoApply();
 }
 
 /* The controls that act on the video show only while one is linked: the
@@ -747,7 +817,7 @@ async function queueMarkerDelete(eventId) {
   } catch (_) {
     return false;
   }
-  toast("Marker deleted. Click Apply marker changes to update the transactions.", "success");
+  toast("Marker deleted" + (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
   return true;
 }
 
@@ -935,8 +1005,12 @@ function renderSelectionStats() {
 
 /* Pop a tiny context menu at (x, y) offering to queue a synthetic marker
    insert into annotations.json.marker_edits at timestamp `ts`. The edit
-   only takes effect on the next normalization run. */
-function showMarkerInsertMenu(x, y, ts) {
+   only takes effect on the next normalization run. `band` ({ title, items:
+   [[label, act], ...] }), a band right-clicked: its own items follow, under
+   its name. The owner, after 2.0.3: "you always add steps sequentially", so
+   the next step is right-clicked where the band of the one before it runs
+   on: every right-click on the Timeline marks there, band or not. */
+function showMarkerInsertMenu(x, y, ts, band) {
   /* Tear down any prior menu */
   const prior = document.getElementById("tl-ctx-menu");
   if (prior) prior.remove();
@@ -976,15 +1050,30 @@ function showMarkerInsertMenu(x, y, ts) {
     // 2.0.1: the step at this moment, as + Step adds one at the playhead.
     addItem("Add a step here",           () => addStepAt(atStep));
   }
-  addItem("Jump to step here",         () => {
-    State.setPendingStepJump(ts);
-    const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
-    // Defer the synthetic click out of the menu's own click handler so
-    // the view switch lands in a clean event-loop tick -- a direct
-    // btn.click() from inside the menu handler was being swallowed
-    // (the pending jump was set and consumed but the view didn't swap).
-    if (btn) setTimeout(() => btn.click(), 0);
-  });
+  if (!band) {
+    addItem("Jump to step here",         () => {
+      State.setPendingStepJump(ts);
+      const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
+      // Defer the synthetic click out of the menu's own click handler so
+      // the view switch lands in a clean event-loop tick -- a direct
+      // btn.click() from inside the menu handler was being swallowed
+      // (the pending jump was set and consumed but the view didn't swap).
+      if (btn) setTimeout(() => btn.click(), 0);
+    });
+  } else {
+    if (menu.children.length) {
+      const rule = document.createElement("hr");
+      rule.style.cssText = "border:0;border-top:1px solid var(--rule);margin:4px 0;";
+      menu.appendChild(rule);
+    }
+    const head = document.createElement("p");
+    head.className = "tl-ctx-head";
+    head.textContent = band.title;
+    head.style.cssText = "margin:0;padding:2px 14px 4px;font-size:11px;color:var(--fg-3);max-width:260px;" +
+      "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    menu.appendChild(head);
+    for (const [label, act] of band.items) addItem(label, act);
+  }
 
   document.body.appendChild(menu);
   placeMenu(menu, x, y);   // at (x, y), kept inside the window
@@ -1043,7 +1132,8 @@ async function queueSyntheticMarker(ts, markerType) {
     label = await promptModal({
       title: "Start a transaction here",
       message: "Label for the new transaction (its Start marker)",
-      detail: "It shows at once as pending, and applies to the transactions when you click Apply marker changes.",
+      detail: FlowMarkers.appliesItself(State.getSession()) ? "The transactions follow it at once."
+        : "It shows at once as pending, and applies to the transactions when you click Apply marker changes.",
       placeholder: "For example: Order #10900",
       okLabel: "Insert",
     });
@@ -1061,13 +1151,16 @@ async function queueSyntheticMarker(ts, markerType) {
     timestamp: ts,
     ts: new Date().toISOString(),
   });
+  // 2.0.3: a transaction's end cuts a step of the analyst's that runs past it.
+  const cut = FlowMarkers.clipStepsToTransactions(a);
   try {
-    await persistAnnotations(a, `insert ${markerType} marker`, ["markers", "timeline"]);
+    await persistAnnotations(a, `insert ${markerType} marker`, cut ? ["markers", "timeline", "steps"] : ["markers", "timeline"]);
   } catch (_) {
     return false;
   }
   activateAnnoTab("markers");
-  toast(`${markerType === "start" ? "Start" : "End"} marker added. Click Apply marker changes to update the transactions.`, "success");
+  toast((markerType === "start" ? "Start" : "End") + " marker added" +
+    (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
   return true;
 }
 
@@ -1082,7 +1175,8 @@ async function queueCaseFromSelection() {
   let label = await promptModal({
     title: "Insert transaction from selection",
     message: "Label for the new transaction",
-    detail: "Adds a Start and an End marker. They show at once as pending, and apply to the transactions when you click Apply marker changes.",
+    detail: "Adds a Start and an End marker. " + (FlowMarkers.appliesItself(State.getSession()) ? "The transactions follow them at once."
+      : "They show at once as pending, and apply to the transactions when you click Apply marker changes."),
     placeholder: "For example: Order #10900",
     okLabel: "Insert transaction",
   });
@@ -1110,13 +1204,15 @@ async function queueCaseFromSelection() {
     timestamp: new Date(range.endMs).toISOString(),
     ts: editedAt,
   });
+  const cut = FlowMarkers.clipStepsToTransactions(a);
   try {
-    await persistAnnotations(a, "insert transaction from selection", ["markers", "timeline"]);
+    await persistAnnotations(a, "insert transaction from selection", cut ? ["markers", "timeline", "steps"] : ["markers", "timeline"]);
   } catch (_) {
     return;   // already shown to the analyst by session.js
   }
   activateAnnoTab("markers");
-  toast("Transaction markers added. Click Apply marker changes to update the transactions.", "success");
+  toast("Transaction markers added" +
+    (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
 }
 
 /* H6: Leave out of the analysis: the current timeline range goes into
@@ -1189,47 +1285,14 @@ async function includeRangeAgain(range) {
 /* Right-click on a run band: jump to its start or end (the Run select in the
    timeline header dims the other runs). Uses the same context-menu
    construction pattern as showMarkerInsertMenu. */
-function showCaseContextMenu(x, y, c) {
-  const prior = document.getElementById("tl-ctx-menu");
-  if (prior) prior.remove();
-  const menu = document.createElement("div");
-  menu.id = "tl-ctx-menu";
-  menu.style.cssText =
-    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
-    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
-    "box-shadow:var(--shadow);font:13px var(--font-ui);" +
-    "min-width:240px;cursor:default;user-select:none;";
-  function addItem(label, handler) {
-    const item = document.createElement("div");
-    item.textContent = label;
-    item.style.cssText = "padding:6px 14px;cursor:pointer;";
-    item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
-    item.addEventListener("mouseleave", () => item.style.background = "");
-    item.addEventListener("click", () => { menu.remove(); handler(); });
-    menu.appendChild(item);
-  }
-  addItem("Jump to start", () => seekToTimestamp(new Date(c.startMs).toISOString()));
-  if (!c.dangling) {
-    addItem("Jump to end", () => seekToTimestamp(new Date(c.endMs).toISOString()));
-  }
-  document.body.appendChild(menu);
-  placeMenu(menu, x, y);   // at (x, y), kept inside the window
-  function dismiss(e) {
-    if (!menu.contains(e.target)) {
-      menu.remove();
-      document.removeEventListener("click", dismiss, true);
-      document.removeEventListener("keydown", onKey, true);
-    }
-  }
-  function onKey(e) {
-    if (e.key === "Escape") {
-      menu.remove();
-      document.removeEventListener("click", dismiss, true);
-      document.removeEventListener("keydown", onKey, true);
-    }
-  }
-  document.addEventListener("click", dismiss, true);
-  document.addEventListener("keydown", onKey, true);
+/* A transaction's band right-clicked at `ts`: what marks there (Start a
+   transaction, End the transaction, Add a step: an open transaction's band
+   runs on to the end, over where its next marks go), then its own jumps. */
+function showCaseContextMenu(x, y, c, ts) {
+  const items = [["Jump to start", () => seekToTimestamp(new Date(c.startMs).toISOString())]];
+  if (!c.dangling) items.push(["Jump to end", () => seekToTimestamp(new Date(c.endMs).toISOString())]);
+  showMarkerInsertMenu(x, y, ts || new Date(c.startMs).toISOString(),
+    { title: c.title + (c.label && c.label !== c.title ? " · " + c.label : ""), items });
 }
 
 /* Video playback, the playhead, seeking, watch-a-step, and the
@@ -1414,6 +1477,8 @@ module.exports = {
   // The analysis: automatic runs, the deliberate ones (confirm), and the
   // pipeline runner the exports share (one status line, one log).
   renderSessionPills, analyzeSession, analysisBusy, runPipeline, UPDATING,
+  // 2.0.3: marker changes that apply themselves (a project without a recording).
+  scheduleAutoApply, yieldAutoApply,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // The Overview's marker-problem fixes (overview-view.js).

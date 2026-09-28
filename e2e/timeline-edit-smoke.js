@@ -10,8 +10,9 @@
  *   (a) the report's clicks: Add a step here, then Start a transaction here
  *       6 px after the step's start: the transaction starts at the step's
  *       start (it snaps), drawn at once where it was put, pending (no bar
- *       under it); Apply marker changes asks nothing in a project with no
- *       drafts, and the step is in the transaction;
+ *       under it); in a project made from a video it applies itself a moment
+ *       later, with no click and no question, and the step is in the
+ *       transaction;
  *   (b) a step's start dragged out of the transaction: the step leaves it at
  *       once (Outside the transactions), its time the one dropped, the time
  *       shown while dragging; Ctrl+Z puts it back, Ctrl+Y again;
@@ -30,15 +31,28 @@
  *       it, Ctrl+Z brings it back), Up adds a second and Escape puts the
  *       field back, a text that is no time and a start after the end are
  *       refused, each saying why;
- *   (h) an open transaction's Starts at typed: the field dashed, "Not
- *       applied yet" and Apply marker changes beside it, which applies it
- *       (no question in a project without drafts): the transaction starts
- *       there;
- *   (i) its Ends at (greyed while it runs to the end) typed adds its End,
+ *   (h) an open transaction's Starts at typed: the field dashed, "Updates
+ *       in a moment" and no Apply button beside it; it applies itself, and
+ *       the transaction starts there;
+ *   (i) its Ends at ("open" while it runs to the end) typed adds its End,
  *       applied there; emptied, the End goes and it runs to the end again;
- *   (j) a step added with + Add step has no time: "no time yet: starts at",
- *       a start typed gives it one (until the next step) and a band on the
- *       Timeline.
+ *   (j) a step added with + Add step has no time: "no time yet", its start
+ *       and end fields (the end waiting for the start); a start typed gives
+ *       it one (until the next step) and a band on the Timeline.
+ * The owner's next report ("the duration is endless"), on a second new
+ * project from the video:
+ *   (k) its one unmarked transaction shows Starts at and Ends at ("open")
+ *       before any marker; a start typed marks it, applied by itself;
+ * and the owner's answer to that ("you always add steps sequentially"):
+ *   (l) steps added one after another on the Timeline, each right-clicked
+ *       on the band of the one before it, which runs on to the end until
+ *       then: each ends the one before it, only the newest is open (fading
+ *       out, "open" in Steps, no length); End the transaction here,
+ *       right-clicked on the transaction's own band, ends the last step;
+ *   (m) the transaction's start typed later takes its first step's start
+ *       along, and its end typed later its last step's end;
+ *   (n) the last step deleted gives its time back to the step before it; a
+ *       step's end typed earlier and then emptied runs on again.
  *   Zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -124,15 +138,25 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
   };
   const runs = async () => ((await stats()).case_stats || []).filter((c) => !c.parent_case_id);
   const stepById = async (id) => (await anno()).steps.find((s) => s.step_id === id);
+  // 2.0.3: a project made from a video applies its marker changes itself, a
+  // moment after the change: nothing is clicked; this waits until nothing
+  // waits or runs, and says whether anything asked a question meanwhile.
   const apply = async () => {
-    await page.locator("#btn-apply-marker-edits").click({ timeout: T });
-    await wait(400);
-    const asked = await page.$(".modal-confirm");
-    if (asked) await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
-    await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits") && !document.getElementById("run-status") &&
-      !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
+    let asked = false;
+    const deadline = Date.now() + 120000;
+    for (;;) {
+      const st = await page.evaluate(() => {
+        const s = require("./state.js").getSession(), ME = require("./marker-edits.js");
+        return { asked: !!document.querySelector(".modal-confirm"),
+          done: ME.pendingEditCount(s.annotations.marker_edits, ME.lastAnalysisMs(s)) === 0 &&
+            !document.getElementById("run-status") && !require("./views/flow-view.js").analysisBusy() };
+      });
+      asked = asked || st.asked;
+      if (st.done || st.asked || Date.now() > deadline) break;
+      await wait(250);
+    }
     await wait(500);
-    return !!asked;
+    return asked;
   };
   const stepsGroups = async () => {
     await level("steps");
@@ -210,9 +234,9 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
     a.applied = await page.evaluate(() => ({ pending: document.querySelectorAll("#timeline .tl-case-band.pending").length,
       bands: document.querySelectorAll("#timeline .tl-case-band").length }));
   } catch (e) { a.err = errText(e); }
-  record("(a) the report's clicks: Start a transaction here 6 px after a step's start starts it at the step's start (it snaps); the transaction is drawn at once where it was put, pending, with no bar under it and Apply 1 marker change; applying asks nothing (no drafts) and the step is in the transaction",
-    !a.err && a.snapped && a.bandAtStep && a.pending.bars === 0 && a.pending.cta === "Apply 1 marker change" &&
-      /Not applied yet: Apply marker changes/.test(a.pending.title) && /Drag its start to move it\./.test(a.pending.title) &&
+  record("(a) the report's clicks: Start a transaction here 6 px after a step's start starts it at the step's start (it snaps); the transaction is drawn at once where it was put, pending, with no bar under it; it applies itself with no click and no question (a project made from a video) and the step is in the transaction",
+    !a.err && a.snapped && a.bandAtStep && a.pending.bars === 0 &&
+      /Not applied yet: Apply marker changes/.test(a.pending.title) && /open: no end marked yet/.test(a.pending.title) && /Drag its start or its end to move it, or right-click where it ends: End the transaction here[.]/.test(a.pending.title) &&
       a.asked === false && a.runs.length === 1 && a.runs[0].label === "Order 1" && a.inRun &&
       JSON.stringify(a.groups) === '["Transaction 1: 1 step"]' && a.applied.pending === 0 && a.applied.bands === 1,
     JSON.stringify(a));
@@ -276,8 +300,8 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
     c.inRun = (await stepById(stepId)).case_id === (rs[0] && rs[0].case_id);
     c.groups = await stepsGroups();
   } catch (e) { c.err = errText(e); }
-  record("(c) the transaction's start dragged twice, the second time to 4 px from the step's start: it snaps there, the band stands there pending, one change to apply; applied, the transaction starts at the step and holds it",
-    !c.err && c.band.pending && c.bandAtStep && c.band.cta === "Apply 1 marker change" && c.asked === false && c.snapped && c.inRun &&
+  record("(c) the transaction's start dragged twice, the second time to 4 px from the step's start: it snaps there, the band stands there pending; applied by itself, the transaction starts at the step and holds it",
+    !c.err && c.band.pending && c.bandAtStep && c.asked === false && c.snapped && c.inRun &&
       JSON.stringify(c.groups) === '["Transaction 1: 1 step"]',
     JSON.stringify(c));
 
@@ -454,23 +478,14 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
     hT.pending = await page.evaluate(() => {
       const t = document.querySelector("#step-list .run-group.open .run-times");
       return { note: ((t.querySelector(".run-times-note") || {}).textContent || "").trim(),
-        apply: ((t.querySelector(".run-times-apply") || {}).textContent || "").trim() };
+        apply: !!t.querySelector(".run-times-apply") };
     });
-    hT.asked = await (async () => {
-      await page.locator("#step-list .run-group.open .run-times-apply").click({ timeout: T });
-      await wait(400);
-      const asked = !!(await page.$(".modal-confirm"));
-      if (asked) await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
-      await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits") && !document.getElementById("run-status") &&
-        !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
-      await wait(500);
-      return asked;
-    })();
+    hT.asked = await apply();
     hT.start = (await runs())[0].start_ts;
     hT.startOk = Date.parse(hT.start) === Date.parse(earlier);
   } catch (e) { hT.err = errText(e); }
-  record("(h) an open transaction's Starts at typed: the field dashed, Not applied yet and Apply 1 marker change beside it, which applies it with no question (no drafts): the transaction starts there",
-    !hT.err && hT.pending.note === "Not applied yet" && hT.pending.apply === "Apply 1 marker change" && hT.asked === false && hT.startOk,
+  record("(h) an open transaction's Starts at typed: the field dashed, Updates in a moment and no Apply button beside it; it applies itself with no question (a project made from a video): the transaction starts there",
+    !hT.err && hT.pending.note === "Updates in a moment" && hT.pending.apply === false && hT.asked === false && hT.startOk,
     JSON.stringify(hT));
 
   // (i) Its Ends at: typed adds its End; emptied takes it out.
@@ -484,23 +499,16 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
     const at = typedIso(atText);
     await typeIn(txField("end"), atText);
     await page.waitForSelector('#step-list .run-group.open .run-times [data-side="end"].pending', { timeout: T });
-    await page.locator("#step-list .run-group.open .run-times-apply").click({ timeout: T });
-    await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits") && !document.getElementById("run-status") &&
-      !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
-    await wait(500);
+    await apply();
     iT.end = (await runs())[0].end_ts;
     iT.endOk = !!iT.end && Date.parse(iT.end) === Date.parse(at);
     await openTransaction();
     await typeIn(txField("end"), "");
-    await page.waitForSelector("#step-list .run-group.open .run-times-apply", { timeout: T });
-    await page.locator("#step-list .run-group.open .run-times-apply").click({ timeout: T });
-    await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits") && !document.getElementById("run-status") &&
-      !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
-    await wait(500);
+    await apply();
     iT.endAfter = (await runs())[0].end_ts;
   } catch (e) { iT.err = errText(e); }
-  record("(i) its Ends at, greyed while it runs to the end, typed adds its End (applied there); emptied, the End goes and it runs to the end again",
-    !iT.err && iT.before.value === "" && /^0:\d\d/.test(iT.before.placeholder) && iT.endOk && iT.endAfter == null,
+  record("(i) its Ends at, \"open\" while it runs to the end, typed adds its End (applied there); emptied, the End goes and it runs to the end again",
+    !iT.err && iT.before.value === "" && iT.before.placeholder === "open" && iT.endOk && iT.endAfter == null,
     JSON.stringify(iT));
 
   // (j) A step added without a time is given one.
@@ -514,22 +522,180 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
     const added = (await anno()).steps.find((s) => s.name === "Call the customer");
     await selectStep(added.step_id);
     jT.line = await page.evaluate(() => ((document.querySelector("#step-facts .step-facts-rest") || {}).textContent || "").replace(/\s+/g, " ").trim());
-    jT.empty = await page.evaluate(() => document.getElementById("step-start").value === "" && !document.getElementById("step-end"));
+    jT.empty = await page.evaluate(() => document.getElementById("step-start").value === "" &&
+      !!document.getElementById("step-end") && document.getElementById("step-end").disabled);
     await typeIn(page.locator("#step-start"), "0:01");
     await page.waitForFunction((sid) => {
       const s = require("./state.js").getSession().annotations.steps.find((x) => x.step_id === sid);
       return s && s.time_range && s.time_range.start;
     }, added.step_id, { timeout: T });
     const placed = await stepById(added.step_id);
-    const next = (await anno()).steps.filter((s) => s.step_id !== added.step_id && s.time_range && s.time_range.start)
+    // Until the next step starts or the next transaction boundary (2.0.3).
+    const nextStep = (await anno()).steps.filter((s) => s.step_id !== added.step_id && s.time_range && s.time_range.start)
       .map((s) => Date.parse(s.time_range.start)).filter((x) => x > origin + 1000).sort((a, b) => a - b)[0];
+    const nextMark = await page.evaluate((after) => {
+      const ME = require("./marker-edits.js");
+      return ME.currentMarkerEvents(ME.sessionMarkerView(require("./state.js").getSession()))
+        .map((e) => Date.parse(e.timestamp)).filter((x) => x > after).sort((a, b) => a - b)[0] || null;
+    }, origin + 1000);
+    const next = nextMark != null && nextMark < nextStep ? nextMark : nextStep;
     jT.span = [clockOf(placed.time_range.start), Date.parse(placed.time_range.end) === next];
     await level("flow");
     jT.band = await page.evaluate((sid) => !!document.querySelector('#timeline .tl-step-band[data-step-id="' + sid + '"]'), added.step_id);
   } catch (e) { jT.err = errText(e); }
-  record("(j) a step added with + Add step has no time: its line says \"no time yet: starts at\", a start typed gives it one, until the next step starts, and a band on the Timeline",
-    !jT.err && /no time yet: starts at$/.test(jT.line) && jT.empty && jT.span[0] === "0:01" && jT.span[1] === true && jT.band,
+  record("(j) a step added with + Add step has no time: its line says \"no time yet\" with its start and end fields, the end waiting for the start; a start typed gives it one, until the next step starts or the next transaction boundary, and a band on the Timeline",
+    !jT.err && /no time yet: to$/.test(jT.line) && jT.empty && jT.span[0] === "0:01" && jT.span[1] === true && jT.band,
     JSON.stringify(jT));
+
+  // ================= "The duration is endless" (the owner's next report) =================
+  const PROJ2 = path.join(TMP, "Order call 2");
+  let origin2 = NaN;
+  const clock2 = (ms) => { const t = Math.round((ms - origin2) / 100); const s = Math.floor(t / 10);
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + (t % 10 ? "." + (t % 10) : ""); };
+  const at2 = (text) => { const [m, s] = text.split(":"); return origin2 + Math.round((Number(m) * 60 + Number(s)) * 1000); };
+  const ms = (iso) => Date.parse(iso);
+
+  // (k) The one unmarked transaction of a new project: both fields at once.
+  let kT = {};
+  try {
+    await stubOpen(VIDEO);
+    await stubSave(PROJ2);
+    await page.click("#btn-new-menu");
+    await page.click("#btn-new-from-video");
+    await page.waitForFunction((f) => { const s = require("./state.js").getSession();
+      return !!s && String(s.sessionFolder).toLowerCase() === f.toLowerCase() && !!s.stats && !document.getElementById("run-status"); },
+    path.resolve(PROJ2), { timeout: 120000 });
+    origin2 = Date.parse(readJson(path.join(PROJ2, "manifest.json")).started_at);
+    await level("flow");
+    await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 30000 });
+    await openTransaction();
+    kT.before = await page.evaluate(() => [...document.querySelectorAll("#step-list .run-group.open .run-times input")]
+      .map((i) => ({ side: i.dataset.side, value: i.value, ph: i.placeholder })));
+    await typeIn(txField("start"), "0:02");
+    kT.asked = await apply();
+    const r = await runs();
+    kT.runs = r.map((x) => ({ implicit: !!x.implicit, start: x.start_ts, end: x.end_ts }));
+    kT.marked = r.length === 1 && !r[0].implicit && ms(r[0].start_ts) === at2("0:02") && r[0].end_ts == null;
+  } catch (e) { kT.err = errText(e); }
+  record("(k) a new project's one unmarked transaction shows Starts at and Ends at (\"open\") before any marker; a start typed marks it, and it applies itself with no question",
+    !kT.err && kT.before.length === 2 && kT.before[0].side === "start" && kT.before[0].ph === "0:00" &&
+      kT.before[1].side === "end" && kT.before[1].ph === "open" && kT.asked === false && kT.marked,
+    JSON.stringify(kT));
+
+  // (l) The owner, after 2.0.3: "you always add steps sequentially". Steps
+  // added one after another on the Timeline in the open transaction: the
+  // first at its start (it snaps there), each next one right-clicked on the
+  // band of the one before it, which runs on to the end until then. Each
+  // ends the one before it; only the newest is open. The transaction's end,
+  // right-clicked on its own band, ends the last step.
+  let lT = {};
+  const ids = [];
+  const bandBox = (id) => page.locator('#timeline .tl-step-band[data-step-id="' + id + '"]').boundingBox({ timeout: T });
+  const openBand = (id) => page.evaluate((sid) => { const el = document.querySelector('#timeline .tl-step-band[data-step-id="' + sid + '"]');
+    return el ? el.classList.contains("open") : null; }, id);
+  const factsOf = () => page.evaluate(() => ({ end: document.getElementById("step-end").value, ph: document.getElementById("step-end").placeholder,
+    line: ((document.querySelector("#step-facts .step-facts-rest") || {}).textContent || "").replace(/\s+/g, " ").trim() }));
+  try {
+    await level("flow");
+    let g = await geo();
+    await rightClickItem(xOf(g, at2("0:02")) + 3, g.lowY, "Add a step here");
+    await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 1, null, { timeout: T });
+    ids.push((await anno()).steps[0].step_id);
+    lT.firstAtStart = ms((await stepById(ids[0])).time_range.start) === at2("0:02");
+    for (const frac of [0.35, 0.55]) {
+      g = await geo();
+      const box = await bandBox(ids[ids.length - 1]);
+      await page.mouse.click(g.left + frac * g.width, box.y + box.height / 2, { button: "right" });
+      if (!lT.menu) {
+        lT.menu = await page.evaluate(() => ({ head: ((document.querySelector("#tl-ctx-menu .tl-ctx-head") || {}).textContent || ""),
+          items: [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => (d.textContent || "").trim()) }));
+      }
+      await page.locator("#tl-ctx-menu div", { hasText: "Add a step here" }).click({ timeout: T });
+      await page.waitForFunction((k) => (require("./state.js").getSession().annotations.steps || []).length === k, ids.length + 1, { timeout: T });
+      ids.push((await anno()).steps.find((s) => !ids.includes(s.step_id)).step_id);
+    }
+    const st = [];
+    for (const id of ids) st.push(await stepById(id));
+    lT.chain = st[0].time_range.end === st[1].time_range.start && st[1].time_range.end === st[2].time_range.start;
+    lT.lastToEnd = Math.abs(ms(st[2].time_range.end) - (g.first + g.span)) <= 1;
+    lT.open = [];
+    for (const id of ids) lT.open.push(await openBand(id));
+    // In Steps: the newest reads "to open" with no length; the one before it
+    // its end and how long it took.
+    await openTransaction();
+    await selectStep(ids[2]);
+    lT.newest = await factsOf();
+    await selectStep(ids[1]);
+    lT.before = await factsOf();
+    // The transaction's end, right-clicked on its own band (open, it runs on
+    // to the end too).
+    await level("flow");
+    g = await geo();
+    const tx = await page.locator("#timeline .tl-case-band").first().boundingBox({ timeout: T });
+    await page.mouse.click(g.left + 0.75 * g.width, tx.y + tx.height / 2, { button: "right" });
+    lT.txMenu = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => (d.textContent || "").trim()));
+    await page.locator("#tl-ctx-menu div", { hasText: "End the transaction here" }).click({ timeout: T });
+    lT.asked = await apply();
+    const r = await runs();
+    const last = await stepById(ids[2]);
+    lT.ended = !!r[0].end_ts && ms(last.time_range.end) === ms(r[0].end_ts);
+    lT.openAfter = await openBand(ids[2]);
+  } catch (e) { lT.err = errText(e); }
+  record("(l) steps added one after another on the Timeline, each right-clicked on the band of the one before it (Add a step here there, under that step's name): each ends the one before it and only the newest is open (fading out; \"to open\" in Steps, no length), the one before it showing its end and how long it took; End the transaction here, right-clicked on the transaction's band, ends the last step (applied by itself)",
+    !lT.err && lT.firstAtStart && lT.menu.head === "Step 1" && lT.menu.items.includes("Add a step here") && lT.menu.items.includes("Open in Steps") &&
+      lT.chain && lT.lastToEnd && JSON.stringify(lT.open) === "[false,false,true]" &&
+      lT.newest.end === "" && lT.newest.ph === "open" && !/took/.test(lT.newest.line) &&
+      lT.before.end !== "" && /took/.test(lT.before.line) &&
+      lT.txMenu.includes("End the transaction here") && lT.txMenu.includes("Jump to start") &&
+      lT.asked === false && lT.ended && lT.openAfter === false,
+    JSON.stringify(lT));
+
+  // (m) A mark corrected keeps what is joined to it: the transaction's start
+  // typed later takes its first step's start along (it never falls outside
+  // again); its end typed later takes its last step's end along.
+  let mT = {};
+  try {
+    await openTransaction();
+    await typeIn(txField("start"), "0:03");
+    mT.note = await page.evaluate(() => { const t = document.querySelector("#step-list .run-group.open .run-times");
+      return { note: ((t.querySelector(".run-times-note") || {}).textContent || "").trim(), apply: !!t.querySelector(".run-times-apply") }; });
+    mT.asked = await apply();
+    await openTransaction();
+    await typeIn(txField("end"), "0:27");
+    mT.asked = (await apply()) || mT.asked;
+    const r = await runs();
+    const first = await stepById(ids[0]), last = await stepById(ids[2]);
+    mT.start = ms(r[0].start_ts) === at2("0:03") && ms(first.time_range.start) === at2("0:03") && first.case_id === r[0].case_id;
+    mT.end = ms(r[0].end_ts) === at2("0:27") && ms(last.time_range.end) === at2("0:27");
+  } catch (e) { mT.err = errText(e); }
+  record("(m) a mark corrected keeps what is joined to it: the transaction's Starts at typed later takes its first step's start along, so the step stays in it; its Ends at typed later takes its last step's end along (Updates in a moment, no Apply button, no question)",
+    !mT.err && mT.note.note === "Updates in a moment" && !mT.note.apply && mT.asked === false && mT.start && mT.end, JSON.stringify(mT));
+
+  // (n) The inverses: the last step deleted gives its time back to the step
+  // before it; a step's end typed earlier, then emptied, runs on again.
+  let nT = {};
+  try {
+    await level("flow");
+    const box = await bandBox(ids[2]);
+    await page.mouse.click(box.x + 14, box.y + box.height / 2, { button: "right" });
+    await page.locator("#tl-ctx-menu div", { hasText: /^Delete step$/ }).click({ timeout: T });
+    await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
+    await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 2, null, { timeout: T });
+    nT.handedBack = ms((await stepById(ids[1])).time_range.end) === at2("0:27");
+    await openTransaction();
+    await selectStep(ids[1]);
+    await typeIn(page.locator("#step-end"), "0:25");
+    await page.waitForFunction(([sid, e]) => { const s = require("./state.js").getSession().annotations.steps.find((x) => x.step_id === sid);
+      return s && Date.parse(s.time_range.end) === e; }, [ids[1], at2("0:25")], { timeout: T });
+    nT.typed = true;
+    await selectStep(ids[1]);
+    await typeIn(page.locator("#step-end"), "");
+    await page.waitForFunction(([sid, e]) => { const s = require("./state.js").getSession().annotations.steps.find((x) => x.step_id === sid);
+      return s && Date.parse(s.time_range.end) === e; }, [ids[1], at2("0:27")], { timeout: T });
+    nT.runsOn = true;
+  } catch (e) { nT.err = errText(e); }
+  record("(n) the inverses: the last step deleted (from its band's right-click) gives its time back to the step before it; a step's end typed earlier and then emptied runs on to its transaction's end again",
+    !nT.err && nT.handedBack && nT.typed && nT.runsOn, JSON.stringify(nT));
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();

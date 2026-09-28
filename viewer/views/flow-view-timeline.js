@@ -36,8 +36,8 @@ const SPM = require("../sub-process-maps.js");
 const RO = require("../read-only.js");
 const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
-const { moveMarker, APPLY_NOTE } = require("./flow-view-markers.js");
-const { SNAP_PX, snapMs, markerDragBounds, stepSide, stepSideChanges } = require("../time-edits.js");
+const { moveMarker, insertMarker, applyNote } = require("./flow-view-markers.js");
+const { SNAP_PX, MIN_SPAN_MS, snapMs, markerDragBounds, stepSide, stepSideChanges, markerMoments, isOpen } = require("../time-edits.js");
 
 /* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
    bands pack into ~1500px and their left-anchored labels overlap into
@@ -508,26 +508,14 @@ function renderTimelineSummary() {
    plain band click selects + seeks (no view change); this right-click menu is
    the LABELED verb that actually switches to Steps, reusing the arrival-reveal
    (setSelectedStepId + setPendingStepReveal, which the Steps render consumes to
-   scroll the row into view). Mirrors showMarkerInsertMenu's construction. */
-function _showStepBandMenu(x, y, stepId, ts) {
-  const prior = document.getElementById("tl-ctx-menu");
-  if (prior) prior.remove();
-  const menu = document.createElement("div");
-  menu.id = "tl-ctx-menu";
-  menu.style.cssText =
-    "position:fixed;z-index:1000;background:var(--bg-3);color:var(--fg);" +
-    "border:1px solid var(--rule);padding:4px 0;border-radius:var(--radius-sm);" +
-    "box-shadow:var(--shadow);font:13px var(--font-ui);" +
-    "min-width:180px;cursor:default;user-select:none;";
-  function addItem(label, handler) {
-    const item = document.createElement("div");
-    item.textContent = label;
-    item.style.cssText = "padding:6px 14px;cursor:pointer;";
-    item.addEventListener("mouseenter", () => item.style.background = "var(--accent)");
-    item.addEventListener("mouseleave", () => item.style.background = "");
-    item.addEventListener("click", () => { close(); handler(); });
-    menu.appendChild(item);
-  }
+   scroll the row into view). The owner, after 2.0.3: "you always add steps
+   sequentially", so the next step is right-clicked on the band of the one
+   before it: the menu marks at `at`, the moment right-clicked, first
+   (flow-view.js showMarkerInsertMenu), then the step's own items, under its
+   `name`. */
+function _showStepBandMenu(x, y, stepId, ts, at, name) {
+  const items = [];
+  const addItem = (label, handler) => items.push([label, handler]);
   addItem("Open in Steps", () => {
     if (stepId) {
       // This step is the explicit target: drop a seek position an earlier
@@ -553,24 +541,7 @@ function _showStepBandMenu(x, y, stepId, ts) {
     addItem(hit.step.state === "manually_authored" ? "Delete step" : "Hide step",
       () => require("./steps-view.js").deleteStep(stepId));
   }
-  document.body.appendChild(menu);
-  placeMenu(menu, x, y);   // at (x, y), kept inside the window
-  // A press ON the menu is a choice, not a dismissal (see showMarkerInsertMenu
-  // in flow-view.js: closing on the item's own mousedown swallowed the click).
-  function close() {
-    menu.remove();
-    document.removeEventListener("mousedown", dismiss, true);
-    document.removeEventListener("keydown", dismiss, true);
-  }
-  const dismiss = (e) => {
-    if (e.type === "keydown" && e.key !== "Escape") return;
-    if (e.type === "mousedown" && menu.contains(e.target)) return;
-    close();
-  };
-  setTimeout(() => {
-    document.addEventListener("mousedown", dismiss, true);
-    document.addEventListener("keydown", dismiss, true);
-  }, 0);
+  showMarkerInsertMenu(x, y, at || ts, { title: name || "This step", items });
 }
 
 /* A small context menu at (x, y): items = [[label, act], ...] (the notes
@@ -928,6 +899,19 @@ function renderTimeline() {
         { ms: b.endMs, key: "s:" + s.step_id + ":end", kind: "step-end" });
     }
   }
+  // 2.0.3: a transaction that runs to the end has no End marker; its end
+  // dragged gives it one (the owner: "the duration is endless").
+  const endAddDrag = (c, band) => {
+    const move = (ms) => _placeBand(band, c.startMs, ms, first, span, 0.15);
+    return {
+      fromMs: c.endMs, lo: c.startMs + MIN_SPAN_MS, hi: last, targets: _snapTargets("marker", [], first, span),
+      preview: move, restore: () => move(c.endMs),
+      commit: async (ms) => {
+        const note = applyNote(State.getSession());
+        if (await insertMarker("end", new Date(ms).toISOString()) && note) toast("Ended" + note + ".", "success");
+      },
+    };
+  };
   // A marker dragged moves between its neighbours as drawn.
   const markerTimes = markersNow.map((ev) => Date.parse(ev.timestamp));
   const markerDrag = (host, key) => {
@@ -947,7 +931,8 @@ function renderTimeline() {
       preview: move, restore: () => move(fromMs),
       commit: async (ms) => {
         const m = MarkerEdits.sessionMarkerView(State.getSession()).find((x) => x.key === key);
-        if (m && await moveMarker(m, new Date(ms).toISOString())) toast("Moved; " + APPLY_NOTE + ".", "success");
+        const note = applyNote(State.getSession());
+        if (m && await moveMarker(m, new Date(ms).toISOString()) && note) toast("Moved" + note + ".", "success");
       },
     };
   };
@@ -1046,15 +1031,17 @@ function renderTimeline() {
         if (c.startKey) band.dataset.startKey = c.startKey;
         if (c.endKey) band.dataset.endKey = c.endKey;
         band.title = c.title + (c.label ? " · " + c.label : "") +
-          (c.dangling ? " (no end marker)" : "\n" + formatDuration(c.endMs - c.startMs)) +
+          (c.dangling ? " · open: no end marked yet" : "\n" + formatDuration(c.endMs - c.startMs)) +
           (c.pending ? "\nNot applied yet: Apply marker changes, in the top bar, updates the transactions and their steps." : "") +
-          (editable ? "\nDrag its start" + (c.endKey ? " or its end" : "") + " to move it." : "");
+          (editable ? "\nDrag its start or its end to move it" + (c.endKey ? "." : ", or right-click where it ends: End the transaction here.") : "");
         // 2.0.3: its start and its end drag (the marker there moves; a start
-        // that ends the transaction before moves that end too).
+        // that ends the transaction before moves that end too; one running to
+        // the end gets its End).
         if (editable) {
           wireEdgeDrag(band, { host, firstMs: first, spanMs: span, origin,
-            edges: { start: !!c.startKey, end: !!c.endKey },
-            begin: (edge) => markerDrag(host, edge === "start" ? c.startKey : c.endKey) });
+            edges: { start: !!c.startKey, end: !!c.endKey || !!c.dangling },
+            begin: (edge) => edge === "end" && !c.endKey ? endAddDrag(c, band)
+              : markerDrag(host, edge === "start" ? c.startKey : c.endKey) });
         }
         // Click anywhere on a case band -- closed OR dangling -- seeks
         // the video to the case start. Right-click opens the scope/jump
@@ -1066,9 +1053,8 @@ function renderTimeline() {
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          // Scope-to-case option (in addition to the marker insert menu
-          // available on activity bands).
-          showCaseContextMenu(e.clientX, e.clientY, c);
+          // What marks at the moment right-clicked, then the band's jumps.
+          showCaseContextMenu(e.clientX, e.clientY, c, timeAtClientX(e.clientX, host.getBoundingClientRect(), first, last));
         });
         host.appendChild(band);
         // NAV-AUDIT §J/§9: only label a band wide enough to read it; the rest
@@ -1309,6 +1295,13 @@ function renderTimeline() {
   // A step's side dragged (2.0.3): between the other bands of the lane,
   // inside its sub-process, the step it touches (when that one's time is the
   // analyst's too) giving way; saved as one edit (steps-view.js setStepTimes).
+  // The owner, after 2.0.3: "you always add steps sequentially": the step
+  // being marked has nothing after it yet, so it runs to the end. It is
+  // drawn open (fading out after its start), with no length and no end to
+  // drag (time-edits.js isOpen); the next step, or its transaction's end,
+  // ends it. At the main level: a sub-step ends with its sub-process.
+  const momentsNow = markerMoments(markersNow);
+  const isOpenBand = (s, b) => !_level.name && AC.stepTimeMovable(s.step) && isOpen(b, last, momentsNow);
   const laneSpans = _stepsForLane.map((x) => {
     const b = stepBandSpan(x);
     return b ? { id: x.step_id, startMs: b.startMs, endMs: b.endMs, movable: editable && AC.stepTimeMovable(x.step) } : null;
@@ -1359,21 +1352,23 @@ function renderTimeline() {
         const x = ((sStart - first) / span) * 100;
         const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
         const band = document.createElement("div");
-        band.className = "tl-step-band";
+        const open = isOpenBand(s, bandSpan);
+        band.className = "tl-step-band" + (open ? " open" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = stepsLaneTop + "px";
         const lbl = s.label || s.step_id || "";
         band.textContent = lbl;
         const movable = editable && AC.stepTimeMovable(s.step);
-        band.title = lbl + " · " + formatDuration(sEnd - sStart) +
-          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: Open in Steps, Hide or Delete" +
-          (movable ? "\nDrag its start or its end to change its time." : "");
+        band.title = lbl + " · " + (open ? "open: it ends where you add the next step, or where its transaction ends"
+          : formatDuration(sEnd - sStart)) +
+          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: add the next step here, or Open in Steps, Hide or Delete" +
+          (movable ? "\nDrag its " + (open ? "start" : "start or its end") + " to change its time." : "");
         if (s.step_id) band.dataset.stepId = s.step_id;
         // 2.0.3: a step whose time is the analyst's drags its sides; a step
         // back to back with it moves its touching side along.
         if (movable) {
-          wireEdgeDrag(band, { host, firstMs: first, spanMs: span, origin, edges: { start: true, end: true },
+          wireEdgeDrag(band, { host, firstMs: first, spanMs: span, origin, edges: { start: true, end: !open },
             begin: (edge) => stepDrag(host, s, band, edge) });
         }
         if (s.step_id && s.step_id === State.getSelectedStepId()) {
@@ -1407,7 +1402,8 @@ function renderTimeline() {
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          _showStepBandMenu(e.clientX, e.clientY, s.step_id, s.time_range && s.time_range.start);
+          _showStepBandMenu(e.clientX, e.clientY, s.step_id, s.time_range && s.time_range.start,
+            timeAtClientX(e.clientX, host.getBoundingClientRect(), first, last), lbl);
         });
         host.appendChild(band);
       }

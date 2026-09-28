@@ -32,7 +32,7 @@ bar).
 - **From a video.** Choose *New*, *New project from a video...* and pick the
   video, for example a Teams recording of the SME at work. Then name the
   project: its folder is made where you save it, with a copy of the video.
-  You add the steps as you watch.
+  You mark the steps as you watch (*Mark a video as you watch it*, below).
 - **From nothing.** Choose *New*, *New empty project...* and name the
   project. You add the steps by hand.
 - **The demo.** Choose *Open*, *Open the demo project*. A finished project
@@ -126,6 +126,20 @@ it is done; its button takes you to the next.
 
 ## Everyday tasks
 
+### Mark a video as you watch it
+
+1. Play the video on the Timeline. Where the SME starts the work,
+   right-click the timeline and choose *Start a transaction here*.
+2. As each step starts, press S (or click *+ Step*), or right-click there
+   and choose *Add a step here*, on the band of the step before it too. The
+   step before it ends there. The newest step is *open*, fading out on the
+   Timeline: it ends where you add the next one.
+3. Where the transaction ends, right-click and choose *End the transaction
+   here*: its last step ends there too. *Start a transaction here* for the
+   next one ends the one before it the same way.
+4. Name the steps in Steps as you go, or afterwards. Ctrl+Z takes back a
+   mark put in the wrong place.
+
 ### Add a step the recorder missed
 
 1. In Steps, select the step it comes after.
@@ -134,28 +148,35 @@ it is done; its button takes you to the next.
    Alt+Up and Alt+Down move the step.
 4. With a video, you can instead pause the video at that moment on the
    Timeline and click *+ Step* (or press S), or right-click the timeline
-   there and choose *Add a step here*: the step gets that time. Right-click
-   a step on the Timeline to open it in Steps, or to delete it (a recorded
-   step is hidden).
+   there and choose *Add a step here*: the step gets that time.
+   Right-clicking a step on the Timeline also offers to open it in Steps, or
+   to delete it (a recorded step is hidden).
 
 ### Change when a transaction or a step starts or ends
 
 1. In Steps, open the transaction: *Starts at* and *Ends at* are under its
    name. Type a time the way the timeline shows it, for example *0:09* or
    *1:05.5*, and press Enter. Up and Down change it by a second. An empty
-   *Ends at* runs until the next transaction starts, or to the end. The
-   change shows dashed until you click *Apply marker changes*, right beside
-   it.
-2. A step you added has its times on the line under its name, for example
-   *Transaction 1 · 0:09 to 0:31*: type a time there and press Enter. A step
-   you added without a time says *no time yet*: type when it starts. The
-   step then belongs to the transaction its start is in, and a step right
+   *Ends at* runs until the next transaction starts, or to the end. In a
+   project made from a video or from nothing, the change applies by itself a
+   moment later; in a recording it shows dashed until you click *Apply
+   marker changes*, right beside it.
+2. What you marked together moves together: a step that starts or ends
+   where the transaction does moves with its *Starts at* or *Ends at*. A
+   step you delete gives its time back to the step before it.
+3. A step you added has its times on the line under its name, for example
+   *Transaction 1 · 0:09 to 0:31*: type a time there and press Enter.
+   Emptied, its end goes back to where the next step starts or its
+   transaction ends. A step added without a time says *no time yet*: type
+   when it starts. The step
+   then belongs to the transaction its start is in, and a step right
    against it moves along. A step the recorder drafted keeps the time of its
    recorded actions: split or merge it instead.
-3. On the Timeline you can instead drag the start or the end of a
-   transaction's band, or of a step you added. Near a step's start or the
-   playhead it snaps there. Esc while dragging puts it back, and Ctrl+Z
-   undoes a change.
+4. On the Timeline you can instead drag the start or the end of a
+   transaction's band, or of a step you added; a transaction that runs to
+   the end gets its end that way too. Near a step's start or the playhead
+   it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a
+   change.
 
 ### Split or merge steps
 
@@ -294,8 +315,8 @@ app.
   changes*.
 - **A step is listed under Outside the transactions.** It starts before or
   after every transaction. In Steps, open the transaction and type an
-  earlier *Starts at*, then click *Apply marker changes*. A step you added
-  can instead be given a start inside the transaction.
+  earlier *Starts at*; in a recording, then click *Apply marker changes*. A
+  step you added can instead be given a start inside the transaction.
 - **"The analysis failed, so the steps and the map are not drafted."** The
   log at the top says why. Choose Help, *Troubleshooting*, *Re-analyze*:
   your confirmed, edited, added and hidden steps are kept.
