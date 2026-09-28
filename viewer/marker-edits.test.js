@@ -100,10 +100,48 @@ test("like the pipeline: an insert without a time is skipped; an undated edit on
   assert.equal(ME.isPendingEdit({ event_id: "m1", op: "delete" }, ANALYZED), false);
 });
 
+test("2.0.3: the markers as they are now carry every edit, pending ones too, and leave a deleted one out", () => {
+  const edits = [
+    insert(AFTER),
+    { id: "t1", event_id: "m1", field: "timestamp", value: "2026-05-14T09:00:12Z", ts: AFTER },
+    { id: "r1", event_id: "m1", field: "label", value: "Order A (fixed)", ts: AFTER },
+    { id: "d1", event_id: "m2", op: "delete", ts: AFTER },
+  ];
+  const now = ME.currentMarkerEvents(ME.markerView(EVENTS, edits, ANALYZED));
+  assert.deepEqual(now.map((e) => [e.event_id, e.timestamp, e.data.marker_type, e.data.label]), [
+    ["m1", "2026-05-14T09:00:12Z", "start", "Order A (fixed)"],
+    ["insert-e1", "2026-05-14T09:00:30Z", "start", "New run"],
+  ], "moved, renamed and inserted as the analyst left them; the deleted End is gone");
+  // Control: the case lane of the last analysis has none of these changes.
+  const applied = ME.appliedMarkerEvents(ME.markerView(EVENTS, edits, ANALYZED));
+  assert.deepEqual(applied.map((e) => [e.event_id, e.timestamp]), [["m1", "2026-05-14T09:00:10Z"], ["m2", "2026-05-14T09:00:50Z"]]);
+  // With nothing pending the two agree.
+  const quiet = ME.markerView(EVENTS, [], ANALYZED);
+  assert.deepEqual(ME.currentMarkerEvents(quiet), ME.appliedMarkerEvents(quiet));
+});
+
 test("removing an analyzed insert leaves one pending delete of its marker id, and no row", () => {
   // The Markers list's delete of an applied inserted marker (flow-view-markers.js).
   const edits = [{ id: "x9", event_id: "insert-e1", op: "delete", ts: AFTER }];
   const view = ME.markerView(EVENTS, edits, ANALYZED);
   assert.deepEqual(view.map((m) => m.key), ["m1", "m2"], "no ghost row for the removed marker");
   assert.equal(ME.pendingEditCount(edits, ANALYZED), 1, "the change still waits for Analyze");
+});
+
+test("2.0.3: an insert the last analysis used, moved and not applied yet, is still that analysis's marker where it was", () => {
+  const moved = insert(AFTER, { timestamp: "2026-05-14T09:00:35Z", applied_timestamp: "2026-05-14T09:00:30Z", applied_label: "New run" });
+  const row = ME.markerView(EVENTS, [moved], ANALYZED).find((m) => m.inserted);
+  assert.deepEqual([row.pending, row.applied, row.timestamp, row.appliedTimestamp],
+    [true, true, "2026-05-14T09:00:35Z", "2026-05-14T09:00:30Z"]);
+  const view = ME.markerView(EVENTS, [moved], ANALYZED);
+  assert.equal(ME.appliedMarkerEvents(view).find((e) => e.event_id === "insert-e1").timestamp, "2026-05-14T09:00:30Z",
+    "the transactions the analysis found keep it where it was");
+  assert.equal(ME.currentMarkerEvents(view).find((e) => e.event_id === "insert-e1").timestamp, "2026-05-14T09:00:35Z",
+    "the markers as they are now have it where it was put");
+  // Control: an insert never analyzed is not the analysis's marker anywhere.
+  const fresh = ME.markerView(EVENTS, [insert(AFTER)], ANALYZED).find((m) => m.inserted);
+  assert.equal(fresh.applied, false);
+  // Once applied, what it kept is history: the analysis used where it is now.
+  const done = ME.markerView(EVENTS, [Object.assign({}, moved, { ts: BEFORE })], ANALYZED).find((m) => m.inserted);
+  assert.deepEqual([done.pending, done.applied, done.appliedTimestamp], [false, true, "2026-05-14T09:00:35Z"]);
 });

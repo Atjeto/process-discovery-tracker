@@ -253,3 +253,31 @@ test("lane FX2: a one-click step (it starts and ends in the same moment) gets a 
   assert.equal(stepBandSpan({ time_range: null }), null);
   assert.equal(stepBandSpan(tr("2026-05-14T09:00:47Z", null)), null);
 });
+
+/* ---- 2.0.3: a side dragged (a process manager's report: a transaction
+   started a few pixels after its step, and nothing moved). The rules a side
+   follows are time-edits.js's, tested in time-edits.test.js. ---- */
+
+test("2.0.3: layoutCaseLanes names the marker at each side of a transaction: its Start, and the End or the next Start that ends it", () => {
+  const ev = (min, type, id) => Object.assign(mk(min, type), { event_id: id });
+  const r = layoutCaseLanes([ev(1, "start", "s1"), ev(3, "start", "s2"), ev(5, "end", "e2"), ev(6, "start", "s3")], T0, T1);
+  assert.deepEqual(r.cases.map((c) => [c.startKey, c.endKey]), [["s1", "s2"], ["s2", "e2"], ["s3", null]],
+    "the Start that ends a transaction starts the next: either side there moves that one marker; one running to the end has no end to drag");
+});
+
+test("2.0.3: an insert the last analysis used keeps what it used before it is moved or renamed, and only then", () => {
+  const { keepApplied } = require("./flow-view-markers.js");
+  const analyzed = Date.parse("2026-09-01T10:00:00Z");
+  const applied = { id: "e1", op: "insert", marker_type: "start", label: "A", timestamp: "2026-05-14T09:00:30Z", ts: "2026-09-01T09:00:00Z" };
+  keepApplied(applied, analyzed);
+  assert.deepEqual([applied.applied_timestamp, applied.applied_label], ["2026-05-14T09:00:30Z", "A"]);
+  // A second change before Apply keeps the first one's record.
+  const waiting = { id: "e2", op: "insert", marker_type: "start", label: "B", timestamp: "2026-05-14T09:00:40Z",
+    ts: "2026-09-01T11:00:00Z", applied_timestamp: "2026-05-14T09:00:35Z", applied_label: "B" };
+  keepApplied(waiting, analyzed);
+  assert.equal(waiting.applied_timestamp, "2026-05-14T09:00:35Z");
+  // Control: an insert never analyzed has nothing to keep.
+  const fresh = { id: "e3", op: "insert", marker_type: "end", label: null, timestamp: "2026-05-14T09:00:50Z", ts: "2026-09-01T11:00:00Z" };
+  keepApplied(fresh, analyzed);
+  assert.equal(fresh.applied_timestamp, undefined);
+});

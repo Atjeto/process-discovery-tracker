@@ -286,9 +286,13 @@ shown only after a failed run; `#toast`.
   is centred on the lane's marks); the dividers `.tl-lane-sep`, in the
   column and at the same heights in `#timeline`; while the pointer is on a
   cell, its lane lit in `#timeline` as `.tl-lane-hover`.
-- Lanes: `.tl-case-band` (runs), `.tl-activity` (`.tl-act-app` names the
+- Lanes: `.tl-case-band` (runs; 2.0.3: drawn from the markers as they now
+  are, `.pending` while the last analysis has not seen it, `data-start-key`
+  and `data-end-key` the markers at its sides, `data-start-ms` and
+  `data-end-ms` its span), `.tl-activity` (`.tl-act-app` names the
   system; `.tl-app-left-out`, hatched, for an app among the Apps outside
-  the process, lane FX2), `.tl-idle`, `.tl-marker.tl-marker-pending`, the transcript
+  the process, lane FX2), `.tl-idle`, `.tl-marker.tl-marker-pending` (2.0.3:
+  only a marker deleted, or any change while the Transactions lane is off), the transcript
   `.tl-tr-block[data-seg]` and its label `.tl-tr-label` (`.tl-tr-sync`,
   `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
   screenshots `.tl-screenshot` (`.tl-screenshot-added` for one the analyst
@@ -298,9 +302,26 @@ shown only after a failed run; `#toast`.
   `.tl-lane-name[data-lane="steps"]` reads "Steps in <name>"), the
   playhead `#tl-playhead`. A blank project shows `#tl-empty` with
   `#btn-tl-attach-video`.
+- Dragging a side (2.0.3, `wireEdgeDrag`): a press within 6 px of a
+  draggable side of a `.tl-case-band`, or of a `.tl-step-band` whose step's
+  time is the analyst's, moved 3 px or more (a real mouse: `page.mouse.down`,
+  `move` in steps, `up`); the side under the pointer shows `.tl-edge-hot`,
+  the page `body.tl-edge-dragging` while one is dragged, the time
+  `.tl-drag-time` in `#timeline`. Esc during the drag puts it back. A
+  transaction's move is a marker change (pending until
+  `#btn-apply-marker-edits`); a step's saves at once.
+- Times typed in Steps (2.0.3): an open transaction's
+  `.run-group.open .run-times` holds `input.time-field[data-side="start"]`
+  and `[data-side="end"]` (`.pending` while its change waits, then
+  `.run-times-note` "Not applied yet" and `.run-times-apply`); the selected
+  step's `#step-start` and `#step-end` in `#step-facts .step-facts-rest`
+  (a step without a time: `#step-start` alone). A field saves on Enter or
+  when left; set it with a click, Ctrl+A, Backspace, the text, Enter.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
   text: "Start a transaction here…", "End the transaction here", "Add note
-  here…", "Jump to step here"; on a step band "Open in Steps"; on a
+  here…", "Add a step here", "Jump to step here"; the transaction and step
+  items start at a step's start or the playhead within 8 px of the click,
+  2.0.3; on a step band "Open in Steps"; on a
   stretch left out "Include again", "Go to its start"). A Shift-drag
   range shows `#tl-selection-stats` (`#tl-selection-case`,
   `#tl-selection-exclude` "Leave out of the analysis", only with a

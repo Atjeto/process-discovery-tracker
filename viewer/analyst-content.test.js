@@ -122,3 +122,27 @@ test("lane FX2: the Timeline's screenshots are the recording's and the ones the 
   ], "one without a moment, or without an id, is not on the Timeline; a file is read by its name only");
   assert.deepEqual(AC.timelineShots(null, null), []);
 });
+
+test("2.0.3: the Timeline drags the time of a step no recorded action times, and no other", () => {
+  const added = timed("a", 10, 20);
+  assert.equal(AC.stepTimeMovable(added), true, "a step added on a video's Timeline");
+  assert.equal(AC.stepTimeMovable(Object.assign({}, added, { state: "confirmed", evidence: { interaction_event_ids: [] } })), true,
+    "a confirmed step of a project without a recording: its time is still the analyst's");
+  assert.equal(AC.stepTimeMovable(Object.assign({}, added, { evidence: { interaction_event_ids: ["e1"] } })), false,
+    "control: a step with recorded actions keeps their time (Split and Merge change it)");
+  assert.equal(AC.stepTimeMovable(Object.assign({}, added, { sub_steps: [timed("s", 11, 12)] })), false,
+    "a sub-process holding steps takes its time from them");
+  assert.equal(AC.stepTimeMovable(Object.assign({}, added, { sub_steps: [] })), true, "an empty sub-process keeps its own");
+  assert.equal(AC.stepTimeMovable(Object.assign({}, added, { state: "hidden" })), false, "a hidden step is not drawn");
+  assert.equal(AC.stepTimeMovable(untimed("u", 1)), false, "a step without a time has no band to drag");
+  assert.equal(AC.stepTimeMovable(null), false);
+});
+
+test("2.0.3: a step added without a time can be given one; a step with a time or recorded actions cannot", () => {
+  assert.equal(AC.stepTimePlaceable(untimed("u", 1)), true);
+  assert.equal(AC.stepTimePlaceable(timed("a", 10, 20)), false, "it has a time: it moves instead");
+  assert.equal(AC.stepTimePlaceable(Object.assign(untimed("u", 1), { evidence: { interaction_event_ids: ["e1"] } })), false);
+  assert.equal(AC.stepTimePlaceable(Object.assign(untimed("u", 1), { sub_steps: [untimed("s", 1)] })), false);
+  assert.equal(AC.stepTimePlaceable(Object.assign(untimed("u", 1), { state: "hidden" })), false);
+  assert.equal(AC.stepTimePlaceable(null), false);
+});

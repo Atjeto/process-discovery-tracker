@@ -59,7 +59,9 @@ it is done; its button takes you to the next.
 2. **Check the transactions.** On the Timeline, each transaction is a band,
    from *Order #10900* to *Order #10903*. If one is missing, right-click the
    timeline where it starts, choose *Start a transaction here...*, then
-   click *Apply marker changes* in the top bar.
+   click *Apply marker changes* in the top bar. If one starts or ends in the
+   wrong place, type its times in Steps or drag its band on the Timeline (see
+   *Everyday tasks*).
 3. **Name the steps of the reference transaction, or pick them from the
    library.** In Steps, transaction 1 is the reference transaction. Where
    the recorder cut a step wrongly, split or merge it first (see *Everyday
@@ -135,6 +137,25 @@ it is done; its button takes you to the next.
    there and choose *Add a step here*: the step gets that time. Right-click
    a step on the Timeline to open it in Steps, or to delete it (a recorded
    step is hidden).
+
+### Change when a transaction or a step starts or ends
+
+1. In Steps, open the transaction: *Starts at* and *Ends at* are under its
+   name. Type a time the way the timeline shows it, for example *0:09* or
+   *1:05.5*, and press Enter. Up and Down change it by a second. An empty
+   *Ends at* runs until the next transaction starts, or to the end. The
+   change shows dashed until you click *Apply marker changes*, right beside
+   it.
+2. A step you added has its times on the line under its name, for example
+   *Transaction 1 · 0:09 to 0:31*: type a time there and press Enter. A step
+   you added without a time says *no time yet*: type when it starts. The
+   step then belongs to the transaction its start is in, and a step right
+   against it moves along. A step the recorder drafted keeps the time of its
+   recorded actions: split or merge it instead.
+3. On the Timeline you can instead drag the start or the end of a
+   transaction's band, or of a step you added. Near a step's start or the
+   playhead it snaps there. Esc while dragging puts it back, and Ctrl+Z
+   undoes a change.
 
 ### Split or merge steps
 
@@ -271,6 +292,10 @@ app.
   transaction key. On the Timeline, right-click where each transaction
   starts, choose *Start a transaction here...*, then click *Apply marker
   changes*.
+- **A step is listed under Outside the transactions.** It starts before or
+  after every transaction. In Steps, open the transaction and type an
+  earlier *Starts at*, then click *Apply marker changes*. A step you added
+  can instead be given a start inside the transaction.
 - **"The analysis failed, so the steps and the map are not drafted."** The
   log at the top says why. Choose Help, *Troubleshooting*, *Re-analyze*:
   your confirmed, edited, added and hidden steps are kept.

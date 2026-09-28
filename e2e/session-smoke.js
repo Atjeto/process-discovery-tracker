@@ -663,7 +663,7 @@ async function unreadableAnnotationsPin() {
     "first-hour acts (ten) and glossary words, every sentence of the page found in the document, no dash punctuation, nothing wider than the Help",
     !helpStart.err && hs.active === "start" && hs.first === "start" && hs.firstLabel === "Getting started" && hs.shown &&
       hd.heads.length === 9 && same(hs.heads, hd.heads) &&
-      hd.tasks.length === 8 && same(hs.tasks, hd.tasks) &&
+      hd.tasks.length === 9 && same(hs.tasks, hd.tasks) &&
       hd.acts.length === 10 && same(hs.acts, hd.acts) &&
       hd.terms.length >= 10 && same(hs.terms, hd.terms) &&
       (hs.blocks || []).length > 60 && unmatched.length === 0 &&
@@ -1741,8 +1741,10 @@ async function unreadableAnnotationsPin() {
           text: (row.textContent || "").replace(/\s+/g, " ").trim() } : null,
         markersPanelShown: !!(panel && getComputedStyle(panel).display !== "none"),
         pendingBars: document.querySelectorAll("#timeline .tl-marker-pending").length,
-        pendingLabel: [...document.querySelectorAll("#timeline .tl-marker-label-pending")]
-          .map((l) => l.textContent).find((t) => t.includes(label)) || null,
+        // 2.0.3: the Transactions lane draws the marker as it now is: a band
+        // of its own, pending, until Apply marker changes.
+        pendingBand: [...document.querySelectorAll("#timeline .tl-case-band.pending")]
+          .map((b) => b.title || "").find((t) => t.includes(label)) || null,
         cta: cta ? (cta.textContent || "").trim() : null,
       };
     }, LABEL);
@@ -1786,10 +1788,11 @@ async function unreadableAnnotationsPin() {
         e.label === LABEL && Math.abs(Date.parse(e.timestamp) - Date.parse(INSERT_AT)) <= 2000);
     } catch (e) { logActionError("item 6 pending marker insert", e); err = String(e.message).split("\n")[0]; }
     const pendingOk = !!(pending && pending.row && pending.row.pending && pending.row.inserted &&
-      pending.markersPanelShown && pending.pendingBars >= 1 && pending.pendingLabel === LABEL + " (pending)" &&
+      pending.markersPanelShown && pending.pendingBars === 0 &&
+      /Not applied yet: Apply marker changes/.test(pending.pendingBand || "") &&
       pending.cta === "Apply 1 marker change" && onDisk &&
-      pending.cases.analyzed === before.analyzed && pending.cases.bands === before.bands);
-    record("item 6: a Start marker inserted from the timeline menu shows at once as pending (list + timeline + one call to action), before any Analyze",
+      pending.cases.analyzed === before.analyzed && pending.cases.bands === before.bands + 1);
+    record("item 6: a Start marker inserted from the timeline menu shows at once as pending (list + one call to action + 2.0.3 its own transaction band, pending, where it was put, and no bar), before any Analyze",
       pendingOk, JSON.stringify({ before, pending, onDisk, err }));
     if (!pendingOk) await shot(page, "fail-marker-pending.png");
 

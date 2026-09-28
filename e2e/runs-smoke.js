@@ -900,8 +900,25 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
           const hit = document.elementFromPoint(r.left + f * r.width, y);
           return hit && hit.closest(".tl-activity") === b;
         });
+        const x = r.left + (frac || 0.75) * r.width;
+        // 2.0.3: a transaction starts at a step's start or at the playhead
+        // within 8 px of the click (they snap): the moment a person sees
+        // there, read off the screen.
+        const steps = require("./state.js").getSession().annotations.steps || [];
+        let near = null;
+        for (const el of document.querySelectorAll("#timeline .tl-step-band[data-step-id]")) {
+          const d = Math.abs(el.getBoundingClientRect().left - x);
+          const s = steps.find((st) => st.step_id === el.dataset.stepId);
+          if (d <= 8 && s && (!near || d < near.d)) near = { d, at: s.time_range.start };
+        }
+        const ph = document.getElementById("tl-playhead");
+        if (ph && ph.style.display !== "none") {
+          const d = Math.abs(ph.getBoundingClientRect().left - x);
+          const sp = require("./views/flow-view-video.js").timelineSpan();
+          if (d <= 8 && (!near || d < near.d)) near = { d, at: new Date(sp.startMs + (parseFloat(ph.style.left) / 100) * (sp.endMs - sp.startMs)).toISOString() };
+        }
         return { i: best, bands: bands.length, events: evs.length, t0: evs[best].timestamp, dur: evs[best].data.duration_ms,
-          frac: frac || null, x: r.left + (frac || 0.75) * r.width, y, w: r.width };
+          frac: frac || null, x, y, w: r.width, snapTo: near ? near.at : null };
       });
       if (!info.frac) throw new Error("no point inside the band where the band is on top");
       await page.mouse.click(info.x, info.y, { button: "right" });
@@ -911,12 +928,12 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       const a = await waitDisk(ANNO, (x) => (x.marker_edits || []).some((e) => e && e.op === "insert" && e.label === LABEL));
       edit = (a.marker_edits || []).find((e) => e && e.op === "insert" && e.label === LABEL) || null;
     } catch (e) { err = errText(e); }
-    const expected = info && info.frac ? Date.parse(info.t0) + info.frac * info.dur : NaN;
+    const expected = info && info.snapTo ? Date.parse(info.snapTo) : info && info.frac ? Date.parse(info.t0) + info.frac * info.dur : NaN;
     const at = edit ? Date.parse(edit.timestamp) : NaN;
     const ok = !err && info && info.bands === info.events && info.dur >= 8000 &&
       Math.abs(at - expected) <= 1500 && at - Date.parse(info.t0) >= 3000;
-    record("item 8: Start a transaction here, from an activity band's menu, lands its Start marker at the clicked moment (well inside the band), not at the band start",
-      ok, JSON.stringify({ err, band: info && { t0: info.t0, dur: info.dur, frac: info.frac, w: Math.round(info.w || 0) }, inserted: edit && edit.timestamp,
+    record("item 8: Start a transaction here, from an activity band's menu, lands its Start marker at the clicked moment (well inside the band), or at a step's start or the playhead within 8 px of it (2.0.3), not at the band start",
+      ok, JSON.stringify({ err, band: info && { t0: info.t0, dur: info.dur, frac: info.frac, w: Math.round(info.w || 0) }, snapTo: info && info.snapTo, inserted: edit && edit.timestamp,
         expected: isFinite(expected) ? new Date(expected).toISOString() : null }));
     if (!ok) await shot(page, "fail-runs-marker-at-click.png");
 

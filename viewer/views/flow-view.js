@@ -331,7 +331,8 @@ function runPipeline(opts, label) {
   return job;
 }
 
-/* What the two deliberate analyses ask first, when the recording has steps. */
+/* What the two deliberate analyses ask first: Re-analyze when the recording
+   has steps, Apply marker changes while one of them is a draft. */
 const CONFIRMS = {
   markers: (n) => ({
     title: "Apply " + n + " marker change" + (n === 1 ? "" : "s"),
@@ -359,7 +360,12 @@ async function analyzeSession(opts) {
   // Lane HV: nothing is analyzed in a hand-off opened read only.
   if (!sess || RO.isReadOnly(sess)) return false;
   const kind = opts && opts.confirm;
-  if (kind && CONFIRMS[kind] && ((sess.annotations && sess.annotations.steps) || []).length) {
+  // Apply marker changes drafts the changed transactions again: it asks only
+  // while a step is a draft (2.0.3: a project made from a video or from
+  // nothing has none, so nothing is drafted again and nothing asks there).
+  const steps = (sess.annotations && sess.annotations.steps) || [];
+  const asks = kind === "markers" ? RunsModel.holdsDraft(steps) : steps.length > 0;
+  if (kind && CONFIRMS[kind] && asks) {
     const n = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess));
     const ok = await confirmModal(CONFIRMS[kind](n));
     if (!ok) return false;
@@ -958,13 +964,17 @@ function showMarkerInsertMenu(x, y, ts) {
 
   // Lane HV: a hand-off opened read only offers only the way to the step.
   if (!RO.isReadOnly(State.getSession())) {
+    // 2.0.3: a transaction or a step starts at the side drawn, or at the
+    // playhead, a few pixels from the click (a process manager's report: a
+    // transaction started just after the step it was meant to hold).
+    const atMarker = Timeline.snapMoment(ts, "marker"), atStep = Timeline.snapMoment(ts, "step");
     // AD-29: a Start marker starts a transaction, an End marker ends it.
-    addItem("Start a transaction here…", () => queueSyntheticMarker(ts, "start"));
-    addItem("End the transaction here",  () => queueSyntheticMarker(ts, "end"));
+    addItem("Start a transaction here…", () => queueSyntheticMarker(atMarker, "start"));
+    addItem("End the transaction here",  () => queueSyntheticMarker(atMarker, "end"));
     // C16: a note pinned to this moment (the Notes lane; never printed).
     addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
     // 2.0.1: the step at this moment, as + Step adds one at the playhead.
-    addItem("Add a step here",           () => addStepAt(ts));
+    addItem("Add a step here",           () => addStepAt(atStep));
   }
   addItem("Jump to step here",         () => {
     State.setPendingStepJump(ts);

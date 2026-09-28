@@ -35,6 +35,31 @@ function derivedState(sources) {
   return list.length && list.every((s) => s.state === "manually_authored") ? "manually_authored" : "edited";
 }
 
+/* Whether the Timeline lets the analyst drag a step's start and end (2.0.3):
+   a step with a time that no recorded action gives it (a step of a project
+   made from a video or from nothing, or one added where nothing was
+   recorded), and not a sub-process holding steps (they give it its time). A
+   recorded step's time is its actions': Split and Merge change it. */
+function stepTimeMovable(step) {
+  if (!step || typeof step !== "object" || step.state === "hidden") return false;
+  const ids = step.evidence && step.evidence.interaction_event_ids;
+  if (Array.isArray(ids) && ids.length) return false;
+  if (Array.isArray(step.sub_steps) && step.sub_steps.length) return false;
+  const tr = step.time_range || {};
+  const a = Date.parse(tr.start), b = Date.parse(tr.end);
+  return Number.isFinite(a) && Number.isFinite(b) && b >= a;
+}
+
+/* Whether a step without a time can be given one (2.0.3, typed in Steps): a
+   step added by hand with no time yet, no recorded actions and no sub-steps,
+   not hidden. */
+function stepTimePlaceable(step) {
+  if (!step || typeof step !== "object" || step.state === "hidden" || hasTime(step)) return false;
+  const ids = step.evidence && step.evidence.interaction_event_ids;
+  if (Array.isArray(ids) && ids.length) return false;
+  return !(Array.isArray(step.sub_steps) && step.sub_steps.length);
+}
+
 /* The one words for a project's implicit run (lane FX2, validation pass 3,
    F9): a project without start markers is one transaction, said the same
    way on the Checklist, the project line and the Timeline (and, by the
@@ -182,6 +207,6 @@ function systemChoices(own, shared) {
 }
 
 module.exports = {
-  hasTime, markEdited, derivedState, hasRecording, implicitRunId, IMPLICIT_TRANSACTION, placeUntimed, moveUntimed,
+  hasTime, markEdited, derivedState, stepTimeMovable, stepTimePlaceable, hasRecording, implicitRunId, IMPLICIT_TRANSACTION, placeUntimed, moveUntimed,
   stepShots, hiddenShotCount, timelineShots, notesForStep, momentNotes, systemChoices,
 };

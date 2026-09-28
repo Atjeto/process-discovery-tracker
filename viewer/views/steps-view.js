@@ -72,6 +72,9 @@ const SPV = require("../sub-process-verbs.js");
 const { processLabel, mapNodeLabel } = require("../process-map-levels.js");
 const RO = require("../read-only.js");
 const Library = require("../library.js");
+const TE = require("../time-edits.js");
+const MarkerEdits = require("../marker-edits.js");
+const FlowMarkers = require("./flow-view-markers.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -486,6 +489,7 @@ function renderStepsLevel() {
   const active = document.activeElement;
   const typing = selected && detail && active && detail.contains(active) && _detailStepId === selected.step_id &&
     (active.id === "step-name" || active.id === "step-desc" || active.id === "step-system" ||
+      active.id === "step-start" || active.id === "step-end" ||
       active.id === "step-only-when" || /^flow-link-when-\d+$/.test(active.id))
     ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
   if (selected) {
@@ -943,6 +947,9 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   }
   // Its inverse, Undo confirm, is beside the Confirmed badge (_addUndoConfirm).
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
+  // 2.0.3: when it starts and ends, typed.
+  const times = _runTimesEl(run);
+  if (times) acts.insertBefore(times, acts.firstChild);
   _appendDiffLists(body, acts, diffs);
   g.appendChild(body);
   return g;
@@ -958,7 +965,7 @@ function _outsideGroupEl(model, visible) {
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">Outside the transactions</span><span class="run-label"></span>' +
     '<span class="run-meta">' + escapeHtml(_plural(vis.length, "step", "steps")) + "</span>",
-    "Steps that fall outside every marked transaction");
+    "Steps that start outside every marked transaction");
   _wireHead(g, OUTSIDE);
   if (isOpen) g.appendChild(_groupBody(visible, hidden, "Every step outside the transactions is hidden.", null));
   return g;
@@ -1011,9 +1018,12 @@ const GUIDE_OTHER = "Check how this transaction differs from the reference trans
 // project's one transaction before its first step (C16), or an empty
 // reference transaction.
 const GUIDE_FIRST_STEP = "Add the first step with + Add step.";
+// 2.0.3: how a step comes in, when its transaction starts just after it.
 const GUIDE_OUTSIDE =
-  "These steps fall outside every marked transaction. To bring them into a transaction, right-click the " +
-  "Timeline where it starts, choose Start a transaction here, and click Apply marker changes.";
+  "These steps start outside every marked transaction. To bring one in, open its transaction and type an " +
+  "earlier start at Starts at, then click Apply marker changes; or select a step you added and type a start " +
+  "inside the transaction. On the Timeline you can drag either instead. Where no transaction is marked yet, " +
+  "right-click the Timeline where it starts and choose Start a transaction here.";
 /* Lane HV: the guides of a hand-off opened read only, which say what shows
    and never what to change. */
 const GUIDE_READ_ONLY = {
@@ -1021,7 +1031,7 @@ const GUIDE_READ_ONLY = {
   [GUIDE_CARRY]: "",
   [GUIDE_OTHER]: "This transaction is compared with the reference transaction: its differences are listed on the left.",
   [GUIDE_FIRST_STEP]: "This transaction has no steps.",
-  [GUIDE_OUTSIDE]: "These steps fall outside every marked transaction.",
+  [GUIDE_OUTSIDE]: "These steps start outside every marked transaction.",
   [GUIDE_LEVEL]: "The steps of this sub-process in this transaction.",
 };
 /* Lane MW: the same, for a project open for editing in another window,
@@ -1115,11 +1125,14 @@ function stepFacts(step, interactionsById) {
   const occ = StepPanel.occurrences(mapNodeLabel(step), runs, step, loc ? loc.path : []);
   const inRuns = new Set(occ.filter((o) => o.run).map((o) => o.run.caseId)).size;
   const took = StepFacts.duration(step.time_range);
+  const inN = runs.length > 1 && inRuns ? "in " + inRuns + " of " + runs.length + " transactions" : "";
+  // 2.0.3: a step whose time is the analyst's shows it as two fields.
+  const timeHtml = _stepTimeHtml(step, runs, origin, took);
   return {
     // C21: a step named from the library shows its code beside its name.
     code: Library.codeOf(_library(), step),
-    facts: [where.screen, StepFacts.pointer(step, runs, origin), took ? "took " + took : "",
-      runs.length > 1 && inRuns ? "in " + inRuns + " of " + runs.length + " transactions" : ""],
+    facts: [where.screen, StepFacts.pointer(step, runs, origin), took ? "took " + took : "", inN],
+    factsHtml: timeHtml ? [escapeHtml(where.screen || ""), timeHtml, escapeHtml(inN)].filter(Boolean).join(" · ") : "",
     recorded: StepFacts.recordedLine({ actions: ((step.evidence && step.evidence.interaction_event_ids) || []).length,
       ends: StepFacts.endsAt(step, datas || []) }),
     // A draft's narration is never the description: the PDD leaves it out,
@@ -1149,7 +1162,7 @@ function stepDetailCallbacks(selected, interactionsById) {
     interactionsById,
     mergedAfterIndex: (selected && _mergedLine.stepId === selected.step_id) ? _mergedLine.after : null,
     code: facts.code, recorded: facts.recorded, description: facts.description, facts: facts.facts,
-    originMs: facts.originMs,
+    factsHtml: facts.factsHtml, originMs: facts.originMs,
     // Lane HV: a hand-off opened read only shows its recorded actions open.
     readOnly: RO.isReadOnly(State.getSession()),
     // C16: the System field (first on the line of facts), the step's
@@ -1158,7 +1171,10 @@ function stepDetailCallbacks(selected, interactionsById) {
     systemHtml: AnalystUI.systemFieldHtml(selected, facts.derived),
     shotsHtml: AnalystUI.stepShotsHtml(selected),
     attachedHtml: AnalystUI.stepAttachedHtml(selected),
-    wireExtras: (host, isRendering) => AnalystUI.wireStepPane(host, selected, isRendering),
+    wireExtras: (host, isRendering) => {
+      AnalystUI.wireStepPane(host, selected, isRendering);
+      _wireStepTimes(host, selected, isRendering);   // 2.0.3
+    },
     // C21: the name field offers the activities of the step's system from
     // the project's library; a pick names the step from it.
     picker: Library.pickerFor(_library(), facts.system, selected),
@@ -1775,6 +1791,294 @@ async function addStepAtTimestamp(tsISO) {
   anno.steps.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids, caseId));
   await persistAnnotations(anno, "Add step at playhead");
   toast('Added "' + newName + '"', "success");
+}
+
+/* 2.0.3 (a process manager's report): a step's start or end dragged on the
+   Timeline or typed in Steps, and with it the side of a step back to back
+   with it. `changes` = [{ stepId, startMs, endMs, place }], each a step no
+   recorded action times (AC.stepTimeMovable), or with `place` a step without
+   a time given one (AC.stepTimePlaceable). A step of the main level then
+   belongs to the transaction that holds its new start (C9's rule,
+   RunsModel.runForRange), or to none: Outside the transactions. One
+   undoable edit. Resolves true when saved. */
+async function setStepTimes(changes) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return false;
+  const anno = ensureAnnoShape(sess.annotations);
+  const runs = _model().runs;
+  const todo = [];
+  for (const c of Array.isArray(changes) ? changes : []) {
+    const hit = SPM.findStep(anno.steps, c && c.stepId);
+    if (!hit || !(c.place ? AC.stepTimePlaceable(hit.step) : AC.stepTimeMovable(hit.step))) return false;
+    if (!Number.isFinite(c.startMs) || !Number.isFinite(c.endMs) || c.endMs < c.startMs) return false;
+    todo.push({ hit, c });
+  }
+  if (!todo.length) return false;
+  for (const { hit, c } of todo) {
+    const s = hit.step;
+    s.time_range = { start: new Date(c.startMs).toISOString(), end: new Date(c.endMs).toISOString() };
+    // A step with a time is ordered by it, not by the place it had without one.
+    if (c.place) delete s.order;
+    // A sub-step keeps its parent's transaction (C19).
+    if (!hit.parent) {
+      const run = RunsModel.runForRange(runs, c.startMs);
+      s.case_id = run ? run.caseId : null;
+    }
+    AC.markEdited(s);
+  }
+  try { await persistAnnotations(anno, "change the step's time"); } catch (_) { return false; }   // already shown
+  return true;
+}
+
+/* ---- Times typed in Steps (2.0.3) ------------------------------------------
+   A process manager's report: a transaction started a few pixels after the
+   step it was meant to hold, and neither could be moved or given a time.
+   The selected step's line of facts shows its start and end as fields when
+   its time is the analyst's, and a start field when it has no time yet; an
+   open transaction shows Starts at and Ends at. A field reads and is typed on
+   the one clock, to a tenth of a second where the time has one (time-edits.js
+   fieldTime); the rules are the Timeline's drag's (time-edits.js). */
+
+/* Whether the project has a timeline to give a time on: a recording, or a
+   video (a project with neither has no time to give). */
+function _hasTimeline(sess) {
+  return !!sess && (((sess.events || []).length > 0) || !!sess.recordingAvailable);
+}
+
+/* The span a time may take: the Timeline's (the recording, or the video once
+   its length is known). */
+function _timelineSpan(sess) {
+  const sp = Video.timelineSpan();
+  const origin = recordingStartMs(sess);
+  return sp ? { startMs: sp.startMs, endMs: sp.endMs } : { startMs: origin, endMs: Infinity };
+}
+
+/* A time field: its time on the one clock, what it is for, what typing does. */
+function _timeFieldHtml(id, valueText, label, title, extra) {
+  const o = extra || {};
+  return '<input type="text" class="time-field' + (o.pending ? " pending" : "") + '"' + (id ? ' id="' + id + '"' : "") +
+    (o.side ? ' data-side="' + o.side + '"' : "") + ' value="' + escapeAttr(valueText) + '"' +
+    (o.placeholder ? ' placeholder="' + escapeAttr(o.placeholder) + '"' : "") +
+    ' aria-label="' + escapeAttr(label) + '" title="' + escapeAttr(title) + '" spellcheck="false" autocomplete="off">';
+}
+const TIME_TYPING = "Type a time the way the timeline shows it, for example 0:09 or 1:05.5, and press Enter. Up and Down change it by a second.";
+const NOT_A_TIME = "That is not a time: type it the way the timeline shows it, for example 0:09 or 1:05.5.";
+
+/* The time part of the selected step's line of facts, as HTML, or "" when its
+   time is not the analyst's (a recorded step reads "Transaction 1 at 0:19").
+   A step whose time is the analyst's: "Transaction 1 · [0:09.6] to [0:31.9] ·
+   took 22s"; one without a time, in a project with a timeline:
+   "Transaction 1 · no time yet: starts at [ ]". */
+function _stepTimeHtml(step, runs, origin, took) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess) || !_hasTimeline(sess)) return "";
+  const run = runs.find((r) => r.caseId === step.case_id);
+  const where = escapeHtml(run ? run.title : "Outside the transactions");
+  if (AC.stepTimeMovable(step)) {
+    const a = Date.parse(step.time_range.start), b = Date.parse(step.time_range.end);
+    return where + " · " +
+      _timeFieldHtml("step-start", TE.fieldTime(a, origin), "Start of this step", "When this step starts. " + TIME_TYPING) + " to " +
+      _timeFieldHtml("step-end", TE.fieldTime(b, origin), "End of this step", "When this step ends. " + TIME_TYPING) +
+      (took ? " · took " + escapeHtml(took) : "");
+  }
+  if (AC.stepTimePlaceable(step)) {
+    return (run ? where + " · " : "") + "no time yet: starts at " +
+      _timeFieldHtml("step-start", "", "Start of this step", "Type when this step starts, for example 1:05, and press Enter: " +
+        "it then has a band on the Timeline, until the next step starts or its transaction ends.", { placeholder: "0:00" });
+  }
+  return "";
+}
+
+/* Wire one time field: Enter saves it and leaves it, Escape puts back what it
+   showed, Up and Down change it by a second, and leaving it saves a change.
+   `commit(ms)` gets the time typed, in ms since the recording started (null
+   for an emptied field), and resolves false when it did not take it (it said
+   why): the field then shows its time again. */
+function _wireTimeField(el, commit, isRendering) {
+  const shown = el.value;
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+    else if (e.key === "Escape") { e.preventDefault(); el.value = shown; el.blur(); }
+    else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const ms = TE.parseFieldTime(el.value.trim() || el.placeholder);
+      if (ms == null) return;
+      e.preventDefault();
+      el.value = TE.fieldTime(Math.max(0, ms + (e.key === "ArrowUp" ? 1000 : -1000)), 0);
+    }
+  });
+  el.addEventListener("blur", async () => {
+    if ((isRendering && isRendering()) || !el.isConnected) return;
+    const text = el.value.trim();
+    if (text === shown.trim()) return;
+    const ms = text ? TE.parseFieldTime(text) : null;
+    if (text && ms == null) {
+      toast(NOT_A_TIME, "error");
+      el.value = shown;
+      return;
+    }
+    let ok = false;
+    try { ok = await commit(ms); } catch (_) { ok = false; }   // a failed save has been shown
+    if (!ok && el.isConnected) el.value = shown;
+  });
+}
+
+/* The selected step's time fields. */
+function _wireStepTimes(host, step, isRendering) {
+  for (const [id, edge] of [["step-start", "start"], ["step-end", "end"]]) {
+    const el = host.querySelector("#" + id);
+    if (el) _wireTimeField(el, (ms) => commitStepTime(step.step_id, edge, ms), isRendering);
+  }
+}
+
+/* The steps beside a step (at its level, shown and timed) and the span its
+   time stays in (the timeline, or its sub-process). */
+function _stepNeighbours(hit) {
+  const sess = State.getSession();
+  const line = _timelineSpan(sess);
+  const pr = hit.parent && hit.parent.time_range;
+  const pa = Date.parse(pr && pr.start), pb = Date.parse(pr && pr.end);
+  const outer = Number.isFinite(pa) && Number.isFinite(pb)
+    ? { startMs: Math.max(line.startMs, pa), endMs: Math.min(line.endMs, pb) } : line;
+  const others = (hit.list || []).filter((o) => o && o !== hit.step && o.state !== "hidden" && AC.hasTime(o)).map((o) => ({
+    id: o.step_id, name: o.name || "", startMs: Date.parse(o.time_range.start), endMs: Date.parse(o.time_range.end),
+    movable: AC.stepTimeMovable(o),
+  })).filter((o) => Number.isFinite(o.startMs) && Number.isFinite(o.endMs));
+  return { others, outer };
+}
+
+/* A step's start or end typed (`ms` since the recording started): by the
+   rules of a drag, or, for a step without a time, from there until the next
+   step starts or its transaction ends. Says why when it cannot be. */
+async function commitStepTime(stepId, edge, ms) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess) || ms == null) return false;
+  const origin = recordingStartMs(sess);
+  const fmt = (x) => TE.fieldTime(x, origin);
+  const hit = SPM.findStep((sess.annotations && sess.annotations.steps) || [], stepId);
+  if (!hit) return false;
+  const at = origin + ms;
+  const { others, outer } = _stepNeighbours(hit);
+  if (!AC.hasTime(hit.step)) {
+    const run = hit.parent ? null : RunsModel.runForRange(_model().runs, at);
+    const place = TE.placeUntimed(at, others, outer, run && run.endMs != null ? run.endMs : null);
+    if (place.outside) {
+      toast("Type a start from " + fmt(outer.startMs) + (Number.isFinite(outer.endMs) ? " to " + fmt(outer.endMs) : "") + ".", "error");
+      return false;
+    }
+    if (place.inside) {
+      toast((place.inside.name || "Another step") + " runs from " + fmt(place.inside.startMs) + " to " + fmt(place.inside.endMs) +
+        ": type a start outside it.", "error");
+      return false;
+    }
+    if (place.tooShort) { toast("Another step starts right there: type an earlier start.", "error"); return false; }
+    return setStepTimes([{ stepId, startMs: at, endMs: place.endMs, place: true }]);
+  }
+  const own = { startMs: Date.parse(hit.step.time_range.start), endMs: Date.parse(hit.step.time_range.end) };
+  if (at === own[edge === "start" ? "startMs" : "endMs"]) return true;
+  const side = TE.stepSide(own, edge, others, outer);
+  if (at < side.lo || at > side.hi) {
+    toast("The " + edge + " of this step can be from " + fmt(side.lo) + " to " + fmt(side.hi) +
+      ": a step does not run over the steps beside it.", "error");
+    return false;
+  }
+  return setStepTimes(TE.stepSideChanges(stepId, own, edge, side.link, at));
+}
+
+/* An open transaction's times, first among its acts: "Starts at [0:09.7]
+   Ends at [0:31.9]". Its start is its Start marker; its end its own End, or,
+   greyed, where the next transaction starts or the timeline ends (typing one
+   adds its End). A change shows dashed, with Apply marker changes beside it,
+   until it is applied. A transaction no marker starts (the one of a project
+   without a recording) offers its start: typing it marks it. Read only: the
+   times as text. null without a timeline, or for a transaction whose markers
+   cannot be found. */
+function _runTimesEl(run) {
+  const sess = State.getSession();
+  if (!sess || !_hasTimeline(sess)) return null;
+  const origin = recordingStartMs(sess);
+  const fmt = (x) => TE.fieldTime(x, origin);
+  const line = _timelineSpan(sess);
+  const sides = TE.runSides(run, MarkerEdits.sessionMarkerView(sess));
+  const implicit = !sides.start && run.caseId === AC.implicitRunId(sess.stats);
+  if (!sides.start && !implicit) return null;
+  const ro = RO.isReadOnly(sess);
+  const startMs = sides.start ? Date.parse(sides.start.timestamp) : NaN;
+  const endMs = sides.end ? Date.parse(sides.end.timestamp) : NaN;
+  const untilMs = sides.next ? Date.parse(sides.next.timestamp) : line.endMs;
+  const untilWhat = sides.next ? "It ends where the next transaction starts" : "It runs to the end of the " + (AC.hasRecording(sess) ? "recording" : "video");
+  const el = document.createElement("div");
+  el.className = "run-times";
+  el.setAttribute("role", "group");
+  el.setAttribute("aria-label", "When " + run.title + " starts and ends");
+  if (ro) {
+    el.textContent = "Starts at " + (implicit ? fmt(line.startMs) : fmt(startMs)) + " · ends at " +
+      (sides.end ? fmt(endMs) : Number.isFinite(untilMs) ? fmt(untilMs) : "the end");
+    return el;
+  }
+  // What waits for Apply marker changes: a start or an end that is not where
+  // the last analysis had it (moved, added or taken out).
+  const count = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess));
+  const nowEndMs = sides.end ? endMs : sides.next ? Date.parse(sides.next.timestamp) : null;
+  const startChanged = !!sides.start && (sides.start.pending || startMs !== run.startMs);
+  const endChanged = !implicit && nowEndMs !== (run.endMs != null ? run.endMs : null);
+  const pending = implicit ? count > 0 : startChanged || endChanged;
+  el.innerHTML =
+    "<label>Starts at " + (implicit
+      ? _timeFieldHtml(null, "", "Start of " + run.title, "No marker starts it: it is the whole project. Type where it starts to mark it. " +
+        TIME_TYPING, { side: "start", placeholder: fmt(line.startMs) })
+      : _timeFieldHtml(null, fmt(startMs), "Start of " + run.title, "Its start marker. " + TIME_TYPING,
+        { side: "start", pending: startChanged })) + "</label>" +
+    (implicit
+      ? '<span class="run-times-note">and runs to the end</span>'
+      : "<label>Ends at " + (sides.end
+        ? _timeFieldHtml(null, fmt(endMs), "End of " + run.title, "Its end marker. " + TIME_TYPING +
+          " Empty the field to take the end marker out.", { side: "end", pending: endChanged })
+        : _timeFieldHtml(null, "", "End of " + run.title, untilWhat + ". Type an earlier time to end it there. " + TIME_TYPING,
+          { side: "end", pending: endChanged, placeholder: Number.isFinite(untilMs) ? fmt(untilMs) : "" })) + "</label>") +
+    (pending && count
+      ? '<span class="run-times-note">Not applied yet</span><button type="button" class="pending-cta run-times-apply" ' +
+        'title="The transactions, their steps and the map take your marker changes (the same as in the top bar)">Apply ' +
+        count + " marker change" + (count === 1 ? "" : "s") + "</button>"
+      : "");
+  const times = sides.now.map((r) => Date.parse(r.timestamp));
+  const topics = ["markers", "timeline", "steps"];
+  const iso = (ms) => new Date(ms).toISOString();
+  const refuse = (what, lo, hi, why) => {
+    toast("The " + what + " can be from " + fmt(lo) + " to " + (fmt(hi) || "the end") + (why ? ": " + why : "") + ".", "error");
+    return false;
+  };
+  const startEl = el.querySelector('[data-side="start"]'), endEl = el.querySelector('[data-side="end"]');
+  _wireTimeField(startEl, async (ms) => {
+    if (ms == null) return false;
+    const at = origin + ms;
+    if (implicit) {
+      if (at < line.startMs || at >= line.endMs) return refuse("start", line.startMs, line.endMs);
+      return FlowMarkers.insertMarker("start", iso(at), null, topics);
+    }
+    const b = TE.markerDragBounds(times, sides.index, line.startMs, line.endMs);
+    if (at < b.lo || at > b.hi) return refuse("start", b.lo, b.hi, "the transactions keep their order");
+    return FlowMarkers.moveMarker(sides.start, iso(at), topics);
+  });
+  if (endEl) {
+    _wireTimeField(endEl, async (ms) => {
+      if (sides.end) {
+        if (ms == null) return FlowMarkers.removeMarker(sides.end, topics);
+        const at = origin + ms;
+        const b = TE.markerDragBounds(times, sides.index + 1, line.startMs, line.endMs);
+        if (at < b.lo || at > b.hi) return refuse("end", b.lo, b.hi, "the transactions keep their order");
+        return FlowMarkers.moveMarker(sides.end, iso(at), topics);
+      }
+      if (ms == null) return true;
+      const at = origin + ms;
+      const lo = startMs + TE.MIN_SPAN_MS;
+      const hi = Number.isFinite(untilMs) ? untilMs - (sides.next ? TE.MIN_SPAN_MS : 0) : Infinity;
+      if (at < lo || at > hi) return refuse("end", lo, hi, sides.next ? "the next transaction starts at " + fmt(untilMs) : "");
+      return FlowMarkers.insertMarker("end", iso(at), null, topics);
+    });
+  }
+  const apply = el.querySelector(".run-times-apply");
+  if (apply) apply.addEventListener("click", () => analyze({ confirm: "markers" }));
+  return el;
 }
 
 function makeStep(name, startISO, endISO, eventIds, caseId) {
@@ -2699,7 +3003,7 @@ function showStepContextMenu(stepId, x, y) {
 module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
-  addStepAtTimestamp,
+  addStepAtTimestamp, setStepTimes,
   // C19: the level shown, and the way into a sub-process (the step panel).
   goToLevel, openSubProcessAction,
   // Keyboard: act only on what the list shows (RP-12).

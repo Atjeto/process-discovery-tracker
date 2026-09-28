@@ -12,7 +12,8 @@
 | [`timeline/timeline-core.js`](../../viewer/timeline/timeline-core.js) | Pure layout: `chooseTicks` (the tick positions and labels), `packLanes`, `layoutLaneStack` and `renderLaneStack` (a stack of lane plugins). Unit-tested. |
 | [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | `timelineSpan()` (the stretch of time the timeline lays out), the playhead's place, seeking, Attach video, Sync video and Remove video. |
 | [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane and the transcript's Sync. |
-| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis, Include again, the Transaction select. |
+| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, adds a step, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis, Include again, the Transaction select. |
+| [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The Markers panel, and `moveMarker` (the move a dragged transaction side makes). |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
 
 ## The one clock
@@ -56,12 +57,12 @@ lane of height 0 is skipped. From top to bottom:
 | Lane | Shows | Clicks |
 |---|---|---|
 | Ticks | The time since the recording started; tick lines run down through the activity lane. | |
-| Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest), and the bands follow the markers the last analysis used. | Click: go to the transaction's start. Right-click: Jump to start, Jump to end. |
-| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. A band of an app among the Apps outside the process is hatched too, its tooltip saying so (lane FX2, `.tl-app-left-out`). Idle stretches, pending marker bars and the stretches left out of the analysis lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. A stretch left out: click or right-click for Include again. |
+| Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest). The bands show the markers as they now are (2.0.3, `MarkerEdits.currentMarkerEvents`): a band no band of the last analysis matches (a marker added, moved or renamed, not applied yet) is dashed all round, `.pending`, its tooltip saying so. | Click: go to the transaction's start. Right-click: Jump to start, Jump to end. Drag its start, or its end when a marker ends it: that marker moves (see *Dragging a side*). |
+| Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. A band of an app among the Apps outside the process is hatched too, its tooltip saying so (lane FX2, `.tl-app-left-out`). Idle stretches, pending marker bars (a marker deleted, or any marker change while the Transactions lane is off) and the stretches left out of the analysis lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. A stretch left out: click or right-click for Include again. |
 | Transcript | Only while a transcript is attached: the sentences said while the recording ran, at their times, once the transcript is placed (its own sync, else the synced video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
 | Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: go there. Right-click: Edit note, Delete note. |
 | Screenshots | A rail of the recorder's screenshots, and of the ones the analyst added at a moment (a video frame; lane FX2, `.tl-screenshot-added`, the step it is on in its tooltip). | Click: open it in the image viewer. |
-| Steps | One band per visible step with a time, named as in Steps; a step that starts and ends at one moment (a one-click step) is drawn at the lane's smallest width (lane FX2). | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here. |
+| Steps | One band per visible step with a time, named as in Steps; a step that starts and ends at one moment (a one-click step) is drawn at the lane's smallest width (lane FX2). | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here, Hide or Delete. Drag the start or the end of a step whose time is the analyst's (see *Dragging a side*). |
 
 **The header column** (`#tl-lane-names`, `renderLaneNames`), drawn like a
 video editor's track headers (the owner's reviews): a column of its own
@@ -83,9 +84,11 @@ and without a video a seek moves it and scrolls it into view.
 **Idle** is not a lane of its own: the idle stretches lie on the activity
 row (an "at desk" idle, where the recorder still saw input, looks
 different from "away"). **Pending markers**: a marker change waiting for
-*Apply marker changes* is drawn at once as a dashed bar, labelled
-"(pending)" on a Start; applied markers show as transaction bands and in
-the Markers panel.
+*Apply marker changes* shows at once. A marker added, moved or renamed is
+drawn by its transaction's band, dashed (2.0.3); a marker deleted, and any
+change while the Transactions lane is off, as a dashed bar on the activity
+row, labelled "(pending)" on a Start. The steps and the Transaction select
+follow the last analysis until then.
 
 **The lanes menu** (`#btn-lanes`) turns lanes on and off: Idle, Screenshots,
 Transactions, Steps, and Transcript and Notes while they exist. A fresh
@@ -94,7 +97,7 @@ there is one); Screenshots starts off. The choice persists in
 `pdt.timelineLanes`. The activity lane has no toggle.
 
 **The legend** under the timeline names the systems drawn and explains only
-the marks on screen: idle, a pending marker, a screenshot, a note, a
+the marks on screen: idle, a pending change, a screenshot, a note, a
 stretch left out of the analysis.
 
 ## The timeline menu
@@ -104,9 +107,49 @@ menu at the moment clicked:
 
 - *Start a transaction here...* and *End the transaction here*: a marker
   edit, shown at once as pending; *Apply N marker changes* in the top bar
-  updates the transactions, the steps and the map.
+  updates the transactions, the steps and the map. It asks first only while
+  a step is a draft (a project made from a video or from nothing has none).
 - *Add note here...*: a note pinned to that moment (the Notes lane turns on).
+- *Add a step here*: a step at that moment, as *+ Step* adds one at the
+  playhead.
 - *Jump to step here*: the Steps level, on the step at that moment.
+
+A transaction's start or end, and a step, start at the moment clicked, or
+at a step's start or the playhead within 8 px of it (2.0.3, `snapMoment`;
+a new step also at a step's end or a transaction's side). A marker never
+comes to a step's end: an action and a marker of the same time sort marker
+first, so a marker there would part the step's last action from it.
+
+## Dragging a side
+
+2.0.3 (a process manager's report: a transaction started a few pixels after
+the step it was meant to hold, and nothing could move either). Steps types
+the same times (an open transaction's *Starts at* and *Ends at*, the
+selected step's start and end), and the rules for both are
+[`time-edits.js`](../../viewer/time-edits.js)'s. A pointer
+within 6 px of a side that drags shows the resize cursor; pressed and moved
+3 px, the side follows it, its time (m:ss) above it, until the release
+saves it. Esc puts it back and saves nothing; the click the release makes is
+not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
+
+- **A transaction's side** is a marker: its Start, and the End or the next
+  Start that ends it (a transaction running to the end has no end to drag).
+  The marker moves between its neighbours, 100 ms from each, so the
+  transactions keep their order (`markerDragBounds`); it snaps to a step's
+  start or the playhead. The move is a marker change (`moveMarker`: an
+  inserted marker's insert edit moves itself; a captured marker's pending
+  move takes the new time, so dragging it again adds no change), shown
+  pending until *Apply marker changes*.
+- **A step's side** drags when its time is the analyst's
+  (`AC.stepTimeMovable`: no recorded actions and no sub-steps; a recorded
+  step keeps its actions' time, which Split and Merge change). It moves
+  between the bands beside it, inside its sub-process, the step at least
+  100 ms long (`stepEdgeBounds`); a step back to back with it whose time is
+  the analyst's too gives way, its touching side following. It snaps to any
+  side drawn and the playhead. Saved at once as one edit
+  (`steps-view.js` `setStepTimes`): a step of the main level then belongs to
+  the transaction that holds its new start, or to none (*Outside the
+  transactions*), without an analysis.
 
 **Range selection.** Shift-drag on the background selects a range; a card
 shows its length, events, markers, screenshots and systems, with *Insert

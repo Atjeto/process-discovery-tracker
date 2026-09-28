@@ -522,7 +522,8 @@ initStepsView({
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   // Watch plays the step in the step panel, beside the steps (V2 item 4).
   watchStep: (s) => StepPanel.watch(s),
-  analyze: () => analyzeSession(),
+  // 2.0.3: an open transaction's Apply marker changes asks as the top bar's does.
+  analyze: (opts) => analyzeSession(opts),
 });
 
 /* (Steps CRUD and Apps outside the process -> views/steps-view.js) */

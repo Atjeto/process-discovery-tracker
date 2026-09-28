@@ -6,6 +6,38 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.3] (2026-09-28): transactions and steps moved and timed
+
+### Changed
+
+- **Transactions and steps move on the Timeline** (a process manager's
+  report: a transaction started a few pixels after the step it was meant to
+  hold, the step stayed outside it, and nothing could be moved). Drag the
+  start or the end of a transaction's band, or of a step whose time is yours
+  (a step added on a video's Timeline, or where nothing was recorded; a
+  step back to back with it gives way). A step then belongs to the
+  transaction its start is in; a transaction moved is drawn dashed where it
+  now is until *Apply marker changes*, and a marker moved several times is
+  one change to apply. A side dragged, and *Start a transaction here*, *End
+  the transaction here* and *Add a step here*, snap to a step's start or the
+  playhead a few pixels away (a step's side to the other sides too). The
+  time shows while dragging; Esc puts the side back, Ctrl+Z undoes a move.
+- **Times typed in Steps**: an open transaction shows *Starts at* and
+  *Ends at* under its name, and a step whose time is yours shows its start
+  and end on the line under its name (a step added without a time: *no time
+  yet: starts at*). Type a time the way the timeline shows it (*0:09*,
+  *1:05.5*; the fields show tenths where a time has them, so two moments a
+  second apart never read the same) and press Enter; Up and Down change it
+  by a second. A transaction's change shows dashed, with *Apply marker
+  changes* right beside it; an empty *Ends at* takes its End out. A time
+  that cannot be taken is refused with the range it can take.
+- **Apply marker changes asks first only while a step is a draft**: in a
+  project made from a video or from nothing there is none, so it applies at
+  once.
+- **Outside the transactions** says how to bring a step in.
+- **The System field's list arrow** sits beside the system's name, never
+  over it, and Enter saves the system and leaves the field.
+
 ## [2.0.2] (2026-09-28): the start page and the step panel's flow line
 
 ### Changed

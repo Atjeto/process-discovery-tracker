@@ -196,7 +196,17 @@ The viewer says *transaction* for one pass through the process and
 - **Transaction repair**: *Start a transaction here* and *End the
   transaction here* from a right-click; move, rename and delete markers,
   shown at once as pending until *Apply marker changes*; insert a
-  transaction from a selected range.
+  transaction from a selected range. A transaction's band is drawn where its
+  markers now are, dashed until applied, and its start and its end drag
+  (2.0.3).
+- **Steps move on it** (2.0.3): the start and the end of a step whose time
+  is the analyst's (one added on a video's timeline, or where nothing was
+  recorded) drag, a step back to back with it giving way, and the step
+  belongs to the transaction its start is in. A recorded step keeps its
+  actions' time. A side dragged, and a transaction or a step started from a
+  right-click, snaps to a step's start or the playhead a few pixels away
+  (a step's side to the other sides too). Esc puts a side back; Ctrl+Z
+  undoes a move. The same times are typed in Steps (see there).
 - **Leave out of the analysis**: a selected stretch (a break, a detour)
   drafts no step and counts no time. The timeline shows it hatched, and a
   click on it offers *Include again*; Ctrl+Z undoes either. A transaction
@@ -206,6 +216,15 @@ The viewer says *transaction* for one pass through the process and
 
 **Steps**
 
+- **Times typed** (2.0.3): an open transaction shows *Starts at* and *Ends
+  at* under its name, fields on the one clock to a tenth of a second where
+  a time has one ("0:09.6"); a time typed moves its marker (an *Ends at*
+  typed where it has none adds its End, emptied takes it out), dashed with
+  *Apply marker changes* beside it until applied. A step whose time is the
+  analyst's shows its start and end as fields on its line of facts, and one
+  added without a time a start field; the rules are the Timeline's drag's.
+  Up and Down change a time by a second; a text that is no time, or a time
+  out of range, is refused with the range it can take.
 - **The transactions and their steps**, under one line that says what a
   transaction is; a row shows when its step starts, a transaction's head
   its time ("under 1s", "42s", "2m 07s"). Confirm the reference transaction

@@ -24,7 +24,7 @@
 
 const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
-const { $, formatDuration, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
+const { $, formatDuration, placeMenu, recordingStartMs, sinceStart, toast } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const { seekToTimestamp, timelineSpan, attachVideo } = require("./flow-view-video.js");
 const AC = require("../analyst-content.js");
@@ -36,6 +36,8 @@ const SPM = require("../sub-process-maps.js");
 const RO = require("../read-only.js");
 const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
+const { moveMarker, APPLY_NOTE } = require("./flow-view-markers.js");
+const { SNAP_PX, snapMs, markerDragBounds, stepSide, stepSideChanges } = require("../time-edits.js");
 
 /* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
    bands pack into ~1500px and their left-anchored labels overlap into
@@ -64,6 +66,155 @@ function timeAtClientX(clientX, rect, firstMs, lastMs) {
       !Number.isFinite(firstMs) || !Number.isFinite(lastMs) || lastMs < firstMs) return null;
   const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
   return new Date(firstMs + (x / rect.width) * (lastMs - firstMs)).toISOString();
+}
+
+/* ============ Dragging a side, and snapping (2.0.3) ===============
+   A process manager's report: a transaction started a few pixels after the
+   step it was meant to hold, and nothing could move either of them. The
+   transactions' sides and the sides of a step whose time is the analyst's
+   (AC.stepTimeMovable) are dragged on the timeline, by the rules Steps types
+   times with (time-edits.js); a side dragged, and a moment right-clicked for
+   a transaction or a step, comes to a side drawn or to the playhead within
+   SNAP_PX of it. A transaction's Start or End comes only to a step's start:
+   a marker at a step's last action would part that action from its step (a
+   marker sorts before an action of the same time). */
+/* A side is found within EDGE_PX of a band's edge (a third of a narrow
+   band), and moves once the pointer has gone DRAG_PX. */
+const EDGE_PX = 6;
+const DRAG_PX = 3;
+
+/* The sides the last render drew that a moment snaps to: { ms, key, kind },
+   the key naming the side ("m:<marker key>", "s:<step id>:start" or ":end"),
+   the kind "tx" (a transaction's side), "step-start" or "step-end". */
+let _edgeTargets = [];
+/* The kinds of side each kind of moment comes to. */
+const SNAPS_TO = { marker: ["step-start"], step: ["step-start", "step-end", "tx"] };
+
+/* The playhead's moment (ms) while it is drawn, else null. */
+function _playheadMs(firstMs, spanMs) {
+  const ph = document.getElementById("tl-playhead");
+  if (!ph || ph.style.display === "none") return null;
+  const pct = parseFloat(ph.style.left);
+  return Number.isFinite(pct) ? firstMs + (pct / 100) * spanMs : null;
+}
+
+/* What a moment of kind `what` ("marker" or "step") snaps to: the sides
+   drawn of the kinds it comes to but the ones named in `skip` (a dragged
+   side's own, and one that moves with it), and the playhead. */
+function _snapTargets(what, skip, firstMs, spanMs) {
+  const kinds = SNAPS_TO[what] || [];
+  const out = _edgeTargets.filter((t) => kinds.includes(t.kind) && !skip.includes(t.key)).map((t) => t.ms);
+  const ph = _playheadMs(firstMs, spanMs);
+  if (ph != null) out.push(ph);
+  return out;
+}
+
+/* The moment a right-click at `iso` names for a transaction's start or end
+   (`what` "marker") or for a new step ("step"), the timeline's menu in
+   flow-view.js: a side drawn or the playhead within SNAP_PX of it, else `iso`
+   itself. */
+function snapMoment(iso, what) {
+  const ms = Date.parse(iso);
+  const host = document.getElementById("timeline");
+  const sp = timelineSpan();
+  if (!Number.isFinite(ms) || !host || !sp || !(host.clientWidth > 0)) return iso;
+  const span = Math.max(1, sp.endMs - sp.startMs);
+  const t = snapMs(ms, _snapTargets(what, [], sp.startMs, span), (SNAP_PX / host.clientWidth) * span);
+  return t === ms ? iso : new Date(t).toISOString();
+}
+
+/* A band drawn from `startMs` to `endMs` (its left and width in percent). */
+function _placeBand(el, startMs, endMs, firstMs, spanMs, minPct) {
+  el.style.left = (((startMs - firstMs) / spanMs) * 100) + "%";
+  el.style.width = Math.max(minPct, ((endMs - startMs) / spanMs) * 100) + "%";
+}
+
+/* Make a band's sides draggable. `g` = { host, firstMs, spanMs, origin,
+   edges: { start, end }, begin(edge) }. `begin` is asked as a side is pressed
+   and gives { fromMs, lo, hi, targets, preview(ms), restore(), commit(ms) },
+   or null when that side does not move. The pointer over a side that drags
+   shows the resize cursor; once pressed and moved DRAG_PX, the side follows
+   the pointer, snapping to `targets` and kept in [lo, hi], its time above
+   it; the release commits, Esc puts it back. The click the release of a
+   drag makes (dropped or put back) is not a click on the band. */
+function wireEdgeDrag(band, g) {
+  const sideAt = (clientX) => {
+    const r = band.getBoundingClientRect();
+    const zone = Math.min(EDGE_PX, r.width / 3);
+    if (g.edges.start && clientX - r.left <= zone) return "start";
+    if (g.edges.end && r.right - clientX <= zone) return "end";
+    return null;
+  };
+  band.addEventListener("mousemove", (e) => {
+    if (!document.body.classList.contains("tl-edge-dragging")) band.classList.toggle("tl-edge-hot", !!sideAt(e.clientX));
+  });
+  band.addEventListener("mouseleave", () => band.classList.remove("tl-edge-hot"));
+  band.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || e.shiftKey) return;
+    const edge = sideAt(e.clientX);
+    const d = edge ? g.begin(edge) : null;
+    if (!d) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _dragEdge(e, band, g, d);
+  });
+}
+
+function _dragEdge(e0, band, g, d) {
+  const rect = g.host.getBoundingClientRect();
+  const tolMs = (SNAP_PX / Math.max(1, rect.width)) * g.spanMs;
+  // The side never jumps where it is pressed: a marker closer to its
+  // neighbour than MIN_SPAN_MS (an End and the next Start the capture app
+  // wrote together) or a step shorter than it keeps its place in range.
+  const lo = Math.min(d.lo, d.fromMs), hi = Math.max(d.hi, d.fromMs);
+  // pressed, then dragging once moved, cancelled by Esc (until the release).
+  let phase = "pressed", ms = d.fromMs;
+  const tip = document.createElement("div");
+  tip.className = "tl-drag-time";
+  const stopShowing = () => {
+    document.body.classList.remove("tl-edge-dragging");
+    tip.remove();
+  };
+  const onMove = (e) => {
+    if (phase === "cancelled") return;
+    if (phase === "pressed") {
+      if (Math.abs(e.clientX - e0.clientX) < DRAG_PX) return;
+      phase = "dragging";
+      document.body.classList.add("tl-edge-dragging");
+      g.host.appendChild(tip);
+    }
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    ms = Math.min(hi, Math.max(lo, snapMs(g.firstMs + (x / rect.width) * g.spanMs, d.targets, tolMs)));
+    d.preview(ms);
+    tip.style.left = (((ms - g.firstMs) / g.spanMs) * 100) + "%";
+    tip.style.top = Math.max(0, band.offsetTop - 17) + "px";
+    tip.textContent = sinceStart(new Date(ms).toISOString(), g.origin);
+  };
+  const onKey = (e) => {
+    if (e.key !== "Escape" || phase !== "dragging") return;
+    e.preventDefault();
+    e.stopPropagation();
+    phase = "cancelled";
+    stopShowing();
+    d.restore();
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove, true);
+    document.removeEventListener("mouseup", onUp, true);
+    document.removeEventListener("keydown", onKey, true);
+    stopShowing();
+    if (phase === "pressed") return;   // no drag: the press is a click
+    // The click this release makes belongs to the drag, not to the band.
+    const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    document.addEventListener("click", swallow, true);
+    setTimeout(() => document.removeEventListener("click", swallow, true), 0);
+    if (phase === "cancelled") return;
+    if (ms === d.fromMs) { d.restore(); return; }
+    Promise.resolve(d.commit(ms)).catch(() => d.restore());
+  };
+  document.addEventListener("mousemove", onMove, true);
+  document.addEventListener("mouseup", onUp, true);
+  document.addEventListener("keydown", onKey, true);
 }
 
 /* Injected by flow-view.js via initTimeline() -- kept out of a require() to
@@ -745,16 +896,61 @@ function renderTimeline() {
   const _anno = (State.getSession().annotations) || {};
   const _level = stepsForLevel(State.getSession());
   const _stepsForLane = _level.steps.map((s) => ({
-    label: s.name || s.step_id || "", step_id: s.step_id, time_range: s.time_range,
+    label: s.name || s.step_id || "", step_id: s.step_id, time_range: s.time_range, step: s,
   }));
+  // 2.0.3: what is dragged on the timeline, and where a change is refused.
+  const editable = !RO.isReadOnly(State.getSession());
 
   // Run bands render as a labelled header ABOVE the activity lane;
   // layoutCaseLanes pairs the markers into runs the way the pipeline does.
-  // The bands follow the markers the LAST ANALYSIS used (captured markers
-  // with the applied marker changes, marker-edits.js), so a pending insert
-  // shows as a pending marker bar, and becomes a run band once analyzed.
+  // 2.0.3: the bands follow the markers as they are now (every marker change,
+  // marker-edits.js), so a transaction added or moved stands where it was
+  // put; one the last analysis has not seen (no band of that analysis has
+  // its span and label) is drawn pending until Apply marker changes.
   const markerRows = MarkerEdits.sessionMarkerView(State.getSession());
-  const caseLanes = layoutCaseLanes(MarkerEdits.appliedMarkerEvents(markerRows), first, last);
+  const markersNow = MarkerEdits.currentMarkerEvents(markerRows);
+  const caseLanes = layoutCaseLanes(markersNow, first, last);
+  const analyzedCases = layoutCaseLanes(MarkerEdits.appliedMarkerEvents(markerRows), first, last).cases;
+  for (const c of caseLanes.cases) {
+    c.pending = !analyzedCases.some((a) => a.startMs === c.startMs && a.endMs === c.endMs &&
+      a.dangling === c.dangling && (a.label || null) === (c.label || null));
+  }
+  // The sides a moment snaps to: the transactions' and the steps' drawn.
+  _edgeTargets = [];
+  for (const c of (lanes.cases ? caseLanes.cases : [])) {
+    if (c.startKey) _edgeTargets.push({ ms: c.startMs, key: "m:" + c.startKey, kind: "tx" });
+    if (c.endKey) _edgeTargets.push({ ms: c.endMs, key: "m:" + c.endKey, kind: "tx" });
+  }
+  for (const s of (lanes.steps ? _stepsForLane : [])) {
+    const b = stepBandSpan(s);
+    if (b) {
+      _edgeTargets.push({ ms: b.startMs, key: "s:" + s.step_id + ":start", kind: "step-start" },
+        { ms: b.endMs, key: "s:" + s.step_id + ":end", kind: "step-end" });
+    }
+  }
+  // A marker dragged moves between its neighbours as drawn.
+  const markerTimes = markersNow.map((ev) => Date.parse(ev.timestamp));
+  const markerDrag = (host, key) => {
+    const i = markersNow.findIndex((ev) => ev.event_id === key);
+    if (i < 0) return null;
+    const fromMs = markerTimes[i];
+    const b = markerDragBounds(markerTimes, i, first, last);
+    const move = (ms) => {
+      for (const el of host.querySelectorAll(".tl-case-band")) {
+        const atStart = el.dataset.startKey === key, atEnd = el.dataset.endKey === key;
+        if (!atStart && !atEnd) continue;
+        _placeBand(el, atStart ? ms : Number(el.dataset.startMs), atEnd ? ms : Number(el.dataset.endMs), first, span, 0.15);
+      }
+    };
+    return {
+      fromMs, lo: b.lo, hi: b.hi, targets: _snapTargets("marker", [], first, span),
+      preview: move, restore: () => move(fromMs),
+      commit: async (ms) => {
+        const m = MarkerEdits.sessionMarkerView(State.getSession()).find((x) => x.key === key);
+        if (m && await moveMarker(m, new Date(ms).toISOString())) toast("Moved; " + APPLY_NOTE + ".", "success");
+      },
+    };
+  };
 
   // Resolved lane heights. A height of 0 hides the lane: the core skips its
   // render and (with gapBefore) collapses the spacing. These mirror the
@@ -840,13 +1036,26 @@ function renderTimeline() {
         const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
         const top = casesTop + c.lane * caseRowH;
         const band = document.createElement("div");
-        band.className = "tl-case-band" + (c.dangling ? " dangling" : "");
+        band.className = "tl-case-band" + (c.dangling ? " dangling" : "") + (c.pending ? " pending" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = top + "px";
         band.style.height = (caseRowH - 4) + "px";
+        band.dataset.startMs = String(c.startMs);
+        band.dataset.endMs = String(c.endMs);
+        if (c.startKey) band.dataset.startKey = c.startKey;
+        if (c.endKey) band.dataset.endKey = c.endKey;
         band.title = c.title + (c.label ? " · " + c.label : "") +
-          (c.dangling ? " (no end marker)" : "\n" + formatDuration(c.endMs - c.startMs));
+          (c.dangling ? " (no end marker)" : "\n" + formatDuration(c.endMs - c.startMs)) +
+          (c.pending ? "\nNot applied yet: Apply marker changes, in the top bar, updates the transactions and their steps." : "") +
+          (editable ? "\nDrag its start" + (c.endKey ? " or its end" : "") + " to move it." : "");
+        // 2.0.3: its start and its end drag (the marker there moves; a start
+        // that ends the transaction before moves that end too).
+        if (editable) {
+          wireEdgeDrag(band, { host, firstMs: first, spanMs: span, origin,
+            edges: { start: !!c.startKey, end: !!c.endKey },
+            begin: (edge) => markerDrag(host, edge === "start" ? c.startKey : c.endKey) });
+        }
         // Click anywhere on a case band -- closed OR dangling -- seeks
         // the video to the case start. Right-click opens the scope/jump
         // menu below.
@@ -868,7 +1077,7 @@ function renderTimeline() {
         // spill into its neighbour.
         if (caseLabelFits(w, hostW)) {
           const lbl = document.createElement("div");
-          lbl.className = "tl-case-label";
+          lbl.className = "tl-case-label" + (c.pending ? " pending" : "");
           lbl.style.left = "calc(" + x + "% + 4px)";
           lbl.style.top = (top + 3) + "px";
           lbl.style.maxWidth = "calc(" + w + "% - 4px)";
@@ -991,11 +1200,13 @@ function renderTimeline() {
 
       // Pending marker bars (rendered above bands): a marker change that
       // waits for Apply marker changes (marker-edits.js) is drawn, dashed and
-      // labelled pending: it is the immediate feedback for an insert / move /
-      // delete. Applied markers are not drawn here (the Marker bars lane is
-      // cut): the Runs lane and the Markers tab show them.
+      // labelled pending. 2.0.3: the Transactions lane draws a marker added,
+      // moved or renamed (its band, pending), so a bar says only what that
+      // lane cannot: a marker deleted, or any change while the lane is off.
+      // Applied markers are not drawn here: the Transactions lane and the
+      // Markers tab show them.
       for (const m of markerRows) {
-        if (!m.pending) continue;
+        if (!m.pending || (lanes.cases && !m.deleted)) continue;
         const t = new Date(m.timestamp).getTime();
         if (!isFinite(t)) continue;
         const x = ((t - first) / span) * 100;
@@ -1095,6 +1306,39 @@ function renderTimeline() {
     },
   };
 
+  // A step's side dragged (2.0.3): between the other bands of the lane,
+  // inside its sub-process, the step it touches (when that one's time is the
+  // analyst's too) giving way; saved as one edit (steps-view.js setStepTimes).
+  const laneSpans = _stepsForLane.map((x) => {
+    const b = stepBandSpan(x);
+    return b ? { id: x.step_id, startMs: b.startMs, endMs: b.endMs, movable: editable && AC.stepTimeMovable(x.step) } : null;
+  }).filter(Boolean);
+  const stepDrag = (host, s, band, edge) => {
+    const own = stepBandSpan(s);
+    if (!own) return null;
+    const others = laneSpans.filter((o) => o.id !== s.step_id);
+    const hit = SPM.findStep(_anno.steps || [], s.step_id);
+    const inside = hit && hit.parent ? stepBandSpan(hit.parent) : null;
+    const outer = inside ? { startMs: Math.max(first, inside.startMs), endMs: Math.min(last, inside.endMs) } : { startMs: first, endMs: last };
+    const { lo, hi, link } = stepSide(own, edge, others, outer);
+    const linkBand = link ? host.querySelector('.tl-step-band[data-step-id="' + CSS.escape(link.id) + '"]') : null;
+    const fromMs = edge === "start" ? own.startMs : own.endMs;
+    const move = (ms) => {
+      const [self, other] = stepSideChanges(s.step_id, own, edge, link, ms);
+      _placeBand(band, self.startMs, self.endMs, first, span, 0.2);
+      if (linkBand && other) _placeBand(linkBand, other.startMs, other.endMs, first, span, 0.2);
+    };
+    const skip = ["s:" + s.step_id + ":start", "s:" + s.step_id + ":end"];
+    if (link) skip.push("s:" + link.id + (edge === "start" ? ":end" : ":start"));
+    return {
+      fromMs, lo, hi, targets: _snapTargets("step", skip, first, span),
+      preview: move, restore: () => move(fromMs),
+      commit: async (ms) => {
+        if (!(await require("./steps-view.js").setStepTimes(stepSideChanges(s.step_id, own, edge, link, ms)))) move(fromMs);
+      },
+    };
+  };
+
   // ===== Per-step lane (P1.4) =====
   // Renders a single row of step bands beneath the screenshot rail when steps
   // exist. Click to select the step + seek; right-click opens it in Steps.
@@ -1121,9 +1365,17 @@ function renderTimeline() {
         band.style.top = stepsLaneTop + "px";
         const lbl = s.label || s.step_id || "";
         band.textContent = lbl;
+        const movable = editable && AC.stepTimeMovable(s.step);
         band.title = lbl + " · " + formatDuration(sEnd - sStart) +
-          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: Open in Steps, Hide or Delete";
+          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: Open in Steps, Hide or Delete" +
+          (movable ? "\nDrag its start or its end to change its time." : "");
         if (s.step_id) band.dataset.stepId = s.step_id;
+        // 2.0.3: a step whose time is the analyst's drags its sides; a step
+        // back to back with it moves its touching side along.
+        if (movable) {
+          wireEdgeDrag(band, { host, firstMs: first, spanMs: span, origin, edges: { start: true, end: true },
+            begin: (edge) => stepDrag(host, s, band, edge) });
+        }
         if (s.step_id && s.step_id === State.getSelectedStepId()) {
           band.classList.add("tl-step-selected");
         }
@@ -1269,7 +1521,10 @@ function renderTimeline() {
    never overlap, so the lane packing puts them on one lane. Returns
    { cases: [...], lanesNeeded }; each run is
    { id, startMs, endMs, label, title ("Transaction N", the Steps level's
-   name for it, AD-29), dangling, lane }. */
+   name for it, AD-29), dangling, lane, startKey, endKey }, the keys the
+   event ids of the markers at its sides (2.0.3: what a side dragged moves):
+   its Start, and the End or the next Start that ends it (null when it runs
+   to the end). */
 function layoutCaseLanes(evs, first, last) {
   const runs = [];
   let open = null;
@@ -1277,10 +1532,11 @@ function layoutCaseLanes(evs, first, last) {
     if (ev.type !== "marker") continue;
     const t = new Date(ev.timestamp).getTime();
     if (ev.data.marker_type === "start") {
-      if (open) { open.endMs = t; open.dangling = false; runs.push(open); }
-      open = { startMs: t, label: ev.data.label };
+      if (open) { open.endMs = t; open.endKey = ev.event_id || null; open.dangling = false; runs.push(open); }
+      open = { startMs: t, label: ev.data.label, startKey: ev.event_id || null, endKey: null };
     } else if (ev.data.marker_type === "end" && open) {
       open.endMs = t;
+      open.endKey = ev.event_id || null;
       open.dangling = false;
       runs.push(open);
       open = null;
@@ -1342,4 +1598,6 @@ module.exports = {
   caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES, stepsForLevel,
   leftOutBands, leftOutTitle, leftOutLabel, LEFT_OUT_LABEL, appLeftOut, appLeftOutTitle, stepBandSpan,
   timelineDrawable,
+  // 2.0.3: the moment a right-click's new transaction or step snaps to.
+  snapMoment,
 };

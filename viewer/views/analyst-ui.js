@@ -190,8 +190,11 @@ function wireStepPane(host, step, isRendering) {
     if (!edited) { restore(); return; }
     setSystem(step.step_id, sys.value);
   };
+  // Enter is done with the field (2.0.3): leaving it saves (blur), and the
+  // system set then reads as set; kept focused it went on showing as the
+  // grey hint the focus puts it in.
   sys.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    if (e.key === "Enter") { e.preventDefault(); sys.blur(); }
     else if (e.key === "Escape") { e.preventDefault(); restore(); sys.blur(); }
   });
   sys.addEventListener("blur", commit);

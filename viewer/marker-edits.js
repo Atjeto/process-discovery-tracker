@@ -10,8 +10,10 @@
  * or the session was never analyzed. Pending edits show at once in the
  * Markers list and on the timeline, with one call to action (Apply marker
  * changes);
- * applied edits read as ordinary markers, and the timeline's case lane
- * follows what the last analysis used.
+ * applied edits read as ordinary markers. The timeline's case lane draws the
+ * markers as they are now (2.0.3), a transaction the last analysis has not
+ * seen drawn pending; the steps and the Transaction select follow what the
+ * last analysis used.
  *
  * Mirrors the pipeline's replay: last write wins per marker and field, a
  * delete drops the marker, and an insert becomes a marker whose event id is
@@ -52,7 +54,14 @@ function _validEdits(markerEdits) {
      inserted, edited, deleted        what the edits did
      deletedApplied                   the delete was already analyzed
      pending                          some edit on it waits for an analysis
-     reason                           the capture-time reason, if any */
+     applied                          the last analysis used it (at
+                                      appliedTimestamp)
+     reason                           the capture-time reason, if any
+   An insert edit is its marker, changed in place: one the last analysis
+   used, then moved or renamed (2.0.3: a transaction's side dragged or typed),
+   keeps what that analysis used as applied_timestamp and applied_label
+   (flow-view-markers.js keepApplied), so it is still that analysis's marker
+   there until the change is applied. */
 function markerView(events, markerEdits, analyzedMs) {
   const byEvent = new Map();
   const inserts = [];
@@ -86,17 +95,20 @@ function markerView(events, markerEdits, analyzedMs) {
       timestamp: s.timestamp || ev.timestamp,
       appliedTimestamp: s.appliedTimestamp || ev.timestamp,
       inserted: false, edited: !!s.edited, deleted: !!s.deleted, deletedApplied: !!s.deletedApplied,
-      pending: !!s.pending, reason: d.reason || null,
+      pending: !!s.pending, applied: !s.deletedApplied, reason: d.reason || null,
     });
   }
   for (const { e, pending } of inserts) {
+    // A pending change to an insert the last analysis used keeps what it used.
+    const kept = pending && typeof e.applied_timestamp === "string" && !!e.applied_timestamp;
     rows.push({
       key: "insert-" + (e.id || ""), eventId: null, editId: e.id || null,
       markerType: e.marker_type === "end" ? "end" : "start",
-      label: e.label || null, appliedLabel: e.label || null,
-      timestamp: e.timestamp, appliedTimestamp: e.timestamp,
+      label: e.label || null,
+      appliedLabel: kept && Object.prototype.hasOwnProperty.call(e, "applied_label") ? (e.applied_label || null) : (e.label || null),
+      timestamp: e.timestamp, appliedTimestamp: kept ? e.applied_timestamp : e.timestamp,
       inserted: true, edited: false, deleted: false, deletedApplied: false,
-      pending, reason: null,
+      pending, applied: !pending || kept, reason: null,
     });
   }
   const t = (r) => { const v = Date.parse(r.timestamp); return Number.isFinite(v) ? v : Infinity; };
@@ -114,9 +126,22 @@ function pendingEditCount(markerEdits, analyzedMs) {
    analysis found is drawn, and one it has not seen yet is not. */
 function appliedMarkerEvents(view) {
   return (view || [])
-    .filter((m) => !m.deletedApplied && !(m.inserted && m.pending))
+    .filter((m) => m.applied)
     .map((m) => ({ type: "marker", event_id: m.key, timestamp: m.appliedTimestamp,
       data: { marker_type: m.markerType, label: m.appliedLabel } }))
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+}
+
+/* The markers as they are now (2.0.3): every edit laid over them, applied or
+   pending, a deleted one left out; shaped like captured marker events (the
+   view's key as the event id) and sorted by time. The timeline's
+   Transactions lane draws these, so a transaction the analyst adds or moves
+   stands where it was put, drawn pending until Apply marker changes. */
+function currentMarkerEvents(view) {
+  return (view || [])
+    .filter((m) => !m.deleted)
+    .map((m) => ({ type: "marker", event_id: m.key, timestamp: m.timestamp,
+      data: { marker_type: m.markerType, label: m.label } }))
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 }
 
@@ -127,5 +152,6 @@ function sessionMarkerView(session) {
 }
 
 module.exports = {
-  lastAnalysisMs, isPendingEdit, markerView, pendingEditCount, appliedMarkerEvents, sessionMarkerView,
+  lastAnalysisMs, isPendingEdit, markerView, pendingEditCount, appliedMarkerEvents, currentMarkerEvents,
+  sessionMarkerView,
 };

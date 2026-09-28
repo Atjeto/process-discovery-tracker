@@ -203,7 +203,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="legend" id="timeline-legend">
               <span class="legend-apps" id="legend-apps"></span>
               <span class="lg-idle">idle</span>
-              <span class="lg-marker">pending marker</span>
+              <span class="lg-marker" title="A marker change not applied yet: Apply marker changes, in the top bar, updates the transactions and their steps.">pending change</span>
               <span class="lg-screenshot">screenshot</span>
               <span class="lg-note">note</span>
               <span class="lg-left-out">left out of the analysis</span>
@@ -492,7 +492,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>The Overview's <em>Checklist</em> lists the main acts below and ticks each one when it is done; its button takes you to the next.</p>
           <ol class="help-steps">
             <li><strong>Attach the video and the transcript.</strong> On the Overview, click <em>Attach</em> after <em>No video</em> and pick the video. PDT opens the Timeline: pause the video at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. The video is copied into the project folder. Attach the meeting transcript (a Teams .vtt or .docx) with <em>Attach</em> after <em>No transcript</em>: the synced video places its sentences in time. Without a video, <em>Sync</em> on the Timeline's <em>Transcript</em> lane places it: pick a sentence, then click where it was said.</li>
-            <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Order #10900</em> to <em>Order #10903</em>. If one is missing, right-click the timeline where it starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em> in the top bar.</li>
+            <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Order #10900</em> to <em>Order #10903</em>. If one is missing, right-click the timeline where it starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em> in the top bar. If one starts or ends in the wrong place, type its times in Steps or drag its band on the Timeline (see <em>Everyday tasks</em>).</li>
             <li><strong>Name the steps of the reference transaction, or pick them from the library.</strong> In Steps, transaction 1 is the reference transaction. Where the recorder cut a step wrongly, split or merge it first (see <em>Everyday tasks</em>). Then click each step and type its name, the title of the selected step: the step that ends at <em>Save order</em> becomes <em>Enter the order in Salesforce</em>. The same drafted step in the other transactions takes the name too. Where the library has activities for the step's system, the <em>Name</em> field lists them: pick one instead of typing.</li>
             <li><strong>Write short descriptions.</strong> <em>Description</em>, under the step's name, is the text the PDD prints under the step. One or two sentences are enough, for example: <em>Search the account by customer ID and open it.</em> With a transcript, what the SME said during the step is right under it: <em>Add</em> copies a sentence into the description. The step panel on the right plays the step (<em>Play</em>) and shows every time it happened, with its screenshots, what was said and notes. What the recorder saw is under <em>Recorded</em>.</li>
             <li><strong>Set the flow where it branches or loops.</strong> Transaction 3 sent no confirmation email. On <em>Send the confirmation email</em>, click <em>Only when...</em> and type <em>the customer asked for a confirmation</em>. In transaction 2 the SME looked up a mapping in Notepad and did the SAP steps again. On <em>Create the sales order in SAP</em>, click <em>Decision...</em>, pick <em>Check the sales order in SAP</em> under <em>Back to</em> and type when: <em>SAP rejects the material number</em>. The map draws both.</li>
@@ -509,6 +509,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Click <em>+ Add step</em> (or press N), type its name and click <em>Add step</em>.</li>
             <li>Set its system: type it first on the line under the step's name. Alt+Up and Alt+Down move the step.</li>
             <li>With a video, you can instead pause the video at that moment on the Timeline and click <em>+ Step</em> (or press S), or right-click the timeline there and choose <em>Add a step here</em>: the step gets that time. Right-click a step on the Timeline to open it in Steps, or to delete it (a recorded step is hidden).</li>
+          </ol>
+          <p><strong>Change when a transaction or a step starts or ends</strong></p>
+          <ol class="help-steps">
+            <li>In Steps, open the transaction: <em>Starts at</em> and <em>Ends at</em> are under its name. Type a time the way the timeline shows it, for example <em>0:09</em> or <em>1:05.5</em>, and press Enter. Up and Down change it by a second. An empty <em>Ends at</em> runs until the next transaction starts, or to the end. The change shows dashed until you click <em>Apply marker changes</em>, right beside it.</li>
+            <li>A step you added has its times on the line under its name, for example <em>Transaction 1 · 0:09 to 0:31</em>: type a time there and press Enter. A step you added without a time says <em>no time yet</em>: type when it starts. The step then belongs to the transaction its start is in, and a step right against it moves along. A step the recorder drafted keeps the time of its recorded actions: split or merge it instead.</li>
+            <li>On the Timeline you can instead drag the start or the end of a transaction's band, or of a step you added. Near a step's start or the playhead it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a change.</li>
           </ol>
           <p><strong>Split or merge steps</strong></p>
           <ol class="help-steps">
@@ -580,6 +586,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <dd>The folder holds no recording. Unzip the SME's zip first (right-click it, <em>Extract All</em>) and open the folder it makes.</dd>
             <dt>"This recording has no transactions marked."</dt>
             <dd>The SME did not press the transaction key. On the Timeline, right-click where each transaction starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em>.</dd>
+            <dt>A step is listed under Outside the transactions.</dt>
+            <dd>It starts before or after every transaction. In Steps, open the transaction and type an earlier <em>Starts at</em>, then click <em>Apply marker changes</em>. A step you added can instead be given a start inside the transaction.</dd>
             <dt>"The analysis failed, so the steps and the map are not drafted."</dt>
             <dd>The log at the top says why. Choose Help, <em>Troubleshooting</em>, <em>Re-analyze</em>: your confirmed, edited, added and hidden steps are kept.</dd>
             <dt>"The As-Is map was made before the steps changed: check it, or Copy again."</dt>
@@ -667,8 +675,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>A transaction starts at a start marker and ends at its end marker; the SME places them with the recording bar or the recording keys. An edited marker changes the transactions once you apply it; the recording itself never changes.</p>
           <ul class="help-list">
             <li><strong>Add</strong>: right-click the timeline at that moment and choose <em>Start a transaction here</em> or <em>End the transaction here</em>.</li>
+            <li><strong>Move</strong>: in Steps, open the transaction and type its <em>Starts at</em> or <em>Ends at</em>; an empty <em>Ends at</em> takes its end marker out. Or drag the start or the end of its band on the Timeline: near a step's start or the playhead it snaps there, and Esc puts it back.</li>
             <li><strong>Rename, move or delete</strong>: in the Timeline's Markers panel. Double-click a Start marker to rename it.</li>
-            <li><strong>Apply</strong>: a changed marker shows at once as pending. <em>Apply marker changes</em>, in the bar at the top, updates the transactions, the steps and the map.</li>
+            <li><strong>Apply</strong>: a changed marker shows at once as pending, its transaction's band dashed. <em>Apply marker changes</em>, in the bar at the top, updates the transactions, the steps and the map.</li>
           </ul>
           <p class="help-hint">To join two transactions, delete the End of the first and the Start of the second. To split a transaction, start a transaction where its second part begins: a Start ends the transaction before it.</p>
         </section>
@@ -719,6 +728,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ul class="help-list">
             <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>
             <li>Click a step band on the timeline to open the step panel beside it.</li>
+            <li>Drag the start or the end of a transaction's band, or of a step you added on a video's timeline, to move it. It snaps to a step's start or the playhead a few pixels away; Esc puts it back.</li>
             <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>
             <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>Fit</em>, puts the boxes back where the map lays them out.</li>
             <li>While the steps and the map are updated, the bar at the top says so, with <strong>Cancel</strong>. An update changes the project only when it finishes, so Cancel leaves the steps and the map as they were.</li>

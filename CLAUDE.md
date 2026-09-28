@@ -17,7 +17,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-46, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-47, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
   Data contracts C1 to C21:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.2** (2026-09-28), the light
+- **Versions.** The current release is **v2.0.3** (2026-09-28), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -127,7 +127,7 @@ the folder.
 | [docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) | The discipline every new verb passes. |
 | [docs/adr/](docs/adr/README.md) | Decisions; the registry is CI-enforced. |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [docs/DEPLOY.md](docs/DEPLOY.md) | Dev setup, build, release, install. |
-| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.2. |
+| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.3. |
 
 ## Key concepts
 
@@ -179,6 +179,22 @@ the folder.
   inserted; a video project's Timeline runs on the video's length. Steps
   added by hand have `time_range: null` and an `order` (Alt+Up and Alt+Down
   move one), listed after the timed steps, with no duration.
+- **Moving on the Timeline** (2.0.3, a PM's report; `flow-view-timeline.js`
+  *Dragging a side*): a transaction's band drags its start and its end (a
+  marker change, pending until Apply marker changes; the Transactions lane
+  draws the markers as they now are, a band not yet applied dashed); a step
+  whose time is the analyst's (`AC.stepTimeMovable`: no recorded actions)
+  drags its sides, a step back to back giving way, and joins the transaction
+  its start is in at once (`steps-view.js` `setStepTimes`). A side dragged
+  and a right-click's new transaction or step snap within 8 px to a step's
+  start or the playhead (a step's side to any side); a marker never comes
+  to a step's end, which would part its last action from it. The same
+  times are typed in Steps: an open transaction's *Starts at* and *Ends at*
+  (`steps-view.js` `_runTimesEl`, with Apply marker changes beside a
+  change), the selected step's start and end on its line of facts (a step
+  without a time gets a start field); one rule set, `time-edits.js`. An
+  insert edit the last analysis used keeps `applied_timestamp` and
+  `applied_label` while a change to it waits (`keepApplied`).
 - **What the analyst adds** (C16), inside the folder: screenshots in
   `screenshots/analyst/` (a video frame, a pasted image or a file;
   `step.pdd_screenshot` picks the one the PDD prints), notes in
@@ -444,7 +460,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 - UI bugs are invisible to the unit suites: validate behaviour in the real
   viewer. `e2e/run-all.js` runs the smokes: `session`, `overview`, `runs`,
   `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`,
-  `library`, `windows` and `demo` (each `<name>-smoke.js`;
+  `library`, `windows`, `demo` and `timeline-edit` (each `<name>-smoke.js`;
   [e2e/README.md](e2e/README.md) says what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles

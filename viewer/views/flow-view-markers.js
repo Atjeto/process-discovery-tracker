@@ -6,7 +6,8 @@
  *     changes applies it (the call to action lives in the top bar's status
  *     line, flow-view.js),
  *   - the per-marker move / delete / rename actions, for captured and
- *     inserted markers alike.
+ *     inserted markers alike; moveMarker is also the move a transaction's
+ *     edge dragged on the timeline makes (flow-view-timeline.js, 2.0.3).
  *
  * Extracted from flow-view.js (god-file split). Requires flow-view-video.js
  * for seekToTimestamp / videoStartTs (one-way), and never require()s
@@ -123,6 +124,23 @@ function _insertEdit(anno, m) {
   return m.editId ? anno.marker_edits.find((e) => e && e.op === "insert" && e.id === m.editId) || null : null;
 }
 
+/* 2.0.3: an insert edit is its marker, changed in place. Before one the
+   last analysis used is moved or renamed, it keeps what that analysis used
+   (applied_timestamp, applied_label; marker-edits.js markerView reads them
+   while the change waits), so the transaction it starts or ends stays the
+   analysis's until the change is applied. Pure on the edit. */
+function keepApplied(e, analyzedMs) {
+  if (!e || MarkerEdits.isPendingEdit(e, analyzedMs)) return;
+  e.applied_timestamp = e.timestamp;
+  e.applied_label = e.label == null ? null : e.label;
+}
+
+/* Whether the last analysis used an inserted marker's edit (as it was, or
+   as it kept it before a change that waits). */
+function _insertApplied(e, analyzedMs) {
+  return !MarkerEdits.isPendingEdit(e, analyzedMs) || (typeof e.applied_timestamp === "string" && !!e.applied_timestamp);
+}
+
 /* The moment a typed time since the recording started ("1:05", "1:02:03",
    as the timeline and this list show it) names, as an ISO string; null when
    the text is not such a time. Pure (exported for the unit tests). */
@@ -150,22 +168,83 @@ async function adjustMarkerToVideoTime(m) {
     newTs = sinceStartToIso(origin, input);
     if (!newTs) { toast("Type a time such as " + now + ".", "error"); return; }
   }
+  if (await moveMarker(m, newTs)) toast("Marker moved; " + APPLY_NOTE + ".", "success");
+}
+
+/* Move one marker (a row of the marker view) to `newTs`, an ISO time: the
+   Markers list's move and, 2.0.3, a transaction's side dragged on the
+   timeline or typed in Steps. An inserted marker IS its insert edit, which
+   moves itself; a captured marker gets a timestamp edit, or, while an earlier
+   move of it still waits for Apply marker changes, that edit takes the new
+   time (a marker dragged three times is one change to apply). One undoable
+   edit; `topics` the views drawn again (the markers and the timeline by
+   default). Resolves true when saved. */
+async function moveMarker(m, newTs, topics) {
+  if (!State.getSession() || !m) return false;
   const anno = _annotations();
   const now = new Date().toISOString();
   if (m.inserted) {
-    // An inserted marker IS its insert edit: move the edit itself.
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
+    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return false; }
+    keepApplied(e, MarkerEdits.lastAnalysisMs(State.getSession()));
     e.timestamp = newTs;
     e.ts = now;
   } else {
-    anno.marker_edits.push({
-      id: cryptoRandomId(), event_id: m.eventId, field: "timestamp",
-      value: newTs, previous: m.timestamp, ts: now,
-    });
+    const analyzed = MarkerEdits.lastAnalysisMs(State.getSession());
+    const waiting = anno.marker_edits.filter((e) => e && e.event_id === m.eventId && e.field === "timestamp" &&
+      MarkerEdits.isPendingEdit(e, analyzed)).pop();
+    if (waiting) {
+      waiting.value = newTs;
+      waiting.ts = now;
+    } else {
+      anno.marker_edits.push({
+        id: cryptoRandomId(), event_id: m.eventId, field: "timestamp",
+        value: newTs, previous: m.timestamp, ts: now,
+      });
+    }
   }
-  await persistAnnotations(anno, 'move marker', ["markers", "timeline"]);
-  toast("Marker moved; " + APPLY_NOTE + ".", "success");
+  await persistAnnotations(anno, 'move marker', topics || ["markers", "timeline"]);
+  return true;
+}
+
+/* A marker added at `ts` (2.0.3: an End or a Start typed in Steps), with no
+   question asked: an insert edit, pending until Apply marker changes. One
+   undoable edit. Resolves true when saved. */
+async function insertMarker(markerType, ts, label, topics) {
+  if (!State.getSession()) return false;
+  const anno = _annotations();
+  anno.marker_edits.push({
+    id: cryptoRandomId(), op: "insert", marker_type: markerType === "end" ? "end" : "start",
+    label: label || null, timestamp: ts, ts: new Date().toISOString(),
+  });
+  await persistAnnotations(anno, "insert " + markerType + " marker", topics || ["markers", "timeline"]);
+  return true;
+}
+
+/* Take one marker out (a row of the marker view): an added one's insert edit
+   goes (with a delete of its id when the last analysis already applied it),
+   a captured one gets a delete edit. The Markers list's Delete, after its
+   question, and (2.0.3) an End cleared in Steps. One undoable edit. Resolves
+   true when saved. */
+async function removeMarker(m, topics) {
+  if (!State.getSession() || !m) return false;
+  const anno = _annotations();
+  const now = new Date().toISOString();
+  if (m.inserted) {
+    const e = _insertEdit(anno, m);
+    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return false; }
+    anno.marker_edits = anno.marker_edits.filter((x) => x !== e);
+    // An insert the last analysis already applied needs one more Analyze to
+    // take it out again: a delete of its marker id keeps that change pending
+    // (the pipeline ignores a delete whose marker no longer exists).
+    if (_insertApplied(e, MarkerEdits.lastAnalysisMs(State.getSession()))) {
+      anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.key, op: "delete", ts: now });
+    }
+  } else {
+    anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.eventId, op: "delete", ts: now });
+  }
+  await persistAnnotations(anno, 'delete marker', topics || ["markers", "timeline"]);
+  return true;
 }
 
 async function deleteMarker(m) {
@@ -181,23 +260,7 @@ async function deleteMarker(m) {
     danger: true,
   });
   if (!ok) return;
-  const anno = _annotations();
-  const now = new Date().toISOString();
-  if (m.inserted) {
-    const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
-    anno.marker_edits = anno.marker_edits.filter((x) => x !== e);
-    // An insert the last analysis already applied needs one more Analyze to
-    // take it out again: a delete of its marker id keeps that change pending
-    // (the pipeline ignores a delete whose marker no longer exists).
-    if (!MarkerEdits.isPendingEdit(e, MarkerEdits.lastAnalysisMs(State.getSession()))) {
-      anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.key, op: "delete", ts: now });
-    }
-  } else {
-    anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.eventId, op: "delete", ts: now });
-  }
-  await persistAnnotations(anno, 'delete marker', ["markers", "timeline"]);
-  toast("Marker deleted; " + APPLY_NOTE + ".", "success");
+  if (await removeMarker(m)) toast("Marker deleted; " + APPLY_NOTE + ".", "success");
 }
 
 async function renameMarker(m, newLabel) {
@@ -207,6 +270,7 @@ async function renameMarker(m, newLabel) {
   if (m.inserted) {
     const e = _insertEdit(anno, m);
     if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
+    keepApplied(e, MarkerEdits.lastAnalysisMs(State.getSession()));
     e.label = newLabel;
     e.ts = now;
   } else {
@@ -226,5 +290,5 @@ async function renameMarker(m, newLabel) {
 }
 
 module.exports = {
-  effectiveLabel, renderMarkersList, sinceStartToIso, markerReasonText,
+  effectiveLabel, renderMarkersList, sinceStartToIso, markerReasonText, moveMarker, insertMarker, removeMarker, keepApplied, APPLY_NOTE,
 };

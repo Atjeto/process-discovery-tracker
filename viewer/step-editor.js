@@ -301,7 +301,9 @@
          the step's state and (C21) the code of the library activity it is
          named from; then one line of facts: the system (C16, a field: the
          recording's until the analyst types another), the screen, where the
-         step is, how long it took, in how many transactions, then Play
+         step is, how long it took (2.0.3: its start and end as fields
+         when its time is the analyst's, `factsHtml`), in how many
+         transactions, then Play
          (with a video: the step in the step panel's video, the panel beside
          the editor opening again when it was closed) and Show on timeline;
        what you write: the Description (C7; the drafting's narration is not
@@ -345,7 +347,7 @@
           <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
           ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
-        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel's video, beside the editor">▶ Play</button>` : ""}<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button></p>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel's video, beside the editor">▶ Play</button>` : ""}<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button></p>
       </div>
       <div class="step-body">
         <div class="step-write" id="step-doc">
