@@ -89,7 +89,10 @@
                { kind, text }, a run's differences from the reference on its
                rows, run-differences.js rowMarks), ghosts ([{ after, kind,
                name, text }]: the reference steps the run did not do, each a
-               greyed row after the row `after`, first when null) } */
+               greyed row after the row `after`, first when null), placed
+               (C22, 2.0.5: a Map of step id => what its mark says, for a
+               step the analyst placed elsewhere in the process than its
+               time puts it: the row carries "Placed") } */
   const DIFF_LABELS = { extra: "Extra", order: "Moved", repeated: "Again", skipped: "Skipped", not_done: "Not done" };
   function _ghostRow(g) {
     const row = document.createElement("div");
@@ -115,6 +118,7 @@
     }
     const ms = multiSelectedSet || new Set();
     const marks = o.marks instanceof Map ? o.marks : new Map();
+    const placed = o.placed instanceof Map ? o.placed : new Map();
     const ghosts = Array.isArray(o.ghosts) ? o.ghosts : [];
     for (const g of ghosts) if (g.after === null) host.appendChild(_ghostRow(g));
     for (const s of steps) {
@@ -137,8 +141,9 @@
       // R1 (Steps chrome diet): a truncated name (the list ellipsizes) must be
       // readable on hover, so the title shows the FULL name; the rename hint
       // rides after it. There are no per-row reorder buttons: the list is in
-      // time order. The multi-select check stays (a genuine per-row act for
-      // merge and bulk delete).
+      // the process order, time order until a step is moved (Alt+Up and
+      // Alt+Down, its menu). The multi-select check stays (a genuine per-row
+      // act for merge and bulk delete).
       const _nameTitle = (s.name ? s.name + " - " : "") + "double-click to rename";
       // C19: a sub-process carries the way into it, its sub-steps counted.
       const subCount = typeof o.subSteps === "function" ? o.subSteps(s) : null;
@@ -148,12 +153,15 @@
       const diff = marks.get(s.step_id);
       const diffHtml = diff
         ? `<span class="step-diff step-diff-${escapeAttr(diff.kind)}" title="${escapeAttr(diff.text)}">${escapeHtml(DIFF_LABELS[diff.kind] || diff.kind)}</span>` : "";
+      // C22: a step placed elsewhere in the process than its time puts it.
+      const placedHtml = placed.has(s.step_id)
+        ? `<span class="step-placed" title="${escapeAttr(placed.get(s.step_id))}">Placed</span>` : "";
       // 2.0.1: the tick is a checkbox a keyboard reaches (Space ticks it).
       row.innerHTML = `
         <span class="multi-check" role="checkbox" tabindex="${o.readOnly ? "-1" : "0"}" aria-checked="${isMulti ? "true" : "false"}"
           aria-label="${escapeAttr("Tick " + (s.name || "this step") + ", to act on several steps")}" title="Tick to merge, group or hide several steps at once"></span>
         <span class="step-name" title="${escapeAttr(_nameTitle)}" tabindex="-1">${escapeHtml(s.name)}</span>
-        ${subHtml}${diffHtml}${flagBadges}${chipHtml}
+        ${subHtml}${diffHtml}${placedHtml}${flagBadges}${chipHtml}
         <span class="step-time">${escapeHtml(sinceStart(s.time_range && s.time_range.start, o.originMs))}</span>
       `;
       if (subHtml) {
@@ -573,6 +581,9 @@
     when: "When the process goes there. Saved when you press Enter or leave the field.",
     removeLink: "Remove this link: the next step follows",
     inherited: "A condition holds for this step in every transaction. Change it on the step where it is set.",
+    // C22 (2.0.5): its place in the process, apart from its time.
+    placeAfter: "Put this step after another step of the process (Alt+Up and Alt+Down move it one step): its band, its video and its time stay where they are on the Timeline. For a correction or a condition the SME gave later in the video.",
+    backToTime: "Put this step back where its time puts it in the process",
   };
 
   function _targetOptions(choices, selected, missing) {
@@ -622,12 +633,20 @@
     const onlyBtn = showCond || inherited ? "" : '<button type="button" class="link-btn" id="btn-flow-only-when" title="' +
       escapeAttr(FLOW_TITLES.onlyWhen) + '">Only when…</button>';
     const goBtn = '<button type="button" class="link-btn" id="btn-flow-go-to" title="' + escapeAttr(FLOW_TITLES.goTo) + '">Decision…</button>';
+    // C22: where the step comes in the process, apart from its time.
+    const placeBtn = flow.canPlace === false ? "" : '<button type="button" class="link-btn" id="btn-flow-place" title="' +
+      escapeAttr(FLOW_TITLES.placeAfter) + '">Place after…</button>';
+    const placedHtml = flow.placed
+      ? '<p class="flow-placed" id="step-placed-line"><span class="step-placed">Placed</span> ' + escapeHtml(flow.placed) +
+        (flow.canBack ? ' <button type="button" class="link-btn" id="btn-flow-back-to-time" title="' + escapeAttr(FLOW_TITLES.backToTime) +
+          '">Back to its time</button>' : "") + "</p>"
+      : "";
     // Nothing set on the step: one line.
     if (!showCond && !links.length && !open.link) {
       return '<div class="step-sect step-flow" id="step-flow"><div class="step-sect-head step-flow-head">' +
         '<span class="step-sect-title">Flow</span>' +
         '<span class="flow-line"' + lineAttrs + ">" + line + "</span>" +
-        onlyBtn + goBtn + "</div></div>";
+        onlyBtn + goBtn + placeBtn + "</div>" + placedHtml + "</div>";
     }
     const condHtml = showCond
       ? '<div class="flow-cond"><label class="flow-cond-label" for="step-only-when">Only when</label>' +
@@ -639,7 +658,7 @@
     const rows = links.map((l, i) => _linkRowHtml(i, l, flow.choices)).join("") +
       (open.link ? _linkRowHtml(links.length, null, flow.choices) : "");
     return '<div class="step-sect step-flow" id="step-flow"><div class="step-sect-head step-flow-head">' +
-      '<span class="step-sect-title">Flow</span>' + onlyBtn + goBtn + "</div>" +
+      '<span class="step-sect-title">Flow</span>' + onlyBtn + goBtn + placeBtn + "</div>" + placedHtml +
       condHtml + (rows ? '<ol class="flow-links">' + rows + "</ol>" : "") + "</div>";
   }
 
@@ -676,6 +695,9 @@
       _flowFocus = { stepId: id, id: "flow-link-to-new" };
       redraw();
     });
+    // C22: the step's place in the process.
+    onClick("#btn-flow-place", () => { if (callbacks.onPlaceAfter) callbacks.onPlaceAfter(id); });
+    onClick("#btn-flow-back-to-time", () => { if (callbacks.onBackToTime) callbacks.onBackToTime(id); });
 
     // The condition: saved on Enter or when left; empty removes it.
     const saved = flow.onlyWhen || "";

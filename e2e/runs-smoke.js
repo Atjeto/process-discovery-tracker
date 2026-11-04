@@ -558,7 +558,8 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     if (!okAll) await shot(page, "fail-runs-hide-all.png");
 
     // + Add step lands in the open run: an add; deleting it takes the add back.
-    // C16: a step added by hand has no time; it follows the run's timed steps.
+    // C16: a step added by hand has no time; C22 (2.0.5): it comes right after
+    // the selected step, placed there, not after every step with a time.
     let err5 = null, added = null, addedDisk = null;
     try {
       await rowById(searchIds[R1]).click({ timeout: T });
@@ -569,6 +570,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await waitFixes(fx(1, 0, 1, 0));
       const g1 = await group(R1);
       added = { index: g1.rows.findIndex((r) => r.name === "Check the stock"), rows: g1.rows.length,
+        after: g1.rows.findIndex((r) => r.id === searchIds[R1]),
         row: g1.rows.find((r) => r.name === "Check the stock") };
       addedDisk = (await waitDisk(ANNO, (a) => (a.steps || []).some((s) => s.name === "Check the stock")))
         .steps.find((s) => s.name === "Check the stock");
@@ -577,12 +579,12 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await waitRows(R1, 6);
       await waitFixes(fx(1, 0, 0, 0));
     } catch (e) { err5 = errText(e); }
-    const ok5 = !err5 && added && added.index === added.rows - 1 && added.row.chip === "Added" && addedDisk &&
+    const ok5 = !err5 && added && added.after >= 0 && added.index === added.after + 1 && added.row.chip === "Added" && addedDisk &&
       addedDisk.case_id === R1 && addedDisk.state === "manually_authored" &&
-      addedDisk.time_range === null && addedDisk.order === 1;
-    record("C3 + C16: + Add step lands in the open run as a step without a time (Added chip, run 1, order 1, after the run's timed steps) and counts an add; deleting it takes the add back",
+      addedDisk.time_range === null && addedDisk.order === 1 && addedDisk.placed_after === searchIds[R1];
+    record("C3 + C16 + C22: + Add step lands in the open run as a step without a time (Added chip, run 1, order 1), right after the selected step (placed after it), and counts an add; deleting it takes the add back",
       ok5, JSON.stringify({ err: err5, added, disk: addedDisk && { case_id: addedDisk.case_id, state: addedDisk.state,
-        time_range: addedDisk.time_range, order: addedDisk.order } }));
+        time_range: addedDisk.time_range, order: addedDisk.order, placed_after: addedDisk.placed_after } }));
     if (!(ok4 && ok5)) await shot(page, "fail-runs-fixes.png");
   }
 

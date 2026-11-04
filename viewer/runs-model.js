@@ -37,6 +37,7 @@
 "use strict";
 
 const { stepKeys } = require("./run-differences.js");
+const StepOrder = require("./step-order.js");
 
 /* A step in one of these states stands on an analyst decision (C2). */
 const ANALYST_STATES = new Set(["confirmed", "edited", "manually_authored"]);
@@ -83,11 +84,14 @@ function _placeKey(s) {
   return typeof o === "number" && Number.isFinite(o) ? [1, o] : [2, 0];
 }
 
-/* The order of a run's steps: the steps with a time in time order, then the
-   steps without one by their `order`, then any step with neither. Steps that
-   start at one moment keep their list order (the sort is stable), as the
+/* The base order of a run's steps: the steps with a time in time order, then
+   the steps without one by their `order`, then any step with neither. Steps
+   that start at one moment keep their list order (the sort is stable), as the
    PDD's do (pdd_export._start_key; lane FX1: a tie once went by step_id, so
-   Steps and the PDD could number two such steps apart). */
+   Steps and the PDD could number two such steps apart). A run's members are
+   in its process order (contract C22, step-order.js processOrder), which
+   starts from this one and puts a step the analyst placed after the step it
+   comes after. */
 function byStart(a, b) {
   const x = _placeKey(a), y = _placeKey(b);
   if (x[0] !== y[0]) return x[0] - y[0];
@@ -150,8 +154,9 @@ function stepChip(state) {
    Returns { runs, outside } where each run is
      { caseId, ordinal, title, label, startMs, endMs, durationMs, members,
        visible, hiddenCount, status }
-   (members: every step of the run in time order; visible: the non-hidden
-   ones) and outside is the steps of no run, in time order. Without
+   (members: every step of the run in its process order, C22: time order,
+   a step the analyst placed after the step it comes after; visible: the
+   non-hidden ones) and outside is the steps of no run, in the same order. Without
    case_stats (a session analyzed before the cases were written) the runs
    come from the steps' own case ids. */
 function buildRuns(stats, steps) {
@@ -211,13 +216,12 @@ function buildRuns(stats, steps) {
     // The marker label shows next to the title unless it only repeats it or
     // only numbers the run (the capture app labels runs "Run 1", "Run 2", ...).
     if (r.label && (r.label.toLowerCase() === r.title.toLowerCase() || numberOnlyLabel(r.label))) r.label = "";
-    r.members.sort(byStart);
+    r.members = StepOrder.processOrder(r.members);
     r.visible = r.members.filter((s) => s.state !== "hidden");
     r.hiddenCount = r.members.length - r.visible.length;
     r.status = runStatus(r.members);
   });
-  outside.sort(byStart);
-  return { runs, outside };
+  return { runs, outside: StepOrder.processOrder(outside) };
 }
 
 /* The run that holds a step's start (C9's rule as lane FX1 amended it, the

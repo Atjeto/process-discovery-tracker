@@ -43,6 +43,7 @@ const { DRAFT_STATES } = require("./runs-model.js");
 const StepFlow = require("./step-flow.js");
 const AC = require("./analyst-content.js");
 const { isBlankValue } = require("./step-facts.js");
+const StepOrder = require("./step-order.js");
 
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
 const ELLIPSIS = String.fromCharCode(0x2026);
@@ -506,11 +507,21 @@ function groupInto(root, transactions, path, tickedIds, opts) {
   }
 
   // Each group takes its first member's place; the members move into it.
+  // C22: in the process too: the place the first member was placed at is the
+  // group's, and a step placed after a member comes after the group.
   for (const x of made) {
+    const own = new Set(x.members.map((s) => s.step_id));
     const loc = SPM.findStep(root, x.members[0].step_id);
+    const level = loc ? loc.list : root;
+    const first = x.members[0];
+    if (typeof first.placed_after === "string" && first.placed_after && !own.has(first.placed_after)) {
+      x.group.placed_after = first.placed_after;
+    }
+    for (const s of x.members) if (typeof s.placed_after === "string" && !own.has(s.placed_after)) delete s.placed_after;
+    for (const s of level) if (s && !own.has(s.step_id) && own.has(s.placed_after)) s.placed_after = x.group.step_id;
     if (loc) loc.list.splice(loc.index, 0, x.group);
     else root.push(x.group);
-    SPM.removeSteps(root, new Set(x.members.map((s) => s.step_id)));
+    SPM.removeSteps(root, own);
     x.group.sub_steps = x.members;
   }
   return { groups: made.map((x) => x.group), ticked: (made.find((x) => x.ticked) || {}).group || null,
@@ -535,8 +546,11 @@ function groupCheck(transactions, path, tickedIds) {
   if (idx.some((i) => i < 0)) return { error: "hidden" };
   if (idx.length < 2) return { error: "few" };
   if (idx[idx.length - 1] - idx[0] !== idx.length - 1) return { error: "gap" };
+  if (_apart(place.visible.slice(idx[0], idx[idx.length - 1] + 1), place.visible)) return { error: "apart" };
   const nodes = new Set(ticked.map(mapNodeLabel));
-  // The ticked stretch, and every other stretch of the same kinds of steps.
+  // The ticked stretch, and every other stretch of the same kinds of steps
+  // (C22: not one that holds a step placed apart from the others on the
+  // timeline).
   const stretches = [];
   for (const pl of places) {
     const v = pl.visible;
@@ -547,15 +561,24 @@ function groupCheck(transactions, path, tickedIds) {
       if (!nodes.has(mapNodeLabel(v[i]))) { i++; continue; }
       let j = i;
       while (j + 1 < v.length && nodes.has(mapNodeLabel(v[j + 1])) && !(taken && j + 1 === taken[0])) j++;
-      stretches.push({ pl, a: i, b: j, ticked: false });
+      if (!_apart(v.slice(i, j + 1), v)) stretches.push({ pl, a: i, b: j, ticked: false });
       i = j + 1;
     }
   }
   return { stretches, groups: stretches.length, transactions: new Set(stretches.map((s) => s.pl.t)).size };
 }
 
+/* C22: whether `members` (one stretch of a place's visible steps) hold a
+   step the analyst placed elsewhere in the process while another step of
+   the place starts between them on the timeline: a group of them would run
+   over that step. */
+function _apart(members, visible) {
+  return members.length > 1 && members.some((s) => StepOrder.isPlaced(s, visible)) &&
+    !!StepOrder.apartOnTimeline(members, visible);
+}
+
 function _count(n, one, many) { return n + " " + (n === 1 ? one : many); }
-const _WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const _WORDS =["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 function _say(n) { return _WORDS[n] || String(n); }
 
 /* What Group into a sub-process will do, said before it is done (lane FX2,
@@ -699,7 +722,13 @@ function _dissolveGroup(anno, transactions, path, g) {
     }
     untimed.forEach((s, k) => { s.order = g.order + k; });
   }
+  // C22: its steps take its place in the process, where the analyst placed
+  // it too; a step placed after it comes after its last step.
+  const samePlace = (s) => s && s.state !== "hidden" && (loc.depth || (s.case_id || null) === (g.case_id || null));
+  const before = StepOrder.processOrder(loc.list.filter(samePlace));
   loc.list.splice(loc.list.indexOf(g), 1, ...subs);
+  const wanted = before.flatMap((s) => (s === g ? vis : [s]));
+  StepOrder.deriveOrder(loc.list.filter(samePlace), wanted);
 }
 
 /* Dissolve sub-process (C19), in every transaction, every occurrence of

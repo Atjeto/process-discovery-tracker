@@ -140,6 +140,22 @@ it is done; its button takes you to the next.
 4. Name the steps in Steps as you go, or afterwards. Ctrl+Z takes back a
    mark put in the wrong place.
 
+### Put a step where it belongs in the process
+
+1. Late in the video the SME corrects a step shown earlier, or adds a
+   condition or a step that belongs before: mark it where it is said, as
+   any other step (press S, or right-click and choose *Add a step here*).
+2. Right-click its band on the Timeline, or its row in Steps, and choose
+   *Place after a step...*, then pick the step it comes after, in its
+   transaction or in another one. In Steps, Alt+Up and Alt+Down move it one
+   step at a time.
+3. In the process, on the map and in the PDD it now comes after that step.
+   On the Timeline its band stays where it was said, with its video, and is
+   marked as placed elsewhere in the process; its row in Steps reads
+   *Placed*.
+4. *Back to its time*, in its menu, puts it where its time puts it again.
+   Ctrl+Z undoes a move.
+
 ### Add a step the recorder missed
 
 1. In Steps, select the step it comes after.
@@ -335,6 +351,7 @@ app.
 | Step | One piece of work in a transaction, for example *Create the sales order in SAP*. |
 | Reference transaction | The transaction you name, fix and confirm; the PDD is built around it. |
 | Sub-process | A step with steps of its own. |
+| Placed | A step you put elsewhere in the process than its time on the Timeline, for example a correction the SME gave later in the video. |
 | Process map | The map PDT draws from the steps. |
 | As-Is map | Your edited copy of the process map; the PDD prints it in its place. |
 | To-Be map | A copy you change to show the process as it should be. |

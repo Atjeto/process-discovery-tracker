@@ -1,5 +1,5 @@
 {
-  "about": "Contract C17 (step flow): the edges the process map draws from the transactions' step order plus the conditions and links the analyst sets on steps. Pinned for both renderers: the viewer's live map (viewer/process-map-levels.js) and the pipeline's step BPMN (normalization). A step is named here by its map node name; real data links by step_id. observed: the edge follows from the step order of at least one transaction. label: the analyst's condition text (only_when on the step the edge enters, or a link's when), 'otherwise' on the path around a conditional step, or null. Consecutive steps with one node are one visit, as on the map, so the previous step and the step after are the neighbouring visits; a path around a step between two visits of one node would join them into one visit and is not drawn. A condition set on a step holds for its node in every transaction. A hidden step is not on the map, and a link to it, to its own step or to no step draws nothing; a link without a when is an edge with no label. Lane FX1: a case with `excluded_ranges` gives `run_spans` (each transaction's start and end, in order) and steps with a `time_range`: each range cut to a transaction's span is a stretch left out of the analysis, which cuts that transaction's trace. A stretch falls between the steps as the differences place it (a step is before it when it starts before the stretch starts; a step without a time is after it), and no edge crosses it: not from the step before it to the step after it, not from the start into the first step after a stretch that opens the transaction, not from the last step before a stretch that closes it into the end. A step next to a cut has no previous step (or no step after it) on that side, so a condition labels no edge there.",
+  "about": "Contract C17 (step flow): the edges the process map draws from the transactions' step order plus the conditions and links the analyst sets on steps. Pinned for both renderers: the viewer's live map (viewer/process-map-levels.js) and the pipeline's step BPMN (normalization). A step is named here by its map node name; real data links by step_id. observed: the edge follows from the step order of at least one transaction. label: the analyst's condition text (only_when on the step the edge enters, or a link's when), 'otherwise' on the path around a conditional step, or null. Consecutive steps with one node are one visit, as on the map, so the previous step and the step after are the neighbouring visits; a path around a step between two visits of one node would join them into one visit and is not drawn. A condition set on a step holds for its node in every transaction. A hidden step is not on the map, and a link to it, to its own step or to no step draws nothing; a link without a when is an edge with no label. Lane FX1: a case with `excluded_ranges` gives `run_spans` (each transaction's start and end, in order) and steps with a `time_range`: each range cut to a transaction's span is a stretch left out of the analysis, which cuts that transaction's trace. A stretch falls between the steps as the differences place it (a step is before it when it starts before the stretch starts; a step without a time is after it), and no edge crosses it: not from the step before it to the step after it, not from the start into the first step after a stretch that opens the transaction, not from the last step before a stretch that closes it into the end. A step next to a cut has no previous step (or no step after it) on that side, so a condition labels no edge there. Contract C22: a step's `placed_after` names (here by its map node name) the step it comes after in its transaction, whatever its time (step-order.js, shared/step-order-golden.json); a placed step falls among the stretches where the step it was placed after does.",
   "cases": [
     {
       "name": "one transaction: a conditional step and a loop back",
@@ -276,6 +276,43 @@
         {"from": "C", "to": "D", "label": "X", "observed": true},
         {"from": "C", "to": "end", "label": "otherwise", "observed": false},
         {"from": "D", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "contract C22: a correction shown late in the video, placed after an earlier step, is drawn where it was placed, not where its time is",
+      "transactions": [
+        [
+          {"name": "Open", "time_range": {"start": "2026-05-14T09:00:10Z", "end": "2026-05-14T09:00:10Z"}},
+          {"name": "Check", "time_range": {"start": "2026-05-14T09:00:20Z", "end": "2026-05-14T09:00:20Z"}},
+          {"name": "Send", "time_range": {"start": "2026-05-14T09:00:30Z", "end": "2026-05-14T09:00:30Z"}},
+          {"name": "Approve", "time_range": {"start": "2026-05-14T09:01:40Z", "end": "2026-05-14T09:01:40Z"}, "placed_after": "Check"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "Open", "label": null, "observed": true},
+        {"from": "Open", "to": "Check", "label": null, "observed": true},
+        {"from": "Check", "to": "Approve", "label": null, "observed": true},
+        {"from": "Approve", "to": "Send", "label": null, "observed": true},
+        {"from": "Send", "to": "end", "label": null, "observed": true}
+      ]
+    },
+    {
+      "name": "contract C22 with lane FX1: a placed step counts at the step it was placed after when a stretch left out cuts the trace",
+      "excluded_ranges": [{"start": "2026-05-14T09:00:30Z", "end": "2026-05-14T09:00:35Z"}],
+      "run_spans": [{"start": "2026-05-14T09:00:00Z", "end": "2026-05-14T09:02:00Z"}],
+      "transactions": [
+        [
+          {"name": "Search", "time_range": {"start": "2026-05-14T09:00:10Z", "end": "2026-05-14T09:00:10Z"}},
+          {"name": "Open", "time_range": {"start": "2026-05-14T09:00:20Z", "end": "2026-05-14T09:00:20Z"}},
+          {"name": "Enter", "time_range": {"start": "2026-05-14T09:00:40Z", "end": "2026-05-14T09:00:40Z"}},
+          {"name": "Note", "time_range": {"start": "2026-05-14T09:01:50Z", "end": "2026-05-14T09:01:50Z"}, "placed_after": "Open"}
+        ]
+      ],
+      "expected_edges": [
+        {"from": "start", "to": "Search", "label": null, "observed": true},
+        {"from": "Search", "to": "Open", "label": null, "observed": true},
+        {"from": "Open", "to": "Note", "label": null, "observed": true},
+        {"from": "Enter", "to": "end", "label": null, "observed": true}
       ]
     }
   ]

@@ -669,3 +669,54 @@ def test_a_recorder_session_without_markers_still_has_no_runs(tmp_path):
     assert analysis["case_quality"]["mode"] == "unsegmented"
     assert analysis["coverage_caveat"] is None and "findings" not in analysis
     assert not (session / "process_map_step.bpmn").exists()
+
+
+# ---- contract C22: a step placed elsewhere in the process ------------------------
+
+def _place_late_correction(session: Path, after: str) -> None:
+    """The owner's report (2.0.5): in the video's second half the SME adds a
+    step that belongs early in the process; the analyst marks it where it is
+    said (3:00) and places it after an earlier step."""
+    anno = _read(session, "annotations.json")
+    anno["steps"].append(_hand_step(
+        "v4", "Approve the order", placed_after=after,
+        time_range={"start": "2026-09-24T10:03:00Z", "end": "2026-09-24T10:03:20Z"}))
+    _write(session, "annotations.json", anno)
+
+
+def test_a_step_placed_after_an_earlier_step_is_there_in_the_map_the_pdd_and_the_stats(tmp_path):
+    session = _video_session(tmp_path / "video")
+    _place_late_correction(session, "v2")
+    pdd = tmp_path / "video.docx"
+    proc = _normalize_cli(session, pdd)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+
+    order = ["Open the order", "Check the stock", "Approve the order", "Confirm the order"]
+    steps = {s["step_id"]: s for s in _read(session, "annotations.json")["steps"]}
+    # The placement and the time both survive the analysis: the step stays
+    # where it was shown and where it was placed.
+    assert steps["v4"]["placed_after"] == "v2"
+    assert steps["v4"]["time_range"]["start"] == "2026-09-24T10:03:00Z"
+    assert steps["v4"]["case_id"] == implicit_id(VIDEO_SID)
+    assert _read(session, "stats.json")["step_variants"][0]["variant"] == order
+    assert _chain(session / "process_map_step.bpmn") == order
+    blocks = _pdd(pdd)
+    assert [t for k, t in blocks if k == "Heading 3"] == [
+        f"Step {i}: {name}" for i, name in enumerate(order, start=1)]
+
+
+def test_a_step_placed_into_another_transaction_belongs_to_it_after_the_markers_apply(tmp_path):
+    session = _video_session(tmp_path / "video", markers=True)
+    # Its time (3:00) is in Order 2; it is placed after Order 1's first step.
+    _place_late_correction(session, "v1")
+    pdd = tmp_path / "video.docx"
+    proc = _normalize_cli(session, pdd)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+
+    run1 = str(uuid.uuid5(CASE_NS, f"{VIDEO_SID}:insert-m1"))
+    run2 = str(uuid.uuid5(CASE_NS, f"{VIDEO_SID}:insert-m2"))
+    steps = {s["step_id"]: s["case_id"] for s in _read(session, "annotations.json")["steps"]}
+    assert steps == {"v1": run1, "v2": run1, "v3": run2, "v4": run1}
+    variants = [v["variant"] for v in _read(session, "stats.json")["step_variants"]]
+    assert ["Open the order", "Approve the order", "Check the stock"] in variants
+    assert ["Confirm the order"] in variants

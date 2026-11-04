@@ -831,7 +831,7 @@ function zipFiles(buf) {
   } catch (x) { j2.err = errText(x); }
   record("(j2) 2.0.1: right-click the Timeline, Add a step here adds a step; a step band's right-click marks there first (Add a step here: steps are added one after another, on the band of the one before), then, under the step's name, Open in Steps and Delete step, which deletes it (asked first); a band click then Steps shows that step selected",
     !j2.err && j2.added && j2.items.includes("Add a step here") && j2.head === newestName &&
-      JSON.stringify(j2.items.slice(-3)) === JSON.stringify(["Open in Steps", "Select + seek here", "Delete step"]) &&
+      JSON.stringify(j2.items.slice(-4)) === JSON.stringify(["Open in Steps", "Select + seek here", "Place after a step…", "Delete step"]) &&
       j2.deleted && j2.shown, JSON.stringify(j2));
 
   // (k) A frame of the video as a screenshot of the first step.
@@ -1072,7 +1072,7 @@ function zipFiles(buf) {
   record("(o) C17 + 2.0.1: four steps added by hand; each step's Flow line is one line naming the step after it, with Only when and Decision",
     !o.err && o.panes.length === 4 &&
       JSON.stringify(o.panes.map((q) => q && q.line)) === JSON.stringify(["Then: " + FN[1], "Then: " + FN[2], "Then: " + FN[3], "Then: the end"]) &&
-      o.panes.every((q) => q && !q.cond && !q.rows.length && JSON.stringify(q.acts) === JSON.stringify(["Only when…", "Decision…"])),
+      o.panes.every((q) => q && !q.cond && !q.rows.length && JSON.stringify(q.acts) === JSON.stringify(["Only when…", "Decision…", "Place after…"])),
     JSON.stringify(o));
 
   let p = {};

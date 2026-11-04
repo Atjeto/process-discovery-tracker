@@ -33,6 +33,7 @@ const RunsModel = require("../runs-model.js");
 const { numberOnlyLabel } = RunsModel;
 const { isoMs } = require("../run-differences.js");
 const SPM = require("../sub-process-maps.js");
+const StepOrder = require("../step-order.js");
 const RO = require("../read-only.js");
 const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
@@ -538,10 +539,29 @@ function _showStepBandMenu(x, y, stepId, ts, at, name) {
   const hit = stepId && sess && !RO.isReadOnly(sess)
     ? SPM.findStep((sess.annotations && sess.annotations.steps) || [], stepId) : null;
   if (hit && hit.step.state !== "hidden") {
+    // C22 (2.0.5, the owner's report): a correction the SME shows late in the
+    // video belongs earlier in the process; its band stays here.
+    addItem("Place after a step…", () => require("./steps-view.js").placeStepAfterAction(stepId));
+    if (placedLine(hit.step)) addItem("Back to its time", () => require("./steps-view.js").backToTimeAction(stepId));
     addItem(hit.step.state === "manually_authored" ? "Delete step" : "Hide step",
       () => require("./steps-view.js").deleteStep(stepId));
   }
   showMarkerInsertMenu(x, y, at || ts, { title: name || "This step", items });
+}
+
+/* C22: the line a step placed elsewhere in the process than its time puts
+   it says on its band ("In the process: after "Check the stock". Here: where
+   it was shown."), "" for a step its time places. */
+function placedLine(step) {
+  const sess = State.getSession();
+  const hit = step && sess ? SPM.findStep((sess.annotations && sess.annotations.steps) || [], step.step_id) : null;
+  if (!hit || step.placed_after == null) return "";
+  const key = (s) => (s && typeof s.case_id === "string" && s.case_id ? s.case_id : null);
+  const list = hit.list.filter((s) => s && s.state !== "hidden" && (hit.depth || key(s) === key(step)));
+  const a = StepOrder.anchorOf(step, list);
+  if (!a) return "";
+  return "In the process: " + (a === StepOrder.START ? "first in its transaction"
+    : 'after "' + (String(a.name || "").trim() || "a step") + '"') + ". Here on the Timeline: where it was shown.";
 }
 
 /* A small context menu at (x, y): items = [[label, act], ...] (the notes
@@ -865,6 +885,8 @@ function renderTimeline() {
   // The steps lane shows the steps as they are: one band per visible step of
   // the level the Steps list shows (C19), named as in the Steps list.
   const _anno = (State.getSession().annotations) || {};
+  // C22: how many bands of steps placed elsewhere in the process are drawn.
+  let placedDrawn = 0;
   const _level = stepsForLevel(State.getSession());
   const _stepsForLane = _level.steps.map((s) => ({
     label: s.name || s.step_id || "", step_id: s.step_id, time_range: s.time_range, step: s,
@@ -1353,7 +1375,10 @@ function renderTimeline() {
         const w = Math.max(0.2, ((sEnd - sStart) / span) * 100);
         const band = document.createElement("div");
         const open = isOpenBand(s, bandSpan);
-        band.className = "tl-step-band" + (open ? " open" : "");
+        // C22: a step placed elsewhere in the process than its time puts it.
+        const placed = placedLine(s.step);
+        if (placed) placedDrawn++;
+        band.className = "tl-step-band" + (open ? " open" : "") + (placed ? " placed" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = stepsLaneTop + "px";
@@ -1362,7 +1387,8 @@ function renderTimeline() {
         const movable = editable && AC.stepTimeMovable(s.step);
         band.title = lbl + " · " + (open ? "open: it ends where you add the next step, or where its transaction ends"
           : formatDuration(sEnd - sStart)) +
-          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: add the next step here, or Open in Steps, Hide or Delete" +
+          (placed ? "\n" + placed : "") +
+          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: add the next step here, or Open in Steps, Place after a step, Hide or Delete" +
           (movable ? "\nDrag its " + (open ? "start" : "start or its end") + " to change its time." : "");
         if (s.step_id) band.dataset.stepId = s.step_id;
         // 2.0.3: a step whose time is the analyst's drags its sides; a step
@@ -1463,6 +1489,7 @@ function renderTimeline() {
     ".lg-screenshot": !!lanes.screenshots && shotMarks.length > 0,
     ".lg-note": notesH > 0,
     ".lg-left-out": leftOut.length > 0 || appsLeftOut > 0,
+    ".lg-placed": placedDrawn > 0,
   };
   for (const [sel, on] of Object.entries(legendShows)) {
     const el = document.querySelector("#timeline-legend " + sel);

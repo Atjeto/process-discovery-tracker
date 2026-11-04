@@ -51,8 +51,8 @@
 
 "use strict";
 
-const { $, escapeHtml, escapeAttr, cryptoRandomId, toast, placeMenu, recordingStartMs } = require("../dom.js");
-const { confirmModal, promptModal } = require("../modals.js");
+const { $, escapeHtml, escapeAttr, cryptoRandomId, toast, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
+const { confirmModal, promptModal, chooseModal } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
 const PdtSteps = require("../step-editor.js");
@@ -75,6 +75,7 @@ const Library = require("../library.js");
 const TE = require("../time-edits.js");
 const MarkerEdits = require("../marker-edits.js");
 const FlowMarkers = require("./flow-view-markers.js");
+const StepOrder = require("../step-order.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -144,6 +145,71 @@ function _findStep(stepId) {
 function _locate(stepId) {
   const s = State.getSession();
   return SPM.findStep((s && s.annotations && s.annotations.steps) || [], stepId);
+}
+
+/* ===== A step's place in the process (contract C22, 2.0.5) ================
+   The owner: a correction the SME shows late in a video belongs early in
+   the process. A step's place in its transaction is its own
+   (step.placed_after, step-order.js); its time stays where it was shown. */
+
+function _caseKey(s) { return s && typeof s.case_id === "string" && s.case_id ? s.case_id : null; }
+
+/* The place a step's order is kept in: its level's list (annotations.steps,
+   or the sub_steps of its parent) and that list's visible steps that share
+   its transaction (at the main level; a sub-step shares its parent's), in
+   the list's order. null for a step not found. */
+function _placeOf(stepId) {
+  const loc = _locate(stepId);
+  if (!loc) return null;
+  const key = _caseKey(loc.step);
+  const same = (s) => s && s.state !== "hidden" && (loc.depth || _caseKey(s) === key);
+  return { loc, main: !loc.depth, steps: loc.list.filter(same), same };
+}
+
+/* Whether a step may go by its time again (deriveOrder's canBeFree): at the
+   main level, a timed step whose start lies in its own transaction (C9's
+   rule, runForRange); a step without a time, or below the main level, may. */
+function _canBeFree(main, runs) {
+  return (s) => {
+    if (!main || !AC.hasTime(s)) return true;
+    const r = RunsModel.runForRange(runs, Date.parse(s.time_range.start));
+    return (r ? r.caseId : null) === _caseKey(s);
+  };
+}
+
+/* The steps that came after `ids` keep their place while those leave it
+   (hidden, deleted, merged away): each place they leave is kept. Call it
+   before the steps change. Marks the steps whose place changed as the
+   analyst's. */
+function _handOver(ids) {
+  const runs = _model().runs;
+  const done = new Set();
+  for (const id of ids || []) {
+    const p = _placeOf(id);
+    if (!p) continue;
+    const key = (p.main ? "main:" + _caseKey(p.loc.step) : "sub:") + (p.main ? "" : String(p.loc.parent && p.loc.parent.step_id));
+    if (done.has(key)) continue;
+    done.add(key);
+    const gone = (ids || []).filter((x) => p.steps.some((s) => s.step_id === x));
+    for (const s of StepOrder.keepOrder(p.steps, gone, { canBeFree: _canBeFree(p.main, runs) })) AC.markEdited(s);
+  }
+}
+
+/* The name a step goes by in a sentence. */
+function _quoted(step) { return '"' + (String((step && step.name) || "").trim() || "this step") + '"'; }
+
+/* What a placed step's mark says (the Steps row's tag, the Flow line, the
+   Timeline band): where it comes in the process and where it stays on the
+   timeline. "" for a step its time places, and for a step without a time
+   (it has no time to be apart from: + Add step puts it after the selected
+   step). */
+function placedText(step, list) {
+  const a = AC.hasTime(step) ? StepOrder.anchorOf(step, list) : null;
+  if (!a) return "";
+  const where = a === StepOrder.START ? "first in its transaction" : "after " + _quoted(a);
+  const at = AC.hasTime(step) ? sinceStart(step.time_range.start, recordingStartMs(State.getSession())) : "";
+  return "You placed this step in the process " + where + "." +
+    (at ? " On the timeline it stays at " + at + ", where it was shown." : "");
 }
 
 /* ===== The level shown (contract C19) ==================================== */
@@ -350,7 +416,8 @@ function _runDiffs(ref, run) {
   if (ref.kind === "pattern" && run.caseId === ref.caseId) {
     return leftOut.length ? [{ kind: "left_out", text: RunDiff.leftOutText(leftOut, originMs, RunDiff.RUN_UNIT) }] : null;
   }
-  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT, leftOut, originMs });
+  return RunDiff.differences(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT, leftOut, originMs,
+    at: leftOut.length ? StepOrder.placeMoments(run.visible) : undefined });
 }
 
 /* A run's meta, its differences counted (not the left-out line, nor a Not
@@ -387,8 +454,9 @@ function _appendDiffLists(body, after, diffs) {
    nothing (run-differences.js rowMarks). */
 function _rowMarks(ref, run) {
   if (!ref || (ref.kind === "pattern" && run.caseId === ref.caseId)) return null;
+  const leftOut = _leftOut(run);
   return RunDiff.rowMarks(ref.steps, run.visible, { reference: ref.noun, unit: RunDiff.RUN_UNIT,
-    leftOut: _leftOut(run), originMs: recordingStartMs(State.getSession()) });
+    leftOut, originMs: recordingStartMs(State.getSession()), at: leftOut.length ? StepOrder.placeMoments(run.visible) : undefined });
 }
 
 /* ===== The Steps level ================================================== */
@@ -883,8 +951,23 @@ function _groupBody(visible, hiddenCount, emptyText, baseline, rm) {
       // 2.0.1: the differences from the reference, where they happen.
       marks: rm ? rm.marks : null,
       ghosts: rm ? rm.ghosts : null,
+      // C22: the steps placed elsewhere in the process than their time.
+      placed: _placedMap(visible),
     });
   return body;
+}
+
+/* C22: { step id => what its mark says } for the rows of steps placed
+   elsewhere in the process than their time puts them. */
+function _placedMap(rows) {
+  const out = new Map();
+  for (const s of rows || []) {
+    if (!s || s.state === "hidden" || s.placed_after == null) continue;
+    const p = _placeOf(s.step_id);
+    const text = p ? placedText(s, p.steps) : "";
+    if (text) out.set(s.step_id, text + " Back to its time, in its menu, puts it there again.");
+  }
+  return out;
 }
 
 function _runGroupEl(run, model, pattern, visible, stats, ref) {
@@ -1191,6 +1274,9 @@ function stepDetailCallbacks(selected, interactionsById) {
     onFlowLinkTarget: (id, i, to) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkTarget(s, i, to)),
     onFlowLinkWhen: (id, i, when) => _flowEdit(id, "change a link", (s) => StepFlow.setLinkWhen(s, i, when)),
     onFlowRemoveLink: (id, i) => _flowEdit(id, "remove a link", (s) => StepFlow.removeLink(s, i)),
+    // C22: its place in the process.
+    onPlaceAfter: (id) => placeStepAfterAction(id),
+    onBackToTime: (id) => backToTimeAction(id),
     // C19: a sub-process has no scissors (its steps are split, inside it).
     subProcess: SPM.isSubProcess(selected)
       ? { count: selected.sub_steps.filter((x) => x && x.state !== "hidden").length, group: selected.group === true } : null,
@@ -1314,7 +1400,18 @@ function _flowFor(step) {
     })),
     choices: StepFlow.linkChoices(list, step, [...others].map(([value, name]) => ({ value, name }))),
     next: StepFlow.nextLine(list, step),
+    // C22: where it comes in the process when that is not where its time
+    // puts it, and the way back; read only offers neither.
+    ..._placeLine(step),
   };
+}
+
+/* The Flow line's part on the step's place in the process (C22). */
+function _placeLine(step) {
+  const ro = RO.isReadOnly(State.getSession());
+  const p = _placeOf(step.step_id);
+  const text = p ? placedText(step, p.steps) : "";
+  return { placed: text, canBack: !ro && !!text && AC.hasTime(step), canPlace: !ro && step.state !== "hidden" };
 }
 
 /* The process's steps (one per map box) that the transaction `list` did
@@ -1563,6 +1660,8 @@ async function deleteStep(stepId) {
   const loc = _locate(stepId);
   const back = loc && !loc.parent && AC.stepTimeMovable(step)
     ? TE.handBack(_mainSpans(anno.steps, (s) => AC.stepTimeMovable(s)), _span(step), _markerMoments()) : null;
+  // C22: the steps placed after it keep their place.
+  _handOver([stepId]);
   SPM.removeSteps(anno.steps, [stepId]);
   if (back) {
     const prev = anno.steps.find((s) => s && s.step_id === back.id);
@@ -1600,6 +1699,9 @@ async function toggleStepHidden(stepId) {
   } else {
     const f = _removalFix(step.state);
     if (counts) RunsModel.recordFix(anno, runs, step.case_id, f.kind, f.delta);
+    // C22: a hidden step is no step another comes after: the steps placed
+    // after it keep their place.
+    _handOver([stepId]);
     step._prev_state = step.state;
     step.state = "hidden";
     // C17: the links that went to it go too, in the same edit.
@@ -1639,6 +1741,7 @@ async function hideInAllRuns(stepId) {
   if (!step || step.state !== "hidden" || !p.run || step.case_id !== p.run.caseId) return;
   const others = RunsModel.sameKeyDraftsElsewhere(model, p.run.caseId, step.draft_key);
   if (!others.length) return;
+  _handOver(others.map((s) => s.step_id));
   RunsModel.hideSteps(others);
   const dropped = StepFlow.dropLinksTo(anno.steps, others.map((s) => s.step_id)).length;
   await persistAnnotations(anno, "hide in all transactions");
@@ -1693,6 +1796,7 @@ async function splitStep(stepId, after) {
   // C17: the condition stays with the first half, the links leave the second.
   StepFlow.splitFlow(first, second);
   loc.list.splice(loc.list.indexOf(s), 1, first, second);
+  _splitPlace(first, second, true);   // C22
   await persistAnnotations(anno, 'split step');
   toast("Step split", "success");
 }
@@ -1766,6 +1870,10 @@ async function addStepAtTimestamp(tsISO) {
     if (own) second.case_id = runAt(t, own.after.endMs);
     StepFlow.splitFlow(first, second);   // C17, as in splitStep
     place.list.splice(place.index, 1, first, second);
+    // C22: a step of the analyst's cut here is the step being marked and
+    // the new one the next step, which its time places; a recorded step's two
+    // parts are one step's, the second right after the first.
+    _splitPlace(first, second, !own);
     await persistAnnotations(anno, "Add step at playhead");
     toast('Added "' + newName + '"' + (place.parent ? ' inside "' + (place.parent.name || "") + '"' : ""), "success");
     return;
@@ -1814,6 +1922,21 @@ async function addStepAtTimestamp(tsISO) {
   toast('Added "' + newName + '"', "success");
 }
 
+/* C22: the place in the process of a step split in two (`first` keeps its
+   step_id). `together`: the parts are one step's (a split at a recorded
+   action), so the second comes right after the first and a step placed
+   after the step comes after both; else (a new step marked inside a step of
+   the analyst's, the owner's sequential marking) the new part is the next
+   step, which its time places. */
+function _splitPlace(first, second, together) {
+  delete second.placed_after;
+  if (!together) return;
+  const p = _placeOf(first.step_id);
+  if (!p) return;
+  for (const s of p.loc.list) if (s && s !== second && s.placed_after === first.step_id) s.placed_after = second.step_id;
+  if (StepOrder.isPlaced(first, p.steps)) second.placed_after = first.step_id;
+}
+
 /* 2.0.3 (a process manager's report): a step's start or end dragged on the
    Timeline or typed in Steps, and with it the side of a step back to back
    with it. `changes` = [{ stepId, startMs, endMs, place }], each a step no
@@ -1840,13 +1963,16 @@ async function setStepTimes(changes) {
     s.time_range = { start: new Date(c.startMs).toISOString(), end: new Date(c.endMs).toISOString() };
     // A step with a time is ordered by it, not by the place it had without one.
     if (c.place) delete s.order;
-    // A sub-step keeps its parent's transaction (C19).
-    if (!hit.parent) {
+    // A sub-step keeps its parent's transaction (C19). C22: a step placed
+    // after another stays in that one's transaction.
+    if (!hit.parent && !StepOrder.isPlaced(s, (_placeOf(s.step_id) || {}).steps || [])) {
       const run = RunsModel.runForRange(runs, c.startMs);
       s.case_id = run ? run.caseId : null;
     }
     AC.markEdited(s);
   }
+  // C22: the steps placed after a step that changed transaction go with it.
+  StepOrder.followTransaction(anno.steps);
   try { await persistAnnotations(anno, "change the step's time"); } catch (_) { return false; }   // already shown
   return true;
 }
@@ -2290,6 +2416,12 @@ async function commitMerge(anno, toMerge, undoLabel) {
   }
   const idMap = new Map([...mergedIds].map((id) => [id, merged.step_id]));
   const carriedRuns = main ? _carryMerge(anno, model.runs, model, merged, idMap) : 0;
+  // C22: a step placed after a merged step comes after the step it became
+  // part of.
+  for (const st of SPM.allSteps(anno.steps)) {
+    if (typeof st.placed_after === "string" && idMap.has(st.placed_after)) st.placed_after = idMap.get(st.placed_after);
+    if (st.placed_after && st.placed_after === st.step_id) delete st.placed_after;
+  }
   // C17: a link to a merged step goes to the step it became part of; one
   // between two steps of the same merge would point at its own step, so it
   // goes.
@@ -2297,6 +2429,19 @@ async function commitMerge(anno, toMerge, undoLabel) {
   State.setSelectedStepId(merged.step_id);
   await persistAnnotations(anno, undoLabel);
   return { merged, carriedRuns, selfLinks };
+}
+
+/* C22: why steps cannot be merged, "" when they can: one of them was placed
+   elsewhere in the process and another step lies between them on the
+   timeline, where a merged step runs from the first one's start to the last
+   one's end. */
+function _mergeApart(members) {
+  const p = members[0] && _placeOf(members[0].step_id);
+  if (!p || !members.some((m) => StepOrder.isPlaced(m, p.steps))) return "";
+  const x = StepOrder.apartOnTimeline(members, p.steps);
+  return x ? "These steps are apart on the Timeline (" + _quoted(x) + " lies between them), and a merged step runs from the " +
+    "first one's start to the last one's end there. Put the step you placed elsewhere back to its time first, or copy what " +
+    "it says into the other step's Description." : "";
 }
 
 /* The one-line toast of a merge that carried to other runs (item 2). */
@@ -2324,6 +2469,8 @@ async function mergeStepWithNext(stepId) {
   if (!next) { toast("This is the last step of its transaction: there is no next step to merge with.", "error"); return; }
   if (SPM.isSubProcess(step) || SPM.isSubProcess(next)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
   const toMerge = [step, next];
+  const apart = _mergeApart(toMerge);
+  if (apart) { toast(apart, "error"); return; }
   const firstCount = ((step.evidence && step.evidence.interaction_event_ids) || []).length;
   const r = await commitMerge(anno, toMerge, 'merge step with next');
   if (r && r.merged && firstCount) {
@@ -2352,6 +2499,12 @@ async function mergeSelectedSteps() {
     return;
   }
   if (toMerge.some(SPM.isSubProcess)) { toast(SUBPROCESS_NO_MERGE, "error"); return; }
+  // C22: in their process order, and never across the steps between them on
+  // the timeline when one was placed elsewhere.
+  const block = _containerNow(toMerge[0].step_id);
+  if (block) toMerge.splice(0, toMerge.length, ...block.members.filter((s) => multi.has(s.step_id)));
+  const apart = _mergeApart(toMerge);
+  if (apart) { toast(apart, "error"); return; }
   const r = await commitMerge(anno, toMerge, 'merge selected steps');
   multi.clear();
   syncMultiSelectButtons();
@@ -2403,7 +2556,9 @@ function _removalSplit(ids) {
    as measured). It goes into the open run (else the implicit run of a
    session without a recording, else outside the runs), right after the
    selected step, or at the end; its `order` places it among the run's steps
-   without a time. The Timeline's + Step places one at the video playhead. */
+   without a time, and (C22, 2.0.5) after a selected step that has a time it
+   is placed right after that step, not after every step with a time. The
+   Timeline's + Step places one at the video playhead. */
 async function addManualStep() {
   if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
   const name = await promptModal({ title: "Add step", message: "Name this step", placeholder: "For example: Search customer in CRM", okLabel: "Add step" });
@@ -2416,9 +2571,11 @@ async function addManualStep() {
   const caseId = open ? open.caseId : _ui.open === OUTSIDE ? null : AC.implicitRunId(State.getSession().stats);
   const members = caseId ? ((model.runs.find((r) => r.caseId === caseId) || {}).members || []) : model.outside;
   const step = makeStep(name.trim(), null, null, [], caseId);
-  AC.placeUntimed(members, step, members.find((s) => s.step_id === State.getSelectedStepId()) || null);
+  const after = members.find((s) => s.step_id === State.getSelectedStepId()) || null;
+  AC.placeUntimed(members, step, after);
   RunsModel.recordFix(anno, model.runs, caseId, "add");
   anno.steps.push(step);
+  _placeNewAfter(step, after);
   if (caseId && _ui.open !== caseId) _openGroup(caseId);
   State.setSelectedStepId(step.step_id);
   await persistAnnotations(anno, 'add step');
@@ -2440,31 +2597,74 @@ function _addSubStep(anno, model, path, name) {
   const step = makeStep(name, null, null, [], parent.case_id != null ? parent.case_id : null);
   AC.placeUntimed(parent.sub_steps, step, selLoc ? selLoc.step : null);
   parent.sub_steps.push(step);
+  _placeNewAfter(step, selLoc ? selLoc.step : null);
   _ui.levelOpen = c.key;
   State.setSelectedStepId(step.step_id);
   return step;
 }
 
-/* Move a step without a time up (-1) or down (+1) in its run (the step menu,
-   Alt+Up and Alt+Down): its `order` and its neighbours' are written again.
-   A step with a time keeps its place (its time orders it). */
+/* C22: a step added without a time right after `after`, when `after` is
+   ordered by a time or a placement (a step without one follows the steps
+   without a time by its `order`): it is placed there. */
+function _placeNewAfter(step, after) {
+  if (!after || after.state === "hidden") return;
+  const p = _placeOf(step.step_id);
+  if (!p || !p.steps.includes(after)) return;
+  if (!AC.hasTime(after) && !StepOrder.isPlaced(after, p.steps)) return;
+  const order = StepOrder.processOrder(p.steps).filter((s) => s !== step);
+  order.splice(order.indexOf(after) + 1, 0, step);
+  StepOrder.deriveOrder(p.steps, order, { moved: step, canBeFree: _canBeFree(p.main, _model().runs) });
+}
+
+/* Move a step up (-1) or down (+1) among the steps its list shows (the step
+   menu, Alt+Up and Alt+Down). Two steps without a time swap their `order`, as
+   they always did; any other move is a move in the process (C22, 2.0.5: the
+   owner's report, a correction the SME shows late in a video belongs early
+   in the process): the step takes its new place there, and its band, its
+   video and its time stay where they are on the Timeline. The fewest
+   placements give the new order (step-order.js deriveOrder): a step moved
+   back where its time puts it is no longer placed. */
 async function moveStep(stepId, delta) {
-  if (!State.getSession()) return false;
-  const anno = ensureAnnoShape(State.getSession().annotations);
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return false;
+  const anno = ensureAnnoShape(sess.annotations);
   const loc = _locate(stepId);
   const step = loc && loc.step;
   if (!step) return false;
+  if (step.state === "hidden") { toast("A hidden step has no place in the process: unhide it first."); return false; }
   const model = _model();
   const key = RunsModel.groupKeyOf(step, model.runs);
   // C19: below the main level a step moves in the list that holds it.
   const members = loc.depth ? loc.list
     : key === OUTSIDE ? model.outside : (model.runs.find((r) => r.caseId === key) || {}).members;
-  if (!AC.moveUntimed(members || [], step, delta, (s) => _ui.showHidden || s.state !== "hidden")) {
-    toast(AC.hasTime(step) ? "A step with a time keeps its place: its time orders it."
-      : delta < 0 ? "It cannot move further up." : "It cannot move further down.");
+  const p = _placeOf(stepId);
+  const order = StepOrder.processOrder(p.steps);
+  const i = order.indexOf(step), j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) {
+    toast(delta < 0 ? "It cannot move further up: it is first." : "It cannot move further down: it is last.");
     return false;
   }
-  await persistAnnotations(anno, delta < 0 ? "move step up" : "move step down");
+  const other = order[j];
+  const wasPlaced = StepOrder.isPlaced(step, p.steps);
+  if (!AC.hasTime(step) && !AC.hasTime(other) && !wasPlaced && !StepOrder.isPlaced(other, p.steps)) {
+    if (!AC.moveUntimed(members || [], step, delta, (s) => _ui.showHidden || s.state !== "hidden")) {
+      toast(delta < 0 ? "It cannot move further up." : "It cannot move further down.");
+      return false;
+    }
+  } else {
+    const wanted = order.slice();
+    wanted.splice(i, 1);
+    wanted.splice(j, 0, step);
+    for (const s of StepOrder.deriveOrder(p.steps, wanted, { moved: step, canBeFree: _canBeFree(p.main, model.runs) })) AC.markEdited(s);
+  }
+  try { await persistAnnotations(anno, delta < 0 ? "move step up" : "move step down"); } catch (_) { return false; }
+  // The first move that takes a timed step away from its time says where
+  // it stays.
+  const now = _placeOf(stepId);
+  if (now && !wasPlaced && AC.hasTime(step) && StepOrder.isPlaced(step, now.steps)) {
+    toast("Moved in the process: on the Timeline it stays at " + sinceStart(step.time_range.start, recordingStartMs(sess)) +
+      ", where it was shown. Back to its time, in its menu, puts it there again.", "success");
+  }
   return true;
 }
 
@@ -2474,8 +2674,132 @@ function moveSelectedStep(delta) {
   const sid = visibleSelectedStepId();
   if (!sid) return false;
   const step = _findStep(sid);
-  if (!step || AC.hasTime(step)) return false;
+  if (!step) return false;
   moveStep(sid, delta);
+  return true;
+}
+
+/* The steps a step can be placed after (Place after a step...): at the main
+   level each transaction's visible steps in their process order, its own
+   transaction first, each list opened by "First in <transaction>"; below
+   it, the steps of its own list. The step itself is left out. Groups for
+   chooseModal: values "after:<step_id>" and "first:<case_id>". */
+function _placeChoices(step) {
+  const p = _placeOf(step.step_id);
+  if (!p) return [];
+  const origin = recordingStartMs(State.getSession());
+  const item = (s, n) => ({ value: "after:" + s.step_id,
+    label: n + ". " + (String(s.name || "").trim() || "(unnamed step)") + (AC.hasTime(s) ? " (" + sinceStart(s.time_range.start, origin) + ")" : ""),
+    title: "Comes after this step" });
+  if (!p.main) {
+    const list = StepOrder.processOrder(p.steps);
+    return [{ label: "In this sub-process", items: [{ value: "first:", label: "First in this sub-process" }]
+      .concat(list.map((s, i) => [s, i + 1]).filter(([s]) => s !== step).map(([s, n]) => item(s, n))) }];
+  }
+  const runs = _model().runs;
+  const own = runs.find((r) => r.caseId === _caseKey(step));
+  const ordered = own ? [own].concat(runs.filter((r) => r !== own)) : runs;
+  return ordered.map((r) => ({
+    label: r.title + (r.label ? " · " + r.label : ""),
+    items: [{ value: "first:" + r.caseId, label: "First in " + r.title }]
+      .concat(r.visible.map((s, i) => [s, i + 1]).filter(([s]) => s !== step).map(([s, n]) => item(s, n))),
+  }));
+}
+
+/* "Place after a step..." (C22, the step menu in Steps and on the
+   Timeline, and the Flow line): the step comes right after the step chosen,
+   in that step's transaction, or first in a transaction; its band and its
+   time stay where they are on the Timeline. One undoable edit. */
+async function placeStepAfterAction(stepId) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return false;
+  const step = _findStep(stepId);
+  if (!step) return false;
+  if (step.state === "hidden") { toast("A hidden step has no place in the process: unhide it first."); return false; }
+  const p = _placeOf(stepId);
+  const a = StepOrder.anchorOf(step, p.steps);
+  const current = a === StepOrder.START ? "first:" + (p.main ? _caseKey(step) || "" : "")
+    : a ? "after:" + a.step_id : (() => {
+      const order = StepOrder.processOrder(p.steps), i = order.indexOf(step);
+      return i > 0 ? "after:" + order[i - 1].step_id : "first:" + (p.main ? _caseKey(step) || "" : "");
+    })();
+  const at = AC.hasTime(step) ? sinceStart(step.time_range.start, recordingStartMs(sess)) : "";
+  const choice = await chooseModal({
+    title: "Place after a step",
+    message: "In the process, " + _quoted(step) + " comes right after the step you choose." +
+      (at ? " On the Timeline it stays at " + at + ", where it was shown." : ""),
+    detail: "Choose a step of another transaction to move it there. Ctrl+Z undoes it.",
+    listLabel: "The step it comes after",
+    groups: _placeChoices(step), value: current, okLabel: "Place here",
+  });
+  if (!choice || !State.getSession()) return false;
+  return placeStepAt(stepId, choice);
+}
+
+/* The step `stepId` placed where `choice` says ("after:<step_id>" or
+   "first:<case_id>"). Exported for the Timeline's menu. */
+async function placeStepAt(stepId, choice) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return false;
+  const anno = ensureAnnoShape(sess.annotations);
+  const step = _findStep(stepId);
+  const p = step && _placeOf(stepId);
+  if (!p) return false;
+  const m = /^(after|first):(.*)$/.exec(String(choice || ""));
+  if (!m) return false;
+  const anchor = m[1] === "after" ? _findStep(m[2]) : null;
+  if (m[1] === "after" && (!anchor || anchor === step)) return false;
+  const runs = _model().runs;
+  const caseTo = !p.main ? _caseKey(step) : anchor ? _caseKey(anchor) : (m[2] || null);
+  if (p.main && caseTo !== _caseKey(step)) {
+    // It leaves its transaction: the steps after it there keep their place.
+    for (const s of StepOrder.keepOrder(p.steps, [step.step_id], { canBeFree: _canBeFree(true, runs) })) AC.markEdited(s);
+    step.case_id = caseTo;
+  }
+  const q = _placeOf(stepId);
+  const order = StepOrder.processOrder(q.steps).filter((s) => s !== step);
+  const k = anchor ? order.indexOf(anchor) + 1 : 0;
+  if (anchor && k === 0) return false;
+  order.splice(k, 0, step);
+  for (const s of StepOrder.deriveOrder(q.steps, order, { moved: step, canBeFree: _canBeFree(q.main, runs) })) AC.markEdited(s);
+  AC.markEdited(step);
+  if (p.main) {
+    const run = runs.find((r) => r.caseId === caseTo);
+    if (caseTo && _ui.open !== caseTo && run) _openGroup(caseTo);
+  }
+  State.setSelectedStepId(step.step_id);
+  try { await persistAnnotations(anno, "place the step"); } catch (_) { return false; }
+  const where = anchor ? "after " + _quoted(anchor) : "first in its transaction";
+  const at = AC.hasTime(step) ? sinceStart(step.time_range.start, recordingStartMs(sess)) : "";
+  toast("Placed " + where + (at ? ". On the Timeline it stays at " + at + "." : ".") + " Ctrl+Z undoes it.", "success");
+  return true;
+}
+
+/* "Back to its time" (C22), the inverse of a move in the process: the step
+   goes where its time puts it, in the transaction its start is in (C9's
+   rule), and the steps placed after it keep their place. One undoable
+   edit. */
+async function backToTimeAction(stepId) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return false;
+  const anno = ensureAnnoShape(sess.annotations);
+  const step = _findStep(stepId);
+  const p = step && _placeOf(stepId);
+  if (!p || !AC.hasTime(step)) return false;
+  if (!StepOrder.isPlaced(step, p.steps)) { toast("It already is where its time puts it."); return false; }
+  const runs = _model().runs;
+  for (const s of StepOrder.keepOrder(p.steps, [step.step_id], { canBeFree: _canBeFree(p.main, runs) })) AC.markEdited(s);
+  delete step.placed_after;
+  if (p.main) {
+    const run = RunsModel.runForRange(runs, Date.parse(step.time_range.start));
+    step.case_id = run ? run.caseId : null;
+    const key = run ? run.caseId : OUTSIDE;
+    if (_ui.open !== key) _openGroup(key);
+  }
+  AC.markEdited(step);
+  State.setSelectedStepId(step.step_id);
+  try { await persistAnnotations(anno, "put the step back to its time"); } catch (_) { return false; }
+  toast("Back where its time puts it, at " + sinceStart(step.time_range.start, recordingStartMs(sess)) + ". Ctrl+Z undoes it.", "success");
   return true;
 }
 
@@ -2509,6 +2833,7 @@ async function deleteSelectedSteps() {
     const f = _removalFix(s.state);
     RunsModel.recordFix(anno, runs, s.case_id, f.kind, f.delta);
   }
+  _handOver(hide.concat(remove).map((s) => s.step_id));
   RunsModel.hideSteps(hide);
   const removeIds = new Set(remove.map((s) => s.step_id));
   SPM.removeSteps(anno.steps, removeIds);
@@ -2742,6 +3067,8 @@ const GROUP_REFUSED = {
   hidden: "A hidden step is not grouped: untick it, or unhide it first.",
   few: "Tick two or more steps to group them.",
   gap: "Tick steps that follow one another to group them.",
+  // C22: a sub-process runs from its first step's start to its last one's end.
+  apart: "A step you placed elsewhere in the process is apart from the others on the timeline, and a sub-process runs from its first step to its last there: put it back to its time first, or group the steps without it.",
 };
 
 /* Group into a sub-process... (C19; the toolbar with two or more ticked
@@ -3054,10 +3381,15 @@ function showStepContextMenu(stepId, x, y) {
     addItem("Open as a sub-process", () => openAsSubProcessAction(stepId));
   }
   addItem("Rename", () => { renderStepsLevel(); setTimeout(() => beginRenameOnSelected(), 30); });
-  // C16: a step without a time moves among its run's steps (Alt+Up, Alt+Down).
-  if (!AC.hasTime(step)) {
+  // C16: a step moves among its run's steps (Alt+Up, Alt+Down); C22: a step
+  // with a time moves in the process, its band staying where it is on the
+  // Timeline, and Place after a step... takes it further.
+  if (step.state !== "hidden") {
     addItem("Move up", () => moveStep(stepId, -1));
     addItem("Move down", () => moveStep(stepId, 1));
+    addItem("Place after a step…", () => placeStepAfterAction(stepId));
+    const placeAt = _placeOf(stepId);
+    if (AC.hasTime(step) && placeAt && StepOrder.isPlaced(step, placeAt.steps)) addItem("Back to its time", () => backToTimeAction(stepId));
   }
   addItem(step.state === "hidden" ? "Unhide" : "Hide step", () => toggleStepHidden(stepId));
   addItem("Show on timeline", () => {
@@ -3097,6 +3429,8 @@ module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp, setStepTimes,
+  // C22: a step's place in the process (the Timeline's band menu).
+  placeStepAfterAction, placeStepAt, backToTimeAction, placedText,
   // C19: the level shown, and the way into a sub-process (the step panel).
   goToLevel, openSubProcessAction,
   // Keyboard: act only on what the list shows (RP-12).

@@ -1,0 +1,145 @@
+{
+  "about": "The process order of one list of steps (contract C22, 2.0.5): viewer/step-order.js processOrder and placeMoments, and normalization/step_context.py process_order and place_starts, both assert every case (viewer/step-order.test.js, normalization/test/test_step_order_golden.py). A step is { id, case, t, order, state, after }: t its start in seconds after 09:00:00 on 2026-05-14 (UTC), null for a step without a time; case its case_id (null outside every transaction); after its placed_after. `expected` is the order of the step ids; `moments` the moment each step counts at among the stretches left out of the analysis, in seconds, \"first\" for a step placed first (before every stretch) and null for no time (after every stretch).",
+  "cases": [
+    {
+      "name": "no placement: the steps with a time by their start, then the steps without one by their order, then the steps with neither; ties keep the list order",
+      "steps": [
+        { "id": "a", "t": 10 },
+        { "id": "b", "t": null, "order": 2 },
+        { "id": "c", "t": 5 },
+        { "id": "d", "t": null, "order": 1 },
+        { "id": "e", "t": null },
+        { "id": "f", "t": 5 }
+      ],
+      "expected": ["c", "f", "a", "d", "b", "e"],
+      "moments": { "a": 10, "b": null, "c": 5, "d": null, "e": null, "f": 5 }
+    },
+    {
+      "name": "the owner's report: a correction shown late, placed after an early step, comes right after it, whatever its time",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "b", "t": 10 },
+        { "id": "c", "t": 20 },
+        { "id": "p", "t": 100, "after": "a" }
+      ],
+      "expected": ["a", "p", "b", "c"],
+      "moments": { "a": 0, "b": 10, "c": 20, "p": 0 }
+    },
+    {
+      "name": "placed first in its transaction",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "b", "t": 10 },
+        { "id": "p", "t": 50, "after": "start" }
+      ],
+      "expected": ["p", "a", "b"],
+      "moments": { "a": 0, "b": 10, "p": "first" }
+    },
+    {
+      "name": "a chain: each step after the one before it",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "b", "t": 10 },
+        { "id": "c", "t": 20 },
+        { "id": "p", "t": 100, "after": "a" },
+        { "id": "q", "t": 110, "after": "p" }
+      ],
+      "expected": ["a", "p", "q", "b", "c"],
+      "moments": { "a": 0, "b": 10, "c": 20, "p": 0, "q": 0 }
+    },
+    {
+      "name": "two steps after one step come in their time order, each followed by the steps after it",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "b", "t": 10 },
+        { "id": "p", "t": 100, "after": "a" },
+        { "id": "q", "t": 90, "after": "a" },
+        { "id": "r", "t": 120, "after": "q" }
+      ],
+      "expected": ["a", "q", "r", "p", "b"],
+      "moments": { "a": 0, "b": 10, "p": 0, "q": 0, "r": 0 }
+    },
+    {
+      "name": "a step placed after a step without a time counts after every stretch",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "u", "t": null, "order": 1 },
+        { "id": "b", "t": 30 },
+        { "id": "p", "t": 50, "after": "u" }
+      ],
+      "expected": ["a", "b", "u", "p"],
+      "moments": { "a": 0, "b": 30, "p": null, "u": null }
+    },
+    {
+      "name": "a step without a time placed after a step with one comes right after it",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "b", "t": 10 },
+        { "id": "u", "t": null, "order": 1, "after": "a" },
+        { "id": "v", "t": null, "order": 2 }
+      ],
+      "expected": ["a", "u", "b", "v"],
+      "moments": { "a": 0, "b": 10, "u": 0, "v": null }
+    },
+    {
+      "name": "a placement that cannot hold is ignored: a step not in the list, a hidden step, another transaction's step, the step itself",
+      "steps": [
+        { "id": "a", "case": "T1", "t": 0 },
+        { "id": "h", "case": "T1", "t": 5, "state": "hidden" },
+        { "id": "b", "case": "T1", "t": 10 },
+        { "id": "x", "case": "T2", "t": 15 },
+        { "id": "p1", "case": "T1", "t": 100, "after": "nowhere" },
+        { "id": "p2", "case": "T1", "t": 101, "after": "h" },
+        { "id": "p3", "case": "T1", "t": 102, "after": "x" },
+        { "id": "p4", "case": "T1", "t": 103, "after": "p4" },
+        { "id": "p5", "case": "T1", "t": 104, "after": "" }
+      ],
+      "expected": ["a", "h", "b", "x", "p1", "p2", "p3", "p4", "p5"],
+      "moments": { "a": 0, "b": 10, "h": 5, "p1": 100, "p2": 101, "p3": 102, "p4": 103, "p5": 104, "x": 15 }
+    },
+    {
+      "name": "a loop holds nowhere: its steps go by their time, and a step placed after one of them holds",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "p", "t": 50, "after": "q" },
+        { "id": "q", "t": 40, "after": "p" },
+        { "id": "r", "t": 60, "after": "q" },
+        { "id": "b", "t": 45 }
+      ],
+      "expected": ["a", "q", "r", "b", "p"],
+      "moments": { "a": 0, "b": 45, "p": 50, "q": 40, "r": 40 }
+    },
+    {
+      "name": "a hidden step can be placed; a step placed after a hidden step goes by its time",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "b", "t": 10 },
+        { "id": "h", "t": 100, "state": "hidden", "after": "a" },
+        { "id": "p", "t": 110, "after": "h" }
+      ],
+      "expected": ["a", "h", "b", "p"],
+      "moments": { "a": 0, "b": 10, "h": 0, "p": 110 }
+    },
+    {
+      "name": "the steps outside every transaction are placed among themselves",
+      "steps": [
+        { "id": "o1", "t": 0 },
+        { "id": "o2", "t": 10 },
+        { "id": "o3", "t": 100, "after": "o1" }
+      ],
+      "expected": ["o1", "o3", "o2"],
+      "moments": { "o1": 0, "o2": 10, "o3": 0 }
+    },
+    {
+      "name": "a step placed after a step placed first comes second",
+      "steps": [
+        { "id": "a", "t": 0 },
+        { "id": "p", "t": 80, "after": "start" },
+        { "id": "q", "t": 70, "after": "p" },
+        { "id": "b", "t": 10 }
+      ],
+      "expected": ["p", "q", "a", "b"],
+      "moments": { "a": 0, "b": 10, "p": "first", "q": "first" }
+    }
+  ]
+}

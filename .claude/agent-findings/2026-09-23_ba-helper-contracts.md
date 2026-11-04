@@ -990,3 +990,39 @@ Keep it simple: a tool, not a product.
   their screens, how often and in which projects; the same screens named differently show side by
   side; the owner ticks, fixes names, codes and descriptions, and saves a library file (a new
   version). A name that already exists in the application adds its screens to that activity.
+
+## C22. A step's place in the process (owner 2026-11-04; 2.0.5)
+
+The owner: "What if the user listens to video, and at the second half of the video a step was
+corrected or a condition added to something that was shown in the first half? If you annotate on
+the timeline, the step will appear AFTER all the steps in between. There needs to be a way to
+decouple steps, but have them remain on the position on the timeline."
+
+- **Data:** `step.placed_after`, optional, viewer-written: the `step_id` of the step it comes after
+  in its transaction's process, or `"start"`. Its `time_range` stays where it was shown (band,
+  video, length, pointer). Re-normalization keeps it on every preserved step, and a draft that
+  carries it is kept as `edited`.
+- **The order** of one list of steps (`viewer/step-order.js` processOrder, `step_context`
+  process_order; pinned by `shared/step-order-golden.json`): C16's base order (time, `order`,
+  list order); a placement holds when it names `"start"` or a visible step of the same list and
+  transaction, not itself, without a loop; the steps placed first, then each other step in the
+  base order, each followed by the steps placed after it (base order, depth first). A hidden step
+  is never one a step comes after, so the order reads the same with or without the hidden steps.
+  Every reader takes it: Steps, the live map (process-map-levels), the sub-process maps, the
+  differences, the step BPMN (step_flow), the PDD, the statistics' step_variants, the Technical
+  details. `shared/flow-links-golden.json` has two cases with a placed step.
+- **Stretches left out** (lane FX1): a placed step counts where the step its place hangs from does
+  (placeMoments, place_starts; the steps placed first before every stretch).
+- **Transaction:** a placed step belongs to the transaction of the step it comes after; the viewer
+  keeps it, and `step_suggest._follow_placement_case` holds it after the C9 restamp.
+- **The verbs** (viewer): Move up and Move down (Alt+Up, Alt+Down; the step menu) on every step,
+  two steps without a time still swapping their `order`; *Place after a step...* (the step menu in
+  Steps and on the Timeline, the Flow line; a list of every transaction's steps, *First in
+  Transaction N*), which may move the step into another transaction; *Back to its time*, the
+  inverse, to where its time puts it in the transaction its start is in. Each is one undoable edit;
+  the edits write the fewest placements (deriveOrder) and keep each anchor's one follower; a step
+  hidden, deleted, merged or grouped hands its followers over (keepOrder); + Add step after a step
+  with a time is placed right after it. Merge and Group refuse a placed step apart on the timeline.
+- **Marks:** *Placed* on the row and in the Flow line (with *Back to its time*), the band's accent
+  edge and dotted foot on the Timeline with its tooltip line, the legend's *placed elsewhere in the
+  process*. Only a step with a time carries them.

@@ -20,6 +20,10 @@
  * start_edges, end_edges }.
  */
 
+// C22: a run's steps go in its process order (time order, a step the analyst
+// placed elsewhere after the step it comes after).
+const StepOrder = require("./step-order.js");
+
 // A separator that cannot appear in a step name. Built from a char code so no
 // literal control byte sits in the source.
 const SEP = String.fromCharCode(1);
@@ -61,6 +65,11 @@ function processLabel(name) {
 
 function _stepStart(st) {
   const t = (st && st.time_range && st.time_range.start) || null;
+  const n = t ? new Date(t).getTime() : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+function _stepEnd(st) {
+  const t = (st && st.time_range && st.time_range.end) || null;
   const n = t ? new Date(t).getTime() : 0;
   return Number.isFinite(n) ? n : 0;
 }
@@ -157,20 +166,6 @@ function mapNodeLabel(step) {
   return (step && step.process_label) || processLabel(name) || "(unnamed step)";
 }
 
-/* The order within a run, the one the Steps list shows (runs-model byStart,
-   contract C16): the steps with a time in time order, then the steps without
-   one by their `order`, then any step with neither; the sort is stable. */
-function _orderKey(st) {
-  const n = _stepStart(st);
-  if (n > 0) return [0, n];
-  const o = st && st.order;
-  return typeof o === "number" && Number.isFinite(o) ? [1, o] : [2, 0];
-}
-function _byOrder(a, b) {
-  const x = _orderKey(a.st), y = _orderKey(b.st);
-  return (x[0] - y[0]) || (x[1] - y[1]) || (a.i - b.i);
-}
-
 /* An analyst's text as one line, whitespace collapsed ("" for a non-string):
    the pipeline's step_flow._line. */
 function _line(v) { return typeof v === "string" ? v.replace(/\s+/g, " ").trim() : ""; }
@@ -197,15 +192,18 @@ function _isoMs(iso) {
    the map's order): for each stretch ({ startMs }), how many steps start
    before it starts; a step without a time is after every stretch. Sorted,
    each position once. The placement rule of the differences
-   (run-differences.js) and of the pipeline (step_flow.cut_positions). */
-function cutPositions(steps, stretches) {
-  const starts = (steps || []).map((st) => _isoMs(st && st.time_range && st.time_range.start));
-  const at = new Set();
+   (run-differences.js) and of the pipeline (step_flow.cut_positions).
+   `at` (C22, step-order.js placeMoments): the moment each step counts at, a
+   placed step at the step its place hangs from; without it, each step's own
+   start. */
+function cutPositions(steps, stretches, at) {
+  const starts = (steps || []).map((st) => (at && at.has(st) ? at.get(st) : _isoMs(st && st.time_range && st.time_range.start)));
+  const cut = new Set();
   for (const s of Array.isArray(stretches) ? stretches : []) {
     if (!s || !Number.isFinite(s.startMs)) continue;
-    at.add(starts.filter((t) => Number.isFinite(t) && t < s.startMs).length);
+    cut.add(starts.filter((t) => !Number.isNaN(t) && t < s.startMs).length);
   }
-  return [...at].sort((a, b) => a - b);
+  return [...cut].sort((a, b) => a - b);
 }
 
 /**
@@ -274,20 +272,21 @@ function buildAnnotationDfg(runs, opts) {
   };
   const runParts = [];
   (runs || []).forEach((run, r) => {
-    const steps = (Array.isArray(run) ? run : [])
-      .filter((st) => st && st.state !== "hidden")
-      .map((st, i) => ({ st, i }))
-      .sort(_byOrder)
-      .map((x) => x.st);
+    // C22: in the run's process order (step-order.js), which is time order
+    // until the analyst places a step after another.
+    const steps = StepOrder.processOrder((Array.isArray(run) ? run : []).filter((st) => st && st.state !== "hidden"));
     if (!steps.length) return;
     const n = steps.length;
-    const cuts = cutPositions(steps, leftOut[r]);
+    const cuts = cutPositions(steps, leftOut[r], StepOrder.placeMoments(steps));
     const bounds = [0, ...cuts.filter((c) => c > 0 && c < n), n];
     const parts = [];
     for (let k = 0; k < bounds.length - 1; k++) {
       parts.push({ visits: toVisits(steps.slice(bounds[k], bounds[k + 1])),
         start: k === 0 && !cuts.includes(0), end: k === bounds.length - 2 && !cuts.includes(n) });
     }
+    // The run's starts on the timeline: whether one visit follows another
+    // there (a step placed elsewhere does not).
+    parts.starts = steps.map(_stepStart).filter((t) => t > 0);
     runParts.push(parts);
   });
 
@@ -311,9 +310,19 @@ function buildAnnotationDfg(runs, opts) {
         // entering A -> entering B (A's dwell, trailing gap included), so
         // a thick edge reads "this hand-off carried the time". Summed over
         // every traversal; a missing timestamp contributes 0, never a guess.
+        // C22: when B does not follow A on the timeline (one of them was
+        // placed elsewhere in the process), it is A's own time.
         const a = visits[i].entry;
         const b = visits[i + 1].entry;
-        if (a && b && b > a) cur.ms += (b - a);
+        const tail = visits[i].steps[visits[i].steps.length - 1];
+        const lastStart = _stepStart(tail);
+        const follows = b >= lastStart && !parts.starts.some((t) => t > lastStart && t < b);
+        if (a && b && follows) {
+          if (b > a) cur.ms += (b - a);
+        } else if (a && b) {
+          const end = _stepEnd(tail);
+          if (end > a) cur.ms += (end - a);
+        }
       }
       if (part.end) {
         endAct[last] = (endAct[last] || 0) + 1;

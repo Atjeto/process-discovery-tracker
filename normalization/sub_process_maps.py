@@ -13,8 +13,9 @@ bpmn_observed; the PDD's chapters, pdd_export) and the viewer
 shared/sub-process-maps-golden.json:
 
 - The main map (path []) is drawn from one trace per transaction: its
-  visible steps in the map's order (step_context.step_sort_key: time, then
-  `order`, then the list's order).
+  visible steps in the map's order (step_context.process_order: time, then
+  `order`, then the list's order, a step placed after another right after
+  it, contract C22).
 - A level below is reached through visits: consecutive visible steps with
   one map node (step_flow.node_of) are one visit, and a visit of a
   sub-process node gives one trace, the visible sub_steps of its steps in
@@ -46,7 +47,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from step_context import step_sort_key
+from step_context import process_order
 from step_flow import node_of
 
 
@@ -58,12 +59,12 @@ def is_sub_process(step: Any) -> bool:
 
 def visible(steps: Any) -> list[dict]:
     """The visible steps of a step list in the map's order: a hidden step is
-    left out (with everything under it), the others sorted by time, then
-    `order`, then the list's order."""
-    out = ([s for s in steps if isinstance(s, dict) and s.get("state") != "hidden"]
-           if isinstance(steps, list) else [])
-    out.sort(key=step_sort_key)
-    return out
+    left out (with everything under it), the others in their process order
+    (step_context.process_order: by time, then `order`, then the list's
+    order; contract C22: a step the analyst placed after another right after
+    it)."""
+    return process_order([s for s in steps if isinstance(s, dict) and s.get("state") != "hidden"]
+                         if isinstance(steps, list) else [])
 
 
 def visits(steps: list[dict]) -> list[tuple[str, list[dict]]]:

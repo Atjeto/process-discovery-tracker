@@ -770,6 +770,7 @@ delete.
   "hidden_screenshots": ["screenshots/file.jpg"],
   "only_when": "string, optional: the step happens only under this condition (C17)",
   "links": [{ "to": "a step_id, or \"end\"", "when": "string: when the process goes there (C17)" }],
+  "placed_after": "string, optional: the step_id of the step it comes after in the process, or \"start\" (C22)",
   "sub_steps": ["step entities, the same shape, recursively: the step is a sub-process (C19)"],
   "group": "true on a group of steps made into a sub-process (C19), else absent",
   "evidence": {
@@ -799,9 +800,10 @@ other change to a draft does.
   (the start time), then the steps without a time in `order`, then any step
   with neither, in the list's order; steps that start at one moment keep
   their list order (lane FX1: the viewer once broke that tie by `step_id`,
-  so Steps and the PDD could number such steps apart). The stats, the
-  differences, the map (`process_map_step.bpmn`), the PDD and the viewer use
-  that one order. A step without a time has no duration: the timed figures
+  so Steps and the PDD could number such steps apart). A step the analyst
+  placed elsewhere in the process comes after the step it names (contract
+  C22, below). The stats, the differences, the map
+  (`process_map_step.bpmn`), the PDD and the viewer use that one order. A step without a time has no duration: the timed figures
   (step stats, the map's average time) leave it out, and
   nothing prints a time for it. A time range the viewer writes is
   read as measured, so it is written only when the analyst placed the step
@@ -865,6 +867,49 @@ links, one edge per pair of map nodes, different labels on one edge joined
 with " or ". The PDD prints them under the step ("Only when ...", "Then goes
 back to step N, <name>, when ...", "Then goes on to step N ...", "Then skips
 to step N ...", "The process ends here when ...").
+
+**A step's place in the process (contract C22, 2.0.5).** The owner's report:
+while the analyst listens to a video, the SME corrects in its second half a
+step shown in its first, or adds a condition or a step that belongs before;
+marked where it is said, the step came after every step in between, because
+the time ordered every step. A step's place in its transaction's process is
+its own:
+
+- **`placed_after`**: optional, viewer-written: the `step_id` of the step it
+  comes after in the process, or `"start"` (first in its transaction). Its
+  `time_range` stays where it was shown: its band on the Timeline, its
+  video, its length and its pointer ("Transaction 1 at 12:30") are its own.
+- **The order of one list of steps** (a transaction's at the main level, a
+  sub-process's below it), `viewer/step-order.js` `processOrder` and
+  `normalization/step_context.py` `process_order`, pinned for both by
+  `shared/step-order-golden.json`: the base order above (C16's); a placement
+  holds when it names `"start"` or a step of the same list that is visible,
+  of the same transaction and not the step itself, and does not lead back to
+  the step (any other is ignored: the step goes by its time); the steps
+  placed first come first, then each other step in the base order, each
+  followed by the steps placed after it, in the base order, each followed by
+  its own. A hidden step is never a step another comes after, so a list with
+  or without its hidden steps reads the same order.
+- **The transaction.** A placed step belongs to the transaction of the step
+  it comes after, wherever its time is: the viewer keeps it so as it edits,
+  and re-normalization holds it (`step_suggest._follow_placement_case`). A
+  draft the analyst placed becomes `edited` (the viewer does it, and
+  re-normalization keeps a draft that still carries the key as `edited`).
+- **Stretches left out** (lane FX1): a placed step falls among them where
+  the step its place hangs from does (`placeMoments`, `place_starts`; the
+  steps placed first before every stretch), in the map's cuts and the
+  differences alike.
+- **What the viewer keeps.** Its edits write the fewest placements that give
+  the order wanted (`deriveOrder`): a step moved back where its time puts it
+  carries none, and each step a placement names has at most one step placed
+  right after it. A step hidden, deleted, merged or grouped hands the steps
+  after it over to the step before it (`keepOrder`), so they keep their
+  place; a merge, a group or a dissolve keeps the place of what it replaces;
+  a split keeps the second part right after the first (a new step marked
+  inside a step of the analyst's is the next step, which its time places).
+  A merge or a group that would join a placed step and a step apart from it
+  on the timeline is refused: a step runs from its first part's start to
+  its last part's end.
 
 **Sub-processes (contract C19).** One project holds one main map plus one map
 per sub-process, at any depth. `annotations.steps` stays the main level, so

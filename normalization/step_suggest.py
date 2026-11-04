@@ -1004,8 +1004,39 @@ def restamp_preserved_case_ids(steps: list, cases: dict, recorded: bool = True) 
         if new_cid != cid_now:
             restamped += 1
         s["case_id"] = new_cid
+    restamped += _follow_placement_case(steps)
     _follow_parent_case(steps)
     return restamped
+
+
+def _follow_placement_case(steps: list) -> int:
+    """Contract C22: a step the analyst placed after another (`placed_after`
+    naming a visible step of the same list) belongs to that step's
+    transaction, wherever its own time is; a chain follows the step it
+    hangs from. The viewer keeps it so as it edits (steps-view.js); this
+    holds it when a marker change gave the step it comes after another
+    transaction. Returns how many steps changed transaction."""
+    items = [s for s in steps or [] if isinstance(s, dict)]
+    by_id: dict = {}
+    for s in items:
+        sid = s.get("step_id")
+        if isinstance(sid, str) and sid and sid not in by_id:
+            by_id[sid] = s
+    changed = 0
+    for _ in range(len(items) + 1):
+        moved = False
+        for s in items:
+            a = s.get("placed_after")
+            t = by_id.get(a) if isinstance(a, str) else None
+            if t is None or t is s or t.get("state") == "hidden":
+                continue
+            if s.get("case_id") != t.get("case_id"):
+                s["case_id"] = t.get("case_id")
+                changed += 1
+                moved = True
+        if not moved:
+            break
+    return changed
 
 
 def _step_process_label(step: dict) -> str:
@@ -1206,6 +1237,9 @@ def _merge_steps(existing: list, fresh: list,
     finds one still `auto_suggested`, so a re-analysis never drafts the flow
     away. Every preserved step keeps both keys as they are.
 
+    Contract C22: so is a draft the analyst placed elsewhere in the process
+    (it carries `placed_after`), kept as `edited` by the same rule.
+
     Contract C19: a draft opened as a sub-process (it carries `sub_steps`,
     even an empty list) is the analyst's too, kept as `edited` by the same
     rule. A preserved step keeps its sub-steps as they are; each sub-step,
@@ -1222,10 +1256,12 @@ def _merge_steps(existing: list, fresh: list,
     run took in then points at the named draft (_repoint_links). An empty
     library changes nothing."""
     from step_flow import declares_flow   # step_flow reads step_context, which imports this module
+    from step_context import declares_place
     by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
         st = s.get("state")
-        if st not in by_state and (declares_flow(s) or isinstance(s.get("sub_steps"), list)):
+        if st not in by_state and (declares_flow(s) or declares_place(s)
+                                   or isinstance(s.get("sub_steps"), list)):
             s["state"] = st = "edited"
         if st in by_state:
             by_state[st].append(s)

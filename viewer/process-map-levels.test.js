@@ -240,7 +240,9 @@ function flowRuns(transactions) {
       step_id: "t" + t + "s" + i, name: s.name, process_label: s.name, case_id: "t" + t,
       state: s.state || "manually_authored", time_range: s.time_range || null, order: i + 1,
     }, s.only_when ? { only_when: s.only_when } : {},
-    s.links ? { links: s.links.map((l) => ({ to: l.to === "end" ? "end" : (ids.get(l.to) || l.to), when: l.when })) } : {}));
+    s.links ? { links: s.links.map((l) => ({ to: l.to === "end" ? "end" : (ids.get(l.to) || l.to), when: l.when })) } : {},
+    // C22: the step it is placed after, named like a link's target.
+    s.placed_after ? { placed_after: s.placed_after === "start" ? "start" : (ids.get(s.placed_after) || s.placed_after) } : {}));
   });
 }
 

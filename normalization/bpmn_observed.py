@@ -52,7 +52,7 @@ from pm4py.objects.log.obj import Event, EventLog, Trace
 
 import step_flow
 from _dt import parse_ts as _parse_ts  # public re-export
-from step_context import fmt_ms, step_duration_ms, step_sort_key, step_system
+from step_context import fmt_ms, process_order, step_duration_ms, step_sort_key, step_system
 
 
 def _start_key(step: dict[str, Any]) -> tuple[int, float]:
@@ -60,6 +60,16 @@ def _start_key(step: dict[str, Any]) -> tuple[int, float]:
     steps with a start time by that time, then the steps without one (added
     by hand, `time_range: null`) by their `order`."""
     return step_sort_key(step)
+
+
+def _in_process_order(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Steps of several runs, each run's in its process order (contract C22,
+    step_context.process_order: time, then `order`, a step the analyst placed
+    after another right after it), the runs by their first step's place."""
+    by_case: dict[Any, list[dict[str, Any]]] = {}
+    for s in sorted(steps, key=_start_key):
+        by_case.setdefault(s.get("case_id"), []).append(s)
+    return [s for run in by_case.values() for s in process_order(run)]
 
 
 def _step_label(s: dict[str, Any]) -> str:
@@ -150,7 +160,7 @@ def build_annotation_log(anno: dict[str, Any]) -> EventLog:
 
     log = EventLog()
     for cid, case_steps in by_case.items():
-        case_steps = sorted(case_steps, key=_start_key)
+        case_steps = process_order(case_steps)
         trace = Trace()
         trace.attributes["concept:name"] = cid
         trace.attributes["case:id"] = cid
@@ -176,9 +186,10 @@ def build_annotation_log(anno: dict[str, Any]) -> EventLog:
 
 def session_sequence(anno: dict[str, Any]) -> list[str]:
     """The run's observed path: the labels of the visible steps in a run,
-    time-ordered, consecutive duplicates collapsed. Used when there is at most
-    one run; the steps outside every run are left out. Pure."""
-    steps = sorted(_run_steps(anno), key=_start_key)
+    in its process order (time order, a step the analyst placed after another
+    right after it, contract C22), consecutive duplicates collapsed. Used when
+    there is at most one run; the steps outside every run are left out. Pure."""
+    steps = _in_process_order(_run_steps(anno))
     return _collapse(_step_label(s) for s in steps)
 
 

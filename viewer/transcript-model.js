@@ -136,15 +136,30 @@ function stepWindow(step, leadMs, prevEndMs) {
   return { startMs: from, endMs: Number.isFinite(e) && e >= s ? e : s };
 }
 
-/* The end of the timed step before `step` in `list` (its transaction's
-   steps, or its visit's inside a sub-process, in order), or NaN. */
+/* The end of the timed step before `step` on the timeline among `list` (its
+   transaction's steps, or its visit's inside a sub-process), or NaN: the one
+   that starts last before it (a tie: the one listed first). C22: a step the
+   analyst placed elsewhere in the process keeps its moment, so what was said
+   then is bounded by the step before it in time, not in the list. */
 function prevEndMs(list, step) {
-  const i = (list || []).findIndex((x) => x && step && x.step_id === step.step_id);
-  for (let j = i - 1; j >= 0; j--) {
-    const e = Date.parse(list[j] && list[j].time_range && list[j].time_range.end);
-    if (Number.isFinite(e)) return e;
+  const arr = list || [];
+  const i = arr.findIndex((x) => x && step && x.step_id === step.step_id);
+  const own = Date.parse(step && step.time_range && step.time_range.start);
+  if (i < 0 || !Number.isFinite(own)) {
+    for (let j = i - 1; j >= 0; j--) {
+      const e = Date.parse(arr[j] && arr[j].time_range && arr[j].time_range.end);
+      if (Number.isFinite(e)) return e;
+    }
+    return NaN;
   }
-  return NaN;
+  let best = NaN, bestStart = -Infinity, bestAt = -1;
+  arr.forEach((x, j) => {
+    if (!x || j === i) return;
+    const a = Date.parse(x.time_range && x.time_range.start), e = Date.parse(x.time_range && x.time_range.end);
+    if (!Number.isFinite(a) || !Number.isFinite(e) || a > own || (a === own && j > i)) return;
+    if (a > bestStart || (a === bestStart && j > bestAt)) { best = e; bestStart = a; bestAt = j; }
+  });
+  return best;
 }
 
 /* The placed sentences whose time range overlaps the window, in time order. */

@@ -46,6 +46,9 @@ def _transactions(case):
                 step["links"] = [dict(link, to=(link["to"] if link["to"] == "end"
                                                 else ids.get(link["to"], link["to"])))
                                  for link in fx["links"]]
+            # C22: the step a step is placed after, named like a link's target.
+            if "placed_after" in fx and fx["placed_after"] != "start":
+                step["placed_after"] = ids.get(fx["placed_after"], fx["placed_after"])
         out.append(steps)
     return out
 
@@ -92,6 +95,9 @@ def test_the_golden_covers_every_declaration():
     # Lane FX1: stretches left out at a transaction's start, between two
     # steps and after its last step.
     assert sum(1 for c in GOLDEN["cases"] if "excluded_ranges" in c) >= 2
+    # C22: a step placed after another, with and without a stretch left out.
+    placed = [c for c in GOLDEN["cases"] if any("placed_after" in s for t in c["transactions"] for s in t)]
+    assert len(placed) >= 2 and any("excluded_ranges" in c for c in placed)
 
 
 def test_the_cuts_change_the_map_only_where_they_drop_an_edge():

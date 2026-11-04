@@ -42,6 +42,7 @@
 "use strict";
 
 const { mapNodeLabel } = require("./process-map-levels.js");
+const StepOrder = require("./step-order.js");
 
 /* A step is a sub-process when it carries sub_steps, even an empty list. */
 function isSubProcess(step) {
@@ -50,27 +51,13 @@ function isSubProcess(step) {
 
 function isHidden(step) { return !step || step.state === "hidden"; }
 
-/* A step's place (contract C16): [0, start] with a time, [1, order] without
-   one, [2, 0] with neither. */
-function _placeKey(s) {
-  const t = Date.parse(s && s.time_range && s.time_range.start);
-  if (Number.isFinite(t)) return [0, t];
-  const o = s && s.order;
-  return typeof o === "number" && Number.isFinite(o) ? [1, o] : [2, 0];
-}
-
 /* A list of steps in order (C16: the steps with a time in time order, then
-   the steps without one by `order`); steps that tie keep their list order,
-   which for drafted sub-steps is the order they were recorded in (two
-   actions can share a second), as the map's order does. */
+   the steps without one by `order`; C22: a step the analyst placed after
+   another comes right after it, step-order.js processOrder); steps that tie
+   keep their list order, which for drafted sub-steps is the order they were
+   recorded in (two actions can share a second), as the map's order does. */
 function inOrder(steps) {
-  return (Array.isArray(steps) ? steps : []).filter((s) => s && typeof s === "object")
-    .map((s, i) => ({ s, i }))
-    .sort((a, b) => {
-      const x = _placeKey(a.s), y = _placeKey(b.s);
-      return (x[0] - y[0]) || (x[1] - y[1]) || (a.i - b.i);
-    })
-    .map((x) => x.s);
+  return StepOrder.processOrder(steps);
 }
 
 function visibleOf(steps) { return (steps || []).filter((s) => !isHidden(s)); }

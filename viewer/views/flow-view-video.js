@@ -61,7 +61,9 @@ function noteVideoLength(video) {
   if (!s || (s.events || []).length || !s.recordingAvailable || !video || !video.src) return false;
   let shown = "";
   try { shown = decodeURIComponent(new URL(video.currentSrc || video.src).pathname).replace(/^\/+/, ""); } catch (_) { return false; }
-  if (shown.toLowerCase() !== String(s.recordingPath).replace(/\\/g, "/").toLowerCase()) return false;
+  // The leading slashes go on both sides: a file URL's path has one before a
+  // drive letter, and an absolute path elsewhere starts with one.
+  if (shown.toLowerCase() !== String(s.recordingPath).replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase()) return false;
   if (!isFinite(video.duration)) {
     if (_measuringSrc !== video.src && video.readyState >= 1) { _measuringSrc = video.src; video.currentTime = 1e101; }
     return false;

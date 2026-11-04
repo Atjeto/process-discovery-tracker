@@ -201,9 +201,12 @@ function _ms(iso) {
 }
 
 /* When a unit starts (ms), NaN when it has no time: a folded unit starts with
-   its first member. */
-function _unitStart(unit) {
+   its first member. `at` (C22, step-order.js placeMoments): the moment each
+   step counts at, a step the analyst placed elsewhere at the step its place
+   hangs from. */
+function _unitStart(unit, at) {
   const u = Array.isArray(unit && unit.members) && unit.members.length ? unit.members[0] : unit;
+  if (at && at.has(u)) return at.get(u);
   return _ms(u && u.time_range && u.time_range.start);
 }
 
@@ -263,11 +266,11 @@ function leftOutText(stretches, originMs, unit) {
 /* The indexes in the reference of the steps inside the stretches (see the
    header): a Skipped line is not written for them. `units`: the run after
    folding; `refIndex`: key => the index of its first step in the reference. */
-function _insideStretches(units, refIndex, refLength, stretches) {
+function _insideStretches(units, refIndex, refLength, stretches, moments) {
   const inside = new Set();
   for (const s of stretches) {
     let at = 0;
-    for (const u of units) if (_unitStart(u) < s.startMs) at++;
+    for (const u of units) if (_unitStart(u, moments) < s.startMs) at++;
     let lo = -1, hi = refLength;
     for (let i = at - 1; i >= 0; i--) {
       const k = alignKey(units[i]);
@@ -355,8 +358,10 @@ const COUNTED = new Set(["extra", "order", "skipped", "repeated"]);
    default; the Steps level passes REFERENCE_RUN) and opts.unit what a run is
    called in the other lines ("run" by default; the Steps level passes
    RUN_UNIT). opts.leftOut: the run's stretches left out of the analysis
-   (leftOutStretches), opts.originMs when the recording started. Both lists
-   are the visible steps in the order of a transaction (runs-model byStart:
+   (leftOutStretches), opts.originMs when the recording started, opts.at the
+   moment each step counts at among them (C22, step-order.js placeMoments;
+   each step's own start without it). Both lists are the visible steps in
+   the order of a transaction (runs-model buildRuns: its process order, C22;
    steps that start at one moment keep their list order). */
 function differences(refSteps, runSteps, opts) {
   const reference = (opts && opts.reference) || PATTERN_REFERENCE;
@@ -385,7 +390,7 @@ function differences(refSteps, runSteps, opts) {
     }
   }
   const inside = stretches.length
-    ? _insideStretches(units, new Map(pat.map((x) => [x.key, x.index])), ref.length, stretches) : new Set();
+    ? _insideStretches(units, new Map(pat.map((x) => [x.key, x.index])), ref.length, stretches, opts && opts.at) : new Set();
   for (const { key, step, index } of pat) {
     if (runSet.has(key) || inside.has(index)) continue;
     const name = stepName(step);
@@ -462,7 +467,7 @@ function rowMarks(refSteps, runSteps, opts) {
     }
   }
   const inside = stretches.length
-    ? _insideStretches(units, new Map(pat.map((x) => [x.key, x.index])), ref.length, stretches) : new Set();
+    ? _insideStretches(units, new Map(pat.map((x) => [x.key, x.index])), ref.length, stretches, opts && opts.at) : new Set();
   const firstUnit = new Map(run.map((x) => [x.key, x.step]));
   const ghosts = [];
   pat.forEach(({ key, step, index }, i) => {

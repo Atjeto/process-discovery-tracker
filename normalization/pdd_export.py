@@ -115,8 +115,8 @@ from _dt import parse_ts_or_none as _parse_ts
 from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
-from step_context import (StepContext, clock, has_video, step_start, step_system,
-                          untimed_key, video_start)
+from step_context import (StepContext, clock, has_video, place_starts, process_order, step_start,
+                          step_system, untimed_key, video_start)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
 from recognition import is_browser_chrome
@@ -242,9 +242,11 @@ def _time_key(ts):
 
 
 def _start_key(step):
-    """The order of steps (contract C16): a step with a start time by that
-    time, then the steps without one (added by hand, `time_range: null`)
-    by their `order`."""
+    """The base order of steps (contract C16): a step with a start time by
+    that time, then the steps without one (added by hand, `time_range:
+    null`) by their `order`. A transaction's steps are in their process
+    order (contract C22, step_context.process_order), which starts from this
+    one and puts a step the analyst placed after another right after it."""
     if step_start(step) is not None:
         return _time_key(step["time_range"].get("start"))
     return (True, *untimed_key(step))
@@ -464,10 +466,14 @@ class _Session:
         self.source = session_source(self.manifest)
         self.recorded = has_recording(self.manifest)
 
-        # RP-06: a hidden step never reaches the document.
-        self.steps = sorted((st for st in self.annotations.get("steps") or []
-                             if isinstance(st, dict) and st.get("state") != "hidden"),
-                            key=_start_key)
+        # RP-06: a hidden step never reaches the document. C22: each
+        # transaction's steps in their process order (a step the analyst
+        # placed elsewhere comes after the step it was placed after); a
+        # hidden step is never one, so leaving them out changes nothing.
+        self.steps = process_order([st for st in self.annotations.get("steps") or []
+                                    if isinstance(st, dict) and st.get("state") != "hidden"])
+        # The moment each step counts at among the stretches left out.
+        self.place_at = place_starts(self.steps)
         self.runs = run_rows(self.stats)
         # C16: the one run of a session without a recording and without
         # marked runs covers the whole session; it is not a marked run.
@@ -1150,7 +1156,8 @@ def _flow_rows(s) -> list[tuple[str, str]]:
         if not units:
             continue
         n = len(units)
-        cuts = cut_positions([step_start(_members(u)[0]) for u in units], s.left_out(i))
+        cuts = cut_positions([s.place_at.get(id(_members(u)[0]), step_start(_members(u)[0])) for u in units],
+                             s.left_out(i))
         bounds = [0] + [c for c in cuts if 0 < c < n] + [n]
         for part, (lo, hi) in enumerate(zip(bounds, bounds[1:])):
             keys = []
@@ -1638,18 +1645,25 @@ def _left_out_text(stretches, origin, unit="run") -> str:
     return f"Part of this {unit} was left out of the analysis{times}."
 
 
-def _inside_stretches(units, ref_index, ref_length, stretches) -> set:
+def _inside_stretches(units, ref_index, ref_length, stretches, starts=None) -> set:
     """The indexes in the pattern run of the steps inside the stretches left
     out: a stretch falls between the run's units (a unit is before it when it
     starts before the stretch starts; a unit without a time is after), and
     the pattern steps after the pattern position of the nearest unit before
     it the pattern has, and before that of the nearest such unit after it
     (the pattern's start and end when there is none), are inside. No Skipped
-    line is written for them (viewer/run-differences.js, the same rule)."""
+    line is written for them (viewer/run-differences.js, the same rule).
+    `starts` (C22, step_context.place_starts): the moment each step counts
+    at, a placed step at the step its place hangs from; without it, each
+    unit's own start."""
     inside: set = set()
+
+    def start_of(u):
+        m = _members(u)[0]
+        return starts.get(id(m), step_start(m)) if starts else step_start(m)
+
     for s, _e in stretches:
-        at = sum(1 for u in units
-                 if (t := step_start(_members(u)[0])) is not None and t < s)
+        at = sum(1 for u in units if (t := start_of(u)) is not None and t < s)
         lo, hi = -1, ref_length
         for i in range(at - 1, -1, -1):
             key = _align_key(units[i])
@@ -1683,7 +1697,7 @@ def _condition_of_key(steps, key) -> str:
     return ""
 
 
-def _difference_items(pattern_steps, run_steps, left_out=None) -> list[dict]:
+def _difference_items(pattern_steps, run_steps, left_out=None, starts=None) -> list[dict]:
     """The differences of a run from the pattern run, one dict each: {"kind",
     "key", "step", "prev", "index", "condition", "times"}, kind one of
       "extra"     a step of the run the pattern lacks (`prev`: the unit
@@ -1700,14 +1714,15 @@ def _difference_items(pattern_steps, run_steps, left_out=None) -> list[dict]:
     are matched by their align key, after the run's stretches that spell a
     merged pattern step are folded (_collapse_merged). `left_out`: the run's
     stretches left out of the analysis (_left_out_stretches); the pattern
-    steps inside them are neither skipped nor not done (_inside_stretches).
+    steps inside them are neither skipped nor not done (_inside_stretches;
+    `starts`, C22: the moment each step counts at among them).
     viewer/run-differences.js differences, pinned with it by
     shared/run-differences-golden.json."""
     units = _collapse_merged(pattern_steps, run_steps)
     pat, run = _first_occurrences(pattern_steps), _first_occurrences(units)
     pat_keys, run_keys = [k for k, _s, _i in pat], [k for k, _s, _i in run]
     in_order = _common_order(pat_keys, run_keys)
-    inside = (_inside_stretches(units, {k: i for k, _s, i in pat}, len(pattern_steps), left_out)
+    inside = (_inside_stretches(units, {k: i for k, _s, i in pat}, len(pattern_steps), left_out, starts)
               if left_out else set())
     pat_count = Counter(_align_key(st) for st in pattern_steps)
     run_count = Counter(_align_key(u) for u in units)
@@ -1793,7 +1808,7 @@ def _variation_lines(s, run_index) -> list[str]:
     if run_index == s.pattern_index:
         return lines
     pattern = s.run_steps(s.pattern_index)
-    for it in _difference_items(pattern, s.run_steps(run_index), stretches):
+    for it in _difference_items(pattern, s.run_steps(run_index), stretches, s.place_at):
         kind, key, step, prev = it["kind"], it["key"], it["step"], it["prev"]
         name = _step_name(step)
         if kind == "extra":

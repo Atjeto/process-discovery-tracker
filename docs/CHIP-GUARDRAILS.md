@@ -297,7 +297,9 @@ shown only after a failed run; `#toast`.
   `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
   screenshots `.tl-screenshot` (`.tl-screenshot-added` for one the analyst
   added at a moment, lane FX2), steps `.tl-step-band[data-step-id]` (a
-  one-click step too, at the lane's smallest width; the
+  one-click step too, at the lane's smallest width; `.placed` on a step
+  placed elsewhere in the process, contract C22, with the legend's
+  `.lg-placed`; the
   level the Steps list shows; inside a sub-process its lane's name
   `.tl-lane-name[data-lane="steps"]` reads "Steps in <name>"), the
   playhead `#tl-playhead`. A blank project shows `#tl-empty` with
@@ -426,7 +428,9 @@ shown only after a failed run; `#toast`.
   sentences that start in the step's window, the step before bounding its
   lead),
   the Flow line `#step-flow` (contract C17: `#step-flow-line`,
-  `#btn-flow-only-when`, `#btn-flow-go-to`; the condition `#step-only-when`
+  `#btn-flow-only-when`, `#btn-flow-go-to`, and C22's `#btn-flow-place`
+  with, on a placed step, `#step-placed-line` and `#btn-flow-back-to-time`;
+  a placed step's row carries `.step-placed`; the condition `#step-only-when`
   with `#btn-flow-remove-condition`; the links `.flow-links
   .flow-link[data-i]` (`data-i="new"` for the row being added), each with
   `.flow-link-text`, the dropdown `select.flow-link-to`
@@ -557,7 +561,9 @@ test library: set `PDT_LIBRARY` before the launch (`e2e/library-smoke.js`).
 
 **Dialogs:** a prompt is `.modal-backdrop.modal-prompt` (`.modal-input`,
 `.modal-ok`, `.modal-cancel`); a confirmation `.modal-backdrop.modal-confirm`
-(`.modal-ok`, `.modal-cancel`). The playback bar is `#playback-bar`
+(`.modal-ok`, `.modal-cancel`); a choice from a list (C22's *Place after a
+step...*) `.modal-backdrop.modal-choose` (the list box `select.modal-list`,
+its values `after:<step_id>` and `first:<case_id>`, `.modal-ok`). The playback bar is `#playback-bar`
 (`#pb-play`, `#pb-scrub`).
 
 **Gone with the product edition** (a script that still looks one up must

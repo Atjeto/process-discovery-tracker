@@ -29,8 +29,9 @@ pins it for both:
    labels on one edge are joined with " or " in step order.
 
 A node is the map's node of a step (node_of). A transaction's steps are in
-the map's order (step_context.step_sort_key: time, then `order`, then
-neither), and consecutive steps with one node are one visit, as on the map,
+the map's order (step_context.process_order: time, then `order`, then
+neither, and contract C22: a step the analyst placed after another right
+after it), and consecutive steps with one node are one visit, as on the map,
 so "the previous step" and "the step after" are the neighbouring visits. A
 path around a step that sits between two visits of one node would join those
 into one visit, so it is not drawn. A hidden step is not on the map: it
@@ -43,8 +44,9 @@ A stretch of a transaction left out of the analysis (annotations
 its trace (lane FX1): the steps done in it were not drafted, so the step
 before it and the step after it were not done one after the other. It falls
 between the steps as the differences place it (a step is before it when it
-starts before the stretch starts; a step without a time is after it:
-cut_positions), and no edge crosses it: not from the step before to the step
+starts before the stretch starts, a placed step when the step its place
+hangs from does; a step without a time is after it: cut_positions,
+step_context.place_starts), and no edge crosses it: not from the step before to the step
 after, not from the start into the first step after a stretch that opens the
 transaction, not from the last step before a stretch that closes it into the
 end. The rules above hold inside each part; a step next to a cut has no
@@ -58,7 +60,7 @@ from __future__ import annotations
 from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
-from step_context import step_sort_key, step_start
+from step_context import place_starts, process_order
 
 # The map's start and end, as edge ends. A step name never holds this control
 # character (the viewer's map keys its edges with the same one).
@@ -171,10 +173,9 @@ def _visit_list(steps: list[dict]) -> list[tuple[str, list[dict]]]:
 
 
 def _visible(steps: Any) -> list[dict]:
-    """A transaction's visible steps in the map's order."""
-    visible = [s for s in steps or [] if isinstance(s, dict) and s.get("state") != "hidden"]
-    visible.sort(key=step_sort_key)
-    return visible
+    """A transaction's visible steps in the map's order (its process order,
+    contract C22)."""
+    return process_order([s for s in steps or [] if isinstance(s, dict) and s.get("state") != "hidden"])
 
 
 def _visits(steps: Any) -> list[tuple[str, list[dict]]]:
@@ -194,7 +195,8 @@ def _paths(steps: Any, stretches: Any) -> list[list[tuple[str, Any]]]:
     if not visible:
         return []
     n = len(visible)
-    cuts = cut_positions([step_start(s) for s in visible], stretches)
+    at = place_starts(visible)
+    cuts = cut_positions([at.get(id(s)) for s in visible], stretches)
     bounds = [0] + [c for c in cuts if 0 < c < n] + [n]
     parts = [_visit_list(visible[a:b]) for a, b in zip(bounds, bounds[1:])]
     out: list[list[tuple[str, Any]]] = []

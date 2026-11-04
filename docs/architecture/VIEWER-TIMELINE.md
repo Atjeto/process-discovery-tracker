@@ -183,9 +183,25 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
 - **Every right-click marks there.** A step's or a transaction's band opens
   the Timeline's menu (`flow-view.js` `showMarkerInsertMenu` with a `band`:
   the moment's items, then a rule, the band's name as `.tl-ctx-head` and its
-  own items: *Open in Steps*, *Select + seek here*, *Delete step* or *Hide
-  step*; *Jump to start*, *Jump to end*), so the next step is added on the
-  band of the open one before it.
+  own items: *Open in Steps*, *Select + seek here*, *Place after a step...*
+  (and *Back to its time* on a placed step), *Delete step* or *Hide step*;
+  *Jump to start*, *Jump to end*), so the next step is added on the band of
+  the open one before it.
+- **A step's place in the process is its own** (2.0.5, contract C22; the
+  owner's report: a correction the SME shows late in a video, marked where
+  it is said, came after every step in between). *Place after a step...*
+  (`steps-view.js` `placeStepAfterAction`, a `chooseModal` list of every
+  transaction's steps and *First in* each) puts the step right after the
+  one chosen, in that one's transaction (`step.placed_after`); its band,
+  its video and its time stay where they are. A placed band has `.placed`
+  (an accent edge and a dotted foot; `flow-view-timeline.js` `placedLine`
+  adds "In the process: after ..." to its tooltip) and the legend's
+  `.lg-placed` shows while one is drawn. *Back to its time*
+  (`backToTimeAction`) is the inverse. The order rule is `step-order.js`'s
+  (pinned with the pipeline by `shared/step-order-golden.json`); the time
+  rules of this section stay the timeline's: a placed step is cut, dragged
+  and handed time back by its neighbours on the timeline, never by its
+  neighbours in the process.
 
 **Range selection.** Shift-drag on the background selects a range; a card
 shows its length, events, markers, screenshots and systems, with *Insert

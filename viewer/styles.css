@@ -2486,3 +2486,55 @@ button.danger:disabled {
 .sp-notes { list-style: none; margin: 0; padding: 0; }
 .sp-note { font-size: 11px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
 .sp-note-at { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+
+/* ===== A step's place in the process (contract C22, 2.0.5) =========
+   The owner's report: a correction the SME shows late in a video belongs
+   early in the process. A step placed elsewhere in the process than its
+   time puts it reads "Placed" on its row and in its Flow line, and its band
+   on the Timeline, which stays where it was shown, carries an accent edge
+   and a dotted foot (the legend's key is the same). */
+.step-placed {
+  flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 8px;
+  font-size: 10px; line-height: 1; white-space: nowrap; color: var(--fg);
+  border: 1px solid var(--accent); background: var(--accent-muted);
+}
+.flow-placed { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 6px 0 0;
+  font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
+.flow-placed .link-btn { font-size: 12px; }
+.tl-step-band.placed { box-shadow: inset 4px 0 0 var(--accent); border-bottom: 2px dotted var(--accent); box-sizing: border-box; }
+.tl-step-band.placed.tl-step-selected { box-shadow: inset 4px 0 0 var(--accent), 0 0 0 1px var(--accent); }
+.legend .lg-placed::before, .lg-placed::before { background: var(--accent-2); box-shadow: inset 3px 0 0 var(--accent);
+  border-bottom: 2px dotted var(--accent); box-sizing: border-box; }
+/* The list a choice is made from (modals.js chooseModal). */
+.modal-choose .modal-body { padding: 16px 18px; }
+.modal-choose .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 8px; }
+.modal-choose .modal-detail { color: var(--fg-3); font-size: 11px; margin: 8px 0 0; line-height: 1.55; }
+.modal-choose .modal-list {
+  width: 100%; padding: 4px; background: var(--bg-2); color: var(--fg);
+  border: 1px solid var(--rule); border-radius: 4px; font-family: inherit; font-size: 13px; outline: none;
+}
+.modal-choose .modal-list:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-muted); }
+.modal-choose .modal-list optgroup { color: var(--fg-2); font-style: normal; font-weight: 600; }
+.modal-choose .modal-list option { color: var(--fg); font-weight: 400; padding: 2px 6px; }
+.modal-choose .modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--rule); }
+.modal-choose {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-choose .modal {
+  background: var(--bg-1); border: 1px solid var(--rule);
+  border-radius: var(--radius); width: min(520px, calc(100vw - 40px));
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.modal-choose .modal-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--rule);
+}
+.modal-choose .modal-header h2 { flex: 1; font-size: 14px; color: var(--fg); margin: 0; }
+.modal-choose .modal-close {
+  background: transparent; border: 0; color: var(--fg-3);
+  font-size: 14px; cursor: pointer; padding: 2px 8px;
+}
+.modal-choose .modal-close:hover { color: var(--fg); }

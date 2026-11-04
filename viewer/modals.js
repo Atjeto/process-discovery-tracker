@@ -123,4 +123,68 @@ function confirmModal(opts) {
   });
 }
 
-module.exports = { promptModal, confirmModal };
+/* A choice from a list (2.0.5, Place after a step...): opts { title,
+   message, detail, groups: [{ label, items: [{ value, label, title }] }],
+   value (the item chosen at first), okLabel }. A list box shows the items
+   under their groups' labels; Enter or a double-click chooses, Escape
+   cancels. Resolves to the value chosen, or null. */
+function chooseModal(opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const groups = (opts.groups || []).filter((g) => g && (g.items || []).length);
+    const count = groups.reduce((n, g) => n + 1 + g.items.length, 0);
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop modal-choose";
+    const okLabel = opts.okLabel || "OK";
+    const cancelLabel = opts.cancelLabel || "Cancel";
+    const option = (it) => '<option value="' + escapeAttr(it.value) + '"' + (it.title ? ' title="' + escapeAttr(it.title) + '"' : "") +
+      (it.value === opts.value ? " selected" : "") + ">" + escapeHtml(it.label) + "</option>";
+    backdrop.innerHTML =
+      '<div class="modal modal-sm" role="dialog" aria-label="' + escapeAttr(opts.title || "Choose") + '">' +
+      '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Choose") + '</h2>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<div class="modal-body">' +
+      (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
+      '<select class="modal-input modal-list" size="' + Math.max(4, Math.min(12, count)) + '" aria-label="' +
+        escapeAttr(opts.listLabel || opts.title || "Choose") + '">' +
+        groups.map((g) => '<optgroup label="' + escapeAttr(g.label) + '">' + g.items.map(option).join("") + "</optgroup>").join("") +
+      "</select>" +
+      (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
+      '</div>' +
+      '<footer class="modal-footer">' +
+      '<button class="modal-cancel">' + escapeHtml(cancelLabel) + '</button>' +
+      '<button class="primary modal-ok">' + escapeHtml(okLabel) + '</button>' +
+      '</footer>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+    const list = backdrop.querySelector(".modal-list");
+    const okBtn = backdrop.querySelector(".modal-ok");
+    let resolved = false;
+    function done(value) {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      resolve(value);
+    }
+    const chosen = () => (list.value ? list.value : null);
+    const syncOk = () => { okBtn.disabled = !chosen(); };
+    list.addEventListener("change", syncOk);
+    syncOk();
+    okBtn.addEventListener("click", () => { if (chosen()) done(chosen()); });
+    backdrop.querySelector(".modal-cancel").addEventListener("click", () => done(null));
+    backdrop.querySelector(".modal-close").addEventListener("click", () => done(null));
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) done(null); });
+    list.addEventListener("dblclick", () => { if (chosen()) done(chosen()); });
+    backdrop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); if (chosen()) done(chosen()); }
+      else if (e.key === "Escape") { e.preventDefault(); done(null); }
+    });
+    setTimeout(() => {
+      list.focus();
+      const sel = list.options[list.selectedIndex];
+      if (sel) sel.scrollIntoView({ block: "nearest" });
+    }, 0);
+  });
+}
+
+module.exports = { promptModal, confirmModal, chooseModal };

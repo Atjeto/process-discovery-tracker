@@ -207,6 +207,15 @@ The viewer says *transaction* for one pass through the process and
   right-click, snaps to a step's start or the playhead a few pixels away
   (a step's side to the other sides too). Esc puts a side back; Ctrl+Z
   undoes a move. The same times are typed in Steps (see there).
+- **A step's place in the process is its own** (2.0.5, contract C22; the
+  owner's report: a correction the SME shows late in a video came after
+  every step in between). A step band's right-click offers *Place after a
+  step...*: a list of every transaction's steps, *First in* each, and the
+  step comes right after the one chosen, in that one's transaction, while
+  its band, its video and its time stay where it was shown; the band then
+  carries an accent edge and a dotted foot, its tooltip saying where it is
+  in the process, and the legend explains the mark. *Back to its time* is
+  the inverse.
 - **Leave out of the analysis**: a selected stretch (a break, a detour)
   drafts no step and counts no time. The timeline shows it hatched, and a
   click on it offers *Include again*; Ctrl+Z undoes either. A transaction
@@ -234,6 +243,17 @@ The viewer says *transaction* for one pass through the process and
   step or the transaction's end. In a project made from a video or from
   nothing, marker changes apply by themselves a moment later (no Apply
   button there); its one unmarked transaction shows both fields too.
+- **Moving a step in the process** (2.0.5, contract C22): Alt+Up and
+  Alt+Down (and *Move up*, *Move down* in the step menu) move any step one
+  row, a step with a time in the process only, its band staying where it is
+  on the Timeline; *Place after a step...* (the step menu, the Flow line)
+  takes it further, into another transaction too, and *Back to its time*
+  puts it where its time puts it. Its row and its Flow line read *Placed*.
+  The map, the differences, the PDD and the Technical details read the same
+  order. + Add step after a step with a time is placed right after it. A
+  merge or a group joining a placed step with steps apart from it on the
+  timeline is refused, and a step hidden or deleted leaves the steps placed
+  after it where they were.
 - **The transactions and their steps**, under one line that says what a
   transaction is; a row shows when its step starts, a transaction's head
   its time ("under 1s", "42s", "2m 07s"). Confirm the reference transaction

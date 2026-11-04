@@ -6,6 +6,36 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.5] (2026-11-04): a step's place in the process, apart from its time
+
+### Changed
+
+- **A step's place in the process is its own** (the owner's report: late
+  in a video the SME corrects a step shown earlier, or adds a condition to
+  it; marked there, the step came after every step in between). Right-click
+  its band on the Timeline, or its row in Steps, and choose *Place after a
+  step...*: it comes right after the step you pick, in that step's
+  transaction, while its band, its video and its time stay where it was
+  said. The map, the differences between transactions, the PDD and the
+  Technical details follow the same order. Its row and its Flow line read
+  *Placed*, its band carries a mark the legend explains, and *Back to its
+  time* puts it where its time puts it again.
+- **Alt+Up and Alt+Down move any step** (and *Move up* and *Move down* in
+  its menu): a step with a time moves in the process only, its band staying
+  where it is on the Timeline; moved back to where its time puts it, it is
+  no longer placed. Two steps without a time swap places as before.
+- **+ Add step comes right after the selected step**, as Help says, also
+  when that step has a time (it came after every step with a time).
+- **What was placed keeps its place**: a step hidden, deleted, merged or
+  grouped leaves the steps placed after it where they were, and a step
+  split keeps its two parts together. A merge or a group that would join a
+  placed step and steps apart from it on the Timeline is refused, with the
+  reason: a step has one stretch of time.
+- **What was said under a step** is bounded by the step before it on the
+  Timeline, and the live map's lines weigh a placed step by its own time.
+- **Help: *Put a step where it belongs in the process***, a new everyday
+  task (and in the How-to guide), and *Placed* in the glossary.
+
 ## [2.0.4] (2026-09-28): steps marked one after another
 
 ### Changed

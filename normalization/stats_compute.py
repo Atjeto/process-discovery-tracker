@@ -23,7 +23,7 @@ from statistics import mean, median
 from typing import Any
 
 from _dt import parse_ts as _parse_ts  # public re-export
-from step_context import step_duration_ms, untimed_key
+from step_context import process_order, step_duration_ms
 
 
 def step_group_label(step: dict[str, Any]) -> str:
@@ -407,22 +407,21 @@ def step_variants(
     the raw activity sequence, this captures the analyst's stepped view
     of the process, which is usually the more meaningful comparison.
 
-    A case's variant is its steps ordered by start time, then the steps
-    without a time by their `order` (contract C16). Steps with no case_id
-    are skipped (they cannot be attributed to a process instance)."""
-    by_case: dict[str, list[tuple[tuple, str]]] = defaultdict(list)
+    A case's variant is its steps in its process order: by start time, then
+    the steps without a time by their `order` (contract C16), a step the
+    analyst placed after another right after it (contract C22,
+    step_context.process_order). Steps with no case_id are skipped (they
+    cannot be attributed to a process instance)."""
+    by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in steps or []:
         cid = s.get("case_id")
         if not cid:
             continue
-        start = ((s.get("time_range") or {}).get("start")) or ""
-        key = (0, start) if start else untimed_key(s)
-        by_case[cid].append((key, step_group_label(s)))
+        by_case[cid].append(s)
 
     variant_counts: Counter[tuple[str, ...]] = Counter()
     for seq in by_case.values():
-        seq.sort(key=lambda pair: pair[0])
-        variant_counts[tuple(name for _, name in seq)] += 1
+        variant_counts[tuple(step_group_label(s) for s in process_order(seq))] += 1
 
     rows = []
     for variant, count in variant_counts.most_common(top_n):

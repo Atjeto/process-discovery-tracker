@@ -17,9 +17,9 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   The reviews that reshaped the viewer:
   [STEP-BACK-REVIEW-2026-09-23.md](docs/To-Do/STEP-BACK-REVIEW-2026-09-23.md) and
   [COMPANION-CRITIQUE-2026-09-23.md](docs/To-Do/COMPANION-CRITIQUE-2026-09-23.md).
-- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-49, the merge
+- **Cycle state** (lanes, the autonomous decisions AD-1 to AD-50, the merge
   gates): [.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md](.claude/agent-findings/2026-09-23_ba-helper-cycle-resume-state.md).
-  Data contracts C1 to C21:
+  Data contracts C1 to C22:
   [.claude/agent-findings/2026-09-23_ba-helper-contracts.md](.claude/agent-findings/2026-09-23_ba-helper-contracts.md).
 - **Baseline** (health, CI history, code review RP-01 to RP-36):
   [docs/To-Do/RESTART-POINT-2026-09-22.md](docs/To-Do/RESTART-POINT-2026-09-22.md).
@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.4** (2026-09-28), the light
+- **Versions.** The current release is **v2.0.5** (2026-11-04), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -127,7 +127,7 @@ the folder.
 | [docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) | The discipline every new verb passes. |
 | [docs/adr/](docs/adr/README.md) | Decisions; the registry is CI-enforced. |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [docs/DEPLOY.md](docs/DEPLOY.md) | Dev setup, build, release, install. |
-| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.4. |
+| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.5. |
 
 ## Key concepts
 
@@ -179,6 +179,20 @@ the folder.
   inserted; a video project's Timeline runs on the video's length. Steps
   added by hand have `time_range: null` and an `order` (Alt+Up and Alt+Down
   move one), listed after the timed steps, with no duration.
+- **A step's place in the process** (C22, 2.0.5, the owner's report: a
+  correction the SME shows late in a video came after every step in
+  between). `step.placed_after` names the step it comes after in its
+  transaction ("start": first); its `time_range` stays where it was shown.
+  One order rule, `viewer/step-order.js` `processOrder` and
+  `step_context.process_order`, pinned by `shared/step-order-golden.json`,
+  read by Steps, both maps, the differences, the PDD and the stats; a
+  hidden step is never an anchor. Verbs: Alt+Up and Alt+Down on any step,
+  *Place after a step...* (the step menu, the band menu, the Flow line; into
+  another transaction too), *Back to its time*; the edits write the fewest
+  placements (`deriveOrder`) and a step that leaves hands its followers over
+  (`keepOrder`). Marks: *Placed* on the row and the Flow line, `.placed` on
+  the band, the legend's *placed elsewhere in the process*. A placed step
+  belongs to its anchor's transaction (`step_suggest._follow_placement_case`).
 - **Moving on the Timeline** (2.0.3, a PM's report; `flow-view-timeline.js`
   *Dragging a side*): a transaction's band drags its start and its end (a
   marker change, pending until Apply marker changes; the Transactions lane
@@ -469,7 +483,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 - UI bugs are invisible to the unit suites: validate behaviour in the real
   viewer. `e2e/run-all.js` runs the smokes: `session`, `overview`, `runs`,
   `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`,
-  `library`, `windows`, `demo` and `timeline-edit` (each `<name>-smoke.js`;
+  `library`, `windows`, `demo`, `timeline-edit` and `process-place` (each `<name>-smoke.js`;
   [e2e/README.md](e2e/README.md) says what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles

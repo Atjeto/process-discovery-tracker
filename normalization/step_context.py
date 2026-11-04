@@ -28,6 +28,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Any
 
 from _dt import parse_ts_or_none as _parse_ts
@@ -257,10 +258,12 @@ def untimed_key(step: dict) -> tuple[int, float]:
 
 
 def step_sort_key(step: dict) -> tuple[int, float]:
-    """The order of a run's steps (contract C16): a step with a start time
-    by that time, then the steps without one by their `order`
+    """The base order of a run's steps (contract C16): a step with a start
+    time by that time, then the steps without one by their `order`
     (untimed_key). Python's sort is stable, so equal keys keep the list
-    order."""
+    order. A step the analyst placed elsewhere in the process (contract
+    C22, `placed_after`) is ordered by process_order, which starts from
+    this order."""
     start = step_start(step)
     if start is not None:
         try:
@@ -268,6 +271,123 @@ def step_sort_key(step: dict) -> tuple[int, float]:
         except (OverflowError, OSError, ValueError):
             pass
     return untimed_key(step)
+
+
+# Contract C22 (2.0.5, the owner's report: a correction the SME shows late
+# in a video belongs early in the process). `placed_after` names the step a
+# step comes after in its transaction's process, or PLACED_FIRST; its
+# time_range stays where it was shown. The rule is viewer/step-order.js's,
+# pinned for both by shared/step-order-golden.json.
+PLACED_FIRST = "start"
+# The moment a step placed first counts at: before every stretch.
+BEFORE_EVERY_STRETCH = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _case_of(step: dict):
+    cid = step.get("case_id")
+    return cid if isinstance(cid, str) and cid else None
+
+
+def _held_placements(items: list[dict]) -> dict[int, Any]:
+    """{id(step): PLACED_FIRST or the step it comes after} for the
+    placements that hold: "start", or a step of the same list that is
+    visible, of the same transaction and not the step itself, when it does
+    not lead back to the step. Any other placement is ignored."""
+    by_id: dict[str, dict] = {}
+    for s in items:
+        sid = s.get("step_id")
+        if isinstance(sid, str) and sid and sid not in by_id:
+            by_id[sid] = s
+    named: dict[int, Any] = {}
+    for s in items:
+        a = s.get("placed_after")
+        if a == PLACED_FIRST:
+            named[id(s)] = PLACED_FIRST
+            continue
+        if not isinstance(a, str) or not a:
+            continue
+        t = by_id.get(a)
+        if (t is None or t is s or t.get("state") == "hidden"
+                or _case_of(t) != _case_of(s)):
+            continue
+        named[id(s)] = t
+    held: dict[int, Any] = {}
+    for s in items:
+        if id(s) not in named:
+            continue
+        seen: set[int] = set()
+        x = named[id(s)]
+        loops = False
+        while True:
+            if x is s:
+                loops = True
+                break
+            if x == PLACED_FIRST or id(x) not in named or id(x) in seen:
+                break
+            seen.add(id(x))
+            x = named[id(x)]
+        if not loops:
+            held[id(s)] = named[id(s)]
+    return held
+
+
+def _order_plan(steps: Any) -> tuple[list[dict], dict[int, Any]]:
+    """The process order of one list of steps and, per step, the step its
+    place hangs from (itself when its time places it, PLACED_FIRST for the
+    steps placed first)."""
+    items = [s for s in (steps or []) if isinstance(s, dict)]
+    base = sorted(items, key=step_sort_key)
+    held = _held_placements(items)
+    kids: dict[Any, list[dict]] = {}
+    for s in base:
+        if id(s) in held:
+            a = held[id(s)]
+            kids.setdefault(PLACED_FIRST if a == PLACED_FIRST else id(a), []).append(s)
+    order: list[dict] = []
+    root: dict[int, Any] = {}
+
+    def emit(key, r):
+        for c in kids.get(key, []):
+            order.append(c)
+            root[id(c)] = r
+            emit(id(c), r)
+
+    emit(PLACED_FIRST, PLACED_FIRST)
+    for s in base:
+        if id(s) in held:
+            continue
+        order.append(s)
+        root[id(s)] = s
+        emit(id(s), s)
+    return order, root
+
+
+def process_order(steps: Any) -> list[dict]:
+    """The process order of one list of steps, a transaction's or a
+    sub-process's (contract C22): the base order (step_sort_key), the steps
+    placed first first, and every step followed by the steps placed after
+    it, in the base order, each followed by its own. A hidden step is never
+    a step another comes after, so a list with or without its hidden steps
+    reads the same order. A new list."""
+    return _order_plan(steps)[0]
+
+
+def place_starts(steps: Any) -> dict[int, Any]:
+    """{id(step): the moment it counts at} among a transaction's stretches
+    left out of the analysis (lane FX1's cuts and the differences): its own
+    start, or for a placed step the start of the step its place hangs from;
+    BEFORE_EVERY_STRETCH for the steps placed first, None when that step has
+    no time (after every stretch). viewer/step-order.js placeMoments."""
+    _order, root = _order_plan(steps)
+    return {k: (BEFORE_EVERY_STRETCH if r == PLACED_FIRST else step_start(r))
+            for k, r in root.items()}
+
+
+def declares_place(step: Any) -> bool:
+    """True when the analyst placed the step in the process (C22): it
+    carries a placed_after."""
+    a = step.get("placed_after") if isinstance(step, dict) else None
+    return isinstance(a, str) and bool(a.strip())
 
 
 def fmt_ms(ms: Any) -> str:
