@@ -54,7 +54,7 @@ it is done; its button takes you to the next.
    moment on the timeline. The video is copied into the project folder.
    Attach the meeting transcript (a Teams .vtt or .docx) with *Attach* after
    *No transcript*: the synced video places its sentences in time. Without a
-   video, *Sync* on the Timeline's *Transcript* lane places it: pick a
+   video, *Sync...* on the Timeline's *Transcript* lane places it: pick a
    sentence, then click where it was said.
 2. **Check the transactions.** On the Timeline, each transaction is a band,
    from *Order #10900* to *Order #10903*. If one is missing, right-click the
@@ -158,10 +158,12 @@ it is done; its button takes you to the next.
 
 ### Work with several videos
 
-1. On the Overview, click *Add another* after *Video* and pick one or more
-   videos: several go in the order of their names. In a project made from
-   videos they go after the last one, back to back. In a recording you sync
-   the first with two clicks, as when you attach one.
+1. On the Overview, click *Add another* after *Video* (*Add*, once there are
+   several) and pick one or more videos: several go in the order of their
+   names. In a project made from videos they go after the last one, back to
+   back. In a recording you sync the first with two clicks, as when you
+   attach one, and the others go after it; *Sync video...* on a video's band
+   syncs that one again.
 2. On the Timeline the *Videos* lane shows each video as a band. The
    timeline runs across them: a moment on it is the same moment however many
    videos there are. The video that shows the playhead plays, then the next
@@ -172,10 +174,12 @@ it is done; its button takes you to the next.
    with it, and a trim that would cut away a step or a mark is refused and
    says what is there. *Give its start back* and *Give its end back* undo a
    trim, and so does Ctrl+Z.
-4. Right-click a band to replace or remove that video. Removing a video
-   takes what you marked on it with it, after asking. A transcript belongs
-   to one video: *Attach* asks which, and its sentences move with that
-   video.
+4. Right-click a band to replace or remove that video (a video whose file is
+   not found offers *Find the video...*). Removing a video takes what you
+   marked on it with it, after asking. A transcript belongs to one video:
+   *Attach* asks which, and its sentences move with that video. *Add
+   another* after *Transcript* attaches the next transcript; each has its
+   own row on the Timeline, with *Sync...*, *Replace...* and *Remove*.
 
 ### Add a step the recorder missed
 
