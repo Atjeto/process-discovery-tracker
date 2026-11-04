@@ -1,4 +1,7 @@
 "use strict";
+/* C23 (2.0.6): the first video of the chain (external_videos), or the one
+   external_video of a project of 2.0.5. */
+const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_videos[0]) || (a && a.external_video) || null;
 /*
  * Step panel e2e smoke (lane V2 items 3, 4 and 5; step-back review 4.5 and
  * 4.6). Launches the REAL viewer on a throwaway profile against a TEMP copy
@@ -240,7 +243,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     }, new Date(started + 15000).toISOString());
     await page.mouse.click(at.x, at.y);
     await page.waitForFunction(() => /Video attached and synced/.test((document.getElementById("toast") || {}).textContent || ""), null, { timeout: 60000 });
-    attach = readJson(path.join(S, "annotations.json")).external_video || {};
+    attach = firstVideo(readJson(path.join(S, "annotations.json"))) || {};
   } catch (e) { attach.err = errText(e); }
   const copied = path.join(S, "video", path.basename(VIDEO));
   record("(a) Attach video copies the video into the recording folder (video/) and stores its path relative to the folder",
@@ -248,7 +251,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       fs.statSync(copied).size === fs.statSync(VIDEO).size && Math.abs(attach.offset_ms - 15000) <= 2500,
     JSON.stringify(attach));
   await page.waitForFunction(() => !!require("./state.js").getSession().recordingAvailable, null, { timeout: T }).catch(() => {});
-  const offset = (readJson(path.join(S, "annotations.json")).external_video || {}).offset_ms || 0;
+  const offset = (firstVideo(readJson(path.join(S, "annotations.json"))) || {}).offset_ms || 0;
   const expectAt = (step) => (Date.parse(step.time_range.start) - started - offset) / 1000;
   const anno = readJson(path.join(S, "annotations.json"));
   const run1 = (readJson(path.join(S, "stats.json")).case_stats || []).filter((c) => !c.parent_case_id)
@@ -479,7 +482,9 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     const within = (y, sel) => [...document.querySelectorAll(sel)].some((b) => { const r = b.getBoundingClientRect(); return r.height > 0 && y >= r.top && y <= r.bottom; });
     // How far a name's middle is from the middle of its lane's first mark.
     const offset = (n, sel) => { const b = [...document.querySelectorAll(sel)].find((m) => m.getBoundingClientRect().height > 0); return b ? Math.round(Math.abs(mid(n) - mid(b)) * 10) / 10 : null; };
-    const MARK = { cases: "#timeline .tl-case-band", activity: "#timeline .tl-activity", screenshots: "#timeline .tl-screenshot", steps: "#timeline .tl-step-band" };
+    // C23 (2.0.6): the video attached shows on the Videos lane, under the systems.
+    const MARK = { cases: "#timeline .tl-case-band", activity: "#timeline .tl-activity", videos: "#timeline .tl-clip",
+      screenshots: "#timeline .tl-screenshot", steps: "#timeline .tl-step-band" };
     const col = document.getElementById("tl-lane-names");
     const tl = document.getElementById("timeline-scroll").getBoundingClientRect();
     // The separators' heights on the page, in the column and across the timeline.
@@ -522,10 +527,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   const eachOk = (list) => (list || []).every((n) => n.title.startsWith(n.text + ": ") && n.inLane === true && n.whole &&
     n.off !== null && n.off <= 1.5 && n.upper && n.key);
   const sepsOk = (x) => !!(x && x.seps.column && x.seps.column === x.seps.timeline);
-  record("(L) the owner's reviews: the Timeline's lanes have a header column (Transactions, Systems, Steps; Screenshots once turned on): a cell per lane with its key and its name centred on the lane's marks, in uppercase like the section labels, with a tooltip saying what it shows; the dividers run on across the timeline; pointing at a cell lights its lane; the minimap's tooltip says it is the whole recording",
-    !!(!lanes.err && lanes.def.leftOfTimeline && JSON.stringify(said(lanes.def.names)) === '["Transactions","Systems","Steps"]' && eachOk(lanes.def.names) &&
+  record("(L) the owner's reviews: the Timeline's lanes have a header column (Transactions, Systems, Videos, Steps; Screenshots once turned on): a cell per lane with its key and its name centred on the lane's marks, in uppercase like the section labels, with a tooltip saying what it shows; the dividers run on across the timeline; pointing at a cell lights its lane; the minimap's tooltip says it is the whole recording",
+    !!(!lanes.err && lanes.def.leftOfTimeline && JSON.stringify(said(lanes.def.names)) === '["Transactions","Systems","Videos","Steps"]' && eachOk(lanes.def.names) &&
       sepsOk(lanes.def) && sepsOk(lanes.shots) && lanes.lit === true && lanes.unlit === true &&
-      JSON.stringify(said(lanes.shots.names)) === '["Transactions","Systems","Screenshots","Steps"]' && eachOk(lanes.shots.names) &&
+      JSON.stringify(said(lanes.shots.names)) === '["Transactions","Systems","Videos","Screenshots","Steps"]' && eachOk(lanes.shots.names) &&
       lanes.def.names.find((n) => n.lane === "steps").title === "Steps: each step of each transaction; click one to see all its moments." &&
       lanes.minimap.shown && /^The whole recording/.test(lanes.minimap.title)),
     JSON.stringify(lanes));
@@ -767,7 +772,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await v.close();
     // An absolute path from the analyst's computer, the file put in the folder.
     const a = readJson(path.join(moved, "annotations.json"));
-    a.external_video.path = "C:\\Users\\pm\\Videos\\" + path.basename(VIDEO);
+    firstVideo(a).path = "C:\\Users\\pm\\Videos\\" + path.basename(VIDEO);
     fs.writeFileSync(path.join(moved, "annotations.json"), JSON.stringify(a, null, 2));
     fs.renameSync(path.join(moved, "video", path.basename(VIDEO)), path.join(moved, path.basename(VIDEO)));
     ({ v, page } = await open(moved, errs));

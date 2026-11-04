@@ -434,3 +434,43 @@ def test_a_failed_write_keeps_the_previous_transcript(tmp_path, monkeypatch):
         ti.import_transcript(fresh, other)
     assert not (fresh / "transcript").exists()
     assert not (fresh / "transcript.json").exists()
+
+
+# ---- C23 (2.0.6): one transcript per video ------------------------------------
+
+def test_out_writes_another_transcript_and_keeps_both_originals(tmp_path):
+    session = tmp_path / "s"
+    session.mkdir()
+    (session / "events.jsonl").write_text("", encoding="utf-8")
+    a = tmp_path / "one" / "meeting.vtt"
+    b = tmp_path / "two" / "meeting.vtt"
+    for f, text in ((a, "First part"), (b, "Second part")):
+        f.parent.mkdir()
+        f.write_text("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Ana>" + text + "</v>\n", encoding="utf-8")
+    assert ti.main([str(session), str(a)]) == 0
+    assert ti.main([str(session), str(b), "--out", "transcript-2.json"]) == 0
+    one = json.loads((session / "transcript.json").read_text(encoding="utf-8"))
+    two = json.loads((session / "transcript-2.json").read_text(encoding="utf-8"))
+    assert one["source_file"] == "transcript/meeting.vtt"
+    assert two["source_file"] == "transcript/meeting (2).vtt"
+    assert "First part" in (session / one["source_file"]).read_text(encoding="utf-8")
+    assert "Second part" in (session / two["source_file"]).read_text(encoding="utf-8")
+    # A re-import of the second one replaces its own copy, not the first's.
+    assert ti.main([str(session), str(b), "--out", "transcript-2.json"]) == 0
+    assert json.loads((session / "transcript-2.json").read_text(encoding="utf-8"))["source_file"] == "transcript/meeting (2).vtt"
+    assert "First part" in (session / "transcript" / "meeting.vtt").read_text(encoding="utf-8")
+
+
+def test_out_refuses_another_name(tmp_path, capsys):
+    session = tmp_path / "s"
+    session.mkdir()
+    (session / "events.jsonl").write_text("", encoding="utf-8")
+    assert ti.main([str(session), str(tmp_path / "x.vtt"), "--out", "annotations.json"]) == 1
+    assert "transcript-<n>.json" in capsys.readouterr().err
+
+
+def test_clock_reads_the_chain_of_videos(tmp_path):
+    (tmp_path / "annotations.json").write_text(json.dumps({"external_videos": [{"id": "v1", "path": "video/a.mp4"}]}), encoding="utf-8")
+    assert ti.transcript_clock(tmp_path) == "video"
+    (tmp_path / "annotations.json").write_text(json.dumps({"external_videos": []}), encoding="utf-8")
+    assert ti.transcript_clock(tmp_path) == "own"

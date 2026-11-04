@@ -191,9 +191,30 @@ function _measure(src) {
   m.src = src;
 }
 
-/* Where a step's moment is in the project's video (StepFacts.videoMoment). */
+/* C23 (2.0.6): the video of the chain the panel shows for `step`: the one
+   showing its start, else (a step without a time, or one no video shows)
+   the one in the Timeline's player, else the first one found. */
+function _clipOf(step) {
+  const start = Date.parse(step && step.time_range && step.time_range.start);
+  const hit = Number.isFinite(start) ? Video.clipAtMs(start) : null;
+  if (hit && hit.clip.file) return hit.clip;
+  const cur = Video.currentClip();
+  return cur && cur.file ? cur : (Video.chainOf().find((c) => c.file) || null);
+}
+
+/* Where a step's moment is in its video (StepFacts.videoMoment, `at` and
+   `to` in that video's file): a moment no video of the chain shows is
+   outside; without a video placed on the clock, unplaced. */
 function _moment(step) {
-  return StepFacts.videoMoment(step, Date.parse(Video.videoStartTs()), _lengthMs());
+  const start = Date.parse(step && step.time_range && step.time_range.start);
+  if (!Number.isFinite(start)) return { kind: "untimed" };
+  const hit = Video.clipAtMs(start);
+  if (hit && hit.clip.file) {
+    const len = hit.span.endMs != null ? hit.span.endMs - hit.span.fileStartMs : _lengthMs();
+    return StepFacts.videoMoment(step, hit.span.fileStartMs, len);
+  }
+  const placed = Video.chainOf().some((c) => c.file && Video.clipSpan(c));
+  return placed ? { kind: "outside", at: NaN } : { kind: "unplaced" };
 }
 
 /* What a moment's time is in (lane FX3, F22): the recording, else the
@@ -286,7 +307,7 @@ function render() {
   const where = SystemNames.whereOfStep(lead, inter, names);
   const datas = StepFacts.stepDatas(lead, inter);
   const desc = StepFacts.isDraftedDescription(lead.description, datas) ? "" : String(lead.description || "").trim();
-  const hasVideo = !!(s.recordingAvailable && s.recordingPath);
+  const hasVideo = Video.chainOf(s).some((c) => c.file);
   // C17: the step's condition and links, in one short line when set (the
   // condition set on any step of this box: it holds in every transaction).
   // C19: a link reads against the steps of the lead's own visit.
@@ -309,7 +330,6 @@ function render() {
     (flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
     '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length, open)) + "</p>";
   const video = $("sp-video");
-  const src = hasVideo ? "file:///" + String(s.recordingPath).replace(/\\/g, "/") : "";
   // Lane FX2 (validation pass 2, F7; pass 3, F14): the video shows only a
   // moment of the highlighted row: its start when the video covers it, else
   // it is hidden with one line saying the video does not cover it; a step
@@ -317,6 +337,9 @@ function render() {
   // is taken only once the analyst goes to the step's moment.
   const focusStep = (occ.find((o) => o.step.step_id === _state.focusId) || occ[0]).step;
   const fm = hasVideo ? _moment(focusStep) : null;
+  // C23: the video that shows the highlighted row's moment.
+  const focusClip = hasVideo ? _clipOf(focusStep) : null;
+  const src = focusClip ? Video.fileUrl(focusClip.file) : "";
   if (video) {
     if (!src) { video.removeAttribute("src"); video.hidden = true; }
     else {
@@ -376,7 +399,8 @@ function _cue(stepId) {
   _stopAt = null;
   if (!video.paused) video.pause();
   const m = _moment(step);
-  const at = m.kind === "covered" ? m.at : m.kind === "untimed" ? 0 : NaN;
+  const clip = _clipOf(step);
+  const at = m.kind === "covered" ? m.at : m.kind === "untimed" ? (clip ? clip.in_ms / 1000 : 0) : NaN;
   if (isFinite(at) && at >= 0 && Math.abs((video.currentTime || 0) - at) > 0.001) {
     _selfSeek = true;
     video.currentTime = at;
@@ -396,8 +420,12 @@ function _cue(stepId) {
 function frameSource(stepId) {
   const s = _session();
   const step = _find(stepId);
-  if (!s || !step || !s.recordingAvailable || !s.recordingPath) return { why: "There is no video to take a frame from." };
-  const src = "file:///" + String(s.recordingPath).replace(/\\/g, "/");
+  const clip = s && step ? _clipOf(step) : null;
+  if (!s || !step || !clip) return { why: "There is no video to take a frame from." };
+  const src = Video.fileUrl(clip.file);
+  // C23: where that video's file starts on the clock (the frame's moment).
+  const sp = Video.clipSpan(clip);
+  const baseMs = sp ? sp.fileStartMs : NaN;
   const m = _moment(step);
   if (m.kind === "outside") return { why: StepFacts.NOT_COVERED + ": no frame of it can be taken." };
   if (m.kind === "unplaced") return { why: "The video cannot be lined up with the project, so no frame of this step can be taken." };
@@ -405,8 +433,8 @@ function frameSource(stepId) {
   const video = $("sp-video");
   const shown = !!(panel && !panel.hidden && _state && _state.focusId === stepId && video && !video.hidden &&
     video.getAttribute("src") === src);
-  if (shown && (m.kind === "covered" || _moved)) return { video, src };
-  if (m.kind === "covered") return { at: m.at, src };
+  if (shown && (m.kind === "covered" || _moved)) return { video, src, baseMs };
+  if (m.kind === "covered") return { at: m.at, src, baseMs };
   return { why: _noTime() + ": play the step panel's video to its moment first, then add the frame." };
 }
 
@@ -490,18 +518,24 @@ function play(stepId) {
   const s = _session();
   const step = _find(stepId);
   const video = $("sp-video");
-  if (!s || !step || !video || !s.recordingAvailable || !s.recordingPath) {
+  const clip = s && step ? _clipOf(step) : null;
+  if (!s || !step || !video || !clip) {
     toast("No video is linked to this project.", "error");
     return;
   }
-  const startTs = Video.videoStartTs();
-  if (!startTs) { toast("Cannot line the video up with the project: it has no start time.", "error"); return; }
-  const base = Date.parse(startTs);
-  const from = (Date.parse(step.time_range && step.time_range.start) - base) / 1000;
-  const to = (Date.parse(step.time_range && step.time_range.end) - base) / 1000;
-  if (!isFinite(from) || from < 0) { toast("This step starts before the video does.", "error"); return; }
+  const m = _moment(step);
+  if (m.kind === "unplaced") { toast("Cannot line the video up with the project: it has no start time.", "error"); return; }
+  if (m.kind === "untimed") { toast("This step starts before the video does.", "error"); return; }
   // Lane FX2: past the video's end nothing of the step is in it.
-  if (_moment(step).kind === "outside") { toast(StepFacts.NOT_COVERED + ".", "error"); return; }
+  if (m.kind === "outside") { toast(StepFacts.NOT_COVERED + ".", "error"); return; }
+  // C23: from the step's start in the video showing it, to its end or that
+  // video's end, whichever comes first.
+  const from = m.at;
+  const sp = Video.clipSpan(clip);
+  const out = sp && sp.endMs != null ? (sp.endMs - sp.fileStartMs) / 1000 : Infinity;
+  const to = Math.min(m.to != null ? m.to : NaN, out);
+  const src = Video.fileUrl(clip.file);
+  if (video.getAttribute("src") !== src) { video.setAttribute("src", src); video.hidden = false; }
   _cuedId = stepId;
   if (_state) { _state.focusId = stepId; render(); }
   const main = document.getElementById("video");

@@ -421,31 +421,58 @@ def clock(ms: Any) -> str:
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
-def video_start(manifest: dict | None, annotations: dict | None):
-    """When the session's video starts (datetime), or None: an attached video
-    synced to the session (annotations.external_video.offset_ms, relative to
-    manifest.started_at), else the OBS recording's start. The viewer's
-    videoStartTs, the same order."""
-    man = manifest if isinstance(manifest, dict) else {}
+def _finite_ms(v) -> bool:
+    return (isinstance(v, (int, float)) and not isinstance(v, bool)
+            and math.isfinite(v) and abs(v) < 8.64e10)
+
+
+def video_clips(annotations: dict | None) -> list[dict]:
+    """The project's videos (contract C23, 2.0.6): annotations.external_videos,
+    each with a path, in the order they start on the clock (offset_ms plus
+    in_ms); a project of 2.0.5 or older has one, external_video. The
+    viewer's video-chain.js clipsOf, the same rule."""
     ann = annotations if isinstance(annotations, dict) else {}
-    ext = ann.get("external_video")
-    off = ext.get("offset_ms") if isinstance(ext, dict) else None
+    raw = ann.get("external_videos")
+    if not isinstance(raw, list):
+        raw = [ann.get("external_video")]
+    out = []
+    for c in raw:
+        if not isinstance(c, dict) or not isinstance(c.get("path"), str) or not c["path"].strip():
+            continue
+        off = c.get("offset_ms") if _finite_ms(c.get("offset_ms")) else 0
+        inn = c.get("in_ms") if _finite_ms(c.get("in_ms")) and c.get("in_ms") > 0 else 0
+        out.append(dict(c, offset_ms=off, in_ms=inn))
+    return sorted(out, key=lambda c: c["offset_ms"] + c["in_ms"])
+
+
+def video_start(manifest: dict | None, annotations: dict | None):
+    """When the session's first video's file starts (datetime), or None: an
+    attached video placed on the session's clock (offset_ms, relative to
+    manifest.started_at; C23: the first of the chain), else the OBS
+    recording's start."""
+    man = manifest if isinstance(manifest, dict) else {}
+    clips = video_clips(annotations)
     started = _parse_ts(man.get("started_at"))
-    if (started is not None and isinstance(off, (int, float))
-            and not isinstance(off, bool) and math.isfinite(off) and abs(off) < 8.64e10):
+    if started is not None and clips:
         from datetime import timedelta
-        return started + timedelta(milliseconds=off)
+        return started + timedelta(milliseconds=clips[0]["offset_ms"])
     obs = man.get("obs")
     return _parse_ts(obs.get("recording_start_ts")) if isinstance(obs, dict) else None
 
 
-def has_video(manifest: dict | None, annotations: dict | None) -> bool:
-    """True when the session has a video: one attached in the viewer
-    (annotations.external_video with a path) or the OBS recording."""
-    ann = annotations if isinstance(annotations, dict) else {}
-    ext = ann.get("external_video")
-    if isinstance(ext, dict) and isinstance(ext.get("path"), str) and ext["path"].strip():
-        return True
+def video_count(manifest: dict | None, annotations: dict | None) -> int:
+    """How many videos the session has: the ones attached in the viewer (C23:
+    the chain), else 1 for the OBS recording, else 0."""
+    clips = video_clips(annotations)
+    if clips:
+        return len(clips)
     obs = (manifest or {}).get("obs") if isinstance(manifest, dict) else None
     path = obs.get("recording_path") if isinstance(obs, dict) else None
-    return isinstance(path, str) and bool(path.strip())
+    return 1 if isinstance(path, str) and path.strip() else 0
+
+
+def has_video(manifest: dict | None, annotations: dict | None) -> bool:
+    """True when the session has a video: one attached in the viewer
+    (annotations.external_videos, or external_video, with a path) or the
+    OBS recording."""
+    return video_count(manifest, annotations) > 0

@@ -22,8 +22,8 @@ application work), and it reads in the reader's order:
      a page of its own, and the steps of the reference transaction (the
      pattern run, contract C3). Each step says its system and screen, in
      how many transactions it happened and where it is in the recording
-     ("Transaction 1 at 0:19", and the video time when the video's start is
-     known), never a time it took; its description (C7) is its text. The flow
+     ("Transaction 1 at 0:19", on the project's one clock, never a time in a
+     video, C23), never a time it took; its description (C7) is its text. The flow
      the analyst set on it (C17) prints under it: "Only when" its condition,
      and where the process goes after it besides the next step. A step's
      heading reads "Step 2: <name>", so a step's number never reads as a
@@ -116,7 +116,7 @@ from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
 from step_context import (StepContext, clock, has_video, place_starts, process_order, step_start,
-                          step_system, untimed_key, video_start)
+                          step_system, untimed_key, video_count)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
 from recognition import is_browser_chrome
@@ -505,8 +505,8 @@ class _Session:
                 self.times[ev["event_id"]] = str(ev.get("timestamp") or "")
         self.have_events = events is not None
         self.ctx = StepContext(self.interactions, self.app_names)
-        self.video_start = video_start(self.manifest, self.annotations)
         self.has_video = has_video(self.manifest, self.annotations)
+        self.video_count = video_count(self.manifest, self.annotations)
 
         # Each run's steps as units aligned to the reference run, and per
         # unit identity: in how many runs it happened.
@@ -624,36 +624,29 @@ class _Session:
         return self.ctx.where(_members(step)[0])[0]
 
     def position(self, step, case_id=None) -> str:
-        """Where a step is in the recording: its transaction and its time
-        from the start of the recording ("Transaction 1 at 0:19": the same
-        on every machine, whatever its time zone), and the video time when
-        the video's start is known ("Transaction 1 at 0:19 (video 12:45)");
-        for a step outside every run, "0:19 into the recording". A step
-        without a time has no place (C16). In a video session the session's
-        clock is the video's, so the place is the video time ("Transaction
-        1, video 0:19", "video 0:19" in the implicit run, which is not a
-        marked transaction). `case_id`, when given, is the step's
-        transaction (a sub-step's, contract C19: its parent's)."""
+        """Where a step is on the project's one clock: its transaction and its
+        time from the start of the recording ("Transaction 1 at 0:19": the
+        same on every machine, whatever its time zone); for a step outside
+        every run, "0:19 into the recording". C23 (2.0.6, the owner:
+        "Timeline is the core"): never a time in a video file, however many
+        videos the project has. A session made from videos runs on its
+        videos back to back, so its clock is theirs: "Transaction 1 at 1:00",
+        and "at 1:00" in the implicit run, which is not a marked transaction.
+        A step without a time has no place (C16). `case_id`, when given, is
+        the step's transaction (a sub-step's, contract C19: its parent's)."""
         start = step_start(_members(step)[0])
         if start is None:
             return ""
         cid = step.get("case_id") if case_id is None else case_id
         index = self.run_index.get(cid) if isinstance(cid, str) and not self.implicit else None
-        if (self.source == "video" and self.video_start is not None
-                and start >= self.video_start):
-            video = "video " + clock((start - self.video_start).total_seconds() * 1000)
-            return f"Transaction {index + 1}, {video}" if index is not None else video
         at = ""
         if self.recording_start is not None and start >= self.recording_start:
             at = clock((start - self.recording_start).total_seconds() * 1000)
         if index is not None:
-            out = f"Transaction {index + 1} at {at}" if at else f"Transaction {index + 1}"
-        else:
-            out = f"{at} into the recording" if at else ""
-        if self.video_start is not None and start >= self.video_start:
-            video = "video " + clock((start - self.video_start).total_seconds() * 1000)
-            out = f"{out} ({video})" if out else video
-        return out
+            return f"Transaction {index + 1} at {at}" if at else f"Transaction {index + 1}"
+        if not at:
+            return ""
+        return f"at {at}" if self.source == "video" else f"{at} into the recording"
 
     def activity(self, step):
         """The library activity a step is (contract C21): the activity of
@@ -1080,7 +1073,8 @@ def _write_document_control(doc, s):
         ("Recorded", recorded),
         ("Recorded by", s.recorded_by or "Not recorded"),
         ("Transactions recorded", _IMPLICIT if s.implicit else str(len(s.runs))),
-        ("Video", "Attached" if s.has_video else "None"),
+        # C23: a project made from several videos says how many.
+        ("Video", (f"{s.video_count} videos" if s.video_count > 1 else "Attached") if s.has_video else "None"),
     ]
     # AD-30: the capture's engagement is the Request; "project" is only
     # what the analyst opens (the Project folder row above).

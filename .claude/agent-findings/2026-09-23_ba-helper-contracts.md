@@ -1026,3 +1026,49 @@ decouple steps, but have them remain on the position on the timeline."
 - **Marks:** *Placed* on the row and in the Flow line (with *Back to its time*), the band's accent
   edge and dotted foot on the Timeline with its tooltip line, the legend's *placed elsewhere in the
   process*. Only a step with a time carries them.
+
+## C23. Videos chained on one timeline (owner 2026-11-04; 2.0.6)
+
+The owner: "can editor support multiple videos chaining together on a timeline, for whatever
+reason?" Then: "Placement same as any video editing software. Back to back. [...] Step line in
+PDD, we don't tie anything to video time, but to the timeline line. Timeline is the core. 10th
+minute on the timeline is 10th minute on the timeline, regardless if there are 1 or 7 videos on
+the timeline." Agreed with the consequence that trimming or removing an earlier video moves the
+later videos and their marks.
+
+- **Data:** `annotations.external_videos`, a list of clips `{ id, path, offset_ms, in_ms, out_ms,
+  length_ms, attached_at }` (SCHEMA): `offset_ms` places the file's 0 on the clock, `in_ms` and
+  `out_ms` trim it, `length_ms` is its measured length. A project of 2.0.5 has one
+  `external_video`, read as a chain of one (`viewer/video-chain.js` clipsOf,
+  `step_context.video_clips`, the same order); the viewer's first edit of the chain writes the
+  list and drops the old key.
+- **The clock** is the project's, whatever video shows it: every time the viewer gives or takes
+  (the playhead, a step at the playhead, a marker moved to it, a frame's moment) is a moment on
+  the clock. The player shows one clip at a time: a seek picks the clip that shows the moment,
+  playing on past a clip's end goes on with the next one when it starts there, a trimmed part is
+  never shown. The playback bar and the arrow keys move on the chain.
+- **Back to back** (a project made from videos, no recording): a video added goes after the last;
+  a trim, a replace or a remove that changes a clip's length moves the clips after it and
+  everything marked on them (steps at every level, start and end each; inserted markers, their
+  change waiting like a marker moved by hand and applied by itself; notes and screenshots at a
+  moment; stretches left out). A trim or a replace that would cut away a mark is refused, naming
+  it; a step that only runs into the part cut away ends where it starts. Remove takes what was
+  marked on the clip, after a question naming it. **In a recording** each clip is placed by its
+  sync (two clicks) and an edit of one moves nothing else.
+- **Transcripts:** one per video, `transcript.json`, `transcript-2.json` and on, each with
+  `video_id` and its offset counted from its video's 0 (rule 0 of SCHEMA's time rule), so it moves
+  with its video. Before the chain moves, a transcript placed without a video is tied to the video
+  showing its first sentence with an offset that keeps it in place (outside the undo: nothing
+  moves). Attach asks which video when there are two or more.
+- **The PDD** reads the clock only: "Transaction 1 at 0:19", "0:19 into the recording", and in a
+  project made from videos "at 1:00" in the implicit run; never a time in a video file. Document
+  control's Video row says "2 videos" when there are several.
+- **The verbs** (viewer): Add video (the Overview's project line, the Videos lane, the no-video
+  band; several files at once, in the order picked), Sync video (recordings), Replace video (keeps
+  the clip's place and trim; *Find the video...* for a clip whose file is not found keeps its sync),
+  Trim (a side of a clip dragged on the Videos lane, or *Trim the start here*, *Trim the end here*,
+  *Give its start back*, *Give its end back* on its right-click), Remove video. Each is one undoable
+  edit; an undo of the chain reloads the project, and analyzes it again when the transactions
+  moved with the videos (`session.js` revertFollowUp).
+- **Marks:** the Videos lane (one band per clip named after its file; a trimmed side drawn thicker,
+  a clip whose file is not found hatched), its row in the Lanes menu, its name at the left.

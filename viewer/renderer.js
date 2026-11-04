@@ -1107,16 +1107,12 @@ document.addEventListener("keydown", (e) => {
       if (video.paused) video.play(); else video.pause();
       e.preventDefault();
     }
-  } else if (e.key === "ArrowLeft") {
+  } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    // C23: a skip moves on the clock, across the videos of the chain.
     const video = $("#video");
-    if (video && video.src) {
-      video.currentTime = Math.max(0, video.currentTime - (e.shiftKey ? 10 : 5));
-      e.preventDefault();
-    }
-  } else if (e.key === "ArrowRight") {
-    const video = $("#video");
-    if (video && video.src) {
-      video.currentTime = Math.min(video.duration || 0, video.currentTime + (e.shiftKey ? 10 : 5));
+    const at = Video.playheadMs();
+    if (video && video.src && at != null) {
+      Video.seekClock(at + (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10000 : 5000));
       e.preventDefault();
     }
   } else if (e.key === "+" || e.key === "=") {
@@ -1230,10 +1226,21 @@ $("#help-modal").addEventListener("click", (e) => {
   function hasVideo() {
     return !!(video.src && isFinite(video.duration) && video.duration > 0);
   }
+  /* C23: the bar covers the videos of the chain on the clock, from the
+     first one's start (one video: its own time, as before). */
+  function range() {
+    const r = Video.chainRange();
+    return r || { startMs: 0, endMs: (video.duration || 0) * 1000 };
+  }
+  function nowMs(r) {
+    const at = Video.playheadMs();
+    return at != null && Video.chainRange() ? at - r.startMs : (video.currentTime || 0) * 1000;
+  }
   function refresh() {
     bar.classList.toggle("hidden", !hasVideo());
-    const dur = video.duration || 0, cur = video.currentTime || 0;
-    const pct = dur > 0 ? (cur / dur) * 100 : 0;
+    const r = range();
+    const dur = Math.max(0, r.endMs - r.startMs) / 1000, cur = Math.max(0, nowMs(r)) / 1000;
+    const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
     fill.style.width = pct + "%";
     knob.style.left = pct + "%";
     curEl.textContent = fmtTime(cur);
@@ -1244,21 +1251,24 @@ $("#help-modal").addEventListener("click", (e) => {
   }
   function seekFromEvent(e) {
     if (!hasVideo()) return;
-    const r = scrub.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-    video.currentTime = frac * video.duration;
+    const box = scrub.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
+    const r = Video.chainRange();
+    if (r) Video.seekClock(r.startMs + frac * (r.endMs - r.startMs));
+    else video.currentTime = frac * video.duration;
   }
+  const skip = (ms) => {
+    const at = Video.playheadMs();
+    if (at != null && Video.chainRange()) Video.seekClock(at + ms);
+    else video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + ms / 1000));
+  };
 
   $("#pb-play").addEventListener("click", () => {
     if (!hasVideo()) return;
     if (video.paused) video.play(); else video.pause();
   });
-  $("#pb-skip-back").addEventListener("click", () => {
-    if (hasVideo()) video.currentTime = Math.max(0, video.currentTime - 5);
-  });
-  $("#pb-skip-fwd").addEventListener("click", () => {
-    if (hasVideo()) video.currentTime = Math.min(video.duration, video.currentTime + 5);
-  });
+  $("#pb-skip-back").addEventListener("click", () => { if (hasVideo()) skip(-5000); });
+  $("#pb-skip-fwd").addEventListener("click", () => { if (hasVideo()) skip(5000); });
   scrub.addEventListener("mousedown", (e) => {
     if (!hasVideo()) return;
     seekFromEvent(e);

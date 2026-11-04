@@ -72,7 +72,9 @@ test("a video project: manifest (session_id, source, started_at, label), empty e
   assert.ok(Number.isFinite(Date.parse(m.started_at)));
   assert.equal(fs.readFileSync(path.join(folder, "events.jsonl"), "utf8"), "");
   const a = JSON.parse(fs.readFileSync(path.join(folder, "annotations.json"), "utf8"));
-  assert.deepEqual(a.external_video, { path: "video/call.webm", offset_ms: 0, attached_at: t0 });
+  // C23 (2.0.6): the first video of the chain.
+  assert.deepEqual(a.external_videos, [{ id: "v1", path: "video/call.webm", offset_ms: 0, in_ms: 0, out_ms: null, attached_at: t0 }]);
+  assert.equal(a.external_video, undefined);
   assert.equal(fs.readFileSync(path.join(folder, "video", "call.webm"), "utf8"), "video bytes");
 });
 
@@ -89,6 +91,11 @@ test("a blank project starts at its creation time; a folder that is not empty is
 });
 
 /* ---- lane CC: the video's copy, the edited maps' files, the transcript ---- */
+
+test("namedFiles: every video of the chain's copy in video/ (C23)", () => {
+  const anno = { external_videos: [{ id: "v1", path: "video/a.mp4" }, { id: "v2", path: "D:/elsewhere/b.mp4" }, { id: "v3", path: "video/c.webm" }] };
+  assert.deepEqual([...AF.namedFiles(anno)].sort(), ["video/a.mp4", "video/c.webm"]);
+});
 
 test("namedFiles: the attached video's copy in video/ and the edited maps' files; a video kept elsewhere never", () => {
   const anno = {

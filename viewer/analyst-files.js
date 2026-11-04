@@ -15,7 +15,8 @@
  * undo history does not outlive the app).
  *
  * The same rule covers the other copies the app makes in the folder (lane
- * CC): the attached video's copy in video/ (external_video.path, "video/<name>";
+ * CC): each attached video's copy in video/ (its path in external_videos, C23,
+ * or external_video, "video/<name>";
  * Remove video and Replace video take it out, Undo brings it back; a video
  * kept anywhere else, the OBS recording included, is never moved), and an
  * edited map's file in derived_maps/ (reference_maps[].file; the Map's Delete).
@@ -64,8 +65,13 @@ function namedFiles(anno) {
       if (n) out.add(dir + "/" + n);
     }
   }
-  const video = a.external_video && typeof a.external_video === "object" ? _inDir(a.external_video.path, VIDEO_DIR) : "";
-  if (video) out.add(video);
+  // C23 (2.0.6): every video of the chain (external_videos), else the one
+  // external_video of a project of 2.0.5.
+  const videos = Array.isArray(a.external_videos) ? a.external_videos : [a.external_video];
+  for (const v of videos) {
+    const video = v && typeof v === "object" ? _inDir(v.path, VIDEO_DIR) : "";
+    if (video) out.add(video);
+  }
   for (const m of Array.isArray(a.reference_maps) ? a.reference_maps : []) {
     const f = m && _inDir(m.file, MAPS_DIR);
     if (f) out.add(f);

@@ -128,13 +128,17 @@ def test_the_video_start_prefers_the_synced_attached_video():
                 "obs": {"recording_path": "C:/v.mkv", "recording_start_ts": "2026-05-14T08:59:50Z"}}
     synced = {"external_video": {"path": "D:/call.mp4", "offset_ms": -30000}}
     assert video_start(manifest, synced) == datetime(2026, 5, 14, 8, 59, 30, tzinfo=timezone.utc)
+    # C23 (2.0.6): an attached video without a usable offset starts with the
+    # session, as the viewer reads it (video-chain.js clipsOf; 2.0.5's viewer
+    # read `offset_ms || 0` too), never the OBS recording's start.
     unsynced = {"external_video": {"path": "D:/call.mp4", "offset_ms": None}}
-    assert video_start(manifest, unsynced) == datetime(2026, 5, 14, 8, 59, 50, tzinfo=timezone.utc)
+    assert video_start(manifest, unsynced) == datetime(2026, 5, 14, 9, 0, 0, tzinfo=timezone.utc)
     assert video_start({"started_at": "2026-05-14T09:00:00Z"}, {}) is None
-    # A hand-edited offset that is not a usable number falls back to OBS.
     for bad in (float("inf"), float("nan"), 1e20, True, "5"):
         odd = {"external_video": {"path": "D:/call.mp4", "offset_ms": bad}}
-        assert video_start(manifest, odd) == datetime(2026, 5, 14, 8, 59, 50, tzinfo=timezone.utc)
+        assert video_start(manifest, odd) == datetime(2026, 5, 14, 9, 0, 0, tzinfo=timezone.utc)
+    # Without an attached video, the OBS recording's start.
+    assert video_start(manifest, {}) == datetime(2026, 5, 14, 8, 59, 50, tzinfo=timezone.utc)
     assert has_video(manifest, {}) and has_video({}, synced)
     assert not has_video({}, {}) and not has_video({"obs": {"recording_path": " "}}, {})
 
@@ -186,3 +190,18 @@ def test_a_draft_whose_screen_the_drafting_made_value_free_says_that_screen():
     plain = _step("q", draft_key="chrome|New order for Contoso Ltd - Order Desk|(visit)")
     assert ctx.where(plain) == ("Order Desk", "New order for Contoso Ltd")
     assert ctx.value_free_screen(_step("q"), "Google Chrome") == ""
+
+
+def test_the_chain_of_videos_is_read_in_clock_order():
+    """C23 (2.0.6): external_videos, in the order they start; a project of
+    2.0.5 has one external_video."""
+    from step_context import video_clips, video_count
+    manifest = {"started_at": "2026-05-14T09:00:00Z"}
+    chain = {"external_videos": [{"id": "b", "path": "video/b.mp4", "offset_ms": 60000},
+                                 {"id": "a", "path": "video/a.mp4", "offset_ms": -5000, "in_ms": 5000},
+                                 {"id": "x", "path": " "}]}
+    assert [c["id"] for c in video_clips(chain)] == ["a", "b"]
+    assert video_count(manifest, chain) == 2 and has_video(manifest, chain)
+    assert video_start(manifest, chain) == datetime(2026, 5, 14, 8, 59, 55, tzinfo=timezone.utc)
+    assert video_count({}, {"external_video": {"path": "video/a.mp4"}}) == 1
+    assert video_count({}, {"external_videos": []}) == 0

@@ -7,12 +7,16 @@ Nothing here interprets the text: the viewer shows the segments next to the
 steps and the analyst decides what to use.
 
 Usage:
-    python transcript_import.py <session_folder> <transcript_file>
+    python transcript_import.py <session_folder> <transcript_file> [--out <name>]
+
+--out names the transcript written (contract C23, 2.0.6: a project holds one
+transcript per video, transcript.json, then transcript-2.json and on); the
+default is transcript.json. Any other name is a usage error.
 
 Exit codes. Codes 1 to 3 print one stderr line starting "[transcript] ERROR:".
     0  imported; one summary line on stdout (segments, speakers, duration)
-    1  bad arguments: not exactly two, or the folder is not a session folder
-       (it has no events.jsonl)
+    1  bad arguments: not the two above (with --out <name>), or the folder is
+       not a session folder (it has no events.jsonl)
     2  the transcript file cannot be read, or its layout is not one listed
        below; nothing was written
     3  the session folder cannot be used: annotations.json exists but cannot
@@ -27,13 +31,16 @@ read, never written):
          "format": "vtt" | "docx", "clock": "video" | "own", "offset_ms": null,
          "segments": [{"id": "t0001", "start_s": 12.34, "end_s": 15.0,
                        "speaker": "Ana" | null, "text": "..."}]}
-    `clock` is "video" when annotations.json has an `external_video` entry
-    with a path (the check the viewer makes before it plays an attached
-    video), else "own". `offset_ms` is always null here: the viewer sets it
-    when the analyst syncs an "own" clock. Times are seconds from the
-    transcript's own start, to the millisecond. A re-import replaces
-    transcript.json entirely (offset_ms included); a copy made by an earlier
-    import stays in transcript/, and one with the same name is replaced.
+    `clock` is "video" when annotations.json has a video with a path
+    (`external_videos`, or the `external_video` of a project of 2.0.5),
+    else "own". `offset_ms` is always null here: the viewer sets it when the
+    analyst syncs an "own" clock, and `video_id` when the transcript belongs
+    to one video of the chain (C23). Times are seconds from the transcript's
+    own start, to the millisecond. A re-import replaces the transcript file
+    entirely (offset_ms included); a copy made by an earlier import stays in
+    transcript/, and one with the same name is replaced, unless another
+    transcript of the project names it: the copy then takes a free name
+    ("meeting (2).vtt").
 
 parse(path) is the reusable entry point (the viewer can run it through
 python-runner): it returns {"format": "vtt" | "docx", "segments": [...]},
@@ -118,6 +125,7 @@ from __future__ import annotations
 
 import html
 import io
+import json
 import os
 import re
 import sys
@@ -143,7 +151,10 @@ LAST_SEGMENT_DEFAULT_S = 5.0
 # body) far larger than that is not one, and is refused before it is read.
 MAX_BYTES = 64 * 1024 * 1024
 
-USAGE = "usage: python transcript_import.py <session_folder> <transcript_file>"
+USAGE = "usage: python transcript_import.py <session_folder> <transcript_file> [--out <name>]"
+
+# The transcript files of a project (C23): transcript.json, transcript-2.json...
+OUT_NAME = re.compile(r"^transcript(?:-(\d+))?\.json$")
 
 
 class TranscriptError(ValueError):
@@ -474,12 +485,41 @@ def parse(path: str | Path) -> dict[str, Any]:
 # ---- the session folder -----------------------------------------------------
 
 def transcript_clock(session_folder: str | Path) -> str:
-    """"video" when annotations.json has an external_video entry with a path,
-    else "own". Raises AnnotationsUnreadable when annotations.json exists but
-    cannot be read."""
-    video = load_annotations(Path(session_folder)).get("external_video")
-    path = video.get("path") if isinstance(video, dict) else None
-    return "video" if isinstance(path, str) and path.strip() else "own"
+    """"video" when annotations.json has a video with a path (external_videos,
+    C23, or a project of 2.0.5's external_video), else "own". Raises
+    AnnotationsUnreadable when annotations.json exists but cannot be read."""
+    anno = load_annotations(Path(session_folder))
+    videos = anno.get("external_videos")
+    if not isinstance(videos, list):
+        videos = [anno.get("external_video")]
+    for video in videos:
+        path = video.get("path") if isinstance(video, dict) else None
+        if isinstance(path, str) and path.strip():
+            return "video"
+    return "own"
+
+
+def _copy_name(session_folder: Path, name: str, out: str) -> str:
+    """The name the original's copy takes in transcript/: `name`, unless
+    another transcript of the project (not `out`) names transcript/<name> as
+    its source: then the first free "stem (n).ext"."""
+    named = set()
+    for f in session_folder.glob("transcript*.json"):
+        if f.name == out or not OUT_NAME.match(f.name):
+            continue
+        try:
+            src = json.loads(f.read_text(encoding="utf-8")).get("source_file")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(src, str):
+            named.add(src)
+    if f"transcript/{name}" not in named:
+        return name
+    stem, suffix = Path(name).stem, Path(name).suffix
+    n = 2
+    while f"transcript/{stem} ({n}){suffix}" in named:
+        n += 1
+    return f"{stem} ({n}){suffix}"
 
 
 def _write_bytes_atomic(target: Path, data: bytes) -> None:
@@ -500,14 +540,17 @@ def _write_bytes_atomic(target: Path, data: bytes) -> None:
 
 
 def write_transcript(session_folder: str | Path, name: str, data: bytes,
-                     parsed: dict[str, Any], clock: str) -> dict[str, Any]:
-    """Copy the transcript's bytes to <session>/transcript/<name>, then write
-    transcript.json atomically; returns the transcript.json document. When a
-    write fails, the copy is put back as it was (removed, or its previous
-    bytes restored) and the OSError is raised, so the previous transcript is
-    kept."""
+                     parsed: dict[str, Any], clock: str,
+                     out: str = "transcript.json") -> dict[str, Any]:
+    """Copy the transcript's bytes to <session>/transcript/<name> (a free
+    name when another transcript names that one, _copy_name), then write
+    `out` (transcript.json by default) atomically; returns its document.
+    When a write fails, the copy is put back as it was (removed, or its
+    previous bytes restored) and the OSError is raised, so the previous
+    transcript is kept."""
     session_folder = Path(session_folder)
     folder = session_folder / "transcript"
+    name = _copy_name(session_folder, name, out)
     copy = folder / name
     doc = {"version": FORMAT_VERSION, "source_file": f"transcript/{name}",
            "format": parsed["format"], "clock": clock, "offset_ms": None,
@@ -517,7 +560,7 @@ def write_transcript(session_folder: str | Path, name: str, data: bytes,
     folder.mkdir(exist_ok=True)
     try:
         _write_bytes_atomic(copy, data)
-        write_json_atomic(session_folder / "transcript.json", doc)
+        write_json_atomic(session_folder / out, doc)
     except BaseException:
         # Best-effort roll-back; the original error is re-raised either way.
         try:
@@ -533,17 +576,18 @@ def write_transcript(session_folder: str | Path, name: str, data: bytes,
     return doc
 
 
-def import_transcript(session_folder: str | Path, source: str | Path) -> dict[str, Any]:
-    """Parse `source` and write it into the session. Raises TranscriptError or
-    AnnotationsUnreadable before anything is written, and OSError when the
-    writing fails (the previous transcript is kept)."""
+def import_transcript(session_folder: str | Path, source: str | Path,
+                      out: str = "transcript.json") -> dict[str, Any]:
+    """Parse `source` and write it into the session as `out`. Raises
+    TranscriptError or AnnotationsUnreadable before anything is written, and
+    OSError when the writing fails (the previous transcript is kept)."""
     source = Path(source)
     suffix = source.suffix.lower()
     _check_suffix(suffix)
     data = _read(source)             # parsed and copied from the same bytes
     parsed = _parse_bytes(suffix, data)
     clock = transcript_clock(session_folder)
-    return write_transcript(session_folder, source.name, data, parsed, clock)
+    return write_transcript(session_folder, source.name, data, parsed, clock, out)
 
 
 # ---- command line -----------------------------------------------------------
@@ -575,6 +619,13 @@ def main(argv: list[str] | None = None) -> int:
     if args in (["-h"], ["--help"]):
         print(USAGE)
         return 0
+    out = "transcript.json"
+    if len(args) == 4 and args[2] == "--out":
+        out = args[3]
+        args = args[:2]
+        if not OUT_NAME.match(out):
+            return _fail(1, f"--out {out}: a transcript is named transcript.json or "
+                            f"transcript-<n>.json")
     if len(args) != 2:
         return _fail(1, USAGE)
     session, source = Path(args[0]), Path(args[1])
@@ -582,7 +633,7 @@ def main(argv: list[str] | None = None) -> int:
         # The viewer shows this line; a person calls the folder a project.
         return _fail(1, f"{session} is not a project folder (it has no events.jsonl)")
     try:
-        doc = import_transcript(session, source)
+        doc = import_transcript(session, source, out)
     except TranscriptError as e:
         return _fail(2, f"{source}: {e}. Nothing was written.")
     except AnnotationsUnreadable as e:

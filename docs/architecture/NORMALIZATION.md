@@ -69,12 +69,16 @@ Flags removed with their features: `--canonical`, `--phase-bpmn-out`,
 ### `transcript_import.py` (contract C8)
 
 ```
-python transcript_import.py <session_folder> <transcript_file>
+python transcript_import.py <session_folder> <transcript_file> [--out <name>]
 ```
 
 Parses a Teams `.vtt` or `.docx` transcript into timestamped, speaker-tagged
 segments with the standard library only, copies the original byte for byte
-to `transcript/<original name>`, and writes `transcript.json` atomically. It
+to `transcript/<original name>` (a free name, "meeting (2).vtt", when another
+transcript of the project names that one), and writes `transcript.json`
+atomically, or the file `--out` names (contract C23, 2.0.6: a project holds
+one transcript per video, `transcript-2.json` and on; any other name is a
+usage error, exit 1). It
 only reads `events.jsonl` and `annotations.json`. Exit codes: 0 imported (one
 summary line on stdout); 1 bad arguments or not a project folder; 2 the
 transcript is unreadable or its layout unsupported (nothing written); 3
@@ -531,10 +535,13 @@ gaps. The sections, in the reader's order:
 **The step context line** under each step heading: the code of the library
 activity the step is ("Code SF-01", contract C21, when the activity has one),
 system and screen, "in N of M transactions", and where it is in the recording
-("Transaction 1 at 0:19", the time since the recording started, plus the
-video time when the video's start is known; in a video session, the video
-time). Each part is left out when it is unknown; a step without a time
-has no place in the recording. No step prints a time it took (section 6).
+("Transaction 1 at 0:19", the time since the recording started; "0:19 into
+the recording" outside every transaction; in a video session the clock is
+its videos', back to back, and the implicit run reads "at 1:00"). C23 (2.0.6,
+the owner: "Timeline is the core"): never a time in a video file, however
+many videos the project has. Each part is left out when it is unknown; a
+step without a time has no place in the recording. Document control's Video
+row says "Attached", "2 videos" when there are several, or "None". No step prints a time it took (section 6).
 
 **Screenshots.** A step prints one screenshot (lane LF-PIPE: the drafting
 now gives every screenshot a step): the one the analyst chose for the PDD
@@ -654,7 +661,7 @@ the stages apart:
   is `null` with no `stage_errors` entry; `case_quality` still counts the
   runs, coverage `null`. The PDD says "One transaction (not marked)" for the implicit
   run (the viewer's words, lane FX3) and "Nothing recorded" for a blank
-  session, and points at the video time in a video session.
+  session, and places each step on the videos' clock in a video session.
 
 What the analyst adds lives in the session folder and travels with it: the
 screenshots added by hand (`screenshots/analyst/`,
@@ -679,7 +686,7 @@ SCHEMA.md.
 | `case_assignment.py` | Marker-based runs (never nested), deterministic case ids, `case_ids` stamping, the implicit run (C16). |
 | `app_vocab.py` | Loads the shipped vocabularies (`app_vocabularies/*.yaml`, plus any folder in `PDT_APP_VOCABULARIES`) and enriches matching interactions. `regex_guard.py` refuses authored title patterns that could backtrack catastrophically. |
 | `app_names.py` | Readable application names and business system names from `shared/system-names.json` (above; the site rule's `site_name`, 2.0.1). |
-| `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (`process_order`: time, then `order`, and contract C22, a step the analyst placed after another right after it, pinned with the viewer by `shared/step-order-golden.json`; `place_starts`, where a placed step falls among the stretches left out), the recording clock ("0:19") and the video start. Read by the PDD and the step map. |
+| `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (`process_order`: time, then `order`, and contract C22, a step the analyst placed after another right after it, pinned with the viewer by `shared/step-order-golden.json`; `place_starts`, where a placed step falls among the stretches left out), the recording clock ("0:19"), the videos of the chain (`video_clips`, `video_count`, contract C23) and the first video's start. Read by the PDD and the step map. |
 | `recognition.py` | The platform recognition layer (below). |
 | `step_suggest.py` | The drafting rule, `session_names()`, `draft_summary()`, `library_drafts()` (C21), `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
 | `library.py` | Contract C21, standard library only: `load_library` (the format number, unique activity ids, names unique within an application, no run of screens in two activities; a file missing or failing a check is an empty library whose `problem` says why) and `project_library` (the project's `library.json`, else a copy of the app's library, staged with the run, else none). |

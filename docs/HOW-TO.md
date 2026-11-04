@@ -156,6 +156,27 @@ it is done; its button takes you to the next.
 4. *Back to its time*, in its menu, puts it where its time puts it again.
    Ctrl+Z undoes a move.
 
+### Work with several videos
+
+1. On the Overview, click *Add another* after *Video* and pick one or more
+   videos: several go in the order of their names. In a project made from
+   videos they go after the last one, back to back. In a recording you sync
+   the first with two clicks, as when you attach one.
+2. On the Timeline the *Videos* lane shows each video as a band. The
+   timeline runs across them: a moment on it is the same moment however many
+   videos there are. The video that shows the playhead plays, then the next
+   one.
+3. To trim a video, drag the start or the end of its band, or right-click it
+   and choose *Trim the start here* or *Trim the end here*. In a project
+   made from videos, the videos after it and what you marked on them move
+   with it, and a trim that would cut away a step or a mark is refused and
+   says what is there. *Give its start back* and *Give its end back* undo a
+   trim, and so does Ctrl+Z.
+4. Right-click a band to replace or remove that video. Removing a video
+   takes what you marked on it with it, after asking. A transcript belongs
+   to one video: *Attach* asks which, and its sentences move with that
+   video.
+
 ### Add a step the recorder missed
 
 1. In Steps, select the step it comes after.

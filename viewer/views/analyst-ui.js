@@ -247,7 +247,8 @@ async function setSystem(stepId, value) {
 /* Whether the project has a video a frame can be taken from. */
 function _hasVideo() {
   const s = _sess();
-  return !!(s && s.recordingAvailable && s.recordingPath);
+  // C23: any video of the chain found on this machine.
+  return !!(s && Video().chainOf(s).some((c) => c.file));
 }
 
 /* Lane FX2 (validation pass 3, F14): a frame of the video for step
@@ -262,7 +263,7 @@ async function _frameFor(stepId) {
   if (src.why) return { why: src.why };
   if (src.video) {
     const data = await _grabFrame(src.video);
-    return data ? { data, secs: src.video.currentTime } : { why: "The video frame could not be read." };
+    return data ? { data, secs: src.video.currentTime, baseMs: src.baseMs } : { why: "The video frame could not be read." };
   }
   const v = document.createElement("video");
   v.muted = true;
@@ -279,7 +280,7 @@ async function _frameFor(stepId) {
       v.currentTime = src.at;
     });
     const data = await _grabFrame(v);
-    return data ? { data, secs: src.at } : { why: "The video frame could not be read." };
+    return data ? { data, secs: src.at, baseMs: src.baseMs } : { why: "The video frame could not be read." };
   } catch (e) {
     return { why: "The video frame could not be read: " + ((e && e.message) || e) + "." };
   } finally {
@@ -319,7 +320,8 @@ async function addScreenshot(stepId, source, data) {
     const f = await _frameFor(stepId);
     if (f.why) { toast(f.why, "error"); return; }
     data = f.data;
-    at = Video().videoTimeToSessionTs(f.secs);
+    // C23: the frame's moment on the clock, from the start of its video.
+    at = Number.isFinite(f.baseMs) ? new Date(f.baseMs + f.secs * 1000).toISOString() : Video().videoTimeToSessionTs(f.secs);
   } else if (source === "paste" && !data) {
     const img = require("electron").clipboard.readImage();
     if (img.isEmpty()) { toast("The clipboard holds no image. Copy one first, or press Ctrl+V in this pane.", "error"); return; }

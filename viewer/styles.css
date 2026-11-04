@@ -506,6 +506,8 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .tl-lane-key-screenshots svg { width: 12px; height: 12px; padding: 1.5px; box-sizing: border-box;
   color: #fff; background: var(--accent-2); border-radius: var(--radius-x); }
 .tl-lane-key-steps::before { content: ""; width: 14px; height: 7px; border-radius: 2px; background: var(--accent-2); opacity: 0.55; }
+.tl-lane-key-videos::before { content: ""; width: 14px; height: 9px; box-sizing: border-box; border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
 /* The lane a header cell stands for, lit across the timeline while the
    pointer is on the cell (under the marks). */
 .tl-lane-hover { position: absolute; left: 0; right: 0; pointer-events: none;
@@ -1668,6 +1670,8 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .app.read-only #btn-session-handoff,
 .app.read-only #btn-attach-video,
 .app.read-only #btn-remove-video,
+.app.read-only #btn-add-video,
+.app.read-only #btn-add-transcript,
 .app.read-only #btn-attach-transcript,
 .app.read-only #btn-remove-transcript,
 .app.read-only .summary-fix,
@@ -2138,6 +2142,27 @@ button.danger:disabled {
 /* The Flow lane: a label row (Sync stays at the visible left edge), then
    one row of sentence blocks in one neutral colour (the lanes' separators
    frame it). */
+/* C23 (2.0.6): the Videos lane, one band per video, as a video editor's
+   clips; a trimmed side is drawn thicker, a video whose file is not found
+   hatched. */
+.tl-clip {
+  position: absolute; box-sizing: border-box; display: flex; align-items: center; overflow: hidden;
+  padding: 0 6px; border-radius: 3px; font-size: 11px; line-height: 16px; white-space: nowrap; cursor: pointer;
+  color: var(--fg); background: color-mix(in srgb, var(--accent) 18%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.tl-clip:hover { background: color-mix(in srgb, var(--accent) 28%, var(--bg-2)); }
+.tl-clip.trimmed-start { border-left-width: 3px; }
+.tl-clip.trimmed-end { border-right-width: 3px; }
+.tl-clip.missing {
+  color: var(--fg-3);
+  background: repeating-linear-gradient(135deg, var(--bg-2) 0 5px, color-mix(in srgb, var(--fg-3) 14%, transparent) 5px 10px);
+  border-style: dashed;
+}
+.tl-clip.tl-edge-hot, .tl-clip.tl-clip-dragging { cursor: ew-resize; }
+.tl-clip.tl-clip-dragging { outline: 1px solid var(--accent); }
+.tl-clip-name { overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.tl-tr-name { color: var(--fg-2); }
 .tl-tr-rail {
   position: absolute; left: 0; width: 100%; pointer-events: none;
   background: color-mix(in srgb, var(--fg-3) 5%, transparent);

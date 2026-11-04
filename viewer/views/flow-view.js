@@ -546,38 +546,18 @@ async function loadSessionIntoView(folder, opts) {
   renderSessionPills();
   // C8: the transcript's menu items follow the loaded file.
   Transcript.onSessionLoaded();
-  // Wire video. Toggle the no-video card explicitly since the
-  // sibling-selector CSS only fires when [src] is present.
-  const video = $("#video");
-  const noVid = $("#no-video");
-  const overlay = $("#video-overlay");
-  // Item 1: when no recording is linked, collapse the tall black video stage
-  // to a slim one-line band and give the freed space to the timeline + notes.
-  // The `no-recording` class on the workspace drives the CSS collapse; the
-  // slim band keeps a "Link recording…" affordance so the inverse verb
-  // survives. When a recording IS linked, behaviour is unchanged.
-  const workspace = document.getElementById("lower-workspace");
-  const pane = document.getElementById("video-pane");
+  // Item 1: when no recording is linked, the tall black video stage
+  // collapses to a slim one-line band and the freed space goes to the
+  // timeline + notes; the slim band keeps an "Attach video..." affordance so
+  // the inverse verb survives (flow-view-video.js loadPlayer sets it).
   // Lane FX3 (validation pass 3, F16): a project with no recording and no
   // video draws no timeline; the line in its place carries Attach video, so
   // the video band (a second Attach video) is not shown.
+  const workspace = document.getElementById("lower-workspace");
   if (workspace) workspace.classList.toggle("no-timeline", !timelineDrawable(State.getSession()));
-  if (State.getSession().recordingAvailable && State.getSession().recordingPath) {
-    video.src = "file:///" + State.getSession().recordingPath.replace(/\\/g, "/");
-    video.style.display = "";
-    noVid.style.display = "none";
-    overlay.style.display = "";
-    if (workspace) workspace.classList.remove("no-recording");
-    if (pane) pane.classList.remove("no-recording");
-  } else {
-    video.removeAttribute("src");
-    video.load();
-    video.style.display = "none";
-    noVid.style.display = "";
-    overlay.style.display = "none";
-    if (workspace) workspace.classList.add("no-recording");
-    if (pane) pane.classList.add("no-recording");
-  }
+  // C23 (2.0.6): the player shows the video of the chain at the playhead
+  // (the first one's start for a project just opened), else the band.
+  Video.loadPlayer();
   syncVideoControls();
   // The #video timeupdate/loadedmetadata listeners are wired ONCE at module
   // init (see wireVideoListeners below) -- adding them here ran on every
@@ -648,13 +628,16 @@ function syncVideoControls() {
   // A video project (C16) has nothing to sync the video with: the Timeline is the video.
   const sync = document.getElementById("btn-sync-video");
   if (sync && !(sess && (sess.events || []).length)) sync.hidden = true;
-  // Remove video, Attach video's inverse: only for the video the analyst attached.
+  // Remove video, Attach video's inverse: only for a video the analyst
+  // attached (C23: the one in the player).
   const remove = document.getElementById("btn-video-remove");
   if (remove) {
-    remove.hidden = !Video.attachedVideoShown(sess);
+    const clip = Video.currentClip();
+    remove.hidden = !Video.attachedVideoShown(sess) || !clip || clip.obs;
     if (!remove.hidden) {
-      remove.title = "Take the video out of this project" +
-        (isVideoCopy(sess.annotations.external_video.path) ? ": its copy in the project's video folder is deleted." : ".") +
+      const many = Video.addedClips(sess).length > 1;
+      remove.title = "Take " + (many ? Video.clipName(clip) : "the video") + " out of this project" +
+        (isVideoCopy(clip.path) ? ": its copy in the project's video folder is deleted." : ".") +
         " Ctrl+Z brings it back.";
     }
   }
@@ -838,8 +821,9 @@ async function queueMarkerDelete(eventId) {
    is visible immediately. */
 async function addStepAtPlayhead() {
   if (!State.getSession()) return;
-  const video = $("#video");
-  const tsISO = video ? videoTimeToSessionTs(video.currentTime) : null;
+  // C23: the playhead is a moment on the clock, whichever video shows it.
+  const at = Video.playheadMs();
+  const tsISO = at != null ? new Date(at).toISOString() : null;
   if (!tsISO) { toast("No video timing: can't place a step at the playhead", "error"); return; }
   await addStepAt(tsISO);
 }

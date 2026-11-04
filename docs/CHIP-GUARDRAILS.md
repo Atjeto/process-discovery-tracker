@@ -253,13 +253,21 @@ shown only after a failed run; `#toast`.
   what changed in its `title`);
   `[data-summary="runs"|"steps"|"video"|"transcript"|"request"]` (the
   request: the document's, 2.0.1, else the capture's),
-  `#btn-attach-video` (Attach, or Replace), `#btn-remove-video` (only for a
-  video the analyst attached; a `.modal-confirm` first),
-  `#btn-attach-transcript`, `#btn-remove-transcript`, the marker fixes
+  `#btn-attach-video` (Attach, or Replace; `data-clip` names the video a
+  Replace acts on), `#btn-remove-video` (only for a video the analyst
+  attached; a `.modal-confirm` first), `#btn-add-video` (2.0.6, contract
+  C23: Add another, or Add with several videos, when the line reads "2
+  videos"), `#btn-attach-transcript`, `#btn-remove-transcript`,
+  `#btn-add-transcript` (Add another with two or more videos, or Add with
+  several transcripts), the marker fixes
   `.summary-fix[data-fix]`. Remove video, Replace and Remove transcript
   take their files out of the folder and Ctrl+Z brings them back (lane CC;
   a smoke waits for the reload after the undo: the video's
-  `State.getSession().recordingPath`, the transcript's `.transcript`).
+  `State.getSession().recordingPath` or `.videos`, the transcript's
+  `.transcript` or `.transcripts`). The videos are
+  `annotations.external_videos` (C23; a project of 2.0.5 has
+  `external_video`, read as one clip): read the first with
+  `(a.external_videos || [])[0] || a.external_video`.
 - The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"request"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"effort"|"improvement"|"notes"]`
   (saved on change), who fills it `#ov-doc-who`, `#ov-doc-status` (the
   count, "N of 10 written": `request` and `notes` are optional and not
@@ -273,7 +281,7 @@ shown only after a failed run; `#toast`.
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
 - Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
   `#btn-add-step` (only with a video), `#btn-lanes` opening `#lanes-popup`
-  (`input[data-lane="idle"|"screenshots"|"cases"|"steps"|"transcript"|"notes"]`),
+  (`input[data-lane="idle"|"screenshots"|"cases"|"steps"|"videos"|"transcript"|"notes"]`),
   `#btn-zoom-out`, `#btn-zoom-reset`, `#btn-zoom-in`. Lane FX3: a project
   with no recording and no video draws no timeline, so `#case-scope`,
   `#lanes-menu` and the zoom buttons are not shown there, nor the video
@@ -292,9 +300,13 @@ shown only after a failed run; `#toast`.
   `data-end-ms` its span), `.tl-activity` (`.tl-act-app` names the
   system; `.tl-app-left-out`, hatched, for an app among the Apps outside
   the process, lane FX2), `.tl-idle`, `.tl-marker.tl-marker-pending` (2.0.3:
-  only a marker deleted, or any change while the Transactions lane is off), the transcript
-  `.tl-tr-block[data-seg]` and its label `.tl-tr-label` (`.tl-tr-sync`,
-  `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
+  only a marker deleted, or any change while the Transactions lane is off), the videos
+  `.tl-clip[data-clip]` (C23, 2.0.6: `.trimmed-start`, `.trimmed-end`,
+  `.missing`; a side within 6 px of the pointer shows `.tl-edge-hot`, a real
+  mouse drag trims it on release; its right-click opens `#tl-ctx-menu`), the
+  transcript `.tl-tr-block[data-seg][data-file]` and its label
+  `.tl-tr-label[data-file]` (one per transcript; `.tl-tr-name` with several;
+  `.tl-tr-sync`, `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
   screenshots `.tl-screenshot` (`.tl-screenshot-added` for one the analyst
   added at a moment, lane FX2), steps `.tl-step-band[data-step-id]` (a
   one-click step too, at the lane's smallest width; `.placed` on a step

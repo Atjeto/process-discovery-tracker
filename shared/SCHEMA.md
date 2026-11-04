@@ -255,7 +255,7 @@ assigns runs and drafts steps, and writes the merged steps back.
   "document": null,
   "marker_edits": [],
   "reference_maps": [],
-  "external_video": null,
+  "external_videos": [],
   "step_filters": { "ignored_processes": [], "ignored_window_titles": [] },
   "excluded_ranges": [],
   "analysis_overrides": [],
@@ -291,21 +291,62 @@ when taken) and copies the newest backup that can be read (`.2`, else `.3`,
 and on) into place through a temp file. Nothing reads the kept file; it
 stays for the analyst.
 
-**`external_video`** *(object or null)*: the attached video,
-`{ path, offset_ms, attached_at }`, written by the viewer when a video is
-attached and synced. The viewer copies an attached video into the folder's
-`video/` (unless it is inside the folder already), so `path` is relative to
-the session folder, with `/`; it is absolute only from an older attach or
-when the copy failed. A path that no longer resolves falls back to a file of
-that name at the folder's top or in `video/`. `offset_ms` places the video
-on the session clock: video time 0 is `manifest.started_at` plus
-`offset_ms`. When the file exists, it wins over the manifest's OBS
-recording. Attach, Replace, Sync and Remove video each write this key as one
-undoable edit (lane CC). A save that no longer names a copy the viewer made
-in `video/` (`path` exactly `video/<name>`) moves that file out of the
-folder, and an Undo that names it again brings it back (the same rule as
-the analyst's screenshots and attachments, and as an edited map's file in
-`derived_maps/`); a video kept anywhere else is never moved.
+**`external_videos`** *(array; contract C23, 2.0.6)*: the videos of the
+project, a chain on its one clock (the owner: "10th minute on the timeline
+is 10th minute on the timeline, regardless if there are 1 or 7 videos"):
+
+```json
+[ { "id": "v1", "path": "video/call part 1.mp4", "offset_ms": 0, "in_ms": 0,
+    "out_ms": null, "length_ms": 1800000, "attached_at": "2026-11-04T10:00:00Z" },
+  { "id": "v2", "path": "video/call part 2.mp4", "offset_ms": 1800000, "in_ms": 5000,
+    "out_ms": 600000, "length_ms": 900000, "attached_at": "2026-11-04T10:02:00Z" } ]
+```
+
+- **`id`**: the clip's id in the project (`v1`, `v2`, ...; never reused while
+  the clip is there). A transcript of the clip names it (`video_id`).
+- **`path`**: as below; the viewer copies an added video into the folder's
+  `video/` (unless it is inside the folder already, or a file of that name
+  and size is there), under a free name, so `path` is relative to the
+  session folder, with `/`; it is absolute only when the copy failed. A path
+  that no longer resolves falls back to a file of that name at the folder's
+  top or in `video/`.
+- **`offset_ms`**: where the file's own 0 is on the session clock (ms after
+  `manifest.started_at`).
+- **`in_ms`**, **`out_ms`**: the part of the file used (a trim); `out_ms`
+  `null` runs to the file's end. The clip covers
+  `[offset_ms + in_ms, offset_ms + (out_ms or length))` of the clock.
+- **`length_ms`**: the file's length as the viewer measured it (a recorded
+  `.webm` holds none, so it is measured), `null` while not known.
+
+Readers sort the clips by where they start (`offset_ms + in_ms`;
+`viewer/video-chain.js` `clipsOf`, `normalization/step_context.py`
+`video_clips`, one rule). A project made from videos (no recording, C16)
+runs its clips back to back, as a video editor does: a video added goes
+after the last one; a trim, a replace or a remove that changes a clip's
+length moves the clips after it and everything marked on them (each step's
+start and end, the inserted markers, the notes and screenshots at a moment,
+the stretches left out), so a mark stays on what it marks; a trim or a
+replace that would cut away a mark is refused, naming it, and a step that
+only runs into the part cut away ends where it starts. A video removed
+takes what was marked on it (the question asked first names it). In a
+recording each clip is placed by its sync (two clicks: a moment in the
+video, then the same moment on the timeline) and an edit of one moves
+nothing else. Add, Sync, Replace, Trim and Remove video each write this key
+as one undoable edit. An undo that changes the chain reloads the project,
+and analyzes it again when the transactions moved with the videos.
+
+A save that no longer names a copy the viewer made in `video/` (`path`
+exactly `video/<name>`) moves that file out of the folder, and an Undo that
+names it again brings it back (the same rule as the analyst's screenshots
+and attachments, and as an edited map's file in `derived_maps/`); a video
+kept anywhere else is never moved. When a clip's file exists, the chain
+wins over the manifest's OBS recording.
+
+**`external_video`** *(object or null; 2.0.5 and older)*: the one attached
+video, `{ path, offset_ms, attached_at }` (video time 0 is
+`manifest.started_at` plus `offset_ms`, a missing offset reading as 0). Read
+as a chain of one clip, `v1`; the viewer's first edit of the chain writes
+`external_videos` and drops this key.
 
 **`pattern_run`** *(object or null; contract C3, viewer-written)*: the run
 the analyst confirms as the reference, and the P1 draft-quality probe
@@ -1242,8 +1283,9 @@ transcript's `offset_ms` are relative to it.
 `source` (contract C16) says how the session was made. The capture app
 writes none, which means `"recorder"`. A session started from a video has
 `"video"` (`started_at` is the video file's creation time, else its
-modified time; no question is asked; `annotations.json` gets `external_video`
-with the path relative to the folder and `offset_ms: 0`); a session started
+modified time; no question is asked; `annotations.json` gets
+`external_videos` with one clip, `v1`, its path relative to the folder and
+`offset_ms: 0`; C23); a session started
 from nothing has `"blank"` (`started_at` is the creation time). Both have an
 empty `events.jsonl` and no capture fields (`config`, `obs`, `consent` and
 the rest are absent). The viewer creates them (*New project from a
@@ -1363,34 +1405,54 @@ and `annotations.json`; the original file is copied byte for byte to
 ```
 
 - **`format`**: `"vtt"` or `"docx"`, from the source file's extension.
-- **`clock`**: `"video"` when `annotations.json` has an `external_video` with a
-  `path` at import time, else `"own"`. Informational only: the time rule
-  below does not depend on it.
+- **`clock`**: `"video"` when `annotations.json` has a video with a `path`
+  (`external_videos`, or `external_video`) at import time, else `"own"`.
+  Informational only: the time rule below does not depend on it.
+- **`video_id`** *(C23, 2.0.6)*: the clip of `external_videos` the transcript
+  belongs to; absent for a transcript placed on the clock by itself.
 - **`offset_ms`**: `null` when the importer writes the file. A number means the
-  analyst synced the transcript. For both clocks it is relative to
-  `manifest.started_at`, the same reference the video offset uses.
+  analyst synced the transcript. It is relative to `manifest.started_at`,
+  the same reference the video offset uses; for a transcript of a video
+  (`video_id`) it is relative to that video's own 0 (`offset_ms` of the clip).
 - **`segments[]`**: `start_s` and `end_s` are seconds from the transcript's own
   start, to the millisecond. `speaker` is `null` when the source line carried
   no speaker tag (never guessed from a "Name: text" pattern).
 
+**Several transcripts** (C23, 2.0.6). A project holds one transcript per
+video of its chain: `transcript.json`, then `transcript-2.json`,
+`transcript-3.json` and on, in that order (`normalize`'s importer writes one
+with `--out <name>`). Each has the shape above and its own original in
+`transcript/` (a name another transcript's original has is made free: `meeting
+(2).vtt`). Attach transcript asks which video a transcript is of when the
+project has two or more (one video: that one).
+
 **Time rule.** A segment's wall time is `manifest.started_at + offset +
 start_s`, where `offset` is:
 
+0. for a transcript of a video (`video_id` names a clip of
+   `external_videos`): that clip's `offset_ms` plus the transcript's own
+   `offset_ms` (`null` reads as 0: the transcript starts with the video's
+   file), so the transcript moves with its video when the chain moves; its
+   video gone, it is not synced;
 1. `transcript.offset_ms`, when it is a number (the analyst synced it);
-2. else the attached video's `external_video.offset_ms`: the transcript
-   shares the meeting video's clock (plan D2), so re-syncing the video moves
-   the transcript too;
+2. else the first video's `offset_ms`: the transcript shares the meeting
+   video's clock (plan D2), so re-syncing the video moves the transcript too;
 3. else the transcript is not synced, and nothing is placed on the timeline.
+
+Before an edit of the chain moves the videos, a transcript placed without a
+video (rules 1 and 2) is tied to the video showing its first sentence (else
+the first video), with the offset that keeps it where it is; in a recording
+one the analyst synced by itself (rule 1) stays on the recording's clock.
 
 Every viewer surface places sentences by this one rule
 (`viewer/transcript-model.js`). Syncing (pick a sentence, then click its
-moment on the timeline) rewrites `offset_ms` in `transcript.json` atomically
+moment on the timeline) rewrites `offset_ms` in that transcript's file atomically
 and keeps every other key as it is (`viewer/transcript-store.js`). A
 re-import replaces the file entirely, so `offset_ms` goes back to `null`; a
 copy already in `transcript/` with the same name is replaced, any other
-earlier copy is left alone. Removing a transcript (lane CC) takes
-`transcript.json` and every file in `transcript/` out of the folder,
-parked for its Undo, which puts them back. A `transcript.json` that exists but
+earlier copy is left alone. Removing a transcript (lane CC) takes its file
+and its original out of the folder (the last transcript of a project takes
+every file in `transcript/`), parked for its Undo, which puts them back. A `transcript.json` that exists but
 cannot be used (not JSON, not version 1, no `segments` list) is reported and
 ignored. A sentence the analyst adds is appended to a step's `description`
 or a `document` field; the transcript file itself never changes.
@@ -1746,7 +1808,7 @@ cross-cutting conventions.
 | Identifiers | Treat every id as opaque. `event_id`, `session_id` and `step_id` are RFC 4122 v4 UUIDs in lowercase hex; a run's `case_id` is a v5 UUID derived from the session and its start marker (C9). A synthetic marker's event id is `insert-<edit_id>`; other ids carry a prefix (`rm_` reference maps, `t0001` transcript segments; `proc-` was the saved processes', C5). |
 | Timestamps | ISO 8601 with millisecond precision and a timezone (`...Z` for UTC). Always emit UTC; comparing across sessions needs no timezone work. |
 | Encoding | Text files are UTF-8 without a byte order mark. `events.jsonl` uses LF line endings, even on Windows. |
-| Paths inside session artifacts | Relative to the session folder, forward slashes (`screenshots/foo.jpg`). `external_video.path` may be absolute. The `file` of an `analyst_screenshots` or `attachments` entry is a file name inside `screenshots/analyst/` or `attachments/` (C16). |
+| Paths inside session artifacts | Relative to the session folder, forward slashes (`screenshots/foo.jpg`). A video's `path` (`external_videos`, `external_video`) may be absolute. The `file` of an `analyst_screenshots` or `attachments` entry is a file name inside `screenshots/analyst/` or `attachments/` (C16). |
 | Numeric durations | Milliseconds (`duration_ms`, `total_ms`) unless the field name says `_s` for seconds (`video_offset_s`, `start_s`). |
 
 ## Activity events: what `duration_ms` measures

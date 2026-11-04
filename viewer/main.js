@@ -36,6 +36,7 @@ const AnnoStore = require("./annotations-store.js");
 const TranscriptStore = require("./transcript-store.js");
 const Library = require("./library.js");
 const VideoPath = require("./video-path.js");
+const VideoChain = require("./video-chain.js");
 const AnalystFiles = require("./analyst-files.js");
 const NewProject = require("./new-project.js");
 const ProjectZip = require("./project-zip.js");
@@ -542,9 +543,14 @@ function loadSessionData(sessionFolder) {
   const transcript = transcriptRead.status === "ok" ? transcriptRead.transcript : null;
   const transcriptError = transcriptRead.status === "unreadable" ? transcriptRead.error : null;
   if (transcriptError) console.warn("[viewer:loadSession] transcript.json not used: " + transcriptError);
+  // C23 (2.0.6): every transcript of the project (transcript.json, then
+  // transcript-2.json and on), each { file, transcript }; an unreadable one
+  // is left out (the first one's error is said above).
+  const transcripts = TranscriptStore.readTranscriptFiles(sessionFolder)
+    .filter((r) => r.status === "ok").map((r) => ({ file: r.file, transcript: r.transcript }));
 
   /* Locate the recording. Priority: an analyst-attached external video
-     (annotations.external_video, set via the Attach video flow for
+     (annotations.external_videos, C23; external_video before 2.0.6; set via the Attach video flow for
      Teams recordings etc.) wins over the manifest's OBS path. The OBS
      path is the auto-captured default. V2 item 5: the stored path is
      relative to the folder when the video travels in it; an absolute one
@@ -552,13 +558,19 @@ function loadSessionData(sessionFolder) {
      folder (video-path.js). */
   let recordingPath = manifest.obs && manifest.obs.recording_path;
   let externalVideoOffsetMs = null;
-  if (annotations && annotations.external_video && annotations.external_video.path) {
-    const ext = annotations.external_video;
-    const found = VideoPath.resolveStored(sessionFolder, ext.path, fs.existsSync);
-    if (found) {
-      recordingPath = found;
-      externalVideoOffsetMs = ext.offset_ms || 0;
-    }
+  /* Contract C23 (2.0.6): the project's videos, chained on its one clock
+     (video-chain.js; a project of 2.0.5 has one, external_video). Each
+     { id, path (resolved, or null when not found), stored, offsetMs, inMs,
+     outMs, lengthMs }. The first one found is also the recording's video
+     for what reads one (recordingPath). */
+  const videos = VideoChain.clipsOf(annotations).map((c) => ({
+    id: c.id, stored: c.path, path: VideoPath.resolveStored(sessionFolder, c.path, fs.existsSync),
+    offsetMs: c.offset_ms, inMs: c.in_ms, outMs: c.out_ms, lengthMs: c.length_ms,
+  }));
+  const firstFound = videos.find((v) => v.path);
+  if (firstFound) {
+    recordingPath = firstFound.path;
+    externalVideoOffsetMs = firstFound.offsetMs;
   }
   let recordingAvailable = !!(recordingPath && fs.existsSync(recordingPath));
 
@@ -588,9 +600,11 @@ function loadSessionData(sessionFolder) {
     recordingPath,
     recordingAvailable,
     externalVideoOffsetMs,
+    videos,
     integrity,
     transcript,
     transcriptError,
+    transcripts,
     readOnly,
     library,
   };
@@ -710,18 +724,20 @@ ipcMain.handle("viewer:cancelNormalize", (_e) => {
 });
 
 /* External video attach (Teams recording, screen capture from any tool).
-   Stored on the session's annotations under external_video so the raw
-   manifest stays untouched. */
-ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder } = {}) => {
+   Stored on the session's annotations under external_videos (C23) so the
+   raw manifest stays untouched. */
+ipcMain.handle("viewer:attachExternalVideo", async (_e, { sessionFolder, single } = {}) => {
   const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
   const r = await dialog.showOpenDialog(_winOf(_e), {
-    title: "Attach external video",
-    properties: ["openFile"],
+    title: single ? "Replace video" : "Add video",
+    // C23 (2.0.6): several at once, chained in the order chosen (one for a
+    // Replace).
+    properties: single ? ["openFile"] : ["openFile", "multiSelections"],
     filters: [{ name: "Video", extensions: ["mp4", "mkv", "webm", "mov", "avi"] }],
   });
   if (r.canceled || !r.filePaths.length) return null;
-  return { path: r.filePaths[0] };
+  return { path: r.filePaths[0], paths: r.filePaths };
 });
 
 ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {}) => {
@@ -730,7 +746,7 @@ ipcMain.handle("viewer:copyVideoIn", async (_e, { sessionFolder, videoPath } = {
      into its video/ folder and stored relative to the folder, so the folder
      carries it; when the copy fails, the absolute path is stored and the
      result says why (copyError). The renderer then writes
-     annotations.external_video as one undoable edit (flow-view-video.js), so
+     annotations.external_videos as one undoable edit (flow-view-video.js), so
      Undo takes an attach, a replace or a sync back, and the save moves a
      replaced copy out of video/ for that Undo (analyst-files.js). Refused
      before anything is copied while annotations.json cannot be read (RP-04),
@@ -783,7 +799,11 @@ function _sessionRoot(sessionFolder) {
    on the chosen file (the Python normalize.py uses). Result null (cancelled),
    { ok: true, summary }, or { ok: false, code, error } (error: the script's
    reason; exit 2 and 3 leave the previous transcript in place). */
-ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => {
+ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder, file, videoId, add } = {}) => {
+  /* C23 (2.0.6): `file` is the transcript replaced (transcript.json by
+     default); `add` writes a new one (the next free transcript-N.json), and
+     `videoId` binds it to a video of the chain (its sentences then count
+     from that video's start). */
   const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
   const w = _projectWrite(_e.sender, sessionFolder, "transcript");
@@ -797,7 +817,11 @@ ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => 
   if (r.canceled || !r.filePaths.length) return null;
   w.start();
   try {
-    return w.end(transcriptImportResult(await runTranscriptImport({ sessionFolder: root, file: r.filePaths[0] })));
+    const out = add ? TranscriptStore.nextTranscriptFile(root) : (TranscriptStore.isTranscriptFile(file) ? file : TranscriptStore.FILE);
+    const res = transcriptImportResult(await runTranscriptImport({ sessionFolder: root, file: r.filePaths[0], out }));
+    if (res.ok && typeof videoId === "string" && videoId) TranscriptStore.patchTranscript(root, { video_id: videoId }, undefined, out);
+    if (res.ok) res.file = out;
+    return w.end(res);
   } catch (e) {
     return w.end({ ok: false, code: null, error: (e && e.message) || String(e) }, e);
   }
@@ -808,7 +832,7 @@ ipcMain.handle("viewer:importTranscript", async (_e, { sessionFolder } = {}) => 
    folder of removed files, analyst-files.js parkFiles). Result { ok: true,
    removed, tag, files } (tag and files: what restoreTranscript puts back) or
    { ok: false, error }. */
-ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
+ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder, file } = {}) => {
   const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
   const w = _projectWrite(_e.sender, sessionFolder, "transcript");
@@ -816,7 +840,8 @@ ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
-    const files = TranscriptStore.transcriptFiles(root);
+    const which = TranscriptStore.isTranscriptFile(file) ? file : TranscriptStore.FILE;
+    const files = TranscriptStore.transcriptFiles(root, undefined, which);
     const tag = "transcript-" + Date.now() + "-" + require("node:crypto").randomBytes(3).toString("hex");
     const r = AnalystFiles.parkFiles(root, files, _holdDir(root), tag);
     if (r.errors.length) {
@@ -824,7 +849,7 @@ ipcMain.handle("viewer:removeTranscript", (_e, { sessionFolder } = {}) => {
       AnalystFiles.restoreParked(root, r.parked, _holdDir(root), tag);
       return w.end({ ok: false, error: "the transcript's files could not be moved: " + r.errors.join("; ") });
     }
-    return w.end({ ok: true, removed: r.parked.includes(TranscriptStore.FILE), tag, files: r.parked });
+    return w.end({ ok: true, removed: r.parked.includes(which), tag, files: r.parked });
   } catch (e) {
     return w.end({ ok: false, error: (e && e.message) || String(e) }, e);
   }
@@ -851,7 +876,11 @@ ipcMain.handle("viewer:restoreTranscript", (_e, { sessionFolder, tag, files } = 
 
 /* Sync: rewrites transcript.json's offset_ms (atomically) and nothing else.
    Result { ok: true } or { ok: false, error }. */
-ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {}) => {
+ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs, file, binds } = {}) => {
+  /* C23: `file` is the transcript synced (transcript.json by default);
+     `binds` ([{ file, videoId, offsetMs }]) instead ties transcripts to
+     videos with the offsets that keep them where they are (before a chain
+     edit moves the videos). */
   const ro = _refuseReadOnly(sessionFolder, _e.sender);
   if (ro) return ro;
   const w = _projectWrite(_e.sender, sessionFolder, "transcript");
@@ -859,7 +888,15 @@ ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs } = {
   try {
     const root = _sessionRoot(sessionFolder);
     if (!root) return w.end({ ok: false, error: "this is not a project folder." }, NO_PROJECT);
-    TranscriptStore.saveTranscriptOffset(root, offsetMs);
+    if (Array.isArray(binds)) {
+      for (const b of binds) {
+        if (!b || !TranscriptStore.isTranscriptFile(b.file)) continue;
+        TranscriptStore.patchTranscript(root, { video_id: typeof b.videoId === "string" && b.videoId ? b.videoId : undefined,
+          offset_ms: typeof b.offsetMs === "number" && Number.isFinite(b.offsetMs) ? Math.round(b.offsetMs) : null }, undefined, b.file);
+      }
+      return w.end({ ok: true });
+    }
+    TranscriptStore.saveTranscriptOffset(root, offsetMs, undefined, TranscriptStore.isTranscriptFile(file) ? file : TranscriptStore.FILE);
     return w.end({ ok: true });
   } catch (e) {
     return w.end({ ok: false, error: (e && e.message) || String(e) }, e);

@@ -29,7 +29,7 @@ Project context for Claude Code. Read *Start here* first. Full docs index:
   closes either.
 - **The shelved product.** The complete v1.5.0 product is kept on branch
   `product-edition`, tag `product-edition-v1.5.0`. Nothing of it is deleted.
-- **Versions.** The current release is **v2.0.5** (2026-11-04), the light
+- **Versions.** The current release is **v2.0.6** (2026-11-04), the light
   version (see [CHANGELOG.md](CHANGELOG.md)). v1.5.0 was the product
   edition.
 
@@ -127,7 +127,7 @@ the folder.
 | [docs/architecture/COHERENCE-AUDIT.md](docs/architecture/COHERENCE-AUDIT.md) | The discipline every new verb passes. |
 | [docs/adr/](docs/adr/README.md) | Decisions; the registry is CI-enforced. |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/BUILD-AND-DIST.md](docs/BUILD-AND-DIST.md), [docs/DEPLOY.md](docs/DEPLOY.md) | Dev setup, build, release, install. |
-| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.5. |
+| [CHANGELOG.md](CHANGELOG.md) | Release history; `[Unreleased]` collects what lands after 2.0.6. |
 
 ## Key concepts
 
@@ -193,6 +193,24 @@ the folder.
   (`keepOrder`). Marks: *Placed* on the row and the Flow line, `.placed` on
   the band, the legend's *placed elsewhere in the process*. A placed step
   belongs to its anchor's transaction (`step_suggest._follow_placement_case`).
+- **Videos chained on one timeline** (C23, 2.0.6, the owner: "10th minute
+  on the timeline is 10th minute on the timeline, regardless if there are 1
+  or 7 videos"). `annotations.external_videos` holds the clips `{ id, path,
+  offset_ms, in_ms, out_ms, length_ms }` (`viewer/video-chain.js`
+  `clipsOf`, `step_context.video_clips`; 2.0.5's one `external_video` reads
+  as one clip). A project made from videos runs them back to back: an add
+  goes after the last, and a trim, a replace or a remove moves the clips
+  after it and what is marked on them (`shiftMarks`: steps, inserted
+  markers, notes and screenshots at a moment, stretches left out), refusing
+  a cut that would take a mark away (`cutBlocks`); a recording places each
+  clip by its sync and nothing else moves. The player shows one clip at a
+  time (`flow-view-video.js`: `chainOf`, `clipAtMs`, `playheadMs`,
+  `seekClock`); every time it gives or takes is a moment on the clock. The
+  Videos lane (`views/video-lane.js`) trims by a dragged side or a
+  right-click. One transcript per video (`transcript.json`,
+  `transcript-2.json`...; `video_id`, offset from its clip's 0;
+  `transcript-model.js` `partsOf`, `bindsBeforeChainEdit`). The PDD reads
+  the clock only, never a video time.
 - **Moving on the Timeline** (2.0.3, a PM's report; `flow-view-timeline.js`
   *Dragging a side*): a transaction's band drags its start and its end (a
   marker change, pending until Apply marker changes; the Transactions lane
@@ -483,7 +501,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 - UI bugs are invisible to the unit suites: validate behaviour in the real
   viewer. `e2e/run-all.js` runs the smokes: `session`, `overview`, `runs`,
   `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`,
-  `library`, `windows`, `demo`, `timeline-edit` and `process-place` (each `<name>-smoke.js`;
+  `library`, `windows`, `demo`, `timeline-edit`, `process-place` and `video-chain` (each `<name>-smoke.js`;
   [e2e/README.md](e2e/README.md) says what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles

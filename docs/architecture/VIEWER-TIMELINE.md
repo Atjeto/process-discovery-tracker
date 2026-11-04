@@ -10,8 +10,10 @@
 |---|---|
 | [`views/flow-view-timeline.js`](../../viewer/views/flow-view-timeline.js) | `renderTimeline()`: the lane stack, the stretches left out of the analysis (`leftOutBands`), the legend, the playhead, a background click that seeks; the minimap; the lanes menu; zoom, scroll and their persistence; the summary line. |
 | [`timeline/timeline-core.js`](../../viewer/timeline/timeline-core.js) | Pure layout: `chooseTicks` (the tick positions and labels), `packLanes`, `layoutLaneStack` and `renderLaneStack` (a stack of lane plugins). Unit-tested. |
-| [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | `timelineSpan()` (the stretch of time the timeline lays out), the playhead's place, seeking, Attach video, Sync video and Remove video. |
-| [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane and the transcript's Sync. |
+| [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | The videos of the project on the clock (C23: `chainOf`, `clipAtMs`, `playheadMs`), `timelineSpan()` (the stretch of time the timeline lays out), the player (one video at a time, playing on into the next), the playhead's place, seeking, and the edits of the chain: Add, Sync, Replace, Trim and Remove video. |
+| [`video-chain.js`](../../viewer/video-chain.js) | Pure: the clips, where each is on the clock, and the edits back to back (a trim, a replace, a remove, an add, and what moves with them). Unit-tested. |
+| [`views/video-lane.js`](../../viewer/views/video-lane.js) | The Videos lane: one band per video, a side dragged trims it, its right-click menu. |
+| [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane (one row per transcript) and each transcript's Sync, Replace and Remove. |
 | [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, adds a step, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis, Include again, the Transaction select. |
 | [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The Markers panel, and `moveMarker` (the move a dragged transaction side makes). |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
@@ -35,10 +37,11 @@ place only: the summary line above the timeline, "Recorded <date> <time> ·
 
 - **A recording** runs from its first event to its last.
 - **A video project** (`manifest.source: "video"`, contract C16) has no
-  events: the timeline runs on the video, from the video's start for the
-  video's length, once the player has read the length (a recorded `.webm`
-  with no length in its file is measured by one seek past its end). The
-  summary line reads "Video · <length>".
+  events: the timeline runs on its videos (C23, back to back), from the
+  first one's start to the last one's end, once their lengths are known (a
+  recorded `.webm` with no length in its file is measured by one seek past
+  its end; a length measured is kept with its video at the next edit of the
+  chain). The summary line reads "Video · <length>".
 - **A blank project** (nothing recorded, no video) has no span: the
   timeline shows one line, "No recording and no video in this project.",
   with *Attach video...* (`#tl-empty`). The legend and the minimap hide, and
@@ -59,7 +62,8 @@ lane of height 0 is skipped. From top to bottom:
 | Ticks | The time since the recording started; tick lines run down through the activity lane. | |
 | Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest). The bands show the markers as they now are (2.0.3, `MarkerEdits.currentMarkerEvents`): a band no band of the last analysis matches (a marker added, moved or renamed, not applied yet) is dashed all round, `.pending`, its tooltip saying so. | Click: go to the transaction's start. Right-click: Jump to start, Jump to end. Drag its start, or its end when a marker ends it: that marker moves (see *Dragging a side*). |
 | Activity | One band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. A band of an app among the Apps outside the process is hatched too, its tooltip saying so (lane FX2, `.tl-app-left-out`). Idle stretches, pending marker bars (a marker deleted, or any marker change while the Transactions lane is off) and the stretches left out of the analysis lie on the same row. A video project has a low empty row here, a place to right-click. | Click: go there. Right-click: the timeline menu at that moment. A stretch left out: click or right-click for Include again. |
-| Transcript | Only while a transcript is attached: the sentences said while the recording ran, at their times, once the transcript is placed (its own sync, else the synced video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
+| Videos | Only while the project has a video the analyst added (C23, 2.0.6): one band per video where it is on the clock, named after its file; a trimmed side is drawn thicker, a video whose file is not found here hatched. | Click: go there (the player shows that video at that moment). Drag a side: trim it. Right-click: Trim the start here, Trim the end here, Give its start back, Give its end back, Sync video (in a recording), Replace video (Find the video for one not found), Remove video, Add a video. |
+| Transcript | Only while a transcript is attached: one row per transcript (C23: one per video, its row named "Transcript 2 · its video" when there are several), the sentences said while the recording ran, at their times, once the transcript is placed (its own video, else its own sync, else the first video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
 | Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: go there. Right-click: Edit note, Delete note. |
 | Screenshots | A rail of the recorder's screenshots, and of the ones the analyst added at a moment (a video frame; lane FX2, `.tl-screenshot-added`, the step it is on in its tooltip). | Click: open it in the image viewer. |
 | Steps | One band per visible step with a time, named as in Steps; a step that starts and ends at one moment (a one-click step) is drawn at the lane's smallest width (lane FX2). | Click: select the step, go to its start, open the step panel. Right-click: Open in Steps, Select + seek here, Hide or Delete. Drag the start or the end of a step whose time is the analyst's (see *Dragging a side*). |
@@ -229,33 +233,54 @@ with the PDD by `shared/run-differences-golden.json`).
 
 ## The video beside it
 
-The video pane below the timeline plays the project's video: the one the
-analyst attached (copied into the folder's `video/`, contract C16 and
-`video-path.js`), else the OBS recording. Without one the pane collapses to
-a slim band with *Attach video...*.
+The video pane below the timeline plays the project's videos: the ones the
+analyst added (copied into the folder's `video/`, contract C16 and
+`video-path.js`; a chain on the clock, contract C23), else the OBS
+recording. Without one the pane collapses to a slim band with *Attach
+video...*. The player shows one video at a time: a seek (a click on the
+timeline, a band, a step) shows the video that covers that moment, at that
+moment; played on past a video's end it goes on with the next one when that
+starts there; a trimmed part is never shown. Every time it gives (the
+playhead, + Step, a marker moved to the playhead, a frame's moment) is a
+moment on the clock, whichever video shows it (`playheadMs`).
 
-- **Attach video** (the band, the Overview's project line, or the empty
-  timeline) chooses the file, then syncs it with two clicks: pause the video
-  at a moment you recognize and click *Mark frame*, then click the same
-  moment on the timeline. The offset is saved in
-  `annotations.external_video.offset_ms`. A project with nothing recorded
-  takes the video at offset 0 without the clicks. When the stored video is
-  not found (a folder received from another machine without it), the video
-  chosen with Attach video takes its place and keeps the stored sync.
-- **Sync video...** (the pane's header, only with a video) runs the two
-  clicks again.
-- **Remove video** (the pane's header, and *Remove* on the Overview's
-  project line; only for the video the analyst attached) takes
-  `external_video` out and, for the copy the app made in `video/`, the file
-  with it; it asks first. *Replace* (Attach video over a video) takes out
-  the copy it replaces the same way. Attach, Replace, Sync and Remove are
-  each one undoable edit: Ctrl+Z brings back the entry and its file, and the
-  project is loaded again with its video (lane CC).
+- **Attach video**, **Add video** (the band, the Overview's project line, the
+  Videos lane's menu, or the empty timeline) chooses one or more files. In a
+  project made from videos they go after the last one, back to back, in the
+  order chosen. In a recording the first is synced with two clicks: pause the
+  video at a moment you recognize and click *Mark frame*, then click the same
+  moment on the timeline (the others follow it, back to back). The place is
+  saved in the clip's `offset_ms` (`annotations.external_videos`). When the
+  one stored video is not found (a folder received from another machine
+  without it), the video chosen takes its place and keeps its place.
+- **Sync video...** (the pane's header and a band's menu, in a recording)
+  runs the two clicks again for that video.
+- **Trim**: a side of a band on the Videos lane dragged (the time in the
+  file follows the pointer, kept within the file and at least a second
+  long), or a band's right-click: *Trim the start here*, *Trim the end
+  here*, *Give its start back*, *Give its end back*. Back to back, the
+  videos after it and everything marked on them move with it (a trim that
+  would cut away a mark is refused, naming it); in a recording nothing else
+  moves.
+- **Replace video...** (a band's menu, *Replace* on the project line) keeps
+  the video's place and trim; back to back what follows moves by the change
+  of length; in a recording the new file is synced with the two clicks.
+  *Find the video...* for a video whose file is not found keeps its sync.
+- **Remove video** (the pane's header for the video in the player, a band's
+  menu, *Remove* on the project line) takes the video out and, for the copy
+  the app made in `video/`, the file with it; it asks first, naming what is
+  marked on it, which goes with it back to back while what follows moves up.
+  *Replace* takes out the copy it replaces the same way. Add, Replace, Sync,
+  Trim and Remove are each one undoable edit: Ctrl+Z brings back the entries
+  and their files, and the project is loaded again with its videos (lane CC;
+  analyzed again when the transactions moved with them).
 - **+ Step** (the timeline's header, only with a video; or the S key) adds a
   step at the playhead.
-- A step's own playback is in the step panel (Watch), beside the steps.
-- The playback bar at the bottom of the window mirrors the video: play,
-  back and forward 5 s, a scrub bar and the times.
+- A step's own playback is in the step panel (Watch), beside the steps,
+  from the video that shows its moment.
+- The playback bar at the bottom of the window covers the videos on the
+  clock, from the first one's start: play, back and forward 5 s (the arrow
+  keys too, across the videos), a scrub bar and the times.
 
 ## Zoom, scroll, minimap
 

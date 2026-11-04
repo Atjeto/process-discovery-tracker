@@ -227,6 +227,11 @@ test("revertFollowUp: a change of the stretches left out analyzes again; a chang
   assert.equal(Session.revertFollowUp({ excluded_ranges: [R], external_video: V }, { excluded_ranges: [R] }), "reload", "Attach video undone");
   assert.equal(Session.revertFollowUp({}, { external_video: V }), "reload", "Remove video undone");
   assert.equal(Session.revertFollowUp({ external_video: V }, { external_video: Object.assign({}, V, { offset_ms: 900 }) }), "reload", "a sync undone");
+  // C23 (2.0.6): a change of the chain of videos (a trim, a remove, an add) reloads.
+  const C = [{ id: "v1", path: "video/a.mp4", offset_ms: 0, in_ms: 0, out_ms: null }];
+  assert.equal(Session.revertFollowUp({ external_videos: C }, { external_videos: [Object.assign({}, C[0], { out_ms: 5000 })] }), "reload", "a trim undone");
+  assert.equal(Session.revertFollowUp({ external_videos: C, marker_edits: [{ id: "m" }] }, { marker_edits: [] }), "analyze",
+    "a remove that moved the transactions with the videos undone: analyzed again (which reads the project back)");
   assert.equal(Session.revertFollowUp({ excluded_ranges: [], steps: [1] }, { steps: [2] }), null, "a step edit: refreshed in place");
   assert.equal(Session.revertFollowUp({ marker_edits: [{ id: "m" }] }, { marker_edits: [] }), "markers",
     "2.0.3: a marker change undone (analyzed again where marker changes apply themselves)");

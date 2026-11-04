@@ -11,19 +11,31 @@
  * The time model, one rule for every surface. The wall time of a sentence,
  * in ms, is Date.parse(manifest.started_at) + offset + start_s * 1000, where
  * offset is the EFFECTIVE offset:
+ *   0. C23 (2.0.6): a transcript of one video of the chain (`video_id`
+ *      names it in annotations.external_videos, video-chain.js): that
+ *      video's offset_ms plus the transcript's own offset_ms (null reads as
+ *      0, the transcript starting with the video's file). Its sentences
+ *      count from its video, so they move with it when the chain moves (a
+ *      trim, a remove or a replace before it). Its video gone: null;
  *   1. transcript.offset_ms when it is a number (the analyst synced it);
- *   2. else annotations.external_video.offset_ms when a video is attached
- *      (its path is set): the transcript shares the meeting video's clock
- *      (plan D2), the reference the video player uses (wall time at video
- *      t=0 = started_at + external_video.offset_ms), so a video re-sync
- *      moves the transcript with it;
+ *   2. else the first video's offset_ms when a video is attached: the
+ *      transcript shares the meeting video's clock (plan D2), the reference
+ *      the video player uses (wall time at video t=0 = started_at +
+ *      offset_ms), so a video re-sync moves the transcript with it;
  *   3. else null: the transcript is not synced and nothing is placed in time.
  * The `clock` field transcript_import.py writes is informational only.
+ *
+ * A project holds several transcripts (C23: transcript.json, then
+ * transcript-2.json and on, main.js loads them as session.transcripts, each
+ * { file, transcript }). forSession places them all and merges their
+ * sentences (an id outside the first file is prefixed with its file's name,
+ * so every id is one sentence); partsOf gives them one by one.
  */
 
 "use strict";
 
 const { clock } = require("./dom.js");
+const VideoChain = require("./video-chain.js");
 
 const VERSION = 1;
 /* Talk that leads into an action usually comes just before it: a step's
@@ -40,6 +52,9 @@ const REPLACE_TITLE = "Replace the transcript with another Teams file (.vtt or .
   "unless a video is attached.";
 const REMOVE_TITLE = "Take the transcript out of this project, with its original file in the project's " +
   "transcript folder. Ctrl+Z brings them back.";
+/* C23 (2.0.6): one more transcript, of another video. */
+const ADD_TITLE = "Attach another transcript (.vtt or .docx), of another video of this project: its sentences " +
+  "are placed from that video's start.";
 
 /* Why a parsed transcript.json cannot be used, in one line, or null when it
    can: a version 1 object with a segments list. */
@@ -73,16 +88,38 @@ function segmentsOf(transcript) {
   return out;
 }
 
-/* The effective offset in ms (the three rules above), or null. */
-function effectiveOffsetMs(transcript, annotations) {
+function _ownOffset(transcript) {
   const own = transcript && transcript.offset_ms;
-  if (typeof own === "number" && Number.isFinite(own)) return own;
-  const video = annotations && annotations.external_video;
-  if (video && typeof video === "object" && typeof video.path === "string" && video.path.trim()) {
-    const o = Number(video.offset_ms);
-    return Number.isFinite(o) ? o : 0;
+  return typeof own === "number" && Number.isFinite(own) ? own : null;
+}
+
+/* The video a transcript belongs to (C23): its `video_id`, or "". */
+function videoIdOf(transcript) {
+  const v = transcript && transcript.video_id;
+  return typeof v === "string" && v ? v : "";
+}
+
+/* The effective offset in ms (the rules above), or null. */
+function effectiveOffsetMs(transcript, annotations) {
+  const clips = VideoChain.clipsOf(annotations);
+  const vid = videoIdOf(transcript);
+  if (vid) {
+    const c = clips.find((x) => x.id === vid);
+    return c ? c.offset_ms + (_ownOffset(transcript) || 0) : null;
   }
-  return null;
+  const own = _ownOffset(transcript);
+  if (own !== null) return own;
+  return clips.length ? clips[0].offset_ms : null;
+}
+
+/* The offset_ms to store for a sync that puts the transcript's 0 at
+   `absOffsetMs` (ms after started_at, offsetForSync): counted from its
+   video's start when it belongs to one, else as it is. */
+function storedOffsetFor(transcript, annotations, absOffsetMs) {
+  if (!Number.isFinite(absOffsetMs)) return null;
+  const vid = videoIdOf(transcript);
+  const c = vid ? VideoChain.clipsOf(annotations).find((x) => x.id === vid) : null;
+  return Math.round(c ? absOffsetMs - c.offset_ms : absOffsetMs);
 }
 
 /* Wall time in ms of `seconds` from the transcript's start, or NaN. */
@@ -107,10 +144,76 @@ function placeTranscript(transcript, annotations, startedAt) {
   return { synced, offsetMs: synced ? offsetMs : null, sentences };
 }
 
-/* placeTranscript for a loaded session, or null when it has no transcript. */
+/* The transcripts of a loaded session, each { file, transcript } (C23:
+   session.transcripts; a session of an older viewer carries only
+   session.transcript, transcript.json). */
+function transcriptsOf(sess) {
+  if (!sess) return [];
+  if (Array.isArray(sess.transcripts) && sess.transcripts.length) {
+    return sess.transcripts.filter((t) => t && t.transcript && typeof t.file === "string");
+  }
+  return sess.transcript ? [{ file: "transcript.json", transcript: sess.transcript }] : [];
+}
+
+/* A sentence id unique across the transcripts of a project: the first
+   file's as it is, another's prefixed with its file's name. */
+function _sentenceId(file, id) {
+  return file === "transcript.json" ? id : String(file).replace(/\.json$/, "") + ":" + id;
+}
+
+/* Each transcript of a loaded session placed: [{ file, transcript, number,
+   videoId, synced, offsetMs, sentences }] (placeTranscript, the sentence
+   ids made unique, each sentence carrying its `file`); number counts them
+   from 1 in their order. */
+function partsOf(sess) {
+  const startedAt = sess && sess.manifest && sess.manifest.started_at;
+  return transcriptsOf(sess).map((t, i) => {
+    const placed = placeTranscript(t.transcript, sess.annotations, startedAt);
+    return {
+      file: t.file, transcript: t.transcript, number: i + 1, videoId: videoIdOf(t.transcript),
+      synced: placed.synced, offsetMs: placed.offsetMs,
+      sentences: placed.sentences.map((x) => Object.assign(x, { id: _sentenceId(t.file, x.id), file: t.file })),
+    };
+  });
+}
+
+/* Every transcript of a loaded session, placed and merged: { synced (one of
+   them is), offsetMs (the first one's), sentences (all, each file's in its
+   order), parts (partsOf) }, or null when it has none. */
 function forSession(sess) {
-  if (!sess || !sess.transcript) return null;
-  return placeTranscript(sess.transcript, sess.annotations, sess.manifest && sess.manifest.started_at);
+  const parts = partsOf(sess);
+  if (!parts.length) return null;
+  return {
+    synced: parts.some((p) => p.synced),
+    offsetMs: parts[0].offsetMs,
+    sentences: [].concat(...parts.map((p) => p.sentences)),
+    parts,
+  };
+}
+
+/* Before the videos of a chain move (C23: a trim, a remove, a replace or an
+   add that moves what follows), the transcripts placed without a video are
+   tied to one with the offset that keeps them where they are, so they move
+   with what was said with them: the video showing their first sentence,
+   else the first video. A transcript placed by its own offset in a
+   recording (`ripple` false) stays on the recording's clock and is left.
+   `lengthOf` as video-chain.js. Returns [{ file, videoId, offsetMs }], one
+   per transcript to tie (saveTranscriptSync's binds). */
+function bindsBeforeChainEdit(sess, lengthOf, ripple) {
+  const clips = VideoChain.clipsOf(sess && sess.annotations);
+  if (!clips.length) return [];
+  const origin = Date.parse(sess && sess.manifest && sess.manifest.started_at);
+  const out = [];
+  for (const p of partsOf(sess)) {
+    if (p.videoId || !p.synced) continue;
+    if (!ripple && _ownOffset(p.transcript) !== null) continue;
+    const firstTimed = p.sentences.find((x) => Number.isFinite(x.startMs));
+    const at = firstTimed && Number.isFinite(origin)
+      ? VideoChain.clipAtRel(clips, lengthOf, firstTimed.startMs - origin) : null;
+    const clip = at ? at.clip : clips[0];
+    out.push({ file: p.file, videoId: clip.id, offsetMs: Math.round(p.offsetMs - clip.offset_ms) });
+  }
+  return out;
 }
 
 /* Closed intervals: touching counts as overlapping. */
@@ -305,8 +408,9 @@ function attachedMessage(transcript, synced) {
 }
 
 module.exports = {
-  VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE,
-  validateTranscript, segmentsOf, effectiveOffsetMs, wallMs, placeTranscript, forSession,
+  VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE, ADD_TITLE,
+  validateTranscript, segmentsOf, effectiveOffsetMs, storedOffsetFor, videoIdOf, wallMs, placeTranscript,
+  transcriptsOf, partsOf, forSession, bindsBeforeChainEdit,
   overlaps, stepWindow, prevEndMs, sentencesInWindow, sentencesForStep, runSpans, outsideRuns,
   normalizeSpace, isAdded, appendText, formatClock, speakersOf, filterSentences,
   offsetForSync, attachedMessage, sentenceRowHtml, sentenceClock,

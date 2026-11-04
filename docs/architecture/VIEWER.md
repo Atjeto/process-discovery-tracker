@@ -349,7 +349,7 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `annotations-store.js` | Reading `annotations.json` (an unreadable file is reported, never treated as absent, with the newest backup that can be read), the backups `.2` to `.5`, the temp-file-then-rename write, and Restore the newest backup (`restoreNewestBackup`: the unreadable file kept as `annotations.unreadable-<time>.json`, the backup copied into place). |
-| `transcript-store.js` | `transcript.json`: read, save the sync offset, and the files Remove transcript takes out (`transcriptFiles`: the file and the originals in `transcript/`) (C8). |
+| `transcript-store.js` | The transcripts (C8; C23: `transcript.json`, then `transcript-2.json` and on, `nextTranscriptFile`): read, save the sync offset or the video a transcript belongs to (`patchTranscript`), and the files Remove transcript takes out (`transcriptFiles`: the file and its original in `transcript/`). |
 | `analyst-files.js` | The files the analyst adds (C16): screenshots in `screenshots/analyst/`, attachments in `attachments/` (a free name when one is taken), the move of removed files and back (the video's copy in `video/` and the edited maps' files too, lane CC), the parking of a removed transcript's files for its Undo (`parkFiles`, `restoreParked`), which attachment opens. |
 | `new-project.js` | A session without a recording (C16): `manifest.json` (`session_id`, `source`, `started_at`, `label`), an empty `events.jsonl`, `annotations.json`, and for a video project the video copied into `video/` at offset 0. |
 | `video-path.js` | Pure: where an attached video is kept (copied into `video/`, stored relative to the folder) and how a stored path is found again on another machine. |
@@ -372,10 +372,12 @@ their module as `<name>.test.js`.
 | `step-order.js` (viewer root, pure) | 2.0.5, contract C22: where a step comes in its transaction's process, apart from its time (`step.placed_after`). `processOrder` (the one order rule, pinned with the pipeline's `step_context.process_order` by `shared/step-order-golden.json`; runs-model, the live map, the sub-process maps and the differences read it), `placeMoments` (where a placed step falls among the stretches left out), `deriveOrder` (the fewest placements that give an order wanted: Move up and Move down, Place after a step..., Back to its time, + Add step), `keepOrder` (a step hidden, deleted or merged away hands its followers over), `followTransaction`, `apartOnTimeline` (Merge and Group refuse a placed step apart from the others). |
 | `time-edits.js` (viewer root, pure) | 2.0.3: the times the analyst gives a transaction or a step, one rule set for a drag on the Timeline and a time typed in Steps: snapping, a marker's and a step side's range, a step back to back giving way, a step without a time given one, a transaction's markers (`runSides`), the time fields' format and parse ("0:09.6"). |
 | `flow-view-timeline.js` | The timeline: the lane stack, the stretches left out of the analysis drawn hatched over the Systems lane (`leftOutBands`), the minimap, the lanes menu, zoom and scroll persistence, the summary line; dragging a transaction's or a step's side and snapping (2.0.3, `wireEdgeDrag`, `snapMoment`). |
-| `flow-view-video.js` | The video and the timeline: the span a video project runs on, the playhead, seeking, Attach video (Replace) and Sync video (two clicks), each one undoable edit of `external_video`, and Remove video (lane CC). |
+| `flow-view-video.js` | The videos and the timeline (contract C23, 2.0.6): the chain on the clock (`chainOf`, `clipAtMs`, `clipSpan`), the span a video project runs on, the player (one video at a time, playing on into the next; `loadPlayer`, `seekClock`), the playhead as a moment on the clock (`playheadMs`), seeking, and the edits of the chain: Add video (several files; back to back, or synced with two clicks in a recording), Sync, Replace, Trim and Remove video, each one undoable edit of `external_videos` (`_commitChain`, which first ties the transcripts placed without a video to theirs; lane CC). |
+| `video-chain.js` (viewer root, pure) | 2.0.6, contract C23: the clips of `external_videos` (`clipsOf`, the old `external_video` read as one), where each is on the clock (`spanOf`, `clipAtRel`, `chainEndRel`), and the edits back to back: `planTrim` and `applyTrim`, `applyRemove`, `applyReplace`, `applyAppend`, with `shiftMarks` (what moves with them: steps at every level, inserted markers, notes and screenshots at a moment, stretches left out) and `cutBlocks` (a cut that would take a mark away, in one sentence). |
+| `views/video-lane.js` | 2.0.6: the Timeline's Videos lane: one band per video, a side dragged trims it, its right-click menu (trim, give a side back, sync, replace, remove, add). |
 | `flow-view-screenshots.js` | The Screenshots panel, the gallery, and the guarded open of a screenshot. |
 | `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
-| `flow-view-transcript.js` | The Transcript lane, the transcript's Sync, Attach, Replace and Remove. |
+| `flow-view-transcript.js` | The Transcript lane (one row per transcript, C23), each transcript's Sync, Replace and Remove, and Attach (which asks which video a transcript is of when there are several). |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
 | `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process dialog, a pick from the library (C21: `pickActivityAction`; a name typed that is an activity of the step's system is that pick, any other name leaves the library). C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
 | `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), and the panel for an As-Is task no step stands for (`openForMissing`). |
@@ -400,7 +402,7 @@ their module as `<name>.test.js`.
 | `step-facts.js` | What the step editor and the panel say about a step: the pointer ("Transaction 1 at 0:19"), the Recorded line ("6 actions · ends at Search", 2.0.1), the drafting's narration (never shown as the description), the panel's rows, and a length as the viewer writes it (`formatMs`, `dom.js` `formatDuration`). |
 | `library-builder.js` | The Library builder's model (C21): the steps a project's analysts named (`namedSteps`: confirmed, edited or added by hand, with their screens), one entry per name in a system (`collect`), the rows (`rows`: the library's activities ticked, the projects' names after them, clusters of rows that share screens or a name, a conflict where the same screens carry different names), the library the ticked rows make (`buildLibrary`: a name the library has adds its screens to that activity), the version (`nextVersion`: the date and a counter). |
 | `analyst-content.js` | The pure half of C16: where an untimed step goes and how it moves, the screenshots a step shows, the notes of a step or a moment, the implicit run's id. |
-| `transcript-model.js` | The transcript's time rule (its own sync, else the video's; a sentence said before the recording reads "0:28 before") and every pick of sentences (for a step, outside the transactions, by speaker or search). |
+| `transcript-model.js` | The transcript's time rule (its video's start, C23; else its own sync, else the first video's; a sentence said before the recording reads "0:28 before"), the transcripts of a project placed and merged (`partsOf`, `forSession`), the ties made before the chain moves (`bindsBeforeChainEdit`), and every pick of sentences (for a step, outside the transactions, by speaker or search). |
 | `session-summary.js` | The project line's facts, the request (the document's, `documentRequest`, 2.0.1, else the capture's, `requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
 | `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`), keeping the signature of the maps its steps drew (`forked_from_steps`, lane FX2); for a copy made before that was kept, whether it is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its systems, notes and attachments (C18: none of a user or manual task, the legend, a colour or, since 2.0.1, a system label). |
 | `asis-freshness.js` | Whether an edited copy was made from the steps as they are now (lane FX2): `stepsMapSignature` (every map of the project, its boxes and lines, each box's notes, files, system, hand marker, sub-process and waste mark, and the Trigger and the Result), `copyStale` (the signature a copy kept, else `reference-maps.js` `isStale`), `chosenAsIsStale` for the Map's line and the Checklist. |
@@ -487,12 +489,12 @@ which the renderer shows.
 | | `viewer:openHandoffFile` | Contract C20: in a hand-off opened read only, opens the PDD (`kind` "pdd") or the Technical details ("tech") it came with. |
 | | `viewer:revealFile` | Shows a file in its folder (Explorer, the file selected). |
 | | `viewer:openExternal` | Opens a screenshot, after the path checks (section 1). |
-| Video | `viewer:attachExternalVideo` | The video file picker. |
-| | `viewer:copyVideoIn` | Copies the video into `video/` when it is outside the folder and answers the path to store (relative when it is in the folder); the renderer writes `external_video` as one undoable edit. |
-| Transcript (C8) | `viewer:importTranscript` | The file picker, then `transcript_import.py`. |
-| | `viewer:removeTranscript` | Parks `transcript.json` and the originals in `transcript/` for an Undo; answers where (`tag`, `files`). |
+| Video | `viewer:attachExternalVideo` | The video file picker (several files at once; one with `single`, for a Replace). |
+| | `viewer:copyVideoIn` | Copies the video into `video/` when it is outside the folder and answers the path to store (relative when it is in the folder); the renderer writes `external_videos` as one undoable edit. |
+| Transcript (C8) | `viewer:importTranscript` | The file picker, then `transcript_import.py`: into `file` (a Replace), or the next free `transcript-N.json` (`add`), tied to `videoId` (C23). |
+| | `viewer:removeTranscript` | Parks the transcript `file` and its original in `transcript/` for an Undo; answers where (`tag`, `files`). |
 | | `viewer:restoreTranscript` | The Undo of a removal: the parked files come back (a file attached since is kept). |
-| | `viewer:saveTranscriptSync` | Writes the sync offset. |
+| | `viewer:saveTranscriptSync` | Writes a transcript's sync offset (`file`), or ties transcripts to their videos (`binds`, C23). |
 | New projects (C16) | `viewer:chooseNewProject` | For a video project the video, then one save dialog for the project's name and folder. |
 | | `viewer:createProject` | Makes the folder chosen last. |
 | Analyst files (C16) | `viewer:addScreenshot` | Writes `screenshots/analyst/<id>.<png\|jpg>` from a file, a video frame or a pasted image. |
@@ -513,8 +515,15 @@ channel, phase: "end", ok, error, code }`, `channel` one of `annotations`,
 ```
 { sessionFolder, manifest, events, stats, analysis, annotations,
   annotationsError, obsSync, recordingPath, recordingAvailable,
-  externalVideoOffsetMs, integrity, transcript, transcriptError, readOnly }
+  externalVideoOffsetMs, videos, integrity, transcript, transcriptError,
+  transcripts, readOnly, library }
 ```
+
+C23 (2.0.6): `videos` lists the project's videos, `[{ id, stored, path,
+offsetMs, inMs, outMs, lengthMs }]` (`path` the file found on this machine,
+null when not found); `recordingPath` and `externalVideoOffsetMs` are the
+first one found, for what reads one video. `transcripts` lists every usable
+transcript, `[{ file, transcript }]`; `transcript` is `transcript.json`'s.
 
 `readOnly` (contract C20) is true for a folder under `<userData>/handoffs`,
 where a hand-off opens: every handler that writes a project folder, or runs
@@ -672,8 +681,9 @@ Every annotation write in the renderer goes through `session.js`:
   in place. Opening a run is not an edit: the runs opened so far stay
   opened across an undo. The stacks are reset when another folder opens.
   An undo or a redo that changes `excluded_ranges` analyzes again, and one
-  that changes `external_video` reloads the project (where the video is is
-  read as it loads): `revertFollowUp` (lane CC).
+  that changes the videos (`external_videos`, `external_video`) reloads the
+  project (where the videos are is read as it loads), or analyzes it again
+  when the transactions moved with them (C23): `revertFollowUp` (lane CC).
 - `recordFileAct(label, { undo, redo })` puts a change of files that
   `annotations.json` does not name on the same stacks: Remove transcript,
   whose undo puts its parked files back and whose redo takes them out
@@ -689,15 +699,16 @@ it, and a file that cannot be read is never replaced.
 
 What each level edits: the Steps level the steps, `pattern_run`,
 `opened_runs` and `step_filters`; the Timeline `marker_edits`,
-`excluded_ranges`, `external_video` and the notes at a moment; the step
+`excluded_ranges`, `external_videos` and the notes at a moment; the step
 pane a step's fields (its flow, `only_when` and `links`, included), its
 screenshots, notes and attachments; the Overview `document` and the
 attachments; the Map `reference_maps` and the copies' files in
 `derived_maps/` (a new copy only at its first change: the Map's Edit left
-without one writes nothing). Attach, Replace, Sync and Remove video write
-`external_video` through the undo stack like any edit (lane CC). Written by
+without one writes nothing). Add, Replace, Sync, Trim and Remove video write
+`external_videos` through the undo stack like any edit (lane CC). Written by
 the main process directly, not through the undo stack: the transcript's
-attach and sync. (The saved processes of contract C5 left the app on
+attach and sync, and the ties of the transcripts to their videos made before
+an edit of the chain (they keep every sentence where it is). (The saved processes of contract C5 left the app on
 2026-09-24: a process is recorded once; the remembered step names of C4 on
 2026-09-25, contract C21: files left in `pdt-library` are not read.)
 

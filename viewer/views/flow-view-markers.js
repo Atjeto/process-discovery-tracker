@@ -24,7 +24,7 @@ const State = require("../state.js");
 const { $, escapeHtml, cryptoRandomId, toast, recordingStartMs, sinceStart, parseClock } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { persistAnnotations } = require("../session.js");
-const { seekToTimestamp, videoStartTs, timelineSpan } = require("./flow-view-video.js");
+const { seekToTimestamp, timelineSpan, playheadMs } = require("./flow-view-video.js");
 const MarkerEdits = require("../marker-edits.js");
 const AC = require("../analyst-content.js");
 const TE = require("../time-edits.js");
@@ -208,11 +208,11 @@ function sinceStartToIso(originMs, text) {
 
 async function adjustMarkerToVideoTime(m) {
   if (!State.getSession()) return;
-  const video = $("#video");
-  const obsStartTs = videoStartTs();
+  // C23: the playhead's moment on the clock, whichever video shows it.
+  const at = playheadMs();
   let newTs;
-  if (obsStartTs && video && video.src) {
-    newTs = new Date(new Date(obsStartTs).getTime() + (video.currentTime || 0) * 1000).toISOString();
+  if (at != null) {
+    newTs = new Date(at).toISOString();
   } else {
     // No video to take the time from: ask for the time since the recording
     // started, as the timeline shows it.

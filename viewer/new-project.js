@@ -61,7 +61,8 @@ async function createProject(plan, fs = nodeFs) {
         await fs.promises.mkdir(path.dirname(storePlan.copyTo), { recursive: true });
         await fs.promises.copyFile(plan.videoPath, storePlan.copyTo);
       }
-      anno.external_video = { path: storePlan.stored, offset_ms: 0, attached_at: plan.now };
+      // C23 (2.0.6): the first video of the chain.
+      anno.external_videos = [{ id: "v1", path: storePlan.stored, offset_ms: 0, in_ms: 0, out_ms: null, attached_at: plan.now }];
     }
     fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify(manifest, null, 2));
     fs.writeFileSync(path.join(folder, "events.jsonl"), "");

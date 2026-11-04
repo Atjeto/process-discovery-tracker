@@ -79,3 +79,45 @@ test("transcriptFiles: transcript.json and every original under transcript/ (wha
   fs.unlinkSync(path.join(dir, "transcript.json"));
   assert.deepEqual(Store.transcriptFiles(dir).sort(), ["transcript/earlier.docx", "transcript/m.vtt"]);
 });
+
+/* ---- C23 (2.0.6): one transcript per video --------------------------------- */
+
+test("C23: the transcripts of a project in their order; the next one's file; a name that is not one", () => {
+  const dir = session(JSON.stringify(DOC));
+  assert.equal(Store.nextTranscriptFile(dir), "transcript-2.json");
+  fs.writeFileSync(path.join(dir, "transcript-3.json"), JSON.stringify(DOC));
+  fs.writeFileSync(path.join(dir, "transcript-2.json"), "{ not json");
+  fs.writeFileSync(path.join(dir, "transcript-10.json"), JSON.stringify(DOC));
+  assert.deepEqual(Store.transcriptFileNames(dir), ["transcript.json", "transcript-2.json", "transcript-3.json", "transcript-10.json"]);
+  assert.deepEqual(Store.readTranscriptFiles(dir).map((r) => r.file + ":" + r.status),
+    ["transcript.json:ok", "transcript-2.json:unreadable", "transcript-3.json:ok", "transcript-10.json:ok"]);
+  assert.equal(Store.nextTranscriptFile(dir), "transcript-4.json");
+  assert.equal(Store.nextTranscriptFile(session()), "transcript.json");
+  for (const bad of ["annotations.json", "../transcript.json", "transcript-x.json", undefined]) assert.equal(Store.isTranscriptFile(bad), false, String(bad));
+  assert.throws(() => Store.patchTranscript(dir, { video_id: "v1" }, undefined, "annotations.json"), /not a transcript/);
+});
+
+test("C23: patchTranscript sets the video a transcript belongs to and takes a key out, keeping the rest", () => {
+  const dir = session(JSON.stringify(DOC));
+  fs.writeFileSync(path.join(dir, "transcript-2.json"), JSON.stringify(Object.assign({ future_key: 1 }, DOC)));
+  Store.patchTranscript(dir, { video_id: "v2", offset_ms: 1500 }, undefined, "transcript-2.json");
+  let doc = JSON.parse(fs.readFileSync(path.join(dir, "transcript-2.json"), "utf-8"));
+  assert.deepEqual([doc.video_id, doc.offset_ms, doc.future_key], ["v2", 1500, 1]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, "transcript.json"), "utf-8")), DOC, "the other transcript untouched");
+  Store.patchTranscript(dir, { video_id: undefined }, undefined, "transcript-2.json");
+  doc = JSON.parse(fs.readFileSync(path.join(dir, "transcript-2.json"), "utf-8"));
+  assert.equal("video_id" in doc, false);
+  Store.saveTranscriptOffset(dir, 900, undefined, "transcript-2.json");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "transcript-2.json"), "utf-8")).offset_ms, 900);
+});
+
+test("C23: Remove takes one transcript and its own original; the last one takes every original", () => {
+  const dir = session(JSON.stringify(DOC));   // source_file transcript/m.vtt
+  fs.mkdirSync(path.join(dir, "transcript"));
+  for (const f of ["m.vtt", "m (2).vtt", "old.vtt"]) fs.writeFileSync(path.join(dir, "transcript", f), "x");
+  fs.writeFileSync(path.join(dir, "transcript-2.json"), JSON.stringify(Object.assign({}, DOC, { source_file: "transcript/m (2).vtt" })));
+  assert.deepEqual(Store.transcriptFiles(dir, undefined, "transcript-2.json"), ["transcript-2.json", "transcript/m (2).vtt"]);
+  assert.deepEqual(Store.transcriptFiles(dir, undefined, "transcript.json"), ["transcript.json", "transcript/m.vtt"]);
+  fs.rmSync(path.join(dir, "transcript-2.json"));
+  assert.deepEqual(Store.transcriptFiles(dir).sort(), ["transcript.json", "transcript/m (2).vtt", "transcript/m.vtt", "transcript/old.vtt"]);
+});

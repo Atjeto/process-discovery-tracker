@@ -283,17 +283,22 @@ function _revert(which) {
    (the steps and the statistics depend on them, so Leave out of the analysis
    and Include again are undone with the analysis they ran), "reload" when the
    attached video changed (where the video is, and its sync, are read when the
-   project loads), else null. Pure. */
+   project loads; C23: "analyze" when the transactions moved with the
+   videos), else null. Pure. */
 function revertFollowUp(before, after) {
   const same = (k) => JSON.stringify((before && before[k]) || null) === JSON.stringify((after && after[k]) || null);
   const ranges = (a) => JSON.stringify((a && Array.isArray(a.excluded_ranges) && a.excluded_ranges.length) ? a.excluded_ranges : []);
   if (ranges(before) !== ranges(after)) return "analyze";
-  if (!same("external_video")) return "reload";
   // 2.0.3: the markers changed; a project that applies its marker changes
   // itself (one without a recording) analyzes again, a recording waits for
   // Apply marker changes (applyRevertedAnnotations).
   const marks = (a) => JSON.stringify((a && Array.isArray(a.marker_edits) && a.marker_edits.length) ? a.marker_edits : []);
-  if (marks(before) !== marks(after)) return "markers";
+  const markers = marks(before) !== marks(after);
+  // C23 (2.0.6): the videos of the chain too. An edit of the chain that moved
+  // the transactions with them (a project made from videos) analyzes again,
+  // which reads the project back as well.
+  if (!same("external_video") || !same("external_videos")) return markers ? "analyze" : "reload";
+  if (markers) return "markers";
   return null;
 }
 

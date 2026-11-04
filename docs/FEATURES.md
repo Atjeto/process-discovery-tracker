@@ -130,6 +130,7 @@ The Python pipeline the viewer runs by itself; see
   library, it opens in Excel without a repair.
 - **Meeting transcripts.** A Teams `.vtt` or `.docx` transcript is parsed
   into timed, speaker-tagged sentences; nothing interprets what was said.
+  A project holds one per video (2.0.6, `--out transcript-2.json` and on).
 
 ## The viewer: the analyst's app
 
@@ -164,7 +165,8 @@ The viewer says *transaction* for one pass through the process and
   the document, else the capture's), its transactions, the reference
   transaction's steps, the video and the transcript with Attach, Replace
   and Remove (each taken out with its files in the folder, and back with
-  Ctrl+Z), and a warning only when one is needed.
+  Ctrl+Z; 2.0.6: *Add another* for a second video or transcript, and with
+  several, how many and *Add*), and a warning only when one is needed.
 - **The document** ("You write these. The PDD prints them."): twelve fields
   that print in their own places in the PDD (title, request, purpose,
   scope, trigger, result, contacts, business rules, exceptions, volume and
@@ -184,7 +186,7 @@ The viewer says *transaction* for one pass through the process and
   too), the transcript and notes, on one clock (the time since the
   recording started), each lane named in a header column at its left (a key
   that looks like its marks, its name, a tooltip saying what it shows). A
-  video project's timeline runs on its video; a project with neither a
+  video project's timeline runs on its videos; a project with neither a
   recording nor a video says so, with *Attach video*. The Transaction select
   dims the other transactions, *Lanes* picks the lanes, and the zoom has a
   minimap. Under it, the *Raw events* drawer lists every event on the same
@@ -193,6 +195,22 @@ The viewer says *transaction* for one pass through the process and
   into the folder so it travels with it; *Remove video* takes it out with
   its copy, *Replace* takes out the copy it replaces, and Ctrl+Z brings
   either back; a small playback bar.
+- **Several videos on one timeline** (2.0.6, contract C23; the owner:
+  "10th minute on the timeline is 10th minute on the timeline, regardless
+  if there are 1 or 7 videos"). *Add video* takes one or more files; the
+  Videos lane draws each as a band named after its file. In a project made
+  from videos they run back to back, as in a video editor: one added goes
+  after the last, and a trim, a replace or a remove of one moves the videos
+  after it and everything marked on them (transactions, steps, notes and
+  screenshots at a moment), refusing a trim that would cut a mark away. In a
+  recording each is placed with its own sync and nothing else moves. A side
+  of a band dragged trims it, and its right-click trims the start or the end
+  at that moment, gives a side back, syncs (in a recording), replaces or
+  removes it, or adds a video. The player plays the video that shows the
+  playhead and goes on into the next one; the step panel plays each step
+  from its own video. A transcript belongs to a video (Attach asks which)
+  and moves with it; each has its own row with Sync, Replace and Remove.
+  The PDD places each step on the timeline's clock, never in a video.
 - **Transaction repair**: *Start a transaction here* and *End the
   transaction here* from a right-click; move, rename and delete markers,
   shown at once as pending until *Apply marker changes*; insert a

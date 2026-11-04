@@ -39,6 +39,7 @@ const SessionSummary = require("../session-summary.js");
 const { pushRecent } = require("../recent.js");
 const AnalystUI = require("./analyst-ui.js");
 const { isVideoCopy } = require("../analyst-files.js");
+const VideoChain = require("../video-chain.js");
 const AsIsFresh = require("../asis-freshness.js");
 const AC = require("../analyst-content.js");
 const RO = require("../read-only.js");
@@ -381,29 +382,60 @@ function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
 /* The video and the transcript, each with the act that attaches it (the
    Attach video flow syncs it with two clicks, flow-view-video.attachVideo;
-   the transcript acts are delegated by id in flow-view-transcript.js). */
+   the transcript acts are delegated by id in flow-view-transcript.js).
+   C23 (2.0.6): a project holds several of each. One video: Replace, Remove
+   and Add another; several: how many, and Add (each one's acts are on the
+   Timeline's Videos lane). The same for the transcripts (each one's acts on
+   the Transcript lane). */
 function _mediaParts(sess) {
-  // Remove (lane CC), Attach's inverse: only for the video the analyst attached
-  // (annotations.external_video), never the recorder's own.
-  const attached = !!(sess && sess.recordingAvailable && sess.externalVideoOffsetMs != null &&
-    sess.annotations && sess.annotations.external_video && sess.annotations.external_video.path);
-  const copy = attached && isVideoCopy(sess.annotations.external_video.path);
-  const video = sess && sess.recordingAvailable
-    ? '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
-      'title="' + escapeAttr("Attach another video in place of this one, then sync it: click a moment in the video, then the same moment on the timeline." +
+  const clips = VideoChain.clipsOf(sess && sess.annotations);
+  const found = new Set(((sess && sess.videos) || []).filter((v) => v && v.path).map((v) => v.id));
+  const nameOf = (c) => String(c.path || "").split(/[\\/]/).filter(Boolean).pop() || "video";
+  const addTitle = "Add a video" + ((sess && (sess.events || []).length)
+    ? ": the first is placed with two clicks, a moment in the video and the same moment on the timeline."
+    : ": it goes after the last one, back to back.");
+  let video;
+  if (clips.length > 1) {
+    const missing = clips.filter((c) => !found.has(c.id)).length;
+    video = '<span data-summary="video" title="' + escapeAttr(clips.map((c, i) => (i + 1) + ". " + nameOf(c) +
+        (found.has(c.id) ? "" : " (not found)")).join("\n")) + '">' + clips.length + " videos" +
+        (missing ? ", " + missing + " not found" : "") + "</span> " +
+      '<button type="button" class="link-btn" id="btn-add-video" title="' + escapeAttr(addTitle) + '">Add</button>';
+  } else if (clips.length === 1 && found.has(clips[0].id)) {
+    // Remove (lane CC), Attach's inverse: only for the video the analyst attached.
+    const copy = isVideoCopy(clips[0].path);
+    video = '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" data-clip="' +
+        escapeAttr(clips[0].id) + '" title="' + escapeAttr("Put another video in place of this one" +
+        ((sess.events || []).length ? ", then sync it: click a moment in the video, then the same moment on the timeline." : ".") +
         (copy ? " The copy it replaces leaves the project folder; Ctrl+Z brings it back." : " Ctrl+Z brings this one back.")) + '">Replace</button>' +
-      (attached ? ' <button type="button" class="link-btn" id="btn-remove-video" title="' +
+      ' <button type="button" class="link-btn" id="btn-remove-video" data-clip="' + escapeAttr(clips[0].id) + '" title="' +
         escapeAttr("Take the video out of this project" + (copy ? ": its copy in the project's video folder is deleted." : ".") +
-          " Ctrl+Z brings it back.") + '">Remove</button>' : "")
-    : '<span data-summary="video">No video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
+          " Ctrl+Z brings it back.") + '">Remove</button>' +
+      ' <button type="button" class="link-btn" id="btn-add-video" title="' + escapeAttr(addTitle) + '">Add another</button>';
+  } else if (!clips.length && sess && sess.recordingAvailable) {
+    // The recording's own video: another takes its place.
+    video = '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
+      'title="' + escapeAttr("Attach another video in place of this one, then sync it: click a moment in the video, then the same moment on the timeline.") + '">Replace</button>';
+  } else {
+    // None, or the one video's file is not found here (Attach finds it: it keeps its place).
+    video = '<span data-summary="video">No video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
       'title="Attach a video of the recording (a Teams recording or a screen video), then sync it: click a moment in the video, then the same moment on the timeline.">Attach</button>';
-  const hasFile = !!(sess && (sess.transcript || sess.transcriptError));
-  const transcript = hasFile
-    ? '<span data-summary="transcript">' + (sess.transcript ? "Transcript" : "Transcript cannot be read") + "</span> " +
+  }
+  const parts = TM.transcriptsOf(sess);
+  let transcript;
+  if (parts.length > 1) {
+    transcript = '<span data-summary="transcript">' + parts.length + " transcripts</span> " +
+      '<button type="button" class="link-btn" id="btn-add-transcript" title="' + escapeAttr(TM.ADD_TITLE) + '">Add</button>';
+  } else if (parts.length || (sess && sess.transcriptError)) {
+    transcript = '<span data-summary="transcript">' + (parts.length ? "Transcript" : "Transcript cannot be read") + "</span> " +
       '<button type="button" class="link-btn" id="btn-attach-transcript" title="' + escapeAttr(TM.REPLACE_TITLE) + '">Replace</button> ' +
-      '<button type="button" class="link-btn" id="btn-remove-transcript" title="' + escapeAttr(TM.REMOVE_TITLE) + '">Remove</button>'
-    : '<span data-summary="transcript">No transcript</span> <button type="button" class="link-btn" id="btn-attach-transcript" ' +
+      '<button type="button" class="link-btn" id="btn-remove-transcript" title="' + escapeAttr(TM.REMOVE_TITLE) + '">Remove</button>' +
+      (parts.length && clips.length > 1 ? ' <button type="button" class="link-btn" id="btn-add-transcript" title="' +
+        escapeAttr(TM.ADD_TITLE) + '">Add another</button>' : "");
+  } else {
+    transcript = '<span data-summary="transcript">No transcript</span> <button type="button" class="link-btn" id="btn-attach-transcript" ' +
       'title="' + escapeAttr(TM.ATTACH_TITLE) + '">Attach</button>';
+  }
   return [video, transcript];
 }
 
@@ -565,10 +597,15 @@ function _wireSummary(host) {
 /* The project line's video acts: Attach (Replace) and Remove. Lazy require:
    flow-view-video.js wires DOM controls at require() time. */
 function _wireVideoActs(host) {
+  const Video = () => require("./flow-view-video.js");
   const attachVideo = host.querySelector("#ov-summary #btn-attach-video");
-  if (attachVideo) attachVideo.addEventListener("click", () => require("./flow-view-video.js").attachVideo());
+  if (attachVideo) {
+    attachVideo.addEventListener("click", () => (attachVideo.dataset.clip ? Video().replaceVideo(attachVideo.dataset.clip) : Video().attachVideo()));
+  }
+  const addVideo = host.querySelector("#ov-summary #btn-add-video");
+  if (addVideo) addVideo.addEventListener("click", () => Video().attachVideo());
   const removeVideo = host.querySelector("#ov-summary #btn-remove-video");
-  if (removeVideo) removeVideo.addEventListener("click", () => require("./flow-view-video.js").removeVideo());
+  if (removeVideo) removeVideo.addEventListener("click", () => Video().removeVideo(removeVideo.dataset.clip));
 }
 
 /* ---- 3. The document (contract C6) ------------------------------------------ */
@@ -621,12 +658,16 @@ function _transcriptView(sess) {
   if (_tr.speaker && !speakers.includes(_tr.speaker)) _tr.speaker = "";
   let list = placed.sentences;
   if (placed.synced) {
-    if (_tr.during) list = list.slice().sort((a, b) => a.startMs - b.startMs);
+    // C23: a transcript of several not synced yet keeps its sentences, after
+    // the placed ones.
+    const timed = list.filter((x) => Number.isFinite(x.startMs));
+    const untimed = list.filter((x) => !Number.isFinite(x.startMs));
+    if (_tr.during) list = timed.slice().sort((a, b) => a.startMs - b.startMs).concat(untimed);
     else {
       const runs = RunsModel.buildRuns(sess.stats, (sess.annotations || {}).steps || []).runs;
       const evs = sess.events || [];
       const endMs = evs.length ? Date.parse(evs[evs.length - 1].timestamp) : NaN;
-      list = TM.outsideRuns(list, TM.runSpans(runs, endMs));
+      list = TM.outsideRuns(timed, TM.runSpans(runs, endMs)).concat(untimed);
     }
   }
   return { synced: placed.synced, speakers, list: TM.filterSentences(list, _tr.speaker, _tr.query),

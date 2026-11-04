@@ -95,6 +95,9 @@ function record(name, ok, detail) {
 }
 const errText = (e) => { logActionError("companion-smoke", e); return String((e && e.message) || e).split("\n")[0]; };
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
+/* C23 (2.0.6): the first video of the chain (external_videos), or the one
+   external_video of a project of 2.0.5. */
+const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_videos[0]) || (a && a.external_video) || null;
 const sha1 = (b) => crypto.createHash("sha1").update(b).digest("hex");
 
 /* The entries of a .docx (a zip): { name: Buffer }. Stored or deflated. */
@@ -577,7 +580,7 @@ function zipFiles(buf) {
     await stubOpen(VIDEO);
     await page.locator("#btn-tl-attach-video").click({ timeout: T });
     await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 60000 });
-    n.video = readJson(path.join(BLANK, "annotations.json")).external_video;
+    n.video = firstVideo(readJson(path.join(BLANK, "annotations.json")));
     n.copied = fs.existsSync(path.join(BLANK, "video", path.basename(VIDEO)));
     n.tl = await page.evaluate(() => ({ empty: !!document.getElementById("tl-empty"), sync: document.getElementById("btn-sync-video").hidden }));
     // Lane FX4: with the video the Timeline can mark the transactions, and
@@ -694,7 +697,7 @@ function zipFiles(buf) {
     await level("flow");
     await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 30000 });
     h.manifest = readJson(path.join(VPROJ, "manifest.json"));
-    h.video = readJson(path.join(VPROJ, "annotations.json")).external_video;
+    h.video = firstVideo(readJson(path.join(VPROJ, "annotations.json")));
     h.copied = fs.existsSync(path.join(VPROJ, "video", path.basename(VIDEO))) &&
       fs.statSync(path.join(VPROJ, "video", path.basename(VIDEO))).size === fs.statSync(VIDEO).size;
     h.span = await spanOf();

@@ -217,3 +217,58 @@ test("AD-29: a sentence said before the recording started says how long before, 
   }
   assert.equal(TM.sentenceClock({ startS: 12, startMs: null }, origin), "0:12", "unplaced: the transcript's own time");
 });
+
+/* ---- C23 (2.0.6): several transcripts, each with its video ----------------- */
+
+const T0 = "2026-11-04T10:00:00.000Z";
+const at0 = (ms) => Date.parse(T0) + ms;
+const doc = (extra, segs) => Object.assign({ version: 1, offset_ms: null, segments: segs || [{ id: "s1", start_s: 2, end_s: 3, text: "Hello" }] }, extra);
+const chain = () => ({ external_videos: [
+  { id: "v1", path: "a.mp4", offset_ms: 0, in_ms: 0, out_ms: null, length_ms: 60000 },
+  { id: "v2", path: "b.mp4", offset_ms: 60000, in_ms: 0, out_ms: null, length_ms: 40000 },
+] });
+
+test("C23: a transcript of a video counts from that video's start and moves with it; its video gone, it is not placed", () => {
+  const anno = chain();
+  assert.equal(TM.effectiveOffsetMs(doc({ video_id: "v2" }), anno), 60000);
+  assert.equal(TM.effectiveOffsetMs(doc({ video_id: "v2", offset_ms: -1500 }), anno), 58500);
+  anno.external_videos[1].offset_ms = 50000;   // a trim before it moved v2 up
+  assert.equal(TM.effectiveOffsetMs(doc({ video_id: "v2" }), anno), 50000);
+  assert.equal(TM.effectiveOffsetMs(doc({ video_id: "gone" }), anno), null);
+  // One of an older project: its own offset, else the first video's.
+  assert.equal(TM.effectiveOffsetMs(doc({ offset_ms: 7000 }), anno), 7000);
+  assert.equal(TM.effectiveOffsetMs(doc({}), anno), 0);
+  assert.equal(TM.effectiveOffsetMs(doc({}), { external_video: { path: "x.mp4", offset_ms: 3000 } }), 3000);
+  // A sync stores the offset from its video's start.
+  assert.equal(TM.storedOffsetFor(doc({ video_id: "v2" }), chain(), 61000), 1000);
+  assert.equal(TM.storedOffsetFor(doc({}), chain(), 61000), 61000);
+});
+
+test("C23: forSession places every transcript and merges them, each sentence id one sentence", () => {
+  const sess = { manifest: { started_at: T0 }, annotations: chain(), transcripts: [
+    { file: "transcript.json", transcript: doc({ video_id: "v1" }) },
+    { file: "transcript-2.json", transcript: doc({ video_id: "v2" }, [{ id: "s1", start_s: 5, end_s: 6, text: "Second" }]) },
+  ] };
+  const placed = TM.forSession(sess);
+  assert.equal(placed.synced, true);
+  assert.deepEqual(placed.sentences.map((x) => [x.id, x.file, x.startMs - at0(0)]),
+    [["s1", "transcript.json", 2000], ["transcript-2:s1", "transcript-2.json", 65000]]);
+  assert.deepEqual(placed.parts.map((p) => [p.file, p.number, p.videoId]), [["transcript.json", 1, "v1"], ["transcript-2.json", 2, "v2"]]);
+  // An older session object, one transcript.
+  assert.equal(TM.forSession({ manifest: { started_at: T0 }, annotations: {}, transcript: doc({ offset_ms: 0 }) }).sentences.length, 1);
+  assert.equal(TM.forSession({ manifest: { started_at: T0 }, annotations: {} }), null);
+});
+
+test("C23: before the chain moves, a transcript placed without a video is tied to the one showing its first sentence, where it is", () => {
+  const len = (c) => c.length_ms;
+  const sess = { manifest: { started_at: T0 }, annotations: chain(), transcripts: [
+    { file: "transcript.json", transcript: doc({ offset_ms: 61000 }) },   // its first sentence at 63 s: on v2
+    { file: "transcript-2.json", transcript: doc({}) },                      // follows the first video
+    { file: "transcript-3.json", transcript: doc({ video_id: "v2" }) },     // tied already
+  ] };
+  assert.deepEqual(TM.bindsBeforeChainEdit(sess, len, true),
+    [{ file: "transcript.json", videoId: "v2", offsetMs: 1000 }, { file: "transcript-2.json", videoId: "v1", offsetMs: 0 }]);
+  // In a recording a transcript synced by itself keeps the recording's clock.
+  assert.deepEqual(TM.bindsBeforeChainEdit(sess, len, false), [{ file: "transcript-2.json", videoId: "v1", offsetMs: 0 }]);
+  assert.deepEqual(TM.bindsBeforeChainEdit({ manifest: { started_at: T0 }, annotations: {}, transcripts: sess.transcripts }, len, true), []);
+});

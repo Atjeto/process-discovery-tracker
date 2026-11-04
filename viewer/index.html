@@ -181,6 +181,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                     <label class="cb"><input type="checkbox" data-lane="screenshots" /> Screenshots</label>
                     <label class="cb"><input type="checkbox" data-lane="cases" /> Transactions</label>
                     <label class="cb"><input type="checkbox" data-lane="steps" /> Steps</label>
+                    <label class="cb" id="lane-videos-row" hidden><input type="checkbox" data-lane="videos" /> Videos</label>
                     <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
                     <label class="cb" id="lane-notes-row" hidden><input type="checkbox" data-lane="notes" /> Notes</label>
                   </div>
@@ -517,6 +518,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Right-click its band on the Timeline, or its row in Steps, and choose <em>Place after a step...</em>, then pick the step it comes after, in its transaction or in another one. In Steps, Alt+Up and Alt+Down move it one step at a time.</li>
             <li>In the process, on the map and in the PDD it now comes after that step. On the Timeline its band stays where it was said, with its video, and is marked as placed elsewhere in the process; its row in Steps reads <em>Placed</em>.</li>
             <li><em>Back to its time</em>, in its menu, puts it where its time puts it again. Ctrl+Z undoes a move.</li>
+          </ol>
+          <p><strong>Work with several videos</strong></p>
+          <ol class="help-steps">
+            <li>On the Overview, click <em>Add another</em> after <em>Video</em> and pick one or more videos: several go in the order of their names. In a project made from videos they go after the last one, back to back. In a recording you sync the first with two clicks, as when you attach one.</li>
+            <li>On the Timeline the <em>Videos</em> lane shows each video as a band. The timeline runs across them: a moment on it is the same moment however many videos there are. The video that shows the playhead plays, then the next one.</li>
+            <li>To trim a video, drag the start or the end of its band, or right-click it and choose <em>Trim the start here</em> or <em>Trim the end here</em>. In a project made from videos, the videos after it and what you marked on them move with it, and a trim that would cut away a step or a mark is refused and says what is there. <em>Give its start back</em> and <em>Give its end back</em> undo a trim, and so does Ctrl+Z.</li>
+            <li>Right-click a band to replace or remove that video. Removing a video takes what you marked on it with it, after asking. A transcript belongs to one video: <em>Attach</em> asks which, and its sentences move with that video.</li>
           </ol>
           <p><strong>Add a step the recorder missed</strong></p>
           <ol class="help-steps">

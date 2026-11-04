@@ -439,7 +439,7 @@ def test_the_document_says_transaction_and_project_never_run_or_session():
     for sentence in (
             "Transactions recorded | 2", "Project folder | ",
             "The steps as done in Transaction 1: Order 1, the reference transaction.",
-            "in 2 of 2 transactions", "Transaction 1 at 0:01 (video 0:01)",
+            "in 2 of 2 transactions", "Transaction 1 at 0:01",
             "Each step and the steps that followed it in the transactions:",
             "The map file is process_map_step.bpmn in the project folder.",
             "Transaction 2: Order 2 (the reference transaction)",
@@ -559,15 +559,24 @@ def test_each_step_carries_its_system_runs_and_place_in_the_recording_never_a_ti
     assert not any("on average" in t for t in steps)
 
 
-def test_the_video_time_joins_the_place_when_the_video_is_synced():
+def test_the_place_is_on_the_timeline_never_a_video_time():
+    """C23 (2.0.6, the owner: "Timeline is the core"): a step's place reads
+    the project's one clock, whatever video is synced, and Document control
+    says how many videos there are."""
     if not _HAVE_DOCX:
         return
     manifest, annotations, stats, analysis, events = _session()
     annotations["external_video"] = {"path": "D:/call.mp4", "offset_ms": -90000}
-    steps = _section(_blocks_of(manifest, annotations, stats, analysis, events),
-                     "3.2 Process steps")
-    assert steps[steps.index("Step 1: Look up the order") + 1].endswith(
-        "Transaction 1 at 0:01 (video 1:31)")
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    steps = _section(blocks, "3.2 Process steps")
+    assert steps[steps.index("Step 1: Look up the order") + 1].endswith("Transaction 1 at 0:01")
+    assert not any("(video" in t for t in steps)
+    assert "Video | Attached" in _section(blocks, "1. Document control")
+    annotations.pop("external_video")
+    annotations["external_videos"] = [{"id": "v1", "path": "video/a.mp4", "offset_ms": 0},
+                                      {"id": "v2", "path": "video/b.mp4", "offset_ms": 60000}]
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    assert "Video | 2 videos" in _section(blocks, "1. Document control")
 
 
 def test_a_step_shows_its_description_field_names_and_waste_flag():

@@ -110,7 +110,7 @@ survives every re-analysis.
 | `document` | viewer | The PDD's document fields: title, request (optional, 2.0.1: Document control's Request, which falls back to the capture's), purpose, scope, trigger, result, contacts, business rules, exceptions, effort (the volume and effort), improvement, notes (C6) |
 | `marker_edits[]` | viewer | Rename, re-time, delete or insert a run marker; replayed on a derived stream, the raw marker stays |
 | `reference_maps[]` | viewer | The editable map copies and which one the PDD uses as As-Is or To-Be; the `.bpmn` files live in `derived_maps/`. Each row keeps the signature of the maps its steps drew (`forked_from_steps`, lane FX2), so the app says when the steps changed after the copy was made |
-| `external_video` | viewer | The attached video: `{ path, offset_ms, attached_at }` |
+| `external_videos` | viewer | The videos, a chain on the clock (C23, 2.0.6): `[{ id, path, offset_ms, in_ms, out_ms, length_ms, attached_at }]`; a project of 2.0.5 has one `external_video`, `{ path, offset_ms, attached_at }`, read as one clip |
 | `step_filters` | viewer | Apps (and window titles) left out of the analysis |
 | `excluded_ranges[]` | viewer | Time spans left out of drafting and statistics |
 | `analyst_screenshots[]`, `analyst_notes[]`, `attachments[]` | viewer | What the analyst adds by hand (C16): screenshots, notes pinned to a step or a moment, attached files. The PDD prints the screenshots and lists the attachments; it leaves the notes out (its text and, lane FX2, its map pictures), and the step map shows a step's notes and files beside its task (C18) |
@@ -228,8 +228,10 @@ renderer keeps it in `viewer/state.js` (`State.getSession()`):
 | `annotations` | `annotations.json` | `null` when absent or unreadable |
 | `annotationsError` | | Set when `annotations.json` cannot be read; shown as a banner naming the file and its backups |
 | `obsSync` | `obs/sync.json` | |
-| `recordingPath`, `recordingAvailable` | `annotations.external_video` or `manifest.obs` | An attached video wins over the OBS recording |
-| `externalVideoOffsetMs` | `annotations.external_video.offset_ms` | Video t=0 is `manifest.started_at` plus this offset |
+| `videos` | `annotations.external_videos` (or `external_video`) | C23: each video with the file found here (`path`, null when not found) and its place and trim |
+| `recordingPath`, `recordingAvailable` | the first video found, else `manifest.obs` | An attached video wins over the OBS recording |
+| `externalVideoOffsetMs` | the first video found's `offset_ms` | Its t=0 is `manifest.started_at` plus this offset |
+| `transcripts` | `transcript.json`, `transcript-2.json`... | C23: every usable transcript, `{ file, transcript }` |
 | `integrity` | `session-integrity.json` | `{ missing: [...] }`: files that did not survive the copy |
 | `transcript`, `transcriptError` | `transcript.json` | The parsed transcript, or `null`; a file that exists but cannot be used is reported in one line and otherwise ignored |
 | `readOnly` | | A hand-off opened read only (contract C20): a folder under `<userData>/handoffs`, or a hand-off unzipped by hand; nothing in it is written |

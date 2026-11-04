@@ -37,6 +37,7 @@ const StepOrder = require("../step-order.js");
 const RO = require("../read-only.js");
 const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
+const { videoLane: makeVideoLane } = require("./video-lane.js");
 const { moveMarker, insertMarker, applyNote } = require("./flow-view-markers.js");
 const { SNAP_PX, MIN_SPAN_MS, snapMs, markerDragBounds, stepSide, stepSideChanges, markerMoments, isOpen } = require("../time-edits.js");
 
@@ -618,6 +619,8 @@ const LANE_DEFAULTS = {
   idle: true, screenshots: false, cases: true, steps: true,
   // C8: exists only while a transcript is attached; on when it does.
   transcript: true,
+  // C23: exists only while a video is added; on when one is.
+  videos: true,
   // C16: exists only while a note is pinned to a moment; on when one is.
   notes: true,
 };
@@ -668,6 +671,7 @@ const SCREENSHOT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 const LANE_NAMES = {
   cases: { name: "Transactions", title: "Transactions: each pass through the process, from its start to its end; click one to go to its start." },
   activity: { name: "Systems", title: "Systems: the system on screen at each moment, one band per window; click a band to go there, right-click to start or end a transaction or to add a note." },
+  videos: { name: "Videos", title: "Videos: the videos of this project where they are on the timeline, one after the other; click one to go there, drag a side to trim it, right-click to trim, replace or remove it, or to add a video." },
   transcript: { name: "Transcript", title: "Transcript: what was said, one block per sentence at the moment it was said, once the transcript is synced; click one to go there." },
   notes: { name: "Notes", title: "Notes: your notes pinned to a moment; click one to go there, right-click to edit or delete it." },
   screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot taken during the recording, and one per frame of the video you added to a step; click one to see it full size." },
@@ -866,11 +870,17 @@ function renderTimeline() {
   // C8: the Transcript lane exists only while a transcript is attached
   // (flow-view-transcript.js; it also shows the lane's row in the Lanes menu).
   const transcriptLane = makeTranscriptLane({ first, last, span, on: !!lanes.transcript });
+  // C23: the Videos lane exists only while the project has a video added
+  // (video-lane.js; its row in the Lanes menu follows it).
+  const videosLane = makeVideoLane({ first, last, span, on: !!lanes.videos, menu: _menu });
+  const videosRow = document.getElementById("lane-videos-row");
+  if (videosRow) videosRow.hidden = !require("./flow-view-video.js").addedClips().length;
 
   /* Lane stack (top to bottom):
        ticks:        m:ss labels (the time since the recording started)
        cases:        one labelled band per run (header)
        activity:     per-app coloured bands (the hero lane)
+       videos:       the videos of the project (C23), when one is added
        transcript:   the meeting transcript, when one is attached
        screenshots:  dedicated capture rail
        steps:        optional per-step bands
@@ -1469,7 +1479,7 @@ function renderTimeline() {
   // owns the vertical layout maths, the zoom width, and the minHeight; each
   // lane plugin owns its own DOM. tailPx (14) + the 120 floor reproduce the
   // pre-core host.style.minHeight.
-  const stack = [ticksLane, casesLane, activityLane, transcriptLane, notesLane, screenshotsLane, stepsLane];
+  const stack = [ticksLane, casesLane, activityLane, videosLane, transcriptLane, notesLane, screenshotsLane, stepsLane];
   const layout = TimelineCore.renderLaneStack(host, {
     lanes: stack,
     span: { startMs: first, endMs: last },

@@ -154,7 +154,8 @@ function attachExternalVideo(payload) {
 }
 
 /** Keep the video the project plays in its folder (copied into video/ when
- *  it is outside it); the renderer then writes annotations.external_video.
+ *  it is outside it); the renderer then writes annotations.external_videos
+ *  (contract C23).
  *  @param {{sessionFolder: string, videoPath: string}} payload
  *  @returns {Promise<{ok: boolean, stored?: string, copied?: boolean, copyError?: string|null, error?: string}>} */
 function copyVideoIn(payload) {

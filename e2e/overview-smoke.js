@@ -1,4 +1,7 @@
 "use strict";
+/* C23 (2.0.6): the first video of the chain (external_videos), or the one
+   external_video of a project of 2.0.5. */
+const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_videos[0]) || (a && a.external_video) || null;
 /*
  * Overview e2e smoke: the home of a loaded recording (BA-helper cycle; lane
  * V1 of the step-back review).
@@ -819,7 +822,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   fs.writeFileSync(VIDEO, Buffer.alloc(64));
   const SYNC_AT = "2026-05-14T09:00:30Z";
   const attach = {};
-  const noExternal = () => !readAnno().external_video;
+  const noExternal = () => !firstVideo(readAnno());
   try {
     await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, VIDEO);
     // First Cancel: nothing written, the video band back.
@@ -859,7 +862,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.mouse.click(at.x, at.y);
     await page.waitForFunction(() => /Video attached and synced/.test((document.getElementById("toast") || {}).textContent || ""),
       null, { timeout: T });
-    const ev = readAnno().external_video || null;
+    const ev = firstVideo(readAnno());
     attach.saved = ev ? { path: ev.path, offset: ev.offset_ms } : null;
     attach.wantOffset = Date.parse(SYNC_AT) - Date.parse(JSON.parse(fs.readFileSync(path.join(SESSION_MARKED, "manifest.json"), "utf-8")).started_at);
     attach.after = await page.evaluate(() => ({
@@ -891,7 +894,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   fs.writeFileSync(V1, Buffer.alloc(96, 1));
   fs.writeFileSync(V2, Buffer.alloc(128, 2));
   const inVideo = (name) => fs.existsSync(path.join(SESSION_MARKED, "video", name));
-  const storedPath = () => ((readAnno().external_video || {}).path || null);
+  const storedPath = () => ((firstVideo(readAnno()) || {}).path || null);
   const replaceWith = async (file) => {
     await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, file);
     await goOverview();
@@ -911,7 +914,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.evaluate(async () => { await require("./session.js").performUndo(); });
     await page.waitForFunction((w) => {
       const s = require("./state.js").getSession();
-      const p = s && s.annotations && s.annotations.external_video && s.annotations.external_video.path;
+      const a = s && s.annotations;
+      const p = a && ((Array.isArray(a.external_videos) && a.external_videos[0]) || a.external_video || {}).path;
       // The reload after the undo (session.js revertFollowUp) has read the video back.
       return w === null ? !p : (p === w && !!(s.recordingAvailable && s.recordingPath &&
         s.recordingPath.split(String.fromCharCode(92)).join("/").endsWith("/" + w)));

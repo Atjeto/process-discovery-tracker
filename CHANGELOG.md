@@ -6,6 +6,48 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.6] (2026-11-04): several videos on one timeline
+
+### Added
+
+- **Several videos on one timeline** (the owner: "10th minute on the
+  timeline is 10th minute on the timeline, regardless if there are 1 or 7
+  videos"). *Add video* (the Overview's project line, *Add another* once one
+  is there; the Timeline's new Videos lane) takes one or more files. In a
+  project made from videos they run back to back, as in a video editor: a
+  video added goes after the last one. In a recording each video is placed
+  with its own sync (two clicks).
+- **The Videos lane**: one band per video, named after its file, where it
+  is on the timeline. Drag a side to trim it, or right-click it: *Trim the
+  start here*, *Trim the end here*, *Give its start back*, *Give its end
+  back*, *Sync video...* (in a recording), *Replace video...*, *Remove
+  video*, *Add a video...*. Each is one change Ctrl+Z takes back.
+- **What is marked moves with its video**: in a project made from videos, a
+  trim, a replace or a remove of one video moves the videos after it and
+  everything marked on them (transactions, steps, notes and screenshots at
+  a moment), so a step stays on what it shows. A trim that would cut a mark
+  away is refused and says what is there. Removing a video takes what was
+  marked on it, after a question that names it.
+- **A transcript per video**: a project with several videos asks which
+  video a transcript is of (*Add another* on the project line for the
+  next). Its sentences are placed from that video's start and move with
+  it; each transcript has its own row on the Timeline with *Sync...*,
+  *Replace...* and *Remove*.
+
+### Changed
+
+- **The player plays the video that shows the playhead**: a click on the
+  timeline, a band or a step shows that moment in the video that covers it,
+  and playing on past a video's end goes on with the next one. The
+  playback bar, its skips and the arrow keys move across the videos; the
+  step panel plays each step from its own video.
+- **The PDD places each step on the timeline's clock** ("Transaction 1 at
+  0:19"), never at a time in a video, and in a project made from videos
+  "at 1:00" outside the transactions; Document control says how many
+  videos there are.
+- **A project of 2.0.5 opens as it was**: its one video is the first of the
+  chain; the first change to the videos saves them in the new form.
+
 ## [2.0.5] (2026-11-04): a step's place in the process, apart from its time
 
 ### Changed

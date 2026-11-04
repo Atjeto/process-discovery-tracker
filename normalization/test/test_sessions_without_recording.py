@@ -379,8 +379,8 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Open the order", "Step 2: Check the stock", "Step 3: Confirm the order"]
     assert _under(blocks, "Step 1: Open the order") == [
-        "video 0:10", "Open the order from the customer's mail."]
-    assert _under(blocks, "Step 2: Check the stock") == ["SAP · video 1:00"]
+        "at 0:10", "Open the order from the customer's mail."]
+    assert _under(blocks, "Step 2: Check the stock") == ["SAP · at 1:00"]
     control = _section(blocks, "1. Document control")
     # Lane FX3: the implicit transaction reads as the viewer names it.
     assert ("Transactions recorded | One transaction (not marked)" in control
@@ -420,7 +420,7 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
     assert [t for k, t in blocks if k == "Heading 3"] == [
         "Step 1: Open the order", "Step 2: Check the stock"]
     assert _under(blocks, "Step 2: Check the stock")[0] == (
-        "SAP · in 1 of 2 transactions · Transaction 1, video 1:00")
+        "SAP · in 1 of 2 transactions · Transaction 1 at 1:00")
     # The document prints no recorded time (the analyst states the effort).
     assert _section(blocks, "6. Volume and effort") == [
         "[To be completed: how often the process is done, and how long one takes]"]

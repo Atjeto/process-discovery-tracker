@@ -201,10 +201,12 @@ function resolveTranscriptScript() {
    normalize.py uses. Resolves { code, signal, stdout, stderr } (the script
    prints UTF-8); rejects only when Python cannot be started. */
 function runTranscriptImport(opts) {
-  const { sessionFolder, file } = opts || {};
+  const { sessionFolder, file, out: outFile } = opts || {};
   return new Promise((resolve, reject) => {
     const script = resolveTranscriptScript();
-    const proc = spawn(resolvePython(), [script, sessionFolder, file], {
+    // C23: `out`, the transcript file written (transcript.json by default).
+    const args = [script, sessionFolder, file].concat(outFile && outFile !== "transcript.json" ? ["--out", outFile] : []);
+    const proc = spawn(resolvePython(), args, {
       cwd: path.dirname(script), env: process.env, windowsHide: true,
     });
     const out = [], err = [];

@@ -2,8 +2,8 @@
  * video-path.js: where an attached video is kept (lane V2 item 5; step-back
  * review 4.6, F3). The recording folder is the one hand-off, so the video
  * travels in it: Attach video copies the file into <folder>/video/<name>
- * (unless it is already inside the folder) and annotations.external_video
- * stores its path relative to the folder. Loading resolves a relative path
+ * (unless it is already inside the folder) and annotations.external_videos
+ * (C23; external_video before 2.0.6) stores its path relative to the folder. Loading resolves a relative path
  * against the folder; an absolute path (an older attach, or a copy that
  * failed) still works, and when it is missing but a file of that name sits
  * in the folder (at its top or in video/), that file is used.
@@ -31,7 +31,7 @@ function _inside(root, full) {
 }
 
 /* Where a chosen video is kept: { stored, copyTo }. `stored` is what
-   external_video.path holds (relative with "/" when the video is in the
+   a video's path holds (relative with "/" when the video is in the
    folder); `copyTo` is the file to copy the video to, or null when no copy
    is needed (the video is inside the folder already, or video/ holds a file
    of the same name and size). fsLike = { exists(p), size(p) }. */
