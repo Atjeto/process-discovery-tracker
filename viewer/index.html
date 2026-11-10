@@ -182,59 +182,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <div id="overview-content"></div>
         </div>
 
-        <!-- ========= TIMELINE view (data-level "flow": full-width timeline on top, video and side panel below) ========= -->
+        <!-- ========= TIMELINE view (data-level "flow": the video and the pane above, the timeline at the full width below) ========= -->
         <div class="session-layout" id="session-layout-flow" style="display:none">
-          <div class="timeline-pane">
-            <div class="timeline-header">
-              <span id="timeline-summary" class="meta"></span>
-              <div class="timeline-controls">
-                <!-- It dims the other transactions on the timeline and changes
-                     nothing on the other levels (P1.2). -->
-                <label class="case-scope" id="case-scope" title="Show one transaction on the timeline: the other transactions are dimmed. Pick All transactions to see the whole recording.">
-                  <span class="case-scope-label">Transaction:</span>
-                  <select id="case-scope-select"><option value="">All transactions</option></select>
-                </label>
-                <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
-                <button class="icon-btn" id="btn-add-step" type="button" hidden title="Add a step at the video playhead (S)">+ Step</button>
-                <div class="lanes-menu" id="lanes-menu">
-                  <button class="icon-btn" id="btn-lanes" aria-haspopup="true" aria-expanded="false" title="Choose which timeline lanes to show">Lanes ▾</button>
-                  <div class="lanes-popup" id="lanes-popup" style="display:none">
-                    <div class="lanes-popup-title">Show lanes</div>
-                    <label class="cb"><input type="checkbox" data-lane="idle" /> Idle</label>
-                    <label class="cb"><input type="checkbox" data-lane="screenshots" /> Screenshots</label>
-                    <label class="cb"><input type="checkbox" data-lane="cases" /> Transactions</label>
-                    <label class="cb"><input type="checkbox" data-lane="steps" /> Steps</label>
-                    <label class="cb" id="lane-videos-row" hidden><input type="checkbox" data-lane="videos" /> Videos</label>
-                    <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
-                    <label class="cb" id="lane-notes-row" hidden><input type="checkbox" data-lane="notes" /> Notes</label>
-                  </div>
-                </div>
-                <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button>
-                <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)" aria-label="Reset zoom">⊙</button>
-                <button class="icon-btn" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
-              </div>
-            </div>
-            <div class="timeline-minimap" id="timeline-minimap" title="The whole recording, shown while the timeline is zoomed in: the highlighted part is what the timeline below shows. Click to go to a part, or drag the highlighted part." style="display:none"></div>
-            <!-- The lanes' names at the left, the timeline beside them
-                 (flow-view-timeline.js renderLaneNames). -->
-            <div class="timeline-body">
-              <div class="tl-lane-names" id="tl-lane-names"></div>
-              <div class="timeline-scroll" id="timeline-scroll" title="Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause">
-                <div class="timeline" id="timeline"></div>
-              </div>
-            </div>
-            <div class="resize-v" id="resize-timeline" title="Drag to resize timeline height"></div>
-            <div class="legend" id="timeline-legend">
-              <span class="legend-apps" id="legend-apps"></span>
-              <span class="lg-idle">idle</span>
-              <span class="lg-marker" title="A marker change not applied yet: Apply marker changes, in the top bar, updates the transactions and their steps.">pending change</span>
-              <span class="lg-screenshot">screenshot</span>
-              <span class="lg-note">note</span>
-              <span class="lg-left-out" title="Hatched: a stretch you left out of the analysis. Playing skips it, and the Transcript tab leaves out what was said in it. Click it to include it again.">left out of the analysis</span>
-              <span class="lg-placed" title="A step you placed elsewhere in the process (Place after a step, or Alt+Up and Alt+Down in Steps): its band stays where it was shown.">placed elsewhere in the process</span>
-            </div>
-          </div>
-
           <div class="lower-workspace" id="lower-workspace">
             <div class="video-pane" id="video-pane">
               <div class="video-controls">
@@ -252,7 +201,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                   </button>
                 </div>
               </div>
-              <video id="video" controls preload="metadata"></video>
+              <!-- No controls of its own (lane SCREEN): the timeline's row plays,
+                   pauses and goes to a time; a click on the video plays or
+                   pauses it. -->
+              <video id="video" preload="metadata"></video>
               <div class="no-video" id="no-video">
                 <span class="nv-icon">▶</span>
                 <span class="nv-text">No video linked</span>
@@ -296,12 +248,93 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
             </aside>
           </div>
+
+          <!-- Lane SCREEN (plan section 11.1): the divider between the stage and
+               the timeline (a drag shares the height between them). -->
+          <div class="resize-v" id="resize-timeline" title="Drag to give the video or the timeline more height"></div>
+
+          <!-- The timeline: the full width of the window at the bottom, always.
+               Its first row (lane SCREEN, plan section 11.3) holds how to play
+               and how to mark, in the order the Tab key goes; the marking
+               buttons act at the clock's moment (flow-view.js syncTimelineRow,
+               timeline-row.js). While a stretch is selected, its times and its
+               acts take the place of the three marking buttons. A message reads
+               in the message area (dom.js toast) and never covers the work. -->
+          <section class="timeline-pane" id="timeline-section" aria-label="Timeline">
+            <div class="timeline-header" id="tl-row" role="group" aria-label="Play and mark">
+              <button type="button" class="icon-btn tl-play" id="btn-tl-play" hidden aria-label="Play" title="Plays or pauses the video. Key: Space">
+                <svg class="tl-icon-play" aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"/></svg>
+                <svg class="tl-icon-pause" aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              </button>
+              <button type="button" class="tl-clock" id="btn-tl-clock" hidden title="The time since the start of the video. Click to type a time and go there."></button>
+              <input type="text" class="tl-clock-field" id="tl-clock-field" hidden aria-label="Go to a time" placeholder="6:20" spellcheck="false" autocomplete="off" />
+              <span class="tl-sep" aria-hidden="true"></span>
+              <button type="button" id="btn-add-step" hidden title="Adds a step that starts at this moment of the video. The step before it ends here. Key: S">Add step</button>
+              <button type="button" id="btn-tl-transaction" hidden title="Starts a new transaction at this moment of the video. A transaction is one pass through the process.">Start transaction</button>
+              <button type="button" id="btn-tl-note" hidden title="Adds a note at this moment of the video. Notes stay out of the PDD.">Add note</button>
+              <span class="tl-selection" id="tl-selection" hidden>
+                <span class="tl-selection-times" id="tl-selection-times"></span>
+                <button type="button" id="tl-selection-exclude" hidden></button>
+                <button type="button" id="tl-selection-case" hidden title="Makes a transaction that starts and ends where the selection does.">Make it a transaction</button>
+                <button type="button" class="link-btn" id="tl-selection-clear">Clear selection</button>
+              </span>
+              <!-- The message area: a message (dom.js toast) reads here while the
+                   Timeline shows; at rest it says when the project was recorded
+                   and how long it is. -->
+              <div class="tl-message" id="tl-message"><span id="timeline-summary" class="meta"></span></div>
+              <div class="timeline-controls">
+                <!-- It dims the other transactions on the timeline and changes
+                     nothing on the other levels (P1.2). -->
+                <label class="case-scope" id="case-scope" title="Show one transaction on the timeline: the other transactions are dimmed. Pick All transactions to see the whole recording.">
+                  <span class="case-scope-label">Transaction:</span>
+                  <select id="case-scope-select"><option value="">All transactions</option></select>
+                </label>
+                <div class="lanes-menu" id="lanes-menu">
+                  <button type="button" id="btn-lanes" aria-haspopup="true" aria-expanded="false" title="Choose which lanes the timeline shows">Lanes</button>
+                  <div class="lanes-popup" id="lanes-popup" style="display:none">
+                    <div class="lanes-popup-title">Show lanes</div>
+                    <label class="cb"><input type="checkbox" data-lane="idle" /> Idle</label>
+                    <label class="cb"><input type="checkbox" data-lane="screenshots" /> Screenshots</label>
+                    <label class="cb"><input type="checkbox" data-lane="cases" /> Transactions</label>
+                    <label class="cb"><input type="checkbox" data-lane="steps" /> Steps</label>
+                    <label class="cb" id="lane-videos-row" hidden><input type="checkbox" data-lane="videos" /> Videos</label>
+                    <label class="cb" id="lane-transcript-row" hidden><input type="checkbox" data-lane="transcript" /> Transcript</label>
+                    <label class="cb" id="lane-notes-row" hidden><input type="checkbox" data-lane="notes" /> Notes</label>
+                  </div>
+                </div>
+                <button type="button" class="icon-btn" id="btn-zoom-out" title="Shows more of the timeline. Key: -" aria-label="Zoom out">−</button>
+                <button type="button" id="btn-zoom-reset" title="Shows the whole length of the timeline. Key: 0">Show all</button>
+                <button type="button" class="icon-btn" id="btn-zoom-in" title="Shows less of the timeline, larger. Key: +" aria-label="Zoom in">+</button>
+              </div>
+            </div>
+            <!-- The lanes scroll here, under the row, when they do not fit. -->
+            <div class="tl-lanes" id="tl-lanes">
+              <div class="timeline-minimap" id="timeline-minimap" title="The whole recording, shown while the timeline is zoomed in: the highlighted part is what the timeline below shows. Click to go to a part, or drag the highlighted part." style="display:none"></div>
+              <!-- The lanes' names at the left, the timeline beside them
+                   (flow-view-timeline.js renderLaneNames). -->
+              <div class="timeline-body">
+                <div class="tl-lane-names" id="tl-lane-names"></div>
+                <div class="timeline-scroll" id="timeline-scroll" title="Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause">
+                  <div class="timeline" id="timeline"></div>
+                </div>
+              </div>
+              <div class="legend" id="timeline-legend">
+                <span class="legend-apps" id="legend-apps"></span>
+                <span class="lg-idle">idle</span>
+                <span class="lg-marker" title="A marker change not applied yet: Apply marker changes, in the top bar, updates the transactions and their steps.">pending change</span>
+                <span class="lg-screenshot">screenshot</span>
+                <span class="lg-note">note</span>
+                <span class="lg-left-out" title="Hatched: a stretch you left out of the analysis. Playing skips it, and the Transcript tab leaves out what was said in it. Click it to include it again.">left out of the analysis</span>
+                <span class="lg-placed" title="A step you placed elsewhere in the process (Place after a step, or Alt+Up and Alt+Down in Steps): its band stays where it was shown.">placed elsewhere in the process</span>
+              </div>
+            </div>
+          </section>
         </div>
 
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
-            <button id="btn-add-manual-step" title="Add a step by hand, without a time: after the selected step of the open transaction, or at its end. Alt+Up and Alt+Down move it. The Timeline's + Step adds one at the video playhead.">+ Add step</button>
+            <button id="btn-add-manual-step" title="Add a step by hand, without a time: after the selected step of the open transaction, or at its end. Alt+Up and Alt+Down move it. The Timeline's Add step adds one at the moment the video shows.">+ Add step</button>
             <!-- Lane E1: the notes the analyst already has, in one paste
                  (steps-view.js pasteNotes, notes-paste.js). -->
             <button id="btn-paste-notes" type="button" title="Paste your notes from Notepad, Teams or anywhere: each line becomes a step, the text after its first colon its description. A line that starts with a document field's name and a colon (Trigger:, Volume:) goes to that field. One Ctrl+Z takes it all back.">Paste notes...</button>
@@ -472,26 +505,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
   </main>
 
-  <!-- Bottom playback bar: a global transport for the session video.
-       Shown when a recording is loaded; mirrors and drives the #video
-       element. Hidden otherwise. -->
-  <div class="playback-bar hidden" id="playback-bar">
-    <button class="pb-btn" id="pb-skip-back" title="Back 5s (Left arrow)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
-    </button>
-    <button class="pb-play" id="pb-play" title="Play / pause (Space)">
-      <svg class="pb-icon-play" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"/></svg>
-      <svg class="pb-icon-pause" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-    </button>
-    <button class="pb-btn" id="pb-skip-fwd" title="Forward 5s (Right arrow)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l8.5-6L13 6zm-.5 6L4 6v12l8.5-6z"/></svg>
-    </button>
-    <span class="pb-time" id="pb-current">0:00</span>
-    <div class="pb-scrub" id="pb-scrub"><div class="pb-fill" id="pb-fill"></div><div class="pb-knob" id="pb-knob"></div></div>
-    <span class="pb-time pb-total" id="pb-total">0:00</span>
-    <span class="pb-hint">Space &middot; &larr;&rarr; &middot; Shift+&larr;&rarr;</span>
-  </div>
-
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ========= Help modal ========= -->
@@ -554,9 +567,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Everyday tasks</h3>
           <p><strong>Mark a video as you watch it</strong></p>
           <ol class="help-steps">
-            <li>Play the video on the Timeline. Where the SME starts the work, right-click the timeline and choose <em>Start a transaction here</em>.</li>
-            <li>As each step starts, press S (or click <em>+ Step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
-            <li>Where the transaction ends, right-click and choose <em>End the transaction here</em>: its last step ends there too. <em>Start a transaction here</em> for the next one ends the one before it the same way.</li>
+            <li>Play the video on the Timeline: click <em>Play</em>, at the left of the row above the timeline, or press Space. To go to a moment, click the clock beside it (<em>0:00 / 1:02:00</em>), type a time and press Enter. Where the SME starts the work, click <em>Start transaction</em>. While the video plays, the transaction starts at once; name it afterwards with Rename, on its header beside the video.</li>
+            <li>As each step starts, press S (or click <em>Add step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
+            <li>Where the transaction ends, click <em>End transaction</em> (the same button reads so while a transaction runs on): its last step ends there too. <em>Start transaction</em> for the next one ends the one before it the same way. <em>Add note</em> puts a note at that moment; notes stay out of the PDD. Right-clicking the timeline offers the same acts at the moment you click. A message about what you did reads in the same row.</li>
             <li>Each step you add opens beside the video, in the <em>Steps</em> tab, its screenshot taken from the video at that moment. Pause the video before you press S, and the cursor is in the step's name: type the name, press Enter, and play on. Its system and its description are right under the name. While the video plays, S only marks the steps: name them in the <em>Steps</em> tab or in Steps afterwards. <em>All steps</em> goes back to the list. Ctrl+Z takes back a mark put in the wrong place, with its screenshot.</li>
             <li>The <em>Transcript</em> tab beside the video lists what was said, with its time and who said it. Type in its search to find a word, for example <em>invoice</em>: it shows how many sentences hold it. With several speakers, pick one to read only theirs. The sentence the video is at is marked and stays in view while the video plays, unless your pointer is on the list or the search holds text.</li>
             <li>Click a sentence to go to that moment. <em>Add step here</em>, after the sentence, adds a step that starts where it is said. <em>Copy to...</em> copies the sentence into the description of the selected step or into a field of the document.</li>
@@ -581,7 +594,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>In Steps, select the step it comes after.</li>
             <li>Click <em>+ Add step</em> (or press N), type its name and click <em>Add step</em>.</li>
             <li>Set its system: type it first on the line under the step's name. Alt+Up and Alt+Down move the step.</li>
-            <li>With a video, you can instead pause the video at that moment on the Timeline and click <em>+ Step</em> (or press S), or right-click the timeline there and choose <em>Add a step here</em>: the step gets that time. In the demo, <em>Look up the SAP material</em> in transaction 2 was added at its moment: the recorder saw no action there. Right-clicking a step on the Timeline also offers to open it in Steps, or to delete it (a recorded step is hidden).</li>
+            <li>With a video, you can instead pause the video at that moment on the Timeline and click <em>Add step</em> (or press S), or right-click the timeline there and choose <em>Add a step here</em>: the step gets that time. In the demo, <em>Look up the SAP material</em> in transaction 2 was added at its moment: the recorder saw no action there. Right-clicking a step on the Timeline also offers to open it in Steps, or to delete it (a recorded step is hidden).</li>
             <li>To add many steps at once, click <em>Paste notes...</em> in Steps and paste your notes from Notepad or Teams: each line becomes a step, the text after its first colon its description, and a line that starts with a document field's name and a colon (<em>Trigger:</em>, <em>Volume:</em>) goes to that field. The line under the box says what it will make. One Ctrl+Z takes it all back.</li>
           </ol>
           <p><strong>Change when a transaction or a step starts or ends</strong></p>
@@ -608,7 +621,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p><strong>Leave out an app or a stretch of the recording</strong></p>
           <ol class="help-steps">
             <li>An app, for example Calculator, where the SME checks a total out of habit: in Steps, click <em>Apps outside the process...</em>, tick the app and click <em>Save</em>.</li>
-            <li>A stretch, for example where the SME started on the wrong customer: on the Timeline, hold Shift and drag across it, click <em>Leave out of the analysis</em>, then <em>Leave out</em>.</li>
+            <li>A stretch, for example where the SME started on the wrong customer: on the Timeline, hold Shift and drag across it, click <em>Leave out of the analysis</em> in the row above the timeline, then <em>Leave out</em>.</li>
             <li>The steps and the map are drafted again without it. A stretch left out shows hatched: click it and choose <em>Include again</em> to bring it back. Playing skips it, and the <em>Transcript</em> tab leaves out what was said in it.</li>
             <li>In a project made from a video, a detour of the call, for example thirty minutes on another topic: hold Shift and drag across it, then click <em>Not part of the process</em>. It shows hatched, playing skips it, and the <em>Transcript</em> tab says <em>Not part of the process</em> in its place. Your steps stay as they are, and the maps and the PDD do not mention it. Seek into it to watch it anyway. Click it and choose <em>Include again</em> to bring it back, or press Ctrl+Z.</li>
           </ol>
@@ -728,7 +741,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Leaving things out</h3>
           <ul class="help-list">
             <li><strong>Apps outside the process</strong>, in the Steps toolbar: tick the apps that are not part of the process, for example Teams or Outlook used during the call; the steps and the map are updated without them.</li>
-            <li><strong>Leave out of the analysis</strong>, on the Timeline: Shift-drag across a stretch (a break, a detour) and choose it on the card that opens. The steps and the map are drafted again without that stretch, and its time is not counted; a transaction with a stretch left out says so, and the reference transaction's steps done in it are not read as skipped. The Timeline shows the stretch hatched, <em>Left out of the analysis</em>: click it and choose <em>Include again</em> to bring it back. Ctrl+Z undoes either. Playing skips the stretch, and the <em>Transcript</em> tab leaves out what was said in it.</li>
+            <li><strong>Leave out of the analysis</strong>, on the Timeline: Shift-drag across a stretch (a break, a detour) and choose it in the row above the timeline, which then shows the stretch's times and what you can do with it. The steps and the map are drafted again without that stretch, and its time is not counted; a transaction with a stretch left out says so, and the reference transaction's steps done in it are not read as skipped. The Timeline shows the stretch hatched, <em>Left out of the analysis</em>: click it and choose <em>Include again</em> to bring it back. Ctrl+Z undoes either. Playing skips the stretch, and the <em>Transcript</em> tab leaves out what was said in it.</li>
             <li><strong>Not part of the process</strong>, the same on the Timeline of a project made from a video or from nothing: the stretch is put aside, hatched, skipped when playing and left out of the <em>Transcript</em> tab, and nothing else changes: the steps you marked in it stay, and the maps and the PDD do not mention it. <em>Include again</em> on it, or Ctrl+Z, brings it back.</li>
             <li><strong>Hide step</strong> (the Steps toolbar): takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
@@ -804,10 +817,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">Ctrl+V</span> (step pane)</td><td>Add the image on the clipboard as a screenshot of the step</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
+            <tr><td><span class="kbd">Esc</span> (Timeline)</td><td>Clear the selected stretch</td></tr>
           </table>
           <h3>Clicks</h3>
           <ul class="help-list">
-            <li>Click a band on the timeline to go to that moment. Click a screenshot or a note on the timeline to show it in its tab beside the video; in the <em>Screenshots</em> tab, click one to see it full size.</li>
+            <li>Click the video to play or pause it. Click a band on the timeline to go to that moment. Click a screenshot or a note on the timeline to show it in its tab beside the video; in the <em>Screenshots</em> tab, click one to see it full size.</li>
             <li>Click a step band on the timeline to open the step beside the video, in the <em>Steps</em> tab. In the tabs, Left and Right go from tab to tab; in the list of steps, Up and Down go from step to step and Enter opens one.</li>
             <li>Drag the start or the end of a transaction's band, or of a step you added on a video's timeline, to move it. It snaps to a step's start or the playhead a few pixels away; Esc puts it back.</li>
             <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>

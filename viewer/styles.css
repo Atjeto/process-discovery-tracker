@@ -177,7 +177,6 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-2); 
 input[type=checkbox]:focus:not(:focus-visible), input[type=radio]:focus:not(:focus-visible) { outline: none; }
 
 button.icon-btn { padding: 4px 8px; font-family: var(--font-mono); font-size: 14px; min-width: 28px; }
-#btn-add-step { font-family: inherit; font-size: 12px; }
 
 .kbd { display: inline-block; padding: 0 5px; min-width: 16px; height: 16px;
   font-family: var(--font-mono); font-size: 10px; line-height: 16px; text-align: center;
@@ -434,51 +433,74 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 @keyframes run-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .session-pills .run-cancel { font-size: 12px; }
 
-/* ===== Session view -- full-width timeline + lower video|annotations row ===== */
-/* flex:1 so the layout fills the viewport, but no min-height:0 -- that
-   would let the scrolling session view squeeze it below its content
-   when the event-table / log panels below are open, spilling the
-   video+annotations row over them. The view (overflow:auto) scrolls. */
+/* ===== The Timeline level (lane SCREEN, plan section 11.1) =====
+   From the top: the stage (the video on the left, the divider, the pane on
+   the right), the divider between the stage and the timeline, then the
+   timeline at the full width of the window to its bottom. The stage and the
+   timeline share the height under the top bar, so the page does not scroll
+   (.view.on-timeline, renderer.js applyLevel): the pane's lists scroll in
+   the pane, the lanes in the timeline under its first row. The timeline is
+   --tl-height high (272 px, or what its divider was dragged to,
+   layout-controls.js), the stage takes the rest and never less than its
+   min-height, the timeline giving way first. The video takes at most 58%
+   of the stage's width and no more than its height at 16:9
+   (container units of the stage); --video-width is its divider's. */
 .session-layout { display: flex; flex-direction: column; gap: 10px; margin-top: 12px;
   flex: 1; }
+.view.on-timeline { padding: 0; overflow: hidden; }
+.view.on-timeline > .loaded > .anno-error-banner,
+.view.on-timeline > .loaded > .log-host { margin: 8px 12px 0; }
+.view.on-timeline .session-layout { margin-top: 0; gap: 0; min-height: 0; }
 
-.timeline-pane { background: var(--bg-2); border-radius: var(--radius);
-  padding: 10px 14px; display: flex; flex-direction: column;
-  box-shadow: var(--shadow); flex: 0 0 auto;
+.timeline-pane { background: var(--bg-2); border-top: 1px solid var(--rule);
+  padding: 0 12px 6px; display: flex; flex-direction: column;
+  flex: 0 1 var(--tl-height, 272px); min-height: 120px;
   /* The lanes' header column: a key and Transactions, the longest name, whole. */
   --tl-names-w: 136px; }
+/* A project with no recording and no video draws no timeline (lane FX3):
+   the line that says so, with Attach video, under the row, and the stage
+   takes the rest of the height. */
+#session-layout-flow:has(> .lower-workspace.no-timeline) > .timeline-pane { flex: 0 0 auto; min-height: 0; }
+#session-layout-flow:has(> .lower-workspace.no-timeline) > .resize-v { display: none; }
+/* The lanes, under the row: they scroll here when they do not fit. */
+.tl-lanes { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; }
 
-/* Lower workspace: video + annotations side-by-side */
+/* The stage: the video and the pane, side by side. */
 .lower-workspace { display: flex; gap: 0; align-items: stretch;
-  flex: 1; min-height: 200px; }
-.lower-workspace .video-pane { flex: 0 1 var(--video-width, 600px); min-width: 200px; }
+  flex: 1 1 0; min-height: 200px; padding: 8px 12px 0; container-type: size; }
+.lower-workspace .video-pane { min-width: 200px;
+  flex: 0 0 min(var(--video-width, 100cqw), 58cqw, calc(100cqh * 16 / 9)); }
 .lower-workspace .annotations-pane { flex: 1 1 auto; min-width: 280px; }
-/* The screenshots scroll inside their pane instead of stretching the row,
-   so the video's own controls stay in view when the step panel narrows
-   the content (V2 items 4 and 8). */
+/* The pane's lists scroll inside it instead of stretching the stage. */
 .lower-workspace:not(.no-recording) .annotations-pane { contain: size; }
 
-/* Video expanded: takes 70% of workspace */
-.session-layout.video-expanded .lower-workspace { min-height: 380px; }
-.session-layout.video-expanded .lower-workspace .video-pane { flex: 0 0 70%; }
+/* Video expanded: 70% of the stage's width, past the 58%; the pane keeps
+   the rest. */
+.session-layout.video-expanded .lower-workspace .video-pane { flex: 0 0 70cqw; }
 .session-layout.video-expanded .lower-workspace .resize-h { display: none; }
 
-/* Video fullscreen: cover viewport */
-.session-layout.video-fullscreen .lower-workspace {
+/* Video fullscreen: the video fills the window above the timeline's row,
+   which stays in view (Play, the clock, the marking buttons, the message
+   area); the pane, the lanes and the dividers are not shown. */
+.session-layout.video-fullscreen {
   position: fixed; inset: 0; z-index: 50; background: #000;
-  flex-direction: column; min-height: 0;
 }
+.session-layout.video-fullscreen .lower-workspace { padding: 0; }
 .session-layout.video-fullscreen .lower-workspace .video-pane {
-  flex: 1 1 auto; border-radius: 0; min-height: 0;
+  flex: 1 1 auto; border-radius: 0; min-height: 0; box-shadow: none;
 }
 .session-layout.video-fullscreen .lower-workspace .annotations-pane,
-.session-layout.video-fullscreen .lower-workspace .resize-h { display: none; }
+.session-layout.video-fullscreen .lower-workspace .resize-h,
+.session-layout.video-fullscreen > .resize-v,
+.session-layout.video-fullscreen .tl-lanes { display: none; }
+.session-layout.video-fullscreen .timeline-pane { flex: 0 0 auto; min-height: 0; padding-bottom: 0; }
 
 .video-pane { background: radial-gradient(ellipse at 50% 40%, #1a1d29 0%, #0a0908 70%);
   border-radius: var(--radius); position: relative;
   overflow: hidden; display: flex; flex-direction: column;
   min-height: 220px; box-shadow: var(--shadow); }
-.video-pane video { width: 100%; flex: 1; min-height: 0; background: #000; object-fit: contain; }
+.video-pane video { width: 100%; flex: 1; min-height: 0; background: #000; object-fit: contain; cursor: pointer; }
 .no-video { color: var(--fg-3); padding: 24px; text-align: center;
   display: flex; flex-direction: column; gap: 8px; align-items: center; flex: 1; justify-content: center;
   background-image:
@@ -495,7 +517,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
    full-width notes pane, so the freed space goes to the timeline + notes
    (not a ~40%-tall black box). The video controls header + <video> are
    hidden (nothing to play); the "Link recording…" affordance survives. */
-.lower-workspace.no-recording { flex-direction: column; min-height: 0; gap: 8px; }
+.lower-workspace.no-recording { flex-direction: column; min-height: 0; gap: 8px; container-type: normal; }
 .lower-workspace.no-recording .resize-h { display: none; }
 .lower-workspace.no-recording .video-pane {
   flex: 0 0 auto; min-height: 0; min-width: 0;
@@ -539,6 +561,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 /* Drag-resize handles */
 .resize-v { cursor: row-resize; height: 8px; width: 100%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; }
+.resize-h#resize-video { width: 12px; }
 .resize-v::after { content: ""; width: 36px; height: 3px; border-radius: 2px;
   background: var(--rule); transition: background 0.15s; }
 .resize-v:hover::after, .resize-v.dragging::after { background: var(--fg-4); }
@@ -547,17 +570,72 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .resize-h::after { content: ""; width: 3px; height: 36px; border-radius: 2px;
   background: var(--rule); transition: background 0.15s; }
 .resize-h:hover::after, .resize-h.dragging::after { background: var(--fg-4); }
-.timeline-header { display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 10px; gap: 12px; }
-.timeline-controls { display: flex; gap: 4px; }
+/* The timeline's first row (lane SCREEN, plan section 11.3): one line, in
+   the order the Tab key goes: Play, the clock, Add step, Start or End
+   transaction, Add note (or, while a stretch is selected, its times and its
+   acts), the message area taking the room that is left, the Transaction
+   select, Lanes and the zoom. The message area gives way first; then the
+   select's label. Every control has a visible focus ring (:focus-visible)
+   and text of 12 px. */
+.timeline-header { display: flex; align-items: center; gap: 6px; height: 44px;
+  flex: 0 0 auto; min-width: 0; white-space: nowrap; }
+.timeline-header > * { flex: 0 0 auto; }
+.timeline-header button { font-size: 12px; padding: 5px 10px; font-family: inherit; }
+.timeline-header button[hidden], .timeline-header [hidden] { display: none; }
+.timeline-header button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.timeline-header button[aria-disabled="true"]:hover { background: var(--bg-2); border-color: var(--rule); }
+.timeline-header button[aria-disabled="true"]:active { transform: none; }
+.timeline-header button.primary[aria-disabled="true"]:hover { background: var(--accent-fill); border-color: var(--accent-fill); }
+.tl-play { width: 32px; min-width: 32px; height: 30px; padding: 0 !important; display: inline-flex;
+  align-items: center; justify-content: center; }
+.tl-clock { font-family: var(--font-mono) !important; font-variant-numeric: tabular-nums; min-width: 104px;
+  text-align: center; background: transparent; border-color: transparent; }
+.tl-clock:hover:not(:disabled) { background: var(--bg-3); }
+.tl-clock-field { width: 104px; font-family: var(--font-mono); font-size: 12px; padding: 5px 8px; }
+.tl-sep { width: 1px; height: 22px; background: var(--rule); margin: 0 4px; }
+.tl-selection { display: inline-flex; align-items: center; gap: 6px; }
+.tl-selection-times { font-family: var(--font-mono); font-size: 12px; color: var(--fg); padding: 0 4px; }
+.tl-selection .link-btn { font-size: 12px; }
+/* The message area: the room the rest leaves, one line; a long message is
+   cut with an ellipsis, its whole text in its tooltip. At rest it says when
+   the project was recorded and how long it is (#timeline-summary). */
+.timeline-header > .tl-message { flex: 1 1 0; min-width: 0; display: flex; align-items: center;
+  overflow: hidden; padding: 0 6px; container-type: inline-size; }
+/* Too narrow to read (a stretch's acts at 1024 px): neither the message nor
+   the resting text is painted, rather than a sliver of its box; the message
+   stays in the live region (opacity, not display or visibility) and paints
+   again when the room is back. */
+@container (max-width: 80px) {
+  .tl-message > .toast.in-row, .tl-message > #timeline-summary { opacity: 0; }
+}
+.tl-message > #timeline-summary { font-size: 12px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tl-message:has(> .toast.show) > #timeline-summary { display: none; }
+.timeline-controls { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; }
+/* After the message area, the Transaction select gives way (its list keeps
+   every name; the field shows what fits). */
+.timeline-controls > .case-scope { flex: 0 1 auto; min-width: 0; }
+.timeline-controls > .case-scope select { min-width: 72px; flex: 0 1 auto; }
+.timeline-controls > :not(.case-scope) { flex: 0 0 auto; }
+/* A narrow window (CI's 1024 px): the row keeps one line with every label
+   of the copy table whole; the buttons are a little narrower and the
+   select's "Transaction:" is read by a screen reader only (the label still
+   names the select). */
+@media (max-width: 1180px) {
+  .timeline-header { gap: 4px; }
+  .timeline-header button { padding: 5px 8px; }
+  .tl-sep { margin: 0 2px; }
+  .timeline-controls > .case-scope .case-scope-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+.timeline-controls .icon-btn { min-width: 30px; padding: 5px 8px; font-family: var(--font-ui); font-size: 14px; line-height: 1; }
 /* The Flow timeline sizes to fit its lane stack: `min-height` (not a fixed
    `height`) keeps the strip at least the drag-set --timeline-height while
    letting it grow taller when there are more lanes, so the content never
    triggers a second, competing vertical scrollbar. flex:0 0 auto keeps
    flex from collapsing that height. */
-.timeline-body { flex: 0 0 auto; display: flex; align-items: stretch;
+.timeline-body { flex: 1 0 auto; display: flex; align-items: stretch;
   background: var(--bg-3); border: 1px solid var(--rule); border-radius: var(--radius-sm);
-  overflow: hidden; min-height: var(--timeline-height, 160px); }
+  overflow: hidden; }
 /* The lanes' header column (the owner's reviews), drawn like a video
    editor's track headers (flow-view-timeline.js renderLaneNames): a column
    of its own, quieter than the lanes' track, a cell per lane as tall as its
@@ -706,7 +784,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .tl-playhead::before { content: ""; position: absolute; top: -3px; left: -2.5px;
   width: 6px; height: 6px; background: var(--fg); border-radius: 50%; }
 
-.legend { margin-top: 8px; display: flex; gap: 12px; font-size: 10px;
+.legend { margin-top: 4px; display: flex; gap: 12px; font-size: 10px;
   color: var(--fg-3); align-items: center; flex-wrap: wrap; }
 .legend > span { display: inline-flex; align-items: center; gap: 5px; }
 .legend > span:not(.legend-apps)::before {
@@ -761,6 +839,19 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
    so the flex column never shrinks them or the layout above into an
    overlap -- the session view scrolls instead. */
 .event-table-host { margin-top: 18px; flex: 0 0 auto; }
+/* On the Timeline (lane SCREEN) the page does not scroll: the drawer is one
+   line under the timeline, and opened, its table shows above that line (the
+   line stays where it was) at most a third of the window high, the stage giving
+   way; the timeline's row stays in view. */
+.view.on-timeline .event-table-host { margin: 0; padding: 0 12px; background: var(--bg-2);
+  border-top: 1px solid var(--rule); display: flex; flex-direction: column-reverse; }
+.view.on-timeline .event-table-host > summary { padding: 3px 0; }
+.view.on-timeline .event-table-host[open]::details-content { max-height: 34vh; overflow: auto; }
+.view.on-timeline .event-table-host .event-table-scroll { max-height: none; }
+/* The stage of a recording without a video (the line, then the pane) keeps
+   room for both; with the drawer open the timeline gives way, its row in
+   view, its lanes scrolling. */
+.view.on-timeline .lower-workspace.no-recording { min-height: 258px; }
 .event-table-host > summary { cursor: pointer; padding: 8px 0;
   color: var(--fg-3); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
   font-family: var(--font-mono); }
@@ -849,6 +940,17 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   background: transparent; border: 1px solid transparent; color: inherit; font-size: 12px; line-height: 1; }
 .toast-close::before { content: "\2715"; }
 .toast-close:hover:not(:disabled) { background: var(--bg-3); border-color: var(--rule); }
+/* On the Timeline the message reads in the row's message area (lane SCREEN):
+   in the flow of the row, one line, cut with an ellipsis; its buttons
+   (an offer, an Undo, Dismiss) after the text. */
+.toast.in-row { position: static; transform: none; transition: none; box-shadow: none;
+  display: none; align-items: center; gap: 0; min-width: 0; max-width: 100%;
+  padding: 3px 8px; font-size: 12px; z-index: auto; }
+.toast.in-row.show { display: inline-flex; }
+.toast.in-row .toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast.in-row .toast-action, .toast.in-row .toast-close { flex: 0 0 auto; }
+.toast.in-row .toast-action { padding: 2px 8px; font-size: 12px; }
+.toast.in-row .toast-close { margin: 0 -4px 0 6px; }
 
 /* ===== Help modal ===== */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72);
@@ -1704,8 +1806,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
   font-family: var(--font-mono); margin-left: 4px;
 }
 
-/* Warning lines (the Overview's session summary) and small fix buttons (also
-   the timeline selection card). */
+/* Warning lines (the Overview's session summary) and small fix buttons. */
 .summary-problem {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 10px; font-size: 12px; color: var(--fg-2);
@@ -2137,7 +2238,7 @@ button.danger:disabled {
 
 /* Lanes toggle menu (timeline header) */
 .lanes-menu { position: relative; display: inline-block; }
-#btn-lanes { font-size: 11px; font-family: inherit; }
+#btn-lanes { font-size: 12px; font-family: inherit; }
 .lanes-popup {
   position: absolute; right: 0; top: calc(100% + 4px);
   min-width: 180px; background: var(--bg-2); border: 1px solid var(--rule);
@@ -2205,17 +2306,6 @@ button.danger:disabled {
   border-right: 1px dashed var(--accent);
   z-index: 5;
 }
-.selection-stats {
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-left: 3px solid var(--accent);
-  padding: 8px 10px; margin: 8px 0; border-radius: 3px;
-  font-size: 11px; color: var(--fg-2);
-}
-.selection-stats h4 { margin: 0 0 4px; font-size: 11px; color: var(--fg); font-weight: 500; }
-.selection-stats .row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
-.selection-stats .clear-link { display: inline-block; margin-top: 6px;
-  font-size: 10px; color: var(--link); cursor: pointer; }
-.selection-stats .clear-link:hover { text-decoration: underline; }
 
 /* ===== Phase H: interactive video re-sync ========================= */
 
@@ -2399,50 +2489,6 @@ button.danger:disabled {
 .screenshot-gallery-footer .reason {
   background: var(--bg-3); padding: 2px 6px; border-radius: 3px;
   font-family: var(--font-mono);
-}
-
-/* ===== Bottom playback bar ========================================= */
-/* Global transport for the session video. Pinned to the bottom of the
-   app shell as a flex sibling of <main>; .hidden collapses it when no
-   recording is loaded. */
-.playback-bar {
-  flex-shrink: 0; height: 38px; padding: 0 16px;
-  display: flex; align-items: center; gap: 10px;
-  background: var(--bg-2); border-top: 1px solid var(--rule);
-}
-.playback-bar.hidden { display: none; }
-.pb-btn {
-  width: 24px; height: 24px; padding: 0; border: none;
-  border-radius: var(--radius-sm); background: transparent;
-  color: var(--fg-3); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.pb-btn:hover:not(:disabled) { background: var(--bg-3); color: var(--fg); }
-.pb-play {
-  width: 26px; height: 26px; padding: 0; border: none; border-radius: 50%;
-  background: var(--accent); color: var(--accent-text); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: var(--shadow); flex-shrink: 0;
-}
-.pb-play:hover:not(:disabled) { background: var(--accent-hover); }
-.playback-bar button:disabled { opacity: 0.4; cursor: default; }
-.pb-time { font-family: var(--font-mono); font-size: 11px; color: var(--fg); min-width: 38px; }
-.pb-time.pb-total { color: var(--fg-3); }
-.pb-scrub {
-  flex: 1; height: 4px; border-radius: 2px;
-  background: var(--bg-4); cursor: pointer; position: relative;
-}
-.pb-fill { height: 100%; border-radius: 2px; background: var(--accent); width: 0; }
-.pb-knob {
-  position: absolute; top: 50%; left: 0;
-  transform: translate(-50%, -50%);
-  width: 11px; height: 11px; border-radius: 50%;
-  background: var(--accent); border: 2px solid var(--bg-2);
-  box-shadow: var(--shadow); pointer-events: none;
-}
-.pb-hint {
-  font-family: var(--font-mono); font-size: 9px;
-  color: var(--fg-3); letter-spacing: 0.3px;
 }
 
 /* ===== ADR-0019: Reference Maps (fork / gallery / editor) =================

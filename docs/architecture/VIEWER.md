@@ -175,7 +175,7 @@ newProject`).
   draft at any level), Review the other transactions (done once every one
   that differs is opened), Write the document, Hand off. Without a
   recording: Add the steps, Write the steps (every visible step of the
-  reference transaction with a name of its own, not + Step's "Step N", and
+  reference transaction with a name of its own, not Add step's "Step N", and
   a description), Review the other transactions (only with two or more),
   Write the document, Hand off (done once `annotations.handoffs` holds a
   version). Each ticked or not from the session data alone, each with a
@@ -203,10 +203,13 @@ newProject`).
   information used, the volume and effort) are the document's alone
   (2.0.1), and opening the Overview never runs an analysis. Until the
   project is analyzed it shows one note that says where the analysis is.
-- **Timeline**: the timeline with its lanes and their header column (a key
-  and a name per lane, like a video editor's track headers), the video pane,
-  the side panel (Screenshots, Markers, Transcript) and the Raw events drawer, which
-  shows on this level only. Detail: [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md).
+- **Timeline**: lane SCREEN: the stage (the video and the pane with its five
+  tabs) above, the timeline at the full width of the window below, its first
+  row holding Play, the clock, Add step, Start or End transaction, Add note,
+  the message area, the Transaction select, Lanes and the zoom; its lanes and
+  their header column (a key and a name per lane, like a video editor's
+  track headers); the Raw events drawer under it, on this level only. The
+  page does not scroll there. Detail: [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md).
 - **Steps**: the transactions in time order, one open at a time, under one
   line that says what a transaction is (the reference transaction with
   Confirm transaction, and *Undo confirm* beside its Confirmed badge once it
@@ -394,7 +397,9 @@ steps too (the confirm counts them and points at Dissolve).
 **Switching levels.** `selectLevel(name)` marks the level button and calls
 `applyLevel(name)` (`renderer.js`): it records the level in `state.js`,
 shows one container, tells the step panel, shows the Raw events drawer on
-the Timeline only, and carries the viewport through `MODE_VIEWPORT` (the
+the Timeline only, marks the Timeline (`#view-session.on-timeline`: the
+page does not scroll) and puts a message where it reads (`dom.js`
+`placeToast`), and carries the viewport through `MODE_VIEWPORT` (the
 Timeline's zoom and scroll; the Steps level keeps the Timeline's viewport
 while the analyst is on it, so a return lands where it was). Arriving on
 Steps with a selected step scrolls its row into view once.
@@ -421,8 +426,8 @@ their module as `<name>.test.js`.
 |---|---|
 | `main.js` | The main process: the windows and the one-viewer-per-profile lock (section 12), every `viewer:*` handler (section 5), `loadSessionData()`, the path checks, the one-analysis lock, the write reports (`viewer:projectWrite`), the holding folder for removed files. |
 | `window-registry.js` | Lane MW: which window shows which project, in the main process; a project open for editing in one window opens read only in another (`open`, `close`, `readOnlyHere`, `editorOf`). Pure. |
-| `index.html` | The markup: the top bar, the four level containers, the step panel, the playback bar, Help, the map editor overlay. |
-| `renderer.js` | The wiring entry: the level switcher, the Map level's live map data (`_sessionMapData`, the system per box; whether it draws, `_liveMapState`; C19: the level shown, `_mapLevel`, and its picker), the state bus subscriptions, the keyboard shortcuts, Help, the playback bar, the New, Open and Export menus, the exports (section 10), the save state's mount, boot. |
+| `index.html` | The markup: the top bar, the four level containers, the step panel, Help, the map editor overlay. |
+| `renderer.js` | The wiring entry: the level switcher, the Map level's live map data (`_sessionMapData`, the system per box; whether it draws, `_liveMapState`; C19: the level shown, `_mapLevel`, and its picker), the state bus subscriptions, the keyboard shortcuts, Help, the New, Open and Export menus, the exports (section 10), the save state's mount, boot. |
 | `save-state.js` | The save state in the top bar (section 9): its pure state (`applyWrite`, `view`) and the element it drives, fed by `Ipc.onProjectWrite` and by `noteWrite` for the map files the renderer writes. |
 | `top-bar-acts.js` | The top bar's next act, Undo and Redo (lane W0, section 2): `topBarActs` says what shows on which level and in which state, `nextTitle` the next act's tooltip; pure, drawn by `renderer.js wireTopBarActs`. |
 | `styles.css` | Every style rule, the light and dark tokens ([DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)). |
@@ -466,7 +471,7 @@ their module as `<name>.test.js`.
 |---|---|
 | `overview-view.js` | The Overview: the Checklist (`pathState`), what a reader of the next version will miss under it (`missingOf`, `missingShown`, `goToMissing`, lane B-V2), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), and the note shown while the analysis is missing. |
 | `handoff-ui.js` | Export, Hand off... (contract C20): the dialog (its line says what the zip holds, `detailLine`; what a reader of the version will miss, `dialogOptions`, lane B-V2), the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the map files (`writeHandoffMaps`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
-| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, range selection and its card (Insert transaction from selection; Leave out of the analysis, and Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
+| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, the timeline's first row (lane SCREEN, `syncTimelineRow`: Play, the clock, Add step, Start or End transaction, Add note, and a selected stretch's Leave out of the analysis or Not part of the process, Make it a transaction and Clear selection; Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
 | `step-order.js` (viewer root, pure) | 2.0.5, contract C22: where a step comes in its transaction's process, apart from its time (`step.placed_after`). `processOrder` (the one order rule, pinned with the pipeline's `step_context.process_order` by `shared/step-order-golden.json`; runs-model, the live map, the sub-process maps and the differences read it), `placeMoments` (where a placed step falls among the stretches left out), `deriveOrder` (the fewest placements that give an order wanted: Move up and Move down, Place after a step..., Back to its time, + Add step), `keepOrder` (a step hidden, deleted or merged away hands its followers over), `followTransaction`, `apartOnTimeline` (Merge and Group refuse a placed step apart from the others). |
 | `time-edits.js` (viewer root, pure) | 2.0.3: the times the analyst gives a transaction or a step, one rule set for a drag on the Timeline and a time typed in Steps: snapping, a marker's and a step side's range, a step back to back giving way, a step without a time given one, a transaction's markers (`runSides`), the time fields' format and parse ("0:09.6"). |
 | `flow-view-timeline.js` | The timeline: the lane stack, the stretches left out of the analysis drawn hatched over the Systems lane (`leftOutBands`; lane E: "Not part of the process" in a project without a recording, on its low lane), the minimap, the lanes menu, zoom and scroll persistence, the summary line; dragging a transaction's or a step's side and snapping (2.0.3, `wireEdgeDrag`, `snapMoment`). |
@@ -475,6 +480,7 @@ their module as `<name>.test.js`.
 | `views/video-lane.js` | 2.0.6: the Timeline's Videos lane: one band per video, a side dragged trims it, its right-click menu (trim, give a side back, sync, replace, remove, add). |
 | `flow-view-screenshots.js` | The Screenshots tab's grid, the gallery, and the guarded open of a screenshot. |
 | `flow-view-markers.js` | The marker edits: move (a dragged or typed side), delete and rename (a transaction's header in the Timeline's pane), insert; lane PANE removed the Markers tab. |
+| `timeline-row.js` (viewer root, pure) | Lane SCREEN: the Timeline's first row: its words (the copy table, "the video" or "the recording"), `rowState` (what shows, what can be clicked, which button is filled), `transactionSlot` (Start transaction or End transaction), the clock (`clockText`, `clockTarget`), `stretchText`. |
 | `timeline-pane.js` | Lane PANE: the pane beside the video on the Timeline, its five tabs, the Steps tab's list and the step opened in place, Notes and Files (section 2). |
 | `flow-view-transcript.js` | The Transcript lane (one row per transcript, C23), each transcript's Sync, Replace and Remove, and Attach (which asks which video a transcript is of when there are several). Lane E (E3): the Transcript tab beside the video (`renderTab`, built once per change of what it lists; `tickTab`, the sentence at the playhead; a sentence's menu: Add a step here, Add to the selected step's description, Add to a document field). |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
@@ -678,7 +684,7 @@ the bus. The topics and who listens (`renderer.js`):
 | `pdt.theme` | `theme.js` | `light` or `dark` (the inline script in `index.html` reads it before the first paint). |
 | `pdt.timelineState` | `flow-view-timeline.js` | Per session folder, the timeline's zoom and scroll. |
 | `pdt.timelineLanes` | `flow-view-timeline.js` | Which lanes are shown. |
-| `pdt.timelineHeight`, `pdt.videoWidth` | `layout-controls.js` | The dragged pane sizes. |
+| `pdt.stage.timelineHeight`, `pdt.stage.videoWidth` | `layout-controls.js` | The Timeline's dragged sizes (lane SCREEN): the timeline's height, the video's width. The old `pdt.timelineHeight` and `pdt.videoWidth` are not read. |
 | `pdt.stepsSplit` | `pane-splitter.js` | The Steps level's divider: the transactions' share of the width. |
 | `pdt.dfgLayout.<hash>` | `dfg-viewer.js` | A dragged map layout, per set of boxes (and per level below the main map, C19); Reset layout removes it. |
 
@@ -692,7 +698,8 @@ Ipc.loadSession(folder) -> State.setSession(...)
   -> the top bar's levels show; the annotations error banner
   -> the save state (another folder starts over; an unreadable annotations.json is Not saved)
   -> Recents
-  -> the video (or the slim no-video band), + Step and Sync video only with a video
+  -> the video (or the slim no-video band), Sync video only with a video
+  -> the timeline's first row (Play and Add step only with a video)
   -> renderTimeline, the Raw events table, the Screenshots tab (the pane follows the topics),
      the timeline summary, renderStepsLevel, renderOverviewLevel, the Transaction select
   -> the remembered timeline zoom and scroll
@@ -949,7 +956,8 @@ opened in their programs). Nothing can change:
   the unreadable-annotations page's (lane FX2), hide every control that
   changes the project on every level: the Checklist, the project line's
   Attach, Replace and Remove, the Steps toolbar, the ticks, Confirm
-  transaction and Undo confirm, the step pane's acts, the Timeline's + Step,
+  transaction and Undo confirm, the step pane's acts, the Timeline row's Add
+  step, Start or End transaction, Add note and a stretch's acts,
   Sync, the transcript lane's acts and the markers' Move and Delete, the
   Map's Edit as the As-Is map, Edited maps and Copy again, Help's
   Re-analyze, and the Export items that write. The step pane's fields and

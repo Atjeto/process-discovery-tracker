@@ -325,13 +325,27 @@ the folder.
   (`steps-view.js` `renderStepInto`; one host holds the editor at a time,
   its parts carry ids) with *All steps*, *Previous*, *Next*, *Open in
   Steps*, *Also happens in* (`step-panel.js` `occurrences`) and Steps'
-  verbs (`stepVerbStates`). A step marked on the Timeline (S, + Step, a
+  verbs (`stepVerbStates`). A step marked on the Timeline (S, Add step, a
   right-click, *Add step here*) opens there, its name focused only while
   the video is paused (`nameTakesFocus`), and takes the video's frame at
   its moment as an added screenshot in the same undoable edit
   (`analyst-ui.js` `frameAtMoment`, lane E-1). Notes and Files list every
   note and attached file; a screenshot or a note clicked on the timeline
   opens its tab at it.
+- **The Timeline's screen and first row** (lane SCREEN, plan section
+  11.1 and 11.3): the stage (the video, at most 58% of its width, and the
+  pane) above, the timeline (`#timeline-section`) at the full width of the
+  window below, and the page does not scroll there
+  (`#view-session.on-timeline`); the dividers store
+  `pdt.stage.timelineHeight` and `pdt.stage.videoWidth`
+  (`layout-controls.js`). The row `#tl-row`: Play, the clock (a click types
+  a time), Add step, Start transaction or End transaction (one button), Add
+  note, the message area `#tl-message` (`dom.js` `placeToast` moves
+  `#toast` there while the Timeline shows; at rest `#timeline-summary`),
+  the Transaction select, Lanes, the zoom; a selected stretch shows there
+  with its acts (the selection card is gone). The rules are
+  `timeline-row.js`, drawn by `flow-view.js` `syncTimelineRow`. No playback
+  bar, and `#video` has no controls (only during a sync's first step).
 - **The Steps page is an editor** (2.0.1, the owner's review): the toolbar
   acts on the selected step (Split..., Merge with next, Hide step, the
   sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a

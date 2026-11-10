@@ -111,6 +111,7 @@ function toastClosesOnInteraction(shownAt, now) {
 
 let toastTimer = null;
 let toastFillTimer = null;
+let toastText = null;
 let toastHeldUntil = 0;
 let toastShownAt = 0;
 let toastSticky = false;
@@ -121,6 +122,23 @@ function hideToast() {
   toastSticky = false;
   if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
   if (el) el.classList.remove("show");
+}
+
+/* Where a message shows (lane SCREEN, plan section 11.3: a message never
+   covers the work): in the message area of the Timeline's row (#tl-message)
+   while that row is on screen, else at the foot of the window. One element,
+   #toast, moved to where it shows: the same live region, the same Dismiss
+   and actions. Called by toast() and when a level is shown (renderer.js
+   applyLevel), so a message showing moves with the level. */
+function placeToast() {
+  if (typeof document.getElementById !== "function") return;
+  const el = document.getElementById("toast");
+  if (!el) return;
+  const slot = document.getElementById("tl-message");
+  const inRow = !!slot && slot.getClientRects().length > 0;
+  const host = inRow ? slot : document.body;
+  if (host && el.parentNode !== host) host.appendChild(el);
+  el.classList.toggle("in-row", inRow);
 }
 
 /* A dialog or a menu is open: Escape is theirs, not the message's. */
@@ -152,7 +170,8 @@ function _wireToast() {
   }, true);
 }
 
-/* A message at the bottom of the window, announced: #toast is a polite live
+/* A message at the bottom of the window (on the Timeline, in its row:
+   placeToast), announced: #toast is a polite live
    region (role="status") and an error an assertive one (role="alert"); the
    same text twice in a row is announced twice. opts.action =
    { label, act, onClick } adds one button to it (an offer such as "Hide in all
@@ -161,7 +180,9 @@ function _wireToast() {
    opts.hold (an error the analyst must read, such as a save that moved no
    file): no message but another error replaces it for TOAST_LONG_MS, so the
    success message of the same act does not cover it. An error carries a
-   Dismiss and stays (toastLifetime). */
+   Dismiss and stays (toastLifetime). The text is a span of its own
+   (.toast-text) whose tooltip is the whole text: in the Timeline's row a
+   long message is cut with an ellipsis. */
 function toast(text, kind, opts) {
   if (kind !== "error" && Date.now() < toastHeldUntil) return;
   const el = $("#toast");
@@ -170,14 +191,19 @@ function toast(text, kind, opts) {
   if (toastFillTimer) { clearTimeout(toastFillTimer); toastFillTimer = null; }
   // A live region announces a change: the same text again while it shows is
   // cleared first and written a moment later.
-  const again = /\bshow\b/.test(el.className) && !!el.firstChild && el.firstChild.nodeValue === String(text);
+  const again = /\bshow\b/.test(el.className) && toastText === String(text);
   if (typeof el.setAttribute === "function") {
     el.setAttribute("role", error ? "alert" : "status");
     el.setAttribute("aria-live", error ? "assertive" : "polite");
   }
   const fill = () => {
     toastFillTimer = null;
-    el.textContent = text;
+    el.textContent = "";
+    const words = document.createElement("span");
+    words.className = "toast-text";
+    words.textContent = text;
+    words.title = String(text);
+    el.appendChild(words);
     if (action) {
       const b = document.createElement("button");
       b.type = "button";
@@ -200,8 +226,11 @@ function toast(text, kind, opts) {
       el.appendChild(x);
     }
   };
+  toastText = String(text);
+  placeToast();
   if (again) { el.textContent = ""; toastFillTimer = setTimeout(fill, 60); } else fill();
-  el.className = "toast show" + (kind ? " " + kind : "") + (action ? " has-action" : "");
+  el.className = "toast show" + (kind ? " " + kind : "") + (action ? " has-action" : "") +
+    (el.parentNode && el.parentNode.id === "tl-message" ? " in-row" : "");
   const hold = !!(opts && opts.hold);
   toastHeldUntil = hold ? Date.now() + TOAST_LONG_MS : 0;
   toastShownAt = Date.now();
@@ -251,4 +280,4 @@ function placeMenu(menu, x, y) {
 }
 
 module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, clock, recordingStartMs, sinceStart, parseClock,
-  fillTable, cryptoRandomId, toast, hideToast, toastLifetime, toastClosesOnInteraction, fitMenuPosition, placeMenu };
+  fillTable, cryptoRandomId, toast, hideToast, placeToast, toastLifetime, toastClosesOnInteraction, fitMenuPosition, placeMenu };

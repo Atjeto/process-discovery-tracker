@@ -53,6 +53,10 @@
  *       along, and its end typed later its last step's end;
  *   (n) the last step deleted gives its time back to the step before it; a
  *       step's end typed earlier and then emptied runs on again.
+ * Lane SCREEN, on a third project made from the video:
+ *   (s1) to (s4) the screen's order and the timeline's first row: Play, the
+ *       clock, Start transaction and End transaction, Add step, Add note,
+ *       the messages in the row, the keyboard.
  *   Zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -82,8 +86,8 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
    A project made from the synthetic video with three steps written first
    (no time: "Open the order", "Check the stock", "Send the invoice"), opened
    in a viewer of its own:
-     (o) E4: a Shift-drag across 0:08 to 0:16 does not start the video, its
-         card shows the Duration only and offers "Not part of the process"
+     (o) E4: a Shift-drag across 0:08 to 0:16 does not start the video, the
+         timeline's row shows its times and length and offers "Not part of the process"
          (no "Leave out of the analysis"); one click marks it with no
          question and no analysis: excluded_ranges holds it, the Timeline
          draws it hatched with its label and tooltip, the legend says "not
@@ -99,6 +103,214 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
          a band, each took the video's frame; then no row offers it; Ctrl+Z gives the
          last one back its no time and takes its frame; the right-click menu
          offers the same act under Add a step here. */
+/* ---- Lane SCREEN: the timeline's first row (plan section 11.3) -----------
+   A project made from the synthetic video, no step, in a viewer of its own:
+     (s1) the screen's order: the stage (the video and the pane) above the
+          timeline, the timeline the window's full width at its bottom, the
+          page with no scrollbar of its own; no playback bar, and the video
+          has no controls of its own;
+     (s2) Play and Pause in the row (its name following its state); the
+          clock typed: a time that cannot be read says so in the row's
+          message area (an error, in the live region), Escape leaves it,
+          "0:05" goes there;
+     (s3) Start transaction at 0:05 (its question in its words), the button
+          then reads End transaction; End transaction at 0:20; Add step at
+          0:10 says "Step added at 0:10."; Add note puts a note there and the
+          Notes tab counts it; every message reads in the row;
+     (s4) Tab reaches the row's controls in their order, each named, each
+          with a focus ring; Space on a focused button works it;
+     (s5) while the video plays, Start transaction (the row's, and the
+          right-click's) adds the start at once with no name and no
+          question; paused, it asks, as in (s3). */
+async function laneScreen(TMP) {
+  const T0 = Date.parse("2026-11-10T09:00:00.000Z");
+  const dir = path.join(TMP, "Row call");
+  fs.mkdirSync(path.join(dir, "video"), { recursive: true });
+  fs.copyFileSync(VIDEO, path.join(dir, "video", "call.webm"));
+  const started = new Date(T0).toISOString();
+  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ session_id: "lane-screen", source: "video", started_at: started, label: "Row call" }));
+  fs.writeFileSync(path.join(dir, "events.jsonl"), "");
+  fs.writeFileSync(path.join(dir, "annotations.json"), JSON.stringify({ version: 1, session_id: "lane-screen", steps: [],
+    external_videos: [{ id: "v1", path: "video/call.webm", offset_ms: 0, in_ms: 0, out_ms: null, attached_at: started }] }, null, 2));
+  const errs = [];
+  let v, page;
+  try {
+    v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + dir], cwd: VIEWER });
+    page = await v.app.firstWindow();
+    page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+    page.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
+    await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(); return !!(s && s.stats) && !require("./views/flow-view.js").analysisBusy(); }, null, { timeout: 60000 });
+    await page.click('.view-mode-btn[data-level="flow"]');
+    await page.waitForFunction(() => !!require("./views/flow-view-video.js").timelineSpan(), null, { timeout: T });
+    await wait(600);
+  } catch (e) {
+    record("lane SCREEN: the project made from a video opens", false, errText(e));
+    if (v) await v.close();
+    return;
+  }
+  const ev = (fn, a) => page.evaluate(fn, a);
+  const at = () => ev(() => require("./views/flow-view-video.js").playheadMs());
+  const msg = () => ev(() => { const t = document.getElementById("toast"); return { text: t.textContent, place: t.parentNode && t.parentNode.id,
+    role: t.getAttribute("role"), error: t.classList.contains("error"), shown: t.classList.contains("show") }; });
+  const calm = () => page.waitForFunction(() => !require("./views/flow-view.js").analysisBusy() && !document.getElementById("run-status") &&
+    !require("./marker-edits.js").pendingEditCount((require("./state.js").getSession().annotations || {}).marker_edits,
+      require("./marker-edits.js").lastAnalysisMs(require("./state.js").getSession())), null, { timeout: 60000 });
+  const txText = () => ev(() => document.getElementById("btn-tl-transaction").textContent);
+  const goTo = async (t) => {
+    await page.click("#btn-tl-clock");
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === "tl-clock-field");
+    await page.keyboard.type(t);
+    await page.keyboard.press("Enter");
+    await wait(400);
+  };
+
+  // (s1) the order of the screen.
+  const s1 = {};
+  try {
+    Object.assign(s1, await ev(() => {
+      const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height, bottom: b.bottom }; };
+      const view = document.getElementById("view-session");
+      return { win: [innerWidth, innerHeight], video: r("#video-pane"), pane: r("#timeline-pane"), tl: r("#timeline-section"),
+        scrolls: view.scrollHeight > view.clientHeight || document.documentElement.scrollHeight > document.documentElement.clientHeight,
+        bar: !!document.getElementById("playback-bar"), controls: document.getElementById("video").controls };
+    }));
+  } catch (e) { s1.err = errText(e); }
+  record("(s1) lane SCREEN: the video and the pane side by side above the timeline, the timeline the window's full width at its bottom, the page without a scrollbar of its own; no playback bar, and the video has no controls of its own",
+    !s1.err && s1.tl.x === 0 && s1.tl.w === s1.win[0] && Math.abs(s1.tl.bottom - s1.win[1]) <= 1 &&
+      s1.video.bottom <= s1.tl.y && s1.pane.bottom <= s1.tl.y && s1.video.x + s1.video.w <= s1.pane.x && Math.abs(s1.video.y - s1.pane.y) <= 1 &&
+      s1.video.w <= 0.58 * s1.win[0] + 1 && !s1.scrolls && !s1.bar && !s1.controls, JSON.stringify(s1));
+
+  // (s2) Play, Pause and the clock.
+  const s2 = {};
+  try {
+    await page.click("#btn-tl-play");
+    await wait(900);
+    s2.playing = await ev(() => ({ on: !document.getElementById("video").paused, name: document.getElementById("btn-tl-play").getAttribute("aria-label") }));
+    await page.click("#btn-tl-play");
+    await wait(300);
+    s2.paused = await ev(() => ({ on: document.getElementById("video").paused, name: document.getElementById("btn-tl-play").getAttribute("aria-label") }));
+    await page.click("#btn-tl-clock");
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === "tl-clock-field");
+    await page.keyboard.type("abc");
+    await page.keyboard.press("Enter");
+    await wait(200);
+    s2.bad = await msg();
+    await page.keyboard.press("Escape");
+    await wait(200);
+    s2.escaped = await ev(() => !document.getElementById("btn-tl-clock").hidden && document.getElementById("tl-clock-field").hidden);
+    await goTo("0:05");
+    s2.at = (await at()) - T0;
+    s2.clock = await ev(() => document.getElementById("btn-tl-clock").textContent);
+  } catch (e) { s2.err = errText(e); }
+  record("(s2) the row: Play plays and its name reads Pause, Pause pauses; a time that cannot be read says \"Type a time such as 6:20.\" in the row's message area (an error, role alert), Escape leaves the clock as it was, 0:05 typed goes there",
+    !s2.err && s2.playing.on && s2.playing.name === "Pause" && s2.paused.on && s2.paused.name === "Play" &&
+      s2.bad.text === "Type a time such as 6:20." && s2.bad.place === "tl-message" && s2.bad.error && s2.bad.role === "alert" && s2.bad.shown &&
+      s2.escaped && Math.abs(s2.at - 5000) < 300 && /^0:05 \/ 0:3\d$/.test(s2.clock), JSON.stringify(s2));
+
+  // (s3) mark a transaction from 0:05 to 0:20, a step at 0:10 and a note.
+  const s3 = {};
+  try {
+    s3.before = await txText();
+    await page.click("#btn-tl-transaction");
+    await page.waitForSelector(".modal-prompt .modal-input", { timeout: T });
+    s3.question = await ev(() => { const m = document.querySelector(".modal-prompt .modal"); return { title: document.getElementById(m.getAttribute("aria-labelledby")).textContent,
+      ok: document.querySelector(".modal-prompt .modal-ok").textContent }; });
+    await page.click(".modal-prompt .modal-ok");
+    await page.waitForFunction(() => document.querySelectorAll(".tl-case-band").length === 1, null, { timeout: T });
+    s3.started = await msg();
+    await calm();
+    s3.reads = await txText();
+    await goTo("0:20");
+    await page.click("#btn-tl-transaction");
+    await page.waitForFunction(() => { const b = document.querySelector(".tl-case-band"); return b && !b.classList.contains("dangling"); }, null, { timeout: T });
+    s3.ended = await msg();
+    await calm();
+    s3.after = await txText();
+    await goTo("0:10");
+    await page.click("#btn-add-step");
+    await page.waitForFunction(() => document.querySelectorAll(".tl-step-band").length === 1, null, { timeout: T });
+    await wait(300);
+    s3.step = await msg();
+    await page.click("#btn-tl-note");
+    await page.waitForFunction(() => document.activeElement && document.activeElement.classList.contains("modal-input"), null, { timeout: T });
+    await page.keyboard.type("Ask about the stock check");
+    await page.click(".modal-prompt .modal-ok");
+    await page.waitForFunction(() => document.querySelectorAll(".tl-note").length === 1, null, { timeout: T });
+    s3.notes = await ev(() => document.getElementById("tp-tab-notes").getAttribute("aria-label"));
+    const a = await ev(() => require("./state.js").getSession().annotations);
+    s3.saved = { markers: (a.marker_edits || []).map((m) => [m.marker_type, (Date.parse(m.timestamp) - Date.parse("2026-11-10T09:00:00.000Z")) / 1000]),
+      note: ((a.analyst_notes || [])[0] || {}).at ? (Date.parse(a.analyst_notes[0].at) - Date.parse("2026-11-10T09:00:00.000Z")) / 1000 : null,
+      step: a.steps.length };
+  } catch (e) { s3.err = errText(e); }
+  record("(s3) Start transaction at 0:05 (its question titled and confirmed in its own words), the button then reads End transaction; End transaction at 0:20; Add step at 0:10 says \"Step added at 0:10.\"; Add note at 0:10 and the Notes tab counts it; each message in the row",
+    !s3.err && s3.before === "Start transaction" && s3.question.title === "Start transaction" && s3.question.ok === "Start transaction" &&
+      s3.started.text === "Transaction started at 0:05." && s3.started.place === "tl-message" && s3.started.role === "status" &&
+      s3.reads === "End transaction" && s3.ended.text === "Transaction ended at 0:20." && s3.after === "Start transaction" &&
+      s3.step.text === "Step added at 0:10." && s3.step.place === "tl-message" && s3.notes === "Notes (1)" &&
+      JSON.stringify(s3.saved.markers) === '[["start",5],["end",20]]' && Math.abs(s3.saved.note - 10) < 0.3 && s3.saved.step === 1,
+    JSON.stringify(s3));
+
+  // (s5) while the video plays, Start transaction asks nothing: the start is
+  // added at once with no name (the rule Add step follows); the right-click's
+  // Start a transaction here the same. Paused, it asks, as (s3) shows.
+  const s5 = {};
+  try {
+    await goTo("0:22");
+    const bands = () => ev(() => document.querySelectorAll(".tl-case-band").length);
+    s5.before = await bands();
+    await page.click("#btn-tl-play");
+    await page.waitForFunction(() => !document.getElementById("video").paused, null, { timeout: T });
+    await page.click("#btn-tl-transaction");
+    await wait(900);
+    s5.rowDialog = await ev(() => !!document.querySelector(".modal-prompt"));
+    s5.rowBands = await bands();
+    s5.rowSaid = (await msg()).text;
+    s5.stillPlaying = await ev(() => !document.getElementById("video").paused);
+    const g = await ev(() => { const r = document.getElementById("timeline").getBoundingClientRect(); const sp = require("./views/flow-view-video.js").timelineSpan();
+      const x = r.left + ((Date.parse("2026-11-10T09:00:28.000Z") - sp.startMs) / (sp.endMs - sp.startMs)) * r.width;
+      for (let y = r.bottom - 3; y > r.top; y -= 2) if (document.elementFromPoint(x, y) === document.getElementById("timeline")) return { x, y };
+      return null; });
+    await page.mouse.click(g.x, g.y, { button: "right" });
+    await page.locator("#tl-ctx-menu div", { hasText: /^Start a transaction here/ }).click({ timeout: T });
+    await wait(900);
+    s5.menuDialog = await ev(() => !!document.querySelector(".modal-prompt"));
+    s5.menuBands = await bands();
+    s5.labels = await ev(() => (require("./state.js").getSession().annotations.marker_edits || []).filter((m) => m.marker_type === "start").map((m) => m.label));
+    await ev(() => document.getElementById("video").pause());
+  } catch (e) { s5.err = errText(e); }
+  record("(s5) while the video plays, Start transaction and the right-click's Start a transaction here add the start at once, with no name and no question, and the video plays on; the message stays \"Transaction started at 0:22.\"",
+    !s5.err && !s5.rowDialog && s5.rowBands === s5.before + 1 && /^Transaction started at 0:2\d\.$/.test(s5.rowSaid || "") && s5.stillPlaying &&
+      !s5.menuDialog && s5.menuBands === s5.before + 2 && JSON.stringify(s5.labels.slice(-2)) === "[null,null]", JSON.stringify(s5));
+
+  // (s4) the keyboard.
+  const s4 = {};
+  try {
+    await page.click("#tp-tab-steps");
+    s4.order = [];
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press("Tab");
+      const f = await ev(() => { const a = document.activeElement; if (!a || !a.closest("#tl-row")) return null; const cs = getComputedStyle(a);
+        return { id: a.id, name: a.getAttribute("aria-label") || a.textContent.trim(), ring: cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) >= 2 }; });
+      if (f) { if (s4.order.length && s4.order[s4.order.length - 1].id === f.id) break; s4.order.push(f); }
+      else if (s4.order.length) break;
+    }
+    await ev(() => document.getElementById("btn-tl-play").focus());
+    await page.keyboard.press("Space");
+    await wait(800);
+    s4.spacePlays = await ev(() => !document.getElementById("video").paused);
+    await page.keyboard.press("Enter");
+    await wait(300);
+    s4.enterPauses = await ev(() => document.getElementById("video").paused);
+  } catch (e) { s4.err = errText(e); }
+  record("(s4) Tab reaches the row in its order (Play, the clock, Add step, the transaction, Add note, the Transaction select, Lanes, Zoom out, Show all, Zoom in), each named and with a focus ring; Space and Enter work a focused button",
+    !s4.err && JSON.stringify(s4.order.map((o) => o.id)) === JSON.stringify(["btn-tl-play", "btn-tl-clock", "btn-add-step", "btn-tl-transaction", "btn-tl-note",
+      "case-scope-select", "btn-lanes", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"]) && s4.order.every((o) => o.name && o.ring) &&
+      s4.spacePlays && s4.enterPauses, JSON.stringify(s4));
+  record("lane SCREEN: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
+  await v.close();
+}
+
 async function laneE(TMP) {
   const T0 = Date.parse("2026-11-10T09:00:00.000Z");
   const dir = path.join(TMP, "Messy call");
@@ -165,8 +377,11 @@ async function laneE(TMP) {
     await page.keyboard.up("Shift");
     await wait(600);
     o.pausedAfter = await page.evaluate(() => document.getElementById("video").paused);
-    o.card = await page.evaluate(() => [...document.querySelectorAll("#tl-selection-stats .summary-fix")].map((b) => b.textContent));
-    o.rows = await page.evaluate(() => [...document.querySelectorAll("#tl-selection-stats .row > span:first-child")].map((s) => s.textContent));
+    // Lane SCREEN: the timeline's row shows the stretch (its times and its
+    // length) and its acts, the first one filled; no card over the lanes.
+    o.card = await page.evaluate(() => [...document.querySelectorAll("#tl-selection button")].filter((b) => !b.hidden).map((b) => b.textContent));
+    o.filled = await page.evaluate(() => document.getElementById("tl-selection-exclude").classList.contains("primary"));
+    o.rows = await page.evaluate(() => ({ times: document.getElementById("tl-selection-times").textContent, cardGone: !document.getElementById("tl-selection-stats") }));
     o.tip = await page.evaluate(() => document.getElementById("tl-selection-exclude").title);
     await page.click("#tl-selection-exclude");
     await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 1, null, { timeout: T });
@@ -189,9 +404,9 @@ async function laneE(TMP) {
     await page.click('.view-mode-btn[data-level="flow"]');
     await wait(400);
   } catch (e) { o.err = errText(e); }
-  record("(o) lane E, E4: in a project made from a video a Shift-drag (which does not start the video) shows the stretch's Duration only and offers Not part of the process (not Leave out of the analysis); one click marks it with no question and no analysis (\"Marked as not part of the process.\"), hatched with its label and tooltip, the legend in its words, and Steps says nothing of it",
-    !o.err && o.pausedBefore && o.pausedAfter && JSON.stringify(o.rows) === '["Duration"]' &&
-      JSON.stringify(o.card) === '["Insert transaction from selection","Not part of the process"]' && !o.dialog &&
+  record("(o) lane E, E4: in a project made from a video a Shift-drag (which does not start the video) shows the stretch's times and length in the timeline's row and offers Not part of the process (filled, not Leave out of the analysis), Make it a transaction and Clear selection; one click marks it with no question and no analysis (\"Marked as not part of the process.\"), hatched with its label and tooltip, the legend in its words, and Steps says nothing of it",
+    !o.err && o.pausedBefore && o.pausedAfter && /^0:0\d to 0:1\d · \ds$/.test(o.rows.times) && o.rows.cardGone &&
+      JSON.stringify(o.card) === '["Not part of the process","Make it a transaction","Clear selection"]' && o.filled && !o.dialog &&
       o.tip === "Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back." &&
       /Marked as not part of the process\./.test(o.toast || "") &&
       !o.busy.busy && !o.busy.status && Math.abs(o.range[0] - 8) <= 0.3 && Math.abs(o.range[1] - 16) <= 0.3 &&
@@ -939,6 +1154,7 @@ async function laneE(TMP) {
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();
   await laneE(TMP);
+  await laneScreen(TMP);
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* temp */ }
   const pass = results.filter((r) => r.ok).length;
   console.log("\n[timeline-edit-e2e] " + pass + "/" + results.length + " checks passed, " + (results.length - pass) + " failed");

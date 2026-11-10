@@ -215,10 +215,27 @@ The viewer says *transaction* for one pass through the process and
   dims the other transactions, *Lanes* picks the lanes, and the zoom has a
   minimap. Under it, the *Raw events* drawer lists every event on the same
   clock, with *+ step* at an event's time.
-- **The video beside it**, attached and synced with two clicks and copied
+- **The screen** (lane SCREEN): the video and the pane above, the timeline
+  at the full width of the window below, always; nothing opens over it, and
+  the page does not scroll. The video takes at most 58% of the width; two
+  dividers share the height and the width. Expand gives the video 70% of
+  the width, fullscreen the whole window above the timeline's row.
+- **The timeline's first row**, in the process manager's words: *Play*, the
+  clock ("6:20 / 1:02:00"; a click types a time to go to), *Add step*,
+  *Start transaction* or *End transaction* (one button, at the clock's
+  moment), *Add note*, a message area (every message reads there while the
+  Timeline shows, cut to one line, its whole text in its tooltip; at rest
+  when the project was recorded and how long it is), the Transaction
+  select, *Lanes*, zoom out, *Show all*, zoom in. A selected stretch (Shift
+  and a drag) shows its times and length there with *Leave out of the
+  analysis* or *Not part of the process*, *Make it a transaction* and *Clear
+  selection*. Every control is reached with Tab and worked with Enter or
+  Space.
+- **The video above it**, attached and synced with two clicks and copied
   into the folder so it travels with it; *Remove video* takes it out with
   its copy, *Replace* takes out the copy it replaces, and Ctrl+Z brings
-  either back; a small playback bar.
+  either back; a click on the video plays or pauses it (it has no controls
+  of its own: the row plays it).
 - **Several videos on one timeline** (2.0.6, contract C23; the owner:
   "10th minute on the timeline is 10th minute on the timeline, regardless
   if there are 1 or 7 videos"). *Add video* takes one or more files; the
@@ -388,13 +405,13 @@ The viewer says *transaction* for one pass through the process and
   row's *▸ N sub-steps* opens it: a breadcrumb
   names the way down and goes back up, and the list shows one block per
   transaction that goes through it, compared with the reference
-  transaction's. Every step verb works inside it (*+ Step* at the video's
+  transaction's. Every step verb works inside it (*Add step* at the video's
   playhead gives a sub-step its time), the flow stays inside it, Confirm
   transaction reaches every level, and *Dissolve sub-process* undoes it,
   each link back on the step it came from. The step panel, the Timeline's
   steps lane and the Map follow the level shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
-  Alt+Down), or *+ Step* at the video's playhead. *Paste notes...* makes
+  Alt+Down), or *Add step* at the video's playhead. *Paste notes...* makes
   many at once: a line of the notes is a step (the text after its first
   colon its description), a line that starts with a document field's name
   goes to that field, as one undoable edit.
@@ -464,7 +481,7 @@ The viewer says *transaction* for one pass through the process and
   On the Map its head is the step's name, system and description as
   fields, saved as the editor saves them (lane E-1); on Steps, beside the
   editor, and in a project open read only, it is text. A step marked on the
-  Timeline (S, *+ Step*, *Add a step here*) opens in the pane beside the
+  Timeline (S, *Add step*, *Add a step here*) opens in the pane beside the
   video:
   with the video paused the cursor is in its name, while it plays nothing
   takes the keys. A step marked where a video shows takes that frame as its

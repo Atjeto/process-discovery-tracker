@@ -212,3 +212,12 @@ test("mapPath: the main map by default; a copy goes in and a copy comes out", ()
   State.setMapPath(null);
   assert.deepEqual(State.getMapPath(), []);
 });
+
+test("lane SCREEN: a stretch selected or cleared emits 'selection' (the timeline's row follows it)", () => {
+  const before = State.getSelectionRange();
+  assert.equal(fires("selection", () => State.setSelectionRange({ startMs: 1, endMs: 2 })), 1);
+  assert.deepEqual(State.getSelectionRange(), { startMs: 1, endMs: 2 });
+  assert.equal(fires("selection", () => State.setSelectionRange(null)), 1);
+  assert.equal(fires("steps", () => State.setSelectionRange(null)), 0, "no other topic");
+  State.setSelectionRange(before);
+});

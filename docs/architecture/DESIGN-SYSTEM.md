@@ -79,7 +79,7 @@ is defined. The hex tables below are the **light** values.
 
 | Token | Hex | Meaning |
 |---|---|---|
-| `--accent` | `#c07830` | amber: the primary accent's borders, marks and icons (3:1 is their rule; 3.5:1 on white), the playback bar's knob |
+| `--accent` | `#c07830` | amber: the primary accent's borders, marks and icons (3:1 is their rule; 3.5:1 on white) |
 | `--accent-hover` | `#a86828` | darker amber: hover on accent fills |
 | `--accent-muted` | `rgba(192,120,48,.10)` | faint amber wash: selection and range overlays |
 | `--accent-text` | `#fff8f0` | text and icons on an accent fill |
@@ -183,9 +183,15 @@ byte-copies) by hand in the same commit.
   label type (10px, uppercase, 1.2px spacing, `--fg-2`). The dividers
   between the cells run on across the lanes; a cell under the pointer takes
   a 2px accent edge and a 16% accent wash, and its lane an 11% one.
-- **Bottom playback bar**: a video transport pinned below the levels as a
-  flex sibling of `<main>` (`--bg-2`, top hairline); the `.hidden` class
-  collapses it while no video is loaded.
+- **The timeline's first row** (lane SCREEN, in place of the bottom playback
+  bar, which is gone): one 44px line at the top of the timeline (`--bg-2`,
+  the timeline's top hairline) holding Play (a 32px icon button), the clock
+  in the mono type, the marking buttons in 12px text (the filled one in
+  `--accent-fill`: Add step in a project without a recording, a selected
+  stretch's first act), the message area (a message reads there, one line
+  with an ellipsis, an error in `--bad`), the Transaction select, Lanes and
+  the zoom. Below 1180px the buttons are 8px narrower and the select's
+  label is read by a screen reader only, so the row keeps one line.
 - **Video pane**: stays dark (`#0a0908` under a radial glow) whatever the
   theme; video is dark by nature, and its overlay controls use light on
   dark. Without a video it collapses to a slim band.

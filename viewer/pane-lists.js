@@ -79,7 +79,7 @@ function listedSteps(groups) {
   return (Array.isArray(groups) ? groups : []).flatMap((g) => g.steps);
 }
 
-/* Whether a step has no name of its own yet: still "Step N" (what + Step
+/* Whether a step has no name of its own yet: still "Step N" (what Add step
    and + Add step give, readiness.js hasNoOwnName), empty, or a drafted name
    nobody confirmed (a draft). */
 function noNameYet(step) {
@@ -146,7 +146,7 @@ function stepsHint(ctx) {
   if (!total) {
     if (c.recorded) return "";
     return c.hasVideo
-      ? "No steps yet. Play the video and click + Step where each step starts, or paste your notes."
+      ? "No steps yet. Play the video and click Add step where each step starts, or paste your notes."
       : "No steps yet. Add step adds one, and Paste notes... adds one for each line of your notes.";
   }
   if (c.hasVideo && untimed > 0) {

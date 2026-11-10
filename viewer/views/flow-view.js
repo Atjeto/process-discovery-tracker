@@ -17,7 +17,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { $, escapeHtml, formatDuration, toast, placeMenu, sinceStart, recordingStartMs } = require("../dom.js");
+const { $, escapeHtml, formatDuration, toast, placeMenu, sinceStart, recordingStartMs, clock } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const SaveState = require("../save-state.js");
@@ -33,7 +33,7 @@ const Steps = require("./steps-view.js");
 const { renderStepsLevel } = Steps;
 const ShowHere = require("../show-here.js");
 const { renderOverviewLevel, hasAnalysisBlocks } = require("./overview-view.js");
-const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
+const { appColor, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
   setVideoOverlay, positionPlayhead, videoStartTs, videoTimeToSessionTs,
@@ -54,6 +54,7 @@ const Pane = require("./timeline-pane.js");
 const { ipcErrorText } = require("../project-folder.js");
 const RO = require("../read-only.js");
 const Handoff = require("../handoff.js");
+const TimelineRow = require("../timeline-row.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -238,7 +239,7 @@ async function newProject(kind) {
     // marked on the Timeline, at the moments of the video.
     const flow = document.querySelector('.view-mode-btn[data-level="flow"]');
     if (flow) flow.click();
-    toast("Project made: " + path.basename(r.folder) + ". Play the video and press S, or click + Step, where each step starts.", "success");
+    toast("Project made: " + path.basename(r.folder) + ". Play the video and press S, or click Add step, where each step starts.", "success");
     return;
   }
   toast("Project made: " + path.basename(r.folder) + ". Add its steps in Steps.", "success");
@@ -572,7 +573,9 @@ async function loadSessionIntoView(folder, opts) {
   // The #video timeupdate/loadedmetadata listeners are wired ONCE at module
   // init (see wireVideoListeners below) -- adding them here ran on every
   // session load and leaked a fresh loadedmetadata arrow each time.
-  setVideoOverlay(State.getSession().recordingAvailable ? "loading…" : "no video");
+  // The video's corner says "loading…" until its length is known, then
+  // nothing (lane SCREEN: the time is the row's clock, on the one clock).
+  setVideoOverlay(State.getSession().recordingAvailable ? "loading…" : "");
 
   renderTimeline();
   renderEventTable();
@@ -622,18 +625,19 @@ async function loadSessionIntoView(folder, opts) {
   if (State.getLevel() === "map") rerenderActiveLevel();
   // 2.0.3: marker changes left waiting in a project that applies them itself.
   scheduleAutoApply();
+  syncTimelineRow();
 }
 
-/* The controls that act on the video show only while one is linked: the
-   Timeline toolbar's + Step (a step at the playhead) and Sync video in the
-   video pane's header. Without a video they could only answer with an error. */
+/* The controls that act on the video show only while one is linked: Sync
+   video in the video pane's header (the timeline's row shows Play and Add
+   step then, syncTimelineRow). Without a video they could only answer with
+   an error. */
 function syncVideoControls() {
   const sess = State.getSession();
   const hasVideo = !!(sess && sess.recordingAvailable);
-  for (const id of ["btn-add-step", "btn-sync-video"]) {
-    const el = document.getElementById(id);
-    if (el) el.hidden = !hasVideo;
-  }
+  const syncBtn = document.getElementById("btn-sync-video");
+  if (syncBtn) syncBtn.hidden = !hasVideo;
+  syncTimelineRow();
   // A video project (C16) has nothing to sync the video with: the Timeline is the video.
   const sync = document.getElementById("btn-sync-video");
   if (sync && !(sess && (sess.events || []).length)) sync.hidden = true;
@@ -749,8 +753,9 @@ function restoredFilesLine(listed, screenshots) {
   if (!video) return;
   video.addEventListener("timeupdate", positionPlayhead);
   // Lane FX3 (validation pass 2, item 19): once the video is loaded its
-  // corner says nothing ("loading..." goes); the playback time shows there
-  // while it plays (positionPlayhead). An empty overlay is not drawn.
+  // corner says nothing ("loading..." goes). Lane SCREEN: the video's own
+  // time no longer shows there; the row's clock says the moment. An empty
+  // overlay is not drawn.
   video.addEventListener("loadedmetadata", () => setVideoOverlay(""));
   // C16: a video project's Timeline runs on its video's length.
   const lengthKnown = () => {
@@ -837,9 +842,10 @@ async function addStepAtPlayhead() {
   await addStepAt(tsISO);
 }
 
-/* A step at the moment `tsISO` (+ Step at the playhead, and 2.0.1 the
-   Timeline's right-click Add a step here), with the steps lane shown so the
-   new step is seen at once. Lane E-1: the video's frame at that moment is
+/* A step at the moment `tsISO` (Add step and S at the clock's moment, and
+   2.0.1 the Timeline's right-click Add a step here), with the steps lane
+   shown so the new step is seen at once; the message says where it starts
+   on the clock ("Step added at 6:20.", lane SCREEN). Lane E-1: the video's frame at that moment is
    the step's picture (read first, while it is the frame on screen), and
    (lane PANE) the new step opens in the pane beside the video; with the
    video paused its name takes the focus, selected, so typing names it;
@@ -852,12 +858,15 @@ async function addStepAt(tsISO) {
   const cb = document.querySelector('#lanes-popup input[data-lane="steps"]');
   if (cb) cb.checked = true;
   const id = await addStepAtTimestamp(tsISO, { frame });
-  if (!id || State.getLevel() !== "flow") return;
+  if (!id) return;
+  const origin = recordingStartMs(State.getSession());
+  if (Number.isFinite(origin)) toast("Step added at " + clock(Date.parse(tsISO) - origin) + ".", "success");
+  if (State.getLevel() !== "flow") return;
   Pane.openStep(id, { seek: false, focusName: StepPanel.nameTakesFocus({ playing, readOnly: RO.isReadOnly(State.getSession()) }) });
 }
 
-// The zoom buttons are wired in flow-view-timeline.js (god-file split).
-$("#btn-add-step").addEventListener("click", addStepAtPlayhead);
+// The zoom buttons are wired in flow-view-timeline.js (god-file split); Add
+// step, with the rest of the timeline's row, in wireTimelineRow.
 
 /* ---- "<step>" starts here (lane E, item E5) ----------------------------------
    A step written first gets the moment of the video: lane PANE, on its row
@@ -897,17 +906,16 @@ async function showHereAt(stepId, atMs, opts) {
 }
 
 
-/* P1.1: range selection on the timeline. Drag across the activity
-   lane to select a time range; a stats card pops up summarizing what
-   happened (duration, event count, top apps, contained markers). The
-   range survives view-mode switches but clears on session change.
-   Esc / click outside clears. */
+/* P1.1: range selection on the timeline. Shift and a drag across the
+   timeline's background select a stretch; lane SCREEN: the timeline's row
+   then shows its times and its acts (syncTimelineRow), nothing floats over
+   the lanes. The range survives view-mode switches but clears on session
+   change. Escape clears it, once a menu, a dialog or a field had the
+   Escape. */
 function clearSelectionRange() {
   State.setSelectionRange(null);
   const ov = document.getElementById("tl-selection-overlay");
   if (ov) ov.remove();
-  const card = document.getElementById("tl-selection-stats");
-  if (card) card.remove();
 }
 function installRangeSelection() {
   const host = document.getElementById("timeline");
@@ -975,80 +983,254 @@ function installRangeSelection() {
     const startSel = info.first + (leftPct / 100) * info.span;
     const endSel   = startSel + (widthPct / 100) * info.span;
     State.setSelectionRange({ startMs: startSel, endMs: endSel });
-    renderSelectionStats();
     startX = null;
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && State.getSelectionRange()) clearSelectionRange();
+    if (e.key !== "Escape" || !State.getSelectionRange() || e.defaultPrevented) return;
+    const tag = (e.target && e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    const shown = (el) => !!el && el.getClientRects().length > 0;
+    if ([...document.querySelectorAll('.modal-backdrop, .lanes-popup, .project-menu-popup, #tl-ctx-menu')].some(shown)) return;
+    clearSelectionRange();
   });
 }
-function renderSelectionStats() {
-  if (!State.getSelectionRange() || !State.getSession()) return;
-  let card = document.getElementById("tl-selection-stats");
-  if (!card) {
-    card = document.createElement("div");
-    card.className = "selection-stats";
-    card.id = "tl-selection-stats";
-    // Place above the legend so it doesn't crowd the timeline.
-    const legend = document.getElementById("timeline-legend");
-    if (legend && legend.parentNode) legend.parentNode.insertBefore(card, legend);
-  }
-  const evs = State.getSession().events;
-  const inRange = evs.filter((ev) => {
-    const t = new Date(ev.timestamp).getTime();
-    return t >= State.getSelectionRange().startMs && t <= State.getSelectionRange().endMs;
+
+/* ============ The timeline's first row (lane SCREEN) =============== */
+
+/* The row holds how to play and how to mark, left to right (plan section
+   11.3): Play, the clock, Add step, Start transaction or End transaction,
+   Add note, the message area, the Transaction select, Lanes and the zoom.
+   The marking buttons act at the clock's moment (the player's, or the
+   moment a click on the timeline or a typed time put it at); without one
+   they are there but cannot be clicked, their tooltip saying why. A project
+   opened read only shows none of them. While a stretch is selected (Shift
+   and a drag) its times and its acts take their place. timeline-row.js
+   decides what shows and the words; this draws it, after every change of
+   the clock, the transactions, the selection and the level. A click on a
+   button of the row leaves the focus where it was, so Space goes on playing
+   the video; the keyboard reaches each control with Tab and works it with
+   Enter or Space. */
+
+/* The transactions as the markers now are (the Transactions lane's). */
+function _runsNow(sess) {
+  const sp = Video.timelineSpan();
+  if (!sess || !sp) return [];
+  const rows = MarkerEdits.sessionMarkerView(sess);
+  return Timeline.layoutCaseLanes(MarkerEdits.currentMarkerEvents(rows), sp.startMs, sp.endMs).cases;
+}
+
+/* What a selected stretch is set aside as: left out of the analysis in a
+   recording that holds events, not part of the process in a project
+   without a recording; a recording that holds no event has nothing to
+   leave out. */
+function _asideOf(sess) {
+  if ((sess.events || []).length) return "leave-out";
+  return AC.hasRecording(sess) ? null : "not-part";
+}
+
+let _clockEditing = false;
+
+function _show(el, shown) {
+  if (el && el.hidden !== !shown) el.hidden = !shown;
+}
+/* A button of the row: shown or not, clickable or not (aria-disabled, so it
+   keeps its tooltip and its place in the Tab order), its tooltip, and
+   whether it is the filled one. */
+function _button(el, shown, enabled, title, filled) {
+  if (!el) return;
+  _show(el, shown);
+  const dis = String(!enabled);
+  if (el.getAttribute("aria-disabled") !== dis) el.setAttribute("aria-disabled", dis);
+  if (el.title !== title) el.title = title;
+  el.classList.toggle("primary", !!filled);
+}
+
+function syncTimelineRow() {
+  const sess = State.getSession();
+  const row = document.getElementById("tl-row");
+  if (!row || !sess) return;
+  const hasVideo = !!sess.recordingAvailable;
+  const sp = Video.timelineSpan();
+  const origin = recordingStartMs(sess);
+  const at = Video.playheadMs();
+  const range = State.getSelectionRange();
+  const aside = _asideOf(sess);
+  const st = TimelineRow.rowState({
+    drawable: timelineDrawable(sess) && !!sp, hasVideo, recording: AC.hasRecording(sess),
+    readOnly: RO.isReadOnly(sess), atMs: at, runs: _runsNow(sess), stretch: range, aside,
   });
-  const appCounts = {};
-  let markerCount = 0, screenshotCount = 0;
-  const appNames = ((State.getSession().stats || {}).meta || {}).app_names || {};
-  for (const ev of inRange) {
-    if (ev.type === "activity") {
-      // Counted by system (C14): a Chrome window on Salesforce is Salesforce.
-      const system = appLabel(ev.data.app, ev.data.title, appNames);
-      appCounts[system] = (appCounts[system] || 0) + 1;
-    } else if (ev.type === "marker") markerCount++;
-    else if (ev.type === "system" &&
-             (ev.data.kind === "screenshot" || ev.data.kind === "screenshot_manual")) {
-      screenshotCount++;
+  const words = TimelineRow.titles(TimelineRow.nounOf(hasVideo));
+  const L = TimelineRow.LABELS;
+  // Play / Pause.
+  const play = document.getElementById("btn-tl-play");
+  _show(play, st.play);
+  if (play) {
+    const playing = Video.isPlaying();
+    const name = playing ? L.pause : L.play;
+    if (play.getAttribute("aria-label") !== name) play.setAttribute("aria-label", name);
+    if (play.title !== words.play) play.title = words.play;
+    const icons = [play.querySelector(".tl-icon-play"), play.querySelector(".tl-icon-pause")];
+    if (icons[0]) icons[0].style.display = playing ? "none" : "";
+    if (icons[1]) icons[1].style.display = playing ? "" : "none";
+  }
+  // The clock, or its field while a time is typed.
+  const clockBtn = document.getElementById("btn-tl-clock");
+  const field = document.getElementById("tl-clock-field");
+  if (!st.clock && _clockEditing) _endClockEdit(false);
+  _show(clockBtn, st.clock && !_clockEditing);
+  _show(field, st.clock && _clockEditing);
+  if (clockBtn) {
+    const text = TimelineRow.clockText(at, sp ? sp.endMs : NaN, origin);
+    if (clockBtn.textContent !== text) clockBtn.textContent = text;
+    if (clockBtn.title !== words.clock) clockBtn.title = words.clock;
+  }
+  // The marking buttons: Add step, Start or End transaction, Add note.
+  _button(document.getElementById("btn-add-step"), st.addStep.shown, st.addStep.enabled,
+    st.addStep.enabled ? words.addStep : TimelineRow.NO_MOMENT, st.filled === "addStep");
+  const tx = document.getElementById("btn-tl-transaction");
+  _button(tx, st.tx.shown, st.tx.enabled,
+    !st.tx.enabled ? TimelineRow.NO_MOMENT : st.tx.kind === "end" ? words.end : words.start, false);
+  if (tx) {
+    const label = st.tx.kind === "end" ? L.end : L.start;
+    if (tx.textContent !== label) tx.textContent = label;
+    tx.dataset.kind = st.tx.kind;
+  }
+  _button(document.getElementById("btn-tl-note"), st.addNote.shown, st.addNote.enabled,
+    st.addNote.enabled ? words.addNote : TimelineRow.NO_MOMENT, false);
+  // A selected stretch: its times, then its acts.
+  const sel = document.getElementById("tl-selection");
+  _show(sel, !!st.stretch);
+  if (st.stretch) {
+    const times = document.getElementById("tl-selection-times");
+    const text = TimelineRow.stretchText(range.startMs, range.endMs, origin);
+    if (times && times.textContent !== text) times.textContent = text;
+    const acts = st.stretch.acts;
+    const ex = document.getElementById("tl-selection-exclude");
+    const exLabel = aside === "leave-out" ? L.leaveOut : L.notPart;
+    if (ex && ex.textContent !== exLabel) ex.textContent = exLabel;
+    _button(ex, acts.includes("aside"), true, aside === "leave-out" ? words.leaveOut : words.notPart, st.filled === "aside");
+    _button(document.getElementById("tl-selection-case"), acts.includes("makeTx"), true, words.makeTx, st.filled === "makeTx");
+  }
+  _show(row.querySelector(".tl-sep"), st.clock && (st.addStep.shown || st.tx.shown || st.addNote.shown || !!st.stretch));
+  // Lanes and the zoom: their words follow the copy table.
+  const lanes = document.getElementById("btn-lanes");
+  if (lanes && lanes.title !== words.lanes) lanes.title = words.lanes;
+}
+
+/* The clock: a click turns it into a field to type a time; Enter goes
+   there, Escape (or leaving the field) leaves it as it was; a time that
+   cannot be read says so in the message area and the field stays. */
+function _startClockEdit() {
+  const sess = State.getSession();
+  const field = document.getElementById("tl-clock-field");
+  if (!sess || !field) return;
+  const at = Video.playheadMs();
+  const origin = recordingStartMs(sess);
+  field.value = Number.isFinite(at) && Number.isFinite(origin) ? clock(at - origin) : "";
+  _clockEditing = true;
+  syncTimelineRow();
+  field.focus();
+  field.select();
+}
+function _endClockEdit(refocus) {
+  _clockEditing = false;
+  syncTimelineRow();
+  const btn = document.getElementById("btn-tl-clock");
+  if (refocus && btn && !btn.hidden) btn.focus();
+}
+function _goToTypedTime() {
+  const sess = State.getSession();
+  const field = document.getElementById("tl-clock-field");
+  if (!sess || !field) return;
+  const r = TimelineRow.clockTarget(field.value, recordingStartMs(sess), Video.timelineSpan());
+  if (r.error) { toast(r.error, "error"); field.select(); return; }
+  _goToMoment(r.ms);
+  _endClockEdit(true);
+}
+/* The clock to the moment `ms`: the video showing it goes there (playing on
+   if it was); a moment no video shows puts the timeline's moment there. */
+function _goToMoment(ms) {
+  const at = Video.clipAtMs(ms);
+  if (at && at.clip && at.clip.file) { Video.seekClock(ms); return; }
+  const video = document.getElementById("video");
+  if (video && !video.paused) video.pause();
+  Video.movePlayheadToTimestamp(new Date(ms).toISOString());
+}
+
+/* The row's acts, at the clock's moment. */
+function _rowMomentIso() {
+  const at = Video.playheadMs();
+  return Number.isFinite(at) ? new Date(at).toISOString() : null;
+}
+const _usable = (el) => !!el && !el.hidden && el.getAttribute("aria-disabled") !== "true";
+
+async function startOrEndTransactionHere() {
+  const btn = document.getElementById("btn-tl-transaction");
+  const iso = _rowMomentIso();
+  if (!_usable(btn) || !iso) return;
+  const kind = btn.dataset.kind === "end" ? "end" : "start";
+  const sess = State.getSession();
+  const origin = recordingStartMs(sess);
+  const ok = await queueSyntheticMarker(iso, kind, {
+    title: TimelineRow.LABELS.start, okLabel: TimelineRow.LABELS.start,
+    message: "The name of the new transaction (you can leave it empty)",
+    detail: FlowMarkers.appliesItself(sess) ? "It starts at " + clock(Date.parse(iso) - origin) + "."
+      : "It starts at " + clock(Date.parse(iso) - origin) + ". Apply marker changes, in the top bar, then updates its steps.",
+    said: (kind === "start" ? "Transaction started at " : "Transaction ended at ") + clock(Date.parse(iso) - origin) + "." +
+      (FlowMarkers.appliesItself(sess) ? "" : " Apply marker changes, in the top bar, updates its steps."),
+  });
+  if (ok) syncTimelineRow();
+}
+
+function addNoteHere() {
+  const iso = _rowMomentIso();
+  if (!_usable(document.getElementById("btn-tl-note")) || !iso) return;
+  AnalystUI.addNote(null, iso);
+}
+
+(function wireTimelineRow() {
+  const row = document.getElementById("tl-row");
+  if (!row) return;
+  // A click leaves the focus where it was (Space goes on playing); the
+  // keyboard still reaches every control with Tab.
+  row.addEventListener("mousedown", (e) => {
+    const b = e.target.closest && e.target.closest("button");
+    if (b && row.contains(b) && !b.closest("#lanes-menu")) e.preventDefault();
+  });
+  const video = document.getElementById("video");
+  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
+  on("btn-tl-play", () => {
+    if (!video || !video.src) return;
+    if (video.paused) video.play().catch(() => {}); else video.pause();
+  });
+  on("btn-tl-clock", _startClockEdit);
+  const field = document.getElementById("tl-clock-field");
+  if (field) {
+    field.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); _goToTypedTime(); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); _endClockEdit(true); }
+    });
+    field.addEventListener("blur", () => { if (_clockEditing) _endClockEdit(false); });
+  }
+  on("btn-add-step", () => { if (_usable(document.getElementById("btn-add-step"))) addStepAtPlayhead(); });
+  on("btn-tl-transaction", startOrEndTransactionHere);
+  on("btn-tl-note", addNoteHere);
+  on("tl-selection-exclude", queueExcludeRange);
+  on("tl-selection-case", queueCaseFromSelection);
+  on("tl-selection-clear", clearSelectionRange);
+  // A click on the video plays or pauses it (it has no controls of its own;
+  // while a sync shows them, they do).
+  if (video) {
+    video.addEventListener("click", () => {
+      if (!video.src || video.controls) return;
+      if (video.paused) video.play().catch(() => {}); else video.pause();
+    });
+    for (const evt of ["play", "pause", "timeupdate", "seeked", "loadedmetadata", "durationchange", "emptied"]) {
+      video.addEventListener(evt, syncTimelineRow);
     }
   }
-  const topApps = Object.entries(appCounts)
-    .sort((a, b) => b[1] - a[1]).slice(0, 4)
-    .map(([system, n]) => system + " (" + n + ")")
-    .join(", ");
-  const dur = State.getSelectionRange().endMs - State.getSelectionRange().startMs;
-  // Lane E (E4): a recording leaves the stretch out of the analysis; a
-  // project without one (C16) puts it aside as not part of the process (a
-  // detour of a call). Either way playing skips it and the Transcript tab
-  // leaves out what was said in it. Lane HV: a hand-off opened read only
-  // offers neither act.
-  // A recording that holds no event has nothing to leave out, as before.
-  const recorded = evs.length > 0;
-  const editable = !RO.isReadOnly(State.getSession());
-  const asides = editable && (recorded || !AC.hasRecording(State.getSession()));
-  const asideAct = !asides ? "" : recorded
-    ? '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without what was recorded in this stretch. ' +
-      'Playing skips it, and the Transcript tab leaves out what was said in it. The Timeline then shows it hatched: click it to include it again.">Leave out of the analysis</button>'
-    : '<button class="summary-fix" id="tl-selection-exclude" title="Marks the selected stretch as not part of the process. It is skipped ' +
-      'when playing and left out of the Transcript tab. Include again brings it back.">Not part of the process</button>';
-  // Lane E: a project without a recording has no events, markers,
-  // recorded screenshots or systems in a stretch: its card says the length.
-  const recording = AC.hasRecording(State.getSession());
-  card.innerHTML =
-    '<h4>Selection</h4>' +
-    '<div class="row"><span>Duration</span><span>' + escapeHtml(formatDuration(dur)) + '</span></div>' +
-    (!recording ? '' :
-      '<div class="row"><span>Events</span><span>' + inRange.length + '</span></div>' +
-      '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
-      '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
-      (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '')) +
-    (editable ? '<button class="summary-fix" id="tl-selection-case">Insert transaction from selection</button>' : '') +
-    asideAct +
-    '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
-  document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
-  if (editable) document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
-  if (asides) document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
-}
+  for (const topic of ["session", "level", "markers", "timeline", "selection"]) State.subscribe(topic, syncTimelineRow);
+})();
 
 /* The screenshot surfaces (hover thumb, grid, gallery, openScreenshot)
    live in flow-view-screenshots.js (god-file split). */
@@ -1149,6 +1331,8 @@ function showMarkerInsertMenu(x, y, ts, band) {
   const dismiss = (e) => {
     if (e.type === "keydown" && e.key !== "Escape") return;
     if (e.type === "mousedown" && menu.contains(e.target)) return;
+    // The menu's Escape closes the menu only (a selected stretch stays).
+    if (e.type === "keydown") e.preventDefault();
     close();
   };
   /* Defer to avoid immediately catching the right-click's own mousedown */
@@ -1184,18 +1368,26 @@ document.addEventListener("contextmenu", (e) => {
 /* Item 6: an inserted marker shows AT ONCE, marked pending, in the Markers
    list (brought forward) and on the timeline, and the top bar offers the one
    call to action that applies it (Apply marker changes). Resolves true when
-   saved. */
-async function queueSyntheticMarker(ts, markerType) {
+   saved. `words` (lane SCREEN: the timeline row's Start transaction and End
+   transaction, whose question and message are in the button's words):
+   { title, message, detail, okLabel, said }. A start asks for the
+   transaction's name only while the video is paused (the rule Add step
+   follows, step-panel.js nameTakesFocus): while it plays the start is added
+   at once with no name and no question, so marking goes on; Rename, on the
+   transaction's header beside the video, names it afterwards. One rule for
+   the row's button and the right-click's Start a transaction here. */
+async function queueSyntheticMarker(ts, markerType, words) {
   if (!State.getSession()) return false;
   let label = null;
-  if (markerType === "start") {
+  const asks = StepPanel.nameTakesFocus({ playing: Video.isPlaying(), readOnly: RO.isReadOnly(State.getSession()) });
+  if (markerType === "start" && asks) {
     label = await promptModal({
-      title: "Start a transaction here",
-      message: "Label for the new transaction (its Start marker)",
-      detail: FlowMarkers.appliesItself(State.getSession()) ? "The transactions follow it at once."
-        : "It shows at once as pending, and applies to the transactions when you click Apply marker changes.",
+      title: (words && words.title) || "Start a transaction here",
+      message: (words && words.message) || "Label for the new transaction (its Start marker)",
+      detail: (words && words.detail) || (FlowMarkers.appliesItself(State.getSession()) ? "The transactions follow it at once."
+        : "It shows at once as pending, and applies to the transactions when you click Apply marker changes."),
       placeholder: "For example: Order #10900",
-      okLabel: "Insert",
+      okLabel: (words && words.okLabel) || "Insert",
     });
     if (label === null) return false;     // cancelled
     label = (label || "").trim();
@@ -1219,7 +1411,7 @@ async function queueSyntheticMarker(ts, markerType) {
     return false;
   }
   activateAnnoTab("markers");
-  toast((markerType === "start" ? "Start" : "End") + " marker added" +
+  toast(words && words.said ? words.said : (markerType === "start" ? "Start" : "End") + " marker added" +
     (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
   return true;
 }
@@ -1232,13 +1424,14 @@ async function queueSyntheticMarker(ts, markerType) {
 async function queueCaseFromSelection() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;
+  const origin = recordingStartMs(State.getSession());
   let label = await promptModal({
-    title: "Insert transaction from selection",
-    message: "Label for the new transaction",
-    detail: "Adds a Start and an End marker. " + (FlowMarkers.appliesItself(State.getSession()) ? "The transactions follow them at once."
-      : "They show at once as pending, and apply to the transactions when you click Apply marker changes."),
+    title: "Make it a transaction",
+    message: "The name of the new transaction (you can leave it empty)",
+    detail: "It starts and ends where the selection does: " + TimelineRow.stretchText(range.startMs, range.endMs, origin) + "." +
+      (FlowMarkers.appliesItself(State.getSession()) ? "" : " Apply marker changes, in the top bar, then updates its steps."),
     placeholder: "For example: Order #10900",
-    okLabel: "Insert transaction",
+    okLabel: "Make it a transaction",
   });
   if (label === null) return;     // cancelled
   label = (label || "").trim() || null;
@@ -1266,13 +1459,14 @@ async function queueCaseFromSelection() {
   });
   const cut = FlowMarkers.clipStepsToTransactions(a);
   try {
-    await persistAnnotations(a, "insert transaction from selection", cut ? ["markers", "timeline", "steps"] : ["markers", "timeline"]);
+    await persistAnnotations(a, "Make it a transaction", cut ? ["markers", "timeline", "steps"] : ["markers", "timeline"]);
   } catch (_) {
     return;   // already shown to the analyst by session.js
   }
+  clearSelectionRange();
   activateAnnoTab("markers");
-  toast("Transaction markers added" +
-    (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
+  toast("Transaction made from " + TimelineRow.stretchText(range.startMs, range.endMs, origin) + "." +
+    (FlowMarkers.appliesItself(State.getSession()) ? "" : " Apply marker changes, in the top bar, updates its steps."), "success");
 }
 
 /* H6: Leave out of the analysis: the current timeline range goes into
@@ -1496,46 +1690,11 @@ $("#cb-show-marker").addEventListener("change", () => renderEventTable());
 $("#cb-show-system").addEventListener("change", () => renderEventTable());
 if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("change", () => renderEventTable());
 
-/* NAV-AUDIT §D13/§I: the Raw events drawer sits below the Flow layout (P2.10:
-   it shows on Flow only, renderer.js applyLevel). Opening it shifted its OWN
-   summary up by 24 px because the growable layout above (.session-layout's
-   .lower-workspace, flex:1) shrank to make room instead of the page growing.
-   The cure: on open, freeze the Flow layout's height so the drawer content
-   grows the page (the Session view's overflow:auto scrolls) and the toggle
-   stays put; release on close so tall monitors still fill.
-
-   CI-3: the freeze is a flex BASIS (flex: 0 0 <closed height>), never a fixed
-   `height`, so the layout still grows to fit new content (its automatic
-   minimum size: it deliberately has no min-height:0, see styles.css). */
-(function wireRawEventsLocality() {
-  const drawer = document.querySelector(".event-table-host");
-  if (!drawer) return;
-  const layoutSel = "#session-layout-flow";
-  let _frozen = null;
-  let _snap = null;   // { el, h } captured BEFORE the drawer expands
-  const snap = () => {
-    if (drawer.open) { _snap = null; return; }
-    const layout = Array.from(document.querySelectorAll(layoutSel))
-      .find((el) => el.offsetParent !== null);
-    _snap = layout ? { el: layout, h: Math.round(layout.getBoundingClientRect().height) } : null;
-  };
-  const summary = drawer.querySelector("summary");
-  // Capture-phase snapshot: the `toggle` event fires after the layout above has
-  // already shrunk, so read its CLOSED height on the summary click first.
-  if (summary) summary.addEventListener("click", snap, true);
-  drawer.addEventListener("toggle", () => {
-    if (drawer.open) {
-      const s = _snap;
-      if (s && s.el && s.h > 0) {
-        s.el.style.flex = "0 0 " + s.h + "px";
-        _frozen = s.el;
-      }
-    } else if (_frozen) {
-      _frozen.style.flex = "";
-      _frozen = null;
-    }
-  });
-})();
+/* NAV-AUDIT §D13/§I, lane SCREEN: the Raw events drawer sits under the
+   timeline (P2.10: it shows on the Timeline only, renderer.js applyLevel).
+   The page does not scroll on this level: opened, the drawer's table shows
+   above its own line (styles.css .view.on-timeline .event-table-host), so
+   the line stays where it was and the stage gives way. */
 
 /* ============ Screenshots / markers ================================ */
 
@@ -1554,7 +1713,7 @@ function initFlowView(deps) {
   addStepAtTimestamp     = deps.addStepAtTimestamp     || (async () => {});
   // Hand the video module the session (re)loader it calls after a re-sync,
   // injected rather than require()d to avoid a flow-view <-> video cycle.
-  Video.initVideo({ loadSessionIntoView });
+  Video.initVideo({ loadSessionIntoView, onPlayhead: syncTimelineRow });
   // Hand the timeline module the flow-view-resident glue its lanes call
   // (case-scope dimming + the two context menus), injected to keep the
   // timeline <-> flow-view graph acyclic.
@@ -1583,6 +1742,8 @@ module.exports = {
   activateAnnoTab, addStepAtPlayhead, deriveCases,
   // Lane PANE: Starts here on a row of the pane's Steps tab.
   showHereAt,
+  // Lane SCREEN: the timeline's first row.
+  syncTimelineRow,
   // The Overview's marker-problem fixes (overview-view.js).
   queueSyntheticMarker, queueMarkerDelete,
   // Lane FX3: the Raw events drawer's rule (renderer.js applyLevel), and

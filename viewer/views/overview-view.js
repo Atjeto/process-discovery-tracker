@@ -211,7 +211,7 @@ const PATH_STAGES = [
       "sets one, or you add one on the Timeline. A project without a recording is one transaction from the start. " +
       "Ticked once there is at least one transaction." },
   { key: "steps", label: "Add the steps", recording: false,
-    title: "Add the steps of the process: on the Timeline, at the moments of the video (+ Step, or S), or in Steps " +
+    title: "Add the steps of the process: on the Timeline, at the moments of the video (Add step, or S), or in Steps " +
       "with + Add step. Ticked once there is a step." },
   { key: "written", label: "Write the steps", recording: false,
     title: "Give each step a name of its own and a description: the PDD prints them. Ticked once every step has both." },
@@ -349,7 +349,7 @@ function _nextAct(state) {
     case "steps":
       return state.video
         ? { button: "Mark the steps on the Timeline", act: "steps-timeline",
-          say: "Play the video and press S, or click + Step, where each step starts." }
+          say: "Play the video and press S, or click Add step, where each step starts." }
         : { button: "Add the steps in Steps", act: "steps-list", say: "Click + Add step for each step of the process, or Paste notes... to add them all at once." };
     case "written": {
       const n = state.unwritten.length;

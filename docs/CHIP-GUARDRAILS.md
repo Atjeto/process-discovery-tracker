@@ -128,6 +128,10 @@ examples; [e2e/README.md](../e2e/README.md) says what each covers.
    // ... drive, screenshot, assert ...
    await v.close();   // quits the app and removes the throwaway profile
    ```
+   - **The real pointer is shut out.** Each launch makes its windows ignore
+     the desk's own mouse (`setIgnoreMouseEvents`): a real pointer resting
+     over the window once moved a Shift-drag's end. Playwright's mouse and
+     keys still reach the page.
    - **Throwaway profile.** Each launch gets its own Electron user-data
      folder (`--user-data-dir`), so no run reads or overwrites the
      developer's recent list or layout; the
@@ -335,15 +339,36 @@ the focus with `document.activeElement` against it. A menu's button carries
   alone, and opening the Overview never starts an analysis.
 
 **Timeline** (`#session-layout-flow`; [VIEWER-TIMELINE.md](architecture/VIEWER-TIMELINE.md)):
-- Header: `#timeline-summary`, the Transaction select `#case-scope-select`,
-  `#btn-add-step` (only with a video), `#btn-lanes` opening `#lanes-popup`
+- The screen (lane SCREEN): the stage `#lower-workspace` (the video
+  `#video-pane`, `#resize-video`, the pane `#timeline-pane`), the divider
+  `#resize-timeline`, the timeline `#timeline-section` (`.timeline-pane`) at
+  the window's full width at the bottom; `#view-session.on-timeline` (the
+  page does not scroll there). `#video` has no `controls` (only during a
+  sync's first step). There is no `#playback-bar`.
+- The first row `#tl-row` (`.timeline-header`), in Tab order: `#btn-tl-play`
+  (only with a video; `aria-label` "Play" or "Pause"), the clock
+  `#btn-tl-clock` ("0:05 / 0:31"; a click shows the field `#tl-clock-field`,
+  wait for its focus), `#btn-add-step` (Add step, only with a video;
+  `.primary` in a project without a recording), `#btn-tl-transaction`
+  (Start transaction or End transaction, `data-kind`), `#btn-tl-note` (Add
+  note); these three carry `aria-disabled="true"` without a moment (click
+  with `{ force: true }` to test the refusal) and are hidden read only. Then
+  a selected stretch `#tl-selection` (`#tl-selection-times`,
+  `#tl-selection-exclude` "Leave out of the analysis" in a recording, asking
+  with a `.modal-confirm`, or "Not part of the process", `.primary`;
+  `#tl-selection-case` "Make it a transaction", `#tl-selection-clear`); the
+  message area `#tl-message` (`#timeline-summary` at rest, `#toast` with
+  `.in-row` while the Timeline shows); `.timeline-controls`: the Transaction
+  select `#case-scope-select`, `#btn-lanes` opening `#lanes-popup`
   (`input[data-lane="idle"|"screenshots"|"cases"|"steps"|"videos"|"transcript"|"notes"]`),
-  `#btn-zoom-out`, `#btn-zoom-reset`, `#btn-zoom-in`. Lane FX3: a project
-  with no recording and no video draws no timeline, so `#case-scope`,
-  `#lanes-menu` and the zoom buttons are not shown there, nor the video
-  band (`#lower-workspace.no-timeline`): `#tl-empty` carries Attach video.
-- The timeline `#timeline` inside `#timeline-scroll`; `#timeline-minimap`
-  (only while zoomed); the legend `#timeline-legend` (`#legend-apps`).
+  `#btn-zoom-out`, `#btn-zoom-reset` (Show all), `#btn-zoom-in`. Lane FX3: a
+  project with no recording and no video draws no timeline, so the row's
+  Play, clock and marking buttons, `#case-scope`, `#lanes-menu` and the zoom
+  buttons are not shown there, nor the video band
+  (`#lower-workspace.no-timeline`): `#tl-empty` carries Attach video.
+- The lanes `.tl-lanes` (they scroll under the row): the timeline
+  `#timeline` inside `#timeline-scroll`; `#timeline-minimap` (only while
+  zoomed); the legend `#timeline-legend` (`#legend-apps`).
 - The lanes' header column `#tl-lane-names` (hidden when nothing is drawn):
   a cell per lane `.tl-lane-name[data-lane]` (its tooltip the lane's `title`;
   inside it the key `.tl-lane-key` and the name `.tl-lane-label`, whose box
@@ -400,9 +425,7 @@ the focus with `document.activeElement` against it. A menu's button carries
   its name as `.tl-ctx-head` and its own: "Open in Steps", "Select + seek
   here", "Delete step" or "Hide step"; "Jump to start", "Jump to end"; on a
   stretch left out "Include again", "Go to its start"). A Shift-drag
-  range shows `#tl-selection-stats` (`#tl-selection-case`,
-  `#tl-selection-exclude` "Leave out of the analysis", only with a
-  recording, asking with a `.modal-confirm`; `#tl-selection-clear`). A
+  range shows in the row (`#tl-selection`, above). A
   Shift-drag starts only on the timeline's own background: find a point
   where `document.elementFromPoint(x, y) === #timeline`.
 - The stretches left out of the analysis (lane CC): `.tl-left-out` over the
@@ -441,8 +464,8 @@ the focus with `document.activeElement` against it. A menu's button carries
   `#btn-open-gallery` (the gallery `#screenshot-gallery`). The step editor
   is in one host at a time: on the Timeline `#step-detail` is empty.
 - Raw events: `.event-table-host` (a `<details>`, shown on the Timeline
-  only, and only when the project has events), `#event-table`,
-  `#event-filter`.
+  only, and only when the project has events; one line under the timeline,
+  its table opening above that line), `#event-table`, `#event-filter`.
 
 **Steps** (`#session-layout-steps`, `views/steps-view.js`):
 - Toolbar: `#btn-add-manual-step`, `#btn-delete-selected-steps`,
@@ -659,8 +682,8 @@ test library: set `PDT_LIBRARY` before the launch (`e2e/library-smoke.js`).
 `.modal-ok`, `.modal-cancel`); a confirmation `.modal-backdrop.modal-confirm`
 (`.modal-ok`, `.modal-cancel`); a choice from a list (C22's *Place after a
 step...*) `.modal-backdrop.modal-choose` (the list box `select.modal-list`,
-its values `after:<step_id>` and `first:<case_id>`, `.modal-ok`). The playback bar is `#playback-bar`
-(`#pb-play`, `#pb-scrub`).
+its values `after:<step_id>` and `first:<case_id>`, `.modal-ok`). The playback bar (`#playback-bar`, `#pb-play`,
+`#pb-scrub`) is gone since lane SCREEN: the Timeline's row plays.
 
 **Gone with the product edition** (a script that still looks one up must
 fail): the tab row and the Compare, Template and App Library views; the More

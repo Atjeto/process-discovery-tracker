@@ -2,24 +2,31 @@
  * layout-controls.js
  * Drag-to-resize handles + video mode (Normal / Expanded / Fullscreen).
  *
- * Wires up two resize handles in the session flow view:
- *  - #resize-timeline (vertical drag, sets --timeline-height)
- *  - #resize-video    (horizontal drag, sets --video-width)
+ * Wires up two resize handles on the Timeline (lane SCREEN: the stage with
+ * the video and the pane above, the timeline at the full width below):
+ *  - #resize-timeline (vertical drag between the stage and the timeline,
+ *    sets --tl-height, the timeline's height; dragged up, the timeline grows)
+ *  - #resize-video    (horizontal drag between the video and the pane, sets
+ *    --video-width; styles.css keeps the video at most 58% of the stage)
  * And three video modes via #btn-video-expand / #btn-video-fullscreen.
+ * The sizes are stored under keys of their own: the sizes the old layout
+ * stored (the lanes' height, the video's width under the timeline) are not
+ * read, so they cannot break this one.
  */
 
 "use strict";
 
 (function () {
-  const TIMELINE_HEIGHT_MIN = 80;
-  const TIMELINE_HEIGHT_MAX = 360;
-  const TIMELINE_HEIGHT_DEFAULT = 160;
+  // The timeline's height: what a drag can give it (styles.css also keeps
+  // the stage at least its min-height, so a short window shrinks the
+  // timeline first). No stored size: the stylesheet's (272 px).
+  const TIMELINE_HEIGHT_MIN = 150;
+  const TIMELINE_HEIGHT_MAX = 640;
   const VIDEO_WIDTH_MIN = 240;
-  const VIDEO_WIDTH_MAX = 1200;
-  const VIDEO_WIDTH_DEFAULT = 600;
+  const VIDEO_WIDTH_MAX = 2400;
 
-  const LS_TIMELINE = "pdt.timelineHeight";
-  const LS_VIDEO = "pdt.videoWidth";
+  const LS_TIMELINE = "pdt.stage.timelineHeight";
+  const LS_VIDEO = "pdt.stage.videoWidth";
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
@@ -35,7 +42,7 @@
 
   function setTimelineHeight(px) {
     const v = clamp(Math.round(px), TIMELINE_HEIGHT_MIN, TIMELINE_HEIGHT_MAX);
-    document.documentElement.style.setProperty("--timeline-height", v + "px");
+    document.documentElement.style.setProperty("--tl-height", v + "px");
     writeNum(LS_TIMELINE, v);
   }
   function setVideoWidth(px) {
@@ -74,17 +81,24 @@
     const tlHandle = document.getElementById("resize-timeline");
     const vidHandle = document.getElementById("resize-video");
 
-    // Restore persisted sizes
-    setTimelineHeight(readNum(LS_TIMELINE, TIMELINE_HEIGHT_DEFAULT));
-    setVideoWidth(readNum(LS_VIDEO, VIDEO_WIDTH_DEFAULT));
+    // Restore persisted sizes (none stored: the stylesheet's).
+    const h = readNum(LS_TIMELINE, null);
+    if (h != null) setTimelineHeight(h);
+    const w = readNum(LS_VIDEO, null);
+    if (w != null) setVideoWidth(w);
 
-    makeDraggable(tlHandle,
-      () => readNum(LS_TIMELINE, TIMELINE_HEIGHT_DEFAULT),
-      (start, _dx, dy) => setTimelineHeight(start + dy));
-
-    makeDraggable(vidHandle,
-      () => readNum(LS_VIDEO, VIDEO_WIDTH_DEFAULT),
-      (start, dx, _dy) => setVideoWidth(start + dx));
+    // A drag starts from the size shown (a stored size may be more than the
+    // window gives).
+    const shownHeight = () => {
+      const tl = document.getElementById("timeline-section");
+      return tl ? tl.getBoundingClientRect().height : 272;
+    };
+    const shownWidth = () => {
+      const vp = document.getElementById("video-pane");
+      return vp ? vp.getBoundingClientRect().width : 600;
+    };
+    makeDraggable(tlHandle, shownHeight, (start, _dx, dy) => setTimelineHeight(start - dy));
+    makeDraggable(vidHandle, shownWidth, (start, dx, _dy) => setVideoWidth(start + dx));
   }
 
   // ---- Video modes ----

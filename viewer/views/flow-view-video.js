@@ -48,8 +48,10 @@ const MarkerEdits = require("../marker-edits.js");
 const LeftOut = require("../left-out.js");
 
 /* Injected by flow-view.js via initVideo() -- kept out of a require() to
-   avoid a flow-view <-> video cycle. */
+   avoid a flow-view <-> video cycle. onPlayhead (lane SCREEN): the moment
+   was put where no video shows (the timeline's row reads it). */
 let loadSessionIntoView = async () => {};
+let onPlayhead = () => {};
 
 function setVideoOverlay(text) {
   const o = $("#video-overlay");
@@ -344,8 +346,6 @@ function positionPlayhead() {
   if (at == null) { ph.style.display = "none"; return; }
   ph.style.left = (((at - first) / span) * 100) + "%";
   ph.style.display = "";
-  const video = $("#video");
-  if (video && video.src && _parkedMs == null) setVideoOverlay(formatPlayback(video.currentTime, video.duration));
 }
 
 /* ============ Video helpers ======================================= */
@@ -357,16 +357,6 @@ function videoStartTs() {
   const clip = currentClip() || chainOf().find((c) => c.file) || null;
   const sp = clip && clipSpan(clip);
   return sp ? new Date(sp.fileStartMs).toISOString() : null;
-}
-
-function formatPlayback(curS, durS) {
-  const fmt = (s) => {
-    s = Math.max(0, s);
-    const m = Math.floor(s / 60);
-    const r = Math.floor(s % 60);
-    return String(m).padStart(2, "0") + ":" + String(r).padStart(2, "0");
-  };
-  return fmt(curS) + " / " + (isFinite(durS) ? fmt(durS) : "??:??");
 }
 
 function seekToTimestamp(ts) {
@@ -392,6 +382,7 @@ function movePlayheadToTimestamp(ts) {
   if (!sp || !ph) return;
   const t = new Date(ts).getTime();
   if (Number.isFinite(t)) _parkedMs = t;
+  onPlayhead();
   const first = sp.startMs;
   const span = Math.max(1, sp.endMs - first);
   const frac = Math.min(1, Math.max(0, (t - first) / span));
@@ -411,8 +402,7 @@ function movePlayheadToTimestamp(ts) {
 }
 
 /* The part of the clock the videos cover, { startMs, endMs }, or null: from
-   the first video's start to the last one's end (the playback bar's
-   range). */
+   the first video's start to the last one's end. */
 function chainRange() {
   const spans = chainOf().filter((c) => c.file).map((c) => clipSpan(c)).filter(Boolean);
   if (!spans.length) return null;
@@ -422,8 +412,8 @@ function chainRange() {
   return endMs > startMs ? { startMs, endMs } : null;
 }
 
-/* Put the player at the moment `ms` of the clock (the playback bar, its
-   skips and the arrow keys), playing on if it was. A moment no video shows
+/* Put the player at the moment `ms` of the clock (the clock of the
+   timeline's row, the arrow keys), playing on if it was. A moment no video shows
    goes to the nearest video: the next one's start, else the last one's
    end. */
 function seekClock(ms, play) {
@@ -764,6 +754,9 @@ function cancelVideoSync() {
       tl.classList.remove("video-sync-target");
     }
     document.removeEventListener("keydown", _videoSync.onKey, true);
+    // The video's own controls were there for the sync's first step only.
+    const v = $("#video");
+    if (v) v.controls = false;
   }
   _videoSync = null;
   const card = document.getElementById("video-sync-card");
@@ -793,10 +786,12 @@ function startVideoSync(opts) {
   const onKey = (e) => {
     if (e.key === "Escape") { e.preventDefault(); cancelVideoSync(); }
   };
-  // Step 1 -> 2: capture where the analyst paused the video. The video
-  // keeps its normal controls so they can scrub to the right frame; a
-  // card button (not a click on the video) records it, so marking can
-  // never toggle playback.
+  // Step 1 -> 2: capture where the analyst paused the video. While the sync
+  // lasts the video shows its own controls (lane SCREEN: it has none
+  // otherwise, the timeline's row plays it), so the analyst can scrub a
+  // video not yet placed on the clock to the right frame; a card button
+  // (not a click on the video) records it, so marking can never toggle
+  // playback.
   function markFrame() {
     if (!_videoSync || _videoSync.step !== 1) return;
     _videoSync.videoTime = video.currentTime || 0;
@@ -825,6 +820,7 @@ function startVideoSync(opts) {
     _finishSync(offsetMs);
   }
   _videoSync = { videoTime: null, step: 1, onTimelineClick, onKey, pending, id };
+  video.controls = true;
   const tl = document.getElementById("timeline");
   if (tl) tl.addEventListener("click", onTimelineClick, true);
   document.addEventListener("keydown", onKey, true);
@@ -957,9 +953,10 @@ function _timelineClickToMs(clientX) {
   return first + frac * span;
 }
 
-/* deps = { loadSessionIntoView } -- injected by flow-view.js at boot. */
+/* deps = { loadSessionIntoView, onPlayhead }: injected by flow-view.js at boot. */
 function initVideo(deps) {
   loadSessionIntoView = (deps && deps.loadSessionIntoView) || (async () => {});
+  onPlayhead = (deps && deps.onPlayhead) || (() => {});
 }
 
 // Self-wire the require()-time listeners: the re-sync and remove buttons,
@@ -1032,7 +1029,7 @@ function _skipLeftOut() {
 module.exports = {
   initVideo, timelineSpan, noteVideoLength,
   setVideoOverlay, positionPlayhead,
-  videoStartTs, formatPlayback, videoTimeToSessionTs,
+  videoStartTs, videoTimeToSessionTs,
   seekToTimestamp, movePlayheadToTimestamp, jumpToStepInFlow,
   startVideoSync, cancelVideoSync, attachVideo, removeVideo, attachedVideoShown,
   // C23 (2.0.6): the chain.

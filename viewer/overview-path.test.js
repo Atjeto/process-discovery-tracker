@@ -537,11 +537,11 @@ test("a project from a video: the acts are Add the steps, Write the steps, Write
   const html = overviewHtml(sess);
   assert.deepEqual(stagesOf(html), [["steps", "Add the steps"], ["written", "Write the steps"],
     ["document", "Write the document"], ["handoff", "Hand off"]]);
-  assert.ok(html.includes('data-stage="steps" title="Add the steps of the process: on the Timeline, at the moments of the video (+ Step, or S), or in Steps with + Add step. Ticked once there is a step."'));
+  assert.ok(html.includes('data-stage="steps" title="Add the steps of the process: on the Timeline, at the moments of the video (Add step, or S), or in Steps with + Add step. Ticked once there is a step."'));
   assert.ok(html.includes('data-stage="written" title="Give each step a name of its own and a description: the PDD prints them. Ticked once every step has both."'));
   assert.ok(html.includes('data-stage="handoff" title="Hand this version of the project to the developers: one zip with the project, the PDD and the process map. Ticked once a version was handed off."'));
   assert.deepEqual(buttonOf(html), ["steps-timeline", "Mark the steps on the Timeline"]);
-  assert.equal(sayOf(html), "Play the video and press S, or click + Step, where each step starts.");
+  assert.equal(sayOf(html), "Play the video and press S, or click Add step, where each step starts.");
   assert.ok(!/Confirm|Mark the transactions|Export the PDD/.test(checklistOf(html)), "no act with nothing behind it");
 });
 

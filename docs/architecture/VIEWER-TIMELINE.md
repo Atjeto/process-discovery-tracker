@@ -1,8 +1,28 @@
 # Viewer: the timeline
 
 > The Timeline level (`data-level="flow"`): the one timeline of a project,
-> its lanes, its clock, and the video beside it. Read
-> [VIEWER.md](./VIEWER.md) first for the modules around it.
+> its lanes, its clock, its first row, and the video and the pane above it.
+> Read [VIEWER.md](./VIEWER.md) first for the modules around it.
+
+## The screen (lane SCREEN, plan section 11.1)
+
+From the top, under the top bar: the stage (`#lower-workspace`: the video
+on the left, the divider `#resize-video`, the pane `#timeline-pane` on the
+right), the divider `#resize-timeline`, then the timeline
+(`#timeline-section`, `.timeline-pane`) at the full width of the window to
+its bottom. Nothing opens over the timeline or beside it. On this level the
+page does not scroll (`#view-session.on-timeline`, set by `renderer.js`
+`applyLevel`): the stage and the timeline share the height, the pane's
+lists scroll in the pane and the lanes in the timeline (`.tl-lanes`) under
+its first row. The timeline is 272 px high unless its divider was dragged
+(the stage keeps at least its min-height, the timeline giving way first);
+the video takes at most 58% of the stage's width and no more than the
+stage's height at 16:9 (container units of the stage), less when its
+divider was dragged. At 1366x768 that is a video 778 wide, a pane 552 x
+440 and a timeline 1366 x 272. A recording without a video shows the line
+*No video linked* with *Attach video...*, then the pane at the stage's full
+width. A project with no recording and no video shows its pane and, under
+the row, the one line that says so; no divider.
 
 ## Where it lives
 
@@ -21,7 +41,8 @@
 | [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The marker edits: `moveMarker` (the move a dragged transaction side makes), `renameMarker` and `deleteMarker` (a transaction's header in the pane). |
 | [`views/timeline-pane.js`](../../viewer/views/timeline-pane.js) | Lane PANE: the pane beside the video (five tabs; the Steps tab's list, the step opened in place, the transactions' headers; Notes; Files). |
 | [`pane-lists.js`](../../viewer/pane-lists.js) | Pure (lane PANE): the pane's groups and rows, the hint line, the acts above the list, Previous and Next, the notes and files rows. Unit-tested. |
-| [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
+| [`timeline-row.js`](../../viewer/timeline-row.js) | Pure (lane SCREEN): the timeline's first row: its words (`LABELS`, `titles`, "the video" or "the recording"), what shows and what can be clicked (`rowState`), the transaction button (`transactionSlot`), the clock (`clockText`, `clockTarget`) and a selected stretch (`stretchText`). Unit-tested. |
+| [`layout-controls.js`](../../viewer/layout-controls.js) | The two dividers and the video modes. |
 
 ## The one clock
 
@@ -33,8 +54,47 @@ event (`dom.recordingStartMs`); `chooseTicks(start, end, count, origin)`
 counts its ticks from it. The step pane, the step panel and the PDD's
 pointers ("Transaction 1 at 0:19") use the same clock, and so do the Raw
 events rows below the Timeline (lane FX1). The time of day shows in one
-place only: the summary line above the timeline, "Recorded <date> <time> ·
-<length>".
+place only: the resting text of the row's message area, "Recorded <date>
+<time> · <length>" (`#timeline-summary`; the Overview's project line says
+who recorded it, not when).
+
+## The first row (lane SCREEN, plan section 11.3)
+
+`.timeline-header#tl-row` holds how to play and how to mark, in the order
+Tab goes: **Play** (`#btn-tl-play`, only with a video, its `aria-label`
+"Play" or "Pause"), **the clock** (`#btn-tl-clock`, "6:20 / 1:02:00"; a
+click makes it the field `#tl-clock-field`: Enter goes there, kept inside
+the timeline, Escape or leaving it keeps it as it was, a time that cannot be
+read says "Type a time such as 6:20." in the message area), **Add step**
+(`#btn-add-step`, only with a video, the row's filled button in a project
+without a recording), **Start transaction** or **End transaction** (one
+button, `#btn-tl-transaction`, `data-kind`: *End transaction* while the
+clock's moment is inside a transaction whose end is not marked yet), **Add
+note** (`#btn-tl-note`), the **message area** (`#tl-message`), the
+*Transaction:* select, **Lanes**, zoom out, **Show all**, zoom in. The
+marking buttons act at the clock's moment (`Video.playheadMs`), with the
+right-click's acts (`queueSyntheticMarker`, `addStepAt`,
+`AnalystUI.addNote`); without a moment (a recording without a video, nothing
+clicked yet) they are there with `aria-disabled` and a tooltip that says
+why; a project opened read only does not show them. *Start transaction*
+asks for the name in its own words ("Start transaction") while the video
+is paused; while it plays the start is added at once with no name and no
+question, the right-click's *Start a transaction here* too
+(`queueSyntheticMarker`, the rule of `step-panel.js` `nameTakesFocus`), and
+*Rename* on the transaction's header names it afterwards; its message
+reads "Transaction started at 0:05." (in a recording, with "Apply marker
+changes, in the top bar, updates its steps."). A click on a button of the
+row leaves the focus where it was, so Space goes on playing; Tab reaches
+each control, Space or Enter works it. `flow-view.js` `syncTimelineRow`
+draws it after every change of the clock, the transactions, the selection
+(`State` topic `selection`) and the level; `timeline-row.js` decides.
+
+**Messages** (`dom.js` `toast`, `placeToast`): while the Timeline shows,
+`#toast` itself moves into the message area (`.in-row`): one line, cut with
+an ellipsis, the whole text in the tooltip of its `.toast-text`, an error in
+the error colour with its Dismiss; the resting text hides while it shows.
+On the other levels it is at the foot of the window as before. A step added
+on the Timeline says "Step added at 6:20."
 
 ## The span
 
@@ -126,7 +186,7 @@ menu at the moment clicked:
   updates the transactions, the steps and the map. It asks first only while
   a step is a draft (a project made from a video or from nothing has none).
 - *Add note here...*: a note pinned to that moment (the Notes lane turns on).
-- *Add a step here*: a step at that moment, as *+ Step* adds one at the
+- *Add a step here*: a step at that moment, as *Add step* adds one at the
   playhead.
 - *Jump to step here*: the Steps level, on the step at that moment.
 
@@ -168,7 +228,7 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
   the transaction that holds its new start, or to none (*Outside the
   transactions*), without an analysis.
 - **Steps are marked one after another** (the owner: "the duration is
-  endless", then "you always add steps sequentially"): a new step (+ Step,
+  endless", then "you always add steps sequentially"): a new step (Add step,
   *Add a step here*, a start typed for a step without a time) inside a
   step of the analyst's ends that one there (`time-edits.js`
   `cutForNewStep`, neither part running over a boundary); in open space it
@@ -213,15 +273,21 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
   and handed time back by its neighbours on the timeline, never by its
   neighbours in the process.
 
-**Range selection.** Shift-drag on the background selects a range; a card
-shows its length, events, markers, screenshots and systems, with *Insert
-transaction from selection* (a Start and an End marker, pending),
-*Leave out of the analysis* (in a project with a recording: it asks
-first, the range goes into `annotations.excluded_ranges` and the analysis
-runs again), or, lane E (E4), *Not part of the process* in a project made
-from a video or from nothing (`flow-view.js` `putAside`: the same
-`excluded_ranges` entry, one undoable edit, no question and no analysis),
-and *Clear selection*. Esc clears it.
+**Range selection.** Shift-drag on the background selects a range; lane
+SCREEN: the timeline's row shows it in place of its three marking buttons
+(`#tl-selection`): its times and length ("0:40 to 1:10 · 30s",
+`#tl-selection-times`), then *Leave out of the analysis* (in a recording
+that holds events: it asks first, the range goes into
+`annotations.excluded_ranges` and the analysis runs again) or, lane E (E4),
+*Not part of the process* in a project made from a video or from nothing
+(`flow-view.js` `putAside`: the same `excluded_ranges` entry, one undoable
+edit, no question and no analysis), both `#tl-selection-exclude` and the
+row's filled button; *Make it a transaction* (`#tl-selection-case`: a Start
+and an End marker, one undoable edit, its question in its words); and *Clear
+selection* (`#tl-selection-clear`). Read only: the times and *Clear
+selection* only. Esc clears it once a menu, a dialog or a field had the
+Escape. The card that counted events, markers, screenshots and systems is
+gone.
 
 **The stretches left out of the analysis** (lane CC) are drawn where they
 are made: a quiet hatch over the Systems lane (`.tl-left-out`, its
@@ -297,11 +363,11 @@ sentences out too (`left-out.js` `saidOutside`).
 A Shift-drag on the timeline's background selects; the click that ends it
 neither seeks nor starts the video (`flow-view-timeline.js`, the
 background click returns on `shiftKey`). In a project without a recording
-the selection's card shows its Duration only.
+the row shows the stretch's times and length.
 
-## The video beside it
+## The video above it
 
-The video pane below the timeline plays the project's videos: the ones the
+The video pane above the timeline plays the project's videos: the ones the
 analyst added (copied into the folder's `video/`, contract C16 and
 `video-path.js`; a chain on the clock, contract C23), else the OBS
 recording. Without one the pane collapses to a slim band with *Attach
@@ -309,8 +375,14 @@ video...*. The player shows one video at a time: a seek (a click on the
 timeline, a band, a step) shows the video that covers that moment, at that
 moment; played on past a video's end it goes on with the next one when that
 starts there; a trimmed part is never shown. Every time it gives (the
-playhead, + Step, a marker moved to the playhead, a frame's moment) is a
-moment on the clock, whichever video shows it (`playheadMs`).
+playhead, Add step, a marker moved to the playhead, a frame's moment) is a
+moment on the clock, whichever video shows it (`playheadMs`). Lane SCREEN:
+`#video` has no controls of its own; the row plays, pauses and goes to a
+time, a click on the video plays or pauses it, and the keys move it. While a
+sync's first step shows, the video shows its own controls, to scrub a video
+not placed on the clock yet (`startVideoSync`, `cancelVideoSync`). The
+video's corner (`#video-overlay`) says "loading…" until the video's length
+is known and nothing after: the video's own time no longer shows there.
 
 - **Attach video**, **Add video** (the band, the Overview's project line, the
   Videos lane's menu, or the empty timeline) chooses one or more files. In a
@@ -342,8 +414,8 @@ moment on the clock, whichever video shows it (`playheadMs`).
   Trim and Remove are each one undoable edit: Ctrl+Z brings back the entries
   and their files, and the project is loaded again with its videos (lane CC;
   analyzed again when the transactions moved with them).
-- **+ Step** (the timeline's header, only with a video; or the S key) adds a
-  step at the playhead. Lane E-1 (`flow-view.js` `addStepAt`, for *Add a
+- **Add step** (the timeline's row, only with a video; or the S key) adds a
+  step at the clock's moment, and says "Step added at 6:20.". Lane E-1 (`flow-view.js` `addStepAt`, for *Add a
   step here* too): the frame of the video at that moment is read first
   (`analyst-ui.js` `frameAtMoment`: from the player itself when it shows
   that moment, settled and not seeking, else from a copy off screen, at
@@ -375,25 +447,39 @@ moment on the clock, whichever video shows it (`playheadMs`).
   screenshot or a note on the timeline opens its tab at it. The step panel
   no longer opens on the Timeline (lane PANE); its own playback (Watch)
   is on Steps and the Map.
-- The playback bar at the bottom of the window covers the videos on the
-  clock, from the first one's start: play, back and forward 5 s (the arrow
-  keys too, across the videos), a scrub bar and the times.
+- The playback bar at the foot of the window is gone (lane SCREEN): it
+  showed on every level and drove a video only the Timeline shows. Its keys
+  stay: Space plays or pauses, Left and Right move 5 s (with Shift 10 s),
+  across the videos.
+- **Expand** (`#btn-video-expand`) gives the video 70% of the stage's width,
+  the pane the rest; **fullscreen** (`#btn-video-fullscreen`, Esc leaves it)
+  gives the video the whole window above the timeline's row, which stays in
+  view (Play, the clock, the marking buttons, the message area); the pane,
+  the lanes and the dividers are not shown.
 
 ## Zoom, scroll, minimap
 
-- **Zoom**: `#btn-zoom-in`, `#btn-zoom-out`, `#btn-zoom-reset` (and `+`, `-`,
-  `0`) multiply or divide `State.zoomFactor` by 1.5 (never below 1) or reset
-  it; the timeline is that many times as wide as its pane.
+- **Zoom**: `#btn-zoom-in` (Zoom in), `#btn-zoom-out` (Zoom out),
+  `#btn-zoom-reset` (*Show all*) (and `+`, `-`, `0`) multiply or divide
+  `State.zoomFactor` by 1.5 (never below 1) or reset it; the timeline is
+  that many times as wide as its pane.
 - **Scroll**: a middle-button drag pans the timeline. The zoom and the scroll
   persist per project folder in `pdt.timelineState`. On the first open of a
   project the timeline scrolls to the first transaction when it starts later.
 - **Minimap** (`#timeline-minimap`): shown only while zoomed in; a
   compressed view of the activity with the visible stretch marked. Click to
   jump there, drag the marked stretch to scroll.
-- **Resize**: `#resize-timeline` sets the timeline's height (80 to 360 px,
-  default 160, `pdt.timelineHeight`); `#resize-video` the video pane's width
-  (240 to 1200 px, default 600, `pdt.videoWidth`). The video pane can also be
-  expanded to 70% of the width, or full screen.
+- **Resize**: `#resize-timeline`, between the stage and the timeline, sets
+  the timeline's height (`--tl-height`, 150 to 640 px, the stylesheet's 272
+  until dragged, `pdt.stage.timelineHeight`; dragged up, the timeline
+  grows); `#resize-video` the video's width (`--video-width`,
+  `pdt.stage.videoWidth`, kept at most 58% of the stage and its height at
+  16:9). The sizes the layout before lane SCREEN stored (`pdt.timelineHeight`,
+  `pdt.videoWidth`) are not read.
+- **Raw events** (`.event-table-host`, only with events): one line under the
+  timeline; opened, its table shows above that line (at most a third of the
+  window high), the line staying where it was, the stage and then the
+  timeline giving way; the row stays in view.
 
 ## Render triggers
 

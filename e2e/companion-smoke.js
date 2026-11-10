@@ -44,7 +44,7 @@
  *     (h2) lane FX2: the step panel open on the project before closes as the
  *         video project opens; (z) lane FX2: the frame shows in the
  *         Screenshots lane, the Screenshots list and the gallery; (y) lane
- *         FX2: + Step inside an added step and Merge with next keep the steps
+ *         FX2: Add step inside an added step and Merge with next keep the steps
  *         added (Delete, manual tasks on the step map).
  *   Step flow (contract C17), in another empty project with four steps:
  *     (o) each step's Flow line names the step after it ("Then: ...",
@@ -311,7 +311,9 @@ function zipFiles(buf) {
     a3.tl = await page.evaluate(() => {
       const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
       return {
-        controls: ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in", "video-pane", "btn-open-gallery"]
+        // Lane SCREEN: nor the row's Play, clock and marking buttons.
+        controls: ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in", "video-pane", "btn-open-gallery",
+          "btn-tl-play", "btn-tl-clock", "btn-add-step", "btn-tl-transaction", "btn-tl-note"]
           .filter((id) => shown(document.getElementById(id))),
         raw: shown(document.querySelector(".event-table-host")),
         attach: [...document.querySelectorAll("#session-layout-flow button")].filter((b) => shown(b) && /Attach video/.test(b.textContent)).length,
@@ -751,12 +753,16 @@ function zipFiles(buf) {
     });
     await wait(700);
     h3.playing = await page.evaluate(() => !document.getElementById("video").paused);
+    // Lane SCREEN: the video's corner never shows the video's own time (the
+    // row's clock says the moment, on the one clock).
+    h3.overlayPlaying = await page.evaluate(() => (document.getElementById("video-overlay").textContent || "").trim());
     await level("overview");
     h3.pausedOnOverview = await page.evaluate(() => document.getElementById("video").paused);
     await level("flow");
   } catch (x) { h3.err = errText(x); }
-  record("(h3) lane FX3: a video project's Timeline has its controls and no Raw events (no events), its video never says loaded, and the video stops when the level changes",
-    !h3.err && h3.state.controls === 5 && !h3.state.raw && !/loaded/.test(h3.state.overlay) && h3.playing && h3.pausedOnOverview,
+  record("(h3) lane FX3: a video project's Timeline has its controls and no Raw events (no events), its video never says loaded, and the video stops when the level changes; lane SCREEN: its corner shows no time while it plays",
+    !h3.err && h3.state.controls === 5 && !h3.state.raw && !/loaded/.test(h3.state.overlay) && h3.playing && h3.pausedOnOverview &&
+      h3.overlayPlaying === "",
     JSON.stringify(h3));
 
   // (i) Two transactions marked by right-click, applied.
@@ -810,7 +816,7 @@ function zipFiles(buf) {
     j.runEnd = (runs[0].b - start) / 1000;
     j.videoEnd = (h.span.endMs - start) / 1000;
   } catch (x) { j.err = errText(x); }
-  record("(j) + Step at the playhead adds a step from the playhead to the end of its run (the first run's end, the video's end for the open run)",
+  record("(j) Add step at the playhead adds a step from the playhead to the end of its run (the first run's end, the video's end for the open run)",
     !j.err && j.steps.length === 2 && Math.abs(j.steps[0].from - 8) < 0.6 && Math.abs(j.steps[0].to - j.runEnd) < 0.6 && j.steps[0].run === 0 &&
       Math.abs(j.steps[1].from - 24) < 0.6 && Math.abs(j.steps[1].to - j.videoEnd) < 0.6 && j.steps[1].run === 1 &&
       j.steps.every((x) => x.state === "manually_authored"),
@@ -973,7 +979,7 @@ function zipFiles(buf) {
     !m.err && m.steps.length === 2 && m.steps.every(Boolean) && m.frame && !m.note, JSON.stringify(m));
 
   // (y) Lane FX2 (validation pass 3, F5): steps the analyst added stay added
-  // through + Step at a moment inside one and Merge with next: both halves
+  // through Add step at a moment inside one and Merge with next: both halves
   // and the merged step keep Delete (manually_authored), and the step map
   // draws them as manual tasks (no system set).
   let y = {};
@@ -1018,7 +1024,7 @@ function zipFiles(buf) {
     y.plain = named("task");
     y.names = (await session()).anno.steps.map((x) => x.name);
   } catch (x) { y.err = errText(x); }
-  record("(y) lane FX2: steps the analyst added stay added: + Step at a moment inside one splits it into two added steps, Merge with next makes one added step of them again; each keeps Delete, and the step map draws them as manual tasks (no system set)",
+  record("(y) lane FX2: steps the analyst added stay added: Add step at a moment inside one splits it into two added steps, Merge with next makes one added step of them again; each keeps Delete, and the step map draws them as manual tasks (no system set)",
     !y.err && y.halves.length === 2 && y.halves.every((x) => x.state === "manually_authored") && y.halves[0].same &&
       Math.abs(y.halves[0].to - 12) < 0.6 && Math.abs(y.halves[1].from - 12) < 0.6 &&
       y.deletable.length === 2 && y.deletable.every(Boolean) &&
@@ -1823,7 +1829,7 @@ function zipFiles(buf) {
       !E.err && E.level === "flow" && !!E.first &&
       JSON.stringify(E.first.labels) === JSON.stringify(["Add the steps", "Write the steps", "Write the document", "Hand off"]) &&
       E.first.next === "steps" && E.first.button === "Mark the steps on the Timeline" && E.first.act === "steps-timeline" &&
-      E.first.say === "Play the video and press S, or click + Step, where each step starts." && E.afterFirst === "flow",
+      E.first.say === "Play the video and press S, or click Add step, where each step starts." && E.afterFirst === "flow",
       JSON.stringify({ err: E.err, level: E.level, first: E.first, afterFirst: E.afterFirst }));
     record("(E2) with steps added, Write the steps counts the steps without a name of their own or a description, and its button opens Steps on the first of them",
       !E.err && !!E.added && JSON.stringify(E.added.done) === '["steps"]' && E.added.next === "written" &&

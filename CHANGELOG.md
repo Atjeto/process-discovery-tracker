@@ -8,6 +8,42 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The Timeline as the workspace: the timeline at the bottom, the video
+  and the pane above it.** The timeline takes the full width of the window,
+  always, and nothing opens over it or beside it; the video (at most 58% of
+  the width) and the pane share the height above it, and the page does not
+  scroll: the pane's lists scroll in the pane, the lanes under the
+  timeline's first row. Two dividers share the height and the width; the
+  sizes the old layout stored are not read. At 1366x768 the video is 778
+  wide, the pane 552 x 440 and the timeline 1366 x 272. Fullscreen gives
+  the video the whole window above the timeline's row, which stays.
+- **The timeline's first row.** One row holds how to play and how to mark:
+  *Play*, the clock ("6:20 / 1:02:00": a click types a time and goes there),
+  *Add step*, *Start transaction* or *End transaction* (one button: it reads
+  *End transaction* while the moment is inside a transaction whose end is
+  not marked yet), *Add note*, a message area, the Transaction select,
+  *Lanes*, zoom out, *Show all*, zoom in. The marking buttons act at the
+  clock's moment, as the right-click's acts do there; without a moment they
+  say why they cannot be clicked, and a project opened read only does not
+  show them. While the video plays, *Start transaction* (and the
+  right-click's *Start a transaction here*) starts the transaction at once
+  with no name and no question; *Rename*, on its header beside the video,
+  names it afterwards. Every control is reached with Tab, worked with Enter or Space,
+  and has a name a screen reader reads; a click on one leaves Space playing
+  the video. In a recording without a video the words read "the
+  recording".
+- **Messages read in the row.** On the Timeline a message reads in the
+  row's message area, one line, cut with an ellipsis and whole in its
+  tooltip, and never covers the lanes or the pane (an area too narrow to
+  read paints nothing, the message still announced); at rest the area says
+  when the project was recorded and how long it is. Adding a step says
+  where it starts: "Step added at 6:20."
+- **A selected stretch acts in the row.** A Shift-drag shows the stretch
+  in the row ("0:40 to 1:10 · 30s") with *Leave out of the analysis* or
+  *Not part of the process*, *Make it a transaction* and *Clear selection*,
+  in place of the marking buttons; the card that counted events, markers,
+  screenshots and systems over the lanes is gone. Escape clears it.
+
 - **The pane beside the video on the Timeline.** One pane with a tab for
   each kind of thing the project holds: *Steps (n)*, *Transcript*,
   *Screenshots (n)*, *Notes (n)* and *Files (n)*, real tabs to a screen
@@ -111,6 +147,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   at the moment clicked. One undoable edit.
 
 ### Changed
+
+- **One set of play controls.** The playback bar at the foot of the window
+  is gone (it showed on every level and played a video only the Timeline
+  shows), and the video has no controls of its own: the timeline's row
+  plays it, a click on the video plays or pauses it, and Space, Left and
+  Right (Shift for 10 s) work as before. The video's corner no longer shows
+  the video's own time (the row's clock says the moment, on the one clock);
+  it says "loading…" while a video loads. While a video is synced, its own
+  controls show for the first click. Old labels changed: *+ Step* is *Add
+  step*, *Insert transaction from selection* is *Make it a transaction*,
+  *Reset zoom* is *Show all*, and *Lanes* lost its arrow. The Raw events
+  drawer is one line under the timeline; opened, its table shows above
+  that line.
 
 - **The Overview's transcript list is never empty** in a project with one
   unmarked transaction: it lists everything that was said, and says so.

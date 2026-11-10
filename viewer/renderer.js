@@ -21,7 +21,7 @@ const PdtTheme = require("./theme.js");
 const PdtSteps = require("./step-editor.js");
 require("./layout-controls.js"); // side-effect import: self-wires resize handles + video modes
 
-const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast } = require("./dom.js");
+const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId, toast, placeToast } = require("./dom.js");
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
@@ -475,6 +475,13 @@ function applyLevel(name) {
     const el = document.getElementById("session-layout-" + l);
     if (el) el.style.display = l === name ? "" : "none";
   }
+  // Lane SCREEN: on the Timeline the stage and the timeline share the
+  // window's height, edge to edge, and the page does not scroll; a message
+  // reads in the timeline's row there (dom.js placeToast), at the foot of
+  // the window elsewhere.
+  const sessionView = document.getElementById("view-session");
+  if (sessionView) sessionView.classList.toggle("on-timeline", name === "flow");
+  placeToast();
   // P2.10: the Raw events drawer (the machine layer) shows on Flow only;
   // lane FX3: only when the project has events.
   syncRawEventsShown();
@@ -1061,12 +1068,6 @@ document.addEventListener("keydown", (e) => {
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
 
-  // <video controls> handles Space / arrows natively; skip them here
-  // so the global handler doesn't double-fire and cancel the toggle.
-  if (tag === "video" && (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-    return;
-  }
-
   // Undo / redo apply to any view as long as a session is loaded.
   // Ctrl+Z = undo, Ctrl+Shift+Z (or Ctrl+Y) = redo.
   if ((e.ctrlKey || e.metaKey) && !e.altKey) {
@@ -1140,6 +1141,11 @@ document.addEventListener("keydown", (e) => {
     }
   }
   else if (e.key === " ") {
+    // Lane SCREEN: Space on a control of the timeline's row that the
+    // keyboard reached works that control (a click there leaves the focus
+    // where it was, flow-view.js wireTimelineRow); elsewhere it plays or
+    // pauses.
+    if (e.target.closest && e.target.closest("#tl-row") && tag !== "div") return;
     const video = $("#video");
     if (video && video.src) {
       if (video.paused) video.play(); else video.pause();
@@ -1258,89 +1264,6 @@ $$(".help-nav-item").forEach((b) =>
 $("#help-modal").addEventListener("click", (e) => {
   if (e.target.id === "help-modal") closeHelp();
 });
-
-/* ============ Bottom playback bar ================================= */
-/* A global transport mirroring the #video element. Visible only with a
-   recording loaded; the .hidden class collapses it otherwise. Space /
-   arrow shortcuts are handled in the keydown block
-   above and reflect here through the video's own play/pause/timeupdate
-   events, so the bar stays in sync regardless of how playback changes. */
-(function wirePlaybackBar() {
-  const bar = $("#playback-bar");
-  const video = $("#video");
-  if (!bar || !video) return;
-  const iconPlay = bar.querySelector(".pb-icon-play");
-  const iconPause = bar.querySelector(".pb-icon-pause");
-  const scrub = $("#pb-scrub"), fill = $("#pb-fill"), knob = $("#pb-knob");
-  const curEl = $("#pb-current"), totEl = $("#pb-total");
-
-  function fmtTime(s) {
-    if (!isFinite(s) || s < 0) s = 0;
-    return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
-  }
-  function hasVideo() {
-    return !!(video.src && isFinite(video.duration) && video.duration > 0);
-  }
-  /* C23: the bar covers the videos of the chain on the clock, from the
-     first one's start (one video: its own time, as before). */
-  function range() {
-    const r = Video.chainRange();
-    return r || { startMs: 0, endMs: (video.duration || 0) * 1000 };
-  }
-  function nowMs(r) {
-    const at = Video.playheadMs();
-    return at != null && Video.chainRange() ? at - r.startMs : (video.currentTime || 0) * 1000;
-  }
-  function refresh() {
-    bar.classList.toggle("hidden", !hasVideo());
-    const r = range();
-    const dur = Math.max(0, r.endMs - r.startMs) / 1000, cur = Math.max(0, nowMs(r)) / 1000;
-    const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
-    fill.style.width = pct + "%";
-    knob.style.left = pct + "%";
-    curEl.textContent = fmtTime(cur);
-    totEl.textContent = fmtTime(dur);
-    const playing = !video.paused && !video.ended;
-    iconPlay.style.display = playing ? "none" : "";
-    iconPause.style.display = playing ? "" : "none";
-  }
-  function seekFromEvent(e) {
-    if (!hasVideo()) return;
-    const box = scrub.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
-    const r = Video.chainRange();
-    if (r) Video.seekClock(r.startMs + frac * (r.endMs - r.startMs));
-    else video.currentTime = frac * video.duration;
-  }
-  const skip = (ms) => {
-    const at = Video.playheadMs();
-    if (at != null && Video.chainRange()) Video.seekClock(at + ms);
-    else video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + ms / 1000));
-  };
-
-  $("#pb-play").addEventListener("click", () => {
-    if (!hasVideo()) return;
-    if (video.paused) video.play(); else video.pause();
-  });
-  $("#pb-skip-back").addEventListener("click", () => { if (hasVideo()) skip(-5000); });
-  $("#pb-skip-fwd").addEventListener("click", () => { if (hasVideo()) skip(5000); });
-  scrub.addEventListener("mousedown", (e) => {
-    if (!hasVideo()) return;
-    seekFromEvent(e);
-    const onMove = (ev) => seekFromEvent(ev);
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
-
-  for (const evt of ["timeupdate", "loadedmetadata", "play", "pause", "emptied", "durationchange"]) {
-    video.addEventListener(evt, refresh);
-  }
-  refresh();
-})();
 
 /* ============ Boot ================================================ */
 
@@ -1681,7 +1604,7 @@ async function newProjectFromFiles(paths) {
   await loadSessionIntoView(r.folder);
   const flow = document.querySelector('.view-mode-btn[data-level="flow"]');
   if (flow) flow.click();
-  toast("Project made: " + path.basename(r.folder) + ". Play the video and press S, or click + Step, where each step starts.", "success");
+  toast("Project made: " + path.basename(r.folder) + ". Play the video and press S, or click Add step, where each step starts.", "success");
 }
 
 /* B4c: what a drop on the start page opens (project-folder.js dropKind),

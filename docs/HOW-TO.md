@@ -162,15 +162,22 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 
 ### Mark a video as you watch it
 
-1. Play the video on the Timeline. Where the SME starts the work,
-   right-click the timeline and choose *Start a transaction here*.
-2. As each step starts, press S (or click *+ Step*), or right-click there
+1. Play the video on the Timeline: click *Play*, at the left of the row
+   above the timeline, or press Space. To go to a moment, click the clock
+   beside it (*0:00 / 1:02:00*), type a time and press Enter. Where the SME
+   starts the work, click *Start transaction*. While the video plays, the
+   transaction starts at once; name it afterwards with Rename, on its header
+   beside the video.
+2. As each step starts, press S (or click *Add step*), or right-click there
    and choose *Add a step here*, on the band of the step before it too. The
    step before it ends there. The newest step is *open*, fading out on the
    Timeline: it ends where you add the next one.
-3. Where the transaction ends, right-click and choose *End the transaction
-   here*: its last step ends there too. *Start a transaction here* for the
-   next one ends the one before it the same way.
+3. Where the transaction ends, click *End transaction* (the same button
+   reads so while a transaction runs on): its last step ends there too.
+   *Start transaction* for the next one ends the one before it the same
+   way. *Add note* puts a note at that moment; notes stay out of the PDD.
+   Right-clicking the timeline offers the same acts at the moment you click.
+   A message about what you did reads in the same row.
 4. Each step you add opens beside the video, in the *Steps* tab, its
    screenshot taken from the video at that moment. Pause the video before
    you press S, and the cursor is in the step's name: type the name, press
@@ -244,7 +251,7 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 3. Set its system: type it first on the line under the step's name.
    Alt+Up and Alt+Down move the step.
 4. With a video, you can instead pause the video at that moment on the
-   Timeline and click *+ Step* (or press S), or right-click the timeline
+   Timeline and click *Add step* (or press S), or right-click the timeline
    there and choose *Add a step here*: the step gets that time. In the
    demo, *Look up the SAP material* in transaction 2 was added at its
    moment: the recorder saw no action there.
@@ -320,7 +327,7 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    click *Save*.
 2. A stretch, for example where the SME started on the wrong customer: on
    the Timeline, hold Shift and drag across it, click *Leave out of the
-   analysis*, then *Leave out*.
+   analysis* in the row above the timeline, then *Leave out*.
 3. The steps and the map are drafted again without it. A stretch left out
    shows hatched: click it and choose *Include again* to bring it back.
    Playing skips it, and the *Transcript* tab leaves out what was said in

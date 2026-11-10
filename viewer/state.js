@@ -27,8 +27,10 @@
  * C19). Lane W0: "undo": the undo or the redo stack changed (every push,
  * pop, trim or reset); "session": a project was opened or closed
  * (setSession); "level": a level was shown (setLevel). The top bar's next
- * act, Undo and Redo follow them (renderer.js wireTopBarActs).
- * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"|"undo"|"session"|"level"} ChangeTopic
+ * act, Undo and Redo follow them (renderer.js wireTopBarActs). Lane SCREEN:
+ * "selection": the timeline's selected stretch changed (setSelectionRange);
+ * the timeline's row follows it.
+ * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"|"undo"|"session"|"level"|"selection"} ChangeTopic
  */
 
 /**
@@ -261,10 +263,11 @@ function getZoomFactor() { return _s.zoomFactor; }
 /** @param {number} v */
 function setZoomFactor(v) { _s.zoomFactor = v; }
 
-/* Flow timeline range selection */
+/* Flow timeline range selection. Lane SCREEN: a change emits "selection"
+   (the timeline's row shows the stretch and its acts). */
 function getSelectionRange() { return _s.selectionRange; }
 /** @param {*} v */
-function setSelectionRange(v) { _s.selectionRange = v; }
+function setSelectionRange(v) { _s.selectionRange = v; emit("selection"); }
 
 /* The current level (C19): a copy of the path of map nodes ([] the main map). */
 /** @returns {string[]} */

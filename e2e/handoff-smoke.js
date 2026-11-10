@@ -232,7 +232,7 @@ const EDITING = [
   ".summary-fix", "#btn-ov-attach", "[data-att-act=\"remove\"]", ".tr-add",
   "#btn-add-step", "#btn-sync-video", "#btn-video-remove", "#btn-link-recording", "#btn-tl-attach-video",
   ".tl-tr-sync", ".tl-tr-replace", ".tl-tr-remove", ".marker-actions", "[data-act=\"adjust\"]", "[data-act=\"delete\"]",
-  "#tl-selection-case", "#tl-selection-exclude",
+  "#tl-selection-case", "#tl-selection-exclude", "#btn-tl-transaction", "#btn-tl-note",
   "#btn-add-manual-step", "#btn-delete-selected-steps", "#btn-merge-selected", "#btn-group-selected",
   "#btn-ignored-apps", ".multi-check", "#btn-dissolve-level",
   "[data-act=\"confirm-run\"]", "[data-act=\"reopen-run\"]",

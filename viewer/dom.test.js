@@ -72,12 +72,24 @@ test("the margin defaults to 4 px", () => {
 
 /* ---- the toast: a held error is not covered by the act's success message ---- */
 
+/* A stand-in for #toast: its text is what its children say (the message is a
+   span of its own, lane SCREEN). */
+function toastStub(remove) {
+  const el = { className: "", kids: [], appendChild(k) { el.kids.push(k); },
+    set textContent(v) { el.kids = v ? [{ textContent: String(v) }] : []; },
+    get textContent() { return el.kids.map((k) => k.textContent || "").join(""); } };
+  el.classList = { remove() { remove(el); } };
+  return el;
+}
+const stubDocument = (el) => ({ querySelector: (sel) => (sel === "#toast" ? el : null),
+  createElement: () => ({ dataset: {}, textContent: "", addEventListener() {}, setAttribute() {} }) });
+
+
 test("a held error toast stays until it ends: a success or info message does not replace it, another error does", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  const el = { textContent: "", className: "", classList: { remove() { el.className = ""; } }, appendChild() {} };
+  const el = toastStub((e) => { e.className = ""; });
   // An error carries a Dismiss button (lane A-1): the stub makes one.
-  global.document = { querySelector: (sel) => (sel === "#toast" ? el : null),
-    createElement: () => ({ dataset: {}, addEventListener() {}, setAttribute() {} }) };
+  global.document = stubDocument(el);
   try {
     toast("Saved, but a file was not moved.", "error", { hold: true });
     toast("Video removed.", "success");
@@ -122,10 +134,8 @@ test("a click or a key press outside an error closes it only once it has been up
 });
 
 test("an error message is still shown long after an ordinary one would have gone; Dismiss and a newer message end it", (t) => {
-  const el = { textContent: "", className: "", classList: { remove() { el.className = el.className.replace(/\s*show\b/, ""); } },
-    appendChild() {} };
-  global.document = { querySelector: (sel) => (sel === "#toast" ? el : null),
-    createElement: () => ({ dataset: {}, addEventListener() {}, setAttribute() {} }) };
+  const el = toastStub((e) => { e.className = e.className.replace(/\s*show\b/, ""); });
+  global.document = stubDocument(el);
   // The previous test's timer belongs to its own mock clock: clearing it under
   // this test's mock would clear this test's first timer (same id).
   hideToast();
@@ -142,6 +152,31 @@ test("an error message is still shown long after an ordinary one would have gone
     toast("Another refusal.", "error");
     toast("Done.", "success");
     assert.equal(el.textContent, "Done.", "a newer message replaces an error");
+  } finally {
+    delete global.document;
+  }
+});
+
+/* ---- lane SCREEN: a message reads in the Timeline's row while it shows ---- */
+
+const { placeToast } = require("./dom.js");
+
+test("placeToast: #toast goes into the row's message area while that is on screen, else back to the page", () => {
+  const made = (id) => { const el = { id, parentNode: null, kids: [], shown: true, cls: new Set(),
+    appendChild(k) { if (k.parentNode) k.parentNode.kids = k.parentNode.kids.filter((x) => x !== k); k.parentNode = el; el.kids.push(k); },
+    getClientRects() { return el.shown ? [{}] : []; },
+    classList: { toggle(c, on) { if (on) el.cls.add(c); else el.cls.delete(c); } } }; return el; };
+  const body = made("body"), slot = made("tl-message"), el = made("toast");
+  body.appendChild(el);
+  global.document = { body, getElementById: (id) => (id === "toast" ? el : id === "tl-message" ? slot : null) };
+  try {
+    placeToast();
+    assert.equal(el.parentNode, slot, "the Timeline shows: in the row");
+    assert.ok(el.cls.has("in-row"));
+    slot.shown = false;
+    placeToast();
+    assert.equal(el.parentNode, body, "another level: at the foot of the window");
+    assert.ok(!el.cls.has("in-row"));
   } finally {
     delete global.document;
   }

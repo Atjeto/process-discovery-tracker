@@ -143,6 +143,17 @@ async function launchOnce(electron, opts, want) {
       throw err;
     }
     windowSize = await sizeWindow(app, want);
+    // Lane SCREEN: the real pointer never reaches a smoke's window. Windows
+    // hands the window the desk's own mouse moves whenever the pointer is
+    // over it, and one such move in the middle of a drag, or under a hover,
+    // read a position the smoke never gave (a Shift-drag on the Timeline
+    // ending at x 86 instead of 447). The smoke's own input (Playwright's
+    // Input.dispatchMouseEvent) goes to the page directly and still arrives.
+    await app.evaluate(({ BrowserWindow, app: electronApp }) => {
+      const shut = (w) => { try { w.setIgnoreMouseEvents(true); } catch (_) { /* a closed window */ } };
+      BrowserWindow.getAllWindows().forEach(shut);
+      electronApp.on("browser-window-created", (_e, w) => shut(w));
+    });
   } catch (e) {
     // Give an exiting process a moment to report its exit code.
     await new Promise((r) => setTimeout(r, 500));

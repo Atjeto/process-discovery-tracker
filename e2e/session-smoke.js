@@ -1148,7 +1148,8 @@ async function unreadableAnnotationsPin() {
   // (#btn-attach-video); Attach transcript on the recording line; Apps outside
   // the process in the Steps toolbar (Remembered step names left with contract
   // C21); Sync video in the video pane's
-  // header, only while a video is attached; + Step with a video only.
+  // header, only while a video is attached; the timeline row's Add step with
+  // a video only.
   const placed = () => page.evaluate(() => {
     const shown = (el) => !!(el && getComputedStyle(el).display !== "none" && !el.hidden);
     const at = (id) => { const el = document.getElementById(id); return el ? { text: (el.textContent || "").trim(), shown: shown(el) } : null; };
@@ -1174,12 +1175,14 @@ async function unreadableAnnotationsPin() {
     noVideo.savedNames === 0 &&
     noVideo.syncVideo.inHeader && noVideo.syncVideo.shown === false && noVideo.addStep === false &&
     !(await page.$("#cb-mine")));
-  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Apps outside the process in the Steps toolbar and no Remembered step names (contract C21), Sync video in the video header, hidden without a video), and the Timeline has no + Step without a video",
+  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Apps outside the process in the Steps toolbar and no Remembered step names (contract C21), Sync video in the video header, hidden without a video), and the Timeline has no Add step without a video",
     movedOk, JSON.stringify(noVideo));
 
   // --- P2.10: the Raw events drawer is Flow's only ---------------------------
   // The machine layer shows on Flow and nowhere else; opened there, it sits
-  // below the Flow layout (the page grows, nothing is painted over).
+  // below the Flow layout, nothing painted over. Lane SCREEN: the page does
+  // not grow there: the table opens above the drawer's own line, which stays
+  // put, and the timeline's row stays in view.
   const drawerShown = () => page.evaluate(() => {
     const d = document.querySelector(".event-table-host");
     return !!(d && getComputedStyle(d).display !== "none");
@@ -1191,6 +1194,7 @@ async function unreadableAnnotationsPin() {
     drawerOn[lvl] = await drawerShown();
   }
   const summary = await page.$(".event-table-host > summary");
+  const summaryTop = await page.evaluate(() => { const s = document.querySelector(".event-table-host > summary"); return s ? Math.round(s.getBoundingClientRect().top) : null; });
   if (summary) {
     await summary.scrollIntoViewIfNeeded().catch(() => {});
     await summary.click().catch((e) => console.log("rawevents open", e.message));
@@ -1200,12 +1204,18 @@ async function unreadableAnnotationsPin() {
     const d = document.querySelector(".event-table-host");
     const flow = document.getElementById("session-layout-flow");
     if (!d || !flow) return null;
-    return { open: d.open, flowBottom: Math.round(flow.getBoundingClientRect().bottom), rawTop: Math.round(d.getBoundingClientRect().top) };
+    const row = document.getElementById("tl-row").getBoundingClientRect();
+    const view = document.getElementById("view-session");
+    return { open: d.open, flowBottom: Math.round(flow.getBoundingClientRect().bottom), rawTop: Math.round(d.getBoundingClientRect().top),
+      summaryTop: Math.round(d.querySelector("summary").getBoundingClientRect().top), rowTop: Math.round(row.top), rowBottom: Math.round(row.bottom),
+      tableTop: Math.round(d.querySelector(".event-table-scroll").getBoundingClientRect().top), pageScrolls: view.scrollHeight > view.clientHeight };
   }).catch((e) => ({ err: e.message }));
   const drawerOk = !!(drawerOn.flow && !drawerOn.overview && !drawerOn.steps && !drawerOn.map &&
-    flowGeom && !flowGeom.err && flowGeom.open && flowGeom.flowBottom <= flowGeom.rawTop);
-  record("P2.10: the Raw events drawer shows on Flow only; opened there it sits below the Flow layout",
-    drawerOk, JSON.stringify({ shownOn: drawerOn, flowGeom }));
+    flowGeom && !flowGeom.err && flowGeom.open && flowGeom.flowBottom <= flowGeom.rawTop &&
+    flowGeom.summaryTop === summaryTop && flowGeom.tableTop < flowGeom.summaryTop && flowGeom.rowTop >= 0 && flowGeom.rowBottom <= flowGeom.rawTop &&
+    !flowGeom.pageScrolls);
+  record("P2.10: the Raw events drawer shows on Flow only; opened there it sits below the Flow layout; lane SCREEN: its table opens above its own line, which stays put, the timeline's row stays in view and the page does not scroll",
+    drawerOk, JSON.stringify({ shownOn: drawerOn, summaryTop, flowGeom }));
   // Lane FX1 (report 1, item 7): the one clock. Each row's time is the time
   // since the recording started (m:ss), never the time of day.
   const rawTimes = await page.evaluate(() => {
@@ -1976,11 +1986,11 @@ async function unreadableAnnotationsPin() {
     if (!appliedOk) await shot(page, "fail-marker-applied.png");
   }
 
-  // --- P2.11: Sync video and + Step come with a video ------------------------
+  // --- P2.11: Sync video and Add step come with a video ----------------------
   // A copy of the analyzed session with a video linked (annotations
   // external_video: any existing file, the check is the controls, not
   // playback), opened in the same viewer: the video pane's header offers Sync
-  // video and the Timeline offers + Step. Opened again without it, both go.
+  // video and the Timeline offers Add step. Opened again without it, both go.
   if (FRESH) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-video-"));
     for (const f of fs.readdirSync(SESSION)) {
@@ -2002,7 +2012,7 @@ async function unreadableAnnotationsPin() {
       await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
       vid.after = await placed();
     } catch (e) { logActionError("P2.11 with a video", e); vid.err = String(e.message).split("\n")[0]; }
-    record("P2.11: with a video linked, the video header offers Sync video, the recording line Replace, and the Timeline + Step; without one again, they go",
+    record("P2.11: with a video linked, the video header offers Sync video, the recording line Replace, and the Timeline Add step; without one again, they go",
       !!(!vid.err && vid.recording && vid.with.syncVideo.shown && vid.with.syncVideo.inHeader &&
         vid.with.syncVideo.text === "Sync video..." && vid.with.addStep && vid.with.attachVideo.text === "Replace" &&
         vid.after.syncVideo.shown === false && vid.after.addStep === false && vid.after.attachVideo.text === "Attach"),

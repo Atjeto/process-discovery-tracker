@@ -604,6 +604,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     // The pointer on the Systems header lights the Systems lane up across the
     // timeline, as tall as the cell; off it, nothing is lit.
     const cell = page.locator('#tl-lane-names .tl-lane-name[data-lane="activity"]');
+    // Lane SCREEN: the timeline is at the foot of the window, where an
+    // earlier act can leave the pointer; a cell drawn again under a pointer
+    // that does not move gets no mouseenter, so the pointer leaves first.
+    await page.mouse.move(2, 2);
     await cell.hover({ timeout: T });
     lanes.lit = await page.evaluate(() => {
       const c = document.querySelector('#tl-lane-names .tl-lane-name[data-lane="activity"]').getBoundingClientRect();

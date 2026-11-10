@@ -99,7 +99,7 @@ test("the hint line, word for word", () => {
   assert.equal(P.stepsHint({ hasVideo: true, total: 3, untimed: 1 }),
     "1 step has no time yet. Go to the moment a step starts in the video, then click Starts here on that step.");
   assert.equal(P.stepsHint({ hasVideo: true, total: 0 }),
-    "No steps yet. Play the video and click + Step where each step starts, or paste your notes.");
+    "No steps yet. Play the video and click Add step where each step starts, or paste your notes.");
   assert.equal(P.stepsHint({ hasVideo: false, total: 0 }),
     "No steps yet. Add step adds one, and Paste notes... adds one for each line of your notes.");
   assert.equal(P.stepsHint({ hasVideo: false, total: 2, untimed: 2 }), "", "no video: nothing to give a moment from");
