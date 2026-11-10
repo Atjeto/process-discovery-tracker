@@ -16,6 +16,10 @@
  *      one short line, so the home leads with the document. The As-Is map is
  *      not an act (AD-28): the PDD embeds the edited As-Is copy when there is
  *      one, else the process map (process_map_step.bpmn).
+ *   1b. lane B-V2: once the Checklist is ready or a version was handed
+ *      off, what a reader of the next version will miss (readiness.js),
+ *      one line that opens to the entries, each leading to where it is
+ *      fixed; nothing while the list is empty.
  *   2. the project line: the project (or, once written, the document title),
  *      who recorded it, its transactions, the reference transaction's steps,
  *      and the video and the transcript, each with its Attach; plus a warning
@@ -47,6 +51,9 @@ const AsIsFresh = require("../asis-freshness.js");
 const AC = require("../analyst-content.js");
 const RO = require("../read-only.js");
 const Handoff = require("../handoff.js");
+const Readiness = require("../readiness.js");
+const SystemNames = require("../system-names.js");
+const StepFacts = require("../step-facts.js");
 
 /* ---- Stage failures (contract C12, RP-10) -------------------------------- */
 
@@ -236,8 +243,8 @@ const PATH_STAGES = [
 const ASIS_STALE = "The As-Is map was made before the steps changed: check it, or Copy again.";
 
 /* The name + Step and + Add step give a new step ("Step 12", steps-view.js
-   nextStepName): no name of its own. */
-const NUMBERED_STEP = /^Step (\d+)$/;
+   nextStepName): no name of its own. One pattern, readiness.js's. */
+const NUMBERED_STEP = Readiness.NUMBERED_STEP;
 
 /* Whether a step has a name of its own and a description, the two things the
    PDD prints for it. */
@@ -464,6 +471,100 @@ function _goNext(act) {
 function _wireNextLine(host) {
   const btn = host.querySelector("#btn-ov-next");
   if (btn) btn.addEventListener("click", () => _goNext(btn.dataset.nextAct));
+}
+
+/* ---- 1b. What a reader of the next version will miss (lane B-V2) ----------- */
+
+/* The lookups readiness.js cannot do itself, for the project on screen: the
+   screenshots a step shows (the step pane's, analyst-ui.js shotsOf), the
+   system it is done in (the step pane's System, system-names.js
+   whereOfStep) and whether its description is only the recorder's
+   narration (step-facts.js). */
+function _missLookups(sess) {
+  const inter = {};
+  for (const ev of (sess && sess.events) || []) if (ev && ev.type === "interaction" && ev.event_id) inter[ev.event_id] = ev;
+  const names = (sess && sess.stats && sess.stats.meta && sess.stats.meta.app_names) || {};
+  return {
+    shotCount: (s) => AnalystUI.shotsOf(s).length,
+    systemOf: (s) => SystemNames.whereOfStep(s, inter, names).system,
+    isNarration: (s) => StepFacts.isDraftedDescription(s.description, StepFacts.stepDatas(s, inter)),
+  };
+}
+
+/* What a reader of the next version will miss (readiness.js missing), for
+   `sess` with its pathState `state`; `lookups` replaces the project's own
+   (the unit tests pass theirs). */
+function missingOf(sess, state, lookups) {
+  const st = state || pathState(sess);
+  return Readiness.missing({ annotations: (sess && sess.annotations) || {}, runs: st.runs, reference: st.pattern },
+    Object.assign(_missLookups(sess), lookups || {}, { document: st.doc, asIsStale: st.asIsStale }));
+}
+
+/* Whether the Overview shows the list: it has an entry, the project is not a
+   hand-off opened read only, and the Checklist is ready or a version was
+   already handed off (before that the Checklist leads, and a list of
+   everything a project just begun lacks would be noise). */
+function missingShown(sess, state, entries) {
+  return !!(entries && entries.length) && !RO.isReadOnly(sess) && !!(state.ready || state.handedOff);
+}
+
+/* Whether the analyst opened the list: kept while the project is on screen,
+   as the document's open state is; closed by default. */
+let _missOpen = false;
+
+/* The list under the Checklist: one line that opens and closes as the
+   Document's heading does, the entries under it, each a link to where it is
+   fixed. "" when it is not shown. */
+function _missingHtml(sess, state, entries) {
+  if (!missingShown(sess, state, entries)) return "";
+  const items = entries.map((e, i) => '<li><button type="button" class="link-btn ov-miss-go" data-miss="' + escapeAttr(e.key) +
+    '" data-miss-i="' + i + '">' + escapeHtml(e.text) + "</button></li>").join("");
+  return '<details class="analysis-section analysis-module ov-miss" id="ov-miss"' + (_missOpen ? " open" : "") + ">" +
+    '<summary class="analysis-module-head" title="What the PDD of the next version leaves out. Each line opens the place where it is written. You can hand off as it is.">' +
+      '<span class="ov-miss-line" id="ov-miss-line">' + escapeHtml(Readiness.overviewLine(entries)) + "</span>" +
+      '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
+    "</summary>" +
+    '<ul class="analysis-module-body ov-miss-list">' + items + "</ul></details>";
+}
+
+/* Go where an entry leads: a step opens Steps with it selected, a document
+   field opens the Document with the cursor in its first empty field, the
+   As-Is map opens the Map. The hand-off dialog's entries lead here too. */
+function goToMissing(entry) {
+  const lead = entry && entry.lead;
+  if (!lead) return;
+  if (lead.kind === "step") { _openStepInSteps(lead.stepId); return; }
+  if (lead.kind === "map") { _openMap(); return; }
+  if (lead.kind === "document") {
+    const btn = document.querySelector('.view-mode-btn[data-level="overview"]');
+    if (btn && !btn.classList.contains("active")) btn.click();
+    _openDocument();
+  }
+}
+
+function _wireMissing(host) {
+  const panel = host.querySelector("#ov-miss");
+  if (!panel) return;
+  panel.addEventListener("toggle", () => { _missOpen = panel.open; });
+  panel.addEventListener("click", (e) => {
+    const b = e.target.closest(".ov-miss-go");
+    if (!b) return;
+    const sess = State.getSession();
+    const entry = sess ? missingOf(sess).find((x) => x.key === b.dataset.miss) : null;
+    goToMissing(entry);
+  });
+}
+
+/* Put the list in its place under the Checklist, or take it away. */
+function _refreshMissing(host, sess, state) {
+  const html = _missingHtml(sess, state, missingOf(sess, state));
+  const old = host.querySelector("#ov-miss");
+  const line = host.querySelector("#ov-next");
+  if (old) old.remove();
+  if (html && line) {
+    line.insertAdjacentHTML("afterend", html);
+    _wireMissing(host);
+  }
 }
 
 /* ---- 2. The project line ----------------------------------------------------- */
@@ -948,6 +1049,7 @@ function _refreshPathInPlace() {
   if (line) {
     line.outerHTML = _nextLineHtml(state);
     _wireNextLine(host);
+    _refreshMissing(host, sess, state);
   }
   const status = host.querySelector("#ov-doc-status");
   if (status) status.textContent = _documentStatusText(state.doc);
@@ -992,8 +1094,9 @@ function hasAnalysisBlocks(analysis) {
    transcriptError }). `run` is the recording's analysis run state
    (State.getAnalysisRun() for it, or null), `docOpen` whether the document
    is shown open (null: the default). Pure (no DOM, no State), so the unit
-   tests render fixture sessions through the same code. */
-function overviewHtml(sess, run, docOpen) {
+   tests render fixture sessions through the same code; `lookups` replaces
+   the lookups of what a reader will miss (missingOf). */
+function overviewHtml(sess, run, docOpen, lookups) {
   const analysis = sess && sess.analysis;
   if (!hasAnalysisBlocks(analysis)) {
     const stale = !!(analysis && sess.stats);
@@ -1005,6 +1108,9 @@ function overviewHtml(sess, run, docOpen) {
   // Lane HV: the Checklist is the analyst's to-do list; a hand-off opened
   // read only has nothing to do.
   let html = RO.isReadOnly(sess) ? "" : _nextLineHtml(state);
+  // Lane B-V2: what a reader of the next version will miss, under the
+  // Checklist once it is ready or a version was handed off.
+  if (!RO.isReadOnly(sess)) html += _missingHtml(sess, state, missingOf(sess, state, lookups));
   html += _summaryHtml(sess, state);
   // P1.10: the only typing the home asks for sits under the recording line;
   // once every stage is done it opens by itself, so the home leads with it.
@@ -1020,6 +1126,7 @@ function renderOverviewLevel() {
   if (_docFolder !== sess.sessionFolder) {
     _docFolder = sess.sessionFolder;
     _docOpen = null;
+    _missOpen = false;
     _tr = { open: false, speaker: "", query: "", during: false };
   }
   _closeAddToMenu();
@@ -1033,6 +1140,7 @@ function renderOverviewLevel() {
   if (!hasAnalysisBlocks(sess.analysis)) return;   // the waiting note has nothing else to wire
 
   _wireNextLine(host);
+  _wireMissing(host);
   _wireDocument(host);
   AnalystUI.wireOverviewAttachments(host);
   _wireTranscript(host);
@@ -1053,6 +1161,6 @@ function renderOverviewLevel() {
 
 module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
-  mapEmptyText, hasAnalysisBlocks, waitingSentence,
+  mapEmptyText, hasAnalysisBlocks, waitingSentence, missingOf, missingShown, goToMissing,
   DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET, ASIS_STALE,
 };

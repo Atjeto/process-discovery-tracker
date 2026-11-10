@@ -44,6 +44,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   as before.
 - **A PDD without recorder wording** for a project made from a video or from nothing: Document control leaves out *Recorded by* and *Transactions recorded* where there is nothing to say, section 3.2 and section 4 no longer speak of one unmarked transaction (section 4 reads *Rules and exceptions*), and section 5 lists each system with the steps done in it instead of *Information entered: none*.
 - **No empty Technical details.** Where nothing was recorded the workbook is not written, and a hand-off zip goes out without it.
+- **What a reader will miss, before the hand-off.** *Hand off...* lists what the PDD of the version leaves out ("A reader of version 2 will miss:"): the reference transaction's steps that are still drafts, have no name of their own, no description, no picture or no system, decisions that do not say when, empty document fields and an As-Is map made before the steps changed. Each line is a link that cancels the hand-off and opens the place where it is fixed; the button then reads *Hand off anyway*, so nothing is blocked. Once every act before the hand-off is done, or after a version was handed off, the same list opens from one line under the Checklist ("A reader of the next version will miss 3 things").
 
 ## [2.0.6] (2026-11-04): several videos on one timeline
 

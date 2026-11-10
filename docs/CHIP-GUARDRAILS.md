@@ -200,7 +200,11 @@ others):
   12 px, `var(--fg-3)`; hidden in a read-only page): "For the developers
   and the archive", `#btn-session-handoff` (Hand off...: a `.modal-prompt`
   asking what changed, OK disabled while it is blank, its `.modal-detail`
-  saying what the zip holds; the item reads "Handing off..."
+  saying what the zip holds; lane B-V2: with something a reader will miss,
+  `.modal-pick` after the detail (`.modal-pick-lead` "A reader of version N
+  will miss:", one `.modal-pick-go` link per entry, at most six lines,
+  `.modal-pick-more` "and N more"; a link cancels and goes where it leads)
+  and OK reads "Hand off anyway"; the item reads "Handing off..."
   and Export carries `aria-busy="true"` while the hand-off is made; the zip
   `<project> v<N>.zip` lands beside the project folder, and a smoke waits
   for Explorer's stub to show it; at its root the PDD, the Technical
@@ -266,6 +270,16 @@ shown only after a failed run; `#toast`.
   is `#ov-next.ov-next-ready` (`data-next="handoff"`) with
   `.ov-next-ready-text` ("Everything before the hand-off is done.", or
   "Version N was handed off on <date>. Hand off again after a change.").
+- Lane B-V2: right after `#ov-next`, only once the Checklist is ready or a
+  version was handed off, and only with an entry (never in a read-only
+  page), `details#ov-miss` (closed by default, its open state kept while
+  the project is on screen): `#ov-miss-line` ("A reader of the next
+  version will miss N things") and one `.ov-miss-go` link per entry
+  (`data-miss` = the entry's key: `drafts`, `names`, `descriptions`,
+  `pictures`, `systems`, `conditions`, `document`, `asis`). The entries are
+  `require("./views/overview-view.js").missingOf(session)` (rule:
+  `readiness.js`). A closed details keeps its links laid out: test their
+  visibility with `checkVisibility()`, not `getClientRects()`.
 - Steps: `[data-act="confirm-run"]` and the draft status
   (`.run-status-draft`) show only while the reference transaction holds a
   drafted step at some level; Ctrl+Enter acts only where the button is.

@@ -98,15 +98,19 @@ per item; a build and a release only on the owner's word. Order: plan 5.3.
 
 | Lane | Items | Where | Status |
 |---|---|---|---|
-| B7-P | The PDD of a project without a recording has no recorder wording; no Technical details workbook with no row | agent worktree, `normalization/**` only | DONE ed2af8b on local master, not pushed (pytest 681, golden 10 of 10; the worktree and its branch removed). Open for B-V1: `e2e/overview-smoke.js` pins "System, Information entered" (check which project it reads) |
-| B-V1 | B6 a Checklist per kind of project (Confirm only with drafts, Hand off as the last act), B3 Export in three groups, B2 the hand-off zip (no backups or log, the map files and *Start here.txt* at its root), the viewer side of B7 (the workbook may be absent), a video project opening on the Timeline | main checkout, branch `lane-b-viewer`, `viewer/**`, `e2e/**`, docs | launched 2026-11-10 |
-| B-V2 | B1 the readiness list (Checklist and *Hand off...*) | after B-V1 | not started |
-| then | E1, E2, D1, B4; E3 to E6; lane A beside; C1, C2, B5; the rest | | not started |
+| B7-P | The PDD of a project without a recording has no recorder wording; no Technical details workbook with no row | agent worktree, `normalization/**` only | DONE ed2af8b on master, pushed (pytest 681, golden 10 of 10; the worktree and its branch removed) |
+| B-V1 | B6 a Checklist per kind of project (Confirm only with drafts, Hand off as the last act), B3 Export in three groups, B2 the hand-off zip (no backups or log, the map files and *Start here.txt* at its root), the viewer side of B7 (the workbook may be absent), a video project opening on the Timeline | main checkout, branch `lane-b-viewer` | DONE 0d54bbb on master, pushed (viewer unit 726; companion 38, handoff 45, overview 39 on the combined tree; the video path walked again: the zip holds the PDD, the map as SVG and BPMN and Start here.txt, no workbook, no backups) |
+| B-V2 | B1 the list of what a reader will miss (Overview once ready, and in *Hand off...*): `viewer/readiness.js` | main checkout, branch `lane-b-readiness` | launched 2026-11-10 |
+| E-1 | D1 the step panel edits the name, the system and the description on the Timeline and the Map, a step added there opens in it (name focused only while the video is paused); E2 a step marked on a video takes that frame as its picture, and *Use the video at ...*; optional: no Recorded part and no Reference badge where they say nothing | worktree `D:\pdt-scratch\wt-lane-e`, branch `lane-e-video` (node_modules and viewer/python are junctions: remove the junctions before removing the worktree) | launched 2026-11-10 |
+| then | E1 paste notes, B4 one start; E3 to E6; lane A beside; C1, C2, B5; the rest | | not started |
 
-After both first lanes merge: send B-V1 the PDD-wording pins the pipeline
-lane changed (its report section 5), then walk the video path again with the
-review scripts (the scratch folder named in the plan's Evidence) and compare
-with the 49 acts and the outputs of the plan's 2.2 and 2.3.
+When B-V2 and E-1 come back: both append to the CHANGELOG's Unreleased list
+and edit Help and the How-to (merge by hand), neither regenerates
+`docs/PDT-How-to.docx` (the coordinator does, after the merge:
+`viewer/python/python.exe scripts/make-howto-docx.py`). Seen and not yet
+planned: in Steps of a project without a recording the guide line of a
+reference transaction with no draft speaks of "the other transactions" even
+when there is one transaction.
 
 ## Lanes and status
 

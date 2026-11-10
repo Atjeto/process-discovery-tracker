@@ -17,6 +17,21 @@
 
 const { escapeHtml, escapeAttr } = require("./dom.js");
 
+/* opts.list (lane B-V2, the Hand off... dialog only): { lead, items, more,
+   onPick } shows, before the input, the line `lead` and under it `items`
+   (strings), each a link-style button, then `more` (a last line, no link)
+   when given. A click on an item closes the dialog as Cancel does (the
+   promise resolves to null) and then calls onPick(index). Without
+   opts.list the dialog is built exactly as before. */
+function _promptListHtml(list) {
+  if (!list || !Array.isArray(list.items) || !list.items.length) return "";
+  return '<div class="modal-pick">' +
+    (list.lead ? '<p class="modal-pick-lead">' + escapeHtml(list.lead) + "</p>" : "") +
+    '<ul class="modal-pick-list">' + list.items.map((text, i) => '<li><button type="button" class="link-btn modal-pick-go" data-pick="' +
+      i + '">' + escapeHtml(text) + "</button></li>").join("") +
+    (list.more ? '<li class="modal-pick-more">' + escapeHtml(list.more) + "</li>" : "") + "</ul></div>";
+}
+
 function promptModal(opts) {
   opts = opts || {};
   return new Promise((resolve) => {
@@ -31,6 +46,7 @@ function promptModal(opts) {
       '<div class="modal-body">' +
       (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
       (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
+      _promptListHtml(opts.list) +
       (opts.multiline
         ? '<textarea class="modal-input modal-textarea" placeholder="' +
           escapeAttr(opts.placeholder || "") + '">' +
@@ -65,6 +81,12 @@ function promptModal(opts) {
     closeBtn.addEventListener("click", () => done(null));
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) done(null);
+    });
+    backdrop.querySelectorAll(".modal-pick-go").forEach((b) => {
+      b.addEventListener("click", () => {
+        done(null);
+        if (typeof opts.list.onPick === "function") opts.list.onPick(Number(b.dataset.pick));
+      });
     });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !opts.multiline) { e.preventDefault(); if (!blank()) done(input.value); }

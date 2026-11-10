@@ -379,7 +379,13 @@ the folder.
   the zip's root the PDD, the Technical details (none where nothing was
   recorded), `<project> v<N> map.svg`, `<project> v<N> map.bpmn` and
   `Start here.txt` made for that version (`normalize.py --handoff N`,
-  `--tech-out`; `viewer/handoff-zip.js`). Every PDD says its
+  `--tech-out`; `viewer/handoff-zip.js`). What a reader of the version
+  will miss (`viewer/readiness.js`: the reference transaction's drafts,
+  steps without a name, description, picture or system, decisions without
+  a condition, empty document fields, a stale As-Is map) is listed in the
+  dialog (*Hand off anyway*, each line a link that cancels) and, once the
+  Checklist is ready or a version exists, under the Checklist (`#ov-miss`);
+  it never blocks. Every PDD says its
   version ("Version N, handed off <date> by <name>", else "Working copy
   after version N") over a Version history table. *Open a hand-off
   (.zip)...* (Open menu, and the page shown while no project is open) takes

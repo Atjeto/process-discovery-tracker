@@ -7,7 +7,10 @@
  *
  * Hand off...:
  *   1. one small dialog: "What changed in this version?" (one line; the
- *      first hand-off's is filled with "First hand-off");
+ *      first hand-off's is filled with "First hand-off"); lane B-V2: above
+ *      the note, what a reader of this version will miss (readiness.js),
+ *      each line a link that cancels the hand-off and goes where it is
+ *      fixed, and the button then reads Hand off anyway;
  *   2. the version entry goes into annotations.handoffs, { version,
  *      handed_off_at, by (the Windows user), note }: an undoable edit, so
  *      Ctrl+Z takes it back (the zip file stays where it is);
@@ -39,6 +42,7 @@ const Session = require("../session.js");
 const Handoff = require("../handoff.js");
 const RO = require("../read-only.js");
 const AC = require("../analyst-content.js");
+const Readiness = require("../readiness.js");
 const { toast } = require("../dom.js");
 const { promptModal } = require("../modals.js");
 
@@ -94,15 +98,13 @@ async function handOff() {
   const version = Handoff.nextVersion(anno);
   const base = Handoff.projectName(sess);
   const names = Handoff.fileNames(base, version);
-  const note = await promptModal({
-    title: "Hand off version " + version,
-    message: "What changed in this version?",
-    detail: detailLine(names.zip, version, AC.hasRecording(sess)),
-    placeholder: "For example: the credit check added",
-    defaultValue: version === 1 ? Handoff.FIRST_NOTE : "",
-    okLabel: "Hand off",
-    required: true,
-  });
+  // Lane B-V2: what a reader of this version will miss, each line leading to
+  // where it is fixed (a click cancels the hand-off). Lazy require: the
+  // Overview's module wires the DOM it renders into.
+  const Overview = require("./overview-view.js");
+  const missing = Overview.missingOf(sess);
+  const note = await promptModal(dialogOptions({ version, zipName: names.zip, recording: AC.hasRecording(sess), missing,
+    onPick: (entry) => Overview.goToMissing(entry) }));
   if (note === null || State.getSession() !== sess) return;
   _setBusy(true);
   const entry = Handoff.newEntry({ version, note, by: _user(), now: new Date().toISOString() });
@@ -178,6 +180,38 @@ function detailLine(zipName, version, recording) {
     (recording ? ", the Technical details" : "") + " and the process map of version " + version + ".";
 }
 
+/* The most lines of what a reader will miss the dialog shows. */
+const MISS_LINES = 6;
+
+/* The Hand off... dialog's options (promptModal). With nothing missing it
+   is the dialog it always was. With entries (readiness.js missing), the
+   line "A reader of version N will miss:" and the entries' texts (at most
+   six lines: with more, five and a last line "and N more"), each leading
+   to where it is fixed through onPick(entry), and the button reads Hand
+   off anyway. Pure. */
+function dialogOptions({ version, zipName, recording, missing, onPick }) {
+  const opts = {
+    title: "Hand off version " + version,
+    message: "What changed in this version?",
+    detail: detailLine(zipName, version, recording),
+    placeholder: "For example: the credit check added",
+    defaultValue: version === 1 ? Handoff.FIRST_NOTE : "",
+    okLabel: "Hand off",
+    required: true,
+  };
+  const list = Array.isArray(missing) ? missing : [];
+  if (!list.length) return opts;
+  const shown = list.length > MISS_LINES ? list.slice(0, MISS_LINES - 1) : list;
+  opts.okLabel = "Hand off anyway";
+  opts.list = {
+    lead: Readiness.dialogLead(version),
+    items: shown.map((e) => e.text),
+    more: shown.length < list.length ? "and " + (list.length - shown.length) + " more" : "",
+    onPick: (i) => { if (typeof onPick === "function" && shown[i]) onPick(shown[i]); },
+  };
+  return opts;
+}
+
 /* deps = { writeDocuments(target, { pddOut, techOut, handoff, label }),
    writeMaps(target, dir, names) } (renderer.js). Wires the Export menu's
    items once. */
@@ -189,4 +223,4 @@ function initHandoffUI(deps) {
   on("btn-handoff-open-tech", () => openVersionFile("tech"));
 }
 
-module.exports = { initHandoffUI, handOff, openVersionFile, detailLine };
+module.exports = { initHandoffUI, handOff, openVersionFile, detailLine, dialogOptions };

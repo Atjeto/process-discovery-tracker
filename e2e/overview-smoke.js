@@ -28,7 +28,10 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *       a field saves undoably, the ten fields (trigger, result, volume
  *       and effort, and improvement included) save to annotations.json, the
  *       line then shrinks to one line with Hand off..., the Recents entry
- *       takes the title; Export, PDD (.docx) with no As-Is copy hands the PDD
+ *       takes the title; (d6b) lane B-V2: the line of what a reader of the
+ *       next version will miss shows under the ready Checklist, opens to its
+ *       links, the description entry lands on its step in Steps, and a
+ *       description written there takes the step out of it; Export, PDD (.docx) with no As-Is copy hands the PDD
  *       the map from the runs
  *       (AD-28), and its sections 5 to 7 read as the document's own (the
  *       systems and the information entered, the volume and effort written,
@@ -584,6 +587,83 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     JSON.stringify({ summaryName: docProbe.summaryName, recent: docProbe.recent }));
   record("lane FX3: the capture's request shows on the project line beside the title that names the project (Request: its code), not only in the tooltip",
     docProbe.request === "Request: demo-order-processing", JSON.stringify({ request: docProbe.request }));
+
+  // (d6b) Lane B-V2: with the Checklist ready, what a reader of the next
+  // version will miss shows under it: one line with the count, closed; open,
+  // its entries are links; the description entry's link lands on its first
+  // step in Steps, and writing that step's description there takes the
+  // step out of the entry.
+  const missProbe = {};
+  try {
+    const readMiss = () => page.evaluate(() => {
+      const d = document.getElementById("ov-miss");
+      if (!d) return null;
+      const next = document.getElementById("ov-next");
+      const sum = d.querySelector("summary");
+      const cs = getComputedStyle(sum);
+      return {
+        open: d.open, afterChecklist: !!next && next.nextElementSibling === d,
+        line: ((document.getElementById("ov-miss-line") || {}).textContent || "").trim(),
+        // The native marker is not drawn beside the chevron.
+        marker: cs.listStyleType, chevrons: d.querySelectorAll(".analysis-module-chevron").length,
+        entries: [...d.querySelectorAll(".ov-miss-go")].map((b) => ({ key: b.dataset.miss, text: b.textContent.trim(),
+          // A closed details keeps its content laid out but skipped
+          // (content-visibility): checkVisibility says whether it shows.
+          visible: b.checkVisibility(), h: Math.round(b.getBoundingClientRect().height),
+          size: getComputedStyle(b).fontSize })),
+      };
+    });
+    missProbe.before = await readMiss();
+    await page.locator("#ov-miss summary").click({ timeout: T });
+    missProbe.opened = await readMiss();
+    // The entry and the step it leads to, by the Overview's own rule.
+    missProbe.want = await page.evaluate(() => {
+      const e = require("./views/overview-view.js").missingOf(require("./state.js").getSession())
+        .find((x) => x.key === "descriptions");
+      return e ? { stepId: e.lead.stepId, count: e.count, text: e.text } : null;
+    });
+    await page.locator('#ov-miss .ov-miss-go[data-miss="descriptions"]').click({ timeout: T });
+    await page.waitForSelector("#step-detail #step-desc", { state: "visible", timeout: T });
+    missProbe.landing = Object.assign(await stepsLanding(), {
+      selected: await page.evaluate(() => require("./state.js").getSelectedStepId()) });
+    await page.locator("#step-desc").fill("E2E: check the customer's credit before the order is entered.", { timeout: T });
+    await page.locator("#step-desc").press("Tab");
+    for (let k = 0; k < 40; k++) {
+      const s = (readAnno().steps || []).find((x) => x.step_id === (missProbe.want || {}).stepId);
+      if (s && /^E2E: check the customer/.test(s.description || "")) break;
+      await wait(125);
+    }
+    await goOverview();
+    await page.waitForSelector("#ov-miss", { timeout: T });
+    missProbe.after = await readMiss();
+    missProbe.afterWant = await page.evaluate(() => {
+      const e = require("./views/overview-view.js").missingOf(require("./state.js").getSession())
+        .find((x) => x.key === "descriptions");
+      return e ? { stepId: e.lead.stepId, count: e.count, text: e.text } : null;
+    });
+    await shot(page, "overview-miss-state.png");
+  } catch (e) {
+    logActionError("(d6b) what a reader will miss", e);
+    missProbe.err = String(e.message).split("\n")[0];
+  }
+  const mb = missProbe.before, mo = missProbe.opened, mw = missProbe.want;
+  record("(d6b) lane B-V2: with the Checklist ready, one closed line under it says how many things a reader of the next version will miss (the Document's chevron, no native marker)",
+    !missProbe.err && !!mb && !mb.open && mb.afterChecklist && mb.entries.length > 0 &&
+      mb.line === "A reader of the next version will miss " + mb.entries.length + (mb.entries.length === 1 ? " thing" : " things") &&
+      mb.marker === "none" && mb.chevrons === 1 && mb.entries.every((x) => !x.visible),
+    JSON.stringify({ before: mb, err: missProbe.err }));
+  record("(d6b) opened, it lists each entry as a link (12 px or more, at least 24 px high), the descriptions among them",
+    !!mo && mo.open && mo.entries.length === mb.entries.length && mo.entries.every((x) => x.visible && x.h >= 24 && parseFloat(x.size) >= 12) &&
+      !!mw && mo.entries.some((x) => x.key === "descriptions" && x.text === mw.text),
+    JSON.stringify({ opened: mo, want: mw }));
+  record("(d6b) the description entry's link opens Steps with its first step selected",
+    !!missProbe.landing && !!mw && missProbe.landing.onSteps && missProbe.landing.selected === mw.stepId,
+    JSON.stringify({ landing: missProbe.landing, want: mw }));
+  record("(d6b) a description written there takes the step out of the entry, and the list stays open",
+    !!mw && !!missProbe.after && missProbe.after.open &&
+      (missProbe.afterWant === null ? mw.count === 1 && !missProbe.after.entries.some((x) => x.key === "descriptions")
+        : missProbe.afterWant.count === mw.count - 1 && missProbe.afterWant.stepId !== mw.stepId),
+    JSON.stringify({ want: mw, afterWant: missProbe.afterWant, after: missProbe.after }));
 
   // The export renders the maps chosen for the PDD off screen and hands the
   // pipeline an image; record both, so the embed is pinned too (AD-28).

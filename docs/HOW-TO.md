@@ -334,6 +334,16 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
 3. PDT makes *Order to cash enter a customer order v1.zip* next to the
    project folder and opens its folder. Send that zip to the developers.
 
+**What a reader will miss.** When the PDD of this version leaves something
+out, the dialog says so above the note: steps that are still drafts, steps
+with no name of their own, no description, no picture or no system, a
+decision that does not say when, empty document fields, or an As-Is map made
+before the steps changed. Click a line to go where it is fixed (nothing is
+handed off), or click *Hand off anyway*. Once everything before the hand-off
+is done, or after a version was handed off, the same list shows under the
+Checklist on the Overview: click *A reader of the next version will miss* to
+open it.
+
 **What the zip holds.** The whole project folder, without the backup copies
 of the working file and the analysis log. At its top: *Start here.txt*,
 which says what each file is; the PDD, *Order to cash enter a customer order

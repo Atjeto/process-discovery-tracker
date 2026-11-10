@@ -1099,6 +1099,12 @@ textarea.ov-doc-input { min-height: 64px; }
 /* AD-29: an empty field looks empty: its question is light and italic, well
    apart from written text (about 3:1 on the field in both themes). */
 .ov-doc-input::placeholder { color: color-mix(in srgb, var(--fg-3) 60%, var(--fg-4)); font-style: italic; opacity: 1; }
+/* Lane B-V2: what a reader of the next version will miss, under the
+   Checklist (a disclosure like the Document's), each entry a link. */
+.ov-miss-line { font-size: 13px; color: var(--fg); flex: 1; min-width: 0; }
+.ov-miss-list { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.ov-miss-list .link-btn, .modal-pick-list .link-btn { font-size: 12px; min-height: 24px; padding: 2px 0;
+  text-align: left; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* ===== Analysis states and modules (the Overview) ===== */
 .analysis-empty {
@@ -1798,6 +1804,12 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .modal-prompt .modal-body { padding: 16px 18px; }
 .modal-prompt .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
 .modal-prompt .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
+/* Lane B-V2: the Hand off... dialog's list of what a reader will miss. */
+.modal-prompt .modal-sm:has(.modal-pick) { width: min(580px, calc(100vw - 40px)); }
+.modal-pick { margin: 0 0 12px; }
+.modal-pick-lead { color: var(--fg); font-size: 13px; margin: 0 0 4px; }
+.modal-pick-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.modal-pick-more { font-size: 12px; color: var(--fg-2); padding: 2px 0; }
 .modal-prompt .modal-input {
   width: 100%; padding: 9px 12px; background: var(--bg-2);
   border: 1px solid var(--rule); border-radius: 4px;

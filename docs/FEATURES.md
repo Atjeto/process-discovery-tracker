@@ -167,6 +167,15 @@ The viewer says *transaction* for one pass through the process and
   the As-Is map the PDD prints was made before the steps changed, it adds
   *Check the As-Is map*. A project made from a video opens on the
   Timeline, where its steps are marked.
+- **What a reader of the next version will miss**: once every act before
+  the hand-off is done, or a version was handed off, one line under the
+  Checklist ("A reader of the next version will miss 3 things") opens to
+  what the PDD of the next version leaves out: the reference transaction's
+  steps (at every level) that are still drafts, have no name of their own,
+  no description, no picture or no system, decisions that do not say when,
+  the empty document fields, an As-Is map made before the steps changed.
+  Each line opens the place where it is fixed. Nothing shows while the list
+  is empty, before then, or in a hand-off opened read only.
 - **The project line**: who recorded it, the request (the one written in
   the document, else the capture's), its transactions, the reference
   transaction's steps, the video and the transcript with Attach, Replace
@@ -424,7 +433,10 @@ The viewer says *transaction* for one pass through the process and
   with the PDD, the Technical details (where something was recorded), the
   process map as a picture and as BPMN, and *Start here.txt* (what each
   file is) of version 2 at its root. The versions go up by one, the PDD lists them, and Ctrl+Z takes
-  a version back (its zip stays).
+  a version back (its zip stays). When the PDD of that version leaves
+  something out, the dialog lists it first ("A reader of version 2 will
+  miss:"), each line a link that cancels the hand-off and goes where it is
+  fixed, and its button reads *Hand off anyway*: it never blocks.
 - **A hand-off opened read only**: *Open a hand-off (.zip)...* (the Open
   menu, and a button while no project is open) takes a hand-off zip; the app
   keeps its own copy and opens it read only: every level, the

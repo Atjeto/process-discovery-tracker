@@ -673,3 +673,95 @@ test("a confirmed reference transaction stays done as before, and a recording li
   assert.equal(pathState(sess).done.pattern, true);
   assert.deepEqual(pathState(sess).stages, ["runs", "pattern", "review", "document", "asis", "handoff"]);
 });
+
+/* ---- Lane B-V2: what a reader of the next version will miss --------------- */
+
+/* Lookups that call every step pictured and in a system (the unit tests have
+   no project folder and no recording). */
+const ALL_THERE = { shotCount: () => 1, systemOf: () => "SAP", isNarration: () => false };
+const missOf = (html) => {
+  const m = /<details class="analysis-section analysis-module ov-miss" id="ov-miss"( open)?>[\s\S]*?<\/details>/.exec(html);
+  return m ? m[0] : null;
+};
+
+/* A project from a video, written and its document written: the Checklist is ready. */
+function readyHandSession() {
+  const sess = handSession({ steps: [handStep("s1", 1, "Check the customer", "Look the customer up."),
+    handStep("s2", 3, "Enter the order", "")] });
+  sess.annotations.document = Object.assign({}, FULL_DOC);
+  return sess;
+}
+
+test("lane B-V2: before the Checklist is ready nothing shows, even with entries; never a heading or 0 things", () => {
+  const sess = handSession({ steps: [handStep("s1", 1, "Step 1", "")] });
+  assert.equal(pathState(sess).ready, false);
+  const html = overviewHtml(sess, null, null, ALL_THERE);
+  assert.equal(missOf(html), null);
+  assert.ok(!html.includes("will miss"));
+});
+
+test("lane B-V2: once the Checklist is ready, the line counts the entries, closed by default, each entry a link under the Checklist", () => {
+  const sess = readyHandSession();
+  // Write the steps asks for every step's name and description, so a step
+  // without a description keeps the Checklist from ready: give it one, and
+  // leave out its picture and system instead.
+  sess.annotations.steps[1].description = "Type the order in.";
+  assert.equal(pathState(sess).ready, true);
+  const html = overviewHtml(sess, null, null, { shotCount: (s) => (s.step_id === "s1" ? 1 : 0),
+    systemOf: (s) => (s.step_id === "s1" ? "SAP" : ""), isNarration: () => false });
+  const miss = missOf(html);
+  assert.ok(miss, html.slice(0, 600));
+  assert.ok(!/id="ov-miss" open/.test(miss), "closed by default");
+  assert.ok(miss.includes('<span class="ov-miss-line" id="ov-miss-line">A reader of the next version will miss 2 things</span>'), miss);
+  assert.ok(miss.includes('<span class="analysis-module-chevron" aria-hidden="true"></span>'), "the Document's chevron");
+  assert.deepEqual([...miss.matchAll(/<button type="button" class="link-btn ov-miss-go" data-miss="(\w+)" data-miss-i="\d+">([^<]+)<\/button>/g)]
+    .map((m) => [m[1], m[2]]), [["pictures", "1 step has no picture: Enter the order."], ["systems", "1 step has no system: Enter the order."]]);
+  // Directly under the Checklist, before the project line.
+  assert.ok(html.indexOf('id="ov-next"') < html.indexOf('id="ov-miss"') && html.indexOf('id="ov-miss"') < html.indexOf('id="ov-summary"'));
+  // One entry: "1 thing".
+  const one = overviewHtml(sess, null, null, Object.assign({}, ALL_THERE, { systemOf: (s) => (s.step_id === "s1" ? "SAP" : "") }));
+  assert.ok(missOf(one).includes("A reader of the next version will miss 1 thing</span>"));
+});
+
+test("lane B-V2: ready with nothing missing, nothing shows", () => {
+  const sess = readyHandSession();
+  sess.annotations.steps[1].description = "Type the order in.";
+  const html = overviewHtml(sess, null, null, ALL_THERE);
+  assert.equal(pathState(sess).ready, true);
+  assert.equal(missOf(html), null);
+  assert.ok(!html.includes("will miss"));
+});
+
+test("lane B-V2: once a version was handed off the list shows even while the Checklist is not ready", () => {
+  const sess = handSession({ steps: [handStep("s1", 1, "Check the customer", "")] });
+  sess.annotations.handoffs = [{ version: 1, handed_off_at: "2026-11-02T09:00:00.000Z", by: "rasha", note: "First hand-off" }];
+  assert.equal(pathState(sess).ready, false);
+  const miss = missOf(overviewHtml(sess, null, null, ALL_THERE));
+  assert.ok(miss, "shown after a hand-off");
+  assert.ok(miss.includes('data-miss="descriptions"') && miss.includes('data-miss="document"'), miss);
+  assert.ok(miss.includes("1 step has no description: Check the customer."));
+  assert.ok(miss.includes("10 document fields are empty: Title, Purpose, Scope, Trigger, Result, Key contacts, Business rules, Exceptions, Volume and effort, Improvement and automation scope."));
+});
+
+test("lane B-V2: a hand-off opened read only shows no such list", () => {
+  const sess = handSession({ steps: [handStep("s1", 1, "Check the customer", "")] });
+  sess.annotations.handoffs = [{ version: 1, handed_off_at: "2026-11-02T09:00:00.000Z", by: "rasha", note: "First hand-off" }];
+  sess.readOnly = true;
+  const html = overviewHtml(sess, null, null, ALL_THERE);
+  assert.equal(missOf(html), null);
+  assert.ok(!html.includes("will miss"));
+});
+
+test("lane B-V2: the reference transaction's drafts count on a recording once it is ready", () => {
+  // A recording whose reference transaction is confirmed: no draft, but
+  // the steps' drafted descriptions are only the recorder's narration.
+  const sess = session({});
+  confirmRun(sess, "c1");
+  openRuns(sess, "c2", "c3");
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  sess.annotations.document = Object.assign({}, FULL_DOC);
+  for (const s of sess.annotations.steps) s.description = "Clicked " + s.step_id + ".";
+  const miss = missOf(overviewHtml(sess, null, null, Object.assign({}, ALL_THERE, { isNarration: () => true })));
+  assert.ok(miss.includes("2 steps have no description: Step a, Step b."), miss);
+  assert.ok(!miss.includes("Step c") && !miss.includes("still a draft"), "only the reference transaction, confirmed");
+});

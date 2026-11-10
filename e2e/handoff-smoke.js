@@ -7,6 +7,10 @@
  *   (a0) the Export menu: three headings (text, not items) over Hand
  *       off..., Whole project (.zip) and the four single files, in that
  *       order for Tab too, and Escape closing it;
+ *   (a1) lane B-V2: the dialog first lists what a reader of version 1 will
+ *       miss (each entry a link; its button Hand off anyway); an entry's
+ *       click cancels the hand-off (no version, no zip) and opens Steps on
+ *       its step; six long entries fit the window;
  *   (a) Export, Hand off...: one dialog, "What changed in this version?",
  *       filled with "First hand-off"; "Order entry v1.zip" is made next to
  *       the project folder and shown in its folder; it holds the project
@@ -224,7 +228,7 @@ async function shotsBothThemes(page, stem, size) {
 /* The editing controls a hand-off opened read only must not show. */
 const EDITING = [
   "#btn-session-pdd", "#btn-session-tech", "#btn-session-zip", "#btn-session-handoff",
-  "#ov-next", "#btn-ov-next", "#btn-attach-video", "#btn-remove-video", "#btn-attach-transcript", "#btn-remove-transcript",
+  "#ov-next", "#btn-ov-next", "#ov-miss", ".ov-miss-go", "#btn-attach-video", "#btn-remove-video", "#btn-attach-transcript", "#btn-remove-transcript",
   ".summary-fix", "#btn-ov-attach", "[data-att-act=\"remove\"]", ".tr-add",
   "#btn-add-step", "#btn-sync-video", "#btn-video-remove", "#btn-link-recording", "#btn-tl-attach-video",
   ".tl-tr-sync", ".tl-tr-replace", ".tl-tr-remove", ".marker-actions", "[data-act=\"adjust\"]", "[data-act=\"delete\"]",
@@ -322,6 +326,76 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       JSON.stringify({ menu: menu.map((m) => [m.kind, m.text, m.tab, m.size, m.color]), fg3, order, openAfterHeading, closed }));
   } catch (e) { record("(a0) the Export menu", false, errText(e)); }
 
+  /* ---- (a1) lane B-V2: what a reader of version 1 will miss ---- */
+  try {
+    const want = await page.evaluate(() => require("./views/overview-view.js").missingOf(require("./state.js").getSession())
+      .map((e) => ({ key: e.key, text: e.text, lead: e.lead })));
+    await exportItem("btn-session-handoff");
+    await page.waitForSelector(".modal-backdrop.modal-prompt", { timeout: T });
+    const readDialog = () => page.evaluate(() => {
+      const d = document.querySelector(".modal-backdrop.modal-prompt");
+      const box = d.querySelector(".modal").getBoundingClientRect();
+      const body = d.querySelector(".modal-body");
+      const kids = [...body.children].map((el) => el.className);
+      return {
+        lead: ((d.querySelector(".modal-pick-lead") || {}).textContent || "").trim(),
+        items: [...d.querySelectorAll(".modal-pick-go")].map((b) => ({ text: b.textContent.trim(),
+          h: Math.round(b.getBoundingClientRect().height), size: getComputedStyle(b).fontSize })),
+        more: ((d.querySelector(".modal-pick-more") || {}).textContent || "").trim(),
+        ok: d.querySelector(".modal-ok").textContent, focus: document.activeElement === d.querySelector(".modal-input"),
+        order: kids,
+        fits: box.top >= 0 && box.left >= 0 && box.bottom <= window.innerHeight && box.right <= window.innerWidth &&
+          body.scrollHeight <= body.clientHeight + 1,
+        box: [Math.round(box.width), Math.round(box.height), window.innerWidth, window.innerHeight],
+      };
+    });
+    await wait(100);
+    const info = await readDialog();
+    record("(a1) lane B-V2: Hand off... lists what a reader of version 1 will miss, between its first line and the note, each entry a link (12 px or more, 24 px high), and its button reads Hand off anyway; the note has the focus",
+      want.length > 0 && want.length <= 6 && info.lead === "A reader of version 1 will miss:" &&
+        JSON.stringify(info.items.map((x) => x.text)) === JSON.stringify(want.map((e) => e.text)) && info.more === "" &&
+        info.items.every((x) => x.h >= 24 && parseFloat(x.size) >= 12) && info.ok === "Hand off anyway" && info.focus &&
+        JSON.stringify(info.order) === JSON.stringify(["modal-msg", "modal-detail", "modal-pick", "modal-input"]) && info.fits,
+      JSON.stringify({ want: want.map((e) => e.key), info }));
+    await shotsBothThemes(page, "handoff-dialog-miss", size);
+    // An entry's click cancels the hand-off (no version recorded) and goes
+    // where it leads.
+    const stepEntry = want.findIndex((e) => e.lead.kind === "step");
+    await page.locator(".modal-prompt .modal-pick-go").nth(stepEntry).click({ timeout: T });
+    await page.waitForSelector(".modal-prompt", { state: "detached", timeout: T });
+    await wait(400);
+    const landed = await page.evaluate(() => ({
+      steps: !!document.querySelector('.view-mode-btn[data-level="steps"].active'),
+      selected: require("./state.js").getSelectedStepId(),
+      handoffs: ((require("./state.js").getSession().annotations || {}).handoffs || []).length,
+      busy: document.getElementById("btn-session-export-menu").classList.contains("busy"),
+    }));
+    const onDisk = readJson(ANNO);
+    record("(a1) an entry's click cancels the hand-off, records no version and no zip, and opens Steps on the entry's step",
+      stepEntry >= 0 && landed.steps && landed.selected === want[stepEntry].lead.stepId && landed.handoffs === 0 &&
+        !(onDisk.handoffs || []).length && !landed.busy && !fs.existsSync(ZIP1),
+      JSON.stringify({ stepEntry, landed, want: want[stepEntry] }));
+    // Six long entries fit the window, the dialog keeping its keys.
+    await page.evaluate(() => {
+      const Ov = require("./views/overview-view.js");
+      window.__missingOf = Ov.missingOf;
+      Ov.missingOf = () => Array.from({ length: 6 }, (_, i) => ({ key: "k" + i, count: 3, lead: { kind: "map" },
+        text: (i + 3) + " steps have no description: Check the customer's credit limit in SAP, Enter the order in the order entry screen, Send the order confirmation to the customer and 4 more." }));
+      return true;
+    });
+    await exportItem("btn-session-handoff");
+    await page.waitForSelector(".modal-backdrop.modal-prompt", { timeout: T });
+    await wait(100);
+    const six = await readDialog();
+    await shotsBothThemes(page, "handoff-dialog-six", size);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".modal-prompt", { state: "detached", timeout: T });
+    await page.evaluate(() => { require("./views/overview-view.js").missingOf = window.__missingOf; return true; });
+    record("(a1) with six long entries the dialog fits the window (" + size + "), the note focused, Escape cancelling",
+      six.items.length === 6 && six.more === "" && six.fits && six.focus && !(readJson(ANNO).handoffs || []).length,
+      JSON.stringify(six));
+  } catch (e) { record("(a1) what a reader of version 1 will miss", false, errText(e)); }
+
   /* ---- (a) the first hand-off ---- */
   let entry1 = null;
   try {
@@ -333,9 +407,12 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
         detail: (d.querySelector(".modal-detail") || {}).textContent || "", value: d.querySelector(".modal-input").value,
         ok: d.querySelector(".modal-ok").textContent, okDisabled: d.querySelector(".modal-ok").disabled };
     });
+    // Lane B-V2: this project still misses things (drafts, descriptions,
+    // pictures, document fields), so the button reads Hand off anyway; the
+    // dialog with nothing missing is pinned in handoff.test.js.
     record("(a) Hand off... asks what changed in version 1, filled with First hand-off; its line says what the zip holds (a recording: with the Technical details)",
       info.title === "Hand off version 1" && info.msg === "What changed in this version?" &&
-      info.value === "First hand-off" && info.ok === "Hand off" && !info.okDisabled &&
+      info.value === "First hand-off" && info.ok === "Hand off anyway" && !info.okDisabled &&
       info.detail === "Order entry v1.zip is made next to the project folder: the whole project, with the PDD, the Technical details and the process map of version 1.",
       JSON.stringify(info));
     await shotsBothThemes(page, "handoff-dialog", size);
@@ -385,6 +462,16 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     }, null, { timeout: T }).then((h) => h.jsonValue()).catch(() => null);
     record("(a) the Checklist ticks Hand off once version 1 is handed off", handoffStage === "done" || handoffStage === "ready",
       String(handoffStage));
+    // Lane B-V2: once a version was handed off, the Overview says what a
+    // reader of the next version will miss, under the Checklist.
+    const missLine = await page.evaluate(() => {
+      const d = document.getElementById("ov-miss");
+      return d ? { line: ((document.getElementById("ov-miss-line") || {}).textContent || "").trim(),
+        afterChecklist: document.getElementById("ov-next").nextElementSibling === d } : null;
+    });
+    record("(a) lane B-V2: after the hand-off the Overview says what a reader of the next version will miss, under the Checklist",
+      !!missLine && missLine.afterChecklist && /^A reader of the next version will miss \d+ things?$/.test(missLine.line),
+      JSON.stringify(missLine));
     record("(a) the project inside the zip carries its version entry", (inZip.handoffs || []).length === 1 &&
       inZip.handoffs[0].handed_off_at === entry1.handed_off_at);
     const line1 = "Version 1, handed off " + entry1.handed_off_at.slice(0, 10) + " by " + entry1.by;

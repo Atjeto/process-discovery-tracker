@@ -128,3 +128,40 @@ test("the hand-off dialog says what the zip holds: the Technical details only wh
   assert.equal(detailLine("Call v1.zip", 1, false),
     "Call v1.zip is made next to the project folder: the whole project, with the PDD and the process map of version 1.");
 });
+
+/* Lane B-V2: what a reader of this version will miss, in the dialog. */
+test("with nothing missing the hand-off dialog is exactly the dialog it was", () => {
+  const { dialogOptions } = require("./views/handoff-ui.js");
+  const want = {
+    title: "Hand off version 1", message: "What changed in this version?",
+    detail: "Order entry v1.zip is made next to the project folder: the whole project, with the PDD, the Technical details and the process map of version 1.",
+    placeholder: "For example: the credit check added", defaultValue: "First hand-off", okLabel: "Hand off", required: true,
+  };
+  assert.deepEqual(dialogOptions({ version: 1, zipName: "Order entry v1.zip", recording: true, missing: [] }), want);
+  assert.deepEqual(dialogOptions({ version: 1, zipName: "Order entry v1.zip", recording: true }), want);
+  const v2 = dialogOptions({ version: 2, zipName: "Call v2.zip", recording: false, missing: [] });
+  assert.equal(v2.defaultValue, "");
+  assert.equal(v2.okLabel, "Hand off");
+  assert.ok(!("list" in v2), "no list option");
+});
+
+test("with entries the dialog lists them under its line, the button reads Hand off anyway, and a pick leads to its entry", () => {
+  const { dialogOptions } = require("./views/handoff-ui.js");
+  const entries = (n) => Array.from({ length: n }, (_, i) => ({ key: "k" + i, text: "Entry " + i, lead: { kind: "map" } }));
+  const picked = [];
+  const six = dialogOptions({ version: 3, zipName: "P v3.zip", recording: true, missing: entries(6), onPick: (e) => picked.push(e.key) });
+  assert.equal(six.okLabel, "Hand off anyway");
+  assert.equal(six.list.lead, "A reader of version 3 will miss:");
+  assert.deepEqual(six.list.items, ["Entry 0", "Entry 1", "Entry 2", "Entry 3", "Entry 4", "Entry 5"]);
+  assert.equal(six.list.more, "");
+  six.list.onPick(4);
+  assert.deepEqual(picked, ["k4"]);
+  // More than six: five lines, then "and N more" (six lines in all).
+  const eight = dialogOptions({ version: 3, zipName: "P v3.zip", recording: true, missing: entries(8) });
+  assert.deepEqual(eight.list.items, ["Entry 0", "Entry 1", "Entry 2", "Entry 3", "Entry 4"]);
+  assert.equal(eight.list.more, "and 3 more");
+  // The rest of the dialog is as it was.
+  assert.equal(six.title, "Hand off version 3");
+  assert.equal(six.message, "What changed in this version?");
+  assert.equal(six.required, true);
+});
