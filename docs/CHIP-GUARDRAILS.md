@@ -181,7 +181,7 @@ others):
 - Open: `#btn-recent-menu` opens `#recent-menu-popup`: `#btn-open-session`
   (Open project...), `#btn-open-new-window` (Open in a new window..., lane
   MW: the folder dialog, then the project in a new window), `#btn-open-handoff`
-  (Open a hand-off (.zip)..., opened
+  (Open a zip...: a hand-off zip opened
   read only; also `#btn-open-handoff-hero` on the empty state: stub
   `dialog.showOpenDialog` to answer the zip's path) and the recent projects
   `#recent-menu-content .recent-menu-item[data-folder]`, each in a

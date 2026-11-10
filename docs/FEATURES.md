@@ -142,12 +142,20 @@ The viewer says *transaction* for one pass through the process and
 
 **Starting**
 
-- **New and Open.** The New menu starts a project **from a video** (the
-  video is copied into a new folder and the timeline follows it) or an
-  **empty** one; the Open menu opens a project folder (the one the SME's
-  capture app saved, or one made with New; the folder Windows' Extract All
-  makes of the SME's zip opens the recording inside it) and the recent
-  projects, named by their document title once it is written.
+- **New and Open.** The New menu starts a project **from a video** (one
+  pick takes the videos and their Teams transcripts: the videos are copied
+  into a new folder one after the other in the order of their names, each
+  transcript is attached to the video whose name it shares, and the
+  timeline follows them) or an **empty** one; the Open menu opens a project
+  folder (the one the SME's capture app saved, or one made with New; the
+  folder Windows' Extract All makes of the SME's zip opens the recording
+  inside it), **a zip** (*Open a zip...*: the SME's zip or a *Whole
+  project* zip is unzipped where you say and opens for editing, a hand-off
+  opens read only) and the recent projects, named by their document title
+  once it is written.
+- **Drop to start.** The page shown while no project is open takes the
+  same files dropped on it: a project folder, a zip, or videos with their
+  transcripts.
 - **The analysis runs by itself** when a folder opens without a current one
   and after the changes that need it, with one status line and Cancel. A
   run changes the project only when it finishes, so Cancel leaves the steps
@@ -343,7 +351,10 @@ The viewer says *transaction* for one pass through the process and
   each link back on the step it came from. The step panel, the Timeline's
   steps lane and the Map follow the level shown.
 - **Steps by hand**: *+ Add step* without a time (moved with Alt+Up and
-  Alt+Down), or *+ Step* at the video's playhead.
+  Alt+Down), or *+ Step* at the video's playhead. *Paste notes...* makes
+  many at once: a line of the notes is a step (the text after its first
+  colon its description), a line that starts with a document field's name
+  goes to that field, as one undoable edit.
 - **Step names**: a name given to a drafted step names the same drafted
   step (the same screen and button) in the project's other transactions at
   once. *Apps outside the process...* drops an application used during the
@@ -446,8 +457,8 @@ The viewer says *transaction* for one pass through the process and
   something out, the dialog lists it first ("A reader of version 2 will
   miss:"), each line a link that cancels the hand-off and goes where it is
   fixed, and its button reads *Hand off anyway*: it never blocks.
-- **A hand-off opened read only**: *Open a hand-off (.zip)...* (the Open
-  menu, and a button while no project is open) takes a hand-off zip; the app
+- **A hand-off opened read only**: *Open a zip...* (the Open menu, and a
+  button while no project is open) takes a hand-off zip; the app
   keeps its own copy and opens it read only: every level, the
   video, the transcript, the maps and the PDD it came with can be looked at
   and played, and nothing can change. Its project line reads "Version 2,

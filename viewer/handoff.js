@@ -137,7 +137,7 @@ const START_HERE_ROWS = [
 const START_HERE_FOLDER = "The whole project: the video, the screenshots, the attachments and the work behind the document.";
 const START_HERE_VIEWER = [
   "To look through the project (play each step, see its screenshots and what was said), open the",
-  "Process Discovery Tracker viewer, choose Open, then \"Open a hand-off (.zip)...\", and pick this",
+  "Process Discovery Tracker viewer, choose Open, then \"Open a zip...\", and pick this",
   "zip. It opens read only.",
 ];
 

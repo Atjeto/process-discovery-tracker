@@ -95,10 +95,26 @@ state and Export show once a project is open (`.app.has-session`). Opening
 one menu closes the others.
 
 - **New** (`#btn-new-menu`): *New project from a video...* and *New empty
-  project...* (contract C16).
+  project...* (contract C16). Lane B4b: the video's pick takes several
+  videos and transcripts (`viewer:chooseNewProject`, `new-project.js`
+  `sortPicked`, `matchTranscripts`); the renderer measures the videos
+  (`ipc.js createProject`, `viewer:newProjectVideos`) so they are chained
+  back to back (`chainOf`), and main imports each transcript bound to its
+  video (`video_id`) once the folder is made; what it could not attach
+  comes back as `notes`.
 - **Open** (`#btn-recent-menu`): *Open project...* (a recorder's folder or
-  a project made with New), *Open a hand-off (.zip)...* (a hand-off, opened
-  read only: section 11), then the recent projects.
+  a project made with New), *Open a zip...* (`#btn-open-handoff`, lane B4a:
+  `viewer:openZip`, `handoff-open.js zipKind`; a hand-off opens read only,
+  section 11; any other zip of one project is unzipped by
+  `extractProjectZip` into the folder a save dialog names, with the status
+  line `#unzip-status` and Cancel, `viewer:unzip` and `viewer:cancelUnzip`,
+  then opens for editing), then the recent projects.
+- **The start page's drop** (lane B4c, `renderer.js wireStartDrop`):
+  `#session-empty` takes a folder, one zip, or videos with transcripts
+  (`project-folder.js dropPaths`, `dropKind`; `webUtils.getPathForFile`),
+  shows `.drop-ready` and the line `#session-drop-line` while files are
+  dragged over it, and refuses files dropped anywhere else; `main.js`
+  keeps every window on `index.html` (`will-navigate`).
 - **The status line** (`#session-pills`): "Updating steps and map..." with
   Cancel while the pipeline runs (an export's own run says what it writes:
   "Writing the PDD...", "Writing the Technical details...", "Handing off
@@ -386,7 +402,8 @@ their module as `<name>.test.js`.
 | `library.js` | The activity library (contract C21): the app's file (`library/activities.json`, `resources/library/activities.json` in the package, `PDT_LIBRARY` for tests), reading one (a missing or invalid file is an empty library), the project's `library.json` before the app's (`projectLibrary`), the pipeline's checks mirrored (`problems`), and the pure look-ups the step pane needs (`pickerFor`, `filterActivities`, `applyActivity`, `codeOf`) and Help's line (`summaryLine`). Used by the main process and the renderer. |
 | `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD of the version it lists last, with its Technical details when it has them; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD beside it), `handoffFile` (the PDD or the workbook it came with) and `readProjectZip` (C21: a zip's project manifest and annotations, read where it is, for the Library builder). |
 | `zip-folder.js` | The zip writer (PKZIP 2.0 without ZIP64, UTF-8 names, written as `.partial` and renamed at the end; an optional `leaveOut(relativePath)` leaves entries out, which only the hand-off uses): a copy of `capture/zip-folder.js`, kept identical by `project-zip.test.js`, since a packaged viewer cannot reach `capture/`. |
-| `project-folder.js` | Which folder a chosen folder opens (lane FX2): a project folder, or the one project folder inside it (the folder Windows' Extract All makes of the SME's zip); any other folder is refused with a sentence that says what to open. |
+| `project-folder.js` | Which folder a chosen folder opens (lane FX2): a project folder, or the one project folder inside it (the folder Windows' Extract All makes of the SME's zip); any other folder is refused with a sentence that says what to open. Lane B4c: what a drop on the start page opens (`dropPaths`, `dropKind`). |
+| `notes-paste.js` | Paste notes... (lane E1): `parseNotes` reads pasted notes into steps and document field texts (the field names from `overview-view.js DOC_FIELDS`), `summary` says what a paste makes, `mergeDocument` adds the texts after what the fields hold; `steps-view.js pasteNotes` makes it one undoable edit through the add path of + Add step (`_addManualSteps`). |
 | `staged-outputs.js` | What a stopped analysis leaves (lane FX1): the `*.pdt-staged` files `normalize.py` writes before it moves its outputs in, removed once a cancelled run's process has ended. |
 
 **Views** (`views/`)
@@ -845,17 +862,19 @@ PDD.docx*, *Order to cash map.bpmn*, *Order to cash As-Is map.bpmn*.
 ## 11. A hand-off opened read only (contract C20)
 
 The owner: a developer builds from a hand-off and adds nothing to it; the
-analyst's project is where changes are made. *Open a hand-off (.zip)...*
+analyst's project is where changes are made. *Open a zip...*
 (`#btn-open-handoff` in the Open menu, `#btn-open-handoff-hero` on the page
 shown while no project is open) asks for the zip with a file dialog
-(`viewer:openHandoffDialog`; Windows' folder dialog, the one *Open
-project...* shows, lists folders only): `viewer:loadSession` extracts it
+(`viewer:openZip`; Windows' folder dialog, the one *Open project...*
+shows, lists folders only, and an Electron dialog cannot pick a file and a
+folder at once): a hand-off (`handoff-open.js zipKind`) goes to
+`viewer:loadSession`, which extracts it
 under `<userData>/handoffs/<project> v<N>/` (`handoff-open.js`), or finds
 where the same zip was extracted before, and loads its project folder with
 `readOnly: true`. A newer version
 is a zip, and a folder, of its own: it just opens, and nothing compares it
-with another. A zip that is no hand-off (the SME's recording) is refused
-with a sentence saying to unzip it first. A hand-off unzipped by hand
+with another. A zip that is no hand-off (the SME's recording, a Whole
+project zip) is unzipped for editing instead (lane B4a, section 1). A hand-off unzipped by hand
 (Extract All, then Open project on its folder) opens read only too: its PDD
 and Technical details of the version the project lists last lie beside the
 project folder (`handoff-open.js isReadOnlyProject`, the rule main refuses

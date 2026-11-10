@@ -236,9 +236,12 @@ function createWindow(sessionFolder) {
   /* Block any attempt to open external URLs from rendered content
      (e.g. malformed BPMN with an embedded link). */
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  /* Block in-page navigation away from the loaded index.html. */
+  /* Block in-page navigation away from the loaded index.html. Lane B4c: a
+     file dropped on the window would navigate it to that file (a file://
+     URL too), so only the page itself may load. */
+  const ownPage = require("node:url").pathToFileURL(path.join(__dirname, "index.html")).href.toLowerCase();
   win.webContents.on("will-navigate", (e, url) => {
-    if (!url.startsWith("file://")) e.preventDefault();
+    if (String(url).split(/[?#]/)[0].toLowerCase() !== ownPage) e.preventDefault();
   });
   win.loadFile(path.join(__dirname, "index.html"));
   // A page loaded (again) shows no project until it opens one: its hold goes
@@ -247,6 +250,9 @@ function createWindow(sessionFolder) {
   win.on("closed", () => {
     _windows.close(id);
     _newProjectPlans.delete(id);
+    // A zip it was unzipping stops, and leaves nothing behind (lane B4a).
+    const unzip = _unzips.get(id);
+    if (unzip) unzip.abort();
     // The killed run moves nothing into the project (normalize.py does that
     // as its very last act); its handler below clears what it staged.
     const run = _analyses.get(id);
@@ -301,16 +307,73 @@ ipcMain.handle("viewer:openDemo", () => {
   }
 });
 
-/* Lane HV: Open a hand-off (.zip). Windows' folder dialog, the one Open
-   project shows, lists folders only, so a hand-off zip is picked here. */
-ipcMain.handle("viewer:openHandoffDialog", async (_e) => {
-  const r = await dialog.showOpenDialog(_winOf(_e), {
-    title: "Open a hand-off",
-    properties: ["openFile"],
-    filters: [{ name: "Hand-off zip", extensions: ["zip"] }],
+/* Lane B4a: Open a zip... (lane HV's Open a hand-off, widened). Windows'
+   folder dialog, the one Open project shows, lists folders only (an Electron
+   open dialog cannot pick a file and a folder at once on Windows), so a zip
+   is picked here; a zip dropped on the page shown while no project is open
+   comes with its path (`zipPath`). A hand-off opens read only, as before:
+   the result names the zip, which viewer:loadSession opens. Any other zip
+   that holds one project (the capture app's, a Whole project zip) is
+   unzipped where the analyst says (one save dialog, beside the zip by
+   default, named after the zip), streamed, with the window
+   told how far it is on viewer:unzip ({ phase: "start", zip, folder }, then
+   { phase: "progress", done, total } in bytes, then { phase: "end" }) and
+   Cancel (viewer:cancelUnzip); nothing is left of a failed or cancelled one
+   (handoff-open.js extractProjectZip). Result null (a dialog cancelled),
+   { ok: true, kind: "handoff" | "project", path } (what to open), or
+   { ok: false, error, cancelled }. */
+const _unzips = new Map();   // the window's webContents id -> its AbortController
+ipcMain.handle("viewer:openZip", async (_e, { zipPath } = {}) => {
+  const sender = _e.sender;
+  if (_unzips.has(sender.id)) return { ok: false, error: "a zip is being unzipped in this window already: wait for it, or cancel it." };
+  let zip = typeof zipPath === "string" && zipPath ? path.resolve(zipPath) : null;
+  if (!zip) {
+    const r = await dialog.showOpenDialog(_winOf(_e), {
+      title: "Open a zip",
+      properties: ["openFile"],
+      filters: [{ name: "Zip", extensions: ["zip"] }],
+    });
+    if (r.canceled || !r.filePaths.length) return null;
+    zip = path.resolve(r.filePaths[0]);
+  }
+  let kind;
+  try { kind = await HandoffOpen.zipKind(zip); }
+  catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
+  if (kind.kind === "handoff") return { ok: true, kind: "handoff", path: zip };
+  const s = await dialog.showSaveDialog(_winOf(_e), {
+    title: "Unzip the project: its folder is made here",
+    defaultPath: path.join(path.dirname(zip), kind.name),
+    buttonLabel: "Unzip",
   });
-  if (r.canceled || !r.filePaths.length) return null;
-  return r.filePaths[0];
+  if (s.canceled || !s.filePath) return null;
+  const folder = path.resolve(s.filePath);
+  const ac = new AbortController();
+  _unzips.set(sender.id, ac);
+  const tell = (msg) => { if (!sender.isDestroyed()) sender.send("viewer:unzip", msg); };
+  let last = 0;
+  tell({ phase: "start", zip, folder });
+  try {
+    const r = await HandoffOpen.extractProjectZip(zip, kind, folder, {
+      signal: ac.signal,
+      onProgress: (done, total) => {
+        const now = Date.now();
+        if (now - last < 250 && done < total) return;
+        last = now;
+        tell({ phase: "progress", done, total });
+      },
+    });
+    return { ok: true, kind: "project", path: r.folder };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e), cancelled: !!(e && e.cancelled) };
+  } finally {
+    _unzips.delete(sender.id);
+    tell({ phase: "end" });
+  }
+});
+ipcMain.handle("viewer:cancelUnzip", (_e) => {
+  const ac = _unzips.get(_e.sender.id);
+  if (ac) ac.abort();
+  return { ok: !!ac };
 });
 
 /* A project folder, or (lane HV) a hand-off zip: extracted under
@@ -920,8 +983,6 @@ ipcMain.handle("viewer:saveTranscriptSync", (_e, { sessionFolder, offsetMs, file
 
 /* --- Projects without a recording, and what the analyst adds (C16) --- */
 
-const VIDEO_FILTER = [{ name: "Video", extensions: ["mp4", "mkv", "webm", "mov", "avi"] }];
-
 /* Where removed screenshots and attachments of one session wait for an Undo
    (outside the folder; emptied when the viewer starts). */
 function _holdDir(root) {
@@ -938,42 +999,97 @@ const _newProjectPlans = new Map();
    goes (default: a folder named after the video next to it, or in the
    user's Documents). Result null (cancelled), { ok: true, name, folder } or
    { ok: false, error }. Nothing is made until createProject. */
-ipcMain.handle("viewer:chooseNewProject", async (_e, { kind } = {}) => {
+/* Lane B4b: the one pick of a video project takes the videos and their
+   transcripts together; `files` (the page's drop, lane B4c) skips the pick.
+   At least one video, else one sentence and nothing is made. The videos go
+   back to back in the order of their names, the project named after the
+   first; each transcript goes with its video (new-project.js
+   matchTranscripts) and is imported once the folder is made. */
+const VIDEO_AND_TRANSCRIPT_FILTERS = [
+  { name: "Videos and transcripts", extensions: NewProject.VIDEO_EXTENSIONS.concat(NewProject.TRANSCRIPT_EXTENSIONS) },
+  { name: "Video", extensions: NewProject.VIDEO_EXTENSIONS },
+  { name: "Teams transcript", extensions: NewProject.TRANSCRIPT_EXTENSIONS },
+];
+const NO_VIDEO_PICKED = "choose at least one video: a transcript goes with the video it was said in.";
+ipcMain.handle("viewer:chooseNewProject", async (_e, { kind, files } = {}) => {
   _newProjectPlans.delete(_e.sender.id);
   const video = kind === "video";
-  let videoPath = null;
+  let picked = null;
   if (video) {
-    const r = await dialog.showOpenDialog(_winOf(_e), { title: "New project from a video: choose the video", properties: ["openFile"], filters: VIDEO_FILTER });
-    if (r.canceled || !r.filePaths.length) return null;
-    videoPath = r.filePaths[0];
+    let paths = Array.isArray(files) ? files.filter((f) => typeof f === "string" && f) : null;
+    if (!paths) {
+      const r = await dialog.showOpenDialog(_winOf(_e), {
+        title: "New project from a video: choose the videos and their transcripts",
+        properties: ["openFile", "multiSelections"], filters: VIDEO_AND_TRANSCRIPT_FILTERS,
+      });
+      if (r.canceled || !r.filePaths.length) return null;
+      paths = r.filePaths;
+    }
+    picked = NewProject.sortPicked(paths);
+    if (!picked.videos.length) return { ok: false, error: NO_VIDEO_PICKED };
   }
-  const base = video ? path.dirname(videoPath) : app.getPath("documents");
+  const first = video ? picked.videos[0] : null;
+  const base = video ? path.dirname(first) : app.getPath("documents");
   const s = await dialog.showSaveDialog(_winOf(_e), {
     title: "Name the project: its folder is made here",
-    defaultPath: path.join(base, video ? path.parse(videoPath).name : "New process"),
+    defaultPath: path.join(base, video ? path.parse(first).name : "New process"),
     buttonLabel: "Create",
   });
   if (s.canceled || !s.filePath) return null;
   const folder = path.resolve(s.filePath);
   const why = NewProject.folderProblem(folder);
   if (why) return { ok: false, error: why + " (" + folder + ")." };
-  const plan = { kind: video ? "video" : "blank", videoPath, folder, name: path.basename(folder) };
+  const match = video ? NewProject.matchTranscripts(picked.videos, picked.transcripts) : { pairs: [], unmatched: [] };
+  const plan = { kind: video ? "video" : "blank", videoPath: first, videoPaths: video ? picked.videos : [],
+    transcripts: match.pairs, unmatched: match.unmatched, folder, name: path.basename(folder) };
   _newProjectPlans.set(_e.sender.id, plan);
   return { ok: true, name: plan.name, folder };
 });
 
-/* Make the project the window chose last (the renderer passes no path).
-   Result { ok: true, folder } or { ok: false, error }. */
-ipcMain.handle("viewer:createProject", async (_e) => {
+/* The videos of the project the window chose last, for the renderer to
+   measure before it is made (a chain needs their lengths; the main process
+   cannot read a video's length). */
+ipcMain.handle("viewer:newProjectVideos", (_e) => {
+  const plan = _newProjectPlans.get(_e.sender.id) || null;
+  return plan && plan.kind === "video" ? plan.videoPaths.slice() : [];
+});
+
+/* Make the project the window chose last (the renderer passes no path, only
+   the lengths of its videos, in their order). Then each transcript picked
+   with a video is imported (transcript_import.py, as Attach transcript does,
+   without its dialog) and bound to its video (video_id: its sentences count
+   from that video's 0, C23); one that cannot be read stops nothing. Result
+   { ok: true, folder, notes } (notes: one sentence each for a transcript not
+   attached, else empty) or { ok: false, error }. */
+ipcMain.handle("viewer:createProject", async (_e, { lengths } = {}) => {
   const plan = _newProjectPlans.get(_e.sender.id) || null;
   _newProjectPlans.delete(_e.sender.id);
   if (!plan) return { ok: false, error: "no project was chosen." };
+  let r;
   try {
-    const r = await NewProject.createProject(Object.assign({ id: require("node:crypto").randomUUID(), now: new Date().toISOString() }, plan));
-    return { ok: true, folder: r.folder };
+    const more = plan.kind === "video" ? { videos: NewProject.chainOf(plan.videoPaths, lengths) } : {};
+    r = await NewProject.createProject(Object.assign({ id: require("node:crypto").randomUUID(), now: new Date().toISOString() }, plan, more));
   } catch (e) {
     return { ok: false, error: (e && e.message) || String(e) };
   }
+  const notes = [];
+  for (const pair of plan.transcripts || []) {
+    const id = "v" + (plan.videoPaths.indexOf(pair.video) + 1);
+    const name = path.basename(pair.transcript);
+    try {
+      const out = TranscriptStore.nextTranscriptFile(r.folder);
+      const res = transcriptImportResult(await runTranscriptImport({ sessionFolder: r.folder, file: pair.transcript, out }));
+      if (!res.ok) { notes.push(name + " was not attached: " + res.error); continue; }
+      TranscriptStore.patchTranscript(r.folder, { video_id: id }, undefined, out);
+    } catch (e) {
+      notes.push(name + " was not attached: " + ((e && e.message) || String(e)));
+    }
+  }
+  if ((plan.unmatched || []).length) {
+    notes.push((plan.unmatched.length === 1 ? "No video was left for this transcript, so it was not attached: "
+      : "No video was left for these transcripts, so they were not attached: ") + plan.unmatched.map((p) => path.basename(p)).join(", ") + ".");
+  }
+  return { ok: true, folder: r.folder, notes };
 });
 
 /* Add a screenshot to the session: source "file" (a PNG or JPEG chosen

@@ -350,7 +350,7 @@ function _nextAct(state) {
       return state.video
         ? { button: "Mark the steps on the Timeline", act: "steps-timeline",
           say: "Play the video and press S, or click + Step, where each step starts." }
-        : { button: "Add the steps in Steps", act: "steps-list", say: "Click + Add step for each step of the process." };
+        : { button: "Add the steps in Steps", act: "steps-list", say: "Click + Add step for each step of the process, or Paste notes... to add them all at once." };
     case "written": {
       const n = state.unwritten.length;
       return { button: "Write the steps in Steps",

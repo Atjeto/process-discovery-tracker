@@ -47,7 +47,7 @@ test("a folder that is no project is refused with a sentence that says what to o
   const empty = tmp();
   fs.mkdirSync(path.join(empty, "not-a-project"));
   assert.throws(() => PF.resolveProjectFolder(empty), (e) => e.message.startsWith(PF.NOT_A_PROJECT) && e.message.includes(empty));
-  assert.match(PF.NOT_A_PROJECT, /unzip the SME's zip first: right-click it, Extract All/);
+  assert.match(PF.NOT_A_PROJECT, /the SME's zip itself opens with Open a zip\.\.\./);
   const two = tmp();
   recording(two, "a");
   recording(two, "b");
@@ -60,4 +60,33 @@ test("an error that came back over IPC reads in its own words", () => {
   assert.equal(PF.ipcErrorText(e), "This folder is not a project: it has no manifest.json.");
   assert.equal(PF.ipcErrorText(new Error("Disk full")), "Disk full");
   assert.equal(PF.ipcErrorText(null), "no reason was given");
+});
+
+// Lane B4c: what a drop on the page shown while no project is open opens.
+test("dropPaths reads each dropped file's path through Electron's getPathForFile, and leaves out a file with none", () => {
+  const files = [{ n: "a" }, { n: "b" }, { n: "c" }];
+  const dt = { files, types: ["Files"] };
+  const paths = PF.dropPaths(dt, (f) => (f.n === "b" ? "" : "D:/in/" + f.n + ".mp4"));
+  assert.deepEqual(paths, ["D:/in/a.mp4", "D:/in/c.mp4"]);
+  assert.deepEqual(PF.dropPaths(dt, () => { throw new Error("not a file"); }), []);
+  assert.deepEqual(PF.dropPaths(null, () => "x"), []);
+  assert.equal(PF.dragHasFiles(dt), true);
+  assert.equal(PF.dragHasFiles({ types: ["text/plain"] }), false);
+  assert.equal(PF.dragHasFiles(null), false);
+});
+
+test("dropKind: one folder, one zip, videos with or without transcripts; anything else says what the page takes", () => {
+  const dirs = new Set(["D:/p/Order entry", "D:/p/other"]);
+  const isDir = (p) => dirs.has(p);
+  assert.deepEqual(PF.dropKind(["D:/p/Order entry"], isDir), { kind: "folder", path: "D:/p/Order entry" });
+  assert.deepEqual(PF.dropKind(["D:/p/Order entry.ZIP"], isDir), { kind: "zip", path: "D:/p/Order entry.ZIP" });
+  assert.deepEqual(PF.dropKind(["D:/p/call.vtt", "D:/p/call.mp4"], isDir), { kind: "videos", paths: ["D:/p/call.vtt", "D:/p/call.mp4"] });
+  assert.deepEqual(PF.dropKind(["D:/p/a.webm", "D:/p/b.mkv"], isDir).kind, "videos");
+  const none = (ps) => PF.dropKind(ps, isDir);
+  assert.deepEqual(none([]), { kind: "none", error: PF.DROP_TAKES });
+  assert.deepEqual(none(["D:/p/Order entry", "D:/p/other"]), { kind: "none", error: PF.DROP_TAKES });
+  assert.deepEqual(none(["D:/p/a.zip", "D:/p/b.zip"]), { kind: "none", error: PF.DROP_TAKES });
+  assert.deepEqual(none(["D:/p/a.mp4", "D:/p/notes.txt"]), { kind: "none", error: PF.DROP_TAKES });
+  assert.deepEqual(none(["D:/p/call.vtt"]).kind, "none");
+  assert.match(none(["D:/p/call.vtt"]).error, /drop the video with it/);
 });

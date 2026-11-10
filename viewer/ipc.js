@@ -28,9 +28,34 @@ function openDemo() {
   return ipcRenderer.invoke("viewer:openDemo");
 }
 
-/** Lane HV. @returns {Promise<any>} the chosen hand-off zip's path, or null */
-function openHandoffDialog() {
-  return ipcRenderer.invoke("viewer:openHandoffDialog");
+/** Lane B4a: Open a zip... The zip `zipPath` (a drop), or the one picked in
+ *  its dialog: a hand-off to open read only, or a project zip unzipped where
+ *  the analyst says.
+ *  @param {string} [zipPath]
+ *  @returns {Promise<null|{ok: boolean, kind?: string, path?: string, error?: string, cancelled?: boolean}>} null when a dialog was cancelled */
+function openZip(zipPath) {
+  return ipcRenderer.invoke("viewer:openZip", { zipPath: zipPath || null });
+}
+
+/** Lane B4a: Cancel on the unzipping's status line. */
+function cancelUnzip() {
+  return ipcRenderer.invoke("viewer:cancelUnzip");
+}
+
+/* The renderer's flow behind Open a zip... (renderer.js sets it: the status
+   line, the sentences, and what then opens). */
+let _zipFlow = null;
+function setZipFlow(fn) { _zipFlow = typeof fn === "function" ? fn : null; }
+
+/** Open, Open a zip... (the menu item and the start page's button keep lane
+ *  HV's handles, flow-view.js openHandoffFlow, which loads what this gives):
+ *  the path to open (a hand-off zip, or the folder a project zip was
+ *  unzipped to), or null.
+ *  @returns {Promise<string|null>} */
+async function openHandoffDialog() {
+  if (_zipFlow) return _zipFlow();
+  const r = await openZip();
+  return r && r.ok ? r.path : null;
 }
 
 /** Lane MW: open the project folder `folder` in a new window.
@@ -201,10 +226,34 @@ function chooseNewProject(payload) {
   return ipcRenderer.invoke("viewer:chooseNewProject", payload);
 }
 
-/** Make the project chosen last.
- *  @returns {Promise<{ok: boolean, folder?: string, error?: string}>} */
-function createProject() {
-  return ipcRenderer.invoke("viewer:createProject");
+/* Lane B4b: what a new project from videos says once it is made, beside
+   flow-view.js's own message (renderer.js sets it: a transcript not
+   attached). */
+let _onNewProjectNotes = null;
+function onNewProjectNotes(fn) { _onNewProjectNotes = typeof fn === "function" ? fn : null; }
+
+/** Make the project chosen last. Lane B4b: its videos are measured here
+ *  first (a chain needs their lengths, which only the page can read:
+ *  flow-view-video.js probeLength), and the result's notes (a transcript
+ *  not attached) go to onNewProjectNotes.
+ *  @returns {Promise<{ok: boolean, folder?: string, notes?: string[], error?: string}>} */
+async function createProject() {
+  const videos = await ipcRenderer.invoke("viewer:newProjectVideos");
+  let lengths = [];
+  if (Array.isArray(videos) && videos.length) {
+    const { probeLength } = require("./views/flow-view-video.js");
+    lengths = await Promise.all(videos.map((v) => probeLength(v).catch(() => null)));
+  }
+  const r = await ipcRenderer.invoke("viewer:createProject", { lengths });
+  if (r && r.ok && Array.isArray(r.notes) && r.notes.length && _onNewProjectNotes) _onNewProjectNotes(r);
+  return r;
+}
+
+/** Lane B4a: an unzipping's progress, for the status line: { phase: "start",
+ *  zip, folder }, { phase: "progress", done, total }, { phase: "end" }.
+ *  @param {Function} fn */
+function onUnzip(fn) {
+  ipcRenderer.on("viewer:unzip", (_e, evt) => fn(evt));
 }
 
 /** Add a screenshot (source "file" asks for it; "video_frame" and "paste" pass `data`, base64).
@@ -249,6 +298,7 @@ function onProjectWrite(fn) {
 
 module.exports = {
   loadSession, openSessionFolder, openHandoffDialog, openInNewWindow, openDemo,
+  openZip, cancelUnzip, setZipFlow, onUnzip, onNewProjectNotes,
   runNormalizeExtended, cancelNormalize,
   saveAnnotations, restoreAnnotationsBackup,
   readAppLibrary, libraryAddProjects, libraryAddZips, saveLibrary,

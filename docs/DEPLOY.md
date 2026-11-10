@@ -141,7 +141,7 @@ folder, never inside it. The viewer needs no capture install.
 A developer who builds from the analyst's work installs the viewer the same
 way. The analyst's *Hand off...* makes `<project> v<N>.zip` (the project,
 that version's PDD and its Technical details workbook); the developer opens
-it with Open, *Open a hand-off (.zip)...*. The viewer extracts it under
+it with Open, *Open a zip...*. The viewer extracts it under
 `%APPDATA%\process-discovery-tracker-viewer\handoffs\` and opens it read
 only: everything can be looked at and played, nothing can change, and no
 analysis runs. A newer version comes as a zip of its own.

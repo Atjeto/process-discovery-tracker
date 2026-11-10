@@ -1028,7 +1028,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   const recorded = ((State.getSession() || {}).events || []).length > 0;
   const body = _groupBody(visible, run.hiddenCount,
     run.hiddenCount ? "Every step of this transaction is hidden." : recorded ? "No steps in this transaction."
-      : "No steps yet: + Add step adds one after the selected step.", status || run.status, rm);
+      : "No steps yet: + Add step adds one, and Paste notes... adds one for each line of your notes.", status || run.status, rm);
   const acts = body.querySelector(".run-actions");
   const canConfirm = !ro && isPattern && !reads && owed && run.visible.length > 0;
   const buttons = [];
@@ -2652,22 +2652,90 @@ async function addManualStep() {
   const name = await promptModal({ title: "Add step", message: "Name this step", placeholder: "For example: Search customer in CRM", okLabel: "Add step" });
   if (!name || !name.trim() || !State.getSession()) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
-  const model = _model();
-  const path = _levelPath(model);
-  if (path.length) { _addSubStep(anno, model, path, name.trim()); await persistAnnotations(anno, "add step"); toast("Step added", "success"); return; }
-  const open = model.runs.find((r) => r.caseId === _ui.open);
-  const caseId = open ? open.caseId : _ui.open === OUTSIDE ? null : AC.implicitRunId(State.getSession().stats);
-  const members = caseId ? ((model.runs.find((r) => r.caseId === caseId) || {}).members || []) : model.outside;
-  const step = makeStep(name.trim(), null, null, [], caseId);
-  const after = members.find((s) => s.step_id === State.getSelectedStepId()) || null;
-  AC.placeUntimed(members, step, after);
-  RunsModel.recordFix(anno, model.runs, caseId, "add");
-  anno.steps.push(step);
-  _placeNewAfter(step, after);
-  if (caseId && _ui.open !== caseId) _openGroup(caseId);
-  State.setSelectedStepId(step.step_id);
+  _addManualSteps(anno, [{ name: name.trim(), description: "" }]);
   await persistAnnotations(anno, 'add step');
   toast("Step added", "success");
+}
+
+/* The steps + Add step makes, into `anno` (not saved): `entries` ([{ name,
+   description }]) one after another where + Add step puts one, each after
+   the one before as if it had been selected (lane E1: Paste notes... makes
+   many at once by this one rule). The last one made is selected; returns
+   the steps made, in order. */
+function _addManualSteps(anno, entries) {
+  const model = _model();
+  const path = _levelPath(model);
+  const made = [];
+  if (path.length) {
+    for (const e of entries) {
+      const s = _addSubStep(anno, model, path, e.name);
+      if (!s) break;
+      if (e.description) s.description = e.description;
+      made.push(s);
+    }
+    return made;
+  }
+  const open = model.runs.find((r) => r.caseId === _ui.open);
+  const caseId = open ? open.caseId : _ui.open === OUTSIDE ? null : AC.implicitRunId(State.getSession().stats);
+  const members = (caseId ? ((model.runs.find((r) => r.caseId === caseId) || {}).members || []) : model.outside).slice();
+  let after = members.find((s) => s.step_id === State.getSelectedStepId()) || null;
+  for (const e of entries) {
+    const step = makeStep(e.name, null, null, [], caseId);
+    if (e.description) step.description = e.description;
+    AC.placeUntimed(members, step, after);
+    RunsModel.recordFix(anno, model.runs, caseId, "add");
+    anno.steps.push(step);
+    members.push(step);
+    _placeNewAfter(step, after);
+    made.push(step);
+    after = step;
+  }
+  if (caseId && _ui.open !== caseId) _openGroup(caseId);
+  if (made.length) State.setSelectedStepId(made[made.length - 1].step_id);
+  return made;
+}
+
+/* Paste notes... (lane E1): one dialog takes the notes the analyst already
+   has (notes-paste.js reads them: a line a step, the text after its first
+   colon its description, a line that starts with a document field's name
+   that field's text), says under the box what it will make, and OK makes
+   it all as ONE undoable edit: the steps where + Add step puts one, in the
+   order pasted, and the field texts after what the fields hold. The first
+   new step is selected. */
+async function pasteNotes() {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return;
+  const NotesPaste = require("../notes-paste.js");
+  const { DOC_FIELDS } = require("./overview-view.js");
+  const read = (t) => NotesPaste.parseNotes(t, DOC_FIELDS);
+  const text = await promptModal({
+    title: "Paste notes",
+    message: "Paste or type your notes: each line becomes a step, the text after its first colon its description.",
+    detail: "A line that starts with a document field's name and a colon (Trigger:, Volume:) goes to that field. " +
+      "A line indented under another adds to it. List marks and numbers are dropped.",
+    multiline: true,
+    placeholder: "Open the order mail: from the shared inbox\nFind the customer in SAP\nTrigger: an order arrives by mail",
+    okLabel: "Add",
+    preview: (t) => { const p = read(t); return { text: NotesPaste.summary(p), ok: p.steps.length + p.fields.length > 0 }; },
+  });
+  if (text == null || State.getSession() !== sess) return;
+  const parsed = read(text);
+  if (!parsed.steps.length && !parsed.fields.length) return;
+  const anno = ensureAnnoShape(sess.annotations);
+  const made = parsed.steps.length ? _addManualSteps(anno, parsed.steps) : [];
+  if (parsed.fields.length) anno.document = NotesPaste.mergeDocument(anno.document, parsed.fields, DOC_FIELDS);
+  if (made.length) State.setSelectedStepId(made[0].step_id);
+  try {
+    await persistAnnotations(anno, "paste notes");
+  } catch (_) {
+    return;   // already shown to the analyst by session.js
+  }
+  // The Recents entry is named by the document title once it is written.
+  if (parsed.fields.some((f) => f.key === "title")) {
+    const base = String(sess.sessionFolder || "").split(/[\\/]/).filter(Boolean).pop() || "";
+    require("../recent.js").pushRecent(sess.sessionFolder, require("../session-summary.js").recentLabel(sess, base));
+  }
+  toast("Added " + NotesPaste.summary(parsed) + ". Ctrl+Z takes it all back.", "success");
 }
 
 /* + Add step inside a sub-process (C19): a step without a time in the open
@@ -3320,6 +3388,8 @@ function initStepsView(deps) {
   analyze = deps.analyze || (async () => false);
 
   if ($("#btn-add-manual-step")) $("#btn-add-manual-step").addEventListener("click", addManualStep);
+  // Lane E1: the analyst's notes, in one paste.
+  if ($("#btn-paste-notes")) $("#btn-paste-notes").addEventListener("click", pasteNotes);
   // 2.0.1: the toolbar's verbs on the selected step (_syncStepVerbs).
   const onSelected = (id, fn) => {
     const b = $("#" + id);
@@ -3515,7 +3585,7 @@ function showStepContextMenu(stepId, x, y) {
 }
 
 module.exports = {
-  initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
+  initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, pasteNotes,
   deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp, setStepTimes,
   // Lane E-1: the step panel edits a step with the editor's own handlers.

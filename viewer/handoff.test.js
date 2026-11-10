@@ -59,7 +59,7 @@ test("the files of a hand-off: the zip, and at its root the PDD, the Technical d
 
 const VIEWER_LINES = [
   "To look through the project (play each step, see its screenshots and what was said), open the",
-  'Process Discovery Tracker viewer, choose Open, then "Open a hand-off (.zip)...", and pick this',
+  'Process Discovery Tracker viewer, choose Open, then "Open a zip...", and pick this',
   "zip. It opens read only.",
 ];
 

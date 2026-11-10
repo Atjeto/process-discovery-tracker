@@ -548,7 +548,7 @@ test("a project from a video: the acts are Add the steps, Write the steps, Write
 test("an empty project (no video): the steps are added in Steps", () => {
   const html = overviewHtml(handSession({ video: false }));
   assert.deepEqual(buttonOf(html), ["steps-list", "Add the steps in Steps"]);
-  assert.equal(sayOf(html), "Click + Add step for each step of the process.");
+  assert.equal(sayOf(html), "Click + Add step for each step of the process, or Paste notes... to add them all at once.");
   // A video the recording itself holds counts as one.
   const withRec = handSession({ video: false });
   withRec.recordingAvailable = true;

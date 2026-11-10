@@ -6,6 +6,34 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Open a zip.** *Open a hand-off (.zip)...* is now *Open a zip...* (the
+  Open menu and the page shown while no project is open) and takes any zip
+  of one project: the zip the SME's capture app made, or a *Whole project*
+  zip, is unzipped into a folder you name (beside the zip by default, named
+  after the zip) and opens for editing, analyzed by
+  itself; a hand-off still opens read only. The top bar shows how far the
+  unzipping is, with Cancel, and a failed or cancelled one leaves no folder.
+  A folder that is there and not empty is refused. No more Extract All.
+- **Videos and transcripts in one pick.** *New project from a video...*
+  takes several files at once: the videos go one after the other in the
+  order of their names, and each Teams transcript is attached to the video
+  whose name it shares (else to the videos in order), placed with no sync.
+  A transcript that cannot be read, or has no video left, is named in one
+  line and the project opens anyway.
+- **Drop to start.** The page shown while no project is open takes a
+  project folder, a zip, or videos with their transcripts dropped on it,
+  each ending where its menu act ends. A file dropped anywhere else no
+  longer takes the window away from the app.
+- **Paste notes.** Steps has *Paste notes...* beside *+ Add step*: paste
+  the notes you wrote in Notepad or Teams and each line becomes a step (the
+  text after its first colon its description, an indented line added to
+  the one above, list marks and numbers dropped), and a line that starts
+  with a document field's name (*Trigger:*, *Volume:*) goes to that field,
+  after what it holds. The line under the box says what it will make; it
+  is one undoable edit.
+
 ### Changed
 
 - **A Checklist that fits the project.** A project made from a video or

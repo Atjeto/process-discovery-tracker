@@ -1489,6 +1489,144 @@ function wireDropdownMenu(btnId, popupId) {
 wireDropdownMenu("btn-new-menu", "new-menu-popup");
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
 
+/* ===== One start (lane B4) =====
+   Open a zip... (B4a): the Open menu's item and the start page's button
+   keep lane HV's handles (flow-view.js openHandoffFlow loads the path this
+   flow gives, through ipc.js openHandoffDialog). A hand-off zip opens read
+   only; a project zip (the capture app's, a Whole project zip) is unzipped
+   where the analyst says, with the one status line and its Cancel, then
+   opens for editing like any folder (its analysis runs by itself) and joins
+   the recent projects. */
+async function zipToOpen(zipPath) {
+  let r;
+  try { r = await Ipc.openZip(zipPath || null); }
+  catch (e) { r = { ok: false, error: require("./project-folder.js").ipcErrorText(e) }; }
+  if (!r) return null;
+  if (!r.ok) {
+    if (r.cancelled) toast("Cancelled: nothing was unzipped.", "info");
+    else toast("The zip did not open: " + (r.error || "no reason was given"), "error");
+    return null;
+  }
+  if (r.kind === "project") toast("Unzipped into " + r.path + ". The project opens for editing.", "success");
+  return r.path;
+}
+Ipc.setZipFlow(() => zipToOpen(null));
+
+/* The status line while a zip is unzipped: how far it is, and Cancel. */
+(function wireUnzipStatus() {
+  const host = document.getElementById("unzip-status");
+  if (!host) return;
+  let pct = null;
+  const draw = () => {
+    host.innerHTML = '<span class="unzip-status-text"><span class="unzip-status-dot" aria-hidden="true"></span>' +
+      escapeHtml("Unzipping the project" + (pct == null ? "..." : ": " + pct + "%")) + "</span>" +
+      '<button type="button" class="unzip-cancel" id="btn-cancel-unzip" title="Stop unzipping: nothing is made">Cancel</button>';
+    host.querySelector("#btn-cancel-unzip").addEventListener("click", () => {
+      Ipc.cancelUnzip();
+      toast("Cancelling the unzipping...");
+    });
+  };
+  Ipc.onUnzip((evt) => {
+    if (!evt) return;
+    if (evt.phase === "start") { pct = null; host.hidden = false; draw(); return; }
+    if (evt.phase === "progress") {
+      const next = evt.total > 0 ? Math.min(100, Math.floor((evt.done / evt.total) * 100)) : null;
+      if (next === pct) return;
+      pct = next;
+      const txt = host.querySelector(".unzip-status-text");
+      if (txt) txt.lastChild.nodeValue = "Unzipping the project" + (pct == null ? "..." : ": " + pct + "%");
+      return;
+    }
+    host.hidden = true;
+    host.innerHTML = "";
+  });
+})();
+
+/* B4b: a new project from videos says what it could not attach, in place of
+   flow-view.js's own message (held, so that one does not cover it). */
+Ipc.onNewProjectNotes((r) => {
+  toast("Project made: " + path.basename(String(r.folder || "")) + ". " + r.notes.join(" "), "error", { hold: true });
+});
+
+/* B4b, from the drop: the videos and transcripts dropped, from the name
+   dialog on, as New project from a video... (flow-view.js newProject). */
+async function newProjectFromFiles(paths) {
+  let r = await Ipc.chooseNewProject({ kind: "video", files: paths });
+  if (!r) return;
+  if (!r.ok) { toast("The project was not made: " + (r.error || "no reason was given"), "error"); return; }
+  toast("Copying the video into the new project...", "info");
+  r = await Ipc.createProject();
+  if (!r || !r.ok) { toast("The project was not made: " + ((r && r.error) || "no reason was given"), "error"); return; }
+  await loadSessionIntoView(r.folder);
+  const flow = document.querySelector('.view-mode-btn[data-level="flow"]');
+  if (flow) flow.click();
+  toast("Project made: " + path.basename(r.folder) + ". Play the video and press S, or click + Step, where each step starts.", "success");
+}
+
+/* B4c: what a drop on the start page opens (project-folder.js dropKind),
+   each kind ending where its menu act ends. A real drag from Explorer
+   cannot be driven by a test, so e2e/start-smoke.js calls this with paths
+   (window.__pdtOpenDropped: renderer.js is the page's entry, no module to
+   require). */
+async function openDropped(paths) {
+  const PF = require("./project-folder.js");
+  const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch (_) { return false; } };
+  const k = PF.dropKind(paths, isDir);
+  if (k.kind === "folder") { await loadSessionIntoView(k.path); return k.kind; }
+  if (k.kind === "zip") {
+    const p = await zipToOpen(k.path);
+    if (p) await loadSessionIntoView(p);
+    return k.kind;
+  }
+  if (k.kind === "videos") { await newProjectFromFiles(k.paths); return k.kind; }
+  toast(k.error, "error");
+  return k.kind;
+}
+window.__pdtOpenDropped = openDropped;
+
+(function wireStartDrop() {
+  const PF = require("./project-folder.js");
+  const page = document.getElementById("session-empty");
+  const line = document.getElementById("session-drop-line");
+  const shown = () => !!page && page.style.display !== "none" && page.getClientRects().length > 0;
+  let depth = 0;
+  const ready = (on) => {
+    if (!page) return;
+    page.classList.toggle("drop-ready", on);
+    if (line) line.textContent = on ? line.dataset.ready : line.dataset.idle;
+  };
+  // Only this page takes files: a file dropped anywhere else in the window
+  // is refused here (main.js also keeps the window on its page).
+  document.addEventListener("dragover", (e) => {
+    if (!PF.dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    const onPage = shown() && page.contains(e.target);
+    e.dataTransfer.dropEffect = onPage ? "copy" : "none";
+  });
+  document.addEventListener("drop", (e) => {
+    if (!PF.dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    const onPage = shown() && page.contains(e.target);
+    depth = 0;
+    ready(false);
+    if (!onPage) return;
+    const { webUtils } = require("electron");
+    openDropped(PF.dropPaths(e.dataTransfer, (f) => webUtils.getPathForFile(f)))
+      .catch((err) => toast("The files did not open: " + PF.ipcErrorText(err), "error"));
+  });
+  if (!page) return;
+  page.addEventListener("dragenter", (e) => {
+    if (!PF.dragHasFiles(e.dataTransfer) || !shown()) return;
+    depth++;
+    ready(true);
+  });
+  page.addEventListener("dragleave", (e) => {
+    if (!PF.dragHasFiles(e.dataTransfer)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) ready(false);
+  });
+})();
+
 /* Lane A-1: a menu's button says whether its menu is open (aria-expanded),
    and the level shown is the current page (aria-current). Each is read from
    what the page shows (the popup's display, the level button's .active), so

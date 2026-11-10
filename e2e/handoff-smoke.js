@@ -587,7 +587,7 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       global.__dialogs = [];
       dialog.showOpenDialog = async (_win, opts) => {
         global.__dialogs.push({ title: opts.title, properties: opts.properties, filters: opts.filters });
-        if (opts.title !== "Open a hand-off") { global.__unexpected.push("open dialog: " + opts.title); return { canceled: true, filePaths: [] }; }
+        if (opts.title !== "Open a zip") { global.__unexpected.push("open dialog: " + opts.title); return { canceled: true, filePaths: [] }; }
         return { canceled: false, filePaths: [zip] };
       };
       global.__opened = [];
@@ -606,9 +606,9 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     await dev.waitForFunction(() => { const s = require("./state.js").getSession(); return !!(s && s.readOnly); }, null, { timeout: T });
     const s = await dev.evaluate(() => { const x = require("./state.js").getSession(); return { folder: x.sessionFolder, readOnly: x.readOnly }; });
     const asked = await w.app.evaluate(() => global.__dialogs.slice());
-    const fileDialog = asked.length === 1 && asked[0].title === "Open a hand-off" &&
+    const fileDialog = asked.length === 1 && asked[0].title === "Open a zip" &&
       JSON.stringify(asked[0].properties) === JSON.stringify(["openFile"]) &&
-      JSON.stringify(asked[0].filters) === JSON.stringify([{ name: "Hand-off zip", extensions: ["zip"] }]);
+      JSON.stringify(asked[0].filters) === JSON.stringify([{ name: "Zip", extensions: ["zip"] }]);
     record("(d) Open a hand-off (.zip) asks for a zip file, extracts it under the viewer's own folder and opens it read only",
       fileDialog && s.readOnly === true && s.folder.startsWith(path.join(HANDOFFS, "Order entry v2") + path.sep) &&
       fs.existsSync(path.join(s.folder, "manifest.json")), s.folder + " " + JSON.stringify(asked));

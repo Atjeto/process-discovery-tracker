@@ -2658,3 +2658,24 @@ button.danger:disabled {
   font-size: 14px; cursor: pointer; padding: 2px 8px;
 }
 .modal-choose .modal-close:hover { color: var(--fg); }
+
+/* ===== Lane B4 and E1: one start, and the notes in one paste =====
+   The status line while a zip is unzipped (renderer.js wireUnzipStatus),
+   shown with or without a project; the start page's drop line and the state
+   it shows while files are dragged over it (an outline and the line's own
+   words, not colour alone); the Paste notes dialog (a tall box and the line
+   under it that says what it will make, modals.js opts.preview). */
+.unzip-status { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--fg-2); }
+.unzip-status[hidden] { display: none; }
+.unzip-status-text { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.unzip-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  animation: run-pulse 1.2s ease-in-out infinite; }
+.unzip-cancel { font-size: 12px; }
+.empty-state p.hero-drop { margin: 18px 0 0; font-size: 12px; color: var(--fg-2); }
+#session-empty { border-radius: var(--radius); outline: 2px dashed transparent; outline-offset: -8px; }
+#session-empty.drop-ready { outline-color: var(--accent); }
+#session-empty.drop-ready p.hero-drop { color: var(--fg); font-weight: 600; }
+.modal-prompt.modal-large .modal-sm { width: min(720px, calc(100vw - 40px)); }
+.modal-prompt.modal-large .modal-textarea { min-height: 240px; height: 42vh; font-family: var(--font-ui); line-height: 1.5; }
+.modal-prompt .modal-preview { margin: 8px 0 0; font-size: 12px; color: var(--fg-2); line-height: 1.5; }
+.app.read-only #btn-paste-notes { display: none; }

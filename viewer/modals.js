@@ -111,11 +111,16 @@ function _promptListHtml(list) {
     (list.more ? '<li class="modal-pick-more">' + escapeHtml(list.more) + "</li>" : "") + "</ul></div>";
 }
 
+/* opts.preview (lane E1, Paste notes...): a function of the text typed that
+   returns { text, ok }: `text` is said in one line under the input as the
+   text changes (a polite live region), and OK waits for `ok`. A dialog with
+   a preview is a large one (opts.multiline, a tall box), and a click beside
+   it does not close it, so a paste is not lost to a stray click. */
 function promptModal(opts) {
   opts = opts || {};
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop modal-prompt";
+    backdrop.className = "modal-backdrop modal-prompt" + (opts.preview ? " modal-large" : "");
     const okLabel = opts.okLabel || "OK";
     const cancelLabel = opts.cancelLabel || "Cancel";
     backdrop.innerHTML =
@@ -133,6 +138,7 @@ function promptModal(opts) {
         : '<input type="text" class="modal-input"' +
           ' placeholder="' + escapeAttr(opts.placeholder || "") + '"' +
           ' value="' + escapeAttr(opts.defaultValue || "") + '">') +
+      (typeof opts.preview === "function" ? '<p class="modal-preview" aria-live="polite"></p>' : "") +
       '</div>' +
       '<footer class="modal-footer">' +
       '<button class="modal-cancel">' + escapeHtml(cancelLabel) + '</button>' +
@@ -153,15 +159,25 @@ function promptModal(opts) {
       releaseFocus();
       resolve(value);
     }
-    // opts.required (lane HV): OK waits for some text.
-    const blank = () => !!opts.required && !String(input.value).trim();
+    // opts.required (lane HV): OK waits for some text. opts.preview (lane
+    // E1): OK waits for what the preview says is something to make.
+    const previewEl = backdrop.querySelector(".modal-preview");
+    let previewOk = true;
+    const blank = () => (!!opts.required && !String(input.value).trim()) || (!!previewEl && !previewOk);
     const syncOk = () => { okBtn.disabled = blank(); };
+    const syncPreview = () => {
+      const p = opts.preview(String(input.value)) || {};
+      previewOk = !!p.ok;
+      if (previewEl.textContent !== String(p.text || "")) previewEl.textContent = String(p.text || "");
+      syncOk();
+    };
+    if (previewEl) { input.addEventListener("input", syncPreview); syncPreview(); }
     if (opts.required) { input.addEventListener("input", syncOk); syncOk(); }
     okBtn.addEventListener("click", () => { if (!blank()) done(input.value); });
     cancelBtn.addEventListener("click", () => done(null));
     closeBtn.addEventListener("click", () => done(null));
     backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) done(null);
+      if (e.target === backdrop && !previewEl) done(null);
     });
     backdrop.querySelectorAll(".modal-pick-go").forEach((b) => {
       b.addEventListener("click", () => {
@@ -170,7 +186,7 @@ function promptModal(opts) {
       });
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !opts.multiline) { e.preventDefault(); if (!blank()) done(input.value); }
+      if (e.key === "Enter" && (!opts.multiline || e.ctrlKey)) { e.preventDefault(); if (!blank()) done(input.value); }
       else if (e.key === "Escape") { e.preventDefault(); done(null); }
     });
     setTimeout(() => { input.focus(); input.select(); }, 0);

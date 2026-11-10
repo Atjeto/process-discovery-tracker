@@ -212,13 +212,12 @@ the Overview (from `session-integrity.json`).
 
 ### A zip does not open as a hand-off
 
-*Open a hand-off (.zip)...* opens only a zip that *Hand off...* made: one
-project folder whose `annotations.json` lists a version, with that
-version's PDD and Technical details beside it. Any other zip (the SME's
-recording, a whole project's zip) is refused with "This zip is not a
-hand-off.": unzip it first (right-click it, Extract All) and open its
-folder with *Open project...*. A hand-off opens read only: nothing in it
-can change, and no analysis runs.
+*Open a zip...* opens a zip that *Hand off...* made (one project folder
+whose `annotations.json` lists a version, with that version's PDD beside
+it) read only: nothing in it can change, and no analysis runs. Any other
+zip of one project (the SME's recording, a whole project's zip) is
+unzipped into a folder you name and opens for editing. A zip with no
+project, or with several, is refused in one sentence.
 
 ### The analysis is stuck, or the steps and the map look out of date
 

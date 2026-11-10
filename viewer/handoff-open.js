@@ -35,6 +35,12 @@
  * a file whose size or CRC does not match. It writes into a temporary folder
  * beside the final one and renames it only when complete, so a folder under
  * handoffs/ is always a whole hand-off. Files are streamed, one at a time.
+ *
+ * Lane B4a: Open a zip... takes any zip that holds one project. zipKind says
+ * which it is: a hand-off opens read only as above; any other project zip
+ * (the capture app's, a Whole project zip) is unzipped by extractProjectZip
+ * into a folder the analyst names, with the same checks, and opens for
+ * editing.
  */
 
 const nodeFs = require("node:fs");
@@ -46,6 +52,7 @@ const { pipeline } = require("node:stream/promises");
 const { Transform } = require("node:stream");
 const { crc32 } = require("./zip-folder.js");
 const Handoff = require("./handoff.js");
+const { folderProblem } = require("./new-project.js");
 
 const HANDOFFS = "handoffs";
 const MARKER = ".pdt-handoff.json";
@@ -59,8 +66,11 @@ class HandoffOpenError extends Error {
   }
 }
 
-const NOT_A_HANDOFF = "This zip is not a hand-off. A recording the SME sent, or a whole project's zip, is " +
-  "unzipped first (right-click it, Extract All), then its folder opens with Open project.";
+const NOT_A_HANDOFF = "This zip is not a hand-off. A recording the SME sent, or a whole project's zip, opens " +
+  "with Open, Open a zip..., which unzips it where you say and opens it for editing.";
+
+/* Lane B4a: what Open a zip... reads before it opens anything. */
+const CANCELLED = "The unzipping was cancelled: nothing was made.";
 
 /* The folder the hand-offs are opened in. */
 function handoffsRoot(userData) {
@@ -237,10 +247,24 @@ async function inspectHandoff(zipPath) {
    annotations.json. Throws a HandoffOpenError with the sentence to show when
    the zip holds no project, or more than one, or cannot be read. */
 async function readProjectZip(zipPath) {
+  const r = await _readProject(zipPath, false);
+  return { top: r.top, manifest: r.manifest, annotations: r.annotations };
+}
+
+/* readProjectZip's reading, with the entries of the project (each with
+   `out`: its name inside the project folder, "" for the folder itself).
+   `strict` (Open a zip...): an entry that would land outside its folder, or
+   that cannot be read, refuses the whole zip, as a hand-off's does. */
+async function _readProject(zipPath, strict) {
   const fh = await fsp.open(String(zipPath || ""), "r");
   try {
     const entries = await _directory(fh, (await fh.stat()).size);
-    for (const e of entries) e.safe = safeEntryName(e.name);
+    for (const e of entries) {
+      e.safe = safeEntryName(e.name);
+      if (!strict) continue;
+      if (!e.safe) throw new HandoffOpenError("This zip holds a file that would land outside its folder, so the app does not open it.");
+      _checkEntry(e);
+    }
     const files = entries.filter((e) => e.safe && !e.dir);
     const tops = [...new Set(files.filter((e) => /^[^/]+\/manifest\.json$/.test(e.safe)).map((e) => e.safe.split("/")[0]))];
     const top = files.some((e) => e.safe === "manifest.json") ? "" : tops.length === 1 ? tops[0] : null;
@@ -254,20 +278,41 @@ async function readProjectZip(zipPath) {
     const annoEntry = at("annotations.json");
     const annotations = annoEntry ? _json(await _readSmall(fh, annoEntry)) : null;
     if (annoEntry && !annotations) throw new HandoffOpenError("The project's annotations.json in this zip cannot be read.");
-    return { top, manifest, annotations };
+    const prefix = top ? top + "/" : "";
+    const own = entries.filter((e) => e.safe && (e.safe === prefix || e.safe.startsWith(prefix)))
+      .map((e) => Object.assign(e, { out: e.safe.slice(prefix.length) }));
+    return { top, manifest, annotations, entries: own };
   } finally {
     await fh.close();
   }
 }
 
-/* Extract every entry of the zip into `dest` (made fresh), streamed, each
-   file's size and CRC checked. */
-async function _extract(zipPath, entries, dest) {
+/* A cancelled extraction (Open a zip...'s Cancel). */
+function _cancelled() {
+  const e = new HandoffOpenError(CANCELLED);
+  e.cancelled = true;
+  return e;
+}
+
+/* Extract the entries of the zip into `dest` (made fresh), streamed, each
+   file's size and CRC checked. An entry lands at its `out` name when it has
+   one (the project's own folder, "", is `dest` itself), else at its safe
+   name. opts (lane B4a): { onProgress(done, total) (bytes written, of all),
+   signal (an AbortSignal: once aborted, the extraction stops with a
+   cancelled error) }. */
+async function _extract(zipPath, entries, dest, opts) {
+  const o = opts || {};
+  const aborted = () => !!(o.signal && o.signal.aborted);
+  const total = entries.reduce((n, e) => n + (e.dir ? 0 : e.usize), 0);
+  let done = 0;
   await fsp.mkdir(dest, { recursive: true });
   const fh = await fsp.open(zipPath, "r");
   try {
     for (const e of entries) {
-      const target = path.join(dest, ...e.safe.split("/").filter(Boolean));
+      if (aborted()) throw _cancelled();
+      const parts = (e.out != null ? e.out : e.safe).split("/").filter(Boolean);
+      if (!parts.length) continue;
+      const target = path.join(dest, ...parts);
       if (e.dir) { await fsp.mkdir(target, { recursive: true }); continue; }
       await fsp.mkdir(path.dirname(target), { recursive: true });
       if (e.csize === 0) {
@@ -278,7 +323,12 @@ async function _extract(zipPath, entries, dest) {
       const start = await _dataStart(fh, e);
       let crc = 0, usize = 0;
       const tap = new Transform({
-        transform(chunk, _enc, cb) { crc = crc32(chunk, crc); usize += chunk.length; cb(null, chunk); },
+        transform(chunk, _enc, cb) {
+          if (aborted()) { cb(_cancelled()); return; }
+          crc = crc32(chunk, crc); usize += chunk.length; done += chunk.length;
+          if (typeof o.onProgress === "function") o.onProgress(done, total);
+          cb(null, chunk);
+        },
       });
       const source = nodeFs.createReadStream(zipPath, { start, end: start + e.csize - 1, highWaterMark: 1 << 20 });
       const sink = nodeFs.createWriteStream(target);
@@ -286,6 +336,8 @@ async function _extract(zipPath, entries, dest) {
       else await pipeline(source, tap, sink);
       if (usize !== e.usize || crc !== e.crc) throw new HandoffOpenError("This zip is damaged: " + e.safe + " does not read back whole.");
     }
+    // A Cancel while the last file streamed still cancels.
+    if (aborted()) throw _cancelled();
   } finally {
     await fh.close();
   }
@@ -346,6 +398,57 @@ async function openHandoffZip(zipPath, userData) {
   throw new HandoffOpenError("Too many copies of this hand-off are open already: remove some under " + base + ".");
 }
 
+/* Lane B4a, Open a zip...: what the zip at `zipPath` is. A hand-off (the
+   rule of inspectHandoff) resolves { kind: "handoff" }, and opens read only
+   as before (openHandoffZip). Any other zip that holds one project (the
+   capture app's, or a Whole project zip: readProjectZip's rule) resolves
+   { kind: "project", top, manifest, annotations, entries, name }: `name`
+   is the folder the project is unzipped to by default: the zip's own name
+   (the capture app's zip holds a folder named by a time stamp). Throws a HandoffOpenError with the
+   sentence to show otherwise (no project, several, unreadable). */
+async function zipKind(zipPath) {
+  const zip = path.resolve(String(zipPath || ""));
+  let st = null;
+  try { st = await fsp.stat(zip); } catch (_) { st = null; }
+  if (!st || !st.isFile()) throw new HandoffOpenError("The zip was not found: " + zip);
+  try {
+    await inspectHandoff(zip);
+    return { kind: "handoff" };
+  } catch (e) {
+    if (!(e instanceof HandoffOpenError) || e.message !== NOT_A_HANDOFF) throw e;
+  }
+  const p = await _readProject(zip, true);
+  return Object.assign({ kind: "project" }, p, { name: path.parse(zip).name });
+}
+
+/* Unzip the project `project` (zipKind's) of the zip at `zipPath` into the
+   folder `dest`, which must not exist or be empty (new-project.js
+   folderProblem: else a HandoffOpenError says why, with the folder).
+   Streamed, every file checked; written into a hidden folder beside `dest`
+   and renamed only when whole, so a failed or cancelled unzipping (opts as
+   _extract) leaves no half folder. Resolves { folder }. */
+async function extractProjectZip(zipPath, project, dest, opts) {
+  const zip = path.resolve(String(zipPath || ""));
+  const target = path.resolve(String(dest || ""));
+  const why = folderProblem(target);
+  if (why) throw new HandoffOpenError(why + " (" + target + ").");
+  const parent = path.dirname(target);
+  await fsp.mkdir(parent, { recursive: true });
+  const tmp = path.join(parent, "." + path.basename(target) + ".unzipping-" + crypto.randomBytes(6).toString("hex"));
+  try {
+    await _extract(zip, project.entries, tmp, opts);
+    if (!nodeFs.existsSync(path.join(tmp, "manifest.json"))) throw new HandoffOpenError("This zip is damaged: its project has no manifest.json.");
+    const late = folderProblem(target);
+    if (late) throw new HandoffOpenError(late + " (" + target + ").");
+    if (nodeFs.existsSync(target)) await fsp.rmdir(target);
+    await fsp.rename(tmp, target);
+  } catch (e) {
+    await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    throw e;
+  }
+  return { folder: target };
+}
+
 /* The PDD or the Technical details (`kind` "pdd" or "tech") of the hand-off
    whose project folder is `folder`: the file at the extraction's root, as
    its .pdt-handoff.json names it (else, a hand-off unzipped by hand, the one
@@ -364,7 +467,7 @@ function handoffFile(folder, kind) {
 }
 
 module.exports = {
-  HANDOFFS, MARKER, NOT_A_HANDOFF, HandoffOpenError,
+  HANDOFFS, MARKER, NOT_A_HANDOFF, CANCELLED, HandoffOpenError,
   handoffsRoot, isReadOnlyFolder, isReadOnlyProject, unzippedHandoffFiles, safeEntryName, inspectHandoff,
-  readProjectZip, openHandoffZip, handoffFile,
+  readProjectZip, openHandoffZip, handoffFile, zipKind, extractProjectZip,
 };

@@ -62,9 +62,14 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 
 ## The analyst path
 
-1. **Open** a recording folder (*Open project...*, Open menu), or start a
-   project with *New project from a video...* or *New empty project...*
-   (New menu, and the page shown while no project is open). The analysis runs by itself (on open when it is missing or
+1. **Open** a recording folder (*Open project...*, Open menu) or the SME's
+   zip (*Open a zip...*: unzipped where the analyst says, lane B4a), or
+   start a project with *New project from a video...* (the videos and
+   their transcripts in one pick, lane B4b) or *New empty project...*
+   (New menu, and the page shown while no project is open, which also
+   takes the same files dropped on it, lane B4c). Steps' *Paste notes...*
+   turns the analyst's notes into steps and document fields in one
+   undoable edit (lane E1, `notes-paste.js`). The analysis runs by itself (on open when it is missing or
    older, after Apps outside the process, after a stretch is left out of
    the analysis or included again, on the Map when the steps are newer
    than its map,
@@ -393,9 +398,9 @@ the folder.
   Checklist is ready or a version exists, under the Checklist (`#ov-miss`);
   it never blocks. Every PDD says its
   version ("Version N, handed off <date> by <name>", else "Working copy
-  after version N") over a Version history table. *Open a hand-off
-  (.zip)...* (Open menu, and the page shown while no project is open) takes
-  the zip: extracted under `<userData>/handoffs/<project> v<N>/`
+  after version N") over a Version history table. *Open a
+  zip...* (Open menu, and the page shown while no project is open) takes
+  a hand-off's zip: extracted under `<userData>/handoffs/<project> v<N>/`
   (`handoff-open.js`; a hand-off unzipped by hand is read only too) and
   opened read only (`.app.read-only`,
   `read-only.js`; main refuses every write there): everything looked at and
@@ -526,7 +531,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 - UI bugs are invisible to the unit suites: validate behaviour in the real
   viewer. `e2e/run-all.js` runs the smokes: `session`, `overview`, `runs`,
   `map-slim`, `transcript`, `panel`, `companion`, `subprocess`, `handoff`,
-  `library`, `windows`, `demo`, `timeline-edit`, `process-place` and `video-chain` (each `<name>-smoke.js`;
+  `library`, `windows`, `demo`, `timeline-edit`, `process-place`, `video-chain` and `start` (each `<name>-smoke.js`;
   [e2e/README.md](e2e/README.md) says what each covers).
   `session-smoke.js` holds the map connectivity pin (one component, one entry
   step, one final step, counted on the step boxes: the Start and End circles

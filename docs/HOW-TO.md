@@ -29,17 +29,23 @@ bar).
 ## Start a project
 
 - **From the SME's recording.** The SME records with the capture app and
-  sends you the zip it makes (*Make a zip for the analyst*). Right-click the
-  zip and choose *Extract All*. In PDT, choose *Open*, *Open project...* and
-  pick the folder it made. PDT analyzes the recording by itself: the top bar
-  says *Updating steps and map...* until it is done.
+  sends you the zip it makes (*Make a zip for the analyst*). In PDT, choose
+  *Open*, *Open a zip...* and pick the zip, then say where its folder is
+  made (beside the zip unless you choose another place). PDT unzips it,
+  opens it and analyzes the recording by itself: the top bar says *Updating
+  steps and map...* until it is done. You can also drop the zip on the page
+  shown while no project is open.
 - **From a video.** Choose *New*, *New project from a video...* and pick the
-  video, for example a Teams recording of the SME at work. Then name the
-  project: its folder is made where you save it, with a copy of the video.
+  video, for example a Teams recording of the SME at work, with its
+  transcript if you have one: pick both at once. Several videos go one after
+  the other in the order of their names, and each transcript goes with the
+  video whose name it shares. Then name the project: its folder is made where
+  you save it, with a copy of the videos and the transcripts attached.
   It opens on the Timeline, where you mark the steps as you watch (*Mark a
   video as you watch it*, below).
 - **From nothing.** Choose *New*, *New empty project...* and name the
-  project. You add the steps by hand.
+  project. You add the steps by hand, or paste your notes: in Steps, click
+  *Paste notes...* and paste them, and each line becomes a step.
 - **The demo.** Choose *Open*, *Open the demo project*. A finished project
   opens: four orders entered in the Order Desk web app and an Excel
   tracking sheet, with its video, transcript, flow, sub-process, notes,
@@ -225,6 +231,12 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
    moment: the recorder saw no action there.
    Right-clicking a step on the Timeline also offers to open it in Steps, or
    to delete it (a recorded step is hidden).
+5. To add many steps at once, click *Paste notes...* in Steps and paste
+   your notes from Notepad or Teams: each line becomes a step, the text
+   after its first colon its description, and a line that starts with a
+   document field's name and a colon (*Trigger:*, *Volume:*) goes to that
+   field. The line under the box says what it will make. One
+   Ctrl+Z takes it all back.
 
 ### Change when a transaction or a step starts or ends
 
@@ -362,8 +374,8 @@ transaction with the control it acted on, the fields typed in each
 transaction, and the applications. A project made from a video or from
 nothing recorded none of that, so its zip has no Technical details.
 
-**How a developer opens it.** In PDT, choose *Open*, *Open a hand-off
-(.zip)...* and pick the zip. It opens read only: everything can be looked at
+**How a developer opens it.** In PDT, choose *Open*, *Open a zip...* and
+pick the zip. It opens read only: everything can be looked at
 and played, and nothing can change.
 
 **The next version.** Keep working in your project, then choose *Hand
@@ -407,8 +419,9 @@ app.
 ## When something looks wrong
 
 - **"This folder is not a project: it has no manifest.json."** The folder
-  holds no recording. Unzip the SME's zip first (right-click it, *Extract
-  All*) and open the folder it makes.
+  holds no recording. Open the SME's zip itself with *Open*, *Open a
+  zip...*, or open the recording folder inside the folder it was unzipped
+  to.
 - **"This recording has no transactions marked."** The SME did not press the
   transaction key. On the Timeline, right-click where each transaction
   starts, choose *Start a transaction here...*, then click *Apply marker

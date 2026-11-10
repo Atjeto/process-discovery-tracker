@@ -204,7 +204,7 @@ and the saved processes of C5, left the app on 2026-09-25 and 2026-09-24; a
 file left there is not read.)
 
 In the viewer's user data folder: `handoffs/`, where a hand-off zip
-opened with *Open a hand-off (.zip)...* is extracted and opened read only
+opened with *Open a zip...* is extracted and opened read only
 (contract C20), and `pdt-removed/`, where a removed screenshot, attachment,
 video copy, edited map file or transcript waits for its Undo (emptied when
 the viewer starts).

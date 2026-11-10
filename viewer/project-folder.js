@@ -24,7 +24,7 @@ const MANIFEST = "manifest.json";
 
 /* The sentence for a folder that is no project and holds none. */
 const NOT_A_PROJECT = "This folder is not a project: it has no manifest.json. Open the recording folder the SME sent " +
-  "(unzip the SME's zip first: right-click it, Extract All), or a project made with New.";
+  "(the SME's zip itself opens with Open a zip...), or a project made with New.";
 
 function _isProject(dir, fs) {
   try { return fs.statSync(path.join(dir, MANIFEST)).isFile(); } catch (_) { return false; }
@@ -53,6 +53,50 @@ function resolveProjectFolder(dir, fs = nodeFs) {
   throw new Error(NOT_A_PROJECT + " Folder: " + root);
 }
 
+/* Lane B4c: the page shown while no project is open takes dropped files.
+   The paths of a drop's files (`dataTransfer`, the drop event's): each
+   File's path through `pathOf` (Electron's webUtils.getPathForFile; the File
+   object has no path of its own since Electron 32); a File with no path on
+   disk is left out. Renderer, pure. */
+function dropPaths(dataTransfer, pathOf) {
+  const files = dataTransfer && dataTransfer.files ? Array.from(dataTransfer.files) : [];
+  const out = [];
+  for (const f of files) {
+    let p = "";
+    try { p = pathOf(f) || ""; } catch (_) { p = ""; }
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/* Whether a drag carries files (a text dragged in the page does not). */
+function dragHasFiles(dataTransfer) {
+  const types = dataTransfer && dataTransfer.types ? Array.from(dataTransfer.types) : [];
+  return types.includes("Files");
+}
+
+/* The sentence for a drop the page does not take. */
+const DROP_TAKES = "This page takes a project folder, a zip, or a video with its transcript: drop one of them.";
+
+/* What a drop on that page opens, read from its paths (`isDir(p)`: whether a
+   path is a folder): { kind: "folder", path } (one folder: it opens as Open
+   project... does), { kind: "zip", path } (one zip: as Open a zip...),
+   { kind: "videos", paths } (videos, with or without transcripts: as New
+   project from a video..., from its name dialog on), or { kind: "none",
+   error } (the sentence to show). Pure. */
+function dropKind(paths, isDir) {
+  const ps = (paths || []).filter((p) => typeof p === "string" && p);
+  if (!ps.length) return { kind: "none", error: DROP_TAKES };
+  const dirs = ps.filter((p) => isDir(p));
+  if (dirs.length) return dirs.length === 1 && ps.length === 1 ? { kind: "folder", path: ps[0] } : { kind: "none", error: DROP_TAKES };
+  if (ps.length === 1 && /\.zip$/i.test(ps[0])) return { kind: "zip", path: ps[0] };
+  const NP = require("./new-project.js");
+  const picked = NP.sortPicked(ps);
+  if (picked.others.length) return { kind: "none", error: DROP_TAKES };
+  if (!picked.videos.length) return { kind: "none", error: "A transcript goes with the video it was said in: drop the video with it." };
+  return { kind: "videos", paths: ps };
+}
+
 /* An error that came back over IPC, in its own words: Electron's prefix
    and the "Error: " of the error's name taken off. */
 function ipcErrorText(e) {
@@ -61,4 +105,4 @@ function ipcErrorText(e) {
     "no reason was given";
 }
 
-module.exports = { MANIFEST, NOT_A_PROJECT, resolveProjectFolder, ipcErrorText };
+module.exports = { MANIFEST, NOT_A_PROJECT, DROP_TAKES, resolveProjectFolder, ipcErrorText, dropPaths, dragHasFiles, dropKind };
