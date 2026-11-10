@@ -33,8 +33,52 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with a document field's name (*Trigger:*, *Volume:*) goes to that field,
   after what it holds. The line under the box says what it will make; it
   is one undoable edit.
+- **The transcript beside the video.** The Timeline's side panel has a
+  third tab, *Transcript*: what was said, every transcript of the project on
+  the one clock, with its time and the speaker where it changes. A search
+  finds a word as you type, marks it and counts it ("3 of 340"); with
+  several speakers a select reads one of them. The sentence the video is at
+  is marked and stays in view while the video plays, unless the pointer is
+  on the list or the search holds text. A click on a sentence goes to that
+  moment (a paused video stays paused). After each sentence, *Add step
+  here* adds a step that starts where it is said (as + Step does there), and
+  *Copy to...* opens one menu, *Copy this sentence to*: the description of
+  the selected step, then the document's fields. The two show on the row
+  under the pointer, the focused row and the row the video is at, and keep
+  their place on the others. A transcript not placed yet says so with *Sync...*; read only, the
+  list is read and searched, and nothing is added. A ninety minute call is
+  thousands of sentences: the list is built once and filtered by hiding.
+- **Not part of the process.** In a project made from a video or from
+  nothing, a stretch selected on the Timeline (a Shift-drag) is marked as
+  not part of the process in one click: a detour of the call. Its
+  selection shows only its duration. It is the same mark as a
+  recording's *Leave out of the analysis* (`excluded_ranges`): hatched, its
+  legend in the project's words, *Include again* and Ctrl+Z its inverse.
+  It asks nothing and analyzes nothing, and the steps marked in it stay:
+  Steps, both maps and the PDD do not mention it (in a project without a
+  recording no stretch cuts a transaction's trace).
+- **Playing skips a stretch marked as not part of the process**, in both
+  kinds of project (a recording's stretch left out of the analysis too),
+  across the videos of the chain; a seek into one plays it, so it can still
+  be watched. The Transcript tab lists one row in place of what was said in
+  it, with *Include again*, and the step panel's and the step editor's
+  *Said* lists leave it out.
+- **Selecting a stretch no longer starts the video.** The click that ends
+  a Shift-drag on the Timeline used to seek there and play.
+- **"<step>" starts here.** Beside *+ Step*, the button names the step
+  whose start it sets to the moment the video shows: the selected step
+  when its time is the analyst's to set, else the first step without a
+  time. The step runs until
+  the next one starts (the rules of a step marked there), keeps its place
+  in the process, and takes the video's frame when it has no picture; then
+  the next step without a time is selected, so steps written first each get
+  their moment in two acts. The Timeline's right-click menu offers the same
+  at the moment clicked. One undoable edit.
 
 ### Changed
+
+- **The Overview's transcript list is never empty** in a project with one
+  unmarked transaction: it lists everything that was said, and says so.
 
 - **A Checklist that fits the project.** A project made from a video or
   from nothing is no longer asked to confirm a reference transaction it

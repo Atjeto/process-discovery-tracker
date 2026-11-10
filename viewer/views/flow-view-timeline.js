@@ -32,6 +32,7 @@ const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
 const { numberOnlyLabel } = RunsModel;
 const { isoMs } = require("../run-differences.js");
+const LeftOut = require("../left-out.js");
 const SPM = require("../sub-process-maps.js");
 const StepOrder = require("../step-order.js");
 const RO = require("../read-only.js");
@@ -260,9 +261,16 @@ function appLeftOutTitle(system) {
     "are not drafted and its time is not counted. Apps outside the process, in Steps, includes it again.";
 }
 
-/* What a band left out of the analysis says under the pointer. */
-function leftOutTitle(startText, endText) {
-  return "Left out of the analysis" + (startText && endText ? ", " + startText + " to " + endText : "") +
+/* What a band left out of the analysis says under the pointer. Lane E (E4):
+   in a project without a recording (`recorded` false) the stretch is not
+   part of the process, and its band says what that does. */
+function leftOutTitle(startText, endText, recorded) {
+  const times = startText && endText ? ", " + startText + " to " + endText : "";
+  if (recorded === false) {
+    return "Not part of the process" + (startText && endText ? ": " + startText + " to " + endText : "") +
+      ". Click it to include it again.";
+  }
+  return "Left out of the analysis" + times +
     ": its steps are not drafted and its time is not counted. Click to include it again.";
 }
 const LEFT_OUT_LABEL = "Left out of the analysis";
@@ -270,9 +278,10 @@ const LEFT_OUT_LABEL_SHORT = "Left out";
 /* The label a band `px` wide shows: the whole of it where it fits, else its
    first words, else none (the tooltip and the legend say it). Pure +
    unit-tested. */
-function leftOutLabel(px) {
+function leftOutLabel(px, recorded) {
   const w = Number(px) || 0;
-  return w >= 150 ? LEFT_OUT_LABEL : w >= 64 ? LEFT_OUT_LABEL_SHORT : "";
+  const words = LeftOut.wordsFor(recorded !== false);
+  return w >= 150 ? words.band : w >= 64 ? words.short : "";
 }
 
 /* P1.10: persistent timeline zoom + scroll per session. Keyed by
@@ -1253,6 +1262,9 @@ function renderTimeline() {
       // its label where it fits; a click (or a right-click) offers Include
       // again, the inverse of Leave out of the analysis.
       const hostW = host.clientWidth || 800;
+      // Lane E (E4): in a project without a recording the same mark is not
+      // part of the process, and says so.
+      const recorded = AC.hasRecording(State.getSession());
       for (const b of leftOut) {
         const s = Math.max(b.startMs, first), e = Math.min(b.endMs, last);
         const x = ((s - first) / span) * 100;
@@ -1265,8 +1277,8 @@ function renderTimeline() {
         band.style.width = w + "%";
         band.style.top = activityTop + "px";
         band.style.height = activityH + "px";
-        band.title = leftOutTitle(sinceStart(b.range.start, origin), sinceStart(b.range.end, origin));
-        const text = leftOutLabel((w / 100) * hostW);
+        band.title = leftOutTitle(sinceStart(b.range.start, origin), sinceStart(b.range.end, origin), recorded);
+        const text = leftOutLabel((w / 100) * hostW, recorded);
         if (text) {
           const lbl = document.createElement("span");
           lbl.className = "tl-left-out-label";
@@ -1505,6 +1517,16 @@ function renderTimeline() {
     const el = document.querySelector("#timeline-legend " + sel);
     if (el) el.style.display = on ? "" : "none";
   }
+  // Lane E (E4): the hatch in this project's words.
+  const lgOut = document.querySelector("#timeline-legend .lg-left-out");
+  if (lgOut) {
+    const recorded = AC.hasRecording(State.getSession());
+    lgOut.textContent = LeftOut.wordsFor(recorded).legend;
+    lgOut.title = recorded
+      ? "Hatched: left out of the analysis (a stretch, or an app outside the process). Playing skips a stretch left out, " +
+        "and the Transcript tab leaves out what was said in it. Click a stretch to include it again."
+      : "A stretch you marked as not part of the process. It is skipped when playing and left out of the Transcript tab.";
+  }
 
   // Playhead overlays all lanes; appended last so it paints on top.
   const ph = document.createElement("div");
@@ -1520,6 +1542,10 @@ function renderTimeline() {
   // before the activity I meant" feel.
   host.addEventListener("click", (e) => {
     if (e.target !== host) return;
+    // Lane E: a Shift-drag selects a stretch (flow-view.js
+    // installRangeSelection); the click that ends it never seeks and never
+    // starts the video.
+    if (e.shiftKey) return;
     const rect = host.getBoundingClientRect();
     const frac = (e.clientX + host.scrollLeft - rect.left) / rect.width;
     const target = first + frac * span;

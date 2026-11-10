@@ -176,6 +176,24 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
    name. While the video plays, S only marks the steps: name them in the
    panel or in Steps afterwards. Ctrl+Z takes back a mark put in the wrong
    place, with its screenshot.
+5. The *Transcript* tab beside the video lists what was said, with its time
+   and who said it. Type in its search to find a word, for example
+   *invoice*: it shows how many sentences hold it. With several speakers,
+   pick one to read only theirs. The sentence the video is at is marked and
+   stays in view while the video plays, unless your pointer is on the list
+   or the search holds text.
+6. Click a sentence to go to that moment. *Add step here*, after the
+   sentence, adds a step that starts where it is said. *Copy to...* copies
+   the sentence into the description of the selected step or into a field
+   of the document.
+7. Steps written first, from your notes, have no time. Go to the moment of
+   the first one and click *"Open the order" starts here*, beside *+ Step*
+   (the button names the step): the step starts at that moment and, without
+   a picture, takes the video's frame there. Its place among the steps
+   stays. The next step without a time is then selected and the button names
+   it: go to its moment and click again. Select a step you added to give it
+   another start. Right-clicking the timeline offers the same at the moment
+   you click, and Ctrl+Z undoes it.
 
 ### Put a step where it belongs in the process
 
@@ -304,6 +322,15 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
    analysis*, then *Leave out*.
 3. The steps and the map are drafted again without it. A stretch left out
    shows hatched: click it and choose *Include again* to bring it back.
+   Playing skips it, and the *Transcript* tab leaves out what was said in
+   it.
+4. In a project made from a video, a detour of the call, for example thirty
+   minutes on another topic: hold Shift and drag across it, then click *Not
+   part of the process*. It shows hatched, playing skips it, and the
+   *Transcript* tab says *Not part of the process* in its place. Your steps
+   stay as they are, and the maps and the PDD do not mention it. Seek into it
+   to watch it anyway. Click it and choose *Include again* to bring it back,
+   or press Ctrl+Z.
 
 ### Make a sub-process
 

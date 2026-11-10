@@ -314,6 +314,15 @@ function outsideRuns(sentences, spans) {
     .sort(_byTime);
 }
 
+/* Lane E (E6): whether the Overview's "From the transcript" lists all the
+   talk rather than the talk outside the transactions: when no transaction
+   is marked (the runs are only the implicit one of a project without a
+   recording, `implicitId`, or none), every sentence is inside "the"
+   transaction, and outside it the list would always be empty. */
+function listsAllTalk(runs, implicitId) {
+  return (runs || []).every((r) => !!r && !!implicitId && r.caseId === implicitId);
+}
+
 function normalizeSpace(s) {
   return String(s == null ? "" : s).replace(/\s+/g, " ").trim();
 }
@@ -411,7 +420,7 @@ module.exports = {
   VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE, ADD_TITLE,
   validateTranscript, segmentsOf, effectiveOffsetMs, storedOffsetFor, videoIdOf, wallMs, placeTranscript,
   transcriptsOf, partsOf, forSession, bindsBeforeChainEdit,
-  overlaps, stepWindow, prevEndMs, sentencesInWindow, sentencesForStep, runSpans, outsideRuns,
+  overlaps, stepWindow, prevEndMs, sentencesInWindow, sentencesForStep, runSpans, outsideRuns, listsAllTalk,
   normalizeSpace, isAdded, appendText, formatClock, speakersOf, filterSentences,
   offsetForSync, attachedMessage, sentenceRowHtml, sentenceClock,
 };

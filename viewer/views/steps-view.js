@@ -76,6 +76,8 @@ const TE = require("../time-edits.js");
 const MarkerEdits = require("../marker-edits.js");
 const FlowMarkers = require("./flow-view-markers.js");
 const StepOrder = require("../step-order.js");
+const ShowHere = require("../show-here.js");
+const LeftOut = require("../left-out.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -400,8 +402,9 @@ function _reference(pattern) {
 /* The stretches of `run` left out of the analysis (annotations.excluded_ranges
    cut to the run's span; run-differences.js leftOutStretches). */
 function _leftOut(run) {
-  const sess = State.getSession();
-  const ranges = (sess && sess.annotations && sess.annotations.excluded_ranges) || [];
+  // Lane E (E4): in a project without a recording a stretch put aside is not
+  // part of the process, and Steps says nothing of it (left-out.js).
+  const ranges = LeftOut.analysisRanges(State.getSession());
   return RunDiff.leftOutStretches(ranges, { startMs: run.startMs, endMs: run.endMs });
 }
 
@@ -1196,7 +1199,9 @@ function _transcriptSaid(step) {
   const s = State.getSession();
   const placed = TM.forSession(s);
   if (!placed) return null;
-  return { synced: placed.synced, sentences: placed.synced ? TM.sentencesForStep(placed.sentences, step, _levelSteps(step)) : [],
+  // Lane E: what was said in a stretch put aside is not listed.
+  return { synced: placed.synced, sentences: placed.synced
+    ? LeftOut.saidOutside(TM.sentencesForStep(placed.sentences, step, _levelSteps(step)), s.annotations) : [],
     originMs: recordingStartMs(s) };
 }
 
@@ -2032,6 +2037,15 @@ async function setStepTimes(changes) {
   const sess = State.getSession();
   if (!sess || RO.isReadOnly(sess)) return false;
   const anno = ensureAnnoShape(sess.annotations);
+  if (!_applyStepTimes(anno, changes)) return false;
+  try { await persistAnnotations(anno, "change the step's time"); } catch (_) { return false; }   // already shown
+  return true;
+}
+
+/* setStepTimes's change, made in memory and not saved (lane E, E5: Show
+   "<step>" here saves it with the order and the picture as one edit).
+   False, and nothing changed, when a change cannot be made. */
+function _applyStepTimes(anno, changes) {
   const runs = _model().runs;
   const todo = [];
   for (const c of Array.isArray(changes) ? changes : []) {
@@ -2056,7 +2070,103 @@ async function setStepTimes(changes) {
   }
   // C22: the steps placed after a step that changed transaction go with it.
   StepOrder.followTransaction(anno.steps);
-  try { await persistAnnotations(anno, "change the step's time"); } catch (_) { return false; }   // already shown
+  return true;
+}
+
+/* ---- "<step>" starts here (lane E, item E5) ------------------------------------
+   Steps written first have no time: each gets the playhead's moment as its
+   start, by the rules of a start typed for a step without one
+   (commitStepTime): it runs until the next step starts or its transaction
+   ends, and inside a step of the analyst's that step ends there, as + Step
+   cuts it. Its place in the process stays where it was in the list (C22:
+   the fewest placements, deriveOrder), unless its moment puts it in another
+   transaction, which it then joins. A step without a picture takes the
+   video's frame at that moment. One undoable edit. */
+
+/* The main level's visible steps in their process order: the transactions
+   in their order, then the steps outside them (show-here.js targetOf). */
+function stepsInProcessOrder() {
+  const model = _model();
+  return [...model.runs.flatMap((r) => StepOrder.processOrder(r.visible)),
+    ...(model.outside || []).filter((s) => s && s.state !== "hidden")];
+}
+
+/* The step "<step>" starts here acts on now (show-here.js targetOf), or null. */
+function showHereTarget() {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return null;
+  return ShowHere.targetOf(_findStep(State.getSelectedStepId()), stepsInProcessOrder());
+}
+
+/* The changes that give `hit`'s step the start `at` (absolute ms), or {
+   refuse } with the reason: a start typed's rules (commitStepTime). */
+function _showChanges(hit, at) {
+  const sess = State.getSession();
+  const fmt = (x) => TE.fieldTime(x, recordingStartMs(sess));
+  const stepId = hit.step.step_id;
+  const place = !AC.hasTime(hit.step);
+  const { others, outer } = _stepNeighbours(hit);
+  const moments = _markerMoments();
+  const p = TE.placeUntimed(at, others, outer, TE.nextBoundary(moments, at));
+  if (p.outside) return { refuse: "This moment is outside the video: go to a moment from " + fmt(outer.startMs) + "." };
+  if (p.inside) {
+    const o = p.inside;
+    if (!o.movable) {
+      return { refuse: (o.name || "Another step") + " runs from " + fmt(o.startMs) + " to " + fmt(o.endMs) +
+        " and its recorded actions give it its time: go to a moment outside it." };
+    }
+    const cut = TE.cutForNewStep(o, at, moments);
+    return { changes: [{ stepId: o.id, startMs: cut.before.startMs, endMs: cut.before.endMs },
+      { stepId, startMs: cut.after.startMs, endMs: cut.after.endMs, place }] };
+  }
+  if (p.tooShort) return { refuse: "Another step starts right there: go to an earlier moment." };
+  return { changes: [{ stepId, startMs: at, endMs: p.endMs, place }] };
+}
+
+/* "<step>" starts here: `stepId` gets the moment `atMs` (absolute) as its
+   start. `opts.frame`: a promise of the video's frame there (AnalystUI
+   frameAtMoment), the step's picture when it has none. Resolves true when
+   saved. */
+async function showStepAt(stepId, atMs, opts) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess) || !Number.isFinite(atMs)) return false;
+  const find = () => {
+    const hit = SPM.findStep((sess.annotations && sess.annotations.steps) || [], stepId);
+    return hit && !hit.parent && ShowHere.canShow(hit.step) ? hit : null;
+  };
+  const pre = find();
+  if (!pre) return false;
+  // What would change is known before the frame is written, so a refusal
+  // leaves no file behind.
+  const dry = _showChanges(pre, atMs);
+  if (dry.refuse) { toast(dry.refuse, "error"); return false; }
+  let shot = null;
+  if (opts && opts.frame && !AC.stepShots(pre.step, (sess.annotations || {}).analyst_screenshots).length) {
+    const data = await AnalystUI.settleFrame(opts.frame, AnalystUI.FRAME_WAIT_MS + 1000);
+    if (data) shot = await AnalystUI.writeFrame(data);
+    if (State.getSession() !== sess) return false;
+  }
+  // No await from here to the save: the time, the order and the picture are
+  // one edit.
+  const hit = find();
+  const r = hit && _showChanges(hit, atMs);
+  if (!r || r.refuse) { if (r) toast(r.refuse, "error"); return false; }
+  const anno = ensureAnnoShape(sess.annotations);
+  const step = hit.step;
+  const before = _placeOf(stepId);
+  const wanted = StepOrder.processOrder(before.steps);
+  const caseBefore = _caseKey(step);
+  if (!_applyStepTimes(anno, r.changes)) return false;
+  const after = _placeOf(stepId);
+  if (after && _caseKey(step) === caseBefore) {
+    for (const s of ShowHere.keepPlace(wanted, after.steps, step, _canBeFree(after.main, _model().runs))) AC.markEdited(s);
+  }
+  if (shot) {
+    if (!Array.isArray(anno.analyst_screenshots)) anno.analyst_screenshots = [];
+    anno.analyst_screenshots.push(AnalystUI.frameEntry(shot, stepId, new Date(atMs).toISOString()));
+  }
+  try { await persistAnnotations(anno, "show the step here"); } catch (_) { return false; }   // already shown
+  toast(ShowHere.doneText(step, sinceStart(step.time_range.start, recordingStartMs(sess))), "success");
   return true;
 }
 
@@ -3588,6 +3698,8 @@ module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, pasteNotes,
   deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp, setStepTimes,
+  // Lane E (E5): "<step>" starts here, on the Timeline.
+  showHereTarget, showStepAt, stepsInProcessOrder,
   // Lane E-1: the step panel edits a step with the editor's own handlers.
   panelFieldCallbacks,
   // C22: a step's place in the process (the Timeline's band menu).

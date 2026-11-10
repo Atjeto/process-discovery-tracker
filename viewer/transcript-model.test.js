@@ -9,6 +9,17 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const TM = require("./transcript-model.js");
 
+test("listsAllTalk (lane E, E6): with no transaction marked, the Overview lists all the talk", () => {
+  // The one implicit transaction of a project made from a video: every
+  // sentence is inside it, so the talk outside the transactions is none.
+  assert.equal(TM.listsAllTalk([{ caseId: "imp" }], "imp"), true);
+  assert.equal(TM.listsAllTalk([], null), true);
+  // A transaction marked: the talk outside the transactions, as before.
+  assert.equal(TM.listsAllTalk([{ caseId: "c1" }, { caseId: "c2" }], null), false);
+  assert.equal(TM.listsAllTalk([{ caseId: "c1" }], null), false);
+  assert.equal(TM.listsAllTalk([{ caseId: "imp" }, { caseId: "c2" }], "imp"), false);
+});
+
 const STARTED = "2026-05-14T09:00:00Z";
 const BASE = Date.parse(STARTED);
 const at = (hms) => Date.parse("2026-05-14T" + hms + "Z");

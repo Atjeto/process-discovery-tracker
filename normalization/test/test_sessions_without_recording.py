@@ -449,6 +449,27 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
     _assert_no_zero_timing(_text(blocks))
 
 
+def test_a_stretch_put_aside_without_a_recording_changes_neither_map_nor_pdd(tmp_path):
+    """Lane E (E4): in a project made from a video, a stretch put aside on
+    the Timeline (Not part of the process, the same excluded_ranges a
+    recording leaves out of the analysis) is a detour of the call: it cuts
+    no transaction's trace on the step BPMN and the PDD says nothing of it."""
+    session = _video_session(tmp_path / "video", markers=True)
+    anno = _read(session, "annotations.json")
+    # Between "Open the order" (0:10 to 0:40) and "Check the stock" (1:00),
+    # inside Transaction 1.
+    anno["excluded_ranges"] = [{"start": "2026-09-24T10:00:45Z", "end": "2026-09-24T10:00:55Z", "reason": "manual"}]
+    _write(session, "annotations.json", anno)
+    pdd = tmp_path / "video.docx"
+    proc = _normalize_cli(session, pdd)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    bpmn = session / "process_map_step.bpmn"
+    assert _reaches(bpmn, "Open the order", "Check the stock")
+    text = _text(_pdd(pdd))
+    assert "left out of the analysis" not in text.lower(), text
+    assert "Open the order" in text and "Check the stock" in text
+
+
 TECH_SKIPPED = "[normalize] Technical details not written: nothing was recorded in this project."
 
 

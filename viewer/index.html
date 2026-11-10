@@ -188,6 +188,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 </label>
                 <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
                 <button class="icon-btn" id="btn-add-step" type="button" hidden title="Add a step at the video playhead (S)">+ Step</button>
+                <!-- Lane E (E5): a step written first gets the playhead's moment
+                     (flow-view.js syncShowHere names the step). -->
+                <button class="icon-btn show-here-btn" id="btn-show-here" type="button" hidden>"<span class="show-here-name"></span>" starts here</button>
                 <div class="lanes-menu" id="lanes-menu">
                   <button class="icon-btn" id="btn-lanes" aria-haspopup="true" aria-expanded="false" title="Choose which timeline lanes to show">Lanes ▾</button>
                   <div class="lanes-popup" id="lanes-popup" style="display:none">
@@ -222,7 +225,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <span class="lg-marker" title="A marker change not applied yet: Apply marker changes, in the top bar, updates the transactions and their steps.">pending change</span>
               <span class="lg-screenshot">screenshot</span>
               <span class="lg-note">note</span>
-              <span class="lg-left-out">left out of the analysis</span>
+              <span class="lg-left-out" title="Hatched: a stretch you left out of the analysis. Playing skips it, and the Transcript tab leaves out what was said in it. Click it to include it again.">left out of the analysis</span>
               <span class="lg-placed" title="A step you placed elsewhere in the process (Place after a step, or Alt+Up and Alt+Down in Steps): its band stays where it was shown.">placed elsewhere in the process</span>
             </div>
           </div>
@@ -259,6 +262,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="anno-tabs">
                 <button class="anno-tab active" data-anno="screens">Screenshots</button>
                 <button class="anno-tab" data-anno="markers">Markers</button>
+                <button class="anno-tab" data-anno="transcript">Transcript</button>
               </div>
               <div class="anno-panel" data-panel="screens">
                 <div class="screens-toolbar">
@@ -268,6 +272,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </div>
               <div class="anno-panel" data-panel="markers" style="display:none">
                 <div id="markers-list" class="markers-list" title="A transaction starts at a Start marker. Double-click a Start to rename its transaction. The row buttons move a marker or delete it. A change shows here at once, marked pending, and applies to the transactions when you click Apply marker changes."></div>
+              </div>
+              <!-- Lane E (E3): the transcript beside the video (flow-view-transcript.js renderTab). -->
+              <div class="anno-panel" data-panel="transcript" style="display:none">
+                <div id="transcript-tab" class="trt"></div>
               </div>
             </aside>
           </div>
@@ -533,6 +541,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>As each step starts, press S (or click <em>+ Step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
             <li>Where the transaction ends, right-click and choose <em>End the transaction here</em>: its last step ends there too. <em>Start a transaction here</em> for the next one ends the one before it the same way.</li>
             <li>Each step you add opens in the step panel beside the video, its screenshot taken from the video at that moment. Pause the video before you press S, and the cursor is in the step's name: type the name, press Enter, and play on. Its system and its description are right under the name. While the video plays, S only marks the steps: name them in the panel or in Steps afterwards. Ctrl+Z takes back a mark put in the wrong place, with its screenshot.</li>
+            <li>The <em>Transcript</em> tab beside the video lists what was said, with its time and who said it. Type in its search to find a word, for example <em>invoice</em>: it shows how many sentences hold it. With several speakers, pick one to read only theirs. The sentence the video is at is marked and stays in view while the video plays, unless your pointer is on the list or the search holds text.</li>
+            <li>Click a sentence to go to that moment. <em>Add step here</em>, after the sentence, adds a step that starts where it is said. <em>Copy to...</em> copies the sentence into the description of the selected step or into a field of the document.</li>
+            <li>Steps written first, from your notes, have no time. Go to the moment of the first one and click <em>"Open the order" starts here</em>, beside <em>+ Step</em> (the button names the step): the step starts at that moment and, without a picture, takes the video's frame there. Its place among the steps stays. The next step without a time is then selected and the button names it: go to its moment and click again. Select a step you added to give it another start. Right-clicking the timeline offers the same at the moment you click, and Ctrl+Z undoes it.</li>
           </ol>
           <p><strong>Put a step where it belongs in the process</strong></p>
           <ol class="help-steps">
@@ -581,7 +592,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ol class="help-steps">
             <li>An app, for example Calculator, where the SME checks a total out of habit: in Steps, click <em>Apps outside the process...</em>, tick the app and click <em>Save</em>.</li>
             <li>A stretch, for example where the SME started on the wrong customer: on the Timeline, hold Shift and drag across it, click <em>Leave out of the analysis</em>, then <em>Leave out</em>.</li>
-            <li>The steps and the map are drafted again without it. A stretch left out shows hatched: click it and choose <em>Include again</em> to bring it back.</li>
+            <li>The steps and the map are drafted again without it. A stretch left out shows hatched: click it and choose <em>Include again</em> to bring it back. Playing skips it, and the <em>Transcript</em> tab leaves out what was said in it.</li>
+            <li>In a project made from a video, a detour of the call, for example thirty minutes on another topic: hold Shift and drag across it, then click <em>Not part of the process</em>. It shows hatched, playing skips it, and the <em>Transcript</em> tab says <em>Not part of the process</em> in its place. Your steps stay as they are, and the maps and the PDD do not mention it. Seek into it to watch it anyway. Click it and choose <em>Include again</em> to bring it back, or press Ctrl+Z.</li>
           </ol>
           <p><strong>Make a sub-process</strong></p>
           <ol class="help-steps">
@@ -698,7 +710,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Leaving things out</h3>
           <ul class="help-list">
             <li><strong>Apps outside the process</strong>, in the Steps toolbar: tick the apps that are not part of the process, for example Teams or Outlook used during the call; the steps and the map are updated without them.</li>
-            <li><strong>Leave out of the analysis</strong>, on the Timeline: Shift-drag across a stretch (a break, a detour) and choose it on the card that opens. The steps and the map are drafted again without that stretch, and its time is not counted; a transaction with a stretch left out says so, and the reference transaction's steps done in it are not read as skipped. The Timeline shows the stretch hatched, <em>Left out of the analysis</em>: click it and choose <em>Include again</em> to bring it back. Ctrl+Z undoes either.</li>
+            <li><strong>Leave out of the analysis</strong>, on the Timeline: Shift-drag across a stretch (a break, a detour) and choose it on the card that opens. The steps and the map are drafted again without that stretch, and its time is not counted; a transaction with a stretch left out says so, and the reference transaction's steps done in it are not read as skipped. The Timeline shows the stretch hatched, <em>Left out of the analysis</em>: click it and choose <em>Include again</em> to bring it back. Ctrl+Z undoes either. Playing skips the stretch, and the <em>Transcript</em> tab leaves out what was said in it.</li>
+            <li><strong>Not part of the process</strong>, the same on the Timeline of a project made from a video or from nothing: the stretch is put aside, hatched, skipped when playing and left out of the <em>Transcript</em> tab, and nothing else changes: the steps you marked in it stay, and the maps and the PDD do not mention it. <em>Include again</em> on it, or Ctrl+Z, brings it back.</li>
             <li><strong>Hide step</strong> (the Steps toolbar): takes one step out, and no analysis brings it back. Only a step you added can be deleted.</li>
           </ul>
           <h3>Waste</h3>

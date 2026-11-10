@@ -31,6 +31,10 @@ const TM = require("../transcript-model.js");
 const { $, escapeAttr, toast, recordingStartMs, clock } = require("../dom.js");
 const { chooseModal } = require("../modals.js");
 const Video = require("./flow-view-video.js");
+const AC = require("../analyst-content.js");
+const RO = require("../read-only.js");
+const LeftOut = require("../left-out.js");
+const TL = require("../transcript-list.js");
 
 let loadSessionIntoView = async () => {};
 let renderTimeline = () => {};
@@ -270,6 +274,7 @@ async function _applySync(sess, part, absOffsetMs) {
   if (State.getSession() === sess) part.transcript.offset_ms = offsetMs;
   toast("Transcript synced.", "success");
   renderTimeline();
+  renderTab();
 }
 
 /* ---- Attach, Replace, Remove ------------------------------------------------ */
@@ -387,6 +392,7 @@ let _errorShown = null;
 function onSessionLoaded() {
   cancelTranscriptSync();
   renderTranscriptMenu();
+  renderTab();
   const sess = State.getSession();
   const err = sess && sess.transcriptError;
   const key = err ? sess.sessionFolder + "\n" + err : null;
@@ -396,10 +402,299 @@ function onSessionLoaded() {
   _errorShown = key;
 }
 
-/* deps = { loadSessionIntoView, renderTimeline }, injected by flow-view.js. */
+/* ---- The Transcript tab (lane E, item E3) -------------------------------------
+   The third tab beside the video: the talk as text, on the one clock, so the
+   useful part of a ninety minute call is found by reading and searching, not
+   by scrubbing. Every placed sentence of every transcript in time order
+   (transcript-list.js tabModel), the speaker where it changes; a search
+   that hides what does not match, marks what does and counts it; a speaker
+   select with more than one speaker. The sentence at the playhead is marked
+   and, while the video plays, kept in view, unless the pointer is over the
+   list or the search holds text (never fight the reader). A click on a
+   sentence takes the clock there (playing on only if it played). Its menu:
+   Add a step here (what S does at that moment), Add to the selected step's
+   description (the step editor's handler), Add to a document field (the
+   Overview's menu). A stretch put aside (left-out.js) stands in one row,
+   with Include again. Read only: reading, searching and seeking only.
+   The list is built once per change of what it shows (_tabKey) and never
+   while typing or playing: a tick toggles one class. */
+
+let addStepAt = async () => {};
+let includeAgain = async () => {};
+
+const _tab = { key: null, rows: [], starts: [], byStart: [], cur: -1, hover: false,
+  query: "", speaker: "", marked: new Set(), stretches: [] };
+
+function _tabHost() { return document.getElementById("transcript-tab"); }
+function _tabShown() {
+  const host = _tabHost();
+  const panel = host && host.closest(".anno-panel");
+  return !!panel && panel.style.display !== "none";
+}
+
+/* What the list depends on: the transcripts and their placement, the
+   stretches put aside, whether the project can be edited. */
+function _tabKey(sess) {
+  if (!sess) return "";
+  const a = sess.annotations || {};
+  return JSON.stringify([sess.sessionFolder, (sess.manifest || {}).started_at, TM.transcriptsOf(sess).map((t) => [t.file,
+    (t.transcript.segments || []).length, t.transcript.offset_ms, t.transcript.video_id]), a.external_videos || a.external_video || null,
+    a.excluded_ranges || [], RO.isReadOnly(sess), !!sess.recordingAvailable, (sess.events || []).length > 0]);
+}
+
+function _clockOf(ms, origin) {
+  return Number.isFinite(ms) && Number.isFinite(origin) ? clock(Math.max(0, ms - origin)) : "";
+}
+
+function _gapLine(gap, origin, recorded) {
+  return LeftOut.wordsFor(recorded).band + ": " + _clockOf(gap.startMs, origin) + " to " + _clockOf(gap.endMs, origin);
+}
+
+/* The tab, built from the project on screen (only when what it shows
+   changed, unless `force`). */
+function renderTab(force) {
+  const host = _tabHost();
+  if (!host) return;
+  const sess = State.getSession();
+  const key = _tabKey(sess);
+  if (!force && key === _tab.key) { tickTab(); return; }
+  _tab.key = key;
+  _tab.rows = [];
+  _tab.starts = [];
+  _tab.cur = -1;
+  _tab.marked = new Set();
+  _closeTabMenu();
+  if (!sess) { host.innerHTML = ""; return; }
+  const editable = !RO.isReadOnly(sess);
+  const origin = recordingStartMs(sess);
+  const recorded = AC.hasRecording(sess);
+  const parts = TM.partsOf(sess);
+  if (!parts.length) {
+    host.innerHTML = '<p class="trt-note">No transcript is attached.</p>' + (editable
+      ? '<button type="button" class="link-btn trt-attach" title="' + escapeAttr(TM.ATTACH_TITLE) + '">Attach transcript...</button>' : "");
+    const b = host.querySelector(".trt-attach");
+    if (b) b.addEventListener("click", () => attachTranscript());
+    return;
+  }
+  _tab.stretches = LeftOut.stretchesOf(sess.annotations);
+  const model = TL.tabModel(parts, _tab.stretches);
+  if (_tab.speaker && !model.speakers.includes(_tab.speaker)) _tab.speaker = "";
+  const timeline = !!Video.timelineSpan();
+  const notes = model.unplaced.map((u) => {
+    const name = parts.length > 1 ? "Transcript " + u.number : "The transcript";
+    return '<p class="trt-note">' + escapeAttr(name) + " is not placed on the clock yet" +
+      (editable && timeline ? ': <button type="button" class="link-btn trt-sync" data-file="' + escapeAttr(u.file) + '" ' +
+        'title="Place the transcript on the timeline: pick a sentence, then click the moment on the timeline where it was said.">Sync...</button>'
+        : editable ? ": attach the video first, then sync it." : ".") + "</p>";
+  }).join("");
+  if (!model.rows.length) {
+    host.innerHTML = notes || '<p class="trt-note">The transcript has no sentences.</p>';
+    _wireTabNotes(host);
+    return;
+  }
+  const speakers = model.speakers.length > 1
+    ? '<select class="trt-speaker" aria-label="Speaker" title="Show what one person said"><option value="">Everyone</option>' +
+      model.speakers.map((sp) => '<option value="' + escapeAttr(sp) + '"' + (sp === _tab.speaker ? " selected" : "") + ">" +
+        escapeAttr(sp) + "</option>").join("") + "</select>" : "";
+  // Two text acts after the sentence: shown on the row under the pointer,
+  // the row with the keyboard and the playhead's row; on the others they
+  // keep their space (no row changes height) and stay reachable by Tab.
+  const acts = editable ? '<span class="trt-acts">' +
+    '<button type="button" class="link-btn trt-act trt-add-step" title="Adds a step that starts where this is said.">Add step here</button>' +
+    '<button type="button" class="link-btn trt-act trt-copy" aria-haspopup="menu" title="Copies this sentence into the description of a step or a field of the document.">Copy to...</button>' +
+    "</span>" : "";
+  let k = 0;
+  const items = model.rows.map((r) => {
+    if (r.kind === "gap") {
+      const line = _gapLine(r.gap, origin, recorded);
+      return '<li class="trt-gap" data-start="' + r.gap.startMs + '"><span class="trt-gap-text">' + escapeAttr(line) + "</span>" +
+        (editable ? '<button type="button" class="link-btn trt-include" title="Brings this stretch back: it plays again and what was said in it is listed here.">Include again</button>' : "") +
+        "</li>";
+    }
+    const s = r.s;
+    const html = '<li class="trt-row" data-k="' + k + '"><button type="button" class="trt-say" title="Goes to the moment this was said.">' +
+      '<span class="tr-time">' + escapeAttr(TM.sentenceClock(s, origin)) + "</span>" +
+      (s.speaker ? '<span class="tr-speaker' + (r.speakerShown ? "" : " same") + '">' + escapeAttr(s.speaker) + "</span>" : "") +
+      '<span class="tr-text">' + escapeAttr(TM.normalizeSpace(s.text)) + "</span></button>" + acts + "</li>";
+    k += 1;
+    return html;
+  });
+  host.innerHTML = notes +
+    '<div class="trt-tools"><input type="search" class="trt-search" placeholder="Search the transcript" aria-label="Search the transcript" value="' +
+      escapeAttr(_tab.query) + '" />' + speakers + '<span class="trt-count" aria-live="polite"></span></div>' +
+    '<ol class="trt-list" aria-label="What was said">' + items.join("") + "</ol>";
+  _wireTabNotes(host);
+  const list = host.querySelector(".trt-list");
+  const sentences = model.rows.filter((r) => r.kind === "sentence").map((r) => r.s);
+  const els = list.querySelectorAll(".trt-row");
+  _tab.rows = sentences.map((s, i) => ({ s, el: els[i], text: els[i].querySelector(".tr-text"),
+    low: TM.normalizeSpace(s.text).toLowerCase(), shown: true }));
+  _tab.starts = sentences.map((s) => s.startMs);
+  _tab.total = model.total;
+  _wireTabList(host, list, editable);
+  _applyFilter();
+  tickTab(true);
+}
+
+function _wireTabNotes(host) {
+  for (const b of host.querySelectorAll(".trt-sync")) b.addEventListener("click", (e) => startTranscriptSync(e, b.dataset.file));
+}
+
+function _wireTabList(host, list, editable) {
+  const search = host.querySelector(".trt-search");
+  search.addEventListener("input", () => { _tab.query = search.value; _applyFilter(); });
+  const speaker = host.querySelector(".trt-speaker");
+  if (speaker) speaker.addEventListener("change", () => { _tab.speaker = speaker.value; _applyFilter(); });
+  list.addEventListener("mouseenter", () => { _tab.hover = true; });
+  list.addEventListener("mouseleave", () => { _tab.hover = false; });
+  list.addEventListener("click", (e) => {
+    const say = e.target.closest(".trt-say");
+    if (say) { const row = _rowOf(say); if (row) _seekTo(row.s); return; }
+    const add = e.target.closest(".trt-add-step");
+    if (add) { const row = _rowOf(add); if (row) _addStepAt(row.s); return; }
+    const copy = e.target.closest(".trt-copy");
+    if (copy) { const row = _rowOf(copy); if (row) _openCopyMenu(copy, row.s, e.detail === 0); return; }
+    const inc = e.target.closest(".trt-include");
+    if (inc && editable) {
+      const start = Number(inc.closest(".trt-gap").dataset.start);
+      const gap = _tab.stretches.find((g) => g.startMs === start);
+      if (gap) _includeGap(gap);
+    }
+  });
+}
+
+function _rowOf(el) {
+  const li = el.closest(".trt-row");
+  return li ? _tab.rows[Number(li.dataset.k)] || null : null;
+}
+
+/* The search and the speaker: rows hidden, not built again; the matches
+   marked; the count beside the search. */
+function _applyFilter() {
+  const host = _tabHost();
+  if (!host || !_tab.rows.length) return;
+  const q = TL.queryOf(_tab.query);
+  const sp = _tab.speaker;
+  const narrowed = !!(q || sp);
+  let shown = 0;
+  const marked = new Set();
+  for (const r of _tab.rows) {
+    const on = (!sp || r.s.speaker === sp) && (!q || r.low.includes(q));
+    if (on !== r.shown) { r.el.hidden = !on; r.shown = on; }
+    if (on) shown += 1;
+    if (on && q) { r.text.innerHTML = TL.markedHtml(r.s.text, q); marked.add(r); }
+  }
+  for (const r of _tab.marked) if (!marked.has(r)) r.text.textContent = TM.normalizeSpace(r.s.text);
+  _tab.marked = marked;
+  const list = host.querySelector(".trt-list");
+  if (list) list.classList.toggle("narrowed", narrowed);
+  const count = host.querySelector(".trt-count");
+  if (count) count.textContent = TL.countText(shown, _tab.total, narrowed);
+}
+
+/* The sentence at the playhead: one class moved, and while the video plays
+   the row kept in view (not while the analyst reads: the pointer over the
+   list, the search holding text, the keyboard in it). `jump`: put it in
+   view whatever plays (the tab just shown). */
+function tickTab(jump) {
+  if (!_tab.rows.length || !_tabShown()) return;
+  const ms = Video.playheadMs();
+  let i = TL.currentIndex(_tab.starts, ms);
+  if (i >= 0 && LeftOut.inside(_tab.stretches, ms)) i = -1;
+  if (i !== _tab.cur) {
+    const old = _tab.rows[_tab.cur];
+    if (old) { old.el.classList.remove("current"); old.el.removeAttribute("aria-current"); }
+    const now = _tab.rows[i];
+    if (now) { now.el.classList.add("current"); now.el.setAttribute("aria-current", "true"); }
+    _tab.cur = i;
+  } else if (!jump) return;
+  const row = _tab.rows[i];
+  if (!row || !row.shown) return;
+  const list = row.el.parentElement;
+  const reading = _tab.hover || !!_tab.query || (list && list.contains(document.activeElement)) ||
+    !!document.getElementById("ov-tr-add-menu");
+  if (reading || !(jump || Video.isPlaying())) return;
+  // The list is the rows' offset parent (position: relative).
+  const top = row.el.offsetTop, bottom = top + row.el.offsetHeight;
+  if (top < list.scrollTop || bottom > list.scrollTop + list.clientHeight) {
+    list.scrollTop = Math.max(0, top - list.clientHeight / 3);
+  }
+}
+
+/* A sentence clicked: the clock goes there; a playing video plays on, a
+   paused one stays paused. */
+function _seekTo(s) {
+  if (!Number.isFinite(s.startMs)) return;
+  const at = Video.clipAtMs(s.startMs);
+  if (at && at.clip.file) Video.seekClock(s.startMs);
+  else Video.movePlayheadToTimestamp(new Date(s.startMs).toISOString());
+  tickTab();
+}
+
+function _closeTabMenu() {
+  const m = document.getElementById("ov-tr-add-menu");
+  if (m) m.remove();
+}
+
+/* Add step here: what S does at that moment. The clock goes there first,
+   so the video shows the step's moment and its frame. */
+async function _addStepAt(s) {
+  if (!Number.isFinite(s.startMs)) return;
+  _seekTo(s);
+  await addStepAt(new Date(s.startMs).toISOString());
+}
+
+/* The selected step (any level), or null. */
+function _selectedHit() {
+  const sess = State.getSession();
+  const id = State.getSelectedStepId();
+  return id ? require("../sub-process-maps.js").findStep((sess && sess.annotations && sess.annotations.steps) || [], id) : null;
+}
+
+/* Copy to...: one menu, "Copy this sentence to", first the selected step's
+   description (shown and not acting while no step is selected), then the
+   document's fields (the Overview's menu, overview-view.js
+   showDocTargetMenu). `keyboard`: the first item takes the focus. */
+function _openCopyMenu(btn, s, keyboard) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return;
+  const hit = _selectedHit();
+  const name = hit ? (String(hit.step.name || "").trim() || "this step") : "";
+  const added = !!hit && TM.isAdded(hit.step.description, s.text);
+  const first = hit
+    ? { label: 'The description of "' + name + '"' + (added ? " (added)" : ""), off: added,
+      title: added ? "Its description already holds this sentence." : 'Adds this sentence to the description of "' + name + '".',
+      act: () => _addToDescription(s) }
+    : { label: "The description of a step (select a step first)", off: true,
+      title: "Select a step on the Timeline first.", act: () => {} };
+  require("./overview-view.js").showDocTargetMenu(btn, s, { head: "Copy this sentence to", first, focus: keyboard });
+}
+
+/* The selected step's description gets the sentence, through the step
+   editor's own handler (steps-view.js describeStepAction: one undoable
+   edit, a draft becoming edited). */
+async function _addToDescription(s) {
+  const sess = State.getSession();
+  const hit = _selectedHit();
+  const id = hit && hit.step.step_id;
+  if (!sess || RO.isReadOnly(sess) || !hit || TM.isAdded(hit.step.description, s.text)) return;
+  const cb = require("./steps-view.js").panelFieldCallbacks(hit.step);
+  await cb.onDescription(id, TM.appendText(hit.step.description, s.text));
+  toast("Added to the description of " + (String(hit.step.name || "").trim() || "the selected step") + ".", "success");
+}
+
+async function _includeGap(gap) {
+  // A stretch is one or more entries joined (left-out.js): each goes.
+  for (const range of gap.ranges) await includeAgain(range);
+}
+
+/* deps = { loadSessionIntoView, renderTimeline, addStepAt, includeAgain },
+   injected by flow-view.js. */
 function initTranscript(deps) {
   loadSessionIntoView = (deps && deps.loadSessionIntoView) || (async () => {});
   renderTimeline = (deps && deps.renderTimeline) || (() => {});
+  addStepAt = (deps && deps.addStepAt) || (async () => {});
+  includeAgain = (deps && deps.includeAgain) || (async () => {});
 }
 
 // Self-wire the require()-time listeners (the DOM is parsed by then). Attach
@@ -416,7 +711,20 @@ if (document.getElementById("timeline-scroll")) {
 }
 // One sync at a time: the video sync (flow-view-video.js) ends this one.
 if ($("#btn-sync-video")) $("#btn-sync-video").addEventListener("click", () => cancelTranscriptSync());
+// The Transcript tab follows the playhead (a class moved per tick) and is
+// built again only when what it lists changed (a stretch put aside or
+// included again, an undo, the videos moved).
+(function wireTab() {
+  const video = document.getElementById("video");
+  if (video) {
+    video.addEventListener("timeupdate", () => tickTab());
+    video.addEventListener("seeked", () => tickTab());
+  }
+  State.subscribe("timeline", () => renderTab());
+})();
 
 module.exports = {
   initTranscript, onSessionLoaded, transcriptLane, startTranscriptSync, cancelTranscriptSync,
+  // Lane E (E3): the Transcript tab beside the video.
+  renderTab, refreshTab: () => renderTab(), tickTab,
 };

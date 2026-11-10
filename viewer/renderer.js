@@ -237,7 +237,8 @@ function _sessionMapData() {
   const traces = lv.path.length ? (lv.map ? lv.map.traces : []) : lv.runs.map((r) => r.visible);
   // Lane FX1: at the main level a stretch left out of the analysis cuts its
   // transaction's trace, as it cuts the step BPMN's (step_flow).
-  const excluded = (sess.annotations && sess.annotations.excluded_ranges) || [];
+  // Lane E (E4): none in a project without a recording (left-out.js).
+  const excluded = require("./left-out.js").analysisRanges(sess);
   const leftOut = lv.path.length ? undefined
     : lv.runs.map((r) => RunDiff.leftOutStretches(excluded, { startMs: r.startMs, endMs: r.endMs }));
   return {

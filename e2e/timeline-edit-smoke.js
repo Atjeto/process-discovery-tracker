@@ -78,6 +78,231 @@ function record(name, ok, detail) {
 const errText = (e) => { logActionError("timeline-edit-smoke", e); return String((e && e.message) || e).split("\n")[0]; };
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
 
+/* ---- Lane E: a messy call (E4 Not part of the process, E5 "<step>" starts here)
+   A project made from the synthetic video with three steps written first
+   (no time: "Open the order", "Check the stock", "Send the invoice"), opened
+   in a viewer of its own:
+     (o) E4: a Shift-drag across 0:08 to 0:16 does not start the video, its
+         card shows the Duration only and offers "Not part of the process"
+         (no "Leave out of the analysis"); one click marks it with no
+         question and no analysis: excluded_ranges holds it, the Timeline
+         draws it hatched with its label and tooltip, the legend says "not
+         part of the process", and Steps says nothing of it;
+     (p) playing from 0:06 skips it (no moment inside it is shown), and a
+         seek into it plays it from there;
+     (q) Include again, from the band's menu, takes it out; Ctrl+Z puts it
+         back and Ctrl+Y takes it out again, none of them analyzing;
+     (r) E5: "<step>" starts here names the first step without a time, on one
+         line beside + Step; at 0:02, 0:24 and 0:16 it gives each step its
+         moment in two acts (seek, click), the next one selected and named
+         each time: their order in Steps stays as written, each is a band,
+         each took the video's frame; then the button hides; Ctrl+Z gives the
+         last one back its no time and takes its frame; the right-click menu
+         offers the same act under Add a step here. */
+async function laneE(TMP) {
+  const T0 = Date.parse("2026-11-10T09:00:00.000Z");
+  const dir = path.join(TMP, "Messy call");
+  fs.mkdirSync(path.join(dir, "video"), { recursive: true });
+  fs.copyFileSync(VIDEO, path.join(dir, "video", "call.webm"));
+  const started = new Date(T0).toISOString();
+  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ session_id: "lane-e-tl", source: "video", started_at: started, label: "Messy call" }));
+  fs.writeFileSync(path.join(dir, "events.jsonl"), "");
+  const hand = (id, name, order) => ({ step_id: id, name, state: "manually_authored", case_id: null, time_range: null, order,
+    description: "", evidence: { interaction_event_ids: [], screenshot_refs: [] }, flags: { waste: false } });
+  fs.writeFileSync(path.join(dir, "annotations.json"), JSON.stringify({ version: 1, session_id: "lane-e-tl",
+    steps: [hand("n1", "Open the order", 1), hand("n2", "Check the stock", 2), hand("n3", "Send the invoice", 3)],
+    external_videos: [{ id: "v1", path: "video/call.webm", offset_ms: 0, in_ms: 0, out_ms: null, attached_at: started }] }, null, 2));
+  const errs = [];
+  let v, page;
+  try {
+    v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + dir], cwd: VIEWER });
+    page = await v.app.firstWindow();
+    page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+    page.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
+    await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(); return !!(s && s.stats) && !require("./views/flow-view.js").analysisBusy(); }, null, { timeout: 60000 });
+    await page.click('.view-mode-btn[data-level="flow"]');
+    await page.waitForFunction(() => !!require("./views/flow-view-video.js").timelineSpan(), null, { timeout: T });
+  } catch (e) {
+    record("lane E: the project made from a video with three steps written first opens", false, errText(e));
+    if (v) await v.close();
+    return;
+  }
+  const anno = () => page.evaluate(() => require("./state.js").getSession().annotations);
+  const at = () => page.evaluate(() => require("./views/flow-view-video.js").playheadMs());
+  const seek = async (s) => { await page.evaluate((t) => require("./views/flow-view-video.js").seekClock(t, false), T0 + s * 1000); await wait(500); };
+  const sec = (ms) => Math.round((ms - T0) / 100) / 10;
+  // Measured again before each use: the step panel narrows the Timeline.
+  const geom = () => page.evaluate(() => {
+    const tl = document.getElementById("timeline");
+    const r = tl.getBoundingClientRect();
+    const sp = require("./views/flow-view-video.js").timelineSpan();
+    return { left: r.left, width: r.width, top: r.top, bottom: r.bottom, first: sp.startMs, span: sp.endMs - sp.startMs };
+  });
+  const bgY = (g, x) => page.evaluate(({ x, top, bottom }) => {
+    for (let y = top + 4; y < bottom; y += 2) if (document.elementFromPoint(x, y) === document.getElementById("timeline")) return y;
+    return null;
+  }, { x, top: g.top, bottom: g.bottom });
+  const busy = () => page.evaluate(() => ({ busy: require("./views/flow-view.js").analysisBusy(), status: !!document.getElementById("run-status") }));
+
+  // (o) E4: the act.
+  const o = {};
+  try {
+    const g = await geom();
+    const x = (s) => g.left + ((T0 + s * 1000 - g.first) / g.span) * g.width;
+    const y = await bgY(g, x(8));
+    // G: selecting a stretch never starts the video (a plain click seeks
+    // and plays, as before).
+    await page.evaluate(() => document.getElementById("video").pause());
+    await wait(300);
+    o.pausedBefore = await page.evaluate(() => document.getElementById("video").paused);
+    await page.keyboard.down("Shift");
+    await page.mouse.move(x(8), y);
+    await page.mouse.down();
+    await page.mouse.move(x(12), y, { steps: 5 });
+    await page.mouse.move(x(16), y, { steps: 5 });
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+    await wait(600);
+    o.pausedAfter = await page.evaluate(() => document.getElementById("video").paused);
+    o.card = await page.evaluate(() => [...document.querySelectorAll("#tl-selection-stats .summary-fix")].map((b) => b.textContent));
+    o.rows = await page.evaluate(() => [...document.querySelectorAll("#tl-selection-stats .row > span:first-child")].map((s) => s.textContent));
+    o.tip = await page.evaluate(() => document.getElementById("tl-selection-exclude").title);
+    await page.click("#tl-selection-exclude");
+    await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 1, null, { timeout: T });
+    o.dialog = await page.evaluate(() => !!document.querySelector(".modal-confirm"));
+    o.toast = await page.evaluate(() => document.getElementById("toast").textContent);
+    await wait(500);
+    o.busy = await busy();
+    const r = (await anno()).excluded_ranges[0];
+    o.range = [sec(Date.parse(r.start)), sec(Date.parse(r.end))];
+    o.drawn = await page.evaluate(() => {
+      const b = document.querySelector("#timeline .tl-left-out");
+      const lg = document.querySelector("#timeline-legend .lg-left-out");
+      return { title: b && b.title, label: (document.querySelector(".tl-left-out-label") || {}).textContent,
+        legend: lg && lg.textContent, legendTip: lg && lg.title, legendShown: !!lg && lg.checkVisibility() };
+    });
+    await page.click('.view-mode-btn[data-level="steps"]');
+    await wait(400);
+    o.steps = await page.evaluate(() => ({ notes: document.querySelectorAll('.run-notes li[data-kind="left_out"]').length,
+      text: /left out of the analysis|not part of the process/i.test(document.getElementById("session-layout-steps").innerText) }));
+    await page.click('.view-mode-btn[data-level="flow"]');
+    await wait(400);
+  } catch (e) { o.err = errText(e); }
+  record("(o) lane E, E4: in a project made from a video a Shift-drag (which does not start the video) shows the stretch's Duration only and offers Not part of the process (not Leave out of the analysis); one click marks it with no question and no analysis (\"Marked as not part of the process.\"), hatched with its label and tooltip, the legend in its words, and Steps says nothing of it",
+    !o.err && o.pausedBefore && o.pausedAfter && JSON.stringify(o.rows) === '["Duration"]' &&
+      JSON.stringify(o.card) === '["Insert transaction from selection","Not part of the process"]' && !o.dialog &&
+      o.tip === "Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back." &&
+      /Marked as not part of the process\./.test(o.toast || "") &&
+      !o.busy.busy && !o.busy.status && Math.abs(o.range[0] - 8) <= 0.3 && Math.abs(o.range[1] - 16) <= 0.3 &&
+      /^Not part of the process: 0:0\d to 0:1\d\. Click it to include it again\.$/.test(o.drawn.title || "") && o.drawn.label === "Not part of the process" &&
+      o.drawn.legend === "not part of the process" &&
+      o.drawn.legendTip === "A stretch you marked as not part of the process. It is skipped when playing and left out of the Transcript tab." &&
+      o.drawn.legendShown && o.steps.notes === 0 && !o.steps.text,
+    JSON.stringify(o));
+
+  // (p) the skip when playing.
+  const p = {};
+  try {
+    const r = (await anno()).excluded_ranges[0];
+    const a = Date.parse(r.start), b = Date.parse(r.end);
+    await seek(6);
+    await page.evaluate(() => document.getElementById("video").play());
+    p.seen = [];
+    const until = Date.now() + 5000;
+    while (Date.now() < until) { p.seen.push(await at()); await wait(80); }
+    await page.evaluate(() => document.getElementById("video").pause());
+    p.inside = p.seen.filter((t) => t > a + 400 && t < b - 100).map(sec);
+    p.after = p.seen.some((t) => t >= b);
+    await seek(11);
+    await page.evaluate(() => document.getElementById("video").play());
+    await wait(1500);
+    p.fromInside = sec(await at());
+    await page.evaluate(() => document.getElementById("video").pause());
+  } catch (e) { p.err = errText(e); }
+  record("(p) lane E, E4: playing runs into the stretch and goes on at its end (no moment inside it shows); a seek into it plays it from there",
+    !p.err && p.inside.length === 0 && p.after && p.fromInside > 11.5 && p.fromInside < 14, JSON.stringify({ err: p.err, inside: p.inside, after: p.after, fromInside: p.fromInside }));
+
+  // (q) Include again, Ctrl+Z, Ctrl+Y.
+  const q = {};
+  try {
+    await page.locator("#timeline .tl-left-out").click({ timeout: T });
+    await page.locator("#tl-ctx-menu div", { hasText: "Include again" }).click({ timeout: T });
+    await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 0, null, { timeout: T });
+    await wait(300);
+    q.included = { busy: await busy(), bands: await page.evaluate(() => document.querySelectorAll("#timeline .tl-left-out").length),
+      toast: await page.evaluate(() => document.getElementById("toast").textContent) };
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 1 &&
+      document.querySelectorAll("#timeline .tl-left-out").length === 1, null, { timeout: T });
+    await wait(300);
+    q.undone = await busy();
+    await page.keyboard.press("Control+y");
+    await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 0, null, { timeout: T });
+    await wait(300);
+    q.redone = await busy();
+  } catch (e) { q.err = errText(e); }
+  const calm = (b) => b && !b.busy && !b.status;
+  record("(q) lane E, E4: Include again, from the stretch's menu, takes it out (\"Included again.\"); Ctrl+Z puts it back and Ctrl+Y takes it out again, none of them running an analysis",
+    !q.err && calm(q.included.busy) && q.included.bands === 0 && /Included again\./.test(q.included.toast || "") &&
+      calm(q.undone) && calm(q.redone), JSON.stringify(q));
+
+  // (r) E5.
+  const r5 = {};
+  try {
+    const button = () => page.evaluate(() => {
+      const b = document.getElementById("btn-show-here"), plus = document.getElementById("btn-add-step");
+      const rb = b.getBoundingClientRect(), rp = plus.getBoundingClientRect();
+      const name = b.querySelector(".show-here-name");
+      return { hidden: b.hidden, text: b.textContent, title: b.title, id: b.dataset.stepId, oneLine: !b.hidden && Math.abs(rb.top - rp.top) < 2 && rb.height < 40,
+        fits: !b.hidden && name.getBoundingClientRect().right <= rb.right };
+    });
+    r5.first = await button();
+    r5.acts = [];
+    for (const [s, id] of [[2, "n1"], [24, "n2"], [16, "n3"]]) {
+      await seek(s);
+      const before = await button();
+      await page.click("#btn-show-here");
+      await page.waitForFunction((sid) => { const st = require("./state.js").getSession().annotations.steps.find((x) => x.step_id === sid); return !!(st && st.time_range); }, id, { timeout: T });
+      await wait(400);
+      r5.acts.push({ named: before.id, at: s, next: (await button()).id || null });
+      if (id === "n1") r5.toast = await page.evaluate(() => document.getElementById("toast").textContent);
+    }
+    const a = await anno();
+    r5.times = a.steps.map((s) => s.step_id + "@" + (s.time_range ? sec(Date.parse(s.time_range.start)) : "-"));
+    r5.frames = ["n1", "n2", "n3"].map((id) => (a.analyst_screenshots || []).some((x) => x.step_id === id && x.source === "video_frame"));
+    r5.bands = await page.evaluate(() => [...document.querySelectorAll("#timeline .tl-step-band")].map((b) => b.dataset.stepId).sort().join(","));
+    r5.hiddenAfter = (await button()).hidden;
+    await page.click('.view-mode-btn[data-level="steps"]');
+    await wait(400);
+    r5.rows = await page.evaluate(() => [...document.querySelectorAll("#step-list .step-row[data-step-id]")].map((x) => x.dataset.stepId).join(","));
+    await page.click('.view-mode-btn[data-level="flow"]');
+    await wait(400);
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(() => !require("./state.js").getSession().annotations.steps.find((x) => x.step_id === "n3").time_range, null, { timeout: T });
+    await wait(400);
+    const u = await anno();
+    r5.undo = { frame: (u.analyst_screenshots || []).some((x) => x.step_id === "n3"), button: (await button()).id };
+    const g = await geom();
+    const xr = g.left + ((T0 + 29000 - g.first) / g.span) * g.width;
+    await page.mouse.click(xr, await bgY(g, xr), { button: "right" });
+    r5.menu = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu div")].map((d) => d.textContent));
+    await page.keyboard.press("Escape");
+  } catch (e) { r5.err = errText(e); }
+  const menuAt = r5.menu ? r5.menu.indexOf("Add a step here") : -1;
+  record("(r) lane E, E5: \"Open the order\" starts here, on one line beside + Step, gives the three steps written first their moments in two acts each (\"Open the order\" starts at 0:02.), naming the next each time; their order in Steps stays as written, each is a band with the video's frame; then it hides; Ctrl+Z gives the last its no time back and takes its frame; the right-click menu offers \"Send the invoice\" starts here under Add a step here",
+    !r5.err && r5.first.text === '"Open the order" starts here' && r5.first.oneLine && r5.first.fits &&
+      r5.first.title === 'Sets the start of "Open the order" to the moment the video shows now. Its place among the steps stays.' &&
+      /"Open the order" starts at 0:02\./.test(r5.toast || "") &&
+      JSON.stringify(r5.acts) === JSON.stringify([{ named: "n1", at: 2, next: "n2" }, { named: "n2", at: 24, next: "n3" }, { named: "n3", at: 16, next: null }]) &&
+      r5.frames.every(Boolean) && r5.bands === "n1,n2,n3" && r5.hiddenAfter && r5.rows === "n1,n2,n3" &&
+      !r5.undo.frame && r5.undo.button === "n3" && menuAt >= 0 && r5.menu[menuAt + 1] === '"Send the invoice" starts here',
+    JSON.stringify(r5));
+
+  record("lane E: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
+  await v.close();
+}
+
 (async () => {
   const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-tledit-"));
   const errs = [];
@@ -705,6 +930,7 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();
+  await laneE(TMP);
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* temp */ }
   const pass = results.filter((r) => r.ok).length;
   console.log("\n[timeline-edit-e2e] " + pass + "/" + results.length + " checks passed, " + (results.length - pass) + " failed");

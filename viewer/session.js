@@ -284,11 +284,13 @@ function _revert(which) {
    and Include again are undone with the analysis they ran), "reload" when the
    attached video changed (where the video is, and its sync, are read when the
    project loads; C23: "analyze" when the transactions moved with the
-   videos), else null. Pure. */
-function revertFollowUp(before, after) {
+   videos), else null. Pure. Lane E (E4): in a project without a recording
+   (`recorded` false) a stretch put aside is not part of the process, which
+   nothing analyzes, so it asks for nothing. */
+function revertFollowUp(before, after, recorded) {
   const same = (k) => JSON.stringify((before && before[k]) || null) === JSON.stringify((after && after[k]) || null);
   const ranges = (a) => JSON.stringify((a && Array.isArray(a.excluded_ranges) && a.excluded_ranges.length) ? a.excluded_ranges : []);
-  if (ranges(before) !== ranges(after)) return "analyze";
+  if (recorded !== false && ranges(before) !== ranges(after)) return "analyze";
   // 2.0.3: the markers changed; a project that applies its marker changes
   // itself (one without a recording) analyzes again, a recording waits for
   // Apply marker changes (applyRevertedAnnotations).
@@ -308,7 +310,7 @@ function revertFollowUp(before, after) {
    video, then analyzes or reloads (revertFollowUp). */
 function applyRevertedAnnotations(annotations) {
   const sess = State.getSession();
-  const follow = revertFollowUp(sess.annotations, annotations);
+  const follow = revertFollowUp(sess.annotations, annotations, AC.hasRecording(sess));
   sess.annotations = ensureAnnoShape(annotations);
   State.batch(() => {
     State.emit("steps");

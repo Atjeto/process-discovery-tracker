@@ -499,8 +499,11 @@ def _run_mining_exports(
                     key=lambda r: (str(r.get("start_ts") or ""), str(r.get("case_id"))))]
                 # Each transaction's span, where the stretches left out of
                 # the analysis cut its trace (step_flow.left_out_stretches).
+                # Lane E (E4): in a session without a recording (C16) a
+                # stretch put aside is not part of the process and cuts
+                # nothing: no span places one.
                 run_spans = {r.get("case_id"): (r.get("start_ts"), r.get("end_ts"))
-                             for r in rows if r.get("case_id")}
+                             for r in rows if r.get("case_id")} if has_recording(manifest) else {}
                 final = session_folder / "process_map_step.bpmn"
                 out = staging.path(final.name) if staging is not None else final
                 if bpmn_observed.write_observed_bpmn(

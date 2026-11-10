@@ -199,7 +199,8 @@ The viewer says *transaction* for one pass through the process and
   names the ones still empty.
   With it, the project's attachments and the transcript's sentences with
   *Add to* a field; a sentence said before the recording started reads
-  "0:28 before".
+  "0:28 before". It lists the talk outside the transactions, or all of it
+  while no transaction is marked (a project with one unmarked transaction).
 
 **Timeline**
 
@@ -262,6 +263,30 @@ The viewer says *transaction* for one pass through the process and
   click on it offers *Include again*; Ctrl+Z undoes either. A transaction
   with a stretch left out says so, in Steps and in the PDD, and the steps
   done in it are not read as skipped.
+- **Not part of the process** (lane E): in a project made from a video or
+  from nothing the same selected stretch (its card shows its duration only)
+  is marked as not part of the process in one click, with no question and
+  no analysis: a detour of a call. Hatched, its legend in those words,
+  *Include again* and Ctrl+Z its inverse; the steps marked in it stay, and
+  Steps, both maps and the PDD do not mention it.
+- **Playing skips a marked stretch** (lane E), left out of the analysis or
+  not part of the process, across the videos of the chain; a seek into it
+  plays it. Selecting a stretch never starts the video.
+- **The Transcript tab** (lane E), beside Screenshots and Markers: every
+  transcript's sentences on the one clock, the speaker where it changes; a
+  search that marks and counts ("3 of 340"), a speaker select; the
+  sentence the video is at marked and kept in view while the video plays
+  (not while the pointer is on the list or the search holds text); a click
+  goes to the moment; after each sentence *Add step here* and *Copy to...*
+  (one menu: the selected step's description, then the document's fields),
+  shown on the row under the pointer, the focused row and the current row.
+  A marked stretch is one row with *Include again*, and the step panel's
+  *Said* leaves it out. Read only: read and searched only.
+- **"<step>" starts here** (lane E), beside *+ Step* with a video: sets
+  the start of the selected step, when its time is the analyst's, else of
+  the first step without a time, to the moment the video shows; the step keeps its place in the
+  process, takes the video's frame when it has no picture, and the next
+  step without a time is selected. Also in the right-click menu.
 - **Notes at a moment**, and the screenshots in a side panel and a gallery.
 
 **Steps**

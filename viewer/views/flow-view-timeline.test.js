@@ -227,6 +227,11 @@ test("a band left out says what it is and what a click does; its label is the le
   // The label: whole where it fits, its first words on a narrower band, none on a thin one.
   assert.deepEqual([200, 150, 149, 64, 63, 0].map(Timeline.leftOutLabel),
     ["Left out of the analysis", "Left out of the analysis", "Left out", "Left out", "", ""]);
+  // Lane E (E4): in a project without a recording the same mark is not part
+  // of the process.
+  assert.equal(Timeline.leftOutTitle("12:10", "41:30", false),
+    "Not part of the process: 12:10 to 41:30. Click it to include it again.");
+  assert.deepEqual([200, 100, 10].map((px) => Timeline.leftOutLabel(px, false)), ["Not part of the process", "Not part", ""]);
 });
 
 test("lane FX2: an app outside the process is left out of the analysis: its bands are the apps the dialog lists, by process name, case and .exe aside", () => {

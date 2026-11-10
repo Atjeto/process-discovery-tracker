@@ -45,6 +45,7 @@ const { isVideoCopy } = require("../analyst-files.js");
 const VideoChain = require("../video-chain.js");
 const TM = require("../transcript-model.js");
 const MarkerEdits = require("../marker-edits.js");
+const LeftOut = require("../left-out.js");
 
 /* Injected by flow-view.js via initVideo() -- kept out of a require() to
    avoid a flow-view <-> video cycle. */
@@ -971,10 +972,54 @@ if ($("#btn-sync-video")) {
 if (document.getElementById("btn-video-remove")) {
   document.getElementById("btn-video-remove").addEventListener("click", () => removeVideo());
 }
+/* Lane E (E4): playing skips a stretch put aside on the Timeline (left out
+   of the analysis in a recording, not part of the process in a project
+   without one): when playback runs into its start, the clock jumps to its
+   end and plays on, across the videos of the chain too (C23). A seek into
+   it plays it from there to its end, so the analyst can still watch it
+   before including it again: a seek sets the moment playing goes on from,
+   and only a start passed from before it counts (left-out.js skipTo). The
+   time updates come about four times a second, so a timer checks again
+   right at a start that is near. */
+let _playFromMs = null;
+let _skipTimer = null;
+const SKIP_LOOKAHEAD_MS = 600;
+
+function _stretchesNow() {
+  const s = State.getSession();
+  return LeftOut.stretchesOf(s && s.annotations);
+}
+
+function _skipLeftOut() {
+  if (_skipTimer) { clearTimeout(_skipTimer); _skipTimer = null; }
+  const video = $("#video");
+  if (!video || !video.src || video.paused || video.seeking || _pending || _measuringSrc) return;
+  const now = playheadMs();
+  if (now == null) return;
+  const stretches = _stretchesNow();
+  if (!stretches.length) { _playFromMs = now; return; }
+  const to = LeftOut.skipTo(stretches, _playFromMs, now);
+  if (to != null) {
+    _playFromMs = to;
+    seekClock(to, true);
+    return;
+  }
+  _playFromMs = now;
+  const next = LeftOut.nextStart(stretches, now);
+  const rate = video.playbackRate > 0 ? video.playbackRate : 1;
+  if (next != null && next - now <= SKIP_LOOKAHEAD_MS * rate) {
+    _skipTimer = setTimeout(_skipLeftOut, Math.max(0, (next - now) / rate) + 5);
+  }
+}
+
 (function wirePlayer() {
   const video = document.getElementById("video");
   if (!video) return;
   video.addEventListener("timeupdate", _keepInClip);
+  video.addEventListener("timeupdate", _skipLeftOut);
+  // A seek (the analyst's, or a skip's) is where playing goes on from.
+  video.addEventListener("seeked", () => { _playFromMs = playheadMs(); });
+  video.addEventListener("play", () => { _playFromMs = playheadMs(); });
   video.addEventListener("play", () => { _parkedMs = null; });
   video.addEventListener("ended", () => {
     const c = currentClip();

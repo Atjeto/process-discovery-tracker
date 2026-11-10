@@ -274,7 +274,9 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer) {
   const notes = AnalystUI.notesOf(st);
   // 2.0.1: the step before it in its transaction bounds its window, as in
   // the step pane, so a sentence shows under one step only.
-  const said = placed && placed.synced ? TM.sentencesForStep(placed.sentences, st, o.list) : [];
+  // Lane E: what was said in a stretch put aside is not listed.
+  const said = placed && placed.synced
+    ? require("../left-out.js").saidOutside(TM.sentencesForStep(placed.sentences, st, o.list), (_session() || {}).annotations) : [];
   const focus = st.step_id === focusId;
   // Lane FX2: a moment the video does not cover says so, and has no play.
   const m = hasVideo ? _moment(st) : null;

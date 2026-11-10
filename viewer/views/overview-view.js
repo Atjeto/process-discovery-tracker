@@ -292,7 +292,7 @@ function pathState(sess) {
   // Compared as Steps compares them: a reference step inside a stretch left
   // out of the analysis is not a difference, nor is the left-out line, nor a
   // step that happens only under a condition and was not done.
-  const excluded = Array.isArray(anno.excluded_ranges) ? anno.excluded_ranges : [];
+  const excluded = require("../left-out.js").analysisRanges(sess);
   const differs = new Set(pattern.run ? others.filter((r) => RunDiff.differenceCount(RunDiff.differences(
     pattern.run.visible, r.visible,
     { leftOut: RunDiff.leftOutStretches(excluded, { startMs: r.startMs, endMs: r.endMs }) })) > 0)
@@ -826,7 +826,8 @@ const DOC_WHO_READ_ONLY = "The analyst wrote these. The PDD prints them.";
 
 /* One collapsed disclosure at the end of the document, only while a
    transcript is attached. By default it lists the talk outside the runs
-   (where purpose, scope, rules and exceptions are discussed); a speaker
+   (where purpose, scope, rules and exceptions are discussed), or all of it
+   while no transaction is marked (lane E, E6); a speaker
    filter and a search narrow it; "Add to" appends a sentence to a document
    field. Kept across re-renders for the session on screen, like _docOpen.
    Its summary says in one line what the list holds (AD-29). */
@@ -834,7 +835,7 @@ let _tr = { open: false, speaker: "", query: "", during: false };
 
 /* What the list holds, beside the disclosure's title. */
 function _transcriptWhat(view) {
-  if (!view.synced) return "Everything that was said";
+  if (!view.synced || view.all) return "Everything that was said";
   return _tr.during ? "What was said, during the transactions too" : "What was said outside the transactions";
 }
 
@@ -848,20 +849,24 @@ function _transcriptView(sess) {
   const speakers = TM.speakersOf(placed.sentences);
   if (_tr.speaker && !speakers.includes(_tr.speaker)) _tr.speaker = "";
   let list = placed.sentences;
+  let all = false;
   if (placed.synced) {
     // C23: a transcript of several not synced yet keeps its sentences, after
     // the placed ones.
     const timed = list.filter((x) => Number.isFinite(x.startMs));
     const untimed = list.filter((x) => !Number.isFinite(x.startMs));
-    if (_tr.during) list = timed.slice().sort((a, b) => a.startMs - b.startMs).concat(untimed);
+    const runs = RunsModel.buildRuns(sess.stats, (sess.annotations || {}).steps || []).runs;
+    // Lane E (E6): with no transaction marked, every sentence is inside the
+    // one transaction: the list holds all of them.
+    all = TM.listsAllTalk(runs, AC.implicitRunId(sess.stats));
+    if (_tr.during || all) list = timed.slice().sort((a, b) => a.startMs - b.startMs).concat(untimed);
     else {
-      const runs = RunsModel.buildRuns(sess.stats, (sess.annotations || {}).steps || []).runs;
       const evs = sess.events || [];
       const endMs = evs.length ? Date.parse(evs[evs.length - 1].timestamp) : NaN;
       list = TM.outsideRuns(timed, TM.runSpans(runs, endMs)).concat(untimed);
     }
   }
-  return { synced: placed.synced, speakers, list: TM.filterSentences(list, _tr.speaker, _tr.query),
+  return { synced: placed.synced, all, speakers, list: TM.filterSentences(list, _tr.speaker, _tr.query),
     originMs: recordingStartMs(sess) };
 }
 
@@ -888,7 +893,7 @@ function _transcriptHtml(sess) {
         '<select class="ov-tr-speaker" aria-label="Speaker"><option value="">All speakers</option>' + speakers + "</select>" +
         '<input type="search" class="ov-tr-search" placeholder="Search the transcript" aria-label="Search the transcript" value="' +
           escapeAttr(_tr.query) + '" />' +
-        (view.synced ? '<label class="cb ov-tr-during"><input type="checkbox" class="ov-tr-during-cb"' +
+        (view.synced && !view.all ? '<label class="cb ov-tr-during"><input type="checkbox" class="ov-tr-during-cb"' +
           (_tr.during ? " checked" : "") + " /> Include talk during the transactions</label>" : "") +
       "</div>" +
       '<div id="ov-tr-list">' + _transcriptListHtml(view) + "</div>" +
@@ -903,18 +908,43 @@ function _closeAddToMenu() {
 /* The "Add to" menu of one sentence: the fields it can go to, a field that
    already holds it marked and disabled. */
 function _showAddToMenu(btn, segId) {
-  _closeAddToMenu();
   const placed = TM.forSession(State.getSession());
   const s = placed && placed.sentences.find((x) => x.id === segId);
-  const panel = document.getElementById("ov-doc");
-  if (!s || !panel) return;
+  if (s) showDocTargetMenu(btn, s);
+}
+
+/* A document field's text: the Overview's field while it is on screen (it
+   holds what is being typed), else the document as saved. */
+function _docFieldText(key) {
+  const el = document.querySelector('#ov-doc [data-doc="' + key + '"]');
+  if (el) return el.value;
+  const sess = State.getSession();
+  return _docValue(sess && sess.annotations && sess.annotations.document, key);
+}
+
+/* The menu of the document fields a sentence `s` can be added to, under
+   `btn`: the Overview's "Add to", and lane E (E3) the Timeline's Transcript
+   tab, one handler for both. `opts.focus`: the first field takes the focus
+   (a menu opened by the keyboard), and Escape gives it back to `btn`.
+   `opts.head`: a heading over the items; `opts.first`: an item before the
+   fields ({ label, title, off, act }: the Transcript tab's step
+   description; `off` keeps it readable and not acting). */
+function showDocTargetMenu(btn, s, opts) {
+  _closeAddToMenu();
+  const sess = State.getSession();
+  if (!s || !sess || RO.isReadOnly(sess)) return;
+  const o = opts || {};
   const menu = document.createElement("div");
   menu.id = "ov-tr-add-menu";
   menu.className = "project-menu-popup tr-add-menu";
   menu.setAttribute("role", "menu");
-  menu.innerHTML = TR_TARGETS.map((f) => {
-    const el = panel.querySelector('[data-doc="' + f.key + '"]');
-    const added = !!el && TM.isAdded(el.value, s.text);
+  menu.setAttribute("aria-label", o.head || "Add to a document field");
+  const head = o.head ? '<p class="tr-add-menu-head" aria-hidden="true">' + escapeHtml(o.head) + "</p>" : "";
+  const first = o.first ? '<button type="button" class="project-menu-item" role="menuitem" data-first="1"' +
+    (o.first.off ? ' aria-disabled="true"' : "") + (o.first.title ? ' title="' + escapeAttr(o.first.title) + '"' : "") + ">" +
+    escapeHtml(o.first.label) + "</button>" : "";
+  menu.innerHTML = head + first + TR_TARGETS.map((f) => {
+    const added = TM.isAdded(_docFieldText(f.key), s.text);
     return '<button type="button" class="project-menu-item" role="menuitem" data-doc-target="' + f.key + '"' +
       (added ? " disabled" : "") + ">" + escapeHtml(f.label) + (added ? " (added)" : "") + "</button>";
   }).join("");
@@ -925,6 +955,7 @@ function _showAddToMenu(btn, segId) {
     if (e.type === "keydown" && e.key !== "Escape") return;
     if (e.type === "mousedown" && menu.contains(e.target)) return;
     close();
+    if (e.type === "keydown" && btn.isConnected) btn.focus();
   };
   function close() {
     menu.remove();
@@ -932,18 +963,43 @@ function _showAddToMenu(btn, segId) {
     document.removeEventListener("keydown", dismiss, true);
   }
   menu.addEventListener("click", (e) => {
+    const one = e.target.closest("[data-first]");
+    if (one) {
+      if (one.getAttribute("aria-disabled") === "true") return;
+      close();
+      o.first.act();
+      if (o.focus && btn.isConnected) btn.focus();
+      return;
+    }
     const item = e.target.closest("[data-doc-target]");
     if (!item || item.disabled) return;
     close();
-    const field = panel.querySelector('[data-doc="' + item.dataset.docTarget + '"]');
-    if (!field) return;
+    const key = item.dataset.docTarget;
     // The field shows the text at once and stays editable; the save is the
     // panel's own (one undoable entry, like typing in the field).
-    field.value = TM.appendText(field.value, s.text);
-    _saveDocField(item.dataset.docTarget, field.value);
-    const label = (DOC_FIELDS.find((f) => f.key === item.dataset.docTarget) || {}).label || "";
+    const text = TM.appendText(_docFieldText(key), s.text);
+    const field = document.querySelector('#ov-doc [data-doc="' + key + '"]');
+    if (field) field.value = text;
+    _saveDocField(key, text);
+    const label = (DOC_FIELDS.find((f) => f.key === key) || {}).label || "";
     toast("Added to " + label + ".", "success");
+    if (opts && opts.focus && btn.isConnected) btn.focus();
   });
+  // Up and Down move between the items; the first takes the focus when the
+  // keyboard opened the menu.
+  const items = () => [...menu.querySelectorAll(".project-menu-item:not([disabled])")];
+  menu.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const list = items();
+    if (!list.length) return;
+    e.preventDefault();
+    const i = list.indexOf(document.activeElement);
+    list[(i + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length].focus();
+  });
+  if (o.focus) {
+    const firstItem = items()[0];
+    if (firstItem) firstItem.focus();
+  }
   setTimeout(() => {
     document.addEventListener("mousedown", dismiss, true);
     document.addEventListener("keydown", dismiss, true);
@@ -1163,4 +1219,7 @@ module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
   mapEmptyText, hasAnalysisBlocks, waitingSentence, missingOf, missingShown, goToMissing,
   DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET, ASIS_STALE,
+  // Lane E (E3): a sentence added to a document field, from the Timeline's
+  // Transcript tab too.
+  showDocTargetMenu,
 };

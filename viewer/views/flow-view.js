@@ -29,7 +29,9 @@ const AC = require("../analyst-content.js");
 const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
 const { recentLabel } = require("../session-summary.js");
-const { renderStepsLevel } = require("./steps-view.js");
+const Steps = require("./steps-view.js");
+const { renderStepsLevel } = Steps;
+const ShowHere = require("../show-here.js");
 const { renderOverviewLevel, hasAnalysisBlocks } = require("./overview-view.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
@@ -61,11 +63,15 @@ let addStepAtTimestamp = async () => {};
 
 /* ============ Annotation sub-tabs ================================= */
 
+/* The tab chosen stays chosen while the window lives (lane E, E3: the
+   Transcript tab too); it is not saved to the project. */
 function activateAnnoTab(name) {
   $$(".anno-tab").forEach((t) => t.classList.toggle("active", t.dataset.anno === name));
   $$(".anno-panel").forEach((p) =>
     p.style.display = p.dataset.panel === name ? "" : "none"
   );
+  // The sentence at the playhead in view as the tab shows.
+  if (name === "transcript") Transcript.tickTab(true);
 }
 
 $$(".anno-tab").forEach((tab) => {
@@ -859,6 +865,76 @@ async function addStepAt(tsISO) {
 // The zoom buttons are wired in flow-view-timeline.js (god-file split).
 $("#btn-add-step").addEventListener("click", addStepAtPlayhead);
 
+/* ---- "<step>" starts here (lane E, item E5) ----------------------------------
+   Beside + Step, while a video is attached: the button names the step it
+   acts on (show-here.js targetOf: the selected step when its time is the
+   analyst's to set, else the first step without a time in the process
+   order) and gives it the playhead's moment (steps-view.js showStepAt).
+   Then the next step without a time is selected, so the button names it:
+   go to the moment, click, for each step written first. The same act is
+   in the Timeline's right-click menu, at the moment clicked. */
+function _showHereLabel(step, max) {
+  const name = ShowHere.nameOf(step);
+  return max && name.length > max ? name.slice(0, max - 1).trimEnd() + "…" : name;
+}
+
+function syncShowHere() {
+  const btn = document.getElementById("btn-show-here");
+  if (!btn) return;
+  const sess = State.getSession();
+  const target = sess && sess.recordingAvailable ? Steps.showHereTarget() : null;
+  btn.hidden = !target;
+  btn.dataset.stepId = target ? target.step_id : "";
+  if (!target) return;
+  const name = ShowHere.nameOf(target);
+  const el = btn.querySelector(".show-here-name");
+  if (el && el.textContent !== name) el.textContent = name;
+  btn.title = ShowHere.titleOf(target);
+  btn.setAttribute("aria-label", ShowHere.labelOf(target));
+}
+
+/* `stepId` gets the moment `atMs`; then the next step without a time is
+   selected (none: nothing is, and the button hides). */
+async function showHereAt(stepId, atMs) {
+  const sess = State.getSession();
+  if (!sess) return;
+  if (!Number.isFinite(atMs)) { toast("The video's moment could not be read.", "error"); return; }
+  const hit = (sess.annotations && sess.annotations.steps || []).find((s) => s && s.step_id === stepId);
+  // The frame is read at once, while it is the one on screen; only for a
+  // step without a picture.
+  const frame = hit && !AC.stepShots(hit, (sess.annotations || {}).analyst_screenshots).length
+    ? AnalystUI.frameAtMoment(atMs) : null;
+  setLaneToggle("steps", true);
+  const cb = document.querySelector('#lanes-popup input[data-lane="steps"]');
+  if (cb) cb.checked = true;
+  const ok = await Steps.showStepAt(stepId, atMs, { frame });
+  if (!ok || State.getSession() !== sess) return;
+  const ordered = Steps.stepsInProcessOrder();
+  const done = ordered.find((s) => s.step_id === stepId) || null;
+  const next = ShowHere.nextAfter(done, ordered);
+  State.setSelectedStepId(next ? next.step_id : null);
+  renderTimeline();
+  renderStepsLevel();
+  syncShowHere();
+}
+
+$("#btn-show-here").addEventListener("click", () => {
+  const id = $("#btn-show-here").dataset.stepId;
+  if (id) showHereAt(id, Video.playheadMs());
+});
+// What the button names follows the selection, wherever it changes (a band,
+// a row, the step panel) and every edit of the steps.
+let _showHereQueued = false;
+function _queueShowHere() {
+  if (_showHereQueued) return;
+  _showHereQueued = true;
+  setTimeout(() => { _showHereQueued = false; syncShowHere(); }, 0);
+}
+document.addEventListener("click", _queueShowHere);
+document.addEventListener("keyup", _queueShowHere);
+State.subscribe("steps", _queueShowHere);
+State.subscribe("timeline", _queueShowHere);
+
 /* P1.1: range selection on the timeline. Drag across the activity
    lane to select a time range; a stats card pops up summarizing what
    happened (duration, event count, top apps, contained markers). The
@@ -979,24 +1055,37 @@ function renderSelectionStats() {
     .map(([system, n]) => system + " (" + n + ")")
     .join(", ");
   const dur = State.getSelectionRange().endMs - State.getSelectionRange().startMs;
-  // A project with nothing recorded (C16) has no events to leave out: the
-  // act is offered only where it acts. Lane HV: a hand-off opened read only
+  // Lane E (E4): a recording leaves the stretch out of the analysis; a
+  // project without one (C16) puts it aside as not part of the process (a
+  // detour of a call). Either way playing skips it and the Transcript tab
+  // leaves out what was said in it. Lane HV: a hand-off opened read only
   // offers neither act.
+  // A recording that holds no event has nothing to leave out, as before.
   const recorded = evs.length > 0;
   const editable = !RO.isReadOnly(State.getSession());
+  const asides = editable && (recorded || !AC.hasRecording(State.getSession()));
+  const asideAct = !asides ? "" : recorded
+    ? '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without what was recorded in this stretch. ' +
+      'Playing skips it, and the Transcript tab leaves out what was said in it. The Timeline then shows it hatched: click it to include it again.">Leave out of the analysis</button>'
+    : '<button class="summary-fix" id="tl-selection-exclude" title="Marks the selected stretch as not part of the process. It is skipped ' +
+      'when playing and left out of the Transcript tab. Include again brings it back.">Not part of the process</button>';
+  // Lane E: a project without a recording has no events, markers,
+  // recorded screenshots or systems in a stretch: its card says the length.
+  const recording = AC.hasRecording(State.getSession());
   card.innerHTML =
     '<h4>Selection</h4>' +
     '<div class="row"><span>Duration</span><span>' + escapeHtml(formatDuration(dur)) + '</span></div>' +
-    '<div class="row"><span>Events</span><span>' + inRange.length + '</span></div>' +
-    '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
-    '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
-    (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '') +
+    (!recording ? '' :
+      '<div class="row"><span>Events</span><span>' + inRange.length + '</span></div>' +
+      '<div class="row"><span>Markers</span><span>' + markerCount + '</span></div>' +
+      '<div class="row"><span>Screenshots</span><span>' + screenshotCount + '</span></div>' +
+      (topApps ? '<div class="row"><span>Systems</span><span>' + escapeHtml(topApps) + '</span></div>' : '')) +
     (editable ? '<button class="summary-fix" id="tl-selection-case">Insert transaction from selection</button>' : '') +
-    (recorded && editable ? '<button class="summary-fix" id="tl-selection-exclude" title="Draft the steps and the map again without what was recorded in this stretch. The Timeline then shows it hatched: click it to include it again.">Leave out of the analysis</button>' : '') +
+    asideAct +
     '<span class="clear-link" id="tl-selection-clear">× Clear selection</span>';
   document.getElementById("tl-selection-clear").addEventListener("click", clearSelectionRange);
   if (editable) document.getElementById("tl-selection-case").addEventListener("click", queueCaseFromSelection);
-  if (recorded && editable) document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
+  if (asides) document.getElementById("tl-selection-exclude").addEventListener("click", queueExcludeRange);
 }
 
 /* The screenshot surfaces (hover thumb, grid, gallery, openScreenshot)
@@ -1051,6 +1140,13 @@ function showMarkerInsertMenu(x, y, ts, band) {
     addItem("Add note here…",            () => AnalystUI.addNote(null, ts));
     // 2.0.1: the step at this moment, as + Step adds one at the playhead.
     addItem("Add a step here",           () => addStepAt(atStep));
+    // Lane E (E5): the step written first, given this moment.
+    const target = State.getSession() && State.getSession().recordingAvailable ? Steps.showHereTarget() : null;
+    if (target) {
+      const at = Date.parse(ts);
+      addItem('"' + _showHereLabel(target, 40) + '" starts here', () => showHereAt(target.step_id, at));
+      menu.lastChild.title = ShowHere.titleOf(target, true);
+    }
   }
   if (!band) {
     addItem("Jump to step here",         () => {
@@ -1231,6 +1327,7 @@ async function queueCaseFromSelection() {
 async function queueExcludeRange() {
   const range = State.getSelectionRange();
   if (!range || !State.getSession()) return;
+  if (!AC.hasRecording(State.getSession())) return putAside(range);
   const ok = await confirmModal({
     title: "Leave this stretch out of the analysis?",
     message: "The steps and the map are drafted again without what was recorded in the selected stretch.",
@@ -1254,7 +1351,36 @@ async function queueExcludeRange() {
   toast("Left out of the analysis: the Timeline shows the stretch hatched.", "success");
   clearSelectionRange();
   renderTimeline();
+  Transcript.refreshTab();
   analyzeSession();
+}
+
+/* Lane E (E4): Not part of the process, in a project without a recording
+   (C16): the selected stretch (a detour of the call) goes into the same
+   annotations.excluded_ranges, one undoable edit and no question. Nothing
+   is analyzed: no step, no map and no PDD reads it there (left-out.js
+   analysisRanges); playing skips it and the Transcript tab leaves out what
+   was said in it. Include again, on the stretch, is the inverse. */
+async function putAside(range) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return;
+  const a = sess.annotations || {};
+  if (!Array.isArray(a.excluded_ranges)) a.excluded_ranges = [];
+  a.excluded_ranges.push({
+    start: new Date(range.startMs).toISOString(),
+    end: new Date(range.endMs).toISOString(),
+    reason: "manual",
+  });
+  try {
+    await saveAnnotationsWithUndo(a, "Not part of the process");
+    sess.annotations = a;
+  } catch (_) {
+    return;   // already shown to the analyst by session.js
+  }
+  toast("Marked as not part of the process.", "success");
+  clearSelectionRange();
+  renderTimeline();
+  Transcript.refreshTab();
 }
 
 /* Include again (a click on a stretch left out, on the Timeline): the range
@@ -1275,8 +1401,15 @@ async function includeRangeAgain(range) {
   } catch (_) {
     return;   // already shown to the analyst by session.js
   }
-  toast("Included again: its steps are drafted again.", "success");
   renderTimeline();
+  Transcript.refreshTab();
+  // Lane E (E4): a stretch that was not part of the process (a project
+  // without a recording) changed nothing that an analysis makes.
+  if (!AC.hasRecording(sess)) {
+    toast("Included again.", "success");
+    return;
+  }
+  toast("Included again: its steps are drafted again.", "success");
   analyzeSession();
 }
 
@@ -1468,7 +1601,10 @@ function initFlowView(deps) {
     includeAgain: (range) => includeRangeAgain(range),
   });
   // The transcript's menu actions reload the session; its sync redraws the lane.
-  Transcript.initTranscript({ loadSessionIntoView, renderTimeline });
+  // Lane E (E3): the Transcript tab adds a step where S would, and includes
+  // a stretch again as the Timeline's band does.
+  Transcript.initTranscript({ loadSessionIntoView, renderTimeline, addStepAt,
+    includeAgain: (range) => includeRangeAgain(range) });
 }
 
 module.exports = {

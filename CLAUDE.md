@@ -188,7 +188,13 @@ the folder.
   hatched on the Timeline; a stretch left out offers *Include again*, cuts
   its transaction's trace on both maps (C17) and is said once, first, in
   Steps and the PDD's 4.1, where the reference steps done in it are not read
-  as skipped.
+  as skipped. In a project without a recording the same Shift-drag offers
+  *Not part of the process* (lane E, E4: a detour of a call): the same
+  `excluded_ranges` entry, one click, no analysis, and nothing reads it
+  there (`left-out.js` `analysisRanges`; the pipeline's step BPMN and PDD
+  likewise), so the steps marked in it stay and no map or PDD mentions it.
+  Either kind is skipped when playing (a seek into it plays it) and left out
+  of the Transcript tab.
 - **Sessions without a recording** (C16): `manifest.source` `video` or
   `blank`, an empty `events.jsonl`, one implicit run until a Start is
   inserted; a video project's Timeline runs on the video's length. Steps
@@ -438,7 +444,19 @@ the folder.
 - **The meeting transcript** (C8): `transcript_import.py` writes
   `transcript.json`. A sentence is placed through its own sync, else the
   attached video's; added to a description or a document field, it reaches
-  the PDD.
+  the PDD. Lane E (E3): the Timeline's *Transcript* tab, beside Screenshots
+  and Markers, lists every transcript on the one clock with a search, a
+  speaker select and the sentence at the playhead marked
+  (`flow-view-transcript.js` `renderTab`, `transcript-list.js`); after
+  each sentence *Add step here* adds a step there and *Copy to...* opens
+  one menu (the selected step's description, then the document's fields:
+  the Overview's `showDocTargetMenu`). The owner's copy rule (lane E): a
+  label is a verb and its object, a tooltip one sentence saying what the
+  click does, no unnamed menu button, a message says what happened.
+  The Overview's list holds all the talk while no transaction is marked
+  (E6). *"<step>" starts here* beside *+ Step* (E5, `show-here.js`,
+  `steps-view.js` `showStepAt`) gives a step written first the playhead's
+  moment, its place in the process kept, then selects the next one.
 - **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 5 now):
   the viewer analyzes a folder on open when it is missing or lower. 5 (2.0.1)
   cut `pdd_data`, `pdd_time` and `steps_signature`: the Overview no longer

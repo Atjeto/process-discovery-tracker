@@ -158,6 +158,290 @@ const NOT_SYNCED = "The transcript is not synced to the recording yet. Sync it o
 const SYNC_AT = "2026-05-14T09:00:20Z";
 const WANT_OFFSET = -30000;
 
+/* ---- Lane E: the transcript beside the video (E3) and the Overview's list
+   with one unmarked transaction (E6) -------------------------------------------
+   A project made from the synthetic video (32 s; companion-smoke's, made here
+   when absent) with a transcript of 15 invented sentences by three speakers
+   placed from the video's start and three steps written first, opened in a
+   second viewer:
+     (k) E6: the Overview's "From the transcript" lists all 15 sentences,
+         says "Everything that was said", and offers no "Include talk during
+         the transactions";
+     (l) E3: the Transcript tab: the sentences on the one clock, the speaker
+         where it changes; typing "invoice" counts "3 of 15" and marks the
+         matches; the speaker select narrows to Tom; a click on a sentence
+         puts the clock there and a paused video stays paused; the sentence
+         at the playhead is marked, and moves with the playhead while the
+         video plays, a class moved on the same rows (the list not built
+         again);
+     (m) a sentence's two acts, Add step here and Copy to..., shown on the
+         row under the pointer, the focused row and the playhead's row, and
+         transparent elsewhere without changing a row's height: Add step
+         here, by the keyboard, adds a step at its moment with the video's
+         frame, the tab staying open; Copy to... opens one menu, "Copy this
+         sentence to": the selected step's description, then the document's
+         fields (Exceptions); with no step selected the description item
+         says to select one and does nothing;
+     (n) a stretch put aside: its sentences are not listed, one row says
+         "Not part of the process: 0:08 to 0:16" with Include again, which
+         brings them back; read only, reading and searching work and no act
+         is offered. */
+const LANE_E_VIDEO = path.join(os.tmpdir(), "pdt-e2e-synthetic-32s-v1.webm");
+const LANE_E_LINES = [
+  [1, "Maria Keller", "So this is how an order comes in."], [3, "Maria Keller", "I open the shared mailbox first."],
+  [5, "Analyst", "Which mailbox is that?"], [7, "Maria Keller", "Orders at the company address."],
+  [9, "Tom", "By the way, did you see the game last night?"], [11, "Analyst", "No, I missed it."],
+  [13, "Tom", "It went to extra time."], [15, "Tom", "Lunch is at noon today."], [17, "Maria Keller", "Right, back to the order."],
+  [19, "Maria Keller", "Then I check the stock in SAP."], [22, "Analyst", "And if it is out of stock?"],
+  [24, "Maria Keller", "Then I tell the customer."], [26, "Maria Keller", "Last, I send the invoice by mail."],
+  [28, "Analyst", "Who checks the invoice?"], [30, "Maria Keller", "Nobody, the invoice goes out at once."],
+];
+const LANE_E_T0 = Date.parse("2026-11-10T09:00:00.000Z");
+
+function laneEProject() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-transcript-lanee-"));
+  fs.mkdirSync(path.join(dir, "video"));
+  fs.copyFileSync(LANE_E_VIDEO, path.join(dir, "video", "call.webm"));
+  const started = new Date(LANE_E_T0).toISOString();
+  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ session_id: "lane-e-tr", source: "video", started_at: started, label: "Order call" }));
+  fs.writeFileSync(path.join(dir, "events.jsonl"), "");
+  const hand = (id, name, order) => ({ step_id: id, name, state: "manually_authored", case_id: null, time_range: null, order,
+    description: "", evidence: { interaction_event_ids: [], screenshot_refs: [] }, flags: { waste: false } });
+  fs.writeFileSync(path.join(dir, "annotations.json"), JSON.stringify({ version: 1, session_id: "lane-e-tr",
+    steps: [hand("n1", "Open the order", 1), hand("n2", "Check the stock", 2), hand("n3", "Send the invoice", 3)],
+    external_videos: [{ id: "v1", path: "video/call.webm", offset_ms: 0, in_ms: 0, out_ms: null, attached_at: started }] }, null, 2));
+  fs.writeFileSync(path.join(dir, "transcript.json"), JSON.stringify({ version: 1, video_id: "v1", offset_ms: 0,
+    segments: LANE_E_LINES.map(([s, sp, t], i) => ({ id: "t" + (i + 1), start_s: s, end_s: s + 1.6, speaker: sp, text: t })) }));
+  return dir;
+}
+
+async function laneE() {
+  let v, page;
+  const errs = [];
+  let dir = null;
+  try {
+    if (!fs.existsSync(LANE_E_VIDEO)) {
+      // Made as companion-smoke makes it: 32 s of a canvas, the time on it.
+      const maker = await launchViewer(electron, { executablePath: electronPath, args: ["."], cwd: VIEWER });
+      const p = await maker.app.firstWindow();
+      await p.waitForSelector("#btn-recent-menu", { timeout: T });
+      await p.evaluate(async (out) => {
+        const cv = document.createElement("canvas");
+        cv.width = 320; cv.height = 180;
+        cv.style.cssText = "position:fixed;left:-9999px;top:0";
+        document.body.appendChild(cv);
+        const gx = cv.getContext("2d");
+        const rec = new MediaRecorder(cv.captureStream(10), { mimeType: "video/webm;codecs=vp8" });
+        const chunks = [];
+        rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+        const t0 = performance.now();
+        const draw = () => { gx.fillStyle = "#123"; gx.fillRect(0, 0, 320, 180); gx.fillStyle = "#fff"; gx.font = "28px monospace";
+          gx.fillText("video " + ((performance.now() - t0) / 1000).toFixed(1), 20, 100); };
+        draw();
+        const iv = setInterval(draw, 100);
+        rec.start(1000);
+        await new Promise((r) => setTimeout(r, 32000));
+        await new Promise((r) => { rec.onstop = r; rec.stop(); });
+        clearInterval(iv);
+        cv.remove();
+        require("fs").writeFileSync(out, Buffer.from(await new Blob(chunks, { type: "video/webm" }).arrayBuffer()));
+      }, LANE_E_VIDEO);
+      await maker.close();
+    }
+    dir = laneEProject();
+    v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + dir], cwd: VIEWER });
+    page = await v.app.firstWindow();
+    page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+    page.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
+    await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(); return !!(s && s.stats) && !require("./views/flow-view.js").analysisBusy(); }, null, { timeout: 60000 });
+  } catch (e) {
+    record("lane E: the project made from a video, with a transcript, opens", false, errText(e));
+    if (v) await v.close();
+    return;
+  }
+  const anno = () => page.evaluate(() => require("./state.js").getSession().annotations);
+  const at = () => page.evaluate(() => require("./views/flow-view-video.js").playheadMs());
+  const sec = (ms) => Math.round((ms - LANE_E_T0) / 100) / 10;
+
+  // (k) E6.
+  {
+    let k = null, err = null;
+    try {
+      await page.click('.view-mode-btn[data-level="overview"]');
+      k = await page.evaluate(() => {
+        const d = document.getElementById("ov-doc"); if (d) d.open = true;
+        const t = document.getElementById("ov-tr"); if (t) t.open = true;
+        return { count: (document.getElementById("ov-tr-count") || {}).textContent, what: (document.getElementById("ov-tr-what") || {}).textContent,
+          rows: document.querySelectorAll("#ov-tr-list .tr-row").length, during: !!document.querySelector(".ov-tr-during-cb") };
+      });
+    } catch (e) { err = errText(e); }
+    record("(k) lane E, E6: with its one transaction not marked, the Overview's From the transcript lists all 15 sentences, says \"Everything that was said\" and offers no \"Include talk during the transactions\"",
+      !err && k.count === "(15)" && k.rows === 15 && k.what === "Everything that was said" && !k.during, JSON.stringify({ err, k }));
+  }
+
+  // (l) E3: the tab, its search, its speaker, a click, the marked sentence.
+  {
+    let l = {}, err = null;
+    try {
+      await page.click('.view-mode-btn[data-level="flow"]');
+      await page.waitForFunction(() => !!require("./views/flow-view-video.js").timelineSpan(), null, { timeout: T });
+      await page.click('.anno-tab[data-anno="transcript"]');
+      await page.waitForSelector(".trt-list .trt-row", { timeout: T });
+      l.list = await page.evaluate(() => ({ rows: document.querySelectorAll(".trt-row").length,
+        first: [...document.querySelectorAll(".trt-row")].slice(0, 3).map((r) => r.querySelector(".tr-time").textContent + "|" +
+          ([...r.querySelectorAll(".tr-speaker")].filter((x) => x.checkVisibility()).map((x) => x.textContent).join("")) + "|" + r.querySelector(".tr-text").textContent),
+        count: document.querySelector(".trt-count").textContent }));
+      await page.fill(".trt-search", "invoice");
+      l.search = await page.evaluate(() => ({ count: document.querySelector(".trt-count").textContent, marks: document.querySelectorAll(".trt-list mark").length,
+        shown: [...document.querySelectorAll(".trt-row")].filter((r) => !r.hidden).length }));
+      await page.locator(".trt-row:not([hidden]) .trt-say").first().click();
+      await wait(700);
+      l.click = { at: sec(await at()), paused: await page.evaluate(() => document.getElementById("video").paused),
+        current: await page.evaluate(() => (document.querySelector(".trt-row.current .tr-text") || {}).textContent) };
+      await page.fill(".trt-search", "");
+      await page.selectOption(".trt-speaker", "Tom");
+      l.tom = await page.evaluate(() => ({ count: document.querySelector(".trt-count").textContent,
+        speakers: [...new Set([...document.querySelectorAll(".trt-row")].filter((r) => !r.hidden).map((r) => r.querySelector(".tr-speaker").textContent))] }));
+      await page.selectOption(".trt-speaker", "");
+      // The playhead's sentence while playing: from 0:01.5, the marked row
+      // moves from the first sentence on, the rows being the same elements.
+      await page.mouse.move(5, 5);
+      await page.evaluate((t) => require("./views/flow-view-video.js").seekClock(t, false), LANE_E_T0 + 1500);
+      await wait(500);
+      l.before = await page.evaluate(() => { const r = document.querySelector(".trt-row.current"); if (r) r.dataset.probe = "kept"; return r ? r.querySelector(".tr-text").textContent : null; });
+      await page.evaluate(() => document.getElementById("video").play());
+      await page.waitForFunction(() => require("./views/flow-view-video.js").playheadMs() > Date.parse("2026-11-10T09:00:03.300Z"), null, { timeout: T });
+      await page.evaluate(() => document.getElementById("video").pause());
+      l.after = await page.evaluate(() => ({ text: (document.querySelector(".trt-row.current .tr-text") || {}).textContent,
+        kept: !!document.querySelector('.trt-row[data-probe="kept"]'), currents: document.querySelectorAll(".trt-row.current").length }));
+    } catch (e) { err = errText(e); }
+    const ok = !err && l.list.rows === 15 && l.list.count === "15 sentences" &&
+      l.list.first[0] === "0:01|Maria Keller|So this is how an order comes in." && l.list.first[1] === "0:03||I open the shared mailbox first." &&
+      l.list.first[2] === "0:05|Analyst|Which mailbox is that?" &&
+      l.search.count === "3 of 15" && l.search.marks === 3 && l.search.shown === 3 &&
+      l.click.at === 26 && l.click.paused && l.click.current === "Last, I send the invoice by mail." &&
+      l.tom.count === "3 of 15" && JSON.stringify(l.tom.speakers) === '["Tom"]' &&
+      l.before === "So this is how an order comes in." && l.after.text === "I open the shared mailbox first." && l.after.kept && l.after.currents === 1;
+    record("(l) lane E, E3: the Transcript tab lists the sentences on the one clock with the speaker where it changes; \"invoice\" counts 3 of 15 and marks the matches; the speaker select narrows to Tom; a click puts the clock at the sentence, the paused video staying paused; the sentence at the playhead is marked and moves while the video plays, the list not built again",
+      ok, JSON.stringify({ err, l }));
+    if (!ok) await shot(page, "fail-transcript-lanee-tab.png");
+  }
+
+  // (m) the three acts.
+  {
+    let m = {}, err = null;
+    try {
+      // The acts: transparent on a row that is neither under the pointer,
+      // nor holds the keyboard, nor is the playhead's; shown on those; the
+      // row never changes height.
+      await page.mouse.move(5, 5);
+      const row = page.locator(".trt-row", { hasText: "check the stock" });
+      m.look = await page.evaluate(() => {
+        const r = [...document.querySelectorAll(".trt-row")].find((x) => /check the stock/.test(x.textContent));
+        const acts = r.querySelector(".trt-acts");
+        const cur = document.querySelector(".trt-row.current .trt-acts");
+        return { labels: [...acts.querySelectorAll("button")].map((b) => b.textContent + "|" + b.title),
+          idle: getComputedStyle(acts).opacity, current: cur ? getComputedStyle(cur).opacity : null, h: r.offsetHeight,
+          display: getComputedStyle(acts).display };
+      });
+      await row.locator(".trt-copy").focus();
+      m.look.focused = await page.evaluate(() => {
+        const r = document.activeElement.closest(".trt-row");
+        return { opacity: getComputedStyle(r.querySelector(".trt-acts")).opacity, h: r.offsetHeight };
+      });
+      await row.locator(".trt-add-step").focus();
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => require("./state.js").getSession().annotations.steps.length === 4, null, { timeout: T });
+      const a = await anno();
+      const added = a.steps.find((s) => !["n1", "n2", "n3"].includes(s.step_id));
+      m.added = { at: sec(Date.parse(added.time_range.start)), shot: (a.analyst_screenshots || []).some((x) => x.step_id === added.step_id && x.source === "video_frame"),
+        tab: await page.evaluate(() => document.querySelector(".anno-tab.active").dataset.anno) };
+      await page.evaluate((id) => require("./state.js").setSelectedStepId(id), added.step_id);
+      const row2 = page.locator(".trt-row", { hasText: "out of stock" });
+      // Copy to... by the keyboard: one menu, its heading, the step's
+      // description first (focused), then the document's fields.
+      await row2.locator(".trt-copy").focus();
+      await page.keyboard.press("Enter");
+      await page.waitForSelector("#ov-tr-add-menu", { timeout: T });
+      m.menu = await page.evaluate(() => ({ head: (document.querySelector("#ov-tr-add-menu .tr-add-menu-head") || {}).textContent,
+        items: [...document.querySelectorAll("#ov-tr-add-menu .project-menu-item")].map((b) => b.textContent),
+        focus: document.activeElement && document.activeElement.textContent }));
+      await page.keyboard.press("Enter");
+      await page.waitForFunction((id) => /out of stock/.test(require("./state.js").getSession().annotations.steps.find((s) => s.step_id === id).description || ""), added.step_id, { timeout: T });
+      m.desc = true;
+      await row2.locator(".trt-copy").click();
+      await page.locator('#ov-tr-add-menu [data-doc-target="exceptions"]').click();
+      await page.waitForFunction(() => /out of stock/.test(((require("./state.js").getSession().annotations.document) || {}).exceptions || ""), null, { timeout: T });
+      m.doc = true;
+      await page.evaluate(() => require("./state.js").setSelectedStepId(null));
+      await row2.locator(".trt-copy").click();
+      m.offItem = await page.evaluate(() => { const b = document.querySelector("#ov-tr-add-menu [data-first]"); return b && [b.textContent, b.getAttribute("aria-disabled")]; });
+      const before = JSON.stringify(await anno());
+      // aria-disabled: Playwright would wait for it to be enabled; the click
+      // is a person's, and must change nothing.
+      await page.locator("#ov-tr-add-menu [data-first]").click({ force: true });
+      await wait(300);
+      m.off = { same: JSON.stringify(await anno()) === before, open: await page.evaluate(() => !!document.getElementById("ov-tr-add-menu")) };
+      await page.keyboard.press("Escape");
+    } catch (e) { err = errText(e); }
+    const ok = !err &&
+      JSON.stringify(m.look.labels) === JSON.stringify(["Add step here|Adds a step that starts where this is said.",
+        "Copy to...|Copies this sentence into the description of a step or a field of the document."]) &&
+      m.look.idle === "0" && m.look.current === "1" && m.look.display !== "none" && m.look.focused.opacity === "1" && m.look.focused.h === m.look.h &&
+      m.added.at === 19 && m.added.shot && m.added.tab === "transcript" &&
+      m.menu.head === "Copy this sentence to" && m.menu.items[0] === 'The description of "Step 1"' && m.menu.focus === 'The description of "Step 1"' &&
+      m.menu.items.includes("Exceptions") && m.desc && m.doc &&
+      JSON.stringify(m.offItem) === '["The description of a step (select a step first)","true"]' && m.off.same && m.off.open;
+    record("(m) lane E, E3: each sentence carries Add step here and Copy to... (transparent on a row neither under the pointer, nor focused, nor the playhead's, shown there, the row's height unchanged); Add step here, by the keyboard, adds a step at its moment with the video's frame, the tab staying open; Copy to... opens one menu, \"Copy this sentence to\", the selected step's description first (focused), then the document's fields (Exceptions); with no step selected the description item says to select one and changes nothing",
+      ok, JSON.stringify({ err, m }));
+    if (!ok) await shot(page, "fail-transcript-lanee-acts.png");
+  }
+
+  // (n) a stretch put aside, and read only.
+  {
+    let n = {}, err = null;
+    try {
+      await page.evaluate(async (t0) => {
+        const S = require("./session.js");
+        const a = require("./state.js").getSession().annotations;
+        a.excluded_ranges = [{ start: new Date(t0 + 8000).toISOString(), end: new Date(t0 + 16000).toISOString(), reason: "manual" }];
+        // The tab follows every change of the stretches (the "timeline" topic).
+        await S.persistAnnotations(a, "Not part of the process", ["timeline"]);
+      }, LANE_E_T0);
+      await page.waitForSelector(".trt-gap", { timeout: T });
+      n.aside = await page.evaluate(() => ({ gap: document.querySelector(".trt-gap .trt-gap-text").textContent,
+        include: !!document.querySelector(".trt-gap .trt-include"), rows: document.querySelectorAll(".trt-row").length,
+        texts: [...document.querySelectorAll(".trt-row .tr-text")].map((x) => x.textContent) }));
+      await page.click(".trt-gap .trt-include");
+      await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 0, null, { timeout: T });
+      await wait(300);
+      n.back = await page.evaluate(() => ({ rows: document.querySelectorAll(".trt-row").length, gaps: document.querySelectorAll(".trt-gap").length }));
+      n.ro = await page.evaluate(() => {
+        const s = require("./state.js").getSession();
+        s.readOnly = true;
+        const T = require("./views/flow-view-transcript.js");
+        T.renderTab(true);
+        const out = { more: document.querySelectorAll(".trt-acts").length, rows: document.querySelectorAll(".trt-row").length,
+          search: !!document.querySelector(".trt-search") };
+        delete s.readOnly;
+        T.renderTab(true);
+        return out;
+      });
+    } catch (e) { err = errText(e); }
+    const ok = !err && n.aside.gap === "Not part of the process: 0:08 to 0:16" && n.aside.include && n.aside.rows === 11 &&
+      !n.aside.texts.some((t) => /game|extra time|Lunch|missed/.test(t)) && n.back.rows === 15 && n.back.gaps === 0 &&
+      n.ro.more === 0 && n.ro.rows === 15 && n.ro.search;
+    record("(n) lane E, E3 and E4: a stretch put aside is one row, \"Not part of the process: 0:08 to 0:16\", in place of its sentences, with Include again, which brings them back; read only, the list and its search stay and no act is offered",
+      ok, JSON.stringify({ err, n }));
+    if (!ok) await shot(page, "fail-transcript-lanee-aside.png");
+  }
+
+  record("lane E: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
+  await v.close();
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
+}
+
 (async () => {
   const pre = readJson(ANNO);
   const stats = readJson(path.join(SESSION, "stats.json"));
@@ -588,6 +872,7 @@ const WANT_OFFSET = -30000;
   if (pageErrors.length) await shot(page, "fail-transcript-page-errors.png");
 
   await viewer.close();
+  await laneE();
   for (const dir of [SESSION, FILES]) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
   }

@@ -605,7 +605,12 @@ class _Session:
     def left_out(self, index) -> list[tuple]:
         """The stretches of run `index` left out of the analysis
         (annotations.excluded_ranges cut to the run's span, a run left open
-        reaching to the end: _left_out_stretches)."""
+        reaching to the end: _left_out_stretches). In a session without a
+        recording (C16) a stretch put aside on the Timeline is not part of
+        the process: nothing was left out of an analysis there, so none
+        (lane E, item E4)."""
+        if not self.recorded:
+            return []
         run = self.runs[index]
         return _left_out_stretches(self.annotations.get("excluded_ranges"),
                                    _parse_ts(run.get("start_ts")), _parse_ts(run.get("end_ts")))

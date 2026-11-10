@@ -13,8 +13,11 @@
 | [`views/flow-view-video.js`](../../viewer/views/flow-view-video.js) | The videos of the project on the clock (C23: `chainOf`, `clipAtMs`, `playheadMs`), `timelineSpan()` (the stretch of time the timeline lays out), the player (one video at a time, playing on into the next), the playhead's place, seeking, and the edits of the chain: Add, Sync, Replace, Trim and Remove video. |
 | [`video-chain.js`](../../viewer/video-chain.js) | Pure: the clips, where each is on the clock, and the edits back to back (a trim, a replace, a remove, an add, and what moves with them). Unit-tested. |
 | [`views/video-lane.js`](../../viewer/views/video-lane.js) | The Videos lane: one band per video, a side dragged trims it, its right-click menu. |
-| [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane (one row per transcript) and each transcript's Sync, Replace and Remove. |
-| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, adds a step, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis, Include again, the Transaction select. |
+| [`views/flow-view-transcript.js`](../../viewer/views/flow-view-transcript.js) | The Transcript lane (one row per transcript) and each transcript's Sync, Replace and Remove; lane E, the Transcript tab beside the video (`renderTab`, `tickTab`). |
+| [`transcript-list.js`](../../viewer/transcript-list.js) | Pure (lane E): the Transcript tab's rows, the sentence at a moment, the search's marks and count. Unit-tested. |
+| [`left-out.js`](../../viewer/left-out.js) | Pure (lane E): the stretches put aside, the skip when playing, the sentences left out, the words of a recording and of a project without one. Unit-tested. |
+| [`show-here.js`](../../viewer/show-here.js) | Pure (lane E): the step "<step>" starts here acts on, the next one, the place it keeps. Unit-tested. |
+| [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, adds a step, gives a step written first its moment, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis or Not part of the process, Include again, "<step>" starts here, the Transaction select. |
 | [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The Markers panel, and `moveMarker` (the move a dragged transaction side makes). |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
 
@@ -210,9 +213,12 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
 **Range selection.** Shift-drag on the background selects a range; a card
 shows its length, events, markers, screenshots and systems, with *Insert
 transaction from selection* (a Start and an End marker, pending),
-*Leave out of the analysis* (only in a project with a recording: it asks
+*Leave out of the analysis* (in a project with a recording: it asks
 first, the range goes into `annotations.excluded_ranges` and the analysis
-runs again) and *Clear selection*. Esc clears it.
+runs again), or, lane E (E4), *Not part of the process* in a project made
+from a video or from nothing (`flow-view.js` `putAside`: the same
+`excluded_ranges` entry, one undoable edit, no question and no analysis),
+and *Clear selection*. Esc clears it.
 
 **The stretches left out of the analysis** (lane CC) are drawn where they
 are made: a quiet hatch over the Systems lane (`.tl-left-out`, its
@@ -230,6 +236,65 @@ stretch left out as such: it says once, first, "Part of this transaction
 was left out of the analysis (m:ss to m:ss)", and the reference steps done
 in the stretch are not listed as skipped (`run-differences.js`, pinned
 with the PDD by `shared/run-differences-golden.json`).
+
+**Not part of the process** (lane E, E4). In a project without a recording
+the same mark is a detour of the call (`left-out.js`, the pure side). Its
+band, label and tooltip say "Not part of the process" (`leftOutLabel` and
+`leftOutTitle` with `recorded` false), drawn on the low lane such a project
+has in place of the Systems lane, and the legend reads "not part of the
+process". It changes nothing an analysis makes: the readers of the
+stretches (Steps' differences, the live map's cuts in `renderer.js`, the
+step BPMN's cuts in `pipeline_stages.py`, the PDD's `left_out`) take none
+in a project without a recording (`left-out.js` `analysisRanges`), so
+Include again and an undo or a redo of either analyze nothing
+(`revertFollowUp` with `recorded` false).
+
+**Playing skips a stretch put aside**, of either kind (`flow-view-video.js`
+`_skipLeftOut`, the rule `left-out.js` `skipTo`): when playback runs into a
+stretch's start, the clock goes on at its end (`seekClock`, across the
+videos of the chain); a seek sets the moment playing goes on from, so a seek
+into a stretch plays it to its end. The time updates come about four times a
+second: a timer checks again right at a start that is near.
+
+## The Transcript tab
+
+Lane E (E3): the side panel's third tab, beside Screenshots and Markers
+(`flow-view-transcript.js` `renderTab`, the pure list in
+`transcript-list.js`). The chosen tab stays chosen while the window lives.
+Every placed sentence of every transcript in time order on the one clock
+(`transcript-model.js` `partsOf`), the speaker where it changes; a
+transcript not placed yet is a line with *Sync...*; without a transcript, a
+line with *Attach transcript...*. A search over the list hides what does not
+match, marks the matches and counts them ("3 of 340"); with more than one
+speaker a select ("Everyone" first) narrows to one. The list is built once
+per change of what it shows (the transcripts, their placement, the
+stretches put aside, read only) and never while typing or playing: a tick
+of the playhead moves one class (`current`, a binary search), and while the
+video plays keeps that row in view, unless the pointer is over the list,
+the keyboard is in it or the search holds text. Off-screen rows are not laid
+out (`content-visibility`), so a call of thousands of sentences opens in a
+few hundred milliseconds. A click on a sentence puts the clock there
+(`seekClock`: a paused video stays paused). After each sentence two text
+buttons (`.trt-acts`): *Add step here* (the clock goes there, then
+`flow-view.js` `addStepAt`, what S does) and *Copy to...*, one menu headed
+*Copy this sentence to* (the Overview's `showDocTargetMenu` with
+`opts.head` and `opts.first`): first *The description of "<step>"* (the
+step editor's handler, `panelFieldCallbacks` `onDescription`; with no step
+selected *The description of a step (select a step first)*, shown,
+`aria-disabled`), then the document's fields. The buttons show on the row
+under the pointer, the row holding the keyboard and the current row; on the
+others they are transparent (`opacity: 0`, so they keep their space and Tab
+still reaches them; `visibility: hidden` would take them out of the Tab
+order). A stretch marked as not part of the process stands in one row,
+"Not part of the process: 12:10 to 41:30" (or "Left out of the analysis:
+..."), with *Include again*. Read only: no act and no Include again. The
+step panel's and the step editor's *Said* lists leave a marked stretch's
+sentences out too (`left-out.js` `saidOutside`).
+
+A Shift-drag on the timeline's background selects; the click that ends it
+neither seeks nor starts the video (`flow-view-timeline.js`, the
+background click returns on `shiftKey`). In a project without a recording
+the selection's card shows its Duration only.
 
 ## The video beside it
 
@@ -286,6 +351,19 @@ moment on the clock, whichever video shows it (`playheadMs`).
   name focused and selected unless the video is playing. A step deleted
   takes its added screenshots with it, and a step merged into another
   hands them to it.
+- **"<step>" starts here** (lane E, E5; beside + Step, only with a video,
+  `#btn-show-here`): the button names the step it acts on (`show-here.js`
+  `targetOf`: the selected step when its time is the analyst's to set, else
+  the first step without a time in the process order; none, hidden; the
+  name ends in an ellipsis inside the quotes so the header never wraps).
+  A click gives that step the playhead's moment (`steps-view.js`
+  `showStepAt`): a start typed's rules (`time-edits.js` `placeUntimed`, a
+  step of the analyst's it lands in cut there), its place in the process
+  kept (`show-here.js` `keepPlace`, deriveOrder's fewest placements) unless
+  it joins another transaction, the video's frame as its screenshot when it
+  has none; one undoable edit. Then the next step without a time is
+  selected (`nextAfter`). The timeline's right-click menu offers the same
+  under *Add a step here*, at the moment clicked.
 - A step's own playback is in the step panel (Watch), beside the steps,
   from the video that shows its moment.
 - The playback bar at the bottom of the window covers the videos on the

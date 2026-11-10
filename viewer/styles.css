@@ -2679,3 +2679,56 @@ button.danger:disabled {
 .modal-prompt.modal-large .modal-textarea { min-height: 240px; height: 42vh; font-family: var(--font-ui); line-height: 1.5; }
 .modal-prompt .modal-preview { margin: 8px 0 0; font-size: 12px; color: var(--fg-2); line-height: 1.5; }
 .app.read-only #btn-paste-notes { display: none; }
+/* ===== Lane E: from a call (E3 the Transcript tab, E4 a stretch not part of
+   the process, E5 "<step>" starts here) ===== */
+/* E5: the button names its step; a long name ends in an ellipsis inside the
+   quotes, so the toolbar never wraps or clips. */
+button.icon-btn.show-here-btn { display: inline-flex; align-items: baseline; white-space: nowrap; max-width: 280px;
+  font-family: inherit; font-size: 12px; }
+button.icon-btn.show-here-btn[hidden], .app.read-only #btn-show-here { display: none; }
+.show-here-btn .show-here-name { display: inline-block; max-width: 180px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* E3: the tab fills the pane: the tools at the top, the list scrolls. */
+.anno-panel[data-panel="transcript"] { overflow: hidden; }
+.trt { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; }
+.trt-note { margin: 2px 0; font-size: 12px; color: var(--fg-3); }
+.trt-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* Wide enough for its placeholder; the count wraps under it in a narrow pane. */
+.trt-search { flex: 1 1 170px; min-width: 170px; font-size: 12px; padding: 4px 8px; }
+.trt-speaker { flex: 0 1 auto; max-width: 160px; font-size: 12px; padding: 3px 6px; }
+.trt-count { flex: 0 0 auto; font-size: 11px; color: var(--fg-3); white-space: nowrap; }
+.trt-list { position: relative; list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* A call is thousands of rows: the ones off screen are not laid out until
+   they scroll into view (the list is built once and filtered by hiding). */
+.trt-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2px; border-bottom: 1px solid var(--rule-soft);
+  content-visibility: auto; contain-intrinsic-size: auto 26px; }
+.trt-row[hidden] { display: none; }
+.trt-say { flex: 1 1 220px; min-width: 0; display: flex; align-items: baseline; gap: 8px; text-align: left;
+  background: transparent; border: 0; border-radius: 3px; padding: 4px 4px; color: var(--fg);
+  font: inherit; font-size: 12px; line-height: 1.4; cursor: pointer; }
+.trt-say:hover { background: var(--bg-3); }
+.trt-row.current .trt-say { background: var(--accent-muted); box-shadow: inset 3px 0 0 var(--accent); }
+.trt-list:not(.narrowed) .tr-speaker.same { display: none; }
+.trt-list mark { background: var(--accent-muted); color: var(--fg); outline: 1px solid var(--accent); border-radius: 2px; }
+/* A sentence's two acts, after its text: shown on the row under the
+   pointer, the row with the keyboard and the playhead's row. Elsewhere they
+   keep their space, so no row changes height under the pointer, and are
+   transparent rather than hidden, so Tab still reaches them (a focused one
+   shows its row's). */
+.trt-acts { flex: 0 0 auto; margin-left: auto; display: inline-flex; gap: 10px; padding: 0 4px; font-size: 11px;
+  opacity: 0; }
+.trt-row:hover .trt-acts, .trt-row:focus-within .trt-acts, .trt-row.current .trt-acts { opacity: 1; }
+.trt-act { font-size: 11px; white-space: nowrap; }
+.trt-gap { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 6px 6px; font-size: 12px;
+  color: var(--fg-2); border-bottom: 1px solid var(--rule-soft);
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--bg-2) 86%, transparent) 0 5px,
+    color-mix(in srgb, var(--fg-3) 18%, var(--bg-2)) 5px 7px); }
+.trt-gap-text { background: var(--bg-2); padding: 0 4px; border-radius: 2px; font-weight: 600; }
+.trt-gap .trt-include { background: var(--bg-2); padding: 0 4px; }
+.trt-list.narrowed .trt-gap { display: none; }
+/* Copy to...'s menu (the Overview's, with a heading and the step's
+   description first): an item that cannot act stays readable. */
+.tr-add-menu .tr-add-menu-head { margin: 0; padding: 4px 10px 6px; font-size: 11px; color: var(--fg-3); }
+.tr-add-menu .project-menu-item[aria-disabled="true"] { color: var(--fg-3); cursor: default; }
+.tr-add-menu .project-menu-item[aria-disabled="true"]:hover { background: transparent; color: var(--fg-3); }

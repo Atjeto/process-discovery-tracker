@@ -1066,9 +1066,10 @@ async function unreadableAnnotationsPin() {
     };
   }).catch((e) => ({ err: e.message }));
   const panelOk = !!(sidePanel && !sidePanel.err &&
-    JSON.stringify(sidePanel.tabs) === JSON.stringify([{ anno: "screens", active: true }, { anno: "markers", active: false }]) &&
+    // Lane E (E3): the Transcript tab is the third.
+    JSON.stringify(sidePanel.tabs) === JSON.stringify([{ anno: "screens", active: true }, { anno: "markers", active: false }, { anno: "transcript", active: false }]) &&
     sidePanel.screensShown && sidePanel.notesGone && sidePanel.overlayGone);
-  record("P1.6 (AD-17, AD-27) + P1.1: Flow's side panel opens on Screenshots next to Markers; no Notes tab or note field, and no Notes lane without a note pinned to a moment; no shortcuts overlay",
+  record("P1.6 (AD-17, AD-27) + P1.1: Flow's side panel opens on Screenshots next to Markers and Transcript; no Notes tab or note field, and no Notes lane without a note pinned to a moment; no shortcuts overlay",
     panelOk, JSON.stringify(sidePanel && { tabs: sidePanel.tabs, screensShown: sidePanel.screensShown,
       notesGone: sidePanel.notesGone, overlayGone: sidePanel.overlayGone, err: sidePanel.err }));
   const stampsOk = !!(sidePanel && !sidePanel.err && sidePanel.stamps.length > 0 &&
