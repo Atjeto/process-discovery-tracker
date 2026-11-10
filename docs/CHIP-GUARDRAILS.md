@@ -195,18 +195,27 @@ others):
   the version in its `title`.
 - New, Open and Export each close on Escape (the keyboard back on the
   menu's button).
-- Export: `#btn-session-export-menu` opens `#session-export-popup`:
-  `#btn-session-pdd`, `#btn-session-tech` (Technical details (.xlsx),
-  contract C20), `#btn-session-map-svg`, `#btn-session-step-bpmn`,
-  `#btn-session-handoff` (Hand off...: a `.modal-prompt` asking what
-  changed, OK disabled while it is blank; the item reads "Handing off..."
+- Export: `#btn-session-export-menu` opens `#session-export-popup`, in
+  this order under three `.project-menu-heading` divs (text, not focusable,
+  12 px, `var(--fg-3)`; hidden in a read-only page): "For the developers
+  and the archive", `#btn-session-handoff` (Hand off...: a `.modal-prompt`
+  asking what changed, OK disabled while it is blank, its `.modal-detail`
+  saying what the zip holds; the item reads "Handing off..."
   and Export carries `aria-busy="true"` while the hand-off is made; the zip
   `<project> v<N>.zip` lands beside the project folder, and a smoke waits
-  for Explorer's stub to show it), `#btn-session-zip` (Whole project (.zip);
+  for Explorer's stub to show it; at its root the PDD, the Technical
+  details when written, `<project> v<N> map.svg`, `<project> v<N>
+  map.bpmn` and `Start here.txt`; its project folder without
+  `annotations.json.2` to `.5` and `normalize.log`); "For another
+  analyst", `#btn-session-zip` (below); "Single files", `#btn-session-pdd`,
+  `#btn-session-tech` (Technical details (.xlsx), contract C20; where
+  nothing was recorded it writes no file and says so in a toast),
+  `#btn-session-map-svg`, `#btn-session-step-bpmn`. `#btn-session-zip` (Whole project (.zip);
   it reads "Making the zip..." and the Export button carries
   `aria-busy="true"` while the zip is made). In a hand-off opened read only
   the writing items are hidden and `#btn-handoff-open-pdd` (PDD of this
-  version) and `#btn-handoff-open-tech` show, each opening its file with
+  version) and `#btn-handoff-open-tech` (not when the zip came without
+  the Technical details: `.app.handoff-no-tech`) show, each opening its file with
   `shell.openPath` (stub it). Every export then shows its file in Explorer
   (step 3 above).
 - `#btn-help` (below), `#btn-theme-toggle`.
@@ -244,10 +253,22 @@ shown only after a failed run; `#toast`.
 **Overview** (`#overview-content`, `views/overview-view.js`):
 - Before the first analysis: `#ov-waiting` (`data-run` = the run state).
 - The Checklist `#ov-next` (`data-next` = the next stage; stages
-  `.ov-next-stage[data-stage="runs"|"pattern"|"review"|"document"|"asis"|"export"]`,
+  `.ov-next-stage[data-stage="runs"|"steps"|"written"|"pattern"|"review"|"document"|"asis"|"handoff"]`
+  (a recording: runs, pattern, review, document, handoff; without a
+  recording: steps, written, review only with two or more transactions,
+  document, handoff),
   `.done` when done; `asis`, *Check the As-Is map*, is listed only while the
-  As-Is map the PDD prints was made before the steps changed, lane FX2; the
-  export is never done) and its one button `#btn-ov-next` (`data-next-act`).
+  As-Is map the PDD prints was made before the steps changed, lane FX2;
+  `handoff` is done once a version is handed off) and its one button
+  `#btn-ov-next` (`data-next-act`: the stage, except `steps-timeline` and
+  `steps-list` for Add the steps with and without a video; `handoff`
+  clicks `#btn-session-handoff`). Once only the hand-off is left the line
+  is `#ov-next.ov-next-ready` (`data-next="handoff"`) with
+  `.ov-next-ready-text` ("Everything before the hand-off is done.", or
+  "Version N was handed off on <date>. Hand off again after a change.").
+- Steps: `[data-act="confirm-run"]` and the draft status
+  (`.run-status-draft`) show only while the reference transaction holds a
+  drafted step at some level; Ctrl+Enter acts only where the button is.
 - The project line `#ov-summary`: in a hand-off opened read only its first
   line `#ov-handoff` ("Version 2, handed off <date> by <name> · Read only",
   what changed in its `title`);

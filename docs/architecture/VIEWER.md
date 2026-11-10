@@ -108,13 +108,19 @@ one menu closes the others.
   and the folder in its tooltip), *Saving...* while a write lasts, *Not
   saved* in the error colour (what was not saved and why in its tooltip)
   until a later save succeeds (section 9).
-- **Export**: *PDD (.docx)*, *Technical details (.xlsx)*, *Process map
-  (image)*, *Process map (BPMN)*, *Hand off...*, *Whole project (.zip)*
-  (section 10); in a hand-off opened read only, *PDD of this version*,
-  *Technical details of this version* and the two map exports (section 11).
+- **Export**: three groups under headings that are text, not items (12 px,
+  `var(--fg-3)`, `.project-menu-heading`): *For the developers and the
+  archive* (*Hand off...*), *For another analyst* (*Whole project (.zip)*),
+  *Single files* (*PDD (.docx)*, *Technical details (.xlsx)*, *Process map
+  (image)*, *Process map (BPMN)*) (section 10); in a hand-off opened read
+  only, no heading, *PDD of this version*, *Technical details of this
+  version* (only when the zip has them, `.app.handoff-no-tech`) and the two
+  map exports (section 11).
 
 **The four levels** are `.view-mode-btn[data-level]` buttons; each shows one
-container. The Overview is the default on load.
+container. The Overview is the default on load; a project just made with
+*New project from a video...* opens on the Timeline (`flow-view.js
+newProject`).
 
 | Level | `data-level` | Container | Render entry |
 |---|---|---|---|
@@ -123,14 +129,22 @@ container. The Overview is the default on load.
 | Steps | `steps` | `#session-layout-steps` | `renderStepsLevel()`, [`views/steps-view.js`](../../viewer/views/steps-view.js) |
 | Map | `map` | `#session-layout-map` | `renderMapLevel()` in `renderer.js`, with [`refmap-ui.js`](../../viewer/refmap-ui.js) (which picture, [`map-view.js`](../../viewer/map-view.js)), [`asis-view.js`](../../viewer/asis-view.js) and [`map-controller.js`](../../viewer/map-controller.js) |
 
-- **Overview**: the Checklist (five acts: Mark the transactions, Confirm
-  the reference transaction, Review the other transactions, Write the
-  document, Export the PDD; each ticked or not from the session data alone,
-  so the export is never ticked; each with a tooltip that says what it
-  means, and one button for the next act; while the As-Is map the PDD
-  prints was made before the steps changed, *Check the As-Is map* comes
-  before the export (lane FX2, `asis-freshness.js`); it shrinks to one line
-  once only the export is left); the project
+- **Overview**: the Checklist (`pathState`: the acts that fit the
+  project, `AC.hasRecording`. A recording: Mark the transactions, Confirm
+  the reference transaction (done once confirmed, or when its steps hold no
+  draft at any level), Review the other transactions (done once every one
+  that differs is opened), Write the document, Hand off. Without a
+  recording: Add the steps, Write the steps (every visible step of the
+  reference transaction with a name of its own, not + Step's "Step N", and
+  a description), Review the other transactions (only with two or more),
+  Write the document, Hand off (done once `annotations.handoffs` holds a
+  version). Each ticked or not from the session data alone, each with a
+  tooltip that says what it means, and one button for the next act (Hand
+  off... clicks the Export menu's item); while the As-Is map the PDD prints
+  was made before the steps changed, *Check the As-Is map* comes before the
+  hand-off (lane FX2, `asis-freshness.js`); it shrinks to one line once
+  only the hand-off is left, naming the last version once there is one);
+  the project
   line (its name, who recorded it, the request, its transactions, the
   reference transaction's steps, the video and the transcript with their
   Attach, Replace and Remove (the video's Remove only for a video the
@@ -355,10 +369,10 @@ their module as `<name>.test.js`.
 | `video-path.js` | Pure: where an attached video is kept (copied into `video/`, stored relative to the folder) and how a stored path is found again on another machine. |
 | `project-zip.js` | Export, Whole project (.zip): where the zip goes (next to the folder, `<name>.zip`, else `<name> (2).zip` and on), one more try when a save replaced a file while the zip was made, the sentence for a failure, the size. |
 | `pdd-zip.js` | Export, PDD of a project with attachments (2.0.1): the attached files it carries (`attachedFiles`, only those in the project's attachments folder) and `<name>.zip` where the analyst saves it, one folder holding the PDD and `Attachments/` (the folder the PDD's links name, `--pdd-attachments Attachments`), built as `.building` and renamed when complete. |
-| `handoff-zip.js` | Export, Hand off... (contract C20): `<project> v<N>.zip` next to the folder (never over another zip), the folder zipped by `zip-folder.js`, then the PDD and the Technical details of the version appended at the zip's root (`appendFiles`), built as `.building` and renamed when complete. |
+| `handoff-zip.js` | Export, Hand off... (contract C20): `<project> v<N>.zip` next to the folder (never over another zip), the folder zipped by `zip-folder.js` leaving out what nobody reads (`leftOutOfHandoff`: the backups and `normalize.log` at the root, `*.pdt-staged` and `*.zip.building` anywhere), then the PDD, the Technical details when written, the map files when drawn and `Start here.txt` appended at the zip's root (`appendFiles`), built as `.building` and renamed when complete. |
 | `library.js` | The activity library (contract C21): the app's file (`library/activities.json`, `resources/library/activities.json` in the package, `PDT_LIBRARY` for tests), reading one (a missing or invalid file is an empty library), the project's `library.json` before the app's (`projectLibrary`), the pipeline's checks mirrored (`problems`), and the pure look-ups the step pane needs (`pickerFor`, `filterActivities`, `applyActivity`, `codeOf`) and Help's line (`summaryLine`). Used by the main process and the renderer. |
-| `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD and the Technical details of the version it lists last; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD and Technical details beside it), `handoffFile` (the PDD or the workbook it came with) and `readProjectZip` (C21: a zip's project manifest and annotations, read where it is, for the Library builder). |
-| `zip-folder.js` | The zip writer (PKZIP 2.0 without ZIP64, UTF-8 names, written as `.partial` and renamed at the end): a copy of `capture/zip-folder.js`, kept identical by `project-zip.test.js`, since a packaged viewer cannot reach `capture/`. |
+| `handoff-open.js` | A hand-off zip opened read only (C20): whether it is one (`inspectHandoff`: one project folder whose `annotations.json` lists a version, and at the root the PDD of the version it lists last, with its Technical details when it has them; a whole project's zip is none), its extraction under `<userData>/handoffs/<project> v<N>/` (streamed, each file's size and CRC checked, no entry outside the folder, a temporary folder renamed when complete, the same zip finding its folder again through `.pdt-handoff.json`), `isReadOnlyProject` (the rule main refuses writes by: a folder under `<userData>/handoffs`, or a hand-off unzipped by hand, its PDD beside it), `handoffFile` (the PDD or the workbook it came with) and `readProjectZip` (C21: a zip's project manifest and annotations, read where it is, for the Library builder). |
+| `zip-folder.js` | The zip writer (PKZIP 2.0 without ZIP64, UTF-8 names, written as `.partial` and renamed at the end; an optional `leaveOut(relativePath)` leaves entries out, which only the hand-off uses): a copy of `capture/zip-folder.js`, kept identical by `project-zip.test.js`, since a packaged viewer cannot reach `capture/`. |
 | `project-folder.js` | Which folder a chosen folder opens (lane FX2): a project folder, or the one project folder inside it (the folder Windows' Extract All makes of the SME's zip); any other folder is refused with a sentence that says what to open. |
 | `staged-outputs.js` | What a stopped analysis leaves (lane FX1): the `*.pdt-staged` files `normalize.py` writes before it moves its outputs in, removed once a cancelled run's process has ended. |
 
@@ -367,7 +381,7 @@ their module as `<name>.test.js`.
 | File | Owns |
 |---|---|
 | `overview-view.js` | The Overview: the Checklist (`pathState`), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), and the note shown while the analysis is missing. |
-| `handoff-ui.js` | Export, Hand off... (contract C20): the dialog, the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
+| `handoff-ui.js` | Export, Hand off... (contract C20): the dialog (its line says what the zip holds, `detailLine`), the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the map files (`writeHandoffMaps`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
 | `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, range selection and its card (Insert transaction from selection; Leave out of the analysis, and Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
 | `step-order.js` (viewer root, pure) | 2.0.5, contract C22: where a step comes in its transaction's process, apart from its time (`step.placed_after`). `processOrder` (the one order rule, pinned with the pipeline's `step_context.process_order` by `shared/step-order-golden.json`; runs-model, the live map, the sub-process maps and the differences read it), `placeMoments` (where a placed step falls among the stretches left out), `deriveOrder` (the fewest placements that give an order wanted: Move up and Move down, Place after a step..., Back to its time, + Add step), `keepOrder` (a step hidden, deleted or merged away hands its followers over), `followTransaction`, `apartOnTimeline` (Merge and Group refuse a placed step apart from the others). |
 | `time-edits.js` (viewer root, pure) | 2.0.3: the times the analyst gives a transaction or a step, one rule set for a drag on the Timeline and a time typed in Steps: snapping, a marker's and a step side's range, a step back to back giving way, a step without a time given one, a transaction's markers (`runSides`), the time fields' format and parse ("0:09.6"). |
@@ -485,7 +499,7 @@ which the renderer shows.
 | | `viewer:saveSvgFile` | A save dialog, then the SVG text. |
 | | `viewer:exportProjectZip` | Zips an open project next to its folder (`project-zip.js`); refused while that project's analysis runs, one zip of a project at a time. Answers the zip's path, size and entry count. |
 | | `viewer:exportPddZip` | 2.0.1: the save dialog for `<name>.zip`, then the PDD the renderer had written with its attachments (`pdd-zip.js`); main reads the attachments from the project's `annotations.json`. Answers the zip's path and how many files it carries, or null when the dialog was cancelled. |
-| | `viewer:exportHandoffZip` | Contract C20: the hand-off's zip next to the folder, with the PDD and the Technical details passed at its root (`handoff-zip.js`); the same refusals as the Whole project zip, and a project opened read only. |
+| | `viewer:exportHandoffZip` | Contract C20: the hand-off's zip next to the folder, with the PDD (required), the Technical details and the map files (each optional) passed at its root, and `Start here.txt` naming the version as `annotations.json` records it (`handoff-zip.js`); the same refusals as the Whole project zip, and a project opened read only. |
 | | `viewer:openHandoffFile` | Contract C20: in a hand-off opened read only, opens the PDD (`kind` "pdd") or the Technical details ("tech") it came with. |
 | | `viewer:revealFile` | Shows a file in its folder (Explorer, the file selected). |
 | | `viewer:openExternal` | Opens a screenshot, after the path checks (section 1). |
@@ -783,8 +797,16 @@ PDD.docx*, *Order to cash map.bpmn*, *Order to cash As-Is map.bpmn*.
   Technical details for the version (`--handoff N`: the analysis first when
   the step map is older than the steps, as for the PDD), and the main
   process writes `<project> v<N>.zip` next to the folder
-  (`viewer:exportHandoffZip`): the folder, and at the zip's root
-  `<project> v<N> PDD.docx` and `<project> v<N> Technical details.xlsx`.
+  (`viewer:exportHandoffZip`): the folder without `annotations.json.2` to
+  `.5` and `normalize.log` at its root and any `*.pdt-staged` or
+  `*.zip.building` (`handoff-zip.js leftOutOfHandoff`, the optional
+  `leaveOut` of `zip-folder.js`), and at the zip's root
+  `<project> v<N> PDD.docx`, `<project> v<N> Technical details.xlsx` (only
+  when the run wrote it: none where nothing was recorded, `techWritten`),
+  `<project> v<N> map.svg` and `<project> v<N> map.bpmn` (the main map, by
+  the two map exports' own sources, renderer.js `mapSvgOf` and
+  `mapBpmnSource`; none when no map can be drawn) and `Start here.txt`
+  (`handoff.js startHereText`). The names come from `handoff.js fileNames`.
   `<project>` is the name the Overview shows (`session-summary.js
   displayName`), made safe for a file name. A zip is never written over
   another (" (2)" and on). Explorer opens at the zip, and the toast says
@@ -824,8 +846,8 @@ writes by).
 Everything can be looked at and played: every level, the step panel, the
 video, the transcript, the maps (the Map shows the map the hand-off came
 with), and the PDD and the Technical details it came with (Export, *PDD of
-this version*, *Technical details of this version*, opened in their
-programs). Nothing can change:
+this version*, *Technical details of this version* when the zip has them,
+opened in their programs). Nothing can change:
 
 - **No editing control.** The page carries `.app.read-only`
   (`flow-view.js loadSessionIntoView`), and the rules in `styles.css`, beside

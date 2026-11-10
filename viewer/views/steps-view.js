@@ -692,7 +692,9 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
   const dur = _visitDuration(c);
   const meta = _plural(n, "step", "steps") + (dur != null ? " · " + StepFacts.formatMs(dur) : "") +
     _diffMeta(diffs, !!diffs);
-  const status = !isRef ? null : !n ? "empty" : confirmed ? "confirmed" : "draft";
+  // As at the main level: Confirm only while the transaction holds a draft.
+  const owed = isRef && RunsModel.holdsDraft(run.members);
+  const status = !isRef ? null : !n ? "empty" : confirmed ? "confirmed" : owed ? "draft" : null;
   const rm = refVisit && !isRef
     ? RunDiff.rowMarks(refVisit.visible, c.visible, { reference: RunDiff.REFERENCE_RUN, unit: RunDiff.RUN_UNIT }) : null;
   g.innerHTML = _groupHead(isOpen,
@@ -711,7 +713,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
     status || RunsModel.runStatus(c.members), rm);
   const acts = body.querySelector(".run-actions");
   const buttons = [];
-  if (isRef && !confirmed && run.visible.length > 0) {
+  if (isRef && !confirmed && owed && run.visible.length > 0) {
     buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
       "Accept the remaining drafted steps of this transaction, at every level (Ctrl+Enter). Ctrl+Z undoes it.",
       () => confirmRunAction(run.caseId)));
@@ -733,7 +735,8 @@ function renderLevelGuide(host, model, pattern, containers, open, path) {
   const head = c ? c.run.title + (c.index ? ", again" : "") : _levelName(model, pattern, path);
   const ro = RO.isReadOnly(State.getSession());
   const paras = c ? (ro ? [GUIDE_READ_ONLY[GUIDE_LEVEL]]
-    : [GUIDE_LEVEL].concat(isRef && !RunsModel.patternConfirmed(pattern.record, c.run) ? [GUIDE_LEVEL_REF] : []))
+    : [GUIDE_LEVEL].concat(isRef && !RunsModel.patternConfirmed(pattern.record, c.run) &&
+      RunsModel.holdsDraft(c.run.members) ? [GUIDE_LEVEL_REF] : []))
     : ["Pick a transaction on the left to see its steps in this sub-process."];
   if (title) title.textContent = head;
   host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
@@ -993,7 +996,11 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   // them. P3.8: "Use as reference run" is a once-a-session choice, so it
   // lives in the run's right-click menu, as the probe line of the confirmed
   // reference run does.
-  const status = !isPattern ? null : !run.visible.length ? "empty" : reads ? "confirmed" : "draft";
+  // Only a reference run that holds a draft has something to confirm: one
+  // whose steps were all added or edited by the analyst reads neither
+  // confirmed nor a draft, and offers no Confirm transaction.
+  const owed = isPattern && RunsModel.holdsDraft(run.members);
+  const status = !isPattern ? null : !run.visible.length ? "empty" : reads ? "confirmed" : owed ? "draft" : null;
   // Lane HV: a hand-off opened read only offers none of the run's acts.
   const ro = RO.isReadOnly(State.getSession());
   const canUsePattern = !ro && !isPattern && run.members.length > 0;
@@ -1021,7 +1028,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
     run.hiddenCount ? "Every step of this transaction is hidden." : recorded ? "No steps in this transaction."
       : "No steps yet: + Add step adds one after the selected step.", status || run.status, rm);
   const acts = body.querySelector(".run-actions");
-  const canConfirm = !ro && isPattern && !reads && run.visible.length > 0;
+  const canConfirm = !ro && isPattern && !reads && owed && run.visible.length > 0;
   const buttons = [];
   if (canConfirm) {
     buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
@@ -1096,6 +1103,8 @@ const GUIDE_PATTERN =
 const GUIDE_CARRY =
   "A merge carries to the same drafted steps in the other transactions, and every name you give is saved.";
 const GUIDE_PATTERN_DONE = "This transaction is confirmed: the other transactions are compared with it.";
+// A reference transaction with no drafted step: nothing to confirm.
+const GUIDE_PATTERN_OWN = "This is the reference transaction: the PDD prints its steps, and the other transactions are compared with it.";
 const GUIDE_OTHER = "Check how this transaction differs from the reference transaction, and fix a step where needed. It is not confirmed: the reference transaction is.";
 // A transaction with no step that nothing compares it with: an empty
 // project's one transaction before its first step (C16), or an empty
@@ -1140,7 +1149,8 @@ function renderRunGuide(host, model, pattern, ref) {
     // the reference): the one act is adding the first step.
     const firstStep = !!(run && !run.members.length && (!pattern.run || isPattern));
     paras = firstStep ? [GUIDE_FIRST_STEP]
-      : isPattern ? (done ? [GUIDE_PATTERN_DONE] : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
+      : isPattern ? (done ? [GUIDE_PATTERN_DONE] : !RunsModel.holdsDraft(run.members) ? [GUIDE_PATTERN_OWN]
+        : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
     const diffs = run && !firstStep && !isPattern ? _runDiffs(ref, run) : null;
     if (diffs && !RunDiff.differenceCount(diffs)) {
       paras.unshift("It has no differences from " + RunDiff.REFERENCE_RUN + ".");

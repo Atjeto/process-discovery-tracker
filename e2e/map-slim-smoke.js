@@ -886,7 +886,7 @@ const lockProbe = () => {
     !!(!one.err && one.runs === 1 && one.picture && one.picture.shown && one.picture.title === "Process map" &&
       one.map && one.map.drawn && one.map.text === null &&
       JSON.stringify(one.copy) === JSON.stringify([{ name: "As-Is map", role: "as_is" }]) &&
-      JSON.stringify(one.stages) === JSON.stringify(["runs", "pattern", "review", "document", "export"]) &&
+      JSON.stringify(one.stages) === JSON.stringify(["runs", "pattern", "review", "document", "handoff"]) &&
       Array.isArray(one.done) && one.done.includes("runs")),
     JSON.stringify(one));
   await close4();

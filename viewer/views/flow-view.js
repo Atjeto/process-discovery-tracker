@@ -233,6 +233,14 @@ async function newProject(kind) {
   r = await Ipc.createProject();
   if (!r || !r.ok) { toast("The project was not made: " + ((r && r.error) || "no reason was given"), "error"); return; }
   await loadSessionIntoView(r.folder);
+  if (kind === "video") {
+    // A project made from a video opens where its work starts: its steps are
+    // marked on the Timeline, at the moments of the video.
+    const flow = document.querySelector('.view-mode-btn[data-level="flow"]');
+    if (flow) flow.click();
+    toast("Project made: " + path.basename(r.folder) + ". Play the video and press S, or click + Step, where each step starts.", "success");
+    return;
+  }
   toast("Project made: " + path.basename(r.folder) + ". Add its steps in Steps.", "success");
 }
 if ($("#btn-new-from-video")) $("#btn-new-from-video").addEventListener("click", () => newProject("video"));
@@ -524,6 +532,8 @@ async function loadSessionIntoView(folder, opts) {
   // (.open-elsewhere).
   if (shell) shell.classList.toggle("read-only", RO.isReadOnly(State.getSession()));
   if (shell) shell.classList.toggle("open-elsewhere", RO.isOpenElsewhere(State.getSession()));
+  // A hand-off whose zip came without the Technical details offers none.
+  if (shell) shell.classList.toggle("handoff-no-tech", RO.isReadOnly(State.getSession()) && State.getSession().handoffTech === false);
   renderAnnotationsErrorBanner();
   // The top bar's save state follows the project on screen (save-state.js).
   SaveState.projectOpened(State.getSession());

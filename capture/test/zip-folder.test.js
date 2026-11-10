@@ -206,3 +206,32 @@ test("the end summary's error sentences are plain", () => {
   assert.strictEqual(describeZipError({ code: "ENOSPC" }), "The disk is full.");
   assert.strictEqual(describeZipError(new Error("Something odd.")), "Windows reported: Something odd.");
 });
+
+test("leaveOut (optional) leaves out what it names, each path relative to the folder; a folder it names goes with its files", async () => {
+  const base = tmpBase();
+  try {
+    const folder = makeRecording(base);
+    fs.writeFileSync(path.join(folder, "skip.log"), "left out");
+    fs.mkdirSync(path.join(folder, "screenshots", "deep"), { recursive: true });
+    fs.writeFileSync(path.join(folder, "screenshots", "deep", "skip.log"), "kept: not at the root");
+    fs.mkdirSync(path.join(folder, "gone"));
+    fs.writeFileSync(path.join(folder, "gone", "inside.txt"), "left out with its folder");
+    const asked = [];
+    const leaveOut = (rel) => { asked.push(rel); return rel === "skip.log" || rel === "gone/"; };
+    const r = await zipFolder(folder, path.join(base, "out.zip"), leaveOut);
+    const names = readZip(r.zipPath).map((e) => e.name);
+    const top = path.basename(folder) + "/";
+    assert.ok(!names.includes(top + "skip.log"));
+    assert.ok(!names.includes(top + "gone/") && !names.includes(top + "gone/inside.txt"));
+    assert.ok(names.includes(top + "screenshots/deep/skip.log"));
+    assert.ok(names.includes(top + "manifest.json") && names.includes(top + "obs/"));
+    assert.strictEqual(r.entries, names.length);
+    assert.ok(asked.includes("screenshots/") && asked.includes("screenshots/deep/skip.log"), "relative paths, folders ending in /");
+    assert.ok(!asked.includes("gone/inside.txt"), "a folder left out is not walked");
+    // Without it, everything.
+    const all = readZip((await zipFolder(folder, path.join(base, "all.zip"))).zipPath).map((e) => e.name);
+    assert.ok(all.includes(top + "skip.log") && all.includes(top + "gone/inside.txt"));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

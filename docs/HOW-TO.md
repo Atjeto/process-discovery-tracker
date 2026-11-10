@@ -36,7 +36,8 @@ bar).
 - **From a video.** Choose *New*, *New project from a video...* and pick the
   video, for example a Teams recording of the SME at work. Then name the
   project: its folder is made where you save it, with a copy of the video.
-  You mark the steps as you watch (*Mark a video as you watch it*, below).
+  It opens on the Timeline, where you mark the steps as you watch (*Mark a
+  video as you watch it*, below).
 - **From nothing.** Choose *New*, *New empty project...* and name the
   project. You add the steps by hand.
 - **The demo.** Choose *Open*, *Open the demo project*. A finished project
@@ -50,7 +51,12 @@ Help, *Recording keys*, lists what to tell the SME before they record.
 ## Your first hour
 
 The Overview's *Checklist* lists the main acts below and ticks each one when
-it is done; its button takes you to the next.
+it is done; its button takes you to the next. For a recording the acts are
+*Mark the transactions*, *Confirm the reference transaction*, *Review the
+other transactions*, *Write the document* and *Hand off*. For a project made
+from a video or from nothing they are *Add the steps*, *Write the steps* (a
+name of its own and a description for each step), *Review the other
+transactions* when it has two or more, *Write the document* and *Hand off*.
 
 1. **Attach the video and the transcript.** On the Overview, click *Attach*
    after *No video* and pick the video. PDT opens the Timeline: pause the
@@ -98,13 +104,16 @@ it is done; its button takes you to the next.
    draws them all.
 6. **Confirm the transaction.** Click *Confirm transaction* (Ctrl+Enter).
    The steps you did not change are accepted as they are. *Undo confirm*,
-   beside the *Confirmed* badge, takes it back.
+   beside the *Confirmed* badge, takes it back. A transaction with no drafted
+   step, such as one you added by hand, has nothing to confirm: it shows no
+   *Confirm transaction*, and the Checklist ticks the act.
 7. **Look at how the other transactions differ.** Open transactions 2, 3 and
    4 in Steps. Their rows show how each differs from the reference
    transaction: *Extra*, *Again* or *Moved* on a step, and a greyed
    *Skipped* row where a step of the reference transaction is missing
    (point at one to read it whole). A missing step that has a condition
-   reads *Not done* instead, which is no difference. Transaction 2 has two
+   reads *Not done* instead, which is no difference. The Checklist asks you
+   to open only the transactions that differ. Transaction 2 has two
    extra steps: the printed confirmation and the Notepad lookup.
    Transaction 3 has one: *Create the new customer*. Transaction 4 has no
    differences, and a line says that part of it was left out of the
@@ -132,12 +141,14 @@ it is done; its button takes you to the next.
    box to see each time the step happened, with its moment in the video and
    its screenshots. *Show how the transactions ran* shows the paths the
    transactions took; point at a line to see how often.
-10. **Export the PDD.** Choose *Export*, *PDD (.docx)* and save it. Its
-    folder opens with the file selected. With attached files, as in the
-    demo, the PDD comes as one zip with an *Attachments* folder: the
-    attachment names in the PDD open the files once the zip is extracted,
-    so the SME gets them with the document. The PDD is written again from
-    the project each time, so export again after a change.
+10. **Hand off.** Click *Hand off...* on the Checklist, or choose *Export*,
+    *Hand off...*. PDT makes one zip with the whole project, the PDD and the
+    process map (see *Hand over to the developers*). The PDD is written
+    again from the project each time, so hand off again after a change. For
+    the PDD alone, for the SME to read, choose *Export*, *PDD (.docx)*. With
+    attached files, as in the demo, the PDD comes as one zip with an
+    *Attachments* folder: the attachment names in the PDD open the files
+    once the zip is extracted, so the SME gets them with the document.
 
 ## Everyday tasks
 
@@ -323,13 +334,18 @@ it is done; its button takes you to the next.
 3. PDT makes *Order to cash enter a customer order v1.zip* next to the
    project folder and opens its folder. Send that zip to the developers.
 
-**What the zip holds.** The whole project folder, and at its top the PDD and
-the Technical details of that version: *Order to cash enter a customer order
-v1 PDD.docx* and *Order to cash enter a customer order v1 Technical
-details.xlsx*. The Technical details is a
+**What the zip holds.** The whole project folder, without the backup copies
+of the working file and the analysis log. At its top: *Start here.txt*,
+which says what each file is; the PDD, *Order to cash enter a customer order
+v1 PDD.docx*; the Technical details, *Order to cash enter a customer order v1
+Technical details.xlsx*; and the process map as a picture that opens in a
+browser (*Order to cash enter a customer order v1 map.svg*) and as BPMN 2.0
+for ADONIS, Camunda, Bizagi and similar tools (*Order to cash enter a
+customer order v1 map.bpmn*). The Technical details is a
 spreadsheet for the developers: every click and entry of the reference
 transaction with the control it acted on, the fields typed in each
-transaction, and the applications.
+transaction, and the applications. A project made from a video or from
+nothing recorded none of that, so its zip has no Technical details.
 
 **How a developer opens it.** In PDT, choose *Open*, *Open a hand-off
 (.zip)...* and pick the zip. It opens read only: everything can be looked at
@@ -350,13 +366,17 @@ stays.
 - **Every change you make saves itself to the project folder.** The top bar
   says *Saved*; point at it to see the folder. If it says *Not saved*, point
   at it to see why.
+- **The Export menu** has three groups: *For the developers and the
+  archive* (*Hand off...*), *For another analyst* (*Whole project (.zip)*)
+  and *Single files* (the PDD, the Technical details and the map as an
+  image or as BPMN).
 - **Made on export:** the PDD, the map (as an image or as BPMN) and the
   Technical details go where you save them. *Whole project (.zip)* and *Hand
   off...* make their zip next to the project folder. Every export opens its
   folder with the file selected.
-- **Handing it on.** To hand the project to someone, use *Export*, *Whole
-  project (.zip)*: one zip of the folder, made next to it. For the
-  developers, use *Hand off...* instead.
+- **Handing it on.** To hand the project to another analyst, use *Export*,
+  *Whole project (.zip)*: one zip of the whole folder, made next to it. For
+  the developers and the archive, use *Hand off...* instead.
 
 ## The library
 

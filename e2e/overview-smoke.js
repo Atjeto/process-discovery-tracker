@@ -10,8 +10,9 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *   (a) the DEFAULT level is Overview (#session-layout-overview visible,
  *       its level button active, the Timeline layout hidden), laid out at its
  *       full height (the Session view scrolls; L5b small-screen fix);
- *   (b) the home leads with the Checklist (five acts worded as acts, each
- *       with its tooltip, one button; AD-29), the project line (the
+ *   (b) the home leads with the Checklist (a recording's five acts worded
+ *       as acts, the last Hand off, each with its tooltip, one button;
+ *       AD-29), the project line (the
  *       reference transaction's steps, not every one's; the video and the
  *       transcript with their Attach), then the document; the findings
  *       feed, its evidence and the "include in PDD" ticks are gone, and no
@@ -21,12 +22,14 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *   (c2) the moved controls are where they are used (ids kept);
  *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
  *   (d) the analyst path, walked on the demo: every next act lands where it
- *       says (the reference run open in Steps, each other run open in Steps,
- *       the document open on its first empty field), a done stage shows done,
+ *       says (the reference run open in Steps, each other run that differs
+ *       open in Steps, one that does not differ never asked for, the
+ *       document open on its first empty field), a done stage shows done,
  *       a field saves undoably, the ten fields (trigger, result, volume
  *       and effort, and improvement included) save to annotations.json, the
- *       line then shrinks to one line, the Recents entry takes the title; the
- *       export with no As-Is copy hands the PDD the map from the runs
+ *       line then shrinks to one line with Hand off..., the Recents entry
+ *       takes the title; Export, PDD (.docx) with no As-Is copy hands the PDD
+ *       the map from the runs
  *       (AD-28), and its sections 5 to 7 read as the document's own (the
  *       systems and the information entered, the volume and effort written,
  *       the re-keyed data under the improvement scope); then with an As-Is
@@ -285,13 +288,13 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       everyRunCount: /\b30 steps\b|steps confirmed/.test(text),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(b) AD-29: the home leads with the Checklist (Mark the transactions, Confirm the reference transaction, Review the other transactions, Write the document, Export the PDD, each with its tooltip; the first ticked, next the reference transaction, one button), then the project line and the document",
+  record("(b) AD-29: the home leads with the Checklist (Mark the transactions, Confirm the reference transaction, Review the other transactions, Write the document, Hand off, each with its tooltip; the first ticked, next the reference transaction, one button), then the project line and the document",
     !!(home && !home.err && same(home.kids, ["ov-next", "ov-summary", "ov-doc"]) &&
       home.lineLabel === "Checklist" &&
       home.next === "pattern" && home.buttons === 1 && home.button === "Confirm transaction 1 in Steps" &&
-      home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,export:-" &&
+      home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,handoff:-" &&
       same(home.labels, ["Mark the transactions", "Confirm the reference transaction", "Review the other transactions",
-        "Write the document", "Export the PDD"]) && home.tips.length === 5 && home.tips.every((n) => n > 40)),
+        "Write the document", "Hand off"]) && home.tips.length === 5 && home.tips.every((n) => n > 40)),
     JSON.stringify(home));
   record("(b2) the project line: the name, who recorded it, the transactions said once and the reference transaction's 7 steps (not 30 over every one), then the video and the transcript with Attach; the removed surfaces stay gone; no run or What is left wording on the home",
     !!(home && !home.err && home.removed === 0 && home.summaryH > 0 && home.summaryH < 40 &&
@@ -448,8 +451,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       || {}).textContent) || ""), null, { timeout: T });
     await goOverview();
     walk.afterPattern = await lineState();
-    // 2. The other runs (AD-28): each click opens the first run not opened
-    // yet; opening it is its review (no Confirm run on runs 2 to 4).
+    // 2. The other runs (AD-28): each click opens the first run that
+    // differs and is not opened yet; opening it is its review (no Confirm
+    // run on them). A run that does not differ is never asked for.
     walk.landings.review = [];
     for (let i = 0; i < 3; i++) {
       const before = await lineState();
@@ -462,7 +466,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       await goOverview();
     }
     walk.afterReview = await lineState();
-    for (let k = 0; k < 40 && (readAnno().opened_runs || []).length < 3; k++) await wait(125);   // the save is asynchronous
+    for (let k = 0; k < 40 && (readAnno().opened_runs || []).length < walk.landings.review.length; k++) await wait(125);   // the save is asynchronous
     walk.opened = readAnno().opened_runs || [];
     // 3. The document: the button opens it on its first empty field, with
     // the cursor in it.
@@ -490,13 +494,13 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(walk.afterPattern && walk.afterPattern.next === "review" && walk.afterPattern.done.includes("pattern") &&
       walk.afterPattern.button === "Review transaction 2 in Steps"),
     JSON.stringify(walk.afterPattern));
-  const reviewOk = Array.isArray(L.review) && L.review.length === 3 && L.review.every((l, i) =>
+  const reviewOk = Array.isArray(L.review) && L.review.length === 2 && L.review.every((l, i) =>
     l.onSteps && l.openRuns === 1 && l.openTitle === "Transaction " + (i + 2) && !l.openIsPattern &&
-    l.selectedInOpenRun && l.button === "Review transaction " + (i + 2) + " in Steps" && l.confirm === 0) &&
-    L.review[0].say === "2 transactions differ from the reference transaction.";
-  record("(d3) AD-28: 'Review transaction N in Steps' lands on Steps with that transaction open (no Confirm transaction there), for transactions 2 to 4; the line says how many differ; once each was opened the review is ticked (annotations.opened_runs)",
+    l.selectedInOpenRun && l.button === "Review transaction " + (i + 2) + " in Steps" && l.confirm === 0 &&
+    l.say === "2 transactions differ from the reference transaction.");
+  record("(d3) AD-28: 'Review transaction N in Steps' lands on Steps with that transaction open (no Confirm transaction there), for the two transactions that differ (2 and 3); the line says how many differ; once both were opened the review is ticked (annotations.opened_runs), transaction 4, which does not differ, never asked for",
     !!(reviewOk && walk.afterReview && walk.afterReview.next === "document" && walk.afterReview.done.includes("review") &&
-      walk.opened.length === 3),
+      walk.opened.length === 2),
     JSON.stringify({ review: L.review, after: walk.afterReview, opened: walk.opened }));
   record("(d4) 'Write the document' opens the collapsed document with the cursor in its first empty field ('Document · 0 of 10 written')",
     !!(L.document && L.document.open && L.document.focused === "title" && L.document.status === "0 of 10 written" &&
@@ -569,10 +573,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       docProbe.onDisk.result === values.result && docProbe.onDisk.effort === values.effort &&
       docProbe.onDisk.improvement === values.improvement),
     JSON.stringify({ onDisk: docProbe.onDisk }));
-  record("(d6) with the document written, the Checklist shrinks to one short line: no act list, the next act Export PDD (AD-28: no As-Is stage)",
-    !!(docProbe.line && docProbe.line.next === "export" && docProbe.line.ready && docProbe.line.stages === 0 &&
-      docProbe.line.label === "Checklist" && docProbe.line.readyText === "Everything before the export is done: the PDD is ready to export." &&
-      docProbe.line.button === "Export PDD" && docProbe.line.height > 0 && docProbe.line.height < 60),
+  record("(d6) with the document written, the Checklist shrinks to one short line: no act list, the next act Hand off... (AD-28: no As-Is stage)",
+    !!(docProbe.line && docProbe.line.next === "handoff" && docProbe.line.ready && docProbe.line.stages === 0 &&
+      docProbe.line.label === "Checklist" && docProbe.line.readyText === "Everything before the hand-off is done." &&
+      docProbe.line.button === "Hand off..." && docProbe.line.height > 0 && docProbe.line.height < 60),
     JSON.stringify({ line: docProbe.line }));
   record("(P3.9) once written, the document title names the project on the project line and in Recent projects",
     docProbe.summaryName === "E2E order intake" && !!docProbe.recent &&
@@ -615,8 +619,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     };
   }).catch((e) => console.log("spy", e.message));
 
-  /* Export PDD from the Checklist: the Session menu's PDD path. The save
-     dialog is stubbed to a temp path, the shell reveal to a no-op. */
+  /* Export, PDD (.docx): the Session menu's PDD path (the Checklist's last
+     act is the hand-off now). The save dialog is stubbed to a temp path, the
+     shell reveal to a no-op. */
   const exportPdd = async (tag) => {
     const out = path.join(os.tmpdir(), "pdt-ov-e2e-" + tag + "-" + Date.now() + ".docx");
     await app.evaluate(({ dialog, shell }, p) => {
@@ -625,7 +630,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     }, out).catch((e) => console.log("stub dialog", e.message));
     await page.evaluate(() => { window.__pddMaps = null; window.__pddOpts = null; window.__bpmnRenders = []; });
     await goOverview();
-    await page.click("#btn-ov-next").catch((e) => console.log("export click", e.message));
+    await page.click("#btn-session-export-menu").catch((e) => console.log("export menu click", e.message));
+    await page.click("#btn-session-pdd").catch((e) => console.log("export click", e.message));
     let buf = null;
     const deadline = Date.now() + 180000;
     while (Date.now() < deadline) {
@@ -665,7 +671,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const after = await page.evaluate(levelProbe).catch((e) => ({ err: e.message }));
   const backInSync = !!(after && !after.err && after.level === "overview" &&
     JSON.stringify(after.shown) === '["overview"]' && JSON.stringify(after.lit) === '["overview"]');
-  record("(d8) 'Export PDD' writes a .docx through the Session menu's PDD path, then returns to the Overview with the level bar in sync; no status line or log left",
+  record("(d8) Export, PDD (.docx) writes a .docx through the Session menu's PDD path, from the Overview and back on it with the level bar in sync; no status line or log left",
     first.bytes > 1000 && backInSync && first.status && first.status.text === "" && first.status.log === "none",
     "bytes=" + first.bytes + " after=" + JSON.stringify(after) + " status=" + JSON.stringify(first.status));
   if (!(first.bytes > 1000 && backInSync)) await shot(page, "fail-overview-pdd.png");
@@ -740,7 +746,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   }
   record("(d7) Edit as the As-Is map, with a change, makes the PDD's As-Is copy (the Map's act; lane MV: kept at its first change); the What is left line does not change (no As-Is stage)",
     !!(!mapProbe.err && mapProbe.role === "as_is" && JSON.stringify(mapProbe.roles) === '["as_is","to_be"]' &&
-      mapProbe.line && mapProbe.line.ready && mapProbe.line.next === "export" && mapProbe.line.button === "Export PDD"),
+      mapProbe.line && mapProbe.line.ready && mapProbe.line.next === "handoff" && mapProbe.line.button === "Hand off..."),
     JSON.stringify(mapProbe));
   const second = await exportPdd("as-is");
   // (What the PDD prints around the images is the PDD lane's: only the

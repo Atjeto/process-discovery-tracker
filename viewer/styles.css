@@ -1661,7 +1661,12 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .app:not(.read-only) #btn-handoff-open-pdd,
 .app:not(.read-only) #btn-handoff-open-tech,
 .app.open-elsewhere #btn-handoff-open-pdd,
-.app.open-elsewhere #btn-handoff-open-tech { display: none; }
+.app.open-elsewhere #btn-handoff-open-tech,
+.app.handoff-no-tech #btn-handoff-open-tech,
+.app.read-only #session-export-popup .project-menu-heading { display: none; }
+/* (A hand-off whose zip came without the Technical details, nothing having
+   been recorded, offers none; the Export menu's group headings name the
+   writing items, which a read-only page does not show.) */
 /* Lane MW: a project open for editing in another window is read only the
    same way (.read-only), and came with no hand-off files (.open-elsewhere). */
 .app.read-only #btn-session-pdd,
@@ -1997,6 +2002,11 @@ button.danger:disabled {
 /* Destructive item tucked in an overflow menu (e.g. Delete elsewhere). */
 .project-menu-item.danger { color: var(--rec); }
 .project-menu-item.danger:hover { background: var(--rec); color: #fff; }
+/* The Export menu's groups: a heading is text, not an item (no focus, no act). */
+.project-menu-heading {
+  padding: 8px 10px 2px; font-size: 12px; color: var(--fg-3);
+  cursor: default; user-select: none;
+}
 
 /* The New and Open dropdowns (top bar): they open under their button. */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }

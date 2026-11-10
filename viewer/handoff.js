@@ -13,9 +13,12 @@
  * annotations.handoffs,
  *     { version: 2, handed_off_at: "<ISO, UTC>", by: "<Windows user>", note }
  * (an undoable edit: Ctrl+Z takes the entry back, the zip stays), and writes
- * "<project> v2.zip" next to the project folder: the folder, plus at the
- * zip's root "<project> v2 PDD.docx" and "<project> v2 Technical details.xlsx"
- * made for that version (handoff-zip.js). Open project... opens such a zip
+ * "<project> v2.zip" next to the project folder: the folder (without the
+ * working file's backups and the analysis log), plus at the zip's root
+ * "<project> v2 PDD.docx", "<project> v2 Technical details.xlsx" (when
+ * something was recorded), "<project> v2 map.svg" and "<project> v2
+ * map.bpmn" (when a map can be drawn) and "Start here.txt", made for that
+ * version (handoff-zip.js). Open project... opens such a zip
  * read only (handoff-open.js), and its line reads
  *     Version 2, handed off 2026-09-25 by rasha · Read only
  * The PDD prints the same words (normalization/handoff_versions.py).
@@ -113,13 +116,50 @@ function safeBase(name, fallback) {
 }
 
 /* The names of one hand-off's files: the zip beside the project folder and,
-   at its root, the PDD and the Technical details. */
+   at its root, the PDD, the Technical details, the process map as a picture
+   and as BPMN, and the note that says what each is. */
 function fileNames(base, version) {
   const stem = safeBase(base) + " v" + version;
-  return { stem, zip: stem + ".zip", pdd: stem + " PDD.docx", tech: stem + " Technical details.xlsx" };
+  return { stem, zip: stem + ".zip", pdd: stem + " PDD.docx", tech: stem + " Technical details.xlsx",
+    mapSvg: stem + " map.svg", mapBpmn: stem + " map.bpmn", startHere: START_HERE };
+}
+
+/* The note at a hand-off zip's root, for whoever unzips it without the
+   viewer: what each file is. */
+const START_HERE = "Start here.txt";
+const CRLF = String.fromCharCode(13, 10);
+const START_HERE_ROWS = [
+  ["pdd", "The process written down. Read this first."],
+  ["tech", "For developers: the recorded controls, the data fields and the values of every transaction."],
+  ["mapSvg", "The process map as a picture. It opens in a browser."],
+  ["mapBpmn", "The process map as BPMN 2.0, for ADONIS, Camunda, Bizagi and similar tools."],
+];
+const START_HERE_FOLDER = "The whole project: the video, the screenshots, the attachments and the work behind the document.";
+const START_HERE_VIEWER = [
+  "To look through the project (play each step, see its screenshots and what was said), open the",
+  "Process Discovery Tracker viewer, choose Open, then \"Open a hand-off (.zip)...\", and pick this",
+  "zip. It opens read only.",
+];
+
+/* Start here.txt of one hand-off: opts = { base (the project's name),
+   version, entry (its annotations.handoffs entry, or null), folder (the
+   project folder's name in the zip), has: { tech, mapSvg, mapBpmn } (which
+   of those files the zip holds; the PDD always) }. Lines end in CRLF, for
+   Notepad. Pure. */
+function startHereText(opts) {
+  const o = opts || {};
+  const names = fileNames(o.base, o.version);
+  const has = o.has || {};
+  const line = o.entry ? handedOffLine(Object.assign({}, o.entry, { version: o.version })) : "Version " + o.version;
+  const rows = START_HERE_ROWS.filter(([k]) => k === "pdd" || has[k]).map(([k, what]) => [names[k], what])
+    .concat([[String(o.folder || "") + "\\", START_HERE_FOLDER]]);
+  const width = Math.max(...rows.map(([n]) => n.length)) + 3;
+  const out = [safeBase(o.base) + ": " + line.charAt(0).toLowerCase() + line.slice(1), "", "In this zip:"]
+    .concat(rows.map(([n, what]) => "  " + n.padEnd(width) + what), [""], START_HERE_VIEWER);
+  return out.join(CRLF) + CRLF;
 }
 
 module.exports = {
   FIRST_NOTE, entries, latest, nextVersion, newEntry, entryDate, handedOffLine, readOnlyLine,
-  projectName, safeBase, fileNames, MAX_BASE,
+  projectName, safeBase, fileNames, MAX_BASE, START_HERE, startHereText,
 };

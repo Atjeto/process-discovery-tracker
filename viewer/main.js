@@ -43,6 +43,7 @@ const ProjectZip = require("./project-zip.js");
 const ProjectFolder = require("./project-folder.js");
 const DemoProject = require("./demo-project.js");
 const HandoffZip = require("./handoff-zip.js");
+const Handoff = require("./handoff.js");
 const PddZip = require("./pdd-zip.js");
 const HandoffOpen = require("./handoff-open.js");
 const WindowRegistry = require("./window-registry.js");
@@ -394,21 +395,28 @@ ipcMain.handle("viewer:exportProjectZip", async (_e, { sessionFolder } = {}) => 
 });
 
 /* Export, Hand off... (lane HV, contract C20): "<project> v<N>.zip" next to
-   the project folder, holding the folder and, at its root, the PDD and the
-   Technical details the renderer had the pipeline write for this version
+   the project folder, holding the folder (without the working file's
+   backups and the analysis log) and, at its root, the PDD, the Technical
+   details (when the pipeline wrote them: none where nothing was recorded),
+   the process map as a picture and as BPMN (when one could be drawn) and
+   Start here.txt, the files the renderer had written for this version
    (handoff-zip.js). The version is recorded in annotations.json before
    (handoff-ui.js). Not while the project's analysis runs, one zip of a
    project at a time (with the Whole project zip), and never for a hand-off
    opened read only. Result { ok: true, path, bytes, size, entries } or
    { ok: false, error } (a sentence). */
-ipcMain.handle("viewer:exportHandoffZip", async (_e, { sessionFolder, base, version, pdd, tech } = {}) => {
+ipcMain.handle("viewer:exportHandoffZip", async (_e, { sessionFolder, base, version, pdd, tech, mapSvg, mapBpmn } = {}) => {
   const root = _sessionRoot(sessionFolder);
   if (!root || !_knownSessionRoots.has(root)) return { ok: false, error: "This is not an open project." };
   const ro = _refuseReadOnly(root, _e.sender);
   if (ro) return ro;
   if (!Number.isInteger(version) || version < 1) return { ok: false, error: "The version number is missing." };
-  for (const f of [pdd, tech]) {
-    if (typeof f !== "string" || !fs.existsSync(f)) return { ok: false, error: "The PDD or the Technical details were not written." };
+  // The PDD is required; the Technical details are not written for a
+  // project where nothing was recorded, and the map files when no map can be
+  // drawn: each given one must be there.
+  if (typeof pdd !== "string" || !fs.existsSync(pdd)) return { ok: false, error: "The PDD was not written." };
+  for (const f of [tech, mapSvg, mapBpmn]) {
+    if (f != null && (typeof f !== "string" || !fs.existsSync(f))) return { ok: false, error: "A file of the hand-off was not written: " + f };
   }
   if (_analyzing(root)) {
     return { ok: false, error: "The steps and the map are being updated: hand off once the update is done." };
@@ -416,7 +424,11 @@ ipcMain.handle("viewer:exportHandoffZip", async (_e, { sessionFolder, base, vers
   if (_zipping.has(root)) return { ok: false, error: "A zip of this project is being made already." };
   _zipping.add(root);
   try {
-    const r = await HandoffZip.writeHandoffZip(root, { base: String(base || ""), version, pdd, tech });
+    // Start here.txt names the version as annotations.json records it.
+    const read = AnnoStore.readAnnotationsFile(root);
+    const entry = read.status === "ok" ? Handoff.entries(read.annotations).find((e) => e.version === version) || null : null;
+    const r = await HandoffZip.writeHandoffZip(root, { base: String(base || ""), version, pdd, tech: tech || null,
+      mapSvg: mapSvg || null, mapBpmn: mapBpmn || null, entry });
     return { ok: true, path: r.zipPath, bytes: r.bytes, size: ProjectZip.humanSize(r.bytes), entries: r.entries };
   } catch (e) {
     console.error("[viewer:exportHandoffZip] not made:", e && (e.stack || e.message));
@@ -606,6 +618,9 @@ function loadSessionData(sessionFolder) {
     transcriptError,
     transcripts,
     readOnly,
+    // A hand-off whose zip came without the Technical details (nothing was
+    // recorded in the project): its Export menu does not offer them.
+    handoffTech: readOnly ? !!HandoffOpen.handoffFile(root, "tech") : null,
     library,
   };
 }

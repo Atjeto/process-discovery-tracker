@@ -2,14 +2,20 @@
 
 /*
  * handoff-zip.js: the zip of one hand-off (lane HV, contract C20), in the
- * main process. "<project> v<N>.zip", next to the project folder, holds what
- * Export, Whole project (.zip) holds (the project folder as its root folder,
- * zip-folder.js) and, at the zip's root beside that folder, the two files
- * made for this version: "<project> v<N> PDD.docx" and "<project> v<N>
- * Technical details.xlsx".
+ * main process. "<project> v<N>.zip", next to the project folder, holds the
+ * project folder as its root folder (zip-folder.js), without what nobody
+ * reads (leftOutOfHandoff: the working file's backups, the analysis log, a
+ * staged output, a zip being built), and, at the zip's root beside that
+ * folder, the files made for this version: "<project> v<N> PDD.docx",
+ * "<project> v<N> Technical details.xlsx" (only when the pipeline wrote it:
+ * none where nothing was recorded), "<project> v<N> map.svg" and
+ * "<project> v<N> map.bpmn" (only when a map could be drawn), and
+ * "Start here.txt", which says what each file in the zip is
+ * (handoff.js startHereText). Export, Whole project (.zip) stays the whole
+ * folder.
  *
  * zip-folder.js stays the capture app's copy (project-zip.test.js holds the
- * two alike), so the two files are appended to the zip it writes: their
+ * two alike), so the root's files are appended to the zip it writes: their
  * entries go where its central directory began, then the central directory
  * again with theirs added, then a new end record (the same PKZIP 2.0 format,
  * UTF-8 names). The zip is built as "<name>.zip.building" and renamed only
@@ -75,9 +81,10 @@ function _central(e) {
   return h;
 }
 
-/* Append `files` ([{ name, path }]: `name` the entry's name at the zip's
-   root) to the zip at `zipPath`, a zip zip-folder.js wrote (no comment, so
-   its end record is its last 22 bytes). Resolves { bytes, entries }. */
+/* Append `files` ([{ name, path }] or [{ name, data }]: `name` the entry's
+   name at the zip's root, `data` its bytes when there is no file) to the zip
+   at `zipPath`, a zip zip-folder.js wrote (no comment, so its end record is
+   its last 22 bytes). Resolves { bytes, entries }. */
 async function appendFiles(zipPath, files) {
   const fh = await fsp.open(zipPath, "r+");
   try {
@@ -97,7 +104,7 @@ async function appendFiles(zipPath, files) {
     const added = [];
     const { time, date } = dosDateTime(new Date());
     for (const f of files) {
-      const data = await fsp.readFile(f.path);
+      const data = f.data != null ? Buffer.from(f.data) : await fsp.readFile(f.path);
       const deflate = data.length > 0 && !STORED_EXTENSIONS.has(path.extname(f.name).toLowerCase());
       const body = deflate ? zlib.deflateRawSync(data) : data;
       const e = { nameBuf: Buffer.from(f.name, "utf8"), method: deflate ? 8 : 0, time, date,
@@ -152,11 +159,30 @@ function handoffTarget(folder, base, version, exists) {
   return { zipPath: path.join(parent, freeName(parent, names.zip, exists)), names };
 }
 
+/* What a hand-off zip leaves out of the project folder: `rel` is a path
+   relative to the folder ("/" between the parts, a folder's ending in "/",
+   zip-folder.js listEntries). The working file's backups
+   (annotations.json.2 to .5) and the analysis log (normalize.log) at the
+   folder's root; a staged output of an analysis (*.pdt-staged) and a zip
+   being built (*.zip.building) anywhere. A file merely named like one deeper
+   in the folder (attachments/normalize.log) stays. */
+const HANDOFF_LEFT_OUT_AT_ROOT = new Set(["annotations.json.2", "annotations.json.3", "annotations.json.4",
+  "annotations.json.5", "normalize.log"]);
+function leftOutOfHandoff(rel) {
+  const r = String(rel || "");
+  if (HANDOFF_LEFT_OUT_AT_ROOT.has(r)) return true;
+  const name = (r.endsWith("/") ? r.slice(0, -1) : r).split("/").pop();
+  return name.endsWith(".pdt-staged") || name.endsWith(".zip.building");
+}
+
 /* Write the hand-off zip of the project at `folder`: opts = { base (the
-   project's name), version, pdd, tech (the two files' paths) }. Resolves
-   { zipPath, bytes, entries, names }; rejects with the writer's error (the
-   caller turns it into a sentence, project-zip.js describeZipError).
-   deps (the tests): { zipFolder, exists }. */
+   project's name), version, pdd (the PDD's path), tech, mapSvg, mapBpmn (the
+   Technical details' and the map files' paths, each null when it was not
+   written), entry (the version's annotations.handoffs entry, for Start
+   here.txt, or null) }. Resolves { zipPath, bytes, entries, names, root }
+   (`root`: the names at the zip's root, in order); rejects with the writer's
+   error (the caller turns it into a sentence, project-zip.js
+   describeZipError). deps (the tests): { zipFolder, exists }. */
 async function writeHandoffZip(folder, opts, deps) {
   const zip = (deps && deps.zipFolder) || zipFolder;
   const exists = (deps && deps.exists) || fs.existsSync;
@@ -165,19 +191,27 @@ async function writeHandoffZip(folder, opts, deps) {
   const building = zipPath + ".building";
   try {
     try {
-      await zip(root, building);
+      await zip(root, building, leftOutOfHandoff);
     } catch (e) {
       // A file listed as the zip started was gone when its turn came (a save
       // replaced annotations.json through a temporary file): once more.
       if (!(e && e.code === "ENOENT") || !exists(path.join(root, "manifest.json"))) throw e;
-      await zip(root, building);
+      await zip(root, building, leftOutOfHandoff);
     }
-    const r = await appendFiles(building, [{ name: names.pdd, path: opts.pdd }, { name: names.tech, path: opts.tech }]);
+    const files = [{ name: names.pdd, path: opts.pdd }];
+    if (opts.tech) files.push({ name: names.tech, path: opts.tech });
+    if (opts.mapSvg) files.push({ name: names.mapSvg, path: opts.mapSvg });
+    if (opts.mapBpmn) files.push({ name: names.mapBpmn, path: opts.mapBpmn });
+    files.push({ name: names.startHere, data: Buffer.from(Handoff.startHereText({
+      base: opts.base, version: opts.version, entry: opts.entry || null, folder: path.basename(root),
+      has: { tech: !!opts.tech, mapSvg: !!opts.mapSvg, mapBpmn: !!opts.mapBpmn },
+    }), "utf8") });
+    const r = await appendFiles(building, files);
     // Never over another zip: a name taken meanwhile gets the next number.
     let final = zipPath;
     if (exists(final)) final = path.join(path.dirname(zipPath), freeName(path.dirname(zipPath), path.basename(zipPath), exists));
     await fsp.rename(building, final);
-    return { zipPath: final, bytes: r.bytes, entries: r.entries, names };
+    return { zipPath: final, bytes: r.bytes, entries: r.entries, names, root: files.map((f) => f.name) };
   } catch (e) {
     await fsp.rm(building, { force: true }).catch(() => {});
     await fsp.rm(building + ".partial", { force: true }).catch(() => {});
@@ -185,4 +219,4 @@ async function writeHandoffZip(folder, opts, deps) {
   }
 }
 
-module.exports = { appendFiles, handoffTarget, writeHandoffZip };
+module.exports = { appendFiles, handoffTarget, writeHandoffZip, leftOutOfHandoff };

@@ -114,19 +114,20 @@ function rawZip(file, entries) {
   return file;
 }
 
-test("the hand-off zip holds the project folder byte for byte and, at its root, the PDD and the Technical details", async () => {
+test("the hand-off zip holds the project folder byte for byte and, at its root, the PDD, the Technical details and Start here.txt", async () => {
   const base = tmpBase();
   try {
     const root = makeProject(base);
     const x = extras(base, "1");
-    const r = await HZ.writeHandoffZip(root, { base: "Order entry", version: 1, pdd: x.pdd, tech: x.tech });
+    const r = await HZ.writeHandoffZip(root, { base: "Order entry", version: 1, pdd: x.pdd, tech: x.tech, entry: ENTRY });
     assert.equal(r.zipPath, path.join(base, "Order entry v1.zip"));
     assert.equal(r.bytes, fs.statSync(r.zipPath).size);
     const entries = readZip(r.zipPath);
     assert.equal(Object.keys(entries).length, r.entries);
     const files = Object.keys(entries).filter((n) => !n.endsWith("/"));
     assert.deepEqual(files.filter((n) => n.includes("/")).sort(), folderFiles(root), "the whole folder, nothing else in it");
-    assert.deepEqual(files.filter((n) => !n.includes("/")).sort(), ["Order entry v1 PDD.docx", "Order entry v1 Technical details.xlsx"]);
+    assert.deepEqual(files.filter((n) => !n.includes("/")).sort(), ["Order entry v1 PDD.docx", "Order entry v1 Technical details.xlsx", "Start here.txt"]);
+    assert.deepEqual(r.root, ["Order entry v1 PDD.docx", "Order entry v1 Technical details.xlsx", "Start here.txt"]);
     assert.deepEqual(entries["Order entry v1 PDD.docx"], fs.readFileSync(x.pdd));
     assert.deepEqual(entries["Order entry v1 Technical details.xlsx"], fs.readFileSync(x.tech));
     assert.ok(entries[NAME + "/obs/"], "the empty folder comes along");
@@ -246,9 +247,13 @@ test("a hand-off unzipped by hand (Extract All) is read only too: its PDD and Te
     assert.equal(HO.handoffFile(project, "pdd"), path.join(out, "Order entry v1 PDD.docx"));
     assert.equal(HO.handoffFile(project, "tech"), path.join(out, "Order entry v1 Technical details.xlsx"));
     assert.equal(HO.isReadOnlyProject(null, root), false, "the analyst's own project, the zip beside it, stays writable");
-    // Only the files of the version the project lists last count.
+    // The Technical details are not needed (none where nothing was recorded).
     fs.renameSync(path.join(out, "Order entry v1 Technical details.xlsx"), path.join(out, "Order entry v0 Technical details.xlsx"));
-    assert.equal(HO.isReadOnlyProject(null, project), false, "no Technical details of version 1 beside it");
+    assert.equal(HO.isReadOnlyProject(null, project), true, "its PDD beside it is enough");
+    assert.equal(HO.handoffFile(project, "tech"), null, "and no Technical details are offered");
+    // Only the PDD of the version the project lists last counts.
+    fs.renameSync(path.join(out, "Order entry v1 PDD.docx"), path.join(out, "Order entry v0 PDD.docx"));
+    assert.equal(HO.isReadOnlyProject(null, project), false, "no PDD of version 1 beside it");
     assert.equal(HO.unzippedHandoffFiles(path.join(base, "nowhere")), null);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
@@ -321,6 +326,125 @@ test("readProjectZip reads the zip's project where it is: its manifest and annot
     await assert.rejects(HO.readProjectZip(none), /holds no project/);
     const bad = rawZip(path.join(base, "bad.zip"), [["p/manifest.json", "{}"], ["p/annotations.json", "{ not json"]]);
     await assert.rejects(HO.readProjectZip(bad), /annotations.json in this zip cannot be read/);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+/* ---- What a hand-off zip leaves out, and what it adds at its root -------- */
+
+test("leftOutOfHandoff: the backups and the log at the folder's root, a staged output or a zip being built anywhere", () => {
+  for (const rel of ["annotations.json.2", "annotations.json.3", "annotations.json.4", "annotations.json.5",
+    "normalize.log", "stats.json.pdt-staged", "analysis.json.pdt-staged", "derived_maps/m1.bpmn.pdt-staged",
+    "Order entry v1.zip.building", "attachments/old.zip.building", "staged.pdt-staged/"]) {
+    assert.equal(HZ.leftOutOfHandoff(rel), true, rel);
+  }
+  for (const rel of ["annotations.json", "annotations.json.1", "annotations.json.6", "annotations.json.2.txt",
+    "annotations.unreadable-20261109-101500.json", "attachments/normalize.log", "attachments/annotations.json.2",
+    "notes/normalize.log", "normalize.log.txt", "manifest.json", "events.jsonl", "video/call.webm", "attachments/",
+    "screenshots/analyst/", "pdt-staged.txt", "building.zip"]) {
+    assert.equal(HZ.leftOutOfHandoff(rel), false, rel);
+  }
+});
+
+/* The project folder with what a working folder also holds: the backups,
+   the log, a staged output, and files named like them deeper in. */
+function addWorkingFiles(root) {
+  const write = (rel, data) => {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), data);
+  };
+  for (let i = 2; i <= 5; i++) write("annotations.json." + i, "{\"backup\":" + i + "}");
+  write("normalize.log", "[normalize] done\n");
+  write("stats.json.pdt-staged", "{}");
+  write("derived_maps/m1.bpmn.pdt-staged", "<x/>");
+  write("attachments/normalize.log", "the SME's own log, attached");
+  write("attachments/annotations.json.2", "an attached file of that name");
+}
+
+test("a hand-off zip leaves the backups, the log and staged outputs out of the project folder; the Whole project zip keeps them", async () => {
+  const base = tmpBase();
+  try {
+    const root = makeProject(base);
+    addWorkingFiles(root);
+    const x = extras(base, "1");
+    const svg = path.join(base, "made.svg"), bpmn = path.join(base, "made.bpmn");
+    fs.writeFileSync(svg, "<svg/>");
+    fs.writeFileSync(bpmn, "<definitions/>");
+    const r = await HZ.writeHandoffZip(root, { base: "Order entry", version: 1, pdd: x.pdd, tech: x.tech,
+      mapSvg: svg, mapBpmn: bpmn, entry: ENTRY });
+    const entries = readZip(r.zipPath);
+    const inFolder = Object.keys(entries).filter((n) => n.startsWith(NAME + "/") && !n.endsWith("/")).sort();
+    const left = ["annotations.json.2", "annotations.json.3", "annotations.json.4", "annotations.json.5", "normalize.log",
+      "stats.json.pdt-staged", "derived_maps/m1.bpmn.pdt-staged"].map((n) => NAME + "/" + n);
+    assert.deepEqual(inFolder, folderFiles(root).filter((n) => !left.includes(n)), "everything else, byte for byte below");
+    for (const n of left) assert.ok(!entries[n], n + " is left out");
+    assert.deepEqual(entries[NAME + "/attachments/normalize.log"], fs.readFileSync(path.join(root, "attachments", "normalize.log")),
+      "a file merely named like the log, deeper in, stays");
+    assert.ok(entries[NAME + "/attachments/annotations.json.2"], "and so does one named like a backup");
+    assert.ok(entries[NAME + "/derived_maps/"], "the folder of a staged file stays");
+    // The root: the PDD, the Technical details, the map files, Start here.txt.
+    const atRoot = Object.keys(entries).filter((n) => !n.includes("/"));
+    assert.deepEqual(atRoot, ["Order entry v1 PDD.docx", "Order entry v1 Technical details.xlsx", "Order entry v1 map.svg",
+      "Order entry v1 map.bpmn", "Start here.txt"]);
+    assert.deepEqual(entries["Order entry v1 map.svg"], fs.readFileSync(svg));
+    assert.deepEqual(entries["Order entry v1 map.bpmn"], fs.readFileSync(bpmn));
+    const note = entries["Start here.txt"].toString("utf8");
+    assert.equal(note, require("./handoff.js").startHereText({ base: "Order entry", version: 1, entry: ENTRY, folder: NAME,
+      has: { tech: true, mapSvg: true, mapBpmn: true } }));
+    assert.ok(note.startsWith("Order entry: version 1, handed off 2026-09-25 by rasha\r\n"), note);
+    // The Whole project zip of the same folder: the whole folder, the backups and the log too.
+    const whole = await require("./project-zip.js").zipProject(root);
+    const all = Object.keys(readZip(whole.zipPath)).filter((n) => !n.endsWith("/")).sort();
+    assert.deepEqual(all, folderFiles(root));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("the Technical details are optional: a hand-off without them carries the PDD and Start here.txt without their line", async () => {
+  const base = tmpBase();
+  try {
+    const root = makeProject(base);
+    const x = extras(base, "1");
+    const r = await HZ.writeHandoffZip(root, { base: "Order entry", version: 1, pdd: x.pdd, tech: null, entry: ENTRY });
+    const entries = readZip(r.zipPath);
+    assert.deepEqual(Object.keys(entries).filter((n) => !n.includes("/")), ["Order entry v1 PDD.docx", "Start here.txt"]);
+    const note = entries["Start here.txt"].toString("utf8");
+    assert.ok(!note.includes("Technical details") && !note.includes("map.svg") && !note.includes("map.bpmn"), note);
+    assert.ok(note.includes("  Order entry v1 PDD.docx   The process written down. Read this first.\r\n"), note);
+    // The PDD stays required.
+    await assert.rejects(HZ.writeHandoffZip(root, { base: "Order entry", version: 2, pdd: path.join(base, "missing.docx"), tech: null }),
+      (e) => e.code === "ENOENT");
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("both shapes of a hand-off zip open read only: one made before Start here.txt and the map files, and one without the Technical details", async () => {
+  const base = tmpBase();
+  const userData = path.join(base, "userData");
+  try {
+    const anno = JSON.stringify({ document: { title: "Order entry" }, handoffs: [ENTRY] });
+    // Before this change: the folder, the PDD and the Technical details at the root.
+    const before = rawZip(path.join(base, "Order entry v1.zip"), [
+      [NAME + "/manifest.json", "{\"session_id\":\"s-1\"}"], [NAME + "/annotations.json", anno],
+      [NAME + "/annotations.json.2", "{}"], ["Order entry v1 PDD.docx", "d"], ["Order entry v1 Technical details.xlsx", "x"]]);
+    const a = await HO.openHandoffZip(before, userData);
+    assert.equal(a.version, 1);
+    assert.equal(a.tech, "Order entry v1 Technical details.xlsx");
+    assert.equal(HO.handoffFile(a.folder, "tech"), path.join(a.root, "Order entry v1 Technical details.xlsx"));
+    // After: no Technical details (nothing recorded), the map files and Start here.txt.
+    const root = makeProject(base);
+    const x = extras(base, "1");
+    const after = (await HZ.writeHandoffZip(root, { base: "Call", version: 1, pdd: x.pdd, tech: null, entry: ENTRY })).zipPath;
+    const b = await HO.openHandoffZip(after, path.join(base, "userData2"));
+    assert.equal(b.version, 1);
+    assert.equal(b.tech, null);
+    assert.equal(HO.handoffFile(b.folder, "pdd"), path.join(b.root, "Call v1 PDD.docx"));
+    assert.equal(HO.handoffFile(b.folder, "tech"), null, "no Technical details of this version");
+    assert.ok(fs.existsSync(path.join(b.root, "Start here.txt")));
+    assert.ok(HO.isReadOnlyFolder(path.join(base, "userData2"), b.folder));
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

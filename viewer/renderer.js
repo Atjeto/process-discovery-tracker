@@ -544,29 +544,9 @@ async function exportArtifact(kind) {
   // bpmn_observed.py under --mine). One file with every map (C19: a plane
   // per sub-process).
   if (kind === "step-bpmn") {
-    const asIs = _chosenAsIsMap();
-    if (asIs) {
-      const out = await Ipc.exportFile({ sourcePath: asIs.path, suggestedName: _exportName(target, "As-Is map.bpmn") });
-      if (out) {
-        await Ipc.revealFile(out);
-        toast("Exported: " + path.basename(out), "success");
-      }
-      return;
-    }
-    const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
-    // Lane FX3: no step, no map: said at once, with no analysis.
-    if (!_hasMapSteps()) { toast(NO_MAP_TO_EXPORT, "error"); return; }
-    // C19: the file holds every map (a plane per sub-process), so it is
-    // analyzed first when the steps are newer than it or it is missing, as
-    // Edit as the As-Is map does.
-    if (RefmapUI.needsAnalyze(target, sourcePath)) {
-      if (!(await analyzeSession())) return;   // the analysis said why
-    }
-    if (!fs.existsSync(sourcePath)) {
-      toast(NO_MAP_TO_EXPORT, "error");
-      return;
-    }
-    const out = await Ipc.exportFile({ sourcePath, suggestedName: _exportName(target, "map.bpmn") });
+    const src = await mapBpmnSource(target);
+    if (!src.path) { if (src.error) toast(src.error, "error"); return; }
+    const out = await Ipc.exportFile({ sourcePath: src.path, suggestedName: _exportName(target, src.asIs ? "As-Is map.bpmn" : "map.bpmn") });
     if (out) {
       await Ipc.revealFile(out);
       toast("Exported: " + path.basename(out), "success");
@@ -636,9 +616,12 @@ async function _offerExport(tmpPath, suggested) {
    hand-off version they are made for (none: a working copy), `label` the
    status line's words while it runs. The PDD's maps are drawn off screen
    first, after an analysis when the step map is older than the steps.
-   Resolves { ok: true } once every file asked for is written, else
-   { ok: false, message } (message null when the analysis before it has
-   already said why); a file written by a run that failed is removed. */
+   Resolves { ok: true, techWritten } once every file asked for is written,
+   else { ok: false, message } (message null when the analysis before it has
+   already said why); a file written by a run that failed is removed.
+   techWritten (with techOut): false when the run succeeded and wrote no
+   workbook, which the pipeline does for a project where nothing was
+   recorded; true when it wrote one. */
 async function writeDocuments(target, { pddOut, techOut, handoff, label, pddAttachments } = {}) {
   const os = require("os");
   const outs = [pddOut, techOut].filter(Boolean);
@@ -736,10 +719,13 @@ async function writeDocuments(target, { pddOut, techOut, handoff, label, pddAtta
   // RP-09 / C13: a non-zero exit (3 = the export failed) is a failure with
   // the pipeline's reason, and so is a "success" that wrote no file. The
   // analyst is offered a file only when this run wrote it.
+  let techWritten = techOut ? true : undefined;
   for (const p of outs) {
     let doc = { exists: false, size: 0 };
     try { const st = fs.statSync(p); doc = { exists: st.isFile(), size: st.size }; }
     catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the exported file:", e); }
+    // Nothing recorded: the pipeline succeeds and writes no Technical details.
+    if (p === techOut && !doc.exists && r && r.ok && !r.cancelled) { techWritten = false; continue; }
     const outcome = pddExportOutcome(r, doc);
     if (!outcome.ok) {
       for (const q of outs) { try { fs.unlinkSync(q); } catch (_) { /* absent, or a partial file the OS will clean from temp */ } }
@@ -749,8 +735,10 @@ async function writeDocuments(target, { pddOut, techOut, handoff, label, pddAtta
   // The run wrote analysis.json too, with the rows the PDD prints in
   // sections 5 and 6: the Overview shows those (one source, lane CC).
   _rereadAnalysis(target);
-  return { ok: true };
+  return { ok: true, techWritten };
 }
+
+const NO_TECH_DETAILS = "Nothing was recorded in this project, so there are no Technical details to write.";
 
 /* Export, Technical details (.xlsx) (contract C20, lane HV): the workbook a
    developer reads beside the PDD, written by the pipeline (--tech-out),
@@ -764,6 +752,9 @@ async function exportTechDetails() {
     if (made.message) toast(made.message, "error");
     return;
   }
+  // The pipeline writes no workbook for a project where nothing was
+  // recorded: said plainly, and no folder opens.
+  if (made.techWritten === false) { toast(NO_TECH_DETAILS, "info"); return; }
   await _offerExport(tmpPath, _exportName(target, "Technical details.xlsx"));
 }
 if ($("#btn-session-tech")) $("#btn-session-tech").addEventListener("click", () => exportTechDetails());
@@ -771,7 +762,8 @@ if ($("#btn-session-tech")) $("#btn-session-tech").addEventListener("click", () 
 /* Lane HV: Export, Hand off... (views/handoff-ui.js), with the documents
    writer above; and, in a hand-off opened read only, the PDD and the
    Technical details it came with. */
-HandoffUI.initHandoffUI({ writeDocuments: (target, o) => writeDocuments(target, o) });
+HandoffUI.initHandoffUI({ writeDocuments: (target, o) => writeDocuments(target, o),
+  writeMaps: (target, dir, names) => writeHandoffMaps(target, dir, names) });
 
 /* Read the project's analysis.json again into the project on screen (the
    PDD's run rewrote it) and redraw what shows it: the Overview's project
@@ -908,37 +900,81 @@ async function _writeSubMapPictures(dir) {
 async function exportMapSvg() {
   const sess = State.getSession();
   if (!sess) { toast("Open a project first.", "error"); return; }
-  const shown = () => { const lv = _mapLevel(); return lv.map || { path: [], number: null }; };
+  const level = (() => { const lv = _mapLevel(); return lv.map || { path: [], number: null }; })();
+  const r = await mapSvgOf(sess, level.path);
+  if (!r.svg) { if (r.error) toast(r.error, "error"); return; }
+  await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName(_exportName(sess, r.asIs ? "As-Is map" : "map"), level) }));
+}
+
+/* The picture Process map (image) saves for the map at `levelPath` ([] the
+   main map) of the project `sess`: { svg, asIs } (asIs: drawn from the
+   As-Is copy chosen for the PDD), or { svg: null, error } with the sentence
+   that says why there is none (null when an analysis already said why).
+   The hand-off's map picture is this one for the main map. */
+async function mapSvgOf(sess, levelPath) {
   const asIs = _chosenAsIsMap();
   if (asIs) {
-    const level = shown();
-    const r = await RefmapUI.renderPlaneToSvg(_readMapFile(asIs.path), level.path);
-    if (r.svg) {
-      await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName(_exportName(sess, "As-Is map"), level) }));
-      return;
-    }
-    if (!r.missing) { toast("The As-Is map could not be drawn as an image.", "error"); return; }
+    const r = await RefmapUI.renderPlaneToSvg(_readMapFile(asIs.path), levelPath);
+    if (r.svg) return { svg: r.svg, asIs: true };
+    if (!r.missing) return { svg: null, error: "The As-Is map could not be drawn as an image." };
   }
-  if (mapLockHtml(sess.analysis)) {
-    toast("No process map to export: the Map says why.", "error");
-    return;
-  }
+  if (mapLockHtml(sess.analysis)) return { svg: null, error: "No process map to export: the Map says why." };
   // Lane FX3 (validation pass 3, F16): no step, no map: said at once, never
   // an analysis that ends without a word.
-  if (!_hasMapSteps()) { toast(NO_MAP_TO_EXPORT, "error"); return; }
+  if (!_hasMapSteps()) return { svg: null, error: NO_MAP_TO_EXPORT };
   const src = _stepBpmnPath();
   if (RefmapUI.needsAnalyze(sess, src)) {
-    if (!(await analyzeSession())) {
-      toast("The process map could not be updated, so it was not exported.", "error");
-      return;
-    }
+    if (!(await analyzeSession())) return { svg: null, error: "The process map could not be updated, so it was not exported." };
   }
   const xml = _readMapFile(src);
-  if (!xml) { toast(NO_MAP_TO_EXPORT, "error"); return; }
-  const level = shown();
-  const r = await RefmapUI.renderPlaneToSvg(xml, level.path);
-  if (!r.svg) { toast("The process map could not be drawn as an image.", "error"); return; }
-  await _svgSaved(await Ipc.saveSvgFile({ content: r.svg, suggestedName: Planes.imageName(_exportName(sess, "map"), level) }));
+  if (!xml) return { svg: null, error: NO_MAP_TO_EXPORT };
+  const r = await RefmapUI.renderPlaneToSvg(xml, levelPath);
+  if (!r.svg) return { svg: null, error: "The process map could not be drawn as an image." };
+  return { svg: r.svg, asIs: false };
+}
+
+/* The file Process map (BPMN) saves for the project `target`: { path,
+   asIs } (the As-Is copy chosen for the PDD when there is one, else
+   process_map_step.bpmn, which holds every map, C19: analyzed first when the
+   steps are newer than it or it is missing, as Edit as the As-Is map does),
+   or { path: null, error } (error null when the analysis already said why).
+   The hand-off's map.bpmn is this file. */
+async function mapBpmnSource(target) {
+  const asIs = _chosenAsIsMap();
+  if (asIs) return { path: asIs.path, asIs: true };
+  const sourcePath = path.join(target.sessionFolder, "process_map_step.bpmn");
+  // Lane FX3: no step, no map: said at once, with no analysis.
+  if (!_hasMapSteps()) return { path: null, error: NO_MAP_TO_EXPORT };
+  if (RefmapUI.needsAnalyze(target, sourcePath)) {
+    if (!(await analyzeSession())) return { path: null, error: null };   // the analysis said why
+  }
+  if (!fs.existsSync(sourcePath)) return { path: null, error: NO_MAP_TO_EXPORT };
+  return { path: sourcePath, asIs: false };
+}
+
+/* The hand-off's map files (views/handoff-ui.js), written into `dir` under
+   `names` (handoff.js fileNames): the main map's picture as Process map
+   (image) draws it and the file Process map (BPMN) saves. Resolves
+   { mapSvg, mapBpmn }, each the file's path or null when there is no map to
+   draw (said in the console; the hand-off goes out without it). */
+async function writeHandoffMaps(target, dir, names) {
+  const out = { mapSvg: null, mapBpmn: null };
+  try {
+    const bpmn = await mapBpmnSource(target);
+    if (bpmn.path) {
+      out.mapBpmn = path.join(dir, names.mapBpmn);
+      fs.copyFileSync(bpmn.path, out.mapBpmn);
+    } else console.warn("[renderer] the hand-off goes out without map.bpmn:", bpmn.error || "the analysis said why");
+    const svg = await mapSvgOf(target, []);
+    if (svg.svg) {
+      out.mapSvg = path.join(dir, names.mapSvg);
+      fs.writeFileSync(out.mapSvg, svg.svg, "utf-8");
+    } else console.warn("[renderer] the hand-off goes out without map.svg:", svg.error || "the analysis said why");
+  } catch (e) {
+    console.error("[renderer] the hand-off's map files could not be written; it goes out without them:", e);
+    for (const k of ["mapSvg", "mapBpmn"]) { if (out[k]) { try { fs.unlinkSync(out[k]); } catch (_) {} out[k] = null; } }
+  }
+  return out;
 }
 
 /* PDD export (the Export menu, and the Overview's last act). Its maps are

@@ -155,12 +155,18 @@ The viewer says *transaction* for one pass through the process and
 
 **Overview**
 
-- **The Checklist**: the five acts (mark the transactions, confirm the
-  reference transaction, review the other transactions, write the
-  document, export the PDD), each ticked once done (the export never: the
-  app keeps no record of it) and explained in its tooltip, with one button
-  for the next act. While the As-Is map the PDD prints was made before the
-  steps changed, it adds *Check the As-Is map*.
+- **The Checklist**: the acts that fit the project, each ticked once done
+  and explained in its tooltip, with one button for the next act. A
+  recording: mark the transactions, confirm the reference transaction
+  (ticked without a click when none of its steps is a draft), review the
+  other transactions (only those that differ), write the document, hand
+  off. A project made from a video or from nothing: add the steps, write
+  the steps (a name of its own and a description for each), review the
+  other transactions (only with two or more), write the document, hand
+  off. Once a version is handed off the line names it and its date. While
+  the As-Is map the PDD prints was made before the steps changed, it adds
+  *Check the As-Is map*. A project made from a video opens on the
+  Timeline, where its steps are marked.
 - **The project line**: who recorded it, the request (the one written in
   the document, else the capture's), its transactions, the reference
   transaction's steps, the video and the transcript with Attach, Replace
@@ -403,14 +409,21 @@ The viewer says *transaction* for one pass through the process and
   image (SVG, the map the Map shows first, of the level it shows, with the
   steps' notes) and as BPMN (one file with every map), the *Technical
   details (.xlsx)*, and the
-  *Whole project (.zip)*: one zip of the folder, next to it, to hand the
-  project to someone. A file is offered under the project's name (the
+  *Whole project (.zip)*: one zip of the whole folder, next to it, to hand
+  the project to another analyst. The menu groups them under three
+  headings: *For the developers and the archive* (*Hand off...*), *For
+  another analyst* (*Whole project (.zip)*) and *Single files* (the rest).
+  Where nothing was recorded, *Technical details (.xlsx)* writes no file
+  and says so. A file is offered under the project's name (the
   document title once it is written: *Order to cash PDD.docx*, *Order to
   cash map.svg*), and every export opens its folder with the file selected.
-- **Hand off to the developers**: *Export*, *Hand off...* asks what changed
-  in this version and makes *<project> v2.zip* next to the project folder:
-  the whole project, with the PDD and the Technical details of version 2 at
-  its root. The versions go up by one, the PDD lists them, and Ctrl+Z takes
+- **Hand off to the developers**: *Export*, *Hand off...* (the Export
+  menu's first group, and the Checklist's last act) asks what changed in
+  this version and makes *<project> v2.zip* next to the project folder: the
+  whole project (without the working file's backups and the analysis log),
+  with the PDD, the Technical details (where something was recorded), the
+  process map as a picture and as BPMN, and *Start here.txt* (what each
+  file is) of version 2 at its root. The versions go up by one, the PDD lists them, and Ctrl+Z takes
   a version back (its zip stays).
 - **A hand-off opened read only**: *Open a hand-off (.zip)...* (the Open
   menu, and a button while no project is open) takes a hand-off zip; the app

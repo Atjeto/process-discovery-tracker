@@ -141,11 +141,35 @@ test("lane FX1: Review points at a transaction that differs, and the sentence is
   assert.ok(html.includes('<div class="ov-next-say">1 transaction differs from the reference transaction.</div>'));
   openRuns(sess, "c3");
   st = pathState(sess);
+  // Transaction 2 does not differ: nothing is owed for it, so the review is
+  // done although it was never opened.
   assert.equal(st.nextOther.caseId, "c2");
   assert.equal(st.nextDiffers, false);
+  assert.equal(st.done.review, true, "a transaction that does not differ need not be opened");
+  assert.equal(st.next, "document");
   html = overviewHtml(sess);
-  assert.ok(html.includes(">Review transaction 2 in Steps</button>"));
-  assert.ok(html.includes('<div class="ov-next-say">Transaction 2 does not differ from the reference transaction.</div>'));
+  assert.ok(!html.includes(">Review transaction 2 in Steps</button>"));
+  assert.ok(!html.includes("does not differ"));
+});
+
+test("the review is owed only for a transaction that differs: one that differs and is not opened keeps it open", () => {
+  const sess = session({});
+  confirmRun(sess, "c1");
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  // c2 and c3 differ (other draft keys than c1's): opening c2 alone is not enough.
+  openRuns(sess, "c2");
+  let st = pathState(sess);
+  assert.equal(st.done.review, false);
+  assert.equal(st.next, "review");
+  assert.equal(st.nextOther.caseId, "c3");
+  // c3 made to do what the reference transaction does: nothing left to review.
+  sess.annotations.steps = sess.annotations.steps.filter((s) => s.case_id !== "c3")
+    .concat([step("e1", "c3", 41), step("e2", "c3", 43)]);
+  sess.annotations.steps.find((s) => s.step_id === "e1").draft_key = "app|screen|Button:a";
+  sess.annotations.steps.find((s) => s.step_id === "e2").draft_key = "app|screen|Button:b";
+  st = pathState(sess);
+  assert.equal(st.differing, 1, "only c2 differs now");
+  assert.equal(st.done.review, true);
 });
 
 test("lane FX1: a step that happens only under a condition and was not done is no difference for the Checklist", () => {
@@ -159,7 +183,8 @@ test("lane FX1: a step that happens only under a condition and was not done is n
   confirmRun(sess, "c1");
   const st = pathState(sess);
   assert.equal(st.differing, 0, "transaction 2 did not do b, which happens only when the customer asks");
-  assert.ok(overviewHtml(sess).includes('<div class="ov-next-say">No other transaction differs from the reference transaction.</div>'));
+  assert.equal(st.done.review, true, "no transaction differs: nothing to review");
+  assert.ok(!overviewHtml(sess).includes("Review transaction 2"));
 });
 
 test("the reference run follows 'Use as reference run': run 1 is then one of the other runs", () => {
@@ -186,12 +211,12 @@ test("the document stage is done when every field that fills a PDD placeholder i
   sess.annotations.document = Object.assign({}, FULL_DOC);
   const st = pathState(sess);
   assert.equal(st.done.document, true, "notes are optional");
-  assert.equal(st.next, "export", "AD-28: the As-Is map is not a stage");
+  assert.equal(st.next, "handoff", "AD-28: the As-Is map is not a stage");
   assert.equal(st.ready, true);
-  assert.equal(st.done.export, false, "an export leaves no record, so it is never shown done");
+  assert.equal(st.done.handoff, false, "no version handed off yet");
 });
 
-test("AD-28: the acts are the transactions, the reference transaction, the other transactions, the document and the PDD; an edited As-Is copy changes no act", () => {
+test("AD-28: the acts are the transactions, the reference transaction, the other transactions, the document and the hand-off; an edited As-Is copy changes no act", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-path-"));
   try {
     const sess = session({ sessionFolder: dir });
@@ -206,9 +231,9 @@ test("AD-28: the acts are the transactions, the reference transaction, the other
     const after = pathState(sess);
     // Lane FX2: the As-Is item is listed only while the copy is older than
     // the steps; a copy made from the steps as they are is nothing to do.
-    assert.deepEqual(Object.keys(after.done), ["runs", "pattern", "review", "document", "asis", "export"]);
+    assert.deepEqual(Object.keys(after.done), ["runs", "pattern", "review", "document", "asis", "handoff"]);
     assert.equal(after.done.asis, true);
-    assert.deepEqual([before.next, after.next], ["export", "export"]);
+    assert.deepEqual([before.next, after.next], ["handoff", "handoff"]);
     const html = overviewHtml(session({ sessionFolder: null, annotations: { steps: [] } }));
     assert.ok(!html.includes('data-stage="map"') && !html.includes("As-Is map"), "no As-Is stage on the line");
   } finally {
@@ -256,21 +281,21 @@ test("the Overview leads with the Checklist and its one button; each act is word
   assert.deepEqual(items, [
     ["runs", "Mark the transactions", true], ["pattern", "Confirm the reference transaction", true],
     ["review", "Review the other transactions", true], ["document", "Write the document", true],
-    ["export", "Export the PDD", true]], "five acts, each with a tooltip that says what it means");
-  assert.ok(/data-stage="export" title="[^"]*never ticked/.test(html), "the export's tooltip says why it is never ticked");
+    ["handoff", "Hand off", true]], "five acts, each with a tooltip that says what it means");
+  assert.ok(!html.includes("Export the PDD"), "exporting the PDD alone is no act of the Checklist");
 });
 
-test("once every stage before the export is done, the line shrinks to one short line with Export PDD, and the document opens", () => {
+test("once every stage before the hand-off is done, the line shrinks to one short line with Hand off..., and the document opens", () => {
   const sess = session({});
   confirmRun(sess, "c1");
   openRuns(sess, "c2", "c3");
   sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
   sess.annotations.document = Object.assign({}, FULL_DOC);
   const html = overviewHtml(sess);
-  assert.ok(html.startsWith('<div class="ov-next ov-next-ready" id="ov-next" data-next="export">'), html.slice(0, 90));
-  assert.ok(html.includes('<span class="ov-next-label">Checklist</span><span class="ov-next-ready-text">Everything before the export is done: the PDD is ready to export.</span>'));
+  assert.ok(html.startsWith('<div class="ov-next ov-next-ready" id="ov-next" data-next="handoff">'), html.slice(0, 90));
+  assert.ok(html.includes('<span class="ov-next-label">Checklist</span><span class="ov-next-ready-text">Everything before the hand-off is done.</span>'));
   assert.ok(!html.includes("ov-next-stage"), "no stage list");
-  assert.ok(html.includes(">Export PDD</button>"));
+  assert.ok(/<button type="button" class="primary" id="btn-ov-next" data-next-act="handoff" title="[^"]+">Hand off\.\.\.<\/button>/.test(html), html.slice(0, 400));
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc" open>'), "the home leads with the document");
   assert.ok(overviewHtml(sess, null, false).includes('id="ov-doc">'), "a document the analyst closed stays closed");
 });
@@ -459,19 +484,192 @@ test("the document is collapsed while acts are left, says who writes it, how man
   assert.ok(overviewHtml(all).includes('id="ov-doc-status">10 of 10 written</span>'));
 });
 
-test("lane FX2: a project without start markers is one transaction, said the same way on the Checklist and the project line", () => {
+test("lane FX2: a project without start markers is one transaction on the project line; its Checklist asks for no transactions to be marked", () => {
   const sess = session({ stats: { meta: {}, case_stats: [{ case_id: "imp", start_ts: t(0), end_ts: null, implicit: true }] },
     manifest: { source: "blank", label: "Order intake" }, events: [] });
   for (const s of sess.annotations.steps) s.case_id = "imp";
   const st = pathState(sess);
   assert.equal(st.implicit, true);
-  assert.equal(st.done.runs, true);
+  assert.equal(st.recording, false);
+  assert.ok(!("runs" in st.done), "no act for the transactions without a recording");
   const html = overviewHtml(sess);
-  assert.ok(/<li class="ov-next-stage done" data-stage="runs" title="[^"]+"><span class="ov-next-mark" aria-hidden="true">✓<\/span>One transaction \(not marked\)<\/li>/.test(html), html.slice(0, 600));
+  assert.ok(!html.includes('data-stage="runs"'), html.slice(0, 600));
   assert.ok(html.includes('<span data-summary="runs">One transaction (not marked)</span>'));
   assert.ok(!/1 transaction</.test(html));
   // A recording with its markers keeps its count.
   const marked = overviewHtml(session());
   assert.ok(marked.includes('<span data-summary="runs">3 transactions</span>'));
   assert.ok(marked.includes(">Mark the transactions</li>"));
+});
+
+/* ---- A project without a recording: its steps are added by hand ---------- */
+
+/* A project made from a video (or, `video: false`, from nothing): no events,
+   one implicit transaction, its steps added by hand. */
+function handSession(opts) {
+  const o = opts || {};
+  const anno = { steps: o.steps || [] };
+  if (o.video !== false) anno.external_videos = [{ id: "v1", path: "video/call.mp4", offset_ms: 0, in_ms: 0, out_ms: null, length_ms: 600000 }];
+  return session({
+    stats: { meta: {}, case_stats: o.cases || [{ case_id: "imp", start_ts: t(0), end_ts: null, implicit: true }] },
+    manifest: { source: o.video === false ? "blank" : "video", label: "Order intake" }, events: [],
+    annotations: anno,
+  });
+}
+
+function handStep(id, min, name, description, caseId) {
+  return { step_id: id, case_id: caseId || "imp", state: "manually_authored", name, description: description || "",
+    time_range: { start: t(min), end: t(min + 1) } };
+}
+
+const stagesOf = (html) => [...html.matchAll(/<li class="ov-next-stage[^"]*" data-stage="(\w+)" title="([^"]+)">(?:<span[^>]*>✓<\/span>)?([^<]+)<\/li>/g)]
+  .map((m) => [m[1], m[3]]);
+const buttonOf = (html) => { const m = /<button[^>]*id="btn-ov-next"[^>]*data-next-act="([^"]+)"[^>]*>([^<]*)<\/button>/.exec(html); return m ? [m[1], m[2]] : null; };
+const sayOf = (html) => { const m = /<div class="ov-next-say">([^<]*)<\/div>/.exec(html); return m ? m[1] : null; };
+const checklistOf = (html) => html.slice(0, html.indexOf('id="ov-summary"'));
+
+test("a project from a video: the acts are Add the steps, Write the steps, Write the document and Hand off, the next one marked on the Timeline", () => {
+  const sess = handSession();
+  const st = pathState(sess);
+  assert.equal(st.recording, false);
+  assert.deepEqual(st.stages, ["steps", "written", "document", "asis", "handoff"], "one transaction: no review (asis is drawn only while due)");
+  assert.equal(st.next, "steps");
+  const html = overviewHtml(sess);
+  assert.deepEqual(stagesOf(html), [["steps", "Add the steps"], ["written", "Write the steps"],
+    ["document", "Write the document"], ["handoff", "Hand off"]]);
+  assert.ok(html.includes('data-stage="steps" title="Add the steps of the process: on the Timeline, at the moments of the video (+ Step, or S), or in Steps with + Add step. Ticked once there is a step."'));
+  assert.ok(html.includes('data-stage="written" title="Give each step a name of its own and a description: the PDD prints them. Ticked once every step has both."'));
+  assert.ok(html.includes('data-stage="handoff" title="Hand this version of the project to the developers: one zip with the project, the PDD and the process map. Ticked once a version was handed off."'));
+  assert.deepEqual(buttonOf(html), ["steps-timeline", "Mark the steps on the Timeline"]);
+  assert.equal(sayOf(html), "Play the video and press S, or click + Step, where each step starts.");
+  assert.ok(!/Confirm|Mark the transactions|Export the PDD/.test(checklistOf(html)), "no act with nothing behind it");
+});
+
+test("an empty project (no video): the steps are added in Steps", () => {
+  const html = overviewHtml(handSession({ video: false }));
+  assert.deepEqual(buttonOf(html), ["steps-list", "Add the steps in Steps"]);
+  assert.equal(sayOf(html), "Click + Add step for each step of the process.");
+  // A video the recording itself holds counts as one.
+  const withRec = handSession({ video: false });
+  withRec.recordingAvailable = true;
+  assert.deepEqual(buttonOf(overviewHtml(withRec)), ["steps-timeline", "Mark the steps on the Timeline"]);
+});
+
+test("Add the steps is ticked once there is a visible step; a hidden one does not count", () => {
+  const sess = handSession({ steps: [Object.assign(handStep("h1", 1, "Check the customer", "Look up"), { state: "hidden" })] });
+  assert.equal(pathState(sess).done.steps, false);
+  sess.annotations.steps.push(handStep("s1", 2, "Step 1"));
+  const st = pathState(sess);
+  assert.equal(st.done.steps, true);
+  assert.equal(st.next, "written");
+});
+
+test("Write the steps: every visible step of the reference transaction needs a name of its own and a description", () => {
+  const sess = handSession({ steps: [handStep("s1", 1, "Step 1"), handStep("s2", 3, "Step 2")] });
+  let st = pathState(sess);
+  assert.equal(st.done.written, false);
+  assert.deepEqual(st.unwritten.map((s) => s.step_id), ["s1", "s2"]);
+  const html = overviewHtml(sess);
+  assert.deepEqual(buttonOf(html), ["written", "Write the steps in Steps"]);
+  assert.equal(sayOf(html), "2 of 2 steps have no name of their own or no description.");
+  // A name of its own, but no description yet.
+  sess.annotations.steps[0].name = "Check the customer";
+  assert.equal(pathState(sess).unwritten.length, 2, "a name alone is not enough");
+  sess.annotations.steps[0].description = "Look the customer up in the CRM.";
+  st = pathState(sess);
+  assert.deepEqual(st.unwritten.map((s) => s.step_id), ["s2"], "the first step that lacks one is the one Steps opens on");
+  assert.equal(sayOf(overviewHtml(sess)), "1 of 2 steps has no name of its own or no description.");
+  // The name + Step gives is no name of its own, at any number; an empty
+  // name and a blank description are nothing.
+  for (const [name, desc] of [["Step 12", "Enter the order."], ["", "Enter the order."], ["   ", "Enter the order."],
+    ["Enter the order", "   "], ["Enter the order", ""]]) {
+    sess.annotations.steps[1].name = name;
+    sess.annotations.steps[1].description = desc;
+    assert.equal(pathState(sess).done.written, false, JSON.stringify([name, desc]));
+  }
+  sess.annotations.steps[1].name = "Step 12 again";
+  sess.annotations.steps[1].description = "Enter the order.";
+  assert.equal(pathState(sess).done.written, true, "a name that only starts like + Step's is a name of its own");
+  // A hidden step owes nothing.
+  sess.annotations.steps.push(Object.assign(handStep("s3", 5, "Step 3"), { state: "hidden" }));
+  st = pathState(sess);
+  assert.equal(st.done.written, true);
+  assert.equal(st.next, "document");
+  assert.ok(!/Confirm/.test(checklistOf(overviewHtml(sess))));
+});
+
+test("a project from a video goes from its first act to the hand-off with no Confirm click", () => {
+  const sess = handSession({ steps: [handStep("s1", 1, "Check the customer", "Look the customer up."),
+    handStep("s2", 3, "Enter the order", "Type the order in.")] });
+  sess.annotations.document = Object.assign({}, FULL_DOC);
+  const st = pathState(sess);
+  assert.equal(st.ready, true);
+  assert.equal(st.next, "handoff");
+  const html = overviewHtml(sess);
+  assert.ok(html.includes('<span class="ov-next-ready-text">Everything before the hand-off is done.</span>'));
+  assert.deepEqual(buttonOf(html), ["handoff", "Hand off..."]);
+  assert.ok(!sess.annotations.pattern_run, "nothing was confirmed");
+});
+
+test("without a recording, Review the other transactions is listed only with two or more transactions", () => {
+  const cases = [{ case_id: "r1", start_ts: t(0), end_ts: t(10) }, { case_id: "r2", start_ts: t(20), end_ts: t(30) }];
+  const sess = handSession({ cases, steps: [handStep("s1", 1, "Check the customer", "Look up.", "r1"),
+    handStep("s2", 21, "Enter the order", "Type it.", "r2")] });
+  const st = pathState(sess);
+  assert.deepEqual(st.stages, ["steps", "written", "review", "document", "asis", "handoff"]);
+  assert.equal(st.next, "review", "transaction 2 differs and is not opened");
+  assert.deepEqual(buttonOf(overviewHtml(sess)), ["review", "Review transaction 2 in Steps"]);
+  sess.annotations.opened_runs = ["r2"];
+  assert.equal(pathState(sess).next, "document");
+});
+
+test("Hand off is ticked once a version exists, and the short line then names the version and its date", () => {
+  const sess = handSession({ steps: [handStep("s1", 1, "Check the customer", "Look the customer up.")] });
+  sess.annotations.handoffs = [{ version: 1, handed_off_at: "2026-11-02T09:00:00.000Z", by: "rasha", note: "First hand-off" },
+    { version: 2, handed_off_at: "2026-11-09T15:30:00.000Z", by: "rasha", note: "The credit check" }];
+  let st = pathState(sess);
+  assert.equal(st.done.handoff, true);
+  assert.equal(st.next, "document", "a version does not tick the acts before it");
+  let html = overviewHtml(sess);
+  assert.ok(/<li class="ov-next-stage done" data-stage="handoff" title="[^"]+"><span class="ov-next-mark" aria-hidden="true">✓<\/span>Hand off<\/li>/.test(html));
+  sess.annotations.document = Object.assign({}, FULL_DOC);
+  st = pathState(sess);
+  assert.equal(st.ready, true);
+  html = overviewHtml(sess);
+  assert.ok(html.includes('<span class="ov-next-ready-text">Version 2 was handed off on 2026-11-09. Hand off again after a change.</span>'), html.slice(0, 400));
+  assert.deepEqual(buttonOf(html), ["handoff", "Hand off..."]);
+});
+
+/* ---- A recording: nothing to confirm is nothing owed ---------------------- */
+
+test("Confirm the reference transaction is done without a click when its steps hold no draft at any level", () => {
+  const sess = session({});
+  for (const s of sess.annotations.steps) if (s.case_id === "c1") s.state = "edited";
+  let st = pathState(sess);
+  assert.equal(sess.annotations.pattern_run, undefined);
+  assert.equal(st.done.pattern, true, "edited steps: nothing to confirm");
+  assert.equal(st.next, "review");
+  // One drafted sub-step under a step: there is something to confirm again.
+  sess.annotations.steps[0].sub_steps = [{ step_id: "a.1", state: "auto_suggested", name: "Click OK", time_range: null }];
+  assert.equal(pathState(sess).done.pattern, false);
+  // ...unless that sub-step is hidden.
+  sess.annotations.steps[0].sub_steps[0].state = "hidden";
+  assert.equal(pathState(sess).done.pattern, true);
+  // One main-level draft left: owed.
+  sess.annotations.steps[1].state = "auto_suggested";
+  assert.equal(pathState(sess).done.pattern, false);
+  // The reference transaction must hold a step: with every step of c1
+  // hidden, the reference moves to c2, whose steps are drafts.
+  for (const s of sess.annotations.steps) if (s.case_id === "c1") s.state = "hidden";
+  st = pathState(sess);
+  assert.equal(st.pattern.caseId, "c2");
+  assert.equal(st.done.pattern, false);
+});
+
+test("a confirmed reference transaction stays done as before, and a recording lists its own acts", () => {
+  const sess = session({});
+  confirmRun(sess, "c1");
+  sess.annotations.pattern_run = { case_id: "c1", confirmed_at: "2026-05-17T11:00:00Z" };
+  assert.equal(pathState(sess).done.pattern, true);
+  assert.deepEqual(pathState(sess).stages, ["runs", "pattern", "review", "document", "asis", "handoff"]);
 });

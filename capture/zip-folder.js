@@ -91,24 +91,30 @@ function zipPathFor(folder) {
 }
 
 /* Every folder and file under `root`, sorted by name so the zip is stable.
-   Links and other special entries are skipped (a recording has none). */
-async function listEntries(root, prefix) {
+   Links and other special entries are skipped (a recording has none).
+   `leaveOut` (optional): a function given each entry's path relative to
+   `root` ("/" between the parts, a folder's ending in "/") that returns true
+   for an entry the zip leaves out (a folder with everything in it). */
+async function listEntries(root, prefix, leaveOut) {
   const out = [];
-  async function walk(dir, rel) {
+  async function walk(dir, rel, inner) {
     const entries = await fsp.readdir(dir, { withFileTypes: true });
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const e of entries) {
       const abs = path.join(dir, e.name);
       const name = rel + e.name;
+      const own = inner + e.name;
       if (e.isDirectory()) {
+        if (leaveOut && leaveOut(own + "/")) continue;
         out.push({ abs, name: name + "/", dir: true });
-        await walk(abs, name + "/");
+        await walk(abs, name + "/", own + "/");
       } else if (e.isFile()) {
+        if (leaveOut && leaveOut(own)) continue;
         out.push({ abs, name, dir: false });
       }
     }
   }
-  await walk(root, prefix);
+  await walk(root, prefix, "");
   return out;
 }
 
@@ -183,18 +189,19 @@ async function writeFileData(fh, abs, dataPos, deflate) {
 
 /*
  * Write `folder` as a zip at `zipPath` (default: next to the folder).
+ * `leaveOut` (optional, listEntries): the entries the zip leaves out.
  * Resolves { zipPath, bytes, entries }. Rejects when the folder is missing,
  * a file cannot be read, the zip cannot be written, or the recording is too
  * large for the format (ZipTooLargeError); the partial file is removed.
  */
-async function zipFolder(folder, zipPath) {
+async function zipFolder(folder, zipPath, leaveOut) {
   const root = path.resolve(folder);
   const target = zipPath ? path.resolve(zipPath) : zipPathFor(root);
   const rootStat = await fsp.stat(root);
   if (!rootStat.isDirectory()) throw new Error("Not a folder: " + root);
   const base = path.basename(root);
   const entries = [{ abs: root, name: base + "/", dir: true }]
-    .concat(await listEntries(root, base + "/"));
+    .concat(await listEntries(root, base + "/", leaveOut));
   if (entries.length > MAX_ENTRIES) throw tooLarge();
 
   const partial = target + ".partial";

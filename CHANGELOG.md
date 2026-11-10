@@ -6,6 +6,45 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **A Checklist that fits the project.** A project made from a video or
+  from nothing is no longer asked to confirm a reference transaction it
+  never drafted: its acts are *Add the steps* (its button marks them on the
+  Timeline when there is a video, else in Steps), *Write the steps* (a name
+  of its own and a description for each step; the line says how many are
+  left, and its button opens Steps on the first of them), *Review the other
+  transactions* only when it has two or more, *Write the document* and
+  *Hand off*. A recording keeps *Mark the transactions*, *Confirm the
+  reference transaction* and *Review the other transactions*, but nothing
+  to confirm is nothing owed (a reference transaction with no drafted step
+  is ticked without a click), and only the transactions that differ from
+  the reference transaction are asked to be opened.
+- **Confirm only where there is something to confirm.** In Steps, a
+  reference transaction with no drafted step shows no *Confirm
+  transaction* and no draft status, and Ctrl+Enter does nothing there.
+- **A project made from a video opens on the Timeline**, where its steps
+  are marked.
+- **Hand off is the last act.** The Checklist ends with *Hand off*
+  (*Export the PDD* left it; the PDD alone stays in the Export menu): once
+  every act before it is done its one button is *Hand off...*, and after a
+  hand-off the line reads "Version N was handed off on <date>. Hand off
+  again after a change."
+- **The Export menu names the deliverable first**: *For the developers and
+  the archive* (*Hand off...*), *For another analyst* (*Whole project
+  (.zip)*), *Single files* (the PDD, the Technical details, the map as an
+  image and as BPMN).
+- **One zip a reader can use without the viewer.** A hand-off zip now
+  carries, beside the PDD and the Technical details, the process map as a
+  picture (`<project> v<N> map.svg`) and as BPMN 2.0 (`<project> v<N>
+  map.bpmn`), and *Start here.txt*, which says what each file is and how to
+  open the zip read only in the viewer. Its project folder leaves out the
+  working file's backups and the analysis log. *Whole project (.zip)* is
+  unchanged: the whole folder. A hand-off zip made before opens read only
+  as before.
+- **A PDD without recorder wording** for a project made from a video or from nothing: Document control leaves out *Recorded by* and *Transactions recorded* where there is nothing to say, section 3.2 and section 4 no longer speak of one unmarked transaction (section 4 reads *Rules and exceptions*), and section 5 lists each system with the steps done in it instead of *Information entered: none*.
+- **No empty Technical details.** Where nothing was recorded the workbook is not written, and a hand-off zip goes out without it.
+
 ## [2.0.6] (2026-11-04): several videos on one timeline
 
 ### Added

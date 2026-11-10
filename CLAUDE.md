@@ -85,12 +85,22 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
    away; optionally *Edit as the As-Is map* (and a To-Be copy), kept once
    something in it is changed. When the steps change after the As-Is copy
    was made, the Map and the Checklist say so, with *Copy again*.
-7. **Export the PDD**: its map is the edited As-Is copy when one exists, else
-   the map from the runs. Export also saves the map (image, BPMN), the
-   *Technical details (.xlsx)* and the *Whole project (.zip)*; each export
-   opens Explorer at the file. *Hand off...* hands a numbered version to the
-   developers: one zip next to the folder with the project, the PDD and the
-   Technical details of that version.
+7. **Hand off**, the Checklist's last act and the Export menu's first group
+   (*For the developers and the archive*): one zip next to the folder with
+   the project, the PDD, the Technical details (where something was
+   recorded), the process map (SVG and BPMN) and *Start here.txt* of that
+   version. The PDD's map is the edited As-Is copy when one exists, else the
+   map from the runs. *For another analyst*: *Whole project (.zip)*.
+   *Single files*: the PDD, the *Technical details (.xlsx)* and the map
+   (image, BPMN). Each export opens Explorer at the file.
+
+The Checklist fits the project: a recording's acts are Mark the
+transactions, Confirm the reference transaction (ticked without a click when
+none of its steps is a draft), Review the other transactions (only those
+that differ), Write the document, Hand off; a project made from a video or
+from nothing has Add the steps, Write the steps, Review the other
+transactions (only with two or more), Write the document, Hand off, and a
+project made from a video opens on the Timeline.
 
 Along the way the analyst adds what the recording lacks: steps, screenshots,
 notes, attachments, a step's system, the flow. Every change saves itself to
@@ -364,9 +374,12 @@ the folder.
 - **Hand-offs** (C20, lane HV). *Export*, *Hand off...* asks what changed,
   adds `{ version, handed_off_at, by, note }` to `annotations.handoffs` (one
   undoable edit: Ctrl+Z takes it back, the zip stays) and writes
-  `<project> v<N>.zip` next to the folder: the folder, and at the zip's root
-  the PDD and the Technical details made for that version (`normalize.py
-  --handoff N`, `--tech-out`; `viewer/handoff-zip.js`). Every PDD says its
+  `<project> v<N>.zip` next to the folder: the folder (without
+  `annotations.json.2` to `.5`, `normalize.log`, `*.pdt-staged`), and at
+  the zip's root the PDD, the Technical details (none where nothing was
+  recorded), `<project> v<N> map.svg`, `<project> v<N> map.bpmn` and
+  `Start here.txt` made for that version (`normalize.py --handoff N`,
+  `--tech-out`; `viewer/handoff-zip.js`). Every PDD says its
   version ("Version N, handed off <date> by <name>", else "Working copy
   after version N") over a Version history table. *Open a hand-off
   (.zip)...* (Open menu, and the page shown while no project is open) takes

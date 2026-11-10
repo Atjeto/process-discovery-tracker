@@ -5,11 +5,14 @@
  * the owner's (AD-29): a run is a "transaction" and what the analyst opens is
  * a "project" wherever a person reads them; code and data keep run and
  * session. One column, top to bottom:
- *   1. the Checklist: the analyst path's acts (mark the transactions, confirm
- *      the reference transaction, review the other transactions, write the
- *      document, export the PDD), each ticked or not from the session data
+ *   1. the Checklist: the analyst path's acts, fitted to the project (a
+ *      recording: mark the transactions, confirm the reference transaction,
+ *      review the other transactions; a project made from a video or from
+ *      nothing: add the steps, write the steps, and review the other
+ *      transactions only with two or more; then, for both, write the
+ *      document and hand off), each ticked or not from the session data
  *      alone, each with a tooltip that says what it means, and ONE button for
- *      the next act. Once every act before the export is done it shrinks to
+ *      the next act. Once every act before the hand-off is done it shrinks to
  *      one short line, so the home leads with the document. The As-Is map is
  *      not an act (AD-28): the PDD embeds the edited As-Is copy when there is
  *      one, else the process map (process_map_step.bpmn).
@@ -191,18 +194,30 @@ function documentStatus(doc) {
 }
 
 /* The Checklist's acts, in the analyst path's order: each item names the act
-   and its tooltip says what it means and when it is ticked (AD-29). */
+   and its tooltip says what it means and when it is ticked (AD-29). The acts
+   fit the project: `recording` true lists an act only for a recording (its
+   steps are drafted), false only for a project made from a video or from
+   nothing (its steps are added by hand), absent for both. */
 const PATH_STAGES = [
-  { key: "runs", label: "Mark the transactions",
+  { key: "runs", label: "Mark the transactions", recording: true,
     title: "A transaction is one pass through the process. Each starts at a start marker: the SME's transaction key " +
       "sets one, or you add one on the Timeline. A project without a recording is one transaction from the start. " +
       "Ticked once there is at least one transaction." },
-  { key: "pattern", label: "Confirm the reference transaction",
+  { key: "steps", label: "Add the steps", recording: false,
+    title: "Add the steps of the process: on the Timeline, at the moments of the video (+ Step, or S), or in Steps " +
+      "with + Add step. Ticked once there is a step." },
+  { key: "written", label: "Write the steps", recording: false,
+    title: "Give each step a name of its own and a description: the PDD prints them. Ticked once every step has both." },
+  { key: "pattern", label: "Confirm the reference transaction", recording: true,
     title: "In Steps, check the reference transaction's drafted steps (transaction 1 unless you pick another), fix " +
-      "their boundaries and names, then click Confirm transaction. Ticked once it is confirmed." },
+      "their boundaries and names, then click Confirm transaction. Ticked once it is confirmed, or once none of its " +
+      "steps is a draft." },
+  // Without a recording, listed only when the project has two or more
+  // transactions: one has no other to review.
   { key: "review", label: "Review the other transactions",
     title: "Open each other transaction in Steps: it lists how it differs from the reference transaction. The other " +
-      "transactions are not confirmed. Ticked once each has been opened after the reference transaction is confirmed." },
+      "transactions are not confirmed. Ticked once each transaction that differs from the reference transaction " +
+      "has been opened." },
   { key: "document", label: "Write the document",
     title: "Write the document fields on this page: you write them, and the PDD prints them. Ticked once every " +
       "field but Notes is written." },
@@ -212,34 +227,56 @@ const PATH_STAGES = [
   { key: "asis", label: "Check the As-Is map", onlyWhenDue: true,
     title: "The As-Is map was made before the steps changed: check it, or Copy again. On the Map, Edit opens it; " +
       "Copy again makes a new copy of the process map as it is now, which then takes its place in the PDD." },
-  { key: "export", label: "Export the PDD",
-    title: "Export the Process Definition Document (.docx) with the button or the Export menu. The app keeps no " +
-      "record of an export, so this item is never ticked." },
+  { key: "handoff", label: "Hand off",
+    title: "Hand this version of the project to the developers: one zip with the project, the PDD and the process " +
+      "map. Ticked once a version was handed off." },
 ];
 
 /* Lane FX2: the Checklist's line while the As-Is map is older than the steps. */
 const ASIS_STALE = "The As-Is map was made before the steps changed: check it, or Copy again.";
 
+/* The name + Step and + Add step give a new step ("Step 12", steps-view.js
+   nextStepName): no name of its own. */
+const NUMBERED_STEP = /^Step (\d+)$/;
+
+/* Whether a step has a name of its own and a description, the two things the
+   PDD prints for it. */
+function _stepWritten(s) {
+  const name = typeof (s && s.name) === "string" ? s.name.trim() : "";
+  const desc = typeof (s && s.description) === "string" ? s.description.trim() : "";
+  return !!name && !NUMBERED_STEP.test(name) && !!desc;
+}
+
 /* The analyst path's state, derived from the session data alone (pure: the
    runs as the Steps level builds them, the reference run record, the runs
-   opened, the document fields). Each stage is done or not on its own; the
-   next act is the first stage that is not done. Exporting leaves no record in
-   the session, so the export stage is never shown done: it is the last act.
-     runs:     at least one run is marked.
+   opened, the document fields, the hand-offs). Each stage is done or not on
+   its own; the next act is the first stage that is not done, else the
+   hand-off (it can always be made again).
+     runs:     at least one run is marked (a recording).
+     steps:    the project has a visible step (no recording).
+     written:  every visible main-level step of the reference run has a name
+               of its own and a description (no recording).
      pattern:  the reference run is confirmed (pattern_run.confirmed_at) and
-               no level below its main one holds a draft (C19).
-     review:   every other run has been opened in Steps, where its
-               differences show (annotations.opened_runs; AD-28: the other
-               runs are not confirmed).
+               no level below its main one holds a draft (C19), or it has a
+               step and holds no draft at any level: nothing to confirm
+               (a recording).
+     review:   every other run that differs from the reference run has been
+               opened in Steps, where its differences show
+               (annotations.opened_runs; AD-28: the other runs are not
+               confirmed). Without a recording it is listed only with two or
+               more runs.
      document: every document field that fills a PDD placeholder is written.
-   `ready`: every stage before the export is done (the line shrinks).
-   `nextOther` is the other run to review next: the first not opened yet
-   that differs from the reference run, else the first not opened yet (lane
-   FX1: the button never points at a transaction with no difference while
-   one that differs waits); `nextDiffers` whether it differs, `differing`
-   how many of the other runs differ from the reference run. */
+     handoff:  annotations.handoffs holds a version.
+   `stages` the keys listed for this project, `ready`: every stage before
+   the hand-off is done (the line shrinks). `nextOther` is the other run to
+   review next: the first not opened yet that differs from the reference
+   run, else the first not opened yet (lane FX1); `nextDiffers` whether it
+   differs, `differing` how many of the other runs differ from the reference
+   run. `unwritten` the reference run's visible steps without a name of their
+   own or a description, `handedOff` the latest hand-off entry or null. */
 function pathState(sess) {
   const anno = (sess && sess.annotations) || {};
+  const recording = AC.hasRecording(sess);
   const runs = RunsModel.buildRuns(sess && sess.stats, anno.steps || []).runs;
   const pattern = RunsModel.patternRun(anno, runs);
   const patternId = pattern.run ? pattern.run.caseId : null;
@@ -257,21 +294,43 @@ function pathState(sess) {
   const nextOther = unopened.find((r) => differs.has(r.caseId)) || unopened[0] || null;
   const differing = differs.size;
   const doc = documentStatus(anno.document);
-  const done = {
+  const refSteps = pattern.run ? pattern.run.visible : [];
+  const unwritten = refSteps.filter((s) => !_stepWritten(s));
+  const handedOff = Handoff.latest(anno);
+  const all = {
     runs: runs.length > 0,
-    pattern: !!pattern.run && RunsModel.patternConfirmed(pattern.record, pattern.run),
-    review: runs.length > 0 && !nextOther,
+    steps: (Array.isArray(anno.steps) ? anno.steps : []).some((s) => s && typeof s === "object" && s.state !== "hidden"),
+    written: refSteps.length > 0 && !unwritten.length,
+    // Nothing to confirm is nothing owed: a reference run with a step and no
+    // draft at any level reads done without a Confirm click.
+    pattern: !!pattern.run && (RunsModel.patternConfirmed(pattern.record, pattern.run) ||
+      (pattern.run.visible.length > 0 && !RunsModel.holdsDraft(pattern.run.members))),
+    review: runs.length > 0 && !unopened.some((r) => differs.has(r.caseId)),
     document: doc.filled === doc.total,
     // Lane FX2: the As-Is map the PDD prints was made before the steps changed.
     asis: !AsIsFresh.chosenAsIsStale(sess),
-    export: false,
+    handoff: !!handedOff,
   };
-  const next = PATH_STAGES.find((st) => !done[st.key]).key;
+  const stages = PATH_STAGES.filter((st) => (st.recording === undefined || st.recording === recording) &&
+    (st.key !== "review" || recording || runs.length >= 2)).map((st) => st.key);
+  const done = {};
+  for (const k of stages) done[k] = all[k];
+  const next = stages.find((k) => !done[k]) || "handoff";
   // Lane FX2: a project without start markers has one implicit transaction.
   const implicit = !!AC.implicitRunId(sess && sess.stats);
-  return { done, next, ready: next === "export", runs, pattern: pattern.run, nextOther,
-    nextDiffers: !!(nextOther && differs.has(nextOther.caseId)), differing, doc, asIsStale: !done.asis, implicit };
+  return { recording, stages, done, next, ready: next === "handoff", runs, pattern: pattern.run, nextOther,
+    nextDiffers: !!(nextOther && differs.has(nextOther.caseId)), differing, doc, asIsStale: !all.asis, implicit,
+    unwritten, refStepCount: refSteps.length, handedOff, video: _hasVideo(sess) };
 }
+
+/* Whether the project has a video to mark its steps on. */
+function _hasVideo(sess) {
+  return !!(sess && (sess.recordingAvailable || VideoChain.clipsOf(sess.annotations).length > 0));
+}
+
+const HANDOFF_BUTTON = "Hand off...";
+const HANDOFF_BUTTON_TITLE = "Hand this version of the project to the developers: one zip next to the project " +
+  "folder with the project, the PDD and the process map. It starts the Export menu's Hand off.";
 
 /* The one button for the next act: its text and, where the text alone does
    not say enough, the sentence shown before it. A transaction's title reads
@@ -280,17 +339,27 @@ function _nextAct(state) {
   switch (state.next) {
     case "runs":
       return { button: MARK_RUNS_BUTTON, say: NO_RUNS_MARKED + " " + MARK_RUNS_INSTRUCTION };
+    case "steps":
+      return state.video
+        ? { button: "Mark the steps on the Timeline", act: "steps-timeline",
+          say: "Play the video and press S, or click + Step, where each step starts." }
+        : { button: "Add the steps in Steps", act: "steps-list", say: "Click + Add step for each step of the process." };
+    case "written": {
+      const n = state.unwritten.length;
+      return { button: "Write the steps in Steps",
+        title: "Steps opens with the first step that has no name of its own or no description selected.",
+        say: n + " of " + _plural(state.refStepCount, "step", "steps") + " " +
+          (n === 1 ? "has no name of its own" : "have no name of their own") + " or no description." };
+    }
     case "pattern":
       return { button: state.pattern ? "Confirm " + state.pattern.title.toLowerCase() + " in Steps" : "Open the transactions in Steps",
         title: "Check the reference transaction's drafted steps, fix their boundaries and names, then click Confirm transaction." };
     case "review":
-      // The sentence is about the transaction the button opens (lane FX1).
+      // The review is owed only while a transaction that differs is not
+      // opened yet, and the button opens one of those (lane FX1).
       return { button: "Review " + state.nextOther.title.toLowerCase() + " in Steps",
         title: "Open the transaction to see how it differs from the reference transaction. The other transactions are not confirmed.",
-        say: !state.differing ? "No other transaction differs from the reference transaction."
-          : state.nextDiffers
-            ? _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction."
-            : state.nextOther.title + " does not differ from the reference transaction." };
+        say: _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction." };
     case "document":
       return { button: "Write the document",
         title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: you write them, and the PDD prints them in place of its placeholders." };
@@ -298,23 +367,30 @@ function _nextAct(state) {
       return { button: "Check the As-Is map", say: ASIS_STALE,
         title: "Open the Map: Edit the As-Is map to match the steps, or Copy again for a new copy of the process map as it is now." };
     default:
-      return { button: "Export PDD",
-        title: "Write the Process Definition Document (.docx) with the process map (your edited As-Is map when there is one), the steps and the document fields. Its folder opens with the file selected." };
+      return { button: HANDOFF_BUTTON, title: HANDOFF_BUTTON_TITLE };
   }
+}
+
+/* The short line once every act before the hand-off is done. */
+function _readyText(state) {
+  const v = state.handedOff;
+  if (!v) return "Everything before the hand-off is done.";
+  const date = Handoff.entryDate(v);
+  return "Version " + v.version + " was handed off" + (date ? " on " + date : "") + ". Hand off again after a change.";
 }
 
 function _nextLineHtml(state) {
   const act = _nextAct(state);
-  const button = '<button type="button" class="primary" id="btn-ov-next" data-next-act="' + state.next + '"' +
+  const button = '<button type="button" class="primary" id="btn-ov-next" data-next-act="' + (act.act || state.next) + '"' +
     (act.title ? ' title="' + escapeAttr(act.title) + '"' : "") + ">" + escapeHtml(act.button) + "</button>";
   if (state.ready) {
-    // Every act before the export is done: one short line.
-    return '<div class="ov-next ov-next-ready" id="ov-next" data-next="export">' +
+    // Every act before the hand-off is done: one short line.
+    return '<div class="ov-next ov-next-ready" id="ov-next" data-next="handoff">' +
       '<span class="ov-next-label">Checklist</span>' +
-      '<span class="ov-next-ready-text">Everything before the export is done: the PDD is ready to export.</span>' +
+      '<span class="ov-next-ready-text">' + escapeHtml(_readyText(state)) + "</span>" +
       button + "</div>";
   }
-  const stages = PATH_STAGES.filter((st) => !st.onlyWhenDue || !state.done[st.key]).map((st) => {
+  const stages = PATH_STAGES.filter((st) => state.stages.includes(st.key) && (!st.onlyWhenDue || !state.done[st.key])).map((st) => {
     const cls = state.done[st.key] ? "done" : (st.key === state.next ? "next" : "");
     // Lane FX2: the implicit transaction reads as it does everywhere.
     const label = st.key === "runs" && state.implicit ? AC.IMPLICIT_TRANSACTION : st.label;
@@ -330,18 +406,29 @@ function _nextLineHtml(state) {
     "</div>";
 }
 
-/* Land on the Steps level with `run` open: its first step is selected, so the
-   arrival reveals it (the same arrival "Open in Steps" uses). */
-function _openRunInSteps(run) {
-  const first = run && ((run.visible && run.visible[0]) || (run.members && run.members[0]));
-  if (first && first.step_id) State.setSelectedStepId(first.step_id);
+/* Land on the Steps level with `stepId` selected, so the arrival reveals it
+   (the same arrival "Open in Steps" uses). */
+function _openStepInSteps(stepId) {
+  if (stepId) State.setSelectedStepId(stepId);
   const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
   if (btn) btn.click();
+}
+
+/* Land on the Steps level with `run` open: its first step is selected. */
+function _openRunInSteps(run) {
+  const first = run && ((run.visible && run.visible[0]) || (run.members && run.members[0]));
+  _openStepInSteps(first && first.step_id);
 }
 
 /* Lane FX2: the Map, where the As-Is map shows with its Edit and Copy again. */
 function _openMap() {
   const btn = document.querySelector('.view-mode-btn[data-level="map"]');
+  if (btn) btn.click();
+}
+
+/* The Timeline, where the steps are marked at the moments of the video. */
+function _openTimeline() {
+  const btn = document.querySelector('.view-mode-btn[data-level="flow"]');
   if (btn) btn.click();
 }
 
@@ -364,11 +451,14 @@ function _goNext(act) {
   if (!sess) return;
   const state = pathState(sess);
   if (act === "runs") { openMarkersInFlow(); return; }
+  if (act === "steps-timeline") { _openTimeline(); return; }
+  if (act === "steps-list") { _openStepInSteps(null); return; }
+  if (act === "written") { _openStepInSteps(state.unwritten[0] && state.unwritten[0].step_id); return; }
   if (act === "pattern") { _openRunInSteps(state.pattern); return; }
   if (act === "review") { _openRunInSteps(state.nextOther); return; }
   if (act === "document") { _openDocument(); return; }
   if (act === "asis") { _openMap(); return; }
-  _exportPdd();
+  _handOff();
 }
 
 function _wireNextLine(host) {
@@ -878,15 +968,15 @@ function _wireDocument(host) {
   });
 }
 
-/* ---- Export -------------------------------------------------------------- */
+/* ---- The hand-off -------------------------------------------------------- */
 
-/* AD-13: the Checklist's last act is the PDD. It clicks the Export
-   menu's PDD item (#btn-session-pdd, wired in renderer.js), so the Overview
-   and the menu share one export path. */
-function _exportPdd() {
-  const pdd = document.getElementById("btn-session-pdd");
-  if (!pdd) { toast("The PDD export is not available in this window.", "error"); return; }
-  pdd.click();
+/* The Checklist's last act is the hand-off. It clicks the Export menu's
+   Hand off... item (#btn-session-handoff, views/handoff-ui.js), so the
+   Overview and the menu share one hand-off path. */
+function _handOff() {
+  const item = document.getElementById("btn-session-handoff");
+  if (!item) { toast("The hand-off is not available in this window.", "error"); return; }
+  item.click();
 }
 
 /* ---- Render -------------------------------------------------------------- */

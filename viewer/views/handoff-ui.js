@@ -13,9 +13,15 @@
  *      Ctrl+Z takes it back (the zip file stays where it is);
  *   3. the PDD and the Technical details of this version, by the PDD's own
  *      path (renderer.js writeDocuments: the analysis first when the step map
- *      is older than the steps, then one run with --handoff N);
- *   4. "<project> v<N>.zip" next to the project folder, never over another
- *      zip, then its folder opens with the zip selected.
+ *      is older than the steps, then one run with --handoff N); where nothing
+ *      was recorded the pipeline writes no Technical details, and the zip
+ *      goes out without them;
+ *   4. the process map as a picture and as BPMN, by the two map exports'
+ *      own paths (renderer.js writeHandoffMaps); none when no map can be
+ *      drawn;
+ *   5. "<project> v<N>.zip" next to the project folder, never over another
+ *      zip, with Start here.txt at its root (handoff-zip.js), then its folder
+ *      opens with the zip selected.
  * A hand-off that does not finish takes its version entry back at once
  * (session.js takeBackLastEdit), so no version is ever recorded without its
  * zip.
@@ -32,10 +38,11 @@ const Ipc = require("../ipc.js");
 const Session = require("../session.js");
 const Handoff = require("../handoff.js");
 const RO = require("../read-only.js");
+const AC = require("../analyst-content.js");
 const { toast } = require("../dom.js");
 const { promptModal } = require("../modals.js");
 
-let _deps = { writeDocuments: null };
+let _deps = { writeDocuments: null, writeMaps: null };
 let _busy = false;
 
 /* The Windows user who hands off: the login the app runs under. */
@@ -90,8 +97,7 @@ async function handOff() {
   const note = await promptModal({
     title: "Hand off version " + version,
     message: "What changed in this version?",
-    detail: names.zip + " is made next to the project folder: the whole project, with the PDD and the " +
-      "Technical details of version " + version + ".",
+    detail: detailLine(names.zip, version, AC.hasRecording(sess)),
     placeholder: "For example: the credit check added",
     defaultValue: version === 1 ? Handoff.FIRST_NOTE : "",
     okLabel: "Hand off",
@@ -129,9 +135,12 @@ async function handOff() {
       toast("Version " + version + " was not handed off" + (made.message ? ": " + made.message : "."), "error");
       return;
     }
+    // The map files: the hand-off goes out without them when no map can be drawn.
+    const maps = _deps.writeMaps ? await _deps.writeMaps(State.getSession(), dir, names) : { mapSvg: null, mapBpmn: null };
     let r;
     try {
-      r = await Ipc.exportHandoffZip({ sessionFolder: sess.sessionFolder, base, version, pdd, tech });
+      r = await Ipc.exportHandoffZip({ sessionFolder: sess.sessionFolder, base, version, pdd,
+        tech: made.techWritten === false ? null : tech, mapSvg: maps.mapSvg, mapBpmn: maps.mapBpmn });
     } catch (e) {
       r = { ok: false, error: (e && e.message) || String(e) };
     }
@@ -162,14 +171,22 @@ async function openVersionFile(kind) {
   }
 }
 
-/* deps = { writeDocuments(target, { pddOut, techOut, handoff, label }) }
-   (renderer.js). Wires the Export menu's items once. */
+/* The dialog's line on what the zip holds: the Technical details only where
+   something was recorded (the pipeline writes none otherwise). */
+function detailLine(zipName, version, recording) {
+  return zipName + " is made next to the project folder: the whole project, with the PDD" +
+    (recording ? ", the Technical details" : "") + " and the process map of version " + version + ".";
+}
+
+/* deps = { writeDocuments(target, { pddOut, techOut, handoff, label }),
+   writeMaps(target, dir, names) } (renderer.js). Wires the Export menu's
+   items once. */
 function initHandoffUI(deps) {
-  _deps = Object.assign({ writeDocuments: null }, deps || {});
+  _deps = Object.assign({ writeDocuments: null, writeMaps: null }, deps || {});
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
   on("btn-session-handoff", () => handOff());
   on("btn-handoff-open-pdd", () => openVersionFile("pdd"));
   on("btn-handoff-open-tech", () => openVersionFile("tech"));
 }
 
-module.exports = { initHandoffUI, handOff, openVersionFile };
+module.exports = { initHandoffUI, handOff, openVersionFile, detailLine };

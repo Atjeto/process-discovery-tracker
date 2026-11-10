@@ -4,13 +4,19 @@
  * throwaway profile against a TEMP copy of the committed demo session
  * sess-2026-0514-0900 (its document titled "Order entry"), analyzed with the
  * current pipeline, and hands it over the way the analyst does:
+ *   (a0) the Export menu: three headings (text, not items) over Hand
+ *       off..., Whole project (.zip) and the four single files, in that
+ *       order for Tab too, and Escape closing it;
  *   (a) Export, Hand off...: one dialog, "What changed in this version?",
  *       filled with "First hand-off"; "Order entry v1.zip" is made next to
  *       the project folder and shown in its folder; it holds the project
  *       folder (its annotations.json with the version entry) and, at its
  *       root, "Order entry v1 PDD.docx" (Document control reads "Version 1,
  *       handed off <date> by <user>" over a Version history table of one
- *       row) and "Order entry v1 Technical details.xlsx" (its five sheets);
+ *       row), "Order entry v1 Technical details.xlsx" (its five sheets),
+ *       "Order entry v1 map.svg", "Order entry v1 map.bpmn" and "Start
+ *       here.txt"; the project folder in it without the backups and the
+ *       analysis log; the Checklist then ticks Hand off;
  *   (b) a second hand-off: the dialog starts empty and OK waits for a note;
  *       "Order entry v2.zip" with two rows in its PDD's table; Ctrl+Z takes
  *       version 2 back (the zip stays), Ctrl+Y brings it again;
@@ -281,6 +287,41 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
   };
   await idle().catch(() => {});
 
+  /* ---- (a0) the Export menu names the deliverable first ---- */
+  try {
+    await page.click("#btn-session-export-menu");
+    await page.waitForSelector("#session-export-popup", { state: "visible", timeout: T });
+    const menu = await page.evaluate(() => [...document.querySelectorAll("#session-export-popup > *")]
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => {
+        const cs = getComputedStyle(el);
+        return { kind: el.classList.contains("project-menu-heading") ? "heading" : "item", text: el.textContent.trim(), id: el.id || "",
+          tab: el.tabIndex, size: cs.fontSize, color: cs.color, button: el.tagName === "BUTTON" };
+      }));
+    const fg3 = await page.evaluate(() => { const d = document.createElement("div"); d.style.color = "var(--fg-3)"; document.body.appendChild(d);
+      const c = getComputedStyle(d).color; d.remove(); return c; });
+    // Tab from the first item reaches the items in the menu's order, and no heading.
+    await page.focus("#btn-session-handoff");
+    const order = ["btn-session-handoff"];
+    for (let k = 0; k < 5; k++) { await page.keyboard.press("Tab"); order.push(await page.evaluate(() => (document.activeElement || {}).id || "")); }
+    // A heading is no item: a click on it leaves the menu open and does nothing.
+    await page.locator("#session-export-popup .project-menu-heading", { hasText: "Single files" }).click({ timeout: T });
+    const openAfterHeading = await page.evaluate(() => getComputedStyle(document.getElementById("session-export-popup")).display !== "none");
+    await page.keyboard.press("Escape");
+    await wait(150);
+    const closed = await page.evaluate(() => getComputedStyle(document.getElementById("session-export-popup")).display === "none");
+    const want = [["heading", "For the developers and the archive"], ["item", "Hand off..."], ["heading", "For another analyst"],
+      ["item", "Whole project (.zip)"], ["heading", "Single files"], ["item", "PDD (.docx)"], ["item", "Technical details (.xlsx)"],
+      ["item", "Process map (image)"], ["item", "Process map (BPMN)"]];
+    const heads = menu.filter((m) => m.kind === "heading");
+    record("(a0) the Export menu names the deliverable first: three headings (text, not buttons: 12 px, the third text colour) over Hand off..., Whole project (.zip) and the four single files; Tab reaches the items in that order; a heading click does nothing; Escape closes it",
+      JSON.stringify(menu.map((m) => [m.kind, m.text])) === JSON.stringify(want) &&
+      heads.every((m) => !m.button && m.tab === -1 && m.size === "12px" && m.color === fg3) &&
+      JSON.stringify(order) === JSON.stringify(["btn-session-handoff", "btn-session-zip", "btn-session-pdd", "btn-session-tech",
+        "btn-session-map-svg", "btn-session-step-bpmn"]) && openAfterHeading && closed,
+      JSON.stringify({ menu: menu.map((m) => [m.kind, m.text, m.tab, m.size, m.color]), fg3, order, openAfterHeading, closed }));
+  } catch (e) { record("(a0) the Export menu", false, errText(e)); }
+
   /* ---- (a) the first hand-off ---- */
   let entry1 = null;
   try {
@@ -292,10 +333,11 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
         detail: (d.querySelector(".modal-detail") || {}).textContent || "", value: d.querySelector(".modal-input").value,
         ok: d.querySelector(".modal-ok").textContent, okDisabled: d.querySelector(".modal-ok").disabled };
     });
-    record("(a) Hand off... asks what changed in version 1, filled with First hand-off",
+    record("(a) Hand off... asks what changed in version 1, filled with First hand-off; its line says what the zip holds (a recording: with the Technical details)",
       info.title === "Hand off version 1" && info.msg === "What changed in this version?" &&
       info.value === "First hand-off" && info.ok === "Hand off" && !info.okDisabled &&
-      info.detail.startsWith("Order entry v1.zip is made next to the project folder"), JSON.stringify(info));
+      info.detail === "Order entry v1.zip is made next to the project folder: the whole project, with the PDD, the Technical details and the process map of version 1.",
+      JSON.stringify(info));
     await shotsBothThemes(page, "handoff-dialog", size);
     await dlg.$eval(".modal-ok", (b) => { b.click(); return true; });
     const zipShown = await waitFor(async () => (await shown()).includes(ZIP1) && fs.existsSync(ZIP1), 180000, 300);
@@ -309,11 +351,40 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     const files = zipFiles(fs.readFileSync(ZIP1));
     const names = Object.keys(files);
     const root = path.basename(SESSION) + "/";
-    record("(a) the zip holds the project folder and, at its root, the PDD and the Technical details of version 1",
+    const atRoot = names.filter((n) => !n.includes("/"));
+    record("(a) the zip holds the project folder and, at its root, the PDD, the Technical details, the map as a picture and as BPMN, and Start here.txt of version 1",
       names.includes(root + "manifest.json") && names.includes(root + "events.jsonl") &&
-      names.includes("Order entry v1 PDD.docx") && names.includes("Order entry v1 Technical details.xlsx") &&
-      names.filter((n) => !n.includes("/")).length === 2, names.filter((n) => !n.startsWith(root)).join(", "));
+      JSON.stringify(atRoot) === JSON.stringify(["Order entry v1 PDD.docx", "Order entry v1 Technical details.xlsx",
+        "Order entry v1 map.svg", "Order entry v1 map.bpmn", "Start here.txt"]), atRoot.join(", "));
+    const svgText = files["Order entry v1 map.svg"] ? files["Order entry v1 map.svg"].toString("utf8") : "";
+    const bpmnText = files["Order entry v1 map.bpmn"] ? files["Order entry v1 map.bpmn"].toString("utf8") : "";
+    record("(a) the map files are the main map as Process map (image) draws it and the file Process map (BPMN) saves",
+      /<svg[\s>]/.test(svgText) && svgText.trim().endsWith("</svg>") && svgText.length > 1000 &&
+      bpmnText === fs.readFileSync(path.join(SESSION, "process_map_step.bpmn"), "utf8"),
+      JSON.stringify({ svg: svgText.slice(0, 60), svgEnd: svgText.trim().slice(-6), bpmn: bpmnText.length,
+        sameBpmn: bpmnText === fs.readFileSync(path.join(SESSION, "process_map_step.bpmn"), "utf8") }));
+    const startHere = files["Start here.txt"] ? files["Start here.txt"].toString("utf8") : "";
+    const wantNote = require(path.join(VIEWER, "handoff.js")).startHereText({ base: "Order entry", version: 1, entry: entry1,
+      folder: path.basename(SESSION), has: { tech: true, mapSvg: true, mapBpmn: true } });
+    record("(a) Start here.txt names the version and says what each file is, in the zip's own names",
+      startHere === wantNote && startHere.startsWith("Order entry: version 1, handed off " + entry1.handed_off_at.slice(0, 10) + " by " + entry1.by + "\r\n"),
+      JSON.stringify(startHere.slice(0, 300)));
+    // What a reader does not need stays out of the project folder in the zip.
+    const backups = fs.readdirSync(SESSION).filter((n) => /^annotations\.json\.[2-5]$/.test(n));
+    const leftOut = names.filter((n) => n.startsWith(root) && (/^annotations\.json\.[2-5]$/.test(n.slice(root.length)) ||
+      n.slice(root.length) === "normalize.log" || /\.pdt-staged$|\.zip\.building$/.test(n)));
+    record("(a) the project folder in the zip leaves out the working file's backups and the analysis log (the folder has them)",
+      backups.length >= 1 && leftOut.length === 0 && names.includes(root + "annotations.json"),
+      JSON.stringify({ backups, log: fs.existsSync(path.join(SESSION, "normalize.log")), leftOut }));
     const inZip = JSON.parse(files[root + "annotations.json"].toString("utf8"));
+    await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: T });
+    const handoffStage = await page.waitForFunction(() => {
+      const li = document.querySelector('#ov-next .ov-next-stage[data-stage="handoff"]');
+      const ready = document.querySelector("#ov-next.ov-next-ready");
+      return li ? (li.classList.contains("done") ? "done" : null) : ready ? "ready" : null;
+    }, null, { timeout: T }).then((h) => h.jsonValue()).catch(() => null);
+    record("(a) the Checklist ticks Hand off once version 1 is handed off", handoffStage === "done" || handoffStage === "ready",
+      String(handoffStage));
     record("(a) the project inside the zip carries its version entry", (inZip.handoffs || []).length === 1 &&
       inZip.handoffs[0].handed_off_at === entry1.handed_off_at);
     const line1 = "Version 1, handed off " + entry1.handed_off_at.slice(0, 10) + " by " + entry1.by;

@@ -48,11 +48,52 @@ test("the line a version says, in the PDD's words, and the read-only project lin
   assert.equal(H.readOnlyLine(null), "Read only");
 });
 
-test("the files of a hand-off: the zip, and at its root the PDD and the Technical details", () => {
+test("the files of a hand-off: the zip, and at its root the PDD, the Technical details, the map files and Start here.txt", () => {
   assert.deepEqual(H.fileNames("Order entry", 2), {
     stem: "Order entry v2", zip: "Order entry v2.zip",
     pdd: "Order entry v2 PDD.docx", tech: "Order entry v2 Technical details.xlsx",
+    mapSvg: "Order entry v2 map.svg", mapBpmn: "Order entry v2 map.bpmn", startHere: "Start here.txt",
   });
+  assert.equal(H.fileNames('Order: "entry"', 1).mapSvg, "Order entry v1 map.svg", "the name made safe, as the others");
+});
+
+const VIEWER_LINES = [
+  "To look through the project (play each step, see its screenshots and what was said), open the",
+  'Process Discovery Tracker viewer, choose Open, then "Open a hand-off (.zip)...", and pick this',
+  "zip. It opens read only.",
+];
+
+test("Start here.txt says what each file in the zip is, its second column lined up, in CRLF lines", () => {
+  const text = H.startHereText({ base: "Order entry", version: 2, folder: "sess-0514",
+    entry: { version: 2, handed_off_at: "2026-11-09T15:30:00.000Z", by: "rasha", note: "x" },
+    has: { tech: true, mapSvg: true, mapBpmn: true } });
+  assert.ok(text.endsWith("\r\n"));
+  assert.ok(!/[^\r]\n/.test(text), "every line ends in CRLF");
+  assert.deepEqual(text.split("\r\n"), [
+    "Order entry: version 2, handed off 2026-11-09 by rasha",
+    "",
+    "In this zip:",
+    "  Order entry v2 PDD.docx                 The process written down. Read this first.",
+    "  Order entry v2 Technical details.xlsx   For developers: the recorded controls, the data fields and the values of every transaction.",
+    "  Order entry v2 map.svg                  The process map as a picture. It opens in a browser.",
+    "  Order entry v2 map.bpmn                 The process map as BPMN 2.0, for ADONIS, Camunda, Bizagi and similar tools.",
+    "  sess-0514\\                              The whole project: the video, the screenshots, the attachments and the work behind the document.",
+    "",
+  ].concat(VIEWER_LINES, [""]));
+});
+
+test("Start here.txt lists only the files the zip holds: without the Technical details and the maps, the PDD and the folder", () => {
+  const text = H.startHereText({ base: "Call notes", version: 1, folder: "Call notes", entry: null, has: {} });
+  assert.deepEqual(text.split("\r\n"), [
+    "Call notes: version 1",
+    "",
+    "In this zip:",
+    "  Call notes v1 PDD.docx   The process written down. Read this first.",
+    "  Call notes\\              The whole project: the video, the screenshots, the attachments and the work behind the document.",
+    "",
+  ].concat(VIEWER_LINES, [""]));
+  const maps = H.startHereText({ base: "Call notes", version: 1, folder: "Call notes", entry: null, has: { mapBpmn: true } });
+  assert.ok(maps.includes("map.bpmn") && !maps.includes("map.svg") && !maps.includes("Technical details"));
 });
 
 test("a project name is made safe for Windows: no refused character, no dot or space at the end, not too long", () => {
@@ -78,4 +119,12 @@ test("the analysis run for a hand-off passes the workbook and the version, --lib
     ["n.py", "S", "--pdd-out", "o.docx", "--tech-out", "t.xlsx", "--handoff", "2", "--library", "L"]);
   const plain = buildNormalizeArgs("n.py", { sessionFolder: "S", handoff: 0 });
   assert.ok(!plain.includes("--handoff") && !plain.includes("--tech-out"), "no version 0, no workbook asked for");
+});
+
+test("the hand-off dialog says what the zip holds: the Technical details only where something was recorded", () => {
+  const { detailLine } = require("./views/handoff-ui.js");
+  assert.equal(detailLine("Order entry v2.zip", 2, true),
+    "Order entry v2.zip is made next to the project folder: the whole project, with the PDD, the Technical details and the process map of version 2.");
+  assert.equal(detailLine("Call v1.zip", 1, false),
+    "Call v1.zip is made next to the project folder: the whole project, with the PDD and the process map of version 1.");
 });

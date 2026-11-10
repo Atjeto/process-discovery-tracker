@@ -69,6 +69,12 @@
  *         video and annotations.json among its entries), as "Order call.zip"
  *         next to it, shown in its folder; a second one is
  *         "Order call (2).zip"; the Help line.
+ *   From a video to one zip (E1 to E5), another video project: it opens on
+ *     the Timeline; its Checklist reads Add the steps, Write the steps,
+ *     Write the document, Hand off, each button landing on its act; no
+ *     Confirm anywhere; Hand off... from the Checklist makes the zip (its
+ *     root, Start here.txt, the backups and the log left out of the
+ *     folder), and the line then names the version and its date.
  *   Zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -692,8 +698,11 @@ function zipFiles(buf) {
     h.panelBefore = await page.evaluate(() => !document.getElementById("step-panel").hidden);
     await newProject("#btn-new-from-video");
     await opened(VPROJ);
-    h.panelAfter = await page.evaluate(() => ({ hidden: document.getElementById("step-panel").hidden, level: require("./state.js").getLevel() }));
+    h.panelAfter = await page.evaluate(() => ({ hidden: document.getElementById("step-panel").hidden }));
     await settled();
+    // A project made from a video opens on the Timeline, where its work starts.
+    h.levelOpened = await page.evaluate(() => ({ level: require("./state.js").getLevel(),
+      lit: (document.querySelector(".view-mode-btn.active") || { dataset: {} }).dataset.level }));
     await level("flow");
     await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 30000 });
     h.manifest = readJson(path.join(VPROJ, "manifest.json"));
@@ -710,9 +719,10 @@ function zipFiles(buf) {
     !h.err && h.manifest.source === "video" && h.video.path === "video/" + path.basename(VIDEO) && h.video.offset_ms === 0 && h.copied &&
       h.span && Math.abs((h.span.endMs - h.span.startMs) - 31900) < 2500 && h.tl.bands === 0 && h.tl.ticks > 2 && h.tl.sync && h.tl.step,
     JSON.stringify(h));
-  record("(h2) lane FX2: the step panel, open on a step of the empty project, closes as the video project opens (at the same level)",
-    !h.err && h.panelBefore === true && !!h.panelAfter && h.panelAfter.hidden === true && h.panelAfter.level === "steps",
-    JSON.stringify({ before: h.panelBefore, after: h.panelAfter }));
+  record("(h2) lane FX2: the step panel, open on a step of the empty project, closes as the video project opens, and the video project opens on the Timeline",
+    !h.err && h.panelBefore === true && !!h.panelAfter && h.panelAfter.hidden === true &&
+      !!h.levelOpened && h.levelOpened.level === "flow" && h.levelOpened.lit === "flow",
+    JSON.stringify({ before: h.panelBefore, after: h.panelAfter, opened: h.levelOpened }));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-video.png") }).catch(() => {});
 
   // (h3) Lane FX3: a project made from a video draws its Timeline with its
@@ -1337,7 +1347,11 @@ function zipFiles(buf) {
     });
     p.item = await page.evaluate(() => {
       const b = document.getElementById("btn-session-zip");
-      return b && { text: b.textContent, inExport: !!b.closest("#session-export-popup"), last: b === b.parentElement.lastElementChild };
+      // Under its heading, For another analyst.
+      let head = b && b.previousElementSibling;
+      while (head && !head.classList.contains("project-menu-heading")) head = head.previousElementSibling;
+      return b && { text: b.textContent, inExport: !!b.closest("#session-export-popup"),
+        heading: head ? head.textContent.trim() : null };
     });
     await zipVia("Order call.zip");
     p.shown = await app.evaluate(() => global.__shown.slice());
@@ -1358,18 +1372,151 @@ function zipFiles(buf) {
     p.itemAfter = await page.evaluate(() => { const b = document.getElementById("btn-session-zip"); return { text: b.textContent, disabled: b.disabled }; });
     p.help = await page.evaluate(() => {
       const t = ((document.querySelector('.help-section[data-section="start"]') || {}).textContent || "").replace(/\s+/g, " ");
-      return /Every change you make saves itself to the project folder/.test(t) && /To hand the project to someone, use Export, Whole project \(\.zip\)/.test(t);
+      return /Every change you make saves itself to the project folder/.test(t) && /To hand the project to another analyst, use Export, Whole project \(\.zip\)/.test(t);
     });
   } catch (x) { p.err = errText(x); }
   record("(v) Export, Whole project (.zip): 'Order call.zip' next to the folder holds the whole folder byte for byte (annotations.json with the last edit, the video); Export is busy while it is made, " +
     "then its folder opens with the zip selected; a second export makes 'Order call (2).zip' and leaves the first as it was; Help says how a project is handed over",
-    !p.err && p.item && p.item.text === "Whole project (.zip)" && p.item.inExport && p.item.last &&
+    !p.err && p.item && p.item.text === "Whole project (.zip)" && p.item.inExport && p.item.heading === "For another analyst" &&
       p.whole && p.sameBytes && p.anno === DOC.trigger && p.video &&
       JSON.stringify(p.nextTo) === '["Order call.zip"]' && p.shown.length === 1 && path.resolve(p.shown[0]) === path.resolve(ZIP1) &&
       JSON.stringify(p.busy) === '["true","false"]' &&
       p.second && p.firstKept && p.itemAfter.text === "Whole project (.zip)" && !p.itemAfter.disabled && p.help,
     JSON.stringify(p));
 
+  // ================= E. From a video to one zip: the Checklist fits the project =================
+  // A project made from a video opens on the Timeline; its Checklist reads
+  // Add the steps, Write the steps, Write the document, Hand off, each
+  // button taking the analyst to the act; Confirm is asked nowhere; the
+  // hand-off zip's root holds what a reader needs, its project folder
+  // leaves out the backups and the log; the Checklist then names the version.
+  {
+    const EPROJ = path.join(TMP, "Call checklist");
+    const EZIP = path.join(TMP, "Order to cash call v1.zip");
+    const E = { selected: [] };
+    const checklist = () => page.evaluate(() => {
+      const line = document.getElementById("ov-next");
+      const b = document.getElementById("btn-ov-next");
+      return line ? { next: line.dataset.next, stages: [...line.querySelectorAll(".ov-next-stage")].map((li) => li.dataset.stage),
+        labels: [...line.querySelectorAll(".ov-next-stage")].map((li) => li.textContent.replace("✓", "").trim()),
+        done: [...line.querySelectorAll(".ov-next-stage.done")].map((li) => li.dataset.stage),
+        button: b ? b.textContent.trim() : null, act: b ? b.dataset.nextAct : null,
+        say: ((line.querySelector(".ov-next-say") || {}).textContent || "").trim(),
+        ready: ((line.querySelector(".ov-next-ready-text") || {}).textContent || "").trim() } : null;
+    });
+    const getLevel = () => page.evaluate(() => require("./state.js").getLevel());
+    const FULL = { title: "Order to cash call", purpose: "Hand the order call over to the team", scope: "From the call to the sales order",
+      trigger: "A customer calls the order desk", result: "A sales order", contacts: "The order desk lead",
+      business_rules: "Every order needs a customer number", exceptions: "A new customer is created first",
+      effort: "About 20 calls a day, 4 minutes each", improvement: "Read the order from the call notes" };
+    try {
+      await stubOpen(VIDEO);
+      await stubSave(EPROJ);
+      await newProject("#btn-new-from-video");
+      await opened(EPROJ);
+      await settled();
+      E.level = await getLevel();
+      await level("overview");
+      E.first = await checklist();
+      await page.click("#btn-ov-next");
+      await wait(400);
+      E.afterFirst = await getLevel();
+      // Two steps, at two moments of the video.
+      for (const [k, f] of [[1, 0.25], [2, 0.6]]) {
+        await rightClickItem(f, "Add a step here");
+        await page.waitForFunction((n) => (require("./state.js").getSession().annotations.steps || []).length === n, k, { timeout: T });
+      }
+      await level("overview");
+      E.added = await checklist();
+      // Write the steps in Steps opens Steps on the first step without a name
+      // of its own or a description: name and describe it, twice.
+      for (const [name, desc] of [["Take the call", "Note who calls and what they order."], ["Enter the order", "Type the order into Order Desk."]]) {
+        await level("overview");
+        await page.click("#btn-ov-next");
+        await page.waitForFunction(() => require("./state.js").getLevel() === "steps" && !!require("./state.js").getSelectedStepId(), null, { timeout: T });
+        await wait(400);
+        const sid = await page.evaluate(() => require("./state.js").getSelectedStepId());
+        E.selected.push(sid);
+        await page.fill("#step-name", name);
+        await page.press("#step-name", "Enter");
+        await page.locator("#step-desc").fill(desc);
+        await page.locator("#step-desc").press("Tab");
+        await page.waitForFunction(([s, n, d]) => {
+          const st = (require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === s);
+          return !!st && st.name === n && st.description === d;
+        }, [sid, name, desc], { timeout: T });
+        if (E.selected.length === 1) { await level("overview"); E.oneWritten = await checklist(); }
+      }
+      await level("overview");
+      E.written = await checklist();
+      for (const [key, value] of Object.entries(FULL)) await docField(key, value);
+      await wait(400);
+      E.ready = await checklist();
+      // Steps: no Confirm transaction, no draft status, on the reference transaction.
+      await level("steps");
+      await wait(400);
+      E.steps = await page.evaluate(() => ({ confirm: document.querySelectorAll('[data-act="confirm-run"]').length,
+        draft: document.querySelectorAll(".run-status-draft").length,
+        undo: document.querySelectorAll('[data-act="reopen-run"]').length }));
+      // The hand-off from the Checklist's own button.
+      await level("overview");
+      await app.evaluate(({ shell }) => { global.__shownE = []; shell.showItemInFolder = (f) => { global.__shownE.push(f); }; });
+      await page.click("#btn-ov-next");
+      await page.waitForSelector(".modal-prompt .modal-input", { timeout: T });
+      E.dialog = await page.evaluate(() => ((document.querySelector(".modal-prompt .modal-detail") || {}).textContent || "").trim());
+      await page.click(".modal-prompt .modal-ok");
+      const deadline = Date.now() + 180000;
+      while (Date.now() < deadline && !fs.existsSync(EZIP)) await wait(500);
+      await page.waitForFunction(() => !document.getElementById("btn-session-export-menu").classList.contains("busy"), null, { timeout: 180000 });
+      await wait(600);
+      const files = zipFiles(fs.readFileSync(EZIP));
+      const names = Object.keys(files);
+      E.root = names.filter((n) => !n.includes("/"));
+      const top = path.basename(EPROJ) + "/";
+      E.leftOut = names.filter((n) => n.startsWith(top) && (/^annotations\.json\.[2-5]$/.test(n.slice(top.length)) ||
+        n.slice(top.length) === "normalize.log" || /\.pdt-staged$|\.zip\.building$/.test(n)));
+      E.backups = fs.readdirSync(EPROJ).filter((n) => /^annotations\.json\.[2-5]$/.test(n));
+      E.inFolder = names.includes(top + "annotations.json") && names.some((n) => n.startsWith(top + "video/") && !n.endsWith("/"));
+      const entry = (readJson(path.join(EPROJ, "annotations.json")).handoffs || [])[0] || null;
+      E.entry = entry;
+      const tech = E.root.includes("Order to cash call v1 Technical details.xlsx");
+      E.note = files["Start here.txt"] ? files["Start here.txt"].toString("utf8") : "";
+      E.wantNote = entry ? require(path.join(VIEWER, "handoff.js")).startHereText({ base: "Order to cash call", version: 1, entry,
+        folder: path.basename(EPROJ), has: { tech, mapSvg: true, mapBpmn: true } }) : null;
+      E.wantRoot = ["Order to cash call v1 PDD.docx"].concat(tech ? ["Order to cash call v1 Technical details.xlsx"] : [],
+        ["Order to cash call v1 map.svg", "Order to cash call v1 map.bpmn", "Start here.txt"]);
+      E.shown = await app.evaluate(() => global.__shownE.slice());
+      await level("overview");
+      await page.waitForFunction(() => /^Version 1 was handed off on /.test(((document.querySelector("#ov-next .ov-next-ready-text") || {}).textContent || "")),
+        null, { timeout: T }).catch(() => {});
+      E.after = await checklist();
+    } catch (x) { E.err = errText(x); }
+    record("(E1) a project made from a video opens on the Timeline; its Checklist reads Add the steps, Write the steps, Write the document, Hand off, and its button marks the steps on the Timeline",
+      !E.err && E.level === "flow" && !!E.first &&
+      JSON.stringify(E.first.labels) === JSON.stringify(["Add the steps", "Write the steps", "Write the document", "Hand off"]) &&
+      E.first.next === "steps" && E.first.button === "Mark the steps on the Timeline" && E.first.act === "steps-timeline" &&
+      E.first.say === "Play the video and press S, or click + Step, where each step starts." && E.afterFirst === "flow",
+      JSON.stringify({ err: E.err, level: E.level, first: E.first, afterFirst: E.afterFirst }));
+    record("(E2) with steps added, Write the steps counts the steps without a name of their own or a description, and its button opens Steps on the first of them",
+      !E.err && !!E.added && JSON.stringify(E.added.done) === '["steps"]' && E.added.next === "written" &&
+      E.added.button === "Write the steps in Steps" && E.added.say === "2 of 2 steps have no name of their own or no description." &&
+      !!E.oneWritten && E.oneWritten.say === "1 of 2 steps has no name of its own or no description." &&
+      E.selected.length === 2 && E.selected[0] !== E.selected[1] && !!E.written && E.written.next === "document",
+      JSON.stringify({ added: E.added, oneWritten: E.oneWritten, written: E.written, selected: E.selected }));
+    record("(E3) named, described and the document written: the Checklist's one button is Hand off..., and Confirm is asked nowhere (no Confirm transaction, no draft status in Steps)",
+      !E.err && !!E.ready && E.ready.ready === "Everything before the hand-off is done." && E.ready.button === "Hand off..." &&
+      E.ready.act === "handoff" && E.ready.stages.length === 0 && !!E.steps && E.steps.confirm === 0 && E.steps.draft === 0 && E.steps.undo === 0,
+      JSON.stringify({ ready: E.ready, steps: E.steps }));
+    record("(E4) Hand off... from the Checklist: its line says what the zip holds; the zip's root holds the PDD, the map as a picture and as BPMN and Start here.txt (and the Technical details where the pipeline writes them), the project folder leaving out the backups and the log",
+      !E.err && E.dialog === "Order to cash call v1.zip is made next to the project folder: the whole project, with the PDD and the process map of version 1." &&
+      JSON.stringify(E.root) === JSON.stringify(E.wantRoot) && E.note === E.wantNote && E.backups.length >= 1 && E.leftOut.length === 0 &&
+      E.inFolder && E.shown.length === 1 && path.resolve(E.shown[0]) === path.resolve(EZIP),
+      JSON.stringify({ dialog: E.dialog, root: E.root, backups: E.backups, leftOut: E.leftOut, note: E.note.slice(0, 200), shown: E.shown }));
+    record("(E5) after the hand-off the Checklist names the version and its date, with Hand off... again",
+      !E.err && !!E.after && !!E.entry &&
+      E.after.ready === "Version 1 was handed off on " + E.entry.handed_off_at.slice(0, 10) + ". Hand off again after a change." &&
+      E.after.button === "Hand off...", JSON.stringify(E.after));
+  }
   } // end of D.
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));

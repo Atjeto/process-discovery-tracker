@@ -9,7 +9,8 @@
  * root holds one project folder (a manifest.json) whose annotations.json
  * lists at least one hand-off version. Its content is extracted into the
  * viewer's own folder, <userData>/handoffs/<project> v<N>/ (the zip's root
- * there: the project folder, the PDD and the Technical details), and the
+ * there: the project folder, the PDD, the Technical details when the
+ * project recorded anything, the map files and Start here.txt), and the
  * project folder inside opens read only: every folder under
  * <userData>/handoffs is read only (isReadOnlyFolder, within
  * isReadOnlyProject: main.js refuses every write there, and the renderer
@@ -22,10 +23,10 @@
  * own: it just opens, and nothing compares it with the older one.
  *
  * A hand-off unzipped by hand (Windows' Extract All, then Open project on
- * the folder it makes) is read only too: a project folder beside which lie
- * the PDD and the Technical details of the version its annotations.json
- * lists last ("<project> v<N> PDD.docx", "<project> v<N> Technical
- * details.xlsx", as the zip's root holds them) is a hand-off
+ * the folder it makes) is read only too: a project folder beside which lies
+ * the PDD of the version its annotations.json lists last ("<project> v<N>
+ * PDD.docx", as the zip's root holds it, with "<project> v<N> Technical
+ * details.xlsx" when there is one) is a hand-off
  * (isReadOnlyProject, the rule main refuses writes by).
  *
  * Extraction is careful with what it is given: an entry that would land
@@ -76,9 +77,10 @@ function isReadOnlyFolder(userData, folder) {
 }
 
 /* The PDD and the Technical details beside the project folder `folder` of a
-   hand-off unzipped by hand: { pdd, tech } (their paths) for the version its
-   annotations.json lists last, or null when they are not both there (or the
-   project lists no version). */
+   hand-off unzipped by hand: { pdd, tech } (their paths; tech null when the
+   hand-off came without one, nothing having been recorded in the project)
+   for the version its annotations.json lists last, or null when its PDD is
+   not there (or the project lists no version). */
 function unzippedHandoffFiles(folder, fs = nodeFs) {
   const root = path.resolve(String(folder || ""));
   const parent = path.dirname(root);
@@ -95,7 +97,7 @@ function unzippedHandoffFiles(folder, fs = nodeFs) {
   const stem = " v" + latest.version;
   const pdd = names.find((n) => n.endsWith(stem + " PDD.docx"));
   const tech = names.find((n) => n.endsWith(stem + " Technical details.xlsx"));
-  return pdd && tech ? { pdd: path.join(parent, pdd), tech: path.join(parent, tech) } : null;
+  return pdd ? { pdd: path.join(parent, pdd), tech: tech ? path.join(parent, tech) : null } : null;
 }
 
 /* Whether the project folder `folder` opens read only: a hand-off opened
@@ -188,10 +190,11 @@ function _json(buf) {
 
 /* What the zip holds: { top (the project folder's name), entries (their
    safe names), manifest, annotations, latest (the newest hand-off entry),
-   pdd, tech (the root's PDD and Technical details of that version) }.
-   Throws a HandoffOpenError with the sentence to show when it is no
-   hand-off. A hand-off carries both documents of the version its project
-   lists last (handoff-zip.js), as one unzipped by hand has them beside it
+   pdd, tech (the root's PDD and Technical details of that version, tech
+   null when the zip has none) }. Throws a HandoffOpenError with the sentence
+   to show when it is no hand-off. A hand-off carries the PDD of the version
+   its project lists last and, when something was recorded, its Technical
+   details (handoff-zip.js), as one unzipped by hand has them beside it
    (unzippedHandoffFiles); the Whole project zip of a project handed off
    before carries neither: a working copy, never shown as a version. */
 async function inspectHandoff(zipPath) {
@@ -220,7 +223,7 @@ async function inspectHandoff(zipPath) {
     };
     const stem = " v" + latest.version;
     const pdd = rootFile(stem + " PDD.docx"), tech = rootFile(stem + " Technical details.xlsx");
-    if (!pdd || !tech) throw new HandoffOpenError(NOT_A_HANDOFF);
+    if (!pdd) throw new HandoffOpenError(NOT_A_HANDOFF);
     return { top, entries, manifest, annotations, latest, pdd, tech };
   } finally {
     await fh.close();

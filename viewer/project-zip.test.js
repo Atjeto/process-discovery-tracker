@@ -207,3 +207,24 @@ test("the sentences the analyst reads when the zip was not made, and the size", 
   assert.strictEqual(PZ.humanSize(840 * 1024), "840 KB");
   assert.strictEqual(PZ.humanSize(1.25 * 1024 * 1024 * 1024), "1.3 GB");
 });
+
+test("zipFolder's optional leaveOut leaves out the paths it names (the hand-off's rule); without it the zip is the whole folder", async () => {
+  const { zipFolder } = require("./zip-folder.js");
+  const base = tmpBase();
+  try {
+    const root = makeProject(base);
+    const top = path.basename(root) + "/";
+    const asked = [];
+    const r = await zipFolder(root, path.join(base, "some.zip"), (rel) => { asked.push(rel); return rel === "annotations.json.2" || rel === "transcript/"; });
+    const names = readZip(r.zipPath).map((e) => e.name);
+    assert.ok(!names.includes(top + "annotations.json.2"));
+    assert.ok(!names.some((n) => n.startsWith(top + "transcript/")), "a folder left out goes with its files");
+    assert.ok(names.includes(top + "transcript.json") && names.includes(top + "obs/"));
+    assert.ok(asked.includes("attachments/order email.txt") && !asked.includes("transcript/meeting.vtt"));
+    const whole = readZip((await zipFolder(root, path.join(base, "whole.zip"))).zipPath).map((e) => e.name)
+      .filter((n) => !n.endsWith("/")).sort();
+    assert.deepStrictEqual(whole, folderFiles(root));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

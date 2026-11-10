@@ -87,6 +87,27 @@ version is delivered." The owner is asleep; the session is fully autonomous.
 
 Shared files: contracts `.claude/agent-findings/2026-09-23_ba-helper-contracts.md`; cut map `.claude/agent-findings/2026-09-23_ba-helper-cut-map.md`.
 
+## End-goal cycle (started 2026-11-10)
+
+Plan of record for this cycle: `docs/To-Do/END-GOAL-REVIEW-AND-PLAN-2026-11-10.md`
+(approved to start 2026-11-10; its section 8 lists the owner's facts, 1 and 2
+answered: a call's video is the common start, the handwork is what the app
+replaces). Terms the owner chose: agents build on a branch, the coordinator
+reviews, runs the tests the change touches, commits and fast-forwards master
+per item; a build and a release only on the owner's word. Order: plan 5.3.
+
+| Lane | Items | Where | Status |
+|---|---|---|---|
+| B7-P | The PDD of a project without a recording has no recorder wording; no Technical details workbook with no row | agent worktree, `normalization/**` only | DONE ed2af8b on local master, not pushed (pytest 681, golden 10 of 10; the worktree and its branch removed). Open for B-V1: `e2e/overview-smoke.js` pins "System, Information entered" (check which project it reads) |
+| B-V1 | B6 a Checklist per kind of project (Confirm only with drafts, Hand off as the last act), B3 Export in three groups, B2 the hand-off zip (no backups or log, the map files and *Start here.txt* at its root), the viewer side of B7 (the workbook may be absent), a video project opening on the Timeline | main checkout, branch `lane-b-viewer`, `viewer/**`, `e2e/**`, docs | launched 2026-11-10 |
+| B-V2 | B1 the readiness list (Checklist and *Hand off...*) | after B-V1 | not started |
+| then | E1, E2, D1, B4; E3 to E6; lane A beside; C1, C2, B5; the rest | | not started |
+
+After both first lanes merge: send B-V1 the PDD-wording pins the pipeline
+lane changed (its report section 5), then walk the video path again with the
+review scripts (the scratch folder named in the plan's Evidence) and compare
+with the 49 acts and the outputs of the plan's 2.2 and 2.3.
+
 ## Lanes and status
 
 | Lane | Track | Content | Status |
