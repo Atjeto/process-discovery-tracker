@@ -1,0 +1,387 @@
+<title>PDT Timeline Workspace</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the timeline is the full-width base of the screen; the screen at the playhead and one pane sit above it. */
+:root{
+  --bg:#faf8f4;--bg-1:#f4f1eb;--bg-2:#ffffff;--bg-3:#f0ebe2;--bg-4:#e6e0d5;--line:#ddd5c7;
+  --fg:#2c2418;--fg-2:#635848;--fg-3:#786c5a;
+  --accent:#99591c;--accent-hover:#874d15;--on-accent:#fff8f0;--accent-soft:rgba(192,120,48,.14);--field:#948771;
+  --band:#d7e1e6;--band-line:#7f97a3;--hatch:rgba(44,36,24,.2);--viewer:#12202e;--viewer-fg:#e8eef5;--mark:#ffe08a;--mark-fg:#2c2418;
+  --ui:"Plus Jakarta Sans","Segoe UI",system-ui,sans-serif;--mono:"JetBrains Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#171c2a;--bg-1:#1a2032;--bg-2:#1e2436;--bg-3:#262d40;--bg-4:#2e3548;--line:#39415a;
+  --fg:#e4e7f0;--fg-2:#b4bcce;--fg-3:#98a2bb;
+  --accent:#2dd4bf;--accent-hover:#5ee0d0;--on-accent:#0a2020;--accent-soft:rgba(45,212,191,.14);--field:#66708f;
+  --band:#2b3a52;--band-line:#6a86ad;--hatch:rgba(228,231,240,.2);--viewer:#0c111b;--viewer-fg:#e4e7f0;--mark:#7a5c00;--mark-fg:#fff3c4;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171c2a;--bg-1:#1a2032;--bg-2:#1e2436;--bg-3:#262d40;--bg-4:#2e3548;--line:#39415a;
+  --fg:#e4e7f0;--fg-2:#b4bcce;--fg-3:#98a2bb;
+  --accent:#2dd4bf;--accent-hover:#5ee0d0;--on-accent:#0a2020;--accent-soft:rgba(45,212,191,.14);--field:#66708f;
+  --band:#2b3a52;--band-line:#6a86ad;--hatch:rgba(228,231,240,.2);--viewer:#0c111b;--viewer-fg:#e4e7f0;--mark:#7a5c00;--mark-fg:#fff3c4;color-scheme:dark}
+body{background:var(--bg-1);color:var(--fg);font-family:var(--ui);font-size:14px;line-height:1.5}
+.page{padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1398px;margin:0 auto}
+.intro{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;margin-bottom:12px}
+.intro h1{font-size:18px;font-weight:600;margin:0}
+.intro p{margin:0;color:var(--fg-2);font-size:13px;flex:1 1 320px;min-width:0}
+.seg{display:inline-flex;border:1px solid var(--field);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--bg-2);padding:6px 12px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.fit{width:100%;max-width:1368px;margin:0 auto;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.app{width:1366px;height:768px;transform-origin:0 0;display:grid;grid-template-rows:44px minmax(0,1fr) auto;position:relative;background:var(--bg);font-size:13px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--bg-2);border:1px solid var(--field);border-radius:5px;padding:5px 10px;cursor:pointer;min-height:30px}
+button:hover{background:var(--bg-3)}
+button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
+button.primary:hover{background:var(--accent-hover)}
+button.quiet{border-color:transparent;background:transparent;color:var(--accent);text-decoration:underline;text-underline-offset:3px;padding:4px 6px}
+button[aria-disabled="true"]{opacity:.55;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select,textarea{background:var(--bg-2);border:1px solid var(--field);border-radius:5px;padding:5px 8px;min-height:30px}
+kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:3px;padding:0 4px;color:var(--fg-2);background:var(--bg-2)}
+.top{display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.proj{font-weight:600}.proj small{font-weight:400;color:var(--fg-3);margin-left:6px;font-size:12px}
+.nav{display:flex;gap:2px;margin-left:8px}
+.nav button{border-color:transparent;background:transparent}
+.nav button[aria-current="page"]{background:var(--accent);color:var(--on-accent);font-weight:600}
+.grow{flex:1}
+.next{border-color:var(--accent);color:var(--fg);background:var(--accent-soft)}
+.saved{color:var(--fg-3);font-size:12px}
+.stage{display:flex;gap:12px;padding:12px;min-height:0}
+.viewer{height:100%;aspect-ratio:16/9;flex:none;background:var(--viewer);color:var(--viewer-fg);border-radius:6px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.v-clock{position:absolute;left:10px;top:10px;font-family:var(--mono);font-size:13px;background:rgba(0,0,0,.55);color:#fff;padding:2px 8px;border-radius:4px}
+.v-src{position:absolute;right:10px;top:10px;font-size:12px;background:rgba(0,0,0,.55);color:#fff;padding:2px 8px;border-radius:4px}
+.v-win{margin:48px 56px 0;flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:6px 6px 0 0;padding:14px 18px;display:flex;flex-direction:column;gap:10px}
+.v-app{font-family:var(--mono);font-size:12px;opacity:.8}
+.v-title{font-size:20px;font-weight:600}
+.v-bar{height:10px;border-radius:3px;background:rgba(255,255,255,.14)}
+.v-cap{min-height:44px;padding:8px 14px;background:rgba(0,0,0,.6);color:#fff;font-size:13px;text-align:center}
+.v-aside{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;font-weight:600}
+.viewer.aside .v-aside{display:flex}
+.pane{flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;gap:4px;padding:6px 8px 0;border-bottom:1px solid var(--line)}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:6px 9px;color:var(--fg-2);white-space:nowrap}
+.tabs button[aria-selected="true"]{border-bottom-color:var(--accent);color:var(--fg);font-weight:600}
+.pbody{flex:1;min-height:0;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.ptools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hint{color:var(--fg-2);font-size:12.5px;background:var(--accent-soft);border-radius:5px;padding:6px 10px}
+.rows{display:flex;flex-direction:column;gap:2px}
+.rw{display:flex;gap:6px;align-items:center}
+.rw .row{flex:1;min-width:0}
+.rw>button:last-child:not(.row){white-space:nowrap}
+.gh{display:flex;gap:8px;align-items:center;margin-top:6px;font-weight:600}
+.gh small{font-weight:400;color:var(--fg-3)}
+.row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:8px;align-items:center;text-align:left;border-color:transparent;padding:6px 8px;min-height:40px}
+.row[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.row .n{font-family:var(--mono);color:var(--fg-3);font-size:12px}
+.row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .meta{display:block;color:var(--fg-3);font-size:12px}
+.row .when{font-family:var(--mono);font-size:12px;color:var(--fg-2);white-space:nowrap}
+.row.now .n::before{content:"\25B8 ";color:var(--accent)}
+.chip{display:inline-block;font-size:12px;border:1px solid var(--field);border-radius:10px;padding:0 7px;color:var(--fg-2);margin-left:6px;white-space:nowrap}
+.chip.todo{border-style:dashed}
+.dhead{display:flex;gap:6px;align-items:center}
+.dhead .pos{color:var(--fg-3);font-size:12px;margin-left:auto}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label,.lbl{font-size:12px;color:var(--fg-2);font-weight:600}
+#f-name{font-size:16px;font-weight:600}
+textarea{resize:vertical;min-height:64px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fact{font-family:var(--mono);font-size:12px;color:var(--fg-2);padding-top:6px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.shot{display:flex;flex-direction:column;gap:4px;padding:4px;text-align:left;font-size:12px}
+.shot i{display:block;aspect-ratio:16/9;background:var(--viewer);border-radius:3px}
+.shot span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.said{display:flex;flex-direction:column;gap:4px}
+.said div{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--fg-2)}
+.said div span{flex:1;min-width:0}
+.pic{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--fg-2)}
+.pic i{display:block;width:96px;height:54px;border-radius:4px;background:var(--viewer);flex:none}
+.tr{display:grid;grid-template-columns:52px minmax(0,1fr);align-items:start;gap:8px;padding:5px 6px;border-radius:5px;border-left:3px solid transparent}
+.tr.cur{background:var(--accent-soft);border-left-color:var(--accent)}
+.tr .tt{font-family:var(--mono);font-size:12px;padding:2px 4px;min-height:24px;border-color:transparent;background:transparent;color:var(--accent);text-decoration:underline}
+.tr .who{font-weight:600;font-size:12px;color:var(--fg-2)}
+.tr .acts{visibility:hidden;white-space:nowrap}
+.tr:hover .acts,.tr:focus-within .acts,.tr.cur .acts{visibility:visible}
+.tr .acts button{min-height:24px;padding:0 8px;font-size:12px;margin-left:4px}
+mark{background:var(--mark);color:var(--mark-fg);border-radius:2px;padding:0 1px}
+.gap{font-size:12.5px;color:var(--fg-2);border:1px dashed var(--field);border-radius:5px;padding:6px 10px;display:flex;gap:10px;align-items:center;background:repeating-linear-gradient(135deg,transparent 0 6px,var(--hatch) 6px 7px)}
+.tl{border-top:1px solid var(--line);background:var(--bg-2);padding:0 12px 8px}
+.tl-head{display:flex;align-items:center;gap:8px;height:46px}
+.tl-head .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.clock{font-family:var(--mono);min-width:118px;text-align:center}
+.tl-body{display:grid;grid-template-columns:132px minmax(0,1fr);border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--bg-3)}
+.lab{display:flex;align-items:center;padding:0 8px;white-space:nowrap;font-size:12px;font-weight:600;color:var(--fg-2);border-bottom:1px solid var(--line);border-right:1px solid var(--line);background:var(--bg-1)}
+.tl-scroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.canvas{position:relative;cursor:text;overflow:hidden}
+.lane{position:relative;border-bottom:1px solid var(--line)}
+.h-ruler{height:24px}.h-tx{height:26px}.h-steps{height:44px}.h-sys{height:26px}.h-said{height:26px}.h-video{height:22px}.h-marks{height:22px}
+.tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);padding-left:4px;font-family:var(--mono);font-size:12px;color:var(--fg-3);line-height:24px}
+.band{position:absolute;top:4px;bottom:4px;border:1px solid var(--band-line);border-radius:4px;background:var(--band);color:var(--fg);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;padding:0 6px;min-height:0;text-align:left;line-height:1.2}
+.band b{font-family:var(--mono);font-weight:500;margin-right:5px}
+button.band:hover{background:var(--band);filter:brightness(1.06)}
+.h-steps .band{white-space:normal;line-height:1.25;padding:1px 6px}
+.band.sel{outline:3px solid var(--accent);outline-offset:-1px;font-weight:600}
+.band.draft{border-style:dashed;border-width:2px}
+.band.open{border-right:0;border-radius:4px 0 0 4px;-webkit-mask-image:linear-gradient(90deg,#000 55%,transparent);mask-image:linear-gradient(90deg,#000 55%,transparent)}
+.band.ghost{border-style:dashed;background:transparent;color:var(--fg-3)}
+span.band{display:flex;align-items:center}
+.band.flat{background:var(--bg-4);border-color:var(--line);color:var(--fg-2);font-size:12px}
+.sent{position:absolute;top:7px;height:12px;border-radius:2px;background:var(--band-line);border:0;padding:0;min-height:0}
+.sent.hit{background:var(--accent);top:3px;height:20px}
+.pin{position:absolute;top:4px;padding:0;min-height:0;width:14px;height:14px;border-radius:3px;background:var(--viewer);border:1px solid var(--band-line)}
+.pin.note{border-radius:50%;background:var(--mark)}
+.ph{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);pointer-events:none;z-index:3}
+.ph::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;border-top-color:var(--accent)}
+.asd,.rng{position:absolute;top:24px;bottom:0;z-index:2}
+.asd{background:repeating-linear-gradient(135deg,var(--bg-3) 0 6px,var(--hatch) 6px 8px);opacity:.92;border-left:1px dashed var(--fg-3);border-right:1px dashed var(--fg-3);display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--fg);overflow:hidden;white-space:nowrap}
+.asd button{min-height:24px;padding:1px 8px;font-size:12px}
+.rng{background:var(--accent-soft);border-left:2px solid var(--accent);border-right:2px solid var(--accent);pointer-events:none}
+.over{position:relative;height:12px;margin:6px 0 0 132px;background:var(--bg-3);border-radius:6px;overflow:hidden;cursor:pointer}
+.over i{position:absolute;top:3px;height:6px;background:var(--band-line);border-radius:2px}
+.over .oa{top:0;height:12px;background:repeating-linear-gradient(135deg,transparent 0 3px,var(--hatch) 3px 5px);border-radius:0}
+.over .win{top:0;height:12px;background:transparent;border:2px solid var(--accent);border-radius:6px;box-sizing:border-box}
+.menu{position:absolute;z-index:20;background:var(--bg-2);border:1px solid var(--field);border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:200px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.menu button{border-color:transparent;text-align:left}
+.menu label{display:flex;gap:8px;align-items:center;padding:4px 8px}
+.menu p{margin:2px 8px;font-size:12.5px;color:var(--fg-2)}
+.status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg-2);font-size:12.5px;padding:0 8px;text-align:right}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-top:22px}
+.notes h2{font-size:14px;font-weight:600;margin:0 0 6px}
+.notes ol,.notes ul{margin:0;padding-left:20px;color:var(--fg-2);font-size:13.5px}
+.notes li{margin-bottom:5px}
+</style>
+
+<div class="page">
+  <div class="intro">
+    <h1>The Timeline as the workspace</h1>
+    <p>A working sketch at laptop size (1366 by 768), with made-up content. It plays ten times faster than a real call. Best on a wide screen.</p>
+    <div class="seg" role="group" aria-label="Kind of project">
+      <button type="button" id="scn-call" aria-pressed="true" data-act="scn" data-v="call">A call's video</button>
+      <button type="button" id="scn-rec" aria-pressed="false" data-act="scn" data-v="rec">A recording</button>
+    </div>
+  </div>
+  <div class="fit" id="fit"><div class="app" id="app">
+    <header class="top">
+      <button type="button" data-act="inert" title="Start a project from a video or from nothing">New</button><button type="button" data-act="inert" title="Open a project folder, a zip or a recent project">Open</button><span class="proj" id="proj"></span>
+      <nav class="nav" aria-label="Levels">
+        <button type="button" data-act="inert">Overview</button>
+        <button type="button" aria-current="page">Timeline</button>
+        <button type="button" data-act="inert">Steps</button>
+        <button type="button" data-act="inert">Map</button>
+      </nav>
+      <span class="grow"></span>
+      <button type="button" class="next" id="next" data-act="checklist" title="Opens the Checklist"></button>
+      <button type="button" data-act="inert" title="Undoes the last change. Key: Ctrl+Z">Undo</button><span class="saved">Saved</span>
+      <button type="button" data-act="inert" title="Hand off to the developers, zip the whole project, or export single files">Export</button><button type="button" data-act="inert" aria-label="Help">?</button>
+    </header>
+    <main class="stage">
+      <section class="viewer" id="viewer" aria-label="The screen at this moment">
+        <span class="v-clock" id="v-clock"></span><span class="v-src" id="v-src"></span>
+        <div class="v-win"><span class="v-app" id="v-app"></span><span class="v-title" id="v-title"></span>
+          <span class="v-bar" style="width:70%"></span><span class="v-bar" style="width:52%"></span><span class="v-bar" style="width:64%"></span><span class="v-bar" style="width:38%"></span></div>
+        <div class="v-cap" id="v-cap" aria-live="off"></div>
+        <div class="v-aside">Not part of the process</div>
+      </section>
+      <section class="pane" aria-label="Steps and transcript">
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" id="tab-steps" data-act="tab" data-v="steps"></button>
+          <button type="button" role="tab" id="tab-said" data-act="tab" data-v="said">Transcript</button>
+          <button type="button" role="tab" id="tab-shots" data-act="tab" data-v="shots"></button>
+          <button type="button" role="tab" id="tab-notes" data-act="tab" data-v="notes"></button>
+          <button type="button" role="tab" id="tab-files" data-act="tab" data-v="files"></button>
+        </div>
+        <div class="pbody" id="pbody"></div>
+      </section>
+    </main>
+    <section class="tl" aria-label="Timeline">
+      <div class="tl-head">
+        <button type="button" id="play" data-act="play" title="Plays or pauses the video. Key: Space" style="min-width:64px">Play</button>
+        <button type="button" class="clock" id="clock" data-act="inert" title="The time since the start of the video. Click to type a time and go there."></button>
+        <select id="speed" aria-label="Playback speed" title="How fast the video plays"><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select>
+        <span class="sep"></span>
+        <button type="button" id="b-step" data-act="step" title="Adds a step that starts at this moment of the video. The step before it ends here. Key: S">Add step</button>
+        <button type="button" data-act="inert" title="Starts a new transaction at this moment of the video. A transaction is one pass through the process.">Start transaction</button>
+        <button type="button" data-act="inert" title="Adds a note at this moment of the video. Notes stay out of the PDD.">Add note</button>
+        <span id="range-acts" hidden><span class="sep" style="display:inline-block;vertical-align:middle"></span>
+          <span id="range-txt" style="font-family:var(--mono);font-size:12px;margin:0 6px"></span>
+          <button type="button" class="primary" data-act="aside" id="b-aside" title="Marks the selected stretch as not part of the process. It is skipped when playing and left out of the transcript. Include again brings it back.">Not part of the process</button>
+          <button type="button" data-act="inert" title="Makes a transaction that starts and ends where the selection does.">Make it a transaction</button>
+          <button type="button" class="quiet" data-act="clear">Clear selection</button></span>
+        <span class="grow status" id="toast" role="status" aria-live="polite"></span>
+        <button type="button" data-act="lanes" id="b-lanes" title="Choose which lanes the timeline shows">Lanes</button>
+        <button type="button" data-act="zoom" data-v="0.5" aria-label="Zoom out" title="Zoom out">&#8722;</button>
+        <button type="button" data-act="zoom" data-v="0" title="Shows the whole length of the timeline">Show all</button>
+        <button type="button" data-act="zoom" data-v="2" aria-label="Zoom in" title="Zoom in">+</button>
+      </div>
+      <div class="tl-body"><div id="labels"></div><div class="tl-scroll" id="scroll"><div class="canvas" id="canvas"></div></div></div>
+      <div class="over" id="over" title="The whole length of the timeline. Click a part to go there."></div>
+    </section>
+  </div></div>
+
+  <div class="notes">
+    <div><h2>Try it, in the order of the work</h2><ol>
+      <li>Find where the invoice is discussed: open Transcript, type "invoice". The matches also light up on the timeline.</li>
+      <li>Click a sentence. The screen and the playhead go there.</li>
+      <li>Mark the price list detour as not part of the process: hold Shift and drag from 15:10 to 41:30 on the timeline (or press <kbd>I</kbd> and <kbd>O</kbd> at the two moments), then choose the button of that name. Play across it.</li>
+      <li>Go to 53:20 and click Starts here on "File the order form in the shared folder". It keeps its place in the list.</li>
+      <li>Click Add step (or press <kbd>S</kbd>) while it plays: the step is added and the call keeps playing. Pause and do it again: its name is ready to type.</li>
+      <li>Click a step on the timeline, write its description, and add a sentence that was said during it.</li>
+    </ol></div>
+    <div><h2>What is different from today</h2><ul>
+      <li>The timeline keeps the full width, always. Nothing opens over it or beside it.</li>
+      <li>One screen, one set of play controls, on the timeline where the playhead is.</li>
+      <li>One pane with a tab for each kind of thing: the steps in the order of the process (also those without a time), the transcript, the screenshots, the notes, the attached files. A click on a lane opens its tab at that item, and a click in a tab goes to its moment. A step opens in place.</li>
+      <li>The Steps lane is the tall one. Step names are readable; a draft is dashed, an open step fades out.</li>
+      <li>A stretch that is not part of the process is hatched through every lane, skipped when playing, and left out of the transcript. Include again brings it back.</li>
+      <li>Every marking act is a button that says what it does, on the timeline or on the step it acts on. Right-click offers the same acts, and nothing is right-click only.</li>
+      <li>The top bar always says the next act of the Checklist.</li>
+      <li>A message reads in the timeline's own row and never covers the work.</li>
+    </ul></div>
+    <div><h2>What this sketch leaves out</h2><ul>
+      <li>Overview, Steps and Map are not drawn. Steps stays the full editor for flow and sub-processes, with the same step fields as here.</li>
+      <li>Dragging a band's side, trimming a video and typing a time work as they do today.</li>
+      <li>The buttons that only show a message here exist in the app already. Which keys Start transaction and Add note get is still open.</li>
+    </ul></div>
+  </div>
+</div>
+
+<script>
+const P=s=>s.split(":").reduce((a,x)=>a*60+ +x,0);
+const fmt=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=String(s%60).padStart(2,"0");return h?h+":"+String(m).padStart(2,"0")+":"+x:m+":"+x};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const $=id=>document.getElementById(id);
+let BASE=1200;const RATE=10,FIELDS=["Trigger","Result","Business rules","Exceptions","Volume and effort"];
+function callData(){const st=(id,name,sys,a,b,desc)=>({id,name,sys,a:a==null?null:P(a),b:b==null?null:P(b),desc:desc||"",tx:0,state:"added"});
+  const said=[["0:20","Ana","Thanks for making the time, Maria. Can you share your screen?"],["6:20","Maria","So it starts when the customer's order comes in by e-mail, with the order form attached."],["7:10","Maria","I open the form and check that it has a customer number and a delivery date."],["9:05","Maria","Then I look the customer up in SAP by the number on the form."],["10:30","Ana","What if the number is missing?"],["10:40","Maria","Then I search by name. It happens maybe once a week."],["12:40","Maria","Before I enter anything I check the credit limit."],["13:30","Maria","If the open items plus this order go over the limit, I have to ask Tom."],["14:20","Tom","Yes, anything over the limit comes to me before it is entered."],["15:10","Tom","Speaking of prices, do you know why the price list is still in Excel?"],["15:40","Maria","Oh, that goes back to 2019. Let me show you the file."],["19:00","Tom","We tried to move it into SAP twice."],["24:30","Maria","This tab is the old discount scheme, nobody uses it."],["31:00","Tom","And the invoice layout changed that year as well."],["38:10","Maria","Anyway. That is the history of the price list."],["41:30","Ana","Let us go back to the order. You checked the credit limit, what next?"],["41:50","Maria","Now I create the sales order and enter the lines from the form."],["44:00","Maria","The price comes from the price list, I type it in by hand."],["46:20","Ana","By hand for every line?"],["46:30","Maria","Every line. A big order has forty lines."],["49:00","Maria","When it is saved I send the confirmation to the customer from Outlook."],["50:10","Maria","I copy the order number into the e-mail by hand as well."],["53:00","Ana","Is there anything you do afterwards that we have not seen?"],["53:20","Maria","I save the order form in the shared folder, under the customer's name."],["55:40","Tom","And when the limit is exceeded she sends me the order by e-mail and waits."],["57:10","Ana","How many orders is that in a week?"],["57:20","Maria","About sixty orders a week, each takes ten to fifteen minutes."],["59:30","Ana","And the invoice, is that part of this?"],["59:40","Maria","No, the invoice is created by finance the next day."]].map(x=>({t:P(x[0]),who:x[1],text:x[2]}));
+  return{key:"call",name:"Order to cash",kind:"from a call's video",dur:P("62:00"),video:"Order call 3 Nov.mp4",tx:[],sys:[],said,
+    screens:[["0:00","Teams","Everyone joins the call"],["6:20","Outlook","Inbox: the customer's order e-mail"],["9:05","SAP","Display customer (XD03)"],["12:40","SAP","Credit management: limit and open items"],["15:10","Excel","Price list 2019 to 2026.xlsx"],["41:30","SAP","Create sales order (VA01)"],["49:00","Outlook","New message: order confirmation"],["53:00","Teams","Questions"]].map(x=>({t:P(x[0]),app:x[1],title:x[2]})),
+    notes:[{t:P("13:30"),text:"Ask Tom for the exact threshold",step:3},{t:P("57:20"),text:"Sixty orders a week: check against last year's numbers"}],files:[{name:"Order form (example).pdf",step:1},{name:"Price list 2026.xlsx"}],
+    steps:[st(1,"Take the order from the e-mail","Outlook","6:20","9:05","The order arrives as an e-mail with the order form attached."),st(2,"Find the customer","SAP","9:05","12:40"),st(3,"Step 3","","12:40","15:10"),st(7,"Ask the team lead when the limit is exceeded","",null,null),st(4,"Enter the order lines","SAP","41:30","49:00"),st(5,"Send the confirmation","Outlook","49:00",null),st(6,"File the order form in the shared folder","",null,null)]}}
+function recData(){const names=[["Outlook: Open message","Outlook",45],["XD03: Display customer","SAP",65],["FD32: Check credit","SAP",50],["VA01: Create order","SAP",140],["Outlook: Send message","Outlook",80]];
+  const steps=[],sys=[];let id=1;[[1,20],[2,430]].forEach(([tx,t0])=>{let t=t0;names.forEach(n=>{steps.push({id:id++,name:n[0],sys:n[1],a:t,b:t+n[2],desc:"",tx,state:tx===1?"draft":"recorded"});const l=sys[sys.length-1];if(l&&l.name===n[1]&&l.b===t)l.b=t+n[2];else sys.push({a:t,b:t+n[2],name:n[1]});t+=n[2]})});
+  return{key:"rec",name:"Order to cash",kind:"recorded by Maria Keller",dur:P("14:00"),video:null,said:[],notes:[],files:[],sys,steps,
+    tx:[{id:1,name:"Order 4711",a:20,b:400,ref:true},{id:2,name:"Order 4712",a:430,b:810}],
+    screens:steps.map(s=>({t:s.a,app:s.sys,title:s.name.split(": ")[1]})).concat([{t:0,app:"Windows",title:"Desktop"}]).sort((a,b)=>a.t-b.t)}}
+let S;
+function reset(k){S={d:k==="rec"?recData():callData(),t:0,playing:false,zoom:1,sel:null,tab:"steps",view:"list",q:"",spk:"",range:null,aside:[],lanes:{tx:1,steps:1,sys:1,said:1,video:1,shots:1,notes:1},nid:20};
+  S.t=S.d.key==="rec"?20:P("6:20");$("scn-call").setAttribute("aria-pressed",k!=="rec");$("scn-rec").setAttribute("aria-pressed",k==="rec");all()}
+const timed=()=>S.d.steps.filter(s=>s.a!=null).sort((a,b)=>a.a-b.a);
+const nextStart=s=>{const n=timed().find(x=>x.a>s.a&&x.tx===s.tx);return n?n.a:null};
+const endOf=s=>s.b!=null?s.b:(nextStart(s)??Math.min(S.d.dur,s.a+S.d.dur*.05));
+const isOpen=s=>s.a!=null&&s.b==null&&nextStart(s)==null;
+const numOf=s=>S.d.steps.filter(x=>x.tx===s.tx).indexOf(s)+1;
+const stepAt=t=>timed().find(s=>t>=s.a&&t<endOf(s));
+const inAside=t=>S.aside.find(r=>t>=r.a&&t<r.b);
+const hereTarget=()=>{const sel=S.d.steps.find(s=>s.id===S.sel);if(sel&&sel.a==null)return sel;return S.d.steps.find(s=>s.a==null)||null};
+const written=()=>S.d.steps.filter(s=>!/^Step \d+$/.test(s.name)&&s.desc.trim()).length;
+function toast(m){const t=$("toast");t.textContent=m;t.title=m;clearTimeout(toast.h);toast.h=setTimeout(()=>{t.textContent="";t.title=""},7000)}
+function all(){$("proj").innerHTML=esc(S.d.name)+"<small>"+esc(S.d.kind)+"</small>";head();pane();tl();frame(true)}
+function head(){const d=S.d,n=d.steps.length,drafts=d.steps.filter(s=>s.state==="draft").length;
+  $("next").textContent=d.key==="rec"?(drafts?"Next: confirm the reference transaction":"Next: write the document"):(n?(written()<n?"Next: write the steps ("+written()+" of "+n+")":"Next: write the document"):"Next: add the steps");
+  $("tab-steps").textContent="Steps ("+n+")";$("tab-steps").setAttribute("aria-selected",S.tab==="steps");$("tab-said").setAttribute("aria-selected",S.tab==="said");[["shots","Screenshots",timed().length],["notes","Notes",d.notes.length],["files","Files",d.files.length]].forEach(x=>{const e=$("tab-"+x[0]);e.textContent=x[1]+" ("+x[2]+")";e.setAttribute("aria-selected",S.tab===x[0])});
+  
+  $("b-step").className=d.key==="call"&&!S.range?"primary":"";
+  $("range-acts").hidden=!S.range;if(S.range){const n=Math.round(S.range.b-S.range.a);$("range-txt").textContent=fmt(S.range.a)+" to "+fmt(S.range.b)+" ("+(n>=60?Math.floor(n/60)+"m "+String(n%60).padStart(2,"0")+"s":n+"s")+")"}
+  $("b-aside").textContent=d.key==="rec"?"Leave out of the analysis":"Not part of the process";$("play").textContent=S.playing?"Pause":"Play";$("play").hidden=!d.video;$("speed").hidden=!d.video}
+function rowHTML(s){const todo=[];if(/^Step \d+$/.test(s.name))todo.push("no name");if(!s.desc.trim())todo.push("no description");
+  return'<div class="rw"><button type="button" class="row" data-step="'+s.id+'"'+(S.sel===s.id?' aria-current="true"':"")+'><span class="n">'+numOf(s)+'</span><span class="nm">'+esc(s.name)+(s.state==="draft"?'<span class="chip todo">Draft</span>':"")+
+    '<span class="meta">'+esc(s.sys||"No system yet")+(todo.length?" · "+todo.join(", "):"")+'</span></span><span class="when">'+(s.a==null?"no time yet":fmt(s.a)+(isOpen(s)?" · open":""))+"</span></button>"+(s.a==null&&S.d.video?'<button type="button" data-act="here" data-v="'+s.id+'" title="Sets the start of this step to the moment the video shows now.">Starts here</button>':"")+"</div>"}
+function listHTML(){const d=S.d,unt=d.steps.filter(s=>s.a==null).length;let h='<div class="ptools"><button type="button" data-act="inert" title="Paste the notes you took: each line becomes a step.">Paste notes...</button>'+
+    (d.key==="rec"&&d.steps.some(s=>s.state==="draft")?'<span class="grow"></span><button type="button" class="primary" data-act="confirm">Confirm transaction</button>':"")+"</div>";
+  if(unt&&d.video)h+='<div class="hint">'+unt+(unt===1?" step has":" steps have")+' no time yet. Go to the moment a step starts in the video, then click Starts here on that step.</div>';
+  if(!d.steps.length)h+='<div class="hint">No steps yet. Play the video and click Add step where each step starts, or paste your notes.</div>';
+  if(d.tx.length)d.tx.forEach(t=>{h+='<div class="gh">'+esc(t.name)+(t.ref?' <span class="chip">Reference</span>':' <small>the same steps as the reference</small>')+'<small style="margin-left:auto;font-family:var(--mono)">'+fmt(t.a)+" to "+fmt(t.b)+'</small></div><div class="rows">'+d.steps.filter(s=>s.tx===t.id).map(rowHTML).join("")+"</div>"});
+  else h+='<div class="rows">'+d.steps.map(rowHTML).join("")+"</div>";return h}
+function detailHTML(s){const d=S.d,grp=d.steps.filter(x=>x.tx===s.tx),i=grp.indexOf(s),said=s.a==null?[]:d.said.filter(x=>x.t>=s.a&&x.t<endOf(s)&&!inAside(x.t)),nx=grp[i+1];
+  return'<div class="dhead"><button type="button" data-act="back">&#8249; All steps</button><button type="button" data-act="go" data-v="-1" '+(i?"":' aria-disabled="true"')+'>Previous</button><button type="button" data-act="go" data-v="1" '+(nx?"":' aria-disabled="true"')+'>Next</button><span class="pos">Step '+(i+1)+" of "+grp.length+(s.state==="draft"?" · Draft":"")+"</span></div>"+
+    '<div class="field"><label for="f-name">Name</label><input id="f-name" value="'+esc(s.name)+'" autocomplete="off"></div>'+
+    '<div class="two"><div class="field"><label for="f-sys">System</label><input id="f-sys" list="syslist" value="'+esc(s.sys)+'" placeholder="SAP"><datalist id="syslist"><option>SAP</option><option>Outlook</option><option>Excel</option><option>Teams</option></datalist></div>'+
+    '<div><span class="lbl">When</span><div class="fact">'+(s.a==null?"No time yet"+(d.video?' <button type="button" class="quiet" data-act="here" title="Sets the start of this step to the moment the video shows now.">Starts here</button>':""):fmt(s.a)+" to "+(isOpen(s)?"open":fmt(endOf(s))))+"</div></div></div>"+
+    (d.tx.length?'<div><span class="lbl">Also happens in</span><div class="said">'+d.steps.filter(x=>x.name===s.name&&x.id!==s.id).map(x=>"<div><span>"+esc(d.tx.find(y=>y.id===x.tx).name)+" at "+fmt(x.a)+'</span><button type="button" class="quiet" data-step="'+x.id+'">Go there</button></div>').join("")+"</div></div>":"")+
+    '<div class="field"><label for="f-desc">Description</label><textarea id="f-desc" placeholder="What the person does in this step">'+esc(s.desc)+"</textarea></div>"+
+    (said.length?'<div><span class="lbl">Said during this step</span><div class="said">'+said.map(x=>'<div><span><b>'+esc(x.who)+":</b> "+esc(x.text)+'</span><button type="button" class="quiet" data-act="todesc" data-t="'+x.t+'">Add to description</button></div>').join("")+"</div></div>":"")+
+    '<div><span class="lbl">Screenshot</span><div class="pic">'+(s.a==null?"No screenshot yet. It is taken when the step gets its moment.":"<i></i><span>The screen at "+fmt(s.a)+'. This one is in the PDD.</span><button type="button" class="quiet" data-act="inert" title="Takes another screenshot for this step in its place.">Replace</button>')+"</div></div>"+
+    (d.notes.some(n=>n.step===s.id)||d.files.some(f=>f.step===s.id)?'<div><span class="lbl">On this step</span><div class="said">'+d.notes.filter(n=>n.step===s.id).map(n=>"<div><span>Note: "+esc(n.text)+"</span></div>").join("")+d.files.filter(f=>f.step===s.id).map(f=>"<div><span>File: "+esc(f.name)+"</span></div>").join("")+"</div></div>":"")+
+    '<div class="ptools"><button type="button" data-act="inert" title="Adds a screenshot to this step: a frame of the video, a pasted image or a file.">Add screenshot</button><button type="button" data-act="inert" title="Adds a note to this step. Notes stay out of the PDD.">Add note</button><button type="button" data-act="inert" title="Attaches a file to this step. It is copied into the project and listed in the PDD.">Attach file...</button></div>'+
+    '<div class="ptools"><span class="lbl">Flow</span><span style="color:var(--fg-2)">Then: '+esc(nx?nx.name:"End")+'</span><button type="button" class="quiet" data-act="inert">Only when...</button><button type="button" class="quiet" data-act="inert">Decision...</button></div><div class="ptools"><button type="button" data-act="inert" title="Makes two steps of this one, at the moment the video shows now.">Split...</button><button type="button" data-act="inert" title="Joins this step and the next into one.">Merge with next</button><button type="button" data-act="inert" title="Takes this step out of the steps, the map and the PDD. It can be shown again.">Hide step</button><button type="button" data-act="inert" title="Deletes this step. Undo brings it back.">Delete step</button><span class="grow"></span><button type="button" class="quiet" data-act="inert" title="Opens this step in Steps, where its flow and its sub-process are edited.">Open in Steps</button></div>'}
+function saidHTML(){const d=S.d;if(!d.said.length)return'<div class="hint">No transcript in this project. Attach the call\'s transcript to read and search it here, beside the screen.</div><div class="ptools"><button type="button" data-act="inert">Attach a transcript...</button></div>';
+  const who=[...new Set(d.said.map(x=>x.who))],q=S.q.trim().toLowerCase();let hits=0,last="",doneA=new Set(),rows="";
+  d.said.forEach((x,i)=>{const r=inAside(x.t);if(r){if(!doneA.has(r)){doneA.add(r);rows+='<div class="gap"><span>Not part of the process: '+fmt(r.a)+" to "+fmt(r.b)+'</span><button type="button" data-act="include" data-v="'+S.aside.indexOf(r)+'">Include again</button></div>'}return}
+    if(S.spk&&x.who!==S.spk)return;let txt=esc(x.text);if(q){const k=x.text.toLowerCase().indexOf(q);if(k<0)return;hits++;txt=esc(x.text.slice(0,k))+"<mark>"+esc(x.text.slice(k,k+q.length))+"</mark>"+esc(x.text.slice(k+q.length))}
+    rows+='<div class="tr" data-i="'+i+'"><button type="button" class="tt" data-act="seek" data-t="'+x.t+'" aria-label="Go to '+fmt(x.t)+'">'+fmt(x.t)+'</button><div>'+(x.who!==last?'<div class="who">'+esc(x.who)+"</div>":"")+"<div>"+txt+' <span class="acts"><button type="button" data-act="stepat" data-t="'+x.t+'" title="Adds a step that starts where this is said.">Add step here</button><button type="button" data-act="sentmenu" data-t="'+x.t+'" title="Copies this sentence into the description of a step or a field of the document.">Copy to...</button></span></div></div></div>';last=x.who});
+  return'<div class="ptools"><input id="q" type="search" placeholder="Search the transcript" aria-label="Search the transcript" value="'+esc(S.q)+'" style="flex:1;min-width:0"><select id="spk" aria-label="Speaker"><option value="">Everyone</option>'+who.map(w=>"<option"+(S.spk===w?" selected":"")+">"+esc(w)+"</option>").join("")+'</select><span class="saved" id="qn">'+(q?hits+" of "+d.said.length:d.said.length+" sentences")+'</span></div><div id="trs">'+rows+"</div>"}
+function shotsHTML(){const it=timed();return'<div class="ptools"><button type="button" data-act="inert" title="Opens every screenshot one after another, full size.">Open gallery</button><span class="saved">In the order of the clock. Click one to go to its moment.</span></div>'+(it.length?'<div class="grid">'+it.map(s=>'<button type="button" class="shot" data-act="seek" data-t="'+s.a+'" title="Goes to '+fmt(s.a)+', where this screenshot was taken."><i></i><span>'+fmt(s.a)+" · "+esc(s.name)+"</span></button>").join("")+"</div>":'<div class="hint">No screenshots yet. A step takes one when it gets its moment in the video.</div>')}
+function notesHTML(){const d=S.d;return'<div class="ptools"><button type="button" data-act="inert" title="Adds a note at this moment of the video. Notes stay out of the PDD.">Add note</button></div>'+(d.notes.length?d.notes.map(n=>{const s=d.steps.find(x=>x.id===n.step);return'<div class="tr"><button type="button" class="tt" data-act="seek" data-t="'+n.t+'" aria-label="Go to '+fmt(n.t)+'">'+fmt(n.t)+"</button><div><div>"+esc(n.text)+'</div><div class="who">'+(s?"On the step: "+esc(s.name):"At a moment of the video, on no step")+"</div></div></div>"}).join(""):'<div class="hint">No notes yet. A note sits on a step or at a moment of the video, and stays out of the PDD.</div>')}
+function filesHTML(){const d=S.d;return'<div class="ptools"><button type="button" data-act="inert" title="Copies a file into the project and lists it in the PDD.">Attach file...</button></div>'+(d.files.length?'<div class="rows">'+d.files.map(f=>{const s=d.steps.find(x=>x.id===f.step);return'<div class="rw"><button type="button" class="row" data-act="inert" title="Opens the file."><span class="n"></span><span class="nm">'+esc(f.name)+'<span class="meta">'+(s?"On the step: "+esc(s.name):"On the whole project")+'</span></span><span class="when">Open</span></button></div>'}).join("")+"</div>":'<div class="hint">No files attached yet. An attached file is copied into the project and listed in the PDD.</div>')}
+function pane(keep){const b=$("pbody"),top=b.scrollTop,s=S.d.steps.find(x=>x.id===S.sel);b.innerHTML=S.tab==="said"?saidHTML():S.tab==="shots"?shotsHTML():S.tab==="notes"?notesHTML():S.tab==="files"?filesHTML():(S.view==="detail"&&s?detailHTML(s):listHTML());if(keep)b.scrollTop=top;pane.cur=-2;pane.now=-2}
+function tl(){BASE=$("scroll").clientWidth||1200;const d=S.d,W=BASE*S.zoom,x=t=>t/d.dur*W,L=S.lanes,q=S.q.trim().toLowerCase();let h="",lab='<div class="lab h-ruler">Time</div>';
+  const ts=[10,30,60,120,300,600,900].find(v=>v/d.dur*W>=64)||900;let r="";for(let t=0;t<=d.dur;t+=ts)r+='<span class="tick" style="left:'+x(t)+'px">'+fmt(t)+"</span>";h+='<div class="lane h-ruler">'+r+"</div>";
+  if(L.tx){lab+='<div class="lab h-tx">Transactions</div>';h+='<div class="lane h-tx">'+(d.tx.length?d.tx.map(t=>'<span class="band flat" style="left:'+x(t.a)+"px;width:"+(x(t.b)-x(t.a))+'px">'+esc(t.name)+(t.ref?" · reference":"")+"</span>").join(""):'<span class="band ghost" style="left:4px;width:'+(W-8)+'px">One transaction (not marked). Start transaction marks where the first one starts.</span>')+"</div>"}
+  if(L.steps){lab+='<div class="lab h-steps">Steps</div>';h+='<div class="lane h-steps">'+timed().map(s=>{const e=endOf(s);return'<button type="button" class="band'+(S.sel===s.id?" sel":"")+(s.state==="draft"?" draft":"")+(isOpen(s)?" open":"")+'" data-step="'+s.id+'" style="left:'+x(s.a)+"px;width:"+Math.max(10,x(e)-x(s.a))+'px" title="'+esc(numOf(s)+". "+s.name+" · "+fmt(s.a)+" to "+(isOpen(s)?"open":fmt(e)))+'"><b>'+numOf(s)+"</b>"+(x(e)-x(s.a)<72?"":esc(s.name))+"</button>"}).join("")+"</div>"}
+  if(L.sys&&d.sys.length){lab+='<div class="lab h-sys">Systems</div>';h+='<div class="lane h-sys">'+d.sys.map(s=>'<span class="band flat" style="left:'+x(s.a)+"px;width:"+(x(s.b)-x(s.a))+'px">'+esc(s.name)+"</span>").join("")+"</div>"}
+  if(L.said&&d.said.length){lab+='<div class="lab h-said">Transcript</div>';h+='<div class="lane h-said">'+d.said.map((s,i)=>{const n=d.said[i+1],w=Math.max(3,x(Math.min(n?n.t-s.t:40,40))-1),hit=q&&s.text.toLowerCase().includes(q);return'<button type="button" class="sent'+(hit?" hit":"")+'" data-act="seek" data-t="'+s.t+'" data-tab="1" style="left:'+x(s.t)+"px;width:"+w+'px" title="'+esc(fmt(s.t)+" "+s.who+": "+s.text)+'" tabindex="-1"></button>'}).join("")+"</div>"}
+  if(L.video&&d.video){lab+='<div class="lab h-video">Video</div>';h+='<div class="lane h-video"><span class="band flat" style="left:0;width:'+W+'px;top:3px;bottom:3px">'+esc(d.video)+"</span></div>"}
+  if(L.shots){lab+='<div class="lab h-marks">Screenshots</div>';h+='<div class="lane h-marks">'+timed().map(s=>'<button type="button" class="pin" data-act="seek" data-t="'+s.a+'" data-tabto="shots" tabindex="-1" style="left:'+x(s.a)+'px" title="Screenshot at '+fmt(s.a)+'"></button>').join("")+"</div>"}
+  if(L.notes&&d.notes.length){lab+='<div class="lab h-marks">Notes</div>';h+='<div class="lane h-marks">'+d.notes.map(n=>'<button type="button" class="pin note" data-act="seek" data-t="'+n.t+'" data-tabto="notes" tabindex="-1" style="left:'+x(n.t)+'px" title="Note at '+fmt(n.t)+": "+esc(n.text)+'"></button>').join("")+"</div>"}
+  S.aside.forEach((a,i)=>{const w=x(a.b)-x(a.a);h+='<div class="asd" style="left:'+x(a.a)+"px;width:"+w+'px">'+(w>300?"<span>"+(d.key==="rec"?"Left out of the analysis":"Not part of the process")+"</span>":"")+'<button type="button" data-act="include" data-v="'+i+'">Include again</button></div>'});
+  if(S.range)h+='<div class="rng" style="left:'+x(S.range.a)+"px;width:"+(x(S.range.b)-x(S.range.a))+'px"></div>';
+  h+='<div class="ph" id="ph"></div>';const c=$("canvas");c.style.width=W+"px";c.innerHTML=h;$("labels").innerHTML=lab;over()}
+function over(){const d=S.d,p=t=>t/d.dur*100,sc=$("scroll"),W=BASE*S.zoom;
+  $("over").innerHTML=S.aside.map(a=>'<i class="oa" style="left:'+p(a.a)+"%;width:"+(p(a.b)-p(a.a))+'%"></i>').join("")+timed().map(s=>'<i style="left:'+p(s.a)+"%;width:"+Math.max(.4,p(endOf(s))-p(s.a))+'%"></i>').join("")+(S.zoom>1?'<i class="win" style="left:'+sc.scrollLeft/W*100+"%;width:"+sc.clientWidth/W*100+'%"></i>':"")+'<i id="oph" style="top:0;height:12px;width:2px;background:var(--accent);left:'+p(S.t)+'%"></i>'}
+function frame(force){const d=S.d,W=BASE*S.zoom;$("ph").style.left=S.t/d.dur*W+"px";const o=$("oph");if(o)o.style.left=S.t/d.dur*100+"%";$("clock").textContent=fmt(S.t)+" / "+fmt(d.dur);$("v-clock").textContent=fmt(S.t);
+  const sc=[...d.screens].reverse().find(s=>s.t<=S.t)||d.screens[0];$("v-app").textContent=sc.app;$("v-title").textContent=sc.title;$("v-src").textContent=d.video?d.video:"Screenshot at "+fmt(sc.t);
+  let ci=-1;d.said.forEach((s,i)=>{if(s.t<=S.t)ci=i});const cs=ci>=0&&S.t-d.said[ci].t<45?d.said[ci]:null;$("v-cap").textContent=cs?cs.who+": "+cs.text:d.said.length?"":"No video in this recording: the screen is shown from its screenshots.";
+  $("viewer").classList.toggle("aside",!!inAside(S.t));
+  if(S.tab==="said"&&(force||ci!==pane.cur)){pane.cur=ci;document.querySelectorAll(".tr.cur").forEach(e=>e.classList.remove("cur"));const el=document.querySelector('.tr[data-i="'+ci+'"]');if(el){el.classList.add("cur");if(S.playing&&!S.q&&!$("pbody").matches(":hover"))el.scrollIntoView({block:"nearest"})}}
+  const cur=stepAt(S.t),cid=cur?cur.id:-1;if(S.tab==="steps"&&S.view==="list"&&(force||cid!==pane.now)){pane.now=cid;document.querySelectorAll(".row").forEach(e=>e.classList.toggle("now",+e.dataset.step===cid))}}
+function seek(t,keepPlay){S.t=Math.max(0,Math.min(S.d.dur,t));const sc=$("scroll"),px=S.t/S.d.dur*BASE*S.zoom;if(px<sc.scrollLeft||px>sc.scrollLeft+sc.clientWidth)sc.scrollLeft=px-sc.clientWidth/2;frame()}
+function select(id,detail){S.sel=id;S.tab="steps";if(detail)S.view="detail";const s=S.d.steps.find(x=>x.id===id);if(s&&s.a!=null)seek(s.a);head();pane();tl();frame(true)}
+function addStep(t){const d=S.d;if(inAside(t)){toast("This stretch is not part of the process. Include it again to mark a step in it.");return}
+  const prev=stepAt(t);if(prev&&t-prev.a<2){toast("A step already starts here.");return}const before=[...timed()].reverse().find(s=>s.a<=t),tx=d.tx.length?(d.tx.find(x=>t>=x.a&&t<x.b)||d.tx[0]).id:0;
+  if(prev)prev.b=t;const s={id:S.nid++,name:"Step "+(d.steps.length+1),sys:prev?prev.sys:"",a:t,b:null,desc:"",tx,state:"added"};const n=nextStart(s);if(n!=null&&d.steps.some(x=>x.a===n&&x.tx===tx)&&prev&&prev.a<t)s.b=null;
+  d.steps.splice(before?d.steps.indexOf(before)+1:0,0,s);const was=S.playing;select(s.id,true);if(!was){const f=$("f-name");f.focus();f.select()}toast("Step added at "+fmt(t)+".")}
+function showHere(id){const s=S.d.steps.find(x=>x.id===id&&x.a==null)||hereTarget();if(!s)return;if(inAside(S.t)){toast("This stretch is not part of the process.");return}const prev=stepAt(S.t);if(prev)prev.b=S.t;s.a=S.t;s.b=null;const nx=S.d.steps.find(x=>x.a==null);S.sel=nx?nx.id:s.id;S.view="list";S.tab="steps";head();pane();tl();frame(true);toast('"'+s.name+'" starts at '+fmt(s.a)+".")}
+function menu(anchor,html){const app=$("app"),k=app.getBoundingClientRect().width/1366,a=anchor.getBoundingClientRect(),p=app.getBoundingClientRect(),left=(a.left-p.left)/k,top=(a.top-p.top)/k;closeMenu();const m=document.createElement("div");m.className="menu";m.id="menu";m.innerHTML=html;app.appendChild(m);
+  m.style.left=Math.max(8,Math.min(left,1366-m.offsetWidth-8))+"px";if(top>420)m.style.top=top-m.offsetHeight-6+"px";else m.style.top=top+a.height/k+6+"px";const f=m.querySelector("button,input");if(f)f.focus()}
+function closeMenu(){const m=$("menu");if(m)m.remove()}
+document.addEventListener("click",e=>{const row=e.target.closest("[data-step]");if(row){select(+row.dataset.step,true);return}
+  const b=e.target.closest("[data-act]");if(!b){if(!e.target.closest("#menu"))closeMenu();return}if(b.getAttribute("aria-disabled")==="true")return;const a=b.dataset.act,v=b.dataset.v,d=S.d,inMenu=!!b.closest("#menu"),opens=["lanes","checklist","todoc","sentmenu"].includes(a);
+  if(!opens)closeMenu();
+  if(a==="scn")reset(v);else if(a==="inert")toast("This works as it does today. It is not part of this sketch.");
+  else if(a==="play"){S.playing=!S.playing;head()}
+  else if(a==="tab"){S.tab=v;head();pane();frame(true)}
+  else if(a==="back"){S.view="list";pane();frame(true)}
+  else if(a==="go"){const g=d.steps.filter(x=>x.tx===d.steps.find(y=>y.id===S.sel).tx),i=g.findIndex(x=>x.id===S.sel)+ +v;if(g[i])select(g[i].id,true)}
+  else if(a==="step")addStep(S.t);else if(a==="stepat"){seek(+b.dataset.t);addStep(+b.dataset.t)}
+  else if(a==="here")showHere(+v);
+  else if(a==="seek"){seek(+b.dataset.t);const to=b.dataset.tabto||(b.dataset.tab?"said":"");if(to&&S.tab!==to){S.tab=to;head();pane()}frame(true);const el=document.querySelector(".tr.cur");if(el)el.scrollIntoView({block:"nearest"})}
+  else if(a==="todesc"){const s=d.steps.find(x=>x.id===S.sel),x=d.said.find(y=>y.t===+b.dataset.t);if(s&&x){s.desc=(s.desc?s.desc+"\n":"")+x.text;head();if(S.tab==="steps")pane(true);toast('Added to the description of "'+s.name+'".')}}
+  else if(a==="todoc")menu(b,"<p>Add to a document field</p>"+FIELDS.map(f=>'<button type="button" data-act="docf" data-v="'+f+'">'+f+"</button>").join(""));
+  else if(a==="docf")toast("Added to "+v+".");
+  else if(a==="sentmenu"){const sel=d.steps.find(x=>x.id===S.sel),T=b.dataset.t;menu(b,"<p>Copy this sentence to</p>"+'<button type="button" data-act="todesc" data-t="'+T+'"'+(sel?"":' aria-disabled="true"')+">"+(sel?'The description of "'+esc(sel.name.length>24?sel.name.slice(0,23)+"...":sel.name)+'"':"The description of a step (select a step first)")+"</button>"+FIELDS.map(f=>'<button type="button" data-act="docf" data-v="'+f+'">'+f+"</button>").join(""))}
+  else if(a==="aside"){S.aside.push(S.range);S.aside.sort((p,q)=>p.a-q.a);S.range=null;head();tl();if(S.tab==="said")pane();frame(true);toast("Marked as not part of the process.")}
+  else if(a==="clear"){S.range=null;head();tl();frame()}
+  else if(a==="include"){S.aside.splice(+v,1);tl();if(S.tab==="said")pane();frame(true);toast("Included again.")}
+  else if(a==="confirm"){d.steps.forEach(s=>{if(s.tx===1)s.state="confirmed"});head();pane();tl();frame(true);toast("Transaction confirmed. Undo confirm takes it back.")}
+  else if(a==="zoom"){S.zoom=+v?Math.max(1,Math.min(16,S.zoom*+v)):1;tl();$("scroll").scrollLeft=S.t/d.dur*BASE*S.zoom-$("scroll").clientWidth/2;over();frame()}
+  else if(a==="lanes")menu(b,[["tx","Transactions"],["steps","Steps"],["sys","Systems"],["said","Transcript"],["video","Video"],["shots","Screenshots"],["notes","Notes"]].map(l=>'<label><input type="checkbox" data-lane="'+l[0]+'"'+(S.lanes[l[0]]?" checked":"")+"> "+l[1]+"</label>").join(""));
+  else if(a==="checklist"){const n=d.steps.length,w=written();menu(b,"<p>Checklist</p>"+(d.key==="rec"?["Mark the transactions: done","Confirm the reference transaction","Review the other transactions","Write the document","Hand off"]:["Add the steps: "+(n?"done":"to do"),"Write the steps: "+w+" of "+n,"Write the document: 0 of 10 fields","Hand off"]).map(x=>"<p>"+x+"</p>").join("")+'<button type="button" data-act="inert">Open the Checklist</button>')}});
+document.addEventListener("change",e=>{if(e.target.dataset.lane){S.lanes[e.target.dataset.lane]=e.target.checked?1:0;tl();frame()}else if(e.target.id==="spk"){S.spk=e.target.value;pane();frame(true)}});
+document.addEventListener("input",e=>{const s=S.d.steps.find(x=>x.id===S.sel),id=e.target.id;if(id==="q"){S.q=e.target.value;const pos=e.target.selectionStart;pane();const q=$("q");q.focus();q.setSelectionRange(pos,pos);tl();frame(true)}
+  else if(s&&id==="f-name"){s.name=e.target.value||"Step";tl();frame();head()}else if(s&&id==="f-sys"){s.sys=e.target.value}else if(s&&id==="f-desc"){s.desc=e.target.value;head()}});
+const timeAt=e=>{const r=$("canvas").getBoundingClientRect();return Math.max(0,Math.min(S.d.dur,(e.clientX-r.left)/r.width*S.d.dur))};
+$("canvas").addEventListener("mousedown",e=>{if(e.target.closest("button"))return;const t0=timeAt(e);if(!e.shiftKey){seek(t0);return}e.preventDefault();
+  const mv=ev=>{const t=timeAt(ev);S.range={a:Math.min(t0,t),b:Math.max(t0,t)};head();tl();frame()},up=()=>{removeEventListener("mousemove",mv);removeEventListener("mouseup",up);if(S.range&&S.range.b-S.range.a<5){S.range=null;head();tl();frame()}};addEventListener("mousemove",mv);addEventListener("mouseup",up)});
+$("over").addEventListener("click",e=>{const r=$("over").getBoundingClientRect();seek((e.clientX-r.left)/r.width*S.d.dur)});
+$("scroll").addEventListener("scroll",()=>over());
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if($("menu"))closeMenu();else if(S.range){S.range=null;head();tl();frame()}else if(S.view==="detail"&&S.tab==="steps"){S.view="list";pane();frame(true)}return}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="f"&&S.d.said.length){e.preventDefault();S.tab="said";head();pane();frame(true);$("q").focus();return}
+  if(e.target.closest("input,textarea,select")){if(e.key==="Enter"&&e.target.id==="f-name")$("f-desc").focus();return}if(e.ctrlKey||e.metaKey||e.altKey)return;const k=e.key.toLowerCase();
+  if(k===" "&&!e.target.closest("button")&&S.d.video){e.preventDefault();S.playing=!S.playing;head()}else if(k==="s"){e.preventDefault();addStep(S.t)}else if(k==="arrowleft")seek(S.t-(e.shiftKey?10:5));else if(k==="arrowright")seek(S.t+(e.shiftKey?10:5));
+  else if(k==="i"){S.range={a:S.t,b:Math.min(S.d.dur,S.range&&S.range.b>S.t?S.range.b:S.t+60)};head();tl();frame()}else if(k==="o"&&S.range&&S.t>S.range.a){S.range.b=S.t;head();tl();frame()}});
+let lastTs=0;function loop(ts){const dt=Math.min(.1,(ts-lastTs)/1000);lastTs=ts;if(S.playing){let n=S.t+dt*RATE*+$("speed").value;const a=S.aside.find(r=>S.t<r.a&&n>=r.a);if(a)n=a.b;if(n>=S.d.dur){n=S.d.dur;S.playing=false;head()}S.t=n;const sc=$("scroll"),px=n/S.d.dur*BASE*S.zoom;if(px>sc.scrollLeft+sc.clientWidth-20)sc.scrollLeft=px-40;frame()}requestAnimationFrame(loop)}
+function fit(){const w=$("fit").clientWidth,k=Math.min(1,w/1366);$("app").style.transform="scale("+k+")";$("fit").style.height=768*k+"px"}
+addEventListener("resize",fit);fit();reset("call");requestAnimationFrame(loop);
+</script>

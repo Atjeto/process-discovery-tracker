@@ -558,6 +558,187 @@ start from here:
 - **Goes with it:** C4, a typed note from the bar, matters more while this
   is shelved, since an SME recording alone has no voice.
 
+## 11. The Timeline workspace (design approved 2026-11-10)
+
+**Status: approved by the owner, to be built.** The owner, on the lanes of
+section 5 being added to the 2.0.6 layout: "I also hope you are not cramming
+everything in an interface that it cannot hold." And on the redesign: "The
+timeline is the core, the center of edit. Currently everything goes on it,
+and lanes can be shown or hidden. I assume we design around it." And on its
+wording: "Your button labels and tooltip text needs to be meaningful, and not
+your reasoning written as a button."
+
+**Why.** Measured on master at 1366x768, a project made from a video, a step
+open: the timeline 805 x 160, the pane beside the video 363 x 380, the step
+panel a third column 355 wide with a second video of the same moment, three
+sets of play controls, and steps without a time not visible on the screen
+where they get their moment.
+
+**The reference** is a working sketch at real size, kept beside this plan's
+cycle records:
+`.claude/agent-findings/2026-11-10_timeline-workspace-sketch.html` (open it
+in a browser; made-up content; the switch at its top shows a recording). Where
+this text and the sketch differ, this text wins.
+
+### 11.1 The screen
+
+Three parts, in this order from the top:
+
+1. **The top bar**, on every level: New, Open, the project's name and kind,
+   the four levels, then **the next act of the Checklist** ("Next: write the
+   steps (1 of 7)", which opens the Overview), Undo and Redo, the save state
+   with the analysis status and its Cancel, Export, Help, the theme.
+2. **The stage**: on the left **the screen at this moment** (the video; in a
+   recording without a video, the screenshot taken last before this moment),
+   with what is being said as a caption under it when a transcript is placed;
+   on the right **one pane**.
+3. **The timeline**, the full width of the window, always. Nothing opens over
+   it or beside it. Its first row holds the play controls and the marking
+   buttons; under the lanes one thin bar shows the whole length and is the
+   only scroll control.
+
+At 1366x768 the screen is about 780 wide, the pane about 550 x 440, the
+timeline 1366 x 262 to 290. Two dividers resize them (stage against timeline,
+screen against pane). On a larger window the screen takes at most 58% of the
+stage's width.
+
+**What leaves this level:** the step panel as a third column and its second
+video (the Map and Steps keep their panel until 5.2 D2); the playback bar at
+the foot of the window; the *Transaction:* select (a double-click on a
+transaction zooms to it, *Show all* comes back); the Markers tab (5.2 D3: a
+transaction's name, times and *Delete transaction* are on its header in the
+pane's Steps tab); the selection card's counts; the permanent legend row (it
+opens from *Lanes*).
+
+### 11.2 The pane: a tab for each kind of thing
+
+Every lane has its list, and every list its lane. A click on a lane's item
+opens its tab at that item; a click in a tab goes to that moment.
+
+| Tab | Holds | Acts |
+|---|---|---|
+| Steps (n) | Every step in the order of the process, grouped by transaction in a recording, also the steps without a time ("no time yet"). The row at this moment is marked. A click, in the list or on the Steps lane, opens the step in place | *Paste notes...*; on a step without a time, **Starts here**; in a recording *Confirm transaction* and *Undo confirm*; with no video and no recording, *Add step* |
+| Transcript | The talk on the clock, searchable, by speaker, following the video; the matches of a search also show on the Transcript lane | On a sentence: *Add step here*, *Copy to...* |
+| Screenshots (n) | Every screenshot in the order of the clock | *Open gallery*; a click goes to its moment |
+| Notes (n) | Every note with its moment and its step | *Add note* |
+| Files (n) | Every attached file, with the step it is on or "On the whole project" | *Attach file...*, open |
+
+**A step opened in place** has, from the top: *All steps*, *Previous*,
+*Next*, "Step 3 of 7"; Name (with the activity library's picker); System;
+When (the times typed as today; without a time, **Starts here**); in a
+recording "Also happens in" with each other transaction and *Go there*;
+Description; "Said during this step" with *Add to description*; Screenshot
+(which one is in the PDD, *Replace*); what is on the step (notes, files);
+*Add screenshot*, *Add note*, *Attach file...*; Flow (*Only when...*,
+*Decision...*); then *Split...*, *Merge with next*, *Hide step*, *Delete
+step* and *Open in Steps*. These are the Steps editor's own fields and
+handlers, one set (4, Consistency), with room for *Done by* and the
+automation choice of 5.2 D7 and D8.
+
+### 11.3 The timeline
+
+**Its first row,** left to right: *Play* (only with a video), the clock (a
+click types a time), the speed (1x, 1.5x, 2x), then the marking buttons, a
+message area, *Lanes*, zoom out, *Show all*, zoom in. A message ("Step added
+at 41:40.") reads in this row and never covers the work.
+
+**The lanes,** top to bottom, each present only when the project has such
+things, shown and hidden from *Lanes*: Time; Transactions; **Steps** (the
+tall one, 44 px, the names readable, a band narrower than its name showing
+its number only); Systems (a recording); Transcript; Video; Screenshots;
+Notes; Idle (a recording, off until chosen). A draft is dashed, an open step
+fades out, a placed step keeps its mark, and a stretch that is not part of
+the process (or left out of the analysis) is hatched **through every lane**.
+Where screenshots are too close to tell apart, they are drawn as one mark
+with their count.
+
+**One thing selected.** A click on a step selects it everywhere: its band is
+outlined, the pane opens it, the screen goes to its start. A click on empty
+time moves the clock and keeps the selection. Shift and a drag, or I and O at
+two moments, select a stretch; the row then shows its times and length and
+its acts.
+
+### 11.4 The words
+
+A label is a verb and its object in the process manager's words. A tooltip is
+one sentence on what the click does. No "playhead", "marker", "pending" in
+either. An act on one thing sits on that thing. No button without a name, no
+"More". A message states what happened and stops.
+
+| Control | Label | Tooltip |
+|---|---|---|
+| Play | Play / Pause | Plays or pauses the video. Key: Space |
+| Clock | 6:20 / 1:02:00 | The time since the start of the video. Click to type a time and go there. |
+| Speed | 1x | How fast the video plays |
+| Add a step | Add step | Adds a step that starts at this moment of the video. The step before it ends here. Key: S |
+| Start a transaction | Start transaction | Starts a new transaction at this moment of the video. A transaction is one pass through the process. |
+| End it | End transaction | Ends the transaction at this moment of the video. |
+| Add a note | Add note | Adds a note at this moment of the video. Notes stay out of the PDD. |
+| A stretch, in a project without a recording | Not part of the process | Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back. |
+| A stretch, in a recording | Leave out of the analysis | As today, with "Playing skips it, and the Transcript tab leaves out what was said in it." |
+| A stretch | Make it a transaction | Makes a transaction that starts and ends where the selection does. |
+| A stretch | Clear selection | |
+| Lanes | Lanes | Choose which lanes the timeline shows |
+| Zoom | Show all | Shows the whole length of the timeline |
+| A step without a time | Starts here | Sets the start of this step to the moment the video shows now. |
+| A sentence | Add step here | Adds a step that starts where this is said. |
+| A sentence | Copy to... | Copies this sentence into the description of a step or a field of the document. |
+| Top bar | Next: write the steps (1 of 7) | Opens the Checklist. |
+| Top bar | Undo, Redo | Undoes the last change. Key: Ctrl+Z; Does the undone change again. Key: Ctrl+Y |
+
+The app's older labels on this level ("+ Step", "Insert transaction from
+selection", "× Clear selection", "Reset zoom") change to these in Help, the
+How-to and the tests in the same lane.
+
+### 11.5 Keyboard and reading
+
+- Tab goes: top bar, the screen, the pane, the timeline's row, then **each
+  lane as one stop**; inside a lane the arrow keys go from item to item and
+  Enter opens one.
+- Keys on this level: Space, the arrows (5 s, with Shift 10 s), S, I and O
+  (a stretch), Ctrl+F (the transcript's search), Escape (a menu, then the
+  selected stretch, then back to the list), plus the zoom keys of today. Which
+  keys *Start transaction* and *Add note* get is open: N and M mean other
+  things on Steps, and one key must not mean two.
+- No text under 12 px. No state by colour alone (dashed, hatched, outlined,
+  taller). One filled button on the screen at a time: *Add step* in a project
+  without a recording, *Confirm transaction* in a recording, the stretch's
+  act while one is selected.
+- A hand-off opened read only shows no marking buttons and the step's fields
+  as text.
+- A project with no video and no recording shows its steps in the pane and
+  one line where the timeline would be: it appears when the project has a
+  video or a recording.
+
+### 11.6 What is new to build, beyond moving things
+
+The screen from the screenshots in a recording without a video; the playback
+speed; the caption; the Notes and Files tabs; the next act in the top bar and
+visible Undo and Redo; I and O; a lane as one Tab stop; marker changes
+applying by themselves in a recording (5.2 D4, which this layout needs: it
+has no *Apply marker changes*); the transaction's name and delete in the pane
+(5.2 D3).
+
+It takes the place of 5.2 A6, A7, A8 and D3, and of the part of D2 that
+concerns the Timeline.
+
+### 11.7 Order of the build
+
+1. **W0, the top bar:** the next act, Undo and Redo. Beside the messy-call
+   lane, since it touches other parts of the files.
+2. **W1, the screen's structure:** the stage, the pane with its five tabs and
+   the step opened in place, the timeline's row with the words of 11.4, the
+   lanes in their order with the tall Steps lane, the hatching through every
+   lane, the bar of the whole length, the step panel and the playback bar off
+   this level, the transaction's header in the pane, marker changes applying
+   by themselves.
+3. **W2, what is new:** the screen from the screenshots, the speed, the
+   caption, I and O, a lane as one Tab stop, screenshots drawn as one mark
+   where they are too close.
+
+Not checked before approval: a screen reader, and a process manager trying
+it. Both stay open after the build.
+
 ## Evidence
 
 The audit and the three walks ran from scripts kept outside the repo, with
