@@ -426,8 +426,8 @@ Everything in section 3, plus the two critique items that are the same work.
 |---|---|---|---|
 | C1 | **Four questions at the end summary**, each one line, each optional, in the document's own words: what starts this work; what you have when it is done; how often you do it and how long one takes; what goes differently sometimes and what you do then. Saved on the recording. In the viewer each answer shows under its document field as "The SME wrote: ..." with *Use* | M | A recording answered by the SME opens with four fields one click from written |
 | C2 | **Example files at the end summary:** *Add an example* (the e-mail, the sheet, the form) copies files into the recording's attachments | S | They are listed as attachments in the viewer and travel in the PDD's zip |
-| C3 | **The capture app records the screen itself** (Chromium's own capture, the API the screenshots already use; no helper program), on the recording's clock, into the folder. The viewer then has a video with no attach and no sync, and E2 gives every step its picture. The microphone is a Setup switch, off by default. OBS stays until this is proven, then goes | L | A recording made on a work laptop opens in the viewer with its video in place; facts 3 and 4 are answered first |
-| C4 | **A note at a moment** from the bar (*Note*, one line, for the analyst), shown on the Notes lane | S | Build only if fact 3 rules the microphone out: with a voice it is a second way to say the same thing |
+| C3 | **The capture app records the screen itself.** **Shelved** (the owner, 2026-11-10: "Video recording functionality should be optional in a future build. Document and shelf for now."). Its design is kept in section 10 | L | Not in this cycle |
+| C4 | **A note at a moment** from the bar (*Note*, one line, for the analyst), shown on the Notes lane | S | Open: with C3 shelved there is no voice, so this is the one way an SME alone can say why at a moment. Decide with C1 and C2 |
 
 #### Lane D: one editing space, and what the developer still asks for
 
@@ -436,11 +436,11 @@ Everything in section 3, plus the two critique items that are the same work.
 | D1 | **The step panel edits** the name, the system and the description wherever it opens, with the editor's own handlers; a step added on the Timeline opens it with the name ready to type | M | A video project is marked, named and described without leaving the Timeline (W4) |
 | D2 | **On Steps the panel keeps only what the editor lacks** (the video, the other occurrences); under 1440 px it opens on *Play* instead of standing as a third column | S | At 1366 px the editor has the width of two columns and nothing shows twice |
 | D3 | **A transaction's name and *Delete transaction* on its row in Steps**, beside its times; the Markers tab goes | M | No act needs the Markers tab |
-| D4 | **Marker changes apply by themselves in a recording too**, and "pending" leaves the vocabulary | S | Only if fact 6 says an analysis of a long recording is short enough to wait for |
+| D4 | **Marker changes apply by themselves in a recording too**, and "pending" leaves the vocabulary (the owner, 2026-11-10: apply by itself) | S | A transaction moved or added in a recording is in Steps a moment later with no Apply click, as in a video project; a change made while it updates is never refused |
 | D5 | **The project's sources as rows** (the video, the transcript), each with its acts | S | No two *Replace* links side by side |
 | D6 | **Information on a step added by hand:** a short list of what the step uses or enters (a name, an example, where it goes), typed by the analyst; printed in the PDD's systems and information section and in the Technical details. A recorded step shows its recorded fields in the same list | M | A project made from a video hands the developers a data list, and B7's workbook has its rows |
-| D7 | **The automation's scope by step**, one choice in place of the Waste tick: not decided, the automation does it, stays with a person, no longer needed (today's Waste). The PDD's improvement section lists the steps by choice; the map labels them as it labels Waste today | M | A developer reads from the PDD which steps to build |
-| D8 | **Done by**, a role per step, defaulting to the recording's role, printed on the step's context line. Lanes on the map only after fact 5 | S for the field, L for lanes | The PDD says who does each step |
+| D7 | **The automation's scope by step**, one choice in place of the Waste tick: not decided, the automation does it, stays with a person, no longer needed (today's Waste). The PDD's improvement section lists the steps by choice. On the map the choice is the box's corner icon, as the team's notation has it (manual or automated work; fact 5) | M | A developer reads from the PDD and from the map which steps to build |
+| D8 | **Done by**, a role or an employee per step, defaulting to the recording's role, printed on the step's context line and as a label under the step's box on the map. No lanes: the team's notation has none (fact 5) | M | The PDD and the map say who does each step |
 
 ### 5.3 Order
 
@@ -453,7 +453,7 @@ Everything in section 3, plus the two critique items that are the same work.
 4. **Lane A** beside any of the above: its files (the stylesheet, the
    dialogs, the Timeline's keys) are apart from the rest.
 5. **C1, C2, B5:** the SME's answers and files.
-6. **D2 to D5,** then **C3,** then **D6 to D8.**
+6. **D2 to D5,** then **D6 to D8.** (C3 is shelved: section 10.)
 
 If the assumption in section 1 is wrong, lane C comes first. If most
 projects start from a recording and not from a call (fact 1), 5 comes
@@ -471,8 +471,8 @@ before 2.
 | *Select + seek here*, *Jump to step here* | Cut | A click on the band already does it; fewer names (A11) |
 | The Waste tick | Folded into D7 | One choice carries it and three more |
 | The dialog per step of *+ Add step* | Kept for one step; E1 for many | A paste replaces twenty dialogs |
-| OBS (settings, the scene, the sync file) | Cut after C3 is proven | SME laptops have no OBS; two video paths are one too many |
-| "Pending" and *Apply marker changes* | Cut if fact 6 allows (D4) | The most technical idea on the path |
+| OBS (settings, the scene, the sync file) | Keep (the owner, 2026-11-10: "why not keep the OBS as well?") | It costs under 1 MB and works where it is installed; if C3 is ever built, one rule keeps a recording to one video (section 10) |
+| "Pending" and *Apply marker changes* | Cut (D4; the owner: apply by itself) | The most technical idea on the path |
 | Raw events | Keep, titled for developers | A developer's view; it costs a process manager nothing closed |
 
 ## 7. Keep as is
@@ -493,14 +493,19 @@ adds to it, it does not rework it.
 2. **"Replacing the PM's":** the handwork, or the person? (section 1.)
    **Answered: the handwork.**
 3. **May the capture app record the screen as video, and the SME's voice,**
-   on a work laptop? It decides C3's microphone and C4.
-4. **How long is a typical recording, and a typical call?** With it, one
-   test on a work laptop gives the video's size and load before C3, and a
-   real transcript's length before E3.
-5. **Do the team's ADONIS models use lanes for roles on every model?** It
-   decides the lanes of D8.
-6. **How long does an analysis take on a real, long recording?** (A count
-   of seconds from the P5 session is enough.) It decides D4.
+   on a work laptop? **Answered: not a concern when it is optional; the
+   feature itself is shelved for a future build (section 10).**
+4. **How long is a typical recording, and a typical call?** Still open,
+   and only for E3 now (a real transcript's length); C3 is shelved.
+5. **Do the team's ADONIS models use lanes for roles on every model?**
+   **Answered: no lanes.** The team's notation: a box is a step; an icon in
+   its corner says manual or automated work; a label on top names the
+   application the step is in; a label at the bottom names the role or the
+   employee. The map already puts the application above the box; D7 gives
+   the icon its meaning and D8 adds the label under it.
+6. **How long does an analysis take on a real, long recording?**
+   **Answered as a decision: marker changes apply by themselves** (D4). The
+   time is still worth a look at the P5 session.
 7. **What has a developer asked for after a hand-off** that the zip did not
    hold? Real misses outrank the lists in D6 to D8.
 
@@ -515,6 +520,43 @@ recordings of the same process (the product edition's line). A screen
 reader rewrite of the Timeline beyond focus, names and menus: the Steps
 level stays the structured way through a project. The activity library's
 contents (the owner's own work).
+
+## 10. Shelved: the capture app records the screen itself (C3)
+
+**Status: shelved by the owner, 2026-11-10**, as an optional feature of a
+future build. Nothing of it is built. What was worked out, so that build can
+start from here:
+
+- **Why.** Without OBS a recording has no video, and SME laptops have no
+  OBS. A process manager then gets screenshots and no way to watch the
+  work, or has to record a Teams call and line it up by hand.
+- **What it is.** The capture app records the screen with Chromium's own
+  capture (the API `capture/screenshots.js` already uses for screenshots)
+  and its built-in encoder, started, paused and stopped with the recording,
+  written into the recording's folder on the recording's own clock. The
+  viewer then has the video with no attach and no sync, and a step can take
+  its picture from it (E2).
+- **The build does not grow.** Electron already holds the capture and the
+  encoder; this is the app's own code, no bundled program. A recording's
+  folder does grow, by its video: unmeasured. Before fixing the frame rate
+  and the size, record 30 minutes on a work laptop and read the file's size
+  and the machine's load. The work is clicks and forms, so a low frame rate
+  should do.
+- **Optional, by two switches in Setup (analyst):** screen video, and the
+  microphone (it picks up whoever is near or on a call, so it is its own
+  choice). The owner: it is not a policy concern when it is optional. Which
+  default each has is a decision for that build. With the optional consent
+  window on, its text must say that video is recorded.
+- **OBS stays** (the owner). One rule keeps a recording to one video: OBS
+  connected, OBS records as today; not connected, the app records. The SME
+  sees no difference.
+- **What it has to handle:** more than one monitor (the screenshots'
+  `display` rule is the model), a pause, a crash without losing the file
+  (write in pieces), the storage limit, and the recording bar staying out
+  of the picture (it already asks Windows to leave it out of captures).
+- **Size:** large; the largest single item this plan had.
+- **Goes with it:** C4, a typed note from the bar, matters more while this
+  is shelved, since an SME recording alone has no voice.
 
 ## Evidence
 
