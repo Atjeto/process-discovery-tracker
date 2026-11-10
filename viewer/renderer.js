@@ -1350,6 +1350,125 @@ renderHelpLibrary();
 // The save state in the top bar: Saved, Saving... or Not saved (save-state.js).
 SaveState.mount(document.getElementById("save-state"), { subscribe: Ipc.onProjectWrite });
 
+/* ============ Lane W0: the next act, Undo and Redo ============== */
+
+/* The top bar's next act of the Checklist and its Undo and Redo
+   (top-bar-acts.js decides what shows; overview-view.js nextActText names
+   the act from the Checklist's own stages). They follow:
+     - the topics the Checklist follows (steps, markers, analysis) and the
+       timeline's;
+     - every change of the undo and redo stacks (state.js's topic "undo"),
+       a project opened or closed ("session") and a level shown ("level");
+     - every write to the project folder (a transaction opened in Steps is
+       saved without an undo entry or a topic, and ticks Review);
+     - the page's classes (has-session, read-only, annotations-unreadable)
+       and the map editor shown or closed (its overlay's style);
+     - the window's width, for the tooltip of a cut text.
+   One sync per tick, whatever asked for it. */
+(function wireTopBarActs() {
+  const TopBarActs = require("./top-bar-acts.js");
+  const Overview = require("./views/overview-view.js");
+  const nextBtn = document.getElementById("btn-next-act");
+  const undoBtn = document.getElementById("btn-undo");
+  const redoBtn = document.getElementById("btn-redo");
+  if (!nextBtn || !undoBtn || !redoBtn) return;
+
+  const mapEditorOpen = () => {
+    const o = document.getElementById("refmap-editor-overlay");
+    return !!o && o.style.display !== "none" && o.getClientRects().length > 0;
+  };
+  function sync() {
+    const sess = State.getSession();
+    let nextText = null, checklist = false;
+    if (sess && !RO.isReadOnly(sess) && !sess.annotationsError && Overview.hasAnalysisBlocks(sess.analysis)) {
+      checklist = true;
+      try { nextText = Overview.nextActText(Overview.pathState(sess)); }
+      catch (e) { console.error("[top bar] the next act could not be named:", e); nextText = null; }
+    }
+    const v = TopBarActs.topBarActs({
+      session: !!sess, readOnly: RO.isReadOnly(sess), unreadable: !!(sess && sess.annotationsError),
+      level: State.getLevel(), checklist, mapEditorOpen: mapEditorOpen(), nextText,
+      canUndo: canUndo(), canRedo: canRedo(),
+    });
+    for (const [btn, s] of [[undoBtn, v.undo], [redoBtn, v.redo]]) {
+      if (btn.hidden !== !s.shown) btn.hidden = !s.shown;
+      if (btn.getAttribute("aria-disabled") !== String(!s.enabled)) btn.setAttribute("aria-disabled", String(!s.enabled));
+    }
+    if (nextBtn.textContent !== v.next.text) nextBtn.textContent = v.next.text;
+    // The bar keeps one line: the next act takes the room the rest leaves,
+    // and gives way altogether below NEXT_MIN_ROOM px.
+    const room = v.next.shown ? roomForNext() : 0;
+    const shown = v.next.shown && room >= NEXT_MIN_ROOM;
+    if (nextBtn.hidden !== !shown) nextBtn.hidden = !shown;
+    const max = shown ? Math.floor(room) + "px" : "";
+    if (nextBtn.style.maxWidth !== max) nextBtn.style.maxWidth = max;
+    // An ellipsis drops whole letters, so an overflow of one pixel is a cut.
+    const cut = shown && nextBtn.scrollWidth > nextBtn.clientWidth;
+    const title = TopBarActs.nextTitle(v.next.text, cut);
+    if (nextBtn.title !== title) nextBtn.title = title;
+  }
+  /* The width the bar leaves the next act: its inner width less every other
+     item shown and the gaps between them (the spacer takes no room of its
+     own). Each item keeps its own width whether the bar wraps or not. */
+  const NEXT_MIN_ROOM = 64;
+  function roomForNext() {
+    const bar = nextBtn.parentElement;
+    if (!bar) return 0;
+    const cs = getComputedStyle(bar);
+    const gap = parseFloat(cs.columnGap) || 0;
+    let used = 0, items = 0;
+    for (const el of bar.children) {
+      if (el === nextBtn) { items++; continue; }
+      if (!el.checkVisibility()) continue;
+      items++;
+      if (!el.classList.contains("flex-spacer")) used += el.getBoundingClientRect().width;
+    }
+    const inner = bar.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    return inner - used - gap * Math.max(0, items - 1) - 1;
+  }
+  let queued = false;
+  function queue() {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => { queued = false; sync(); });
+  }
+
+  nextBtn.addEventListener("click", () => {
+    const overview = document.querySelector('.view-mode-btn[data-level="overview"]');
+    if (overview) overview.click();
+    // The Overview draws the Checklist as it opens; the focus goes to its one
+    // button, the act this one named.
+    if (!Overview.focusNextAct()) requestAnimationFrame(() => Overview.focusNextAct());
+  });
+  // Exactly what Ctrl+Z and Ctrl+Y call; nothing while there is nothing to do.
+  undoBtn.addEventListener("click", () => {
+    if (undoBtn.getAttribute("aria-disabled") === "true") return;
+    performUndo();
+  });
+  redoBtn.addEventListener("click", () => {
+    if (redoBtn.getAttribute("aria-disabled") === "true") return;
+    performRedo();
+  });
+
+  for (const topic of ["steps", "markers", "analysis", "timeline", "undo", "session", "level"]) State.subscribe(topic, queue);
+  Ipc.onProjectWrite(() => queue());
+  const watch = new MutationObserver(queue);
+  const app = document.querySelector(".app");
+  if (app) watch.observe(app, { attributes: true, attributeFilter: ["class"] });
+  // What else the bar shows (the status line, the save state, the zip's
+  // line) changes the room the next act has. Only what changes is set
+  // above, so its own writes end here.
+  const bar = nextBtn.parentElement;
+  if (bar) watch.observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
+  // A theme's face can cut the text where the other's did not.
+  watch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && typeof document.fonts.addEventListener === "function") document.fonts.addEventListener("loadingdone", queue);
+  const overlay = document.getElementById("refmap-editor-overlay");
+  if (overlay) watch.observe(overlay, { attributes: true, attributeFilter: ["style", "class", "hidden"] });
+  window.addEventListener("resize", queue);
+  sync();
+})();
+
 /* If launched with --session=<path>, the main process pushes the path
    via this channel. Open it without any further user click. */
 Ipc.onOpenInitialSession((folder) => {

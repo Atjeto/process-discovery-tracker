@@ -63,6 +63,8 @@ other transactions*, *Write the document* and *Hand off*. For a project made
 from a video or from nothing they are *Add the steps*, *Write the steps* (a
 name of its own and a description for each step), *Review the other
 transactions* when it has two or more, *Write the document* and *Hand off*.
+On the Timeline, Steps and the Map, the top bar shows the next act, such as
+*Next: write the steps (1 of 7)*, and a click on it opens the Checklist.
 
 1. **Attach the video and the transcript.** On the Overview, click *Attach*
    after *No video* and pick the video. PDT opens the Timeline: pause the
@@ -364,10 +366,11 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
 ### Undo
 
 1. Press Ctrl+Z to undo your last change, and Ctrl+Y to redo it.
-2. Undo covers every change (steps, markers, document fields, edited maps,
+2. *Undo* and *Redo* in the top bar do the same.
+3. Undo covers every change (steps, markers, document fields, edited maps,
    the video, a stretch left out, a removed transcript), up to 50, until you
    open another project.
-3. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the
+4. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the
    map.
 
 ## Hand over to the developers

@@ -496,8 +496,13 @@ The viewer says *transaction* for one pass through the process and
   open for editing in another window opens read only, its project line
   "Open in another window: read only here". Closing a window closes only
   its project.
-- **Undo and redo** for every edit, a Help guide with Re-analyze, and a light
-  and a dark theme.
+- **Undo and redo** for every edit (Ctrl+Z and Ctrl+Y, or *Undo* and *Redo*
+  in the top bar, shown greyed with nothing to undo or redo), a Help guide
+  with Re-analyze, and a light and a dark theme.
+- **The next act in the top bar**: on the Timeline, Steps and the Map, the
+  Checklist's next act ("Next: write the steps (1 of 7)", with the
+  Checklist's own count), which opens the Checklist with the keyboard on
+  its button. Not in a read-only project.
 - **An unreadable annotations file** is said in a banner, which is all the
   page shows (nothing that reads as an empty project), and nothing is saved
   over it; *Restore the newest backup* puts back the newest backup

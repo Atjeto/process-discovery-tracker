@@ -89,10 +89,11 @@ The viewer is an Electron app: one **main process**
 ## 2. The shell and the four levels
 
 **The top bar** (`index.html` `.topbar`) is the one bar: the New and Open
-menus, the four level buttons, the status line, the save state, the Export
-menu, Help and the theme toggle. The levels, the status line, the save
-state and Export show once a project is open (`.app.has-session`). Opening
-one menu closes the others.
+menus, the four level buttons, the status line, the next act, Undo and
+Redo, the save state, the Export menu, Help and the theme toggle. The
+levels, the status line, the next act, Undo, Redo, the save state and
+Export show once a project is open (`.app.has-session`). Opening one menu
+closes the others.
 
 - **New** (`#btn-new-menu`): *New project from a video...* and *New empty
   project...* (contract C16). Lane B4b: the video's pick takes several
@@ -120,6 +121,29 @@ one menu closes the others.
   "Writing the PDD...", "Writing the Technical details...", "Handing off
   version N..."); else, when marker changes wait, the one call to action
   *Apply N marker changes*; else nothing.
+- **The next act** (`#btn-next-act`, lane W0, plan 11.1): on the Timeline,
+  Steps and the Map, the Checklist's next act, "Next: " and the stage's
+  label with its first letter in lower case, with the Checklist's own
+  count for *Write the steps* and *Write the document*
+  (`overview-view.js nextActText`, from `pathState`); tooltip *Opens the
+  Checklist.*, with the whole text after it while it is cut. A click shows
+  the Overview with the keyboard on the Checklist's `#btn-ov-next`
+  (`focusNextAct`). Not on the Overview, in a read-only project, before the
+  first analysis, while the map editor is open, or once every act is done
+  and a version handed off. It takes the room the rest of the bar leaves
+  (`renderer.js roomForNext`, its text cut with an ellipsis) and gives way
+  below 64 px, so the bar keeps one line; at 1100 px or less the bar's gaps
+  close up and the levels drop their glyphs.
+- **Undo and Redo** (`#btn-undo`, `#btn-redo`, lane W0): what Ctrl+Z and
+  Ctrl+Y call (`session.js performUndo`, `performRedo`), on every level.
+  With nothing to undo or redo each stays, focusable, `aria-disabled="true"`
+  (the text in `--fg-3`, a dashed edge) and does nothing on a click. Hidden
+  in a read-only project and while the map editor is open, where the keys
+  are the map's. What shows is `top-bar-acts.js topBarActs` (pure), drawn
+  by `renderer.js wireTopBarActs`, which follows `state.js`'s topics
+  (`undo` on every change of the undo or redo stack, `session`, `level`,
+  and those the Checklist follows), every project write and the page's
+  classes.
 - **The save state** (`#save-state`): *Saved* (the time of the last save
   and the folder in its tooltip), *Saving...* while a write lasts, *Not
   saved* in the error colour (what was not saved and why in its tooltip)
@@ -371,6 +395,7 @@ their module as `<name>.test.js`.
 | `index.html` | The markup: the top bar, the four level containers, the step panel, the playback bar, Help, the map editor overlay. |
 | `renderer.js` | The wiring entry: the level switcher, the Map level's live map data (`_sessionMapData`, the system per box; whether it draws, `_liveMapState`; C19: the level shown, `_mapLevel`, and its picker), the state bus subscriptions, the keyboard shortcuts, Help, the playback bar, the New, Open and Export menus, the exports (section 10), the save state's mount, boot. |
 | `save-state.js` | The save state in the top bar (section 9): its pure state (`applyWrite`, `view`) and the element it drives, fed by `Ipc.onProjectWrite` and by `noteWrite` for the map files the renderer writes. |
+| `top-bar-acts.js` | The top bar's next act, Undo and Redo (lane W0, section 2): `topBarActs` says what shows on which level and in which state, `nextTitle` the next act's tooltip; pure, drawn by `renderer.js wireTopBarActs`. |
 | `styles.css` | Every style rule, the light and dark tokens ([DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)). |
 | `ipc.js` | One typed wrapper per `viewer:*` channel; nothing else touches `ipcRenderer`. |
 | `state.js` | The central store, the topic bus, the undo and redo stacks (section 6). |

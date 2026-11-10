@@ -8,6 +8,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The next act and Undo in the top bar.** On the Timeline, Steps and the
+  Map the top bar names the Checklist's next act ("Next: write the steps (1
+  of 7)", the count the Checklist keeps); a click opens the Overview with
+  the keyboard on the Checklist's button for it. *Undo* and *Redo* beside
+  it do what Ctrl+Z and Ctrl+Y do, on every level, and stay greyed while
+  there is nothing to undo or redo. None of the three shows in a project
+  opened read only, and Undo and Redo give way to the map editor's own keys
+  while it is open. The bar keeps one line down to 1024 px: the next act's
+  text is cut with an ellipsis (whole in its tooltip), and below 1100 px the
+  levels drop their glyphs.
 - **Open a zip.** *Open a hand-off (.zip)...* is now *Open a zip...* (the
   Open menu and the page shown while no project is open) and takes any zip
   of one project: the zip the SME's capture app made, or a *Whole project*

@@ -193,6 +193,16 @@ others):
 - Status line `#session-pills`: while the pipeline runs `#run-status` and
   `#btn-cancel-normalize`; else `#btn-apply-marker-edits` when marker
   changes wait.
+- Lane W0, before the save state: `#btn-next-act`, the Checklist's next act
+  ("Next: write the steps (1 of 7)"; a click shows the Overview with the
+  focus on `#btn-ov-next`), hidden on the Overview, in a read-only page,
+  before the first analysis, while the map editor is open, once every act
+  is done and a version handed off, and when the bar leaves it under 64 px.
+  `#btn-undo` and `#btn-redo`, what Ctrl+Z and Ctrl+Y call, on every level,
+  `aria-disabled="true"` with nothing to undo or redo; hidden in a
+  read-only page and while the map editor is open. Playwright waits for a
+  button marked `aria-disabled="true"` to be enabled: a smoke that clicks
+  one to see that nothing happens passes `{ force: true }`.
 - The save state `#save-state` (`role="status"`, focusable):
   `data-state="saved"|"saving"|"failed"|"readonly"`, its text *Saved*,
   *Saving...*, *Not saved* or (a hand-off opened read only, or a project

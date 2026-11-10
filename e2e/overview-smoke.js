@@ -50,6 +50,11 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *       an analysis keeps confirmed, edited, added and hidden steps (Leave
  *       apps out runs one by itself); the log shows only when an analysis
  *       fails, its failure sentence first; Cancel stops one;
+ *   (w0) lane W0, launches 4 and 5: the top bar's next act of the Checklist
+ *       (a recording, a project made from nothing, one from a video), its
+ *       click landing on the Checklist's button, Undo and Redo by mouse and
+ *       by keyboard, the map editor and a read-only hand-off hiding them,
+ *       the bar on one line at the window's size in both themes;
  *   (f) zero PAGE ERRORs across the launches.
  *
  * Screenshots of the Overview land in this dir (gitignored):
@@ -1331,6 +1336,265 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     JSON.stringify({ toast: fail.toast, unchanged: fail.unchanged, changed: fail.changed, staged: fail.staged, err: fail.err }));
 
   await close3();
+
+  // ================= Launch 4 (lane W0): the next act, Undo and Redo ======
+  // The top bar names the Checklist's next act on the Timeline, Steps and the
+  // Map (a click lands on the Checklist's own button) and carries Undo and
+  // Redo, what Ctrl+Z and Ctrl+Y call; checked on a recording, a project
+  // made from nothing and one made from a video, then on a hand-off unzipped
+  // by hand (read only).
+  const W0_TMP = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-w0-"));
+  const SESSION_W0 = makeTempSession({ stripMarkers: false });
+  const W0_ANNO = path.join(SESSION_W0, "annotations.json");
+  const readW0 = () => JSON.parse(fs.readFileSync(W0_ANNO, "utf-8"));
+  const w0 = {};
+  const SIZE = process.env.PDT_E2E_WINDOW || "default";
+  const topBar = (pg) => pg.evaluate(() => {
+    const one = (id) => {
+      const e = document.getElementById(id);
+      if (!e) return null;
+      const b = e.getBoundingClientRect();
+      return { shown: e.checkVisibility(), text: e.textContent.trim(), title: e.title, dis: e.getAttribute("aria-disabled"),
+        left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), cut: e.scrollWidth > e.clientWidth };
+    };
+    const bar = document.querySelector(".topbar");
+    // The items drawn (the spacer and an empty status line have no height):
+    // one line when every item starts above the end of every other.
+    const kids = [...bar.children].filter((k) => k.checkVisibility() && k.getBoundingClientRect().width > 0 && k.getBoundingClientRect().height > 0);
+    const tops = kids.map((k) => Math.round(k.getBoundingClientRect().top));
+    const bottoms = kids.map((k) => Math.round(k.getBoundingClientRect().bottom));
+    const s = require("./state.js").getSession();
+    const Ov = require("./views/overview-view.js");
+    return {
+      next: one("btn-next-act"), undo: one("btn-undo"), redo: one("btn-redo"),
+      save: one("save-state"), exportBtn: one("btn-session-export-menu"),
+      levels: [...document.querySelectorAll(".view-mode-btn")].map((b) => { const r = b.getBoundingClientRect(); return b.checkVisibility() && r.width > 20; }),
+      oneLine: Math.max(...tops) < Math.min(...bottoms) && bar.getBoundingClientRect().height < 50,
+      barRight: Math.round(Math.max(...kids.map((k) => k.getBoundingClientRect().right))), width: innerWidth,
+      level: require("./state.js").getLevel(),
+      rule: s && s.analysis ? Ov.nextActText(Ov.pathState(s)) : null,
+      checklistNext: (document.getElementById("ov-next") || { dataset: {} }).dataset.next || null,
+    };
+  });
+  const toLevel = async (pg, l) => { await pg.locator('.view-mode-btn[data-level="' + l + '"]').click({ timeout: T }); await wait(400); };
+  const fits = (b) => !!(b && b.oneLine && b.barRight <= b.width && b.levels.every(Boolean) && b.save.shown && b.exportBtn.shown &&
+    (!b.next.shown || (b.next.right <= b.undo.left && b.next.title === (b.next.cut ? "Opens the Checklist. " + b.next.text : "Opens the Checklist."))));
+  const nameOnDisk = (id) => ((readW0().steps || []).find((s) => s.step_id === id) || {}).name;
+  if (!normalize(SESSION_W0)) record("(w0) re-normalize the temp recording (prerequisite)", false, "no deps-bearing Python");
+  let app4, page4, close4;
+  try {
+    ({ app: app4, page: page4, close: close4 } = await launch(SESSION_W0, pageErrors));
+  } catch (e) {
+    console.error("FATAL: could not launch viewer (lane W0):", e && e.stack ? e.stack : e);
+    process.exit(2);
+  }
+  try {
+    await page4.waitForFunction(() => !require("./views/flow-view.js").analysisBusy(), null, { timeout: 120000 });
+    w0.overview = await topBar(page4);
+    w0.levels = {};
+    for (const l of ["flow", "steps", "map"]) { await toLevel(page4, l); w0.levels[l] = await topBar(page4); }
+    for (const theme of ["light", "dark"]) {
+      await page4.evaluate((t) => require("./theme.js").setTheme(t), theme);
+      await wait(300);
+      w0["fit_" + theme] = await topBar(page4);
+      await page4.screenshot({ path: path.join(OUT, "overview-w0-topbar-" + theme + "-" + SIZE + ".png"), clip: { x: 0, y: 0, width: w0.levels.map.width, height: 64 } });
+    }
+    await page4.evaluate(() => require("./theme.js").setTheme("light"));
+    // The click opens the Overview with the keyboard on the Checklist's button.
+    await toLevel(page4, "steps");
+    await page4.locator("#btn-next-act").click({ timeout: T });
+    w0.focused = await page4.waitForFunction(() => document.activeElement && document.activeElement.id === "btn-ov-next", null, { timeout: 5000 })
+      .then(() => true, () => false);
+    w0.afterClick = await topBar(page4);
+    w0.nextAct = await page4.evaluate(() => (document.getElementById("btn-ov-next") || { dataset: {} }).dataset.nextAct || null);
+    // A step renamed: Undo takes it back and Redo brings it again, by mouse.
+    await toLevel(page4, "steps");
+    await page4.waitForSelector("#step-list .run-group.pattern", { state: "visible", timeout: T });
+    if (!(await page4.evaluate(() => document.querySelector("#step-list .run-group.pattern").classList.contains("open")))) {
+      await page4.locator("#step-list .run-group.pattern > .run-row").click({ timeout: T });
+    }
+    const row = page4.locator("#step-list .run-group.pattern .step-row").first();
+    const sid = await row.getAttribute("data-step-id");
+    w0.before = nameOnDisk(sid);
+    w0.stacksBefore = await topBar(page4);
+    await row.click({ timeout: T });
+    const W0_NAME = "E2E W0: Check the customer";
+    await page4.locator("#step-name").fill(W0_NAME, { timeout: T });
+    await page4.locator("#step-name").press("Enter");
+    await page4.waitForFunction(() => document.getElementById("btn-undo").getAttribute("aria-disabled") === "false", null, { timeout: T });
+    w0.renamed = { disk: nameOnDisk(sid), bar: await topBar(page4) };
+    await page4.locator("#btn-undo").click({ timeout: T });
+    await page4.waitForFunction(() => document.getElementById("btn-redo").getAttribute("aria-disabled") === "false", null, { timeout: T });
+    await wait(400);
+    w0.undone = { disk: nameOnDisk(sid), bar: await topBar(page4) };
+    await page4.locator("#btn-redo").click({ timeout: T });
+    await page4.waitForFunction(() => document.getElementById("btn-redo").getAttribute("aria-disabled") === "true", null, { timeout: T });
+    await wait(400);
+    w0.redone = { disk: nameOnDisk(sid), bar: await topBar(page4) };
+    // A click on Redo with nothing to redo does nothing (no "Nothing to redo").
+    await page4.evaluate(() => { const t = document.getElementById("toast"); if (t) t.textContent = ""; });
+    // (Playwright waits for an aria-disabled button to be enabled: force it.)
+    await page4.locator("#btn-redo").click({ timeout: T, force: true });
+    await wait(500);
+    w0.idleRedo = { disk: nameOnDisk(sid), toast: await page4.evaluate(() => ((document.getElementById("toast") || {}).textContent || "").trim()) };
+    // By keyboard: Tab from the next act to Undo, Enter; Tab to Redo, Enter.
+    await page4.locator("#btn-next-act").focus();
+    await page4.keyboard.press("Tab");
+    w0.tabUndo = await page4.evaluate(() => document.activeElement && document.activeElement.id);
+    await page4.keyboard.press("Enter");
+    await page4.waitForFunction(() => document.getElementById("btn-redo").getAttribute("aria-disabled") === "false", null, { timeout: T });
+    await wait(400);
+    w0.keyUndo = nameOnDisk(sid);
+    await page4.keyboard.press("Tab");
+    w0.tabRedo = await page4.evaluate(() => document.activeElement && document.activeElement.id);
+    await page4.keyboard.press("Enter");
+    await page4.waitForFunction(() => document.getElementById("btn-redo").getAttribute("aria-disabled") === "true", null, { timeout: T });
+    await wait(400);
+    w0.keyRedo = nameOnDisk(sid);
+    w0.name = W0_NAME;
+    // The next act follows a change: Confirm transaction, no reload.
+    await page4.locator('#step-list .run-group.pattern [data-act="confirm-run"]').click({ timeout: T });
+    await page4.waitForFunction(() => /review/.test(document.getElementById("btn-next-act").textContent), null, { timeout: T }).catch(() => {});
+    w0.confirmed = await topBar(page4);
+    // The map editor: the keys are the map's, so Undo and Redo are not shown.
+    await toLevel(page4, "map");
+    await page4.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+    await page4.locator("#btn-fork-refmap").click({ timeout: T });
+    await page4.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: T });
+    await wait(500);
+    w0.editor = await topBar(page4);
+    await page4.locator("#btn-refmap-editor-close").click({ timeout: T });
+    await page4.waitForSelector("#refmap-editor-overlay", { state: "hidden", timeout: T });
+    await wait(500);
+    w0.editorClosed = await topBar(page4);
+  } catch (e) { logActionError("W0 recording", e); w0.err = String(e.message).split("\n")[0]; await shot(page4, "fail-overview-w0.png"); }
+  const WL = w0.levels || {};
+  record("(w0) a recording: the next act is not on the Overview; on the Timeline, Steps and the Map it reads the Checklist's next act, " +
+    "the same as the Checklist's rule, with Undo and Redo shown and aria-disabled while nothing was changed",
+    !w0.err && w0.overview && !w0.overview.next.shown && w0.overview.undo.shown && w0.overview.redo.shown &&
+      ["flow", "steps", "map"].every((l) => WL[l] && WL[l].next.shown && WL[l].next.text === "Next: confirm the reference transaction" &&
+        WL[l].next.text === WL[l].rule && WL[l].undo.text === "Undo" && WL[l].redo.text === "Redo" &&
+        WL[l].undo.title === "Undoes the last change. Key: Ctrl+Z" && WL[l].redo.title === "Does the undone change again. Key: Ctrl+Y" &&
+        WL[l].undo.dis === "true" && WL[l].redo.dis === "true"),
+    JSON.stringify({ overview: w0.overview && w0.overview.next, levels: Object.keys(WL).map((l) => [l, WL[l].next, WL[l].undo.dis, WL[l].redo.dis]), err: w0.err }));
+  record("(w0) the top bar keeps one line at " + SIZE + " in both themes: the levels, the save state and Export readable, the next act before Undo, " +
+    "its tooltip 'Opens the Checklist.' (with the whole text after it when the text is cut)",
+    !w0.err && fits(w0.fit_light) && fits(w0.fit_dark) && ["flow", "steps", "map"].every((l) => fits(WL[l])),
+    JSON.stringify({ light: w0.fit_light && [w0.fit_light.oneLine, w0.fit_light.barRight, w0.fit_light.next], dark: w0.fit_dark && [w0.fit_dark.oneLine, w0.fit_dark.next] }));
+  record("(w0) a click on the next act opens the Overview with the keyboard on the Checklist's button for that act",
+    !w0.err && w0.focused && w0.afterClick && w0.afterClick.level === "overview" && !w0.afterClick.next.shown &&
+      w0.afterClick.checklistNext === "pattern" && w0.nextAct === "pattern",
+    JSON.stringify({ focused: w0.focused, level: w0.afterClick && w0.afterClick.level, next: w0.afterClick && w0.afterClick.checklistNext, act: w0.nextAct }));
+  record("(w0) Undo takes back a typed step name and Redo brings it again, by mouse; each follows the stacks; Redo with nothing to redo does nothing",
+    !w0.err && w0.before && w0.before !== w0.name && w0.stacksBefore.undo.dis === "true" &&
+      w0.renamed.disk === w0.name && w0.renamed.bar.undo.dis === "false" && w0.renamed.bar.redo.dis === "true" &&
+      w0.undone.disk === w0.before && w0.undone.bar.redo.dis === "false" &&
+      w0.redone.disk === w0.name && w0.redone.bar.redo.dis === "true" && w0.redone.bar.undo.dis === "false" &&
+      w0.idleRedo.disk === w0.name && !/Nothing to redo/.test(w0.idleRedo.toast),
+    JSON.stringify({ before: w0.before, renamed: w0.renamed && w0.renamed.disk, undone: w0.undone && w0.undone.disk, redone: w0.redone && w0.redone.disk,
+      idleRedo: w0.idleRedo, err: w0.err }));
+  record("(w0) by keyboard: Tab from the next act reaches Undo, Enter undoes; Tab reaches Redo, Enter redoes",
+    !w0.err && w0.tabUndo === "btn-undo" && w0.keyUndo === w0.before && w0.tabRedo === "btn-redo" && w0.keyRedo === w0.name,
+    JSON.stringify({ tabUndo: w0.tabUndo, keyUndo: w0.keyUndo, tabRedo: w0.tabRedo, keyRedo: w0.keyRedo }));
+  record("(w0) the next act follows a change without a reload: Confirm transaction makes it Review the other transactions",
+    !w0.err && w0.confirmed && w0.confirmed.next.text === "Next: review the other transactions" && w0.confirmed.rule === w0.confirmed.next.text,
+    JSON.stringify(w0.confirmed && w0.confirmed.next));
+  record("(w0) while the map editor is open, Undo, Redo and the next act are not shown; closed, they are back",
+    !w0.err && w0.editor && !w0.editor.undo.shown && !w0.editor.redo.shown && !w0.editor.next.shown &&
+      w0.editorClosed.undo.shown && w0.editorClosed.redo.shown && w0.editorClosed.next.shown,
+    JSON.stringify({ editor: w0.editor && [w0.editor.undo.shown, w0.editor.redo.shown, w0.editor.next.shown],
+      closed: w0.editorClosed && [w0.editorClosed.undo.shown, w0.editorClosed.redo.shown, w0.editorClosed.next.shown] }));
+
+  // A project made from nothing, then one made from a video, in the same window.
+  const w0b = {};
+  const settledW0 = () => page4.waitForFunction(() => {
+    const s = require("./state.js").getSession();
+    return !!(s && s.stats && s.analysis) && !document.getElementById("run-status") && !require("./views/flow-view.js").analysisBusy();
+  }, null, { timeout: 120000 });
+  const openedW0 = (folder) => page4.waitForFunction((f) => {
+    const s = require("./state.js").getSession();
+    return !!s && String(s.sessionFolder).toLowerCase() === f.toLowerCase();
+  }, path.resolve(folder), { timeout: 60000 });
+  const BLANK = path.join(W0_TMP, "Empty project");
+  const FROM_VIDEO = path.join(W0_TMP, "Video project");
+  const VIDEO_SRC = path.join(REPO, "demo", "Order to cash", "video", "Order to cash demo.webm");
+  const VIDEO_COPY = path.join(W0_TMP, "call.webm");
+  try {
+    fs.copyFileSync(VIDEO_SRC, VIDEO_COPY);
+    await app4.evaluate(({ dialog, shell }, a) => {
+      const open = a.open.slice(), save = a.save.slice();
+      dialog.showOpenDialog = async () => { const f = open.shift(); return f ? { canceled: false, filePaths: [].concat(f) } : { canceled: true, filePaths: [] }; };
+      dialog.showSaveDialog = async () => { const f = save.shift(); return f ? { canceled: false, filePath: f } : { canceled: true }; };
+      shell.showItemInFolder = () => {};
+    }, { open: [[VIDEO_COPY]], save: [BLANK, FROM_VIDEO] });
+    await page4.click("#btn-new-menu");
+    await page4.click("#btn-new-blank");
+    await openedW0(BLANK);
+    await settledW0();
+    await toLevel(page4, "steps");
+    w0b.blank = await topBar(page4);
+    // + Add step asks for the name; the step then has a name of its own and
+    // no description, so it is not written yet.
+    await page4.locator("#btn-add-manual-step").click({ timeout: T });
+    await page4.waitForSelector(".modal-prompt .modal-input", { timeout: T });
+    await page4.fill(".modal-prompt .modal-input", "Check the customer");
+    await page4.click(".modal-prompt .modal-ok");
+    await page4.waitForSelector(".modal-prompt", { state: "detached", timeout: T });
+    await page4.waitForFunction(() => /write the steps/.test(document.getElementById("btn-next-act").textContent), null, { timeout: T }).catch(() => {});
+    w0b.added = await topBar(page4);
+    await page4.locator("#step-desc").fill("Look the customer up in the CRM.", { timeout: T });
+    await page4.locator("#step-desc").press("Tab");
+    await page4.waitForFunction(() => /write the document/.test(document.getElementById("btn-next-act").textContent), null, { timeout: T }).catch(() => {});
+    w0b.written = await topBar(page4);
+    await page4.locator("#btn-next-act").click({ timeout: T });
+    w0b.focused = await page4.waitForFunction(() => document.activeElement && document.activeElement.id === "btn-ov-next", null, { timeout: 5000 })
+      .then(() => true, () => false);
+    w0b.blankAct = await page4.evaluate(() => (document.getElementById("btn-ov-next") || { dataset: {} }).dataset.nextAct || null);
+    await page4.click("#btn-new-menu");
+    await page4.click("#btn-new-from-video");
+    await openedW0(FROM_VIDEO);
+    await settledW0();
+    await wait(600);
+    w0b.video = await topBar(page4);
+  } catch (e) { logActionError("W0 new projects", e); w0b.err = String(e.message).split("\n")[0]; await shot(page4, "fail-overview-w0-new.png"); }
+  record("(w0) a project made from nothing: Next: add the steps, then Next: write the steps (0 of 1) once a step is added, " +
+    "then Next: write the document (0 of 10) once it is named and described; a click lands on the Checklist's Write the document",
+    !w0b.err && w0b.blank && w0b.blank.next.text === "Next: add the steps" && w0b.blank.undo.dis === "true" &&
+      w0b.added.next.text === "Next: write the steps (0 of 1)" && w0b.added.undo.dis === "false" &&
+      w0b.written.next.text === "Next: write the document (0 of 10)" && w0b.written.rule === w0b.written.next.text &&
+      w0b.focused && w0b.blankAct === "document",
+    JSON.stringify({ blank: w0b.blank && w0b.blank.next.text, added: w0b.added && w0b.added.next.text, written: w0b.written && w0b.written.next.text,
+      focused: w0b.focused, act: w0b.blankAct, err: w0b.err }));
+  record("(w0) a project made from a video opens on the Timeline with Next: add the steps, and Undo empty (another project opened)",
+    !w0b.err && w0b.video && w0b.video.level === "flow" && w0b.video.next.shown && w0b.video.next.text === "Next: add the steps" &&
+      w0b.video.undo.dis === "true" && w0b.video.redo.dis === "true" && fits(w0b.video),
+    JSON.stringify(w0b.video && { level: w0b.video.level, next: w0b.video.next, undo: w0b.video.undo.dis }));
+  await close4();
+
+  // A hand-off unzipped by hand opens read only: none of the three shows.
+  const RO_PARENT = path.join(W0_TMP, "unzipped");
+  const RO_PROJECT = path.join(RO_PARENT, "Order intake");
+  const w0r = {};
+  try {
+    fs.cpSync(SESSION_W0, RO_PROJECT, { recursive: true });
+    const a = JSON.parse(fs.readFileSync(path.join(RO_PROJECT, "annotations.json"), "utf-8"));
+    a.handoffs = [{ version: 1, handed_off_at: "2026-11-10T09:00:00.000Z", by: "e2e", note: "W0" }];
+    fs.writeFileSync(path.join(RO_PROJECT, "annotations.json"), JSON.stringify(a, null, 2));
+    fs.writeFileSync(path.join(RO_PARENT, "Order intake v1 PDD.docx"), "");
+    const { page: page5, close: close5 } = await launch(RO_PROJECT, pageErrors);
+    try {
+      w0r.ro = await page5.evaluate(() => !!(require("./state.js").getSession() || {}).readOnly);
+      w0r.overview = await topBar(page5);
+      await toLevel(page5, "steps");
+      w0r.steps = await topBar(page5);
+    } finally { await close5(); }
+  } catch (e) { logActionError("W0 read only", e); w0r.err = String(e.message).split("\n")[0]; }
+  record("(w0) a hand-off opened read only shows no next act, no Undo and no Redo, on the Overview or Steps",
+    !w0r.err && w0r.ro && [w0r.overview, w0r.steps].every((b) => b && !b.next.shown && !b.undo.shown && !b.redo.shown),
+    JSON.stringify({ ro: w0r.ro, overview: w0r.overview && [w0r.overview.next.shown, w0r.overview.undo.shown], steps: w0r.steps && [w0r.steps.next.shown, w0r.steps.undo.shown], err: w0r.err }));
+  for (const dir of [SESSION_W0, W0_TMP]) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
+  }
 
   // (f) Zero page errors across the launches.
   record("(f) zero PAGE ERRORs", pageErrors.length === 0,

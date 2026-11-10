@@ -378,6 +378,36 @@ function _nextAct(state) {
   }
 }
 
+/* Lane W0 (plan 11.1): the next act as the top bar names it on the other
+   levels, from the same stages and counts as the Checklist: "Next: " and the
+   stage's label with its first letter in lower case, with the count of
+   Write the steps (the reference transaction's steps with a name of their
+   own and a description) and of Write the document (its counted fields).
+   Null once nothing is left: every act done and a version handed off. */
+function nextActText(state) {
+  if (!state || !state.next) return null;
+  if (state.next === "handoff" && state.done && state.done.handoff) return null;
+  const st = PATH_STAGES.find((x) => x.key === state.next);
+  if (!st) return null;
+  let text = "Next: " + st.label.charAt(0).toLowerCase() + st.label.slice(1);
+  if (st.key === "written") {
+    const all = state.refStepCount || 0;
+    text += " (" + (all - (state.unwritten || []).length) + " of " + all + ")";
+  }
+  if (st.key === "document" && state.doc) text += " (" + state.doc.filled + " of " + state.doc.total + ")";
+  return text;
+}
+
+/* Lane W0: the keyboard on the Checklist's own button for the next act, once
+   the Overview shows it. Whether there was one to focus. */
+function focusNextAct() {
+  const btn = document.getElementById("btn-ov-next");
+  if (!btn || !btn.getClientRects().length) return false;
+  btn.scrollIntoView({ block: "nearest" });
+  btn.focus();
+  return document.activeElement === btn;
+}
+
 /* The short line once every act before the hand-off is done. */
 function _readyText(state) {
   const v = state.handedOff;
@@ -1218,6 +1248,8 @@ function renderOverviewLevel() {
 module.exports = {
   renderOverviewLevel, openMarkersInFlow, overviewHtml, pathState, documentStatus, mapLockHtml,
   mapEmptyText, hasAnalysisBlocks, waitingSentence, missingOf, missingShown, goToMissing,
+  // Lane W0: the top bar's next act.
+  nextActText, focusNextAct,
   DOC_FIELDS, NO_RUNS_MARKED, MARK_RUNS_INSTRUCTION, MARK_RUNS_BUTTON, STAGE_NOT_RUN, NO_STEPS_YET, ASIS_STALE,
   // Lane E (E3): a sentence added to a document field, from the Timeline's
   // Transcript tab too.

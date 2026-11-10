@@ -24,8 +24,11 @@
  * topics it touched; every function subscribed to that topic re-runs.
  * "analysis": the project's analysis.json was read again (the Overview
  * shows its rows). "mapPath": the level the Map shows changed (contract
- * C19).
- * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"} ChangeTopic
+ * C19). Lane W0: "undo": the undo or the redo stack changed (every push,
+ * pop, trim or reset); "session": a project was opened or closed
+ * (setSession); "level": a level was shown (setLevel). The top bar's next
+ * act, Undo and Redo follow them (renderer.js wireTopBarActs).
+ * @typedef {"steps"|"timeline"|"markers"|"analysis"|"mapPath"|"undo"|"session"|"level"} ChangeTopic
  */
 
 /**
@@ -164,6 +167,7 @@ function recordEdit(entry) {
   _s.undoStack.push(entry);
   _trim(_s.undoStack);
   _s.redoStack = [];
+  emit("undo");
 }
 
 /**
@@ -171,31 +175,31 @@ function recordEdit(entry) {
  * @param {string} folder
  * @returns {UndoEntry|null}
  */
-function popUndo(folder) { return _popForFolder(_s.undoStack, folder); }
+function popUndo(folder) { const e = _popForFolder(_s.undoStack, folder); emit("undo"); return e; }
 
 /**
  * Pop the topmost redo entry for a session (used by Redo).
  * @param {string} folder
  * @returns {UndoEntry|null}
  */
-function popRedo(folder) { return _popForFolder(_s.redoStack, folder); }
+function popRedo(folder) { const e = _popForFolder(_s.redoStack, folder); emit("undo"); return e; }
 
 /**
  * Push an entry onto the undo stack WITHOUT clearing redo (used by
  * Redo, which must leave the rest of the redo stack intact).
  * @param {UndoEntry} entry
  */
-function pushUndo(entry) { _s.undoStack.push(entry); _trim(_s.undoStack); }
+function pushUndo(entry) { _s.undoStack.push(entry); _trim(_s.undoStack); emit("undo"); }
 
 /**
  * Push an entry onto the redo stack (used by Undo to make the edit
  * redoable).
  * @param {UndoEntry} entry
  */
-function pushRedo(entry) { _s.redoStack.push(entry); _trim(_s.redoStack); }
+function pushRedo(entry) { _s.redoStack.push(entry); _trim(_s.redoStack); emit("undo"); }
 
 /** Clear both stacks -- called when a different session is opened. */
-function resetUndo() { _s.undoStack = []; _s.redoStack = []; }
+function resetUndo() { _s.undoStack = []; _s.redoStack = []; emit("undo"); }
 
 /** @param {string} folder @returns {boolean} */
 function canUndo(folder) { return _s.undoStack.some(e => e.sessionFolder === folder); }
@@ -208,13 +212,13 @@ function canRedo(folder) { return _s.redoStack.some(e => e.sessionFolder === fol
 /* Session */
 function getSession() { return _s.currentSession; }
 /** @param {*} v */
-function setSession(v) { _s.currentSession = v; }
+function setSession(v) { _s.currentSession = v; emit("session"); }
 
 /* Level */
 /** @returns {Level} */
 function getLevel() { return _s.currentLevel; }
 /** @param {Level} v */
-function setLevel(v) { _s.currentLevel = v; }
+function setLevel(v) { _s.currentLevel = v; emit("level"); }
 
 /* Selection */
 function getSelectedStepId() { return _s.selectedStepId; }

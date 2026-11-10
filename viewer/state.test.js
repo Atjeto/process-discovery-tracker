@@ -152,6 +152,52 @@ test("resetUndo clears both stacks", () => {
   assert.equal(State.canRedo("/s/A"), false);
 });
 
+/* ---- lane W0: the stacks, the project and the level say they changed - */
+
+/* How many times `topic` fires while `fn` runs. */
+function fires(topic, fn) {
+  let n = 0;
+  const off = State.subscribe(topic, () => { n++; });
+  try { fn(); } finally { off(); }
+  return n;
+}
+
+test("lane W0: every function that changes the undo or the redo stack emits 'undo'", () => {
+  State.resetUndo();
+  assert.equal(fires("undo", () => State.recordEdit(entry("e", "/s/A"))), 1, "recordEdit");
+  assert.equal(fires("undo", () => State.pushUndo(entry("u", "/s/A"))), 1, "pushUndo");
+  assert.equal(fires("undo", () => State.pushRedo(entry("r", "/s/A"))), 1, "pushRedo");
+  assert.equal(fires("undo", () => State.popUndo("/s/A")), 1, "popUndo");
+  assert.equal(fires("undo", () => State.popRedo("/s/A")), 1, "popRedo");
+  assert.equal(fires("undo", () => State.resetUndo()), 1, "resetUndo");
+  // A push past the cap trims in the same call: still one topic.
+  for (let i = 0; i < State.UNDO_MAX; i++) State.pushUndo(entry("fill " + i, "/s/A"));
+  assert.equal(fires("undo", () => State.pushUndo(entry("over", "/s/A"))), 1, "a trimmed push");
+  State.resetUndo();
+});
+
+test("lane W0: a project opened or closed emits 'session', a level shown emits 'level'", () => {
+  const before = State.getSession(), level = State.getLevel();
+  assert.equal(fires("session", () => State.setSession({ sessionFolder: "/s/A" })), 1);
+  assert.equal(fires("session", () => State.setSession(before)), 1);
+  assert.equal(fires("level", () => State.setLevel("steps")), 1);
+  State.setLevel(level);
+});
+
+test("lane W0: inside batch() the 'undo' topic fires once, after the batch", () => {
+  State.resetUndo();
+  let n = 0;
+  const off = State.subscribe("undo", () => { n++; });
+  State.batch(() => {
+    State.recordEdit(entry("a", "/s/A"));
+    State.recordEdit(entry("b", "/s/A"));
+    assert.equal(n, 0);
+  });
+  off();
+  assert.equal(n, 1);
+  State.resetUndo();
+});
+
 /* ---- the current level (contract C19) ------------------------------ */
 
 test("mapPath: the main map by default; a copy goes in and a copy comes out", () => {

@@ -255,6 +255,34 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .help-cta { color: var(--fg-3); font-size: 11px; margin-top: 16px; }
 .help-action { margin-top: 8px; }
 
+/* ===== Lane W0: the top bar's next act, Undo and Redo ===== */
+/* The next act (top-bar-acts.js): an outlined button in the accent, its text
+   cut with an ellipsis rather than ever wrapping the bar (its full text is
+   then in its tooltip). renderer.js gives it the room the rest of the bar
+   leaves (its inline max-width), so the bar keeps one line. */
+#btn-next-act[hidden], #btn-undo[hidden], #btn-redo[hidden] { display: none; }
+.top-next-act { flex: 0 1 auto; min-width: 0;
+  padding: 4px 10px; font-size: 12px; line-height: 16px; color: var(--fg);
+  background: var(--accent-muted); border: 1px solid var(--accent); border-radius: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-next-act:hover:not(:disabled) { background: var(--bg-3); border-color: var(--accent); }
+/* Undo and Redo: quiet buttons in the top bar's own size. With nothing to
+   undo or redo they stay, reachable and named, aria-disabled: the text in
+   --fg-3 (above 4.5:1 on the bar in both themes) on no fill, a dashed edge,
+   no hover. */
+.top-undo { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; line-height: 16px;
+  color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--rule); border-radius: 4px; }
+.top-undo[aria-disabled="true"] { color: var(--fg-3); background: transparent; border-style: dashed; cursor: default; }
+.top-undo[aria-disabled="true"]:hover { color: var(--fg-3); background: transparent; border-color: var(--rule); }
+.top-undo[aria-disabled="true"]:active { transform: none; }
+/* A narrow window (CI's 1024 px display): the bar's gaps close up and the
+   levels keep their names without their glyphs, so Undo and Redo fit beside
+   the status line on one line. */
+@media (max-width: 1100px) {
+  .topbar { column-gap: 8px; }
+  .view-mode-btn .view-mode-icon { display: none; }
+}
+
 /* The app shell fills the window: <main> is a flex column and the
    active view flex-fills it, scrolling internally only when its own
    content genuinely exceeds the viewport. This is what lets each

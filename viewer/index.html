@@ -81,6 +81,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
          wireUnzipStatus), with Cancel; shown with or without a project. -->
     <div class="unzip-status" id="unzip-status" role="status" aria-live="polite" hidden></div>
     <span class="flex-spacer"></span>
+    <!-- Lane W0 (plan 11.1): the Checklist's next act on the Timeline, Steps
+         and the Map (a click opens the Checklist), then Undo and Redo, what
+         Ctrl+Z and Ctrl+Y do (top-bar-acts.js, drawn by renderer.js
+         syncTopBarActs). Hidden in a read-only project; Undo and Redo also
+         while the map editor is open, where the keys are the map's. -->
+    <button type="button" class="top-next-act session-only" id="btn-next-act" title="Opens the Checklist." hidden></button>
+    <button type="button" class="top-undo session-only" id="btn-undo" title="Undoes the last change. Key: Ctrl+Z" aria-disabled="true" hidden>Undo</button>
+    <button type="button" class="top-undo session-only" id="btn-redo" title="Does the undone change again. Key: Ctrl+Y" aria-disabled="true" hidden>Redo</button>
     <!-- The save state (save-state.js): every change saves itself to the
          project folder. Saved (the time and the folder in the tooltip),
          Saving... while a write lasts, Not saved (the reason in the tooltip)
@@ -521,7 +529,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </ul>
           <p>Help, <em>Recording keys</em>, lists what to tell the SME before they record.</p>
           <h3>Your first hour</h3>
-          <p>The Overview's <em>Checklist</em> lists the main acts below and ticks each one when it is done; its button takes you to the next. For a recording the acts are <em>Mark the transactions</em>, <em>Confirm the reference transaction</em>, <em>Review the other transactions</em>, <em>Write the document</em> and <em>Hand off</em>. For a project made from a video or from nothing they are <em>Add the steps</em>, <em>Write the steps</em> (a name of its own and a description for each step), <em>Review the other transactions</em> when it has two or more, <em>Write the document</em> and <em>Hand off</em>.</p>
+          <p>The Overview's <em>Checklist</em> lists the main acts below and ticks each one when it is done; its button takes you to the next. For a recording the acts are <em>Mark the transactions</em>, <em>Confirm the reference transaction</em>, <em>Review the other transactions</em>, <em>Write the document</em> and <em>Hand off</em>. For a project made from a video or from nothing they are <em>Add the steps</em>, <em>Write the steps</em> (a name of its own and a description for each step), <em>Review the other transactions</em> when it has two or more, <em>Write the document</em> and <em>Hand off</em>. On the Timeline, Steps and the Map, the top bar shows the next act, such as <em>Next: write the steps (1 of 7)</em>, and a click on it opens the Checklist.</p>
           <ol class="help-steps">
             <li><strong>Attach the video and the transcript.</strong> On the Overview, click <em>Attach</em> after <em>No video</em> and pick the video. PDT opens the Timeline: pause the video at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. The video is copied into the project folder. Attach the meeting transcript (a Teams .vtt or .docx) with <em>Attach</em> after <em>No transcript</em>: the synced video places its sentences in time. Without a video, <em>Sync...</em> on the Timeline's <em>Transcript</em> lane places it: pick a sentence, then click where it was said.</li>
             <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Transaction 1</em> to <em>Transaction 4</em>. If one is missing, right-click the timeline where it starts, choose <em>Start a transaction here...</em>, then click <em>Apply marker changes</em> in the top bar. If one starts or ends in the wrong place, type its times in Steps or drag its band on the Timeline (see <em>Everyday tasks</em>).</li>
@@ -618,6 +626,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p><strong>Undo</strong></p>
           <ol class="help-steps">
             <li>Press Ctrl+Z to undo your last change, and Ctrl+Y to redo it.</li>
+            <li><em>Undo</em> and <em>Redo</em> in the top bar do the same.</li>
             <li>Undo covers every change (steps, markers, document fields, edited maps, the video, a stretch left out, a removed transcript), up to 50, until you open another project.</li>
             <li>In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map.</li>
           </ol>
