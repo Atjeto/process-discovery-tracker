@@ -1007,7 +1007,9 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   g.innerHTML = _groupHead(isOpen,
     '<span class="run-title">' + escapeHtml(run.title) + "</span>" +
     '<span class="run-label"' + (run.label ? ' title="' + escapeAttr(run.label) + '"' : "") + ">" + escapeHtml(run.label) + "</span>" +
-    _badges(isPattern, status) +
+    // Lane E-1: a project of one transaction has nothing it is the reference
+    // among, so its one transaction carries no Reference badge.
+    _badges(isPattern && model.runs.length >= 2, status) +
     '<span class="run-meta">' + escapeHtml(meta) + "</span>", canUsePattern ? OTHER_RUN_TITLE : "");
   _wireHead(g, run.caseId);
   if (!ro && isOpen && isPattern && RunsModel.canReopen(run, rec, isPattern)) {
@@ -1290,6 +1292,23 @@ function stepDetailCallbacks(selected, interactionsById) {
     // C19: a sub-process has no scissors (its steps are split, inside it).
     subProcess: SPM.isSubProcess(selected)
       ? { count: selected.sub_steps.filter((x) => x && x.state !== "hidden").length, group: selected.group === true } : null,
+  };
+}
+
+/* Lane E-1: what the step panel needs to edit a step's name, system and
+   description where the video is, on the Timeline and the Map: the editor's
+   own handlers and rules (stepDetailCallbacks), so there is one save path
+   (a rename names the same drafted step in the other transactions, a pick
+   from the library, one undoable edit, a draft becoming edited). */
+function panelFieldCallbacks(step) {
+  const facts = stepFacts(step, _interactionsById());
+  return {
+    onRename: (stepId, name) => inlineRenameStep(stepId, name, false),
+    onDescription: describeStepAction,
+    picker: Library.pickerFor(_library(), facts.system, step),
+    onPickActivity: pickActivityAction,
+    derived: facts.derived,
+    description: facts.description,
   };
 }
 
@@ -1633,6 +1652,14 @@ function _nextRow(stepId) {
   return i >= 0 && i < list.length - 1 ? list[i + 1] : null;
 }
 
+/* Lane E-1: a step deleted takes the screenshots added to it with it (a
+   frame it took as it was marked has no other place); Ctrl+Z brings both
+   back, the files too. `ids`: the steps deleted, their sub-steps among them. */
+function _dropAddedShots(anno, ids) {
+  if (!Array.isArray(anno.analyst_screenshots) || !ids.size) return;
+  anno.analyst_screenshots = anno.analyst_screenshots.filter((x) => !(x && ids.has(x.step_id)));
+}
+
 /* Item 5: only a step the analyst added is deleted. Any other step came from
    the drafting, and the next Analyze would draft it again, so taking it out
    hides it instead (a hidden step stays out of every analysis). */
@@ -1672,6 +1699,7 @@ async function deleteStep(stepId) {
     ? TE.handBack(_mainSpans(anno.steps, (s) => AC.stepTimeMovable(s)), _span(step), _markerMoments()) : null;
   // C22: the steps placed after it keep their place.
   _handOver([stepId]);
+  if (step) _dropAddedShots(anno, new Set(SPM.allSteps([step]).map((s) => s.step_id)));
   SPM.removeSteps(anno.steps, [stepId]);
   if (back) {
     const prev = anno.steps.find((s) => s && s.step_id === back.id);
@@ -1822,11 +1850,46 @@ async function splitStep(stepId, after) {
        "Step 2" at the playhead.
    Distinct from splitStep(), which cuts a selected step at its
    interaction-count midpoint. A new step belongs to the run that contains
-   it; on the pattern run the split and the add are counted fixes. */
-async function addStepAtTimestamp(tsISO) {
-  if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
+   it; on the pattern run the split and the add are counted fixes.
+   Lane E-1: `opts.frame` (a promise of the video's frame at that moment, a
+   base64 image or null, AnalystUI.frameAtMoment) makes that frame the new
+   step's added screenshot, in the same undoable edit as the step (one
+   Ctrl+Z takes both, the file too). A frame that cannot be read leaves the
+   step without one, and nothing is said. Resolves the id of the step that
+   starts at the moment, or null when none was added. */
+async function addStepAtTimestamp(tsISO, opts) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return null;
   const t = new Date(tsISO).getTime();
-  if (!isFinite(t)) { toast("Couldn't read the playhead position", "error"); return; }
+  if (!isFinite(t)) { toast("Couldn't read the playhead position", "error"); return null; }
+  // What would be added is known before the frame is written, so a step
+  // that cannot be added leaves no file behind.
+  const pre = _stepAt(t, true);
+  if (pre.refuse) { toast(pre.refuse, pre.error ? "error" : undefined); return null; }
+  let shot = null;
+  if (opts && opts.frame) {
+    const data = await AnalystUI.settleFrame(opts.frame, AnalystUI.FRAME_WAIT_MS + 1000);
+    if (data) shot = await AnalystUI.writeFrame(data);
+    if (State.getSession() !== sess) return null;
+  }
+  // No await from here to the save: the step and its picture are one edit.
+  const r = _stepAt(t, false);
+  if (r.refuse) { toast(r.refuse, r.error ? "error" : undefined); return null; }
+  const anno = ensureAnnoShape(sess.annotations);
+  if (shot && r.stepId) {
+    if (!Array.isArray(anno.analyst_screenshots)) anno.analyst_screenshots = [];
+    anno.analyst_screenshots.push(AnalystUI.frameEntry(shot, r.stepId, new Date(t).toISOString()));
+  }
+  try { await persistAnnotations(anno, "Add step at playhead"); } catch (_) { return null; }   // already shown
+  toast(r.toast, "success");
+  return r.stepId || null;
+}
+
+/* The step at the moment `t` (addStepAtTimestamp): with `dry`, what would
+   happen and nothing changed ({ ok } or { refuse, error }); else the change
+   made in memory, not saved: { stepId (the step that starts at `t`), toast }
+   or { refuse, error }. Every refusal comes before any change. */
+function _stepAt(t, dry) {
   const anno = ensureAnnoShape(State.getSession().annotations);
   const runs = _model().runs;
   const inter = State.getSession().events.filter(e => e.type === "interaction");
@@ -1839,16 +1902,16 @@ async function addStepAtTimestamp(tsISO) {
   // playhead. (A video project gets one step from the playhead, below.)
   if (!anno.steps.length && (State.getSession().events || []).length) {
     const span = getSpan();
-    if (!span) { toast("No events to anchor a step to", "error"); return; }
+    if (!span) return { refuse: "No events to anchor a step to", error: true };
+    if (dry) return { ok: true };
     const before = inter.filter(e => new Date(e.timestamp).getTime() < t).map(e => e.event_id);
     const after = inter.filter(e => new Date(e.timestamp).getTime() >= t).map(e => e.event_id);
+    const second = makeStep("Step 2", tISO, new Date(span.endMs).toISOString(), after, runAt(t, span.endMs));
     anno.steps.push(
       makeStep("Step 1", new Date(span.startMs).toISOString(), tISO, before, runAt(span.startMs, t)),
-      makeStep("Step 2", tISO, new Date(span.endMs).toISOString(), after, runAt(t, span.endMs)),
+      second,
     );
-    await persistAnnotations(anno, "Add step at playhead");
-    toast('Created "Step 1" and "Step 2"', "success");
-    return;
+    return { stepId: second.step_id, toast: 'Created "Step 1" and "Step 2"' };
   }
 
   // Playhead inside a step: split that step at the playhead. C19 and lane
@@ -1857,6 +1920,7 @@ async function addStepAtTimestamp(tsISO) {
   // a time the way a main-level step does.
   const place = SPV.momentPlace(anno.steps, t);
   if (place.kind === "split") {
+    if (dry) return { ok: true };
     const s = place.list[place.index];
     const ids = (s.evidence && s.evidence.interaction_event_ids) || [];
     const newName = nextStepName(SPM.allSteps(anno.steps));
@@ -1877,16 +1941,24 @@ async function addStepAtTimestamp(tsISO) {
       time_range: { start: tISO, end: own ? new Date(own.after.endMs).toISOString() : s.time_range.end },
       evidence: { ...(s.evidence || {}), interaction_event_ids: ids.filter(id => evTime(id) >= t) },
       state });
-    if (own) second.case_id = runAt(t, own.after.endMs);
+    if (own) {
+      second.case_id = runAt(t, own.after.endMs);
+      // Lane E-1: marked one after another, the new step is the next step,
+      // written afresh in the step panel: it takes none of what was written
+      // on the step before it (its description, its library activity, its
+      // screenshot choices, its waste flag, the label its name gave it, which
+      // would put it in that step's map box and panel). Its system stays.
+      second.description = "";
+      second.flags = { waste: false };
+      for (const k of ["library_activity", "pdd_screenshot", "hidden_screenshots", "process_label"]) delete second[k];
+    }
     StepFlow.splitFlow(first, second);   // C17, as in splitStep
     place.list.splice(place.index, 1, first, second);
     // C22: a step of the analyst's cut here is the step being marked and
     // the new one the next step, which its time places; a recorded step's two
     // parts are one step's, the second right after the first.
     _splitPlace(first, second, !own);
-    await persistAnnotations(anno, "Add step at playhead");
-    toast('Added "' + newName + '"' + (place.parent ? ' inside "' + (place.parent.name || "") + '"' : ""), "success");
-    return;
+    return { stepId: second.step_id, toast: 'Added "' + newName + '"' + (place.parent ? ' inside "' + (place.parent.name || "") + '"' : "") };
   }
 
   // Playhead inside a sub-process, between its steps: a new sub-step from
@@ -1897,15 +1969,15 @@ async function addStepAtTimestamp(tsISO) {
     const nextSub = place.list.filter((s) => s && s.time_range && s.time_range.start)
       .map((s) => new Date(s.time_range.start).getTime()).filter((ms) => ms >= t).sort((a, b) => a - b)[0];
     const endMs = Math.min(nextSub != null ? nextSub : parentEnd, parentEnd);
-    if (!(endMs - t > 0)) { toast("A step already starts here"); return; }
+    if (!(endMs - t > 0)) return { refuse: "A step already starts here" };
+    if (dry) return { ok: true };
     const newName = nextStepName(SPM.allSteps(anno.steps));
     const own = new Set((parent.evidence && parent.evidence.interaction_event_ids) || []);
     const ids = inter.filter((e) => { const et = new Date(e.timestamp).getTime(); return own.has(e.event_id) && et >= t && et < endMs; })
       .map((e) => e.event_id);
-    place.list.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids, parent.case_id != null ? parent.case_id : null));
-    await persistAnnotations(anno, "Add step at playhead");
-    toast('Added "' + newName + '" inside "' + (parent.name || "") + '"', "success");
-    return;
+    const sub = makeStep(newName, tISO, new Date(endMs).toISOString(), ids, parent.case_id != null ? parent.case_id : null);
+    place.list.push(sub);
+    return { stepId: sub.step_id, toast: 'Added "' + newName + '" inside "' + (parent.name || "") + '"' };
   }
 
   // Playhead in open space: new step from the playhead to the next boundary
@@ -1920,16 +1992,17 @@ async function addStepAtTimestamp(tsISO) {
   let endMs = next != null ? next : (span ? span.endMs : t + 5000);
   const boundary = TE.nextBoundary(_markerMoments(), t);
   if (boundary != null) endMs = Math.min(endMs, boundary);
-  if (endMs - t <= 0) { toast("A step already starts here"); return; }
+  if (endMs - t <= 0) return { refuse: "A step already starts here" };
+  if (dry) return { ok: true };
   const newName = nextStepName(anno.steps);
   const ids = inter
     .filter(e => { const et = new Date(e.timestamp).getTime(); return et >= t && et < endMs; })
     .map(e => e.event_id);
   const caseId = runAt(t, endMs);
   RunsModel.recordFix(anno, runs, caseId, "add");
-  anno.steps.push(makeStep(newName, tISO, new Date(endMs).toISOString(), ids, caseId));
-  await persistAnnotations(anno, "Add step at playhead");
-  toast('Added "' + newName + '"', "success");
+  const added = makeStep(newName, tISO, new Date(endMs).toISOString(), ids, caseId);
+  anno.steps.push(added);
+  return { stepId: added.step_id, toast: 'Added "' + newName + '"' };
 }
 
 /* C22: the place in the process of a step split in two (`first` keeps its
@@ -2426,6 +2499,11 @@ async function commitMerge(anno, toMerge, undoLabel) {
   }
   const idMap = new Map([...mergedIds].map((id) => [id, merged.step_id]));
   const carriedRuns = main ? _carryMerge(anno, model.runs, model, merged, idMap) : 0;
+  // Lane E-1: the screenshots added to a merged step go to the step it
+  // became part of.
+  for (const x of Array.isArray(anno.analyst_screenshots) ? anno.analyst_screenshots : []) {
+    if (x && idMap.has(x.step_id)) x.step_id = idMap.get(x.step_id);
+  }
   // C22: a step placed after a merged step comes after the step it became
   // part of.
   for (const st of SPM.allSteps(anno.steps)) {
@@ -2846,6 +2924,7 @@ async function deleteSelectedSteps() {
   _handOver(hide.concat(remove).map((s) => s.step_id));
   RunsModel.hideSteps(hide);
   const removeIds = new Set(remove.map((s) => s.step_id));
+  _dropAddedShots(anno, new Set(SPM.allSteps(remove).map((s) => s.step_id)));
   SPM.removeSteps(anno.steps, removeIds);
   // C17: the links that went to them go too, in the same edit.
   const dropped = StepFlow.dropLinksTo(anno.steps, hide.concat(remove).map((s) => s.step_id)).length;
@@ -3439,6 +3518,8 @@ module.exports = {
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep,
   deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp, setStepTimes,
+  // Lane E-1: the step panel edits a step with the editor's own handlers.
+  panelFieldCallbacks,
   // C22: a step's place in the process (the Timeline's band menu).
   placeStepAfterAction, placeStepAt, backToTimeAction, placedText,
   // C19: the level shown, and the way into a sub-process (the step panel).

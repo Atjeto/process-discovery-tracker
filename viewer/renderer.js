@@ -62,7 +62,7 @@ function _exportName(sess, kind) {
    matter (rerenderActiveLevel etc. are declared further down). */
 initFlowView({
   rerenderActiveLevel:    () => rerenderActiveLevel(),
-  addStepAtTimestamp:     (ts) => addStepAtTimestamp(ts),
+  addStepAtTimestamp:     (ts, opts) => addStepAtTimestamp(ts, opts),
 });
 
 /* ============ Session / undo layer -- see session.js ============== */

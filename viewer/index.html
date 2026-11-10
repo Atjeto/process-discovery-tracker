@@ -418,8 +418,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     <aside class="step-panel" id="step-panel" hidden aria-label="Step">
       <div class="sp-top">
         <h3 class="sp-name" id="sp-name"></h3>
+        <!-- Lane E-1: on the Timeline and the Map the step's name, system and
+             description are fields here, saved as the editor's are. -->
+        <div class="sp-name-edit" id="sp-name-edit" hidden></div>
         <button type="button" class="icon-btn sp-close" id="btn-sp-close" title="Close the panel">✕</button>
       </div>
+      <div class="sp-fields" id="sp-fields" hidden></div>
       <div class="sp-about" id="sp-about"></div>
       <video class="sp-video" id="sp-video" preload="metadata" controls hidden></video>
       <!-- Lane FX2: the one line in place of (or under) the video when it has
@@ -515,7 +519,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Play the video on the Timeline. Where the SME starts the work, right-click the timeline and choose <em>Start a transaction here</em>.</li>
             <li>As each step starts, press S (or click <em>+ Step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
             <li>Where the transaction ends, right-click and choose <em>End the transaction here</em>: its last step ends there too. <em>Start a transaction here</em> for the next one ends the one before it the same way.</li>
-            <li>Name the steps in Steps as you go, or afterwards. Ctrl+Z takes back a mark put in the wrong place.</li>
+            <li>Each step you add opens in the step panel beside the video, its screenshot taken from the video at that moment. Pause the video before you press S, and the cursor is in the step's name: type the name, press Enter, and play on. Its system and its description are right under the name. While the video plays, S only marks the steps: name them in the panel or in Steps afterwards. Ctrl+Z takes back a mark put in the wrong place, with its screenshot.</li>
           </ol>
           <p><strong>Put a step where it belongs in the process</strong></p>
           <ol class="help-steps">

@@ -165,7 +165,14 @@ const panelState = (page) => page.evaluate(() => {
   const v = document.getElementById("sp-video");
   return {
     shown: !!p && !p.hidden, name: ((document.getElementById("sp-name") || {}).textContent || "").trim(),
-    system: ((document.querySelector("#sp-about .sp-system") || {}).textContent || "").trim(),
+    // Lane E-1: on the Timeline and the Map the system is a field (its own
+    // value, else the recorded one as its placeholder), then the screen.
+    system: (() => {
+      const f = document.getElementById("sp-system");
+      if (!f) return ((document.querySelector("#sp-about .sp-system") || {}).textContent || "").trim();
+      const screen = ((document.querySelector("#sp-fields .sp-screen") || {}).textContent || "").trim();
+      return [f.value || f.placeholder, screen].filter(Boolean).join(" · ");
+    })(),
     count: ((document.querySelector("#sp-about .sp-count") || {}).textContent || "").trim(),
     explain: ((document.getElementById("sp-explain") || {}).textContent || "").trim(),
     rows: [...document.querySelectorAll("#sp-body .sp-occ")].map((r) => ({ id: r.dataset.stepId,
@@ -178,6 +185,18 @@ const panelState = (page) => page.evaluate(() => {
     videoHidden: v ? v.hidden : null,
     videoNote: (() => { const n = document.getElementById("sp-video-note"); return n && !n.hidden ? (n.textContent || "").trim() : ""; })(),
   };
+});
+
+/* Lane E-1: the panel's head: its name field's value (null when the head is
+   text), whether the system and description fields are there, and the
+   heading (kept for a screen reader, hidden while the field shows). */
+const headState = (page) => page.evaluate(() => {
+  const n = document.getElementById("sp-name-input");
+  const h = document.getElementById("sp-name");
+  return { input: n ? n.value : null, system: !!document.getElementById("sp-system"), desc: !!document.getElementById("sp-desc"),
+    headingHidden: !!h && h.classList.contains("sr-only"), heading: h ? h.textContent : "",
+    aboutSystem: ((document.querySelector("#sp-about .sp-system") || {}).textContent || "").trim(),
+    focus: (document.activeElement || {}).id || "" };
 });
 
 /* The line above the rows, as the rows shown make it (step-facts.js builds
@@ -306,8 +325,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     // measured, the rows past its end say so.
     await page.waitForSelector("#sp-body .sp-occ .sp-nocover", { timeout: T }).catch(() => {});
     const st = await panelState(page);
+    const head = await headState(page);
     await page.locator('#sp-body .sp-occ[data-step-id="' + SAVE.step_id + '"] .sp-play').click({ timeout: T });
-    fromMap = Object.assign({ st, cue }, await played(SAVE));
+    fromMap = Object.assign({ st, cue, head }, await played(SAVE));
+    await page.screenshot({ path: path.join(__dirname, "panel-smoke-map-head.png") }).catch(() => {});
   } catch (e) { map.err = errText(e); }
   // Lane LF-PIPE (#24): a box whose step name already names its system
   // (the demo drafts "Salesforce" and a screen, a colon, the commit) leaves
@@ -325,6 +346,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       JSON.stringify(fromMap.st.foot) === '["Open in Steps"]' &&
       await page.evaluate(() => document.getElementById("session-map-dfg-host").getBoundingClientRect().width > 300)),
     JSON.stringify(map.err || fromMap));
+  record("(E1-map) lane E-1: on the Map the panel's head is the step's name, system and description as fields (the heading kept for a screen reader)",
+    !!(fromMap && fromMap.head && fromMap.head.input === SAVE.name && fromMap.head.system && fromMap.head.desc &&
+      fromMap.head.headingHidden && fromMap.head.heading === SAVE.name && fromMap.head.aboutSystem === ""),
+    JSON.stringify(map.err || (fromMap && fromMap.head)));
   const mapRows = fromMap ? fromMap.st.rows : [];
   record("(g1) the owner's review + lane FX2: one line above the rows says what they are, built from them (\"This step happened N times: ... Play the one the video covers.\"); each row reads \"Transaction N · m:ss into the recording · took Ns\"; the rows past the 32 s video's end say \"The video does not cover this moment\", with no play; the panel opens with its video paused at the row it highlights (a map box: Transaction 1), not where the video was",
     !!(fromMap && fromMap.cue.ok && /^This step happened .+\. Play the one the video covers\.$/.test(fromMap.st.explain) &&
@@ -468,6 +493,49 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     !!(!fromBand.err && fromBand.laneOn && fromBand.ok && fromBand.cue.ok && fromBand.st.rows.some((r) => r.focus && r.id === OPEN.step_id)),
     JSON.stringify(fromBand));
 
+  // (E1-timeline) Lane E-1: on the Timeline the panel's head edits the step
+  // it is on: keys typed there stay in the field (S adds no step), Escape
+  // puts the name back and leaves, Enter saves a rename and leaves (the band
+  // shows it), and Ctrl+Z takes it back.
+  let head = {};
+  try {
+    head.before = await headState(page);
+    const stepsNow = () => page.evaluate(() => (require("./state.js").getSession().annotations.steps || []).length);
+    const nameOf = () => page.evaluate((id) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === id) || {}).name, OPEN.step_id);
+    head.n0 = await stepsNow();
+    await page.locator("#sp-name-input").click({ timeout: T });
+    await page.keyboard.press("Control+A");
+    await page.keyboard.type("Look up the customer s");
+    await wait(400);
+    head.typed = { value: await page.locator("#sp-name-input").inputValue(), steps: await stepsNow() };
+    await page.keyboard.press("Escape");
+    await wait(300);
+    head.escaped = Object.assign(await headState(page), { name: await nameOf() });
+    await page.locator("#sp-name-input").click({ timeout: T });
+    await page.keyboard.press("Control+A");
+    await page.keyboard.type("Open the customer record");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(([id, n]) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === id) || {}).name === n,
+      [OPEN.step_id, "Open the customer record"], { timeout: T });
+    await wait(500);
+    head.renamed = Object.assign(await headState(page), {
+      band: await page.evaluate((id) => { const b = document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]');
+        return b ? ((b.textContent || "") + " | " + (b.title || "")) : ""; }, OPEN.step_id) });
+    await page.screenshot({ path: path.join(__dirname, "panel-smoke-timeline-head.png") }).catch(() => {});
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(([id, n]) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === id) || {}).name === n,
+      [OPEN.step_id, OPEN.name], { timeout: T });
+    await wait(400);
+    head.undone = await headState(page);
+  } catch (e) { head.err = errText(e); }
+  record("(E1-timeline) lane E-1: on the Timeline the panel's head is the step's name, system and description as fields; S typed in the name stays there (no step added), Escape puts the name back and leaves the field, Enter saves a rename and leaves it (the band shows the new name), and Ctrl+Z takes it back",
+    !!(!head.err && head.before.input === OPEN.name && head.before.system && head.before.desc && head.before.headingHidden &&
+      head.typed.value === "Look up the customer s" && head.typed.steps === head.n0 &&
+      head.escaped.input === OPEN.name && head.escaped.focus !== "sp-name-input" && head.escaped.name === OPEN.name &&
+      head.renamed.input === "Open the customer record" && head.renamed.focus !== "sp-name-input" && /Open the customer record/.test(head.renamed.band) &&
+      head.undone.input === OPEN.name),
+    JSON.stringify(head));
+
   // (L) The owner's reviews: the lanes have a header column, like a video
   // editor's track headers (the second review: "just text labels standing
   // there on the side"): a cell per lane with a key and the lane's name,
@@ -543,6 +611,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, SEARCH.name, { timeout: T });
     fromRow.cue = await cued(SEARCH);
     fromRow.st = await panelState(page);
+    fromRow.head = await headState(page);
     await page.locator("#btn-step-watch").click({ timeout: T });
     Object.assign(fromRow, await played(SEARCH));
     fromRow.level = await page.evaluate(() => require("./state.js").getLevel());
@@ -553,6 +622,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     !!(!fromRow.err && fromRow.ok && fromRow.cue.ok && fromRow.level === "steps" && fromRow.listWidth > 250 &&
       JSON.stringify(fromRow.st.foot) === '["Show on timeline"]' && rowShots.some((r) => r.shots > 0) &&
       rowShots.every((r) => (r.shots > 0) === (r.leads[0] === "Screenshots"))), JSON.stringify(fromRow));
+  record("(E1-steps) lane E-1: on Steps the panel's head stays as it was, text beside the editor (no name, system or description field in it)",
+    !!(!fromRow.err && fromRow.head && fromRow.head.input === null && !fromRow.head.system && !fromRow.head.desc &&
+      !fromRow.head.headingHidden && fromRow.head.heading === SEARCH.name && /^Salesforce/.test(fromRow.head.aboutSystem)),
+    JSON.stringify(fromRow.head || fromRow.err));
 
   // (d) Closed on Steps, the panel stays closed while rows are selected.
   let closed = {};
@@ -783,6 +856,34 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   record("(e) V2 item 5: moved and opened on a fresh profile, the recording still has its video (stored relative); an absolute path from another computer falls back to the file of that name in the folder",
     !travel.err && travel.relative.ok && inMoved(travel.relative.path) && travel.absolute.ok &&
       path.resolve(travel.absolute.path) === path.resolve(moved, path.basename(VIDEO)), JSON.stringify(travel));
+
+  // (E1-read-only) Lane E-1: in a hand-off opened read only (here one
+  // unzipped by hand: its PDD beside the folder, its version in
+  // annotations.json) the panel's head on the Timeline reads as text.
+  let ro = {};
+  const roParent = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-panel-ro-"));
+  temps.push(roParent);
+  try {
+    const roProj = path.join(roParent, "Order to cash");
+    fs.cpSync(moved, roProj, { recursive: true });
+    const a = readJson(path.join(roProj, "annotations.json"));
+    a.handoffs = [{ version: 1, handed_off_at: "2026-11-10T09:00:00Z", by: "pm", note: "First version" }];
+    fs.writeFileSync(path.join(roProj, "annotations.json"), JSON.stringify(a, null, 2));
+    fs.writeFileSync(path.join(roParent, "Order to cash v1 PDD.docx"), "not read");
+    ({ v, page } = await open(roProj, errs));
+    ro.readOnly = await page.evaluate(() => require("./read-only.js").isReadOnly(require("./state.js").getSession()));
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+    await page.waitForSelector('#timeline .tl-step-band[data-step-id="' + OPEN.step_id + '"]', { timeout: T });
+    await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
+      .dispatchEvent(new MouseEvent("click", { bubbles: true })), OPEN.step_id);
+    await page.waitForFunction((n) => !document.getElementById("step-panel").hidden &&
+      (document.getElementById("sp-name") || {}).textContent === n, OPEN.name, { timeout: T });
+    ro.head = await headState(page);
+    await v.close();
+  } catch (e) { ro.err = errText(e); try { await v.close(); } catch (_) { /* closed */ } }
+  record("(E1-read-only) lane E-1: in a hand-off opened read only the panel's head on the Timeline is text, as before (no field)",
+    !ro.err && ro.readOnly === true && !!ro.head && ro.head.input === null && !ro.head.system && !ro.head.desc &&
+      !ro.head.headingHidden && ro.head.heading === OPEN.name, JSON.stringify(ro));
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   for (const d of temps) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) { /* temp */ } }

@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { describeInteraction, renderInteractionList, recordedHtml, recordedOpen, splitBlocker,
-  nameFieldHtml, activityListHtml } = require("./step-editor.js");
+  nameFieldHtml, activityListHtml, wireNameField } = require("./step-editor.js");
 const Library = require("./library.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
@@ -295,7 +295,11 @@ test("the step pane has no Save button: the name saves on Enter and blur, the de
   const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
   assert.ok(!src.includes("btn-step-save"), "no Save button");
   assert.ok(src.includes('nameEl.addEventListener("blur", commitName)'));
-  assert.ok(src.includes('if (e.key === "Enter") { e.preventDefault(); commitName(); }'), "Enter commits the name");
+  // Lane E-1: the name field's wiring is wireNameField, shared with the step
+  // panel (there Enter leaves the field, which saves it); its behaviour is
+  // pinned below with a fake field.
+  assert.ok(src.includes("if (o.leave) nameEl.blur(); else commitName();"), "Enter commits the name");
+  assert.ok(src.includes('wireNameField(document.getElementById("step-name"), step, callbacks'), "the editor wires its name with it");
   assert.ok(src.includes('descEl.addEventListener("blur", commitDesc)'));
   assert.ok(src.includes('getElementById("flag-waste").addEventListener("change"'));
   assert.ok(!src.includes("step-remembered"), "no remembered tag on a row: the run says it in one line");
@@ -372,4 +376,68 @@ test("C21: the picker's rows show the name, the code and the description, the st
   assert.ok(html.includes('<span class="step-activity-code">SO-01</span>') && html.includes('<span class="step-activity-desc">Saves &lt;the&gt; order.</span>'));
   assert.ok(html.includes('<li class="step-activity current" role="option" id="step-activity-1" data-i="1" aria-selected="false">'));
   assert.equal(activityListHtml([], null, -1), "");
+});
+
+/* ---- Lane E-1: the step panel's name field ------------------------------ */
+test("lane E-1: the name field can carry the step panel's own ids, never the editor's", () => {
+  const picker = Library.pickerFor(LIB, "Salesforce", {});
+  const html = nameFieldHtml({ name: "Step 3" }, picker, { input: "sp-name-input", list: "sp-activity-list", note: "sp-lib-note" });
+  assert.ok(html.includes('<label class="sr-only" for="sp-name-input">Name</label>'));
+  assert.ok(html.includes('id="sp-name-input" class="step-title-input" value="Step 3"'));
+  assert.ok(html.includes('aria-controls="sp-activity-list"') && html.includes('id="sp-activity-list"'));
+  assert.ok(!/id="step-name"|id="step-activity-list"/.test(html));
+  const note = nameFieldHtml({ name: "x" }, Library.pickerFor(LIB, "SAP", {}), { input: "sp-name-input", note: "sp-lib-note" });
+  assert.ok(note.includes('id="sp-lib-note"') && !note.includes('id="step-lib-note"'));
+  assert.equal(nameFieldHtml({ name: "x" }, null), nameFieldHtml({ name: "x" }, null, {}), "the editor's field is as it was");
+});
+
+/* A text field enough for wireNameField: its listeners, blur and value. */
+function fakeField(value) {
+  const on = {};
+  const el = {
+    value, isConnected: true, readOnly: false, blurred: 0,
+    addEventListener(type, fn) { (on[type] = on[type] || []).push(fn); },
+    setAttribute() {}, removeAttribute() {},
+    blur() { el.blurred += 1; (on.blur || []).forEach((fn) => fn({})); },
+    key(k) { const e = { key: k, prevented: false, preventDefault() { e.prevented = true; } }; (on.keydown || []).forEach((fn) => fn(e)); return e; },
+  };
+  return el;
+}
+
+test("lane E-1: in the step panel Enter saves the name and leaves the field; Escape puts back what it showed and leaves it", () => {
+  const saved = [];
+  const cb = { onRename: (id, v) => saved.push([id, v]) };
+  const el = fakeField("Step 3");
+  wireNameField(el, { step_id: "s3", name: "Step 3" }, cb, { leave: true });
+  el.value = "  Check the order  ";
+  const enter = el.key("Enter");
+  assert.ok(enter.prevented);
+  assert.equal(el.blurred, 1, "Enter leaves the field");
+  assert.deepEqual(saved, [["s3", "Check the order"]], "saved once, trimmed, on leaving");
+  const el2 = fakeField("Step 4");
+  wireNameField(el2, { step_id: "s4", name: "Step 4" }, cb, { leave: true });
+  el2.value = "Half typed";
+  el2.key("Escape");
+  assert.equal(el2.value, "Step 4", "Escape puts the name back");
+  assert.equal(el2.blurred, 1, "Escape leaves the field");
+  assert.equal(saved.length, 1, "Escape saves nothing");
+});
+
+test("lane E-1: the editor's name field is as it was: Enter saves and keeps the field, an empty name puts the name back", () => {
+  const saved = [];
+  const el = fakeField("Save order");
+  wireNameField(el, { step_id: "s1", name: "Save order" }, { onRename: (id, v) => saved.push([id, v]) });
+  el.value = "Save the order";
+  el.key("Enter");
+  assert.equal(el.blurred, 0, "the editor keeps the field");
+  assert.deepEqual(saved, [["s1", "Save the order"]]);
+  el.value = "   ";
+  el.blur();
+  assert.equal(el.value, "Save order", "an empty name is put back");
+  assert.equal(saved.length, 1);
+  const rendering = fakeField("A");
+  wireNameField(rendering, { step_id: "s2", name: "A" }, { onRename: (id, v) => saved.push([id, v]) }, { isRendering: () => true });
+  rendering.value = "B";
+  rendering.blur();
+  assert.equal(saved.length, 1, "a blur while the field is drawn again saves nothing");
 });

@@ -213,7 +213,13 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
     await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 1, null, { timeout: T });
     const step = (await anno()).steps[0];
     stepId = step.step_id;
-    await rightClickItem(x + 6, g.lowY, "Start a transaction here");
+    // Lane E-1: the step just added opens in the step panel beside the
+    // Timeline, which is then narrower: 6 px after the step's start is
+    // measured again.
+    await page.waitForSelector("#step-panel:not([hidden])", { timeout: T });
+    await wait(300);
+    g = await geo();
+    await rightClickItem(xOf(g, Date.parse(step.time_range.start)) + 6, g.lowY, "Start a transaction here");
     await prompt("Order 1");
     await page.waitForSelector("#timeline .tl-case-band.pending", { timeout: T });
     g = await geo();

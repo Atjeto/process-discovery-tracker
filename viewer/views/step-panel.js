@@ -51,6 +51,8 @@ const SPM = require("../sub-process-maps.js");
 const AC = require("../analyst-content.js");
 const MarkerEdits = require("../marker-edits.js");
 const TE = require("../time-edits.js");
+const RO = require("../read-only.js");
+const StepEditor = require("../step-editor.js");
 
 /* { label, path, focusId }: the map box shown, the level it is at (C19, []
    the main level) and the occurrence the foot's act and a play act on; null
@@ -73,6 +75,32 @@ let _followed = null;
    a step without a time is taken only once the analyst chose its moment. */
 let _moved = false;
 let _selfSeek = false;
+/* Lane E-1: the step whose name, system and description the head shows as
+   fields (null while it reads as text), and whether they are being drawn
+   (a field taken off the page then saves nothing). */
+let _headStepId = null;
+let _rendering = false;
+
+/* The ids of the head's fields (the editor's own are step-name, step-system
+   and step-desc, on the page beside it). */
+const HEAD_IDS = { name: "sp-name-input", list: "sp-activity-list", note: "sp-lib-note", system: "sp-system",
+  systemList: "sp-system-list", desc: "sp-desc" };
+
+/* Lane E-1: whether the name of a step just marked on the Timeline takes the
+   focus: only while the video is paused (the analyst stopped to write), never
+   while it plays (the next S is the next step, Space still pauses), and never
+   in a project open read only. Pure. */
+function nameTakesFocus(o) {
+  const x = o || {};
+  return !x.playing && !x.readOnly;
+}
+
+/* Whether the head shows fields: on the Timeline and the Map, in a project
+   that can change (on Steps the editor beside it is where the step is
+   written, lane E-1 1b). Pure. */
+function headEditable(level, readOnly) {
+  return !readOnly && (level === "flow" || level === "map");
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -236,8 +264,9 @@ function _noTime() {
 /* One row: what it is ("Transaction 2, again · 2:14 into the recording ·
    took 9s"), its play button, then its screenshots, what was said and its
    notes, each under a small lead. `again`: an earlier row is in the same
-   transaction. */
-function _rowHtml(o, again, origin, placed, hasVideo, focusId, open) {
+   transaction. `offer` (lane E-1): "Use the video at 0:11", the one link of
+   the highlighted row while it shows no screenshot and a video covers it. */
+function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer) {
   const st = o.step;
   // C16: the screenshots the step shows (recorded less the hidden ones, then
   // the ones added) and its notes (its own and those at a moment inside it).
@@ -263,6 +292,7 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open) {
       '<button type="button" class="sp-shot" data-ref="' + escapeAttr(sh.rel) + '" title="' +
         escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size") + '"><img src="' + escapeAttr(sh.url) +
         '" alt="' + escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : "")) + '"></button>').join("") + "</div></div>" : "") +
+    (offer && !shots.length ? '<div class="sp-sec">' + AnalystUI.useVideoButtonHtml(offer) + "</div>" : "") +
     (said.length ? '<div class="sp-sec"><div class="sp-lead">Said:</div><ol class="sp-said">' +
       said.map((x) => '<li class="tr-row">' + TM.sentenceRowHtml(x, origin) + "</li>").join("") + "</ol></div>" : "") +
     (notes.length ? '<div class="sp-sec"><div class="sp-lead">Notes</div><ul class="sp-notes" title="Notes stay in the app: the PDD does not print them.">' +
@@ -274,6 +304,7 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open) {
 /* A task of the As-Is map that no step stands for (C18): its name and one
    line, no video and no occurrences. */
 function _renderMissing() {
+  _drawHead(null, false, null);
   $("sp-name").textContent = _state.missing || "(unnamed task)";
   $("sp-about").innerHTML = '<p class="sp-missing">No step of the transactions has this name.</p>';
   const video = $("sp-video");
@@ -286,6 +317,81 @@ function _renderMissing() {
   $("sp-body").innerHTML = "";
 }
 
+/* Lane E-1: the head of the panel for `lead` (the step it highlights). With
+   `editable` its name (with the library's picker), its system and its
+   description are fields, drawn as the editor draws them and saved by the
+   editor's own handlers (steps-view.js panelFieldCallbacks): the name on
+   Enter or when it is left (Enter and Escape leave it, Escape putting back
+   what it showed), the system on Enter or when it is left, the description
+   when it is left (Enter is a new line there). The heading keeps the name
+   for a screen reader. While one of them has the focus the panel drawn again
+   leaves them as they are, so what is typed stays. Else the head is text. */
+function _drawHead(lead, editable, where) {
+  const nameEl = $("sp-name"), edit = $("sp-name-edit"), fields = $("sp-fields");
+  if (nameEl) {
+    nameEl.textContent = lead ? (lead.name || "(unnamed step)") : "";
+    nameEl.classList.toggle("sr-only", !!(lead && editable));
+  }
+  if (!edit || !fields) return;
+  if (!lead || !editable) {
+    _rendering = true;
+    try { edit.innerHTML = ""; fields.innerHTML = ""; } finally { _rendering = false; }
+    edit.hidden = true;
+    fields.hidden = true;
+    _headStepId = null;
+    return;
+  }
+  const active = document.activeElement;
+  if (_headStepId === lead.step_id && active && (edit.contains(active) || fields.contains(active))) return;
+  const cb = require("./steps-view.js").panelFieldCallbacks(lead);   // lazy: it requires this module
+  const desc = String(cb.description || "");
+  _rendering = true;
+  try {
+    edit.innerHTML = StepEditor.nameFieldHtml(lead, cb.picker, { input: HEAD_IDS.name, list: HEAD_IDS.list, note: HEAD_IDS.note });
+    fields.innerHTML = '<p class="sp-system">' +
+        AnalystUI.systemFieldHtml(lead, cb.derived, { input: HEAD_IDS.system, list: HEAD_IDS.systemList }) +
+        (where && where.screen ? '<span class="sp-screen">' + escapeHtml(where.screen) + "</span>" : "") + "</p>" +
+      '<label class="sp-field">Description <textarea id="' + HEAD_IDS.desc + '" placeholder="' + escapeAttr(StepEditor.DESC_HINT) +
+        '" title="The text the PDD prints under this step. Saved when you leave the field">' + escapeHtml(desc) + "</textarea></label>";
+  } finally { _rendering = false; }
+  edit.hidden = false;
+  fields.hidden = false;
+  _headStepId = lead.step_id;
+  const drawing = () => _rendering;
+  StepEditor.wireNameField($(HEAD_IDS.name), lead, cb, { listId: HEAD_IDS.list, isRendering: drawing, leave: true });
+  AnalystUI.wireSystemField($(HEAD_IDS.system), lead, drawing);
+  const descEl = $(HEAD_IDS.desc);
+  let shownDesc = desc.trim();
+  descEl.addEventListener("blur", () => {
+    if (_rendering || !descEl.isConnected) return;
+    const v = descEl.value.trim();
+    if (v === shownDesc) return;
+    shownDesc = v;
+    cb.onDescription(lead.step_id, v);
+  });
+}
+
+/* Lane E-1: the name field of the head takes the focus, its text selected,
+   so typing replaces "Step 3" at once. False when the head has no field. */
+function focusName() {
+  const el = $(HEAD_IDS.name);
+  const panel = $("step-panel");
+  if (!el || !panel || panel.hidden || el.readOnly) return false;
+  el.focus();
+  el.select();
+  return document.activeElement === el;
+}
+
+/* Lane E-1: a step just added on the Timeline (S, + Step, Add a step here)
+   opens in the panel; `opts.focusName` (nameTakesFocus) puts the cursor in
+   its name. */
+function openAdded(stepId, opts) {
+  const step = _find(stepId);
+  if (!step) return;
+  openForStep(step);
+  if (opts && opts.focusName) focusName();
+}
+
 /* Draw the panel for the current state. The video moves only when the
    highlighted row is not the one it was cued to (an open on another row). */
 function render() {
@@ -295,6 +401,9 @@ function render() {
   if (_state.missing != null) { _renderMissing(); return; }
   const runs = RunsModel.buildRuns(s.stats, _steps()).runs;
   const focus = _find(_state.focusId);
+  // Lane E-1: a step renamed here keeps the panel on it (its box is the new
+  // name's).
+  if (focus && mapNodeLabel(focus) !== _state.label) _state.label = mapNodeLabel(focus);
   const path = _state.path || [];
   const occ = occurrences(_state.label, runs, focus, path);
   if (!occ.length) { close(); return; }
@@ -321,12 +430,15 @@ function render() {
   // Lane FX2 (validation pass 2, F21): the waste flag shows here too, as in
   // Steps and the PDD.
   const wasted = occ.filter((o) => o.step.flags && o.step.flags.waste).length;
-  $("sp-name").textContent = lead.name || "(unnamed step)";
+  // Lane E-1: on the Timeline and the Map the name, the system and the
+  // description are fields (_drawHead); on Steps, and read only, text.
+  const editable = headEditable(State.getLevel(), RO.isReadOnly(s));
+  _drawHead(lead, editable, where);
   $("sp-about").innerHTML =
-    ((where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
+    (!editable && (where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
     (wasted ? '<p class="sp-waste" id="sp-waste"><span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span> ' +
       escapeHtml(wasted === occ.length ? "Flagged as waste" : "Flagged as waste in " + wasted + " of " + occ.length) + "</p>" : "") +
-    (desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
+    (!editable && desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
     (flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
     '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length, open)) + "</p>";
   const video = $("sp-video");
@@ -361,7 +473,8 @@ function render() {
   const rows = occ.map((o) => {
     const again = !!o.run && inRun.has(o.run.caseId);
     if (o.run) inRun.add(o.run.caseId);
-    return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId, open.has(o.step.step_id));
+    return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId, open.has(o.step.step_id),
+      editable && o.step.step_id === _state.focusId ? AnalystUI.useVideoOffer(o.step) : "");
   });
   const kinds = hasVideo ? occ.map((o) => _moment(o.step).kind) : [];
   const playable = kinds.filter((k) => k === "covered").length;
@@ -453,7 +566,7 @@ function _show(open) {
 function _reset() {
   const s = _session();
   const folder = s ? s.sessionFolder : null;
-  if (folder !== _folder) { _folder = folder; _state = null; _dismissed = false; _cuedId = null; _followed = null; _show(false); }
+  if (folder !== _folder) { _folder = folder; _state = null; _dismissed = false; _cuedId = null; _followed = null; _headStepId = null; _show(false); }
 }
 
 /* Open the panel on a step's map box, at the step's level (C19), with that
@@ -574,6 +687,15 @@ function refresh() {
 (function wire() {
   const panel = $("step-panel");
   if (!panel) return;
+  // Lane E-1: a press anywhere outside the panel leaves a field of its head
+  // (saving it), even where the press keeps the focus from moving (a side
+  // dragged on the Timeline), so the page's keys (S, Space, Ctrl+Z) answer
+  // again and never type into the name.
+  document.addEventListener("mousedown", (e) => {
+    const a = document.activeElement;
+    if (!a || !panel.contains(a) || panel.contains(e.target)) return;
+    if (a.id === HEAD_IDS.name || a.id === HEAD_IDS.system || a.id === HEAD_IDS.desc) a.blur();
+  }, true);
   panel.addEventListener("click", (e) => {
     const t = e.target.closest ? e.target : null;
     if (!t) return;
@@ -586,6 +708,9 @@ function refresh() {
     if (playBtn) { play(playBtn.closest(".sp-occ").dataset.stepId); return; }
     const shot = t.closest(".sp-shot");
     if (shot) { require("./flow-view-screenshots.js").openScreenshot(shot.dataset.ref); return; }
+    // Lane E-1: "Use the video at 0:11" on the highlighted row.
+    const useVideo = t.closest(".step-use-video");
+    if (useVideo && _state && _state.focusId) { AnalystUI.useVideoAt(_state.focusId); return; }
     const step = _state && _find(_state.focusId);
     if (!step) return;
     if (t.closest("#btn-sp-open-sub")) {
@@ -641,4 +766,6 @@ function refresh() {
   }
 })();
 
-module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine, frameSource };
+module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine, frameSource,
+  // Lane E-1: the head edits the step; a step marked on the Timeline opens here.
+  openAdded, focusName, nameTakesFocus, headEditable, HEAD_IDS };

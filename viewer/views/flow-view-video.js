@@ -247,6 +247,27 @@ function playheadMs() {
   return sp.fileStartMs + sec * 1000;
 }
 
+/* Whether the player is playing (lane E-1: a step marked while it plays
+   takes no focus): a video in it, not paused and not at its end, or the
+   next video of the chain loading to play on. */
+function isPlaying() {
+  const video = $("#video");
+  if (!video || !video.src) return false;
+  if (_pending) return !!_pending.play;
+  return !video.paused && !video.ended;
+}
+
+/* The player itself, when it shows the moment `ms` (absolute) now: its
+   video loaded, not seeking and at that moment (within a frame), so its
+   frame is that moment's; else null. */
+const AT_MOMENT_MS = 60;
+function playerAt(ms) {
+  const video = $("#video");
+  if (!video || !video.src || _pending || _parkedMs != null || video.seeking || video.readyState < 2) return null;
+  const at = playheadMs();
+  return at != null && Number.isFinite(ms) && Math.abs(at - ms) <= AT_MOMENT_MS ? video : null;
+}
+
 /* The span the Timeline lays out, { startMs, endMs }, or null. A recording
    runs from its first event to its last. A session without events (a video
    or blank project, C16) runs on its videos: from the first one's start to
@@ -971,5 +992,6 @@ module.exports = {
   startVideoSync, cancelVideoSync, attachVideo, removeVideo, attachedVideoShown,
   // C23 (2.0.6): the chain.
   chainOf, addedClips, lengthOf, clipSpan, clipAtMs, currentClip, playheadMs, loadPlayer, isBackToBack, chainRange, seekClock,
+  isPlaying, playerAt,
   fileUrl, probeLength, clipName, replaceVideo, trimVideo, syncVideo,
 };

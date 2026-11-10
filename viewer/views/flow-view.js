@@ -840,12 +840,20 @@ async function addStepAtPlayhead() {
 
 /* A step at the moment `tsISO` (+ Step at the playhead, and 2.0.1 the
    Timeline's right-click Add a step here), with the steps lane shown so the
-   new step is seen at once. */
+   new step is seen at once. Lane E-1: the video's frame at that moment is
+   the step's picture (read first, while it is the frame on screen), and the
+   step panel opens on the new step; with the video paused its name takes
+   the focus, selected, so typing names it; while the video plays nothing
+   takes the focus, so the next S marks the next step. */
 async function addStepAt(tsISO) {
+  const playing = Video.isPlaying();
+  const frame = AnalystUI.frameAtMoment(Date.parse(tsISO));
   setLaneToggle("steps", true);
   const cb = document.querySelector('#lanes-popup input[data-lane="steps"]');
   if (cb) cb.checked = true;
-  await addStepAtTimestamp(tsISO);
+  const id = await addStepAtTimestamp(tsISO, { frame });
+  if (!id || State.getLevel() !== "flow") return;
+  StepPanel.openAdded(id, { focusName: StepPanel.nameTakesFocus({ playing, readOnly: RO.isReadOnly(State.getSession()) }) });
 }
 
 // The zoom buttons are wired in flow-view-timeline.js (god-file split).

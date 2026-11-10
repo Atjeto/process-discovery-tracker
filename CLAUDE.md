@@ -296,7 +296,13 @@ the folder.
   too) open one panel with every occurrence of the step: its moment, a
   small video, screenshots, what was said, notes. How the transactions ran
   fits again when the panel opens or closes beside it (`dfg-viewer.js`
-  `resize`).
+  `resize`). On the Timeline and the Map its head edits the step's name,
+  system and description with the editor's own handlers
+  (`steps-view.js` `panelFieldCallbacks`; text on Steps and read only); a
+  step marked on the Timeline opens there, its name focused only while the
+  video is paused (`nameTakesFocus`), and takes the video's frame at its
+  moment as an added screenshot in the same undoable edit
+  (`analyst-ui.js` `frameAtMoment`, lane E-1).
 - **The Steps page is an editor** (2.0.1, the owner's review): the toolbar
   acts on the selected step (Split..., Merge with next, Hide step, the
   sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a

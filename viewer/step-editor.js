@@ -382,22 +382,7 @@
     const recHead = recEl && recEl.querySelector("summary");
     if (recHead) recHead.addEventListener("click", () => _keepRecordedOpen(!recEl.open));
     // The name saves on Enter or when the field is left; Escape puts it back.
-    const nameEl = document.getElementById("step-name");
-    const commitName = () => {
-      if (_rendering || !nameEl.isConnected) return;
-      const v = nameEl.value.trim();
-      if (!v) { nameEl.value = step.name || ""; return; }
-      if (v !== String(step.name || "").trim() && callbacks.onRename) callbacks.onRename(step.step_id, v);
-    };
-    // C21: the picker takes its keys first (Up, Down, Enter on a row, Escape
-    // on an open list).
-    const picker = wireNamePicker(nameEl, step, callbacks);
-    nameEl.addEventListener("keydown", (e) => {
-      if (picker && picker.onKey(e)) return;
-      if (e.key === "Enter") { e.preventDefault(); commitName(); }
-      else if (e.key === "Escape") { e.preventDefault(); nameEl.value = step.name || ""; }
-    });
-    nameEl.addEventListener("blur", commitName);
+    wireNameField(document.getElementById("step-name"), step, callbacks, { isRendering: () => _rendering });
     // The description saves when the field is left, and when a sentence of
     // the transcript is added to it.
     const descEl = document.getElementById("step-desc");
@@ -445,20 +430,57 @@
      step's system (or no system yet, on a step added by hand) the field says
      so in one quiet line while it has the focus (styles.css), and no list
      opens. */
-  function nameFieldHtml(step, picker) {
+  /* The ids of the name field's parts: the editor's, or (`ids`) the step
+     panel's, which can be on the page beside it. */
+  const NAME_IDS = { input: "step-name", list: "step-activity-list", note: "step-lib-note" };
+  function nameFieldHtml(step, picker, ids) {
+    const id = Object.assign({}, NAME_IDS, ids || {});
     const acts = picker && Array.isArray(picker.activities) ? picker.activities : [];
-    const note = picker && picker.note ? `<span class="step-lib-note" id="step-lib-note">${escapeHtml(picker.note)}</span>` : "";
+    const note = picker && picker.note ? `<span class="step-lib-note" id="${escapeAttr(id.note)}">${escapeHtml(picker.note)}</span>` : "";
     const title = acts.length
       ? "The name of this step. Pick an activity of " + picker.system + " from the library, or type any name. Saved when you press Enter or leave the field"
       : "The name of this step. Saved when you press Enter or leave the field";
-    const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="step-activity-list"` : "";
+    const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${escapeAttr(id.list)}"` : "";
     // 2.0.1: the name is the editor's title; its label is for a screen reader.
     return `<div class="step-name-field">` +
-      `<label class="sr-only" for="step-name">Name</label>` +
-      `<input type="text" id="step-name" class="step-title-input" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}">` +
+      `<label class="sr-only" for="${escapeAttr(id.input)}">Name</label>` +
+      `<input type="text" id="${escapeAttr(id.input)}" class="step-title-input" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}">` +
       note +
-      (acts.length ? `<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="${escapeAttr("Activities of " + picker.system)}" hidden></ul>` : "") +
+      (acts.length ? `<ul class="step-activity-list" id="${escapeAttr(id.list)}" role="listbox" aria-label="${escapeAttr("Activities of " + picker.system)}" hidden></ul>` : "") +
       `</div>`;
+  }
+
+  /* Wire a name field drawn by nameFieldHtml: it saves on Enter or when it
+     is left (callbacks.onRename; an empty name puts the name back), Escape
+     puts back what it showed, and (C21) its picker takes its keys first (Up,
+     Down, Enter on a row, Escape on an open list). opts: isRendering() (a
+     blur while the field is drawn again saves nothing), listId (the
+     picker's list, the editor's by default), leave (the step panel: Enter
+     and Escape also leave the field, so the page's keys answer again). */
+  function wireNameField(nameEl, step, callbacks, opts) {
+    if (!nameEl) return;
+    const o = opts || {};
+    const rendering = typeof o.isRendering === "function" ? o.isRendering : () => false;
+    const commitName = () => {
+      if (rendering() || !nameEl.isConnected) return;
+      const v = nameEl.value.trim();
+      if (!v) { nameEl.value = step.name || ""; return; }
+      if (v !== String(step.name || "").trim() && callbacks.onRename) callbacks.onRename(step.step_id, v);
+    };
+    const picker = wireNamePicker(nameEl, step, callbacks, o.listId);
+    nameEl.addEventListener("keydown", (e) => {
+      if (picker && picker.onKey(e)) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // Leaving the field saves it (blur).
+        if (o.leave) nameEl.blur(); else commitName();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        nameEl.value = step.name || "";
+        if (o.leave) nameEl.blur();
+      }
+    });
+    nameEl.addEventListener("blur", commitName);
   }
 
   /* The picker's rows: an activity's name, its code and its description; the
@@ -479,10 +501,11 @@
      clicked, Enter on the row the keys are on, or Enter on a name typed that
      is an activity's) keeps the focus in the field and calls
      onPickActivity. */
-  function wireNamePicker(nameEl, step, callbacks) {
+  function wireNamePicker(nameEl, step, callbacks, listId) {
     const picker = callbacks.picker;
-    const list = document.getElementById("step-activity-list");
-    if (!picker || !list || !(picker.activities || []).length) return null;
+    if (!picker || !(picker.activities || []).length) return null;
+    const list = document.getElementById(listId || NAME_IDS.list);
+    if (!list) return null;
     let shown = [], active = -1, typed = false;
     const close = () => {
       list.hidden = true;
@@ -940,6 +963,6 @@
   module.exports = {
     renderStepList, renderStepDetail,
     describeInteraction, renderInteractionList, recordedHtml, recordedOpen, keepRecordedOpen: _keepRecordedOpen, splitBlocker,
-    nameFieldHtml, activityListHtml,
+    nameFieldHtml, activityListHtml, wireNameField, DESC_HINT,
   };
 })();

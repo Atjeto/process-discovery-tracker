@@ -163,8 +163,13 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
 3. Where the transaction ends, right-click and choose *End the transaction
    here*: its last step ends there too. *Start a transaction here* for the
    next one ends the one before it the same way.
-4. Name the steps in Steps as you go, or afterwards. Ctrl+Z takes back a
-   mark put in the wrong place.
+4. Each step you add opens in the step panel beside the video, its
+   screenshot taken from the video at that moment. Pause the video before
+   you press S, and the cursor is in the step's name: type the name, press
+   Enter, and play on. Its system and its description are right under the
+   name. While the video plays, S only marks the steps: name them in the
+   panel or in Steps afterwards. Ctrl+Z takes back a mark put in the wrong
+   place, with its screenshot.
 
 ### Put a step where it belongs in the process
 

@@ -93,15 +93,18 @@ function _sessionSystems() {
 /* The System field, first on the step editor's line of facts (2.0.1): the
    system this step is done in, read as the line's first fact. Pick a system
    of this session or the shared list, or type one; `derived` is the system
-   the recording gives, shown while the step has none of its own. */
-function systemFieldHtml(step, derived) {
+   the recording gives, shown while the step has none of its own. `ids`
+   ({ input, list }): the step panel's field, which can be on the page beside
+   the editor's. */
+function systemFieldHtml(step, derived, ids) {
+  const id = Object.assign({ input: "step-system", list: "step-system-list" }, ids || {});
   const own = typeof step.system === "string" ? step.system : "";
   const choices = AC.systemChoices(_sessionSystems(), SystemNames.knownSystems());
-  return '<input type="text" class="step-system-inline" id="step-system" list="step-system-list" value="' + escapeAttr(own) + '"' +
+  return '<input type="text" class="step-system-inline" id="' + escapeAttr(id.input) + '" list="' + escapeAttr(id.list) + '" value="' + escapeAttr(own) + '"' +
     ' placeholder="' + escapeAttr(derived && !own ? derived : "Set the system") + '" aria-label="System"' +
     ' title="' + escapeAttr("The system this step is done in" + (derived ? " (the recording says " + derived + ")" : "") +
       ". Type another to change it; empty gives back the recorded one. Saved when you press Enter or leave the field.") + '">' +
-    '<datalist id="step-system-list">' + choices.map((c) => '<option value="' + escapeAttr(c) + '"></option>').join("") + "</datalist>";
+    '<datalist id="' + escapeAttr(id.list) + '">' + choices.map((c) => '<option value="' + escapeAttr(c) + '"></option>').join("") + "</datalist>";
 }
 
 /* A small lead over a list of the step editor (2.0.1). */
@@ -111,11 +114,14 @@ function _lead(title, headTitle) {
 }
 
 /* The step's screenshots (C16), in the step editor beside the video: each
-   with the one the PDD prints marked; nothing when the step has none. */
+   with the one the PDD prints marked; nothing when the step has none. A
+   step a video covers and that shows none offers its frame in one click
+   (useVideoOffer). */
 function stepShotsHtml(step) {
   const shots = shotsOf(step);
   const hidden = AC.hiddenShotCount(step);
-  if (!shots.length && !hidden) return "";
+  const offer = shots.length ? "" : useVideoOffer(step);
+  if (!shots.length && !hidden && !offer) return "";
   // The PDD prints one screenshot per step (lane LF-PIPE): the one chosen,
   // else the step's first.
   const chosen = shots.find((sh) => sh.ref === step.pdd_screenshot);
@@ -138,8 +144,38 @@ function stepShotsHtml(step) {
   }).join("");
   return '<div class="step-sect" id="step-shots-sect">' + (shots.length ? _lead("Screenshots") : "") +
       (shotHtml ? '<div class="step-shots">' + shotHtml + "</div>" : "") +
+      (offer ? useVideoButtonHtml(offer, "btn-step-use-video") : "") +
       (hidden ? '<button type="button" class="link-btn step-unhide-shots" data-shot-act="unhide">Show hidden screenshots (' + hidden + ")</button>" : "") +
     "</div>";
+}
+
+/* "Use the video at 0:11": the one link a step a video covers offers while
+   it shows no screenshot (its start on the one clock). Pure. */
+function useVideoText(at) {
+  return at ? "Use the video at " + at : "";
+}
+const USE_VIDEO_TITLE = "Take the frame of the video at this step's start as its screenshot. Ctrl+Z takes it back.";
+
+/* Whether a step offers its frame in one click: it has a start, a video of
+   the project covers it, and it shows no screenshot. Pure: `covered` and
+   `shots` are given. */
+function offersVideoFrame(step, covered, shots, readOnly) {
+  return !readOnly && !!covered && !(shots > 0) && !!step && !!step.time_range && Number.isFinite(Date.parse(step.time_range.start));
+}
+
+/* The link's text for `step`, or "" when it offers none. */
+function useVideoOffer(step) {
+  const s = _sess();
+  if (!s || !step) return "";
+  const ms = Date.parse(step.time_range && step.time_range.start);
+  const hit = Number.isFinite(ms) ? Video().clipAtMs(ms) : null;
+  if (!offersVideoFrame(step, !!(hit && hit.clip.file), shotsOf(step).length, RO.isReadOnly(s))) return "";
+  return useVideoText(sinceStart(step.time_range.start, recordingStartMs(s)));
+}
+
+function useVideoButtonHtml(text, id) {
+  return '<button type="button" class="link-btn step-use-video"' + (id ? ' id="' + escapeAttr(id) + '"' : "") +
+    ' title="' + escapeAttr(USE_VIDEO_TITLE) + '">' + escapeHtml(text) + "</button>";
 }
 
 /* What is attached to the step (C16): its attachments and its notes, each
@@ -171,7 +207,12 @@ function stepAttachedHtml(step) {
 /* Wire the System field of the step pane just drawn (`isRendering`: the
    pane is being drawn again, so a blur then saves nothing). */
 function wireStepPane(host, step, isRendering) {
-  const sys = host.querySelector("#step-system");
+  wireSystemField(host.querySelector("#step-system"), step, isRendering);
+}
+
+/* Wire a System field drawn by systemFieldHtml (the editor's, or the step
+   panel's): it saves through setSystem. */
+function wireSystemField(sys, step, isRendering) {
   if (!sys) return;
   // The list offers only the systems that match what the field holds, so
   // while the field has the focus it is emptied, the system set shown as
@@ -216,6 +257,8 @@ if (typeof document !== "undefined") document.addEventListener("click", (e) => {
     else if (card && act === "remove") removeShot(stepId, card.dataset.kind, card.dataset.ref);
   } else if (card && t.closest(".step-shot")) {
     require("./flow-view-screenshots.js").openScreenshot(t.closest(".step-shot").dataset.rel);
+  } else if (t.closest("#btn-step-use-video")) {
+    useVideoAt(stepId);
   } else if (t.closest("#btn-step-add-shot")) {
     _shotMenu(t.closest("#btn-step-add-shot"), stepId);
   } else if (t.closest("#btn-step-add-note")) {
@@ -310,6 +353,107 @@ async function _grabFrame(video) {
   return i >= 0 ? url.slice(i + 7) : null;
 }
 
+/* How long a frame read from a copy of the video off screen may take before
+   the step it is for goes on without it. */
+const FRAME_WAIT_MS = 3000;
+
+/* A frame's promise, settled: its base64 image, or null when it fails, holds
+   nothing or takes longer than `ms`. Never rejects: a step marked on a video
+   never fails or waits on its picture. Pure. */
+function settleFrame(p, ms) {
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (v) => {
+      if (done) return;
+      done = true;
+      resolve(typeof v === "string" && v ? v : null);
+    };
+    const timer = setTimeout(() => end(null), ms > 0 ? ms : FRAME_WAIT_MS);
+    let q;
+    try { q = Promise.resolve(p); } catch (_) { q = Promise.resolve(null); }
+    q.then((v) => { clearTimeout(timer); end(v); }, () => { clearTimeout(timer); end(null); });
+  });
+}
+
+/* The frame at `sec` into the video at `src`, read from a copy off screen
+   (the player stays where it is): a base64 PNG, or null. */
+async function _copyFrame(src, sec) {
+  const v = document.createElement("video");
+  v.muted = true;
+  v.preload = "auto";
+  try {
+    await new Promise((res, rej) => {
+      v.addEventListener("loadeddata", res, { once: true });
+      v.addEventListener("error", () => rej(new Error("the video could not be read")), { once: true });
+      setTimeout(() => rej(new Error("the video took too long")), FRAME_WAIT_MS);
+      v.src = src;
+    });
+    const sought = await new Promise((res) => {
+      v.addEventListener("seeked", () => res(true), { once: true });
+      setTimeout(() => res(false), FRAME_WAIT_MS);
+      v.currentTime = sec;
+    });
+    // Never the frame the copy showed before its seek ended.
+    return sought ? await _grabFrame(v) : null;
+  } catch (_) {
+    return null;
+  } finally {
+    v.removeAttribute("src");
+    try { v.load(); } catch (_) { /* nothing loaded */ }
+  }
+}
+
+/* The frame of the project's video at the moment `ms` (absolute), as a base64
+   PNG, or null (no video covers it, or it cannot be read). From the player
+   itself when it shows that moment now, settled and not seeking, so a frame
+   of a video playing is the one on screen when the step was marked (read at
+   once, before anything else runs); else from a copy off screen, at most
+   FRAME_WAIT_MS. Never rejects. */
+function frameAtMoment(ms) {
+  try {
+    const V = Video();
+    const hit = Number.isFinite(ms) ? V.clipAtMs(ms) : null;
+    if (!hit || !hit.clip.file) return Promise.resolve(null);
+    const player = V.playerAt(ms);
+    if (player) return settleFrame(_grabFrame(player), FRAME_WAIT_MS);
+    return settleFrame(_copyFrame(V.fileUrl(hit.clip.file), hit.sec), FRAME_WAIT_MS + 1000);
+  } catch (_) {
+    return Promise.resolve(null);
+  }
+}
+
+/* Write a frame (base64) as an added screenshot's file: { id, file }, or
+   null when it was not written (nothing is said: the step goes on without
+   it). The entry that names it is the caller's (frameEntry). */
+async function writeFrame(data) {
+  const s = _sess();
+  if (!s || !data || RO.isReadOnly(s)) return null;
+  try {
+    const r = await Ipc.addScreenshot({ sessionFolder: s.sessionFolder, source: "video_frame", data });
+    return r && r.ok && r.id && r.file ? { id: r.id, file: r.file } : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/* The analyst_screenshots entry of a frame written by writeFrame, on step
+   `stepId`, at the moment `atISO`. */
+function frameEntry(written, stepId, atISO) {
+  return { id: written.id, file: written.file, step_id: stepId, at: atISO || null, source: "video_frame", added_at: _now() };
+}
+
+/* "Use the video at 0:11": the frame at the step's start becomes its
+   screenshot, one undoable edit. */
+async function useVideoAt(stepId) {
+  const s = _sess();
+  const st = s && _step(s.annotations, stepId);
+  if (!st || RO.isReadOnly(s)) return;
+  const ms = Date.parse(st.time_range && st.time_range.start);
+  const data = await frameAtMoment(ms);
+  if (!data) { toast("The video frame could not be read.", "error"); return; }
+  await _storeShot(stepId, "video_frame", data, new Date(ms).toISOString());
+}
+
 /* Add a screenshot to a step from `source`: "video_frame", "paste" (with
    `data`, a base64 image, or the clipboard's image) or "file". */
 async function addScreenshot(stepId, source, data) {
@@ -327,6 +471,15 @@ async function addScreenshot(stepId, source, data) {
     if (img.isEmpty()) { toast("The clipboard holds no image. Copy one first, or press Ctrl+V in this pane.", "error"); return; }
     data = img.toPNG().toString("base64");
   }
+  await _storeShot(stepId, source, data, at);
+}
+
+/* Store a screenshot added to a step (its file through main, then its entry,
+   one undoable edit). `data`: the image (base64), none for "file", whose
+   dialog main opens. */
+async function _storeShot(stepId, source, data, at) {
+  const s = _sess();
+  if (!s || !stepId) return;
   let r;
   try { r = await Ipc.addScreenshot({ sessionFolder: s.sessionFolder, source, data }); }
   catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
@@ -559,4 +712,7 @@ module.exports = {
   fileUrl, shotsOf, notesOf, systemFieldHtml, stepShotsHtml, stepAttachedHtml, wireStepPane, setSystem,
   addScreenshot, togglePdd, removeShot, addNote, editNote, deleteNote,
   attachFile, openAttachment, removeAttachment, overviewAttachmentsHtml, wireOverviewAttachments,
+  // A step marked on a video takes its frame (lane E-1).
+  wireSystemField, frameAtMoment, settleFrame, writeFrame, frameEntry, useVideoAt, useVideoOffer, useVideoText,
+  offersVideoFrame, useVideoButtonHtml, FRAME_WAIT_MS,
 };

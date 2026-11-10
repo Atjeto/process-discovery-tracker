@@ -256,7 +256,20 @@ twice in transaction 2. Play any of them.") and lists one row per time:
 for a second time in one transaction; "took under 1s", never "0s") with a
 play button for its own small video, which opens paused on the row the
 panel opened on, then the step's
-screenshots, what was said then and its notes, each under a small lead. Its foot says *Open in Steps*, or *Show on timeline* on the
+screenshots, what was said then and its notes, each under a small lead.
+On the Timeline and the Map (lane E-1) its head is the name, the system
+and the description of the step it highlights as fields, drawn by the
+editor's own pieces (`step-editor.js` `nameFieldHtml` and `wireNameField`,
+`analyst-ui.js` `systemFieldHtml` and `wireSystemField`, ids of their own)
+and saved by the editor's handlers (`steps-view.js` `panelFieldCallbacks`):
+Enter and Escape leave the name, a press outside the panel leaves any of
+them, and while one has the focus the panel drawn again leaves it as it is.
+On Steps and in a project open read only the head is text. A step added on
+the Timeline opens in the panel (`openAdded`); its name takes the focus
+only while the video is paused (`nameTakesFocus`, `flow-view-video.js`
+`isPlaying`). The highlighted row of a step a video covers that shows no
+screenshot offers *Use the video at m:ss* (`analyst-ui.js`
+`useVideoOffer`, `useVideoAt`), as the editor's screenshots part does. Its foot says *Open in Steps*, or *Show on timeline* on the
 Steps level, and *Open sub-process* for a sub-process. At a level below the
 main one (C19) the panel shows the occurrences of the step's node in every
 visit of that level. A task of that map that no step stands for (added or

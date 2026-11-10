@@ -275,7 +275,17 @@ moment on the clock, whichever video shows it (`playheadMs`).
   and their files, and the project is loaded again with its videos (lane CC;
   analyzed again when the transactions moved with them).
 - **+ Step** (the timeline's header, only with a video; or the S key) adds a
-  step at the playhead.
+  step at the playhead. Lane E-1 (`flow-view.js` `addStepAt`, for *Add a
+  step here* too): the frame of the video at that moment is read first
+  (`analyst-ui.js` `frameAtMoment`: from the player itself when it shows
+  that moment, settled and not seeking, else from a copy off screen, at
+  most a few seconds), written as an added screenshot and named in the same
+  undoable edit as the step (`steps-view.js` `addStepAtTimestamp`, which
+  knows what it would add before the file is written); no frame, no
+  picture, and nothing said. The step then opens in the step panel, its
+  name focused and selected unless the video is playing. A step deleted
+  takes its added screenshots with it, and a step merged into another
+  hands them to it.
 - A step's own playback is in the step panel (Watch), beside the steps,
   from the video that shows its moment.
 - The playback bar at the bottom of the window covers the videos on the

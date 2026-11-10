@@ -45,6 +45,29 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A PDD without recorder wording** for a project made from a video or from nothing: Document control leaves out *Recorded by* and *Transactions recorded* where there is nothing to say, section 3.2 and section 4 no longer speak of one unmarked transaction (section 4 reads *Rules and exceptions*), and section 5 lists each system with the steps done in it instead of *Information entered: none*.
 - **No empty Technical details.** Where nothing was recorded the workbook is not written, and a hand-off zip goes out without it.
 - **What a reader will miss, before the hand-off.** *Hand off...* lists what the PDD of the version leaves out ("A reader of version 2 will miss:"): the reference transaction's steps that are still drafts, have no name of their own, no description, no picture or no system, decisions that do not say when, empty document fields and an As-Is map made before the steps changed. Each line is a link that cancels the hand-off and opens the place where it is fixed; the button then reads *Hand off anyway*, so nothing is blocked. Once every act before the hand-off is done, or after a version was handed off, the same list opens from one line under the Checklist ("A reader of the next version will miss 3 things").
+- **Name and describe a step where the video is.** On the Timeline and the
+  Map the step panel's head is the step's name, its system and its
+  description as fields, saved as the editor saves them (a rename names the
+  same drafted step in the other transactions, the library's activities are
+  offered, Ctrl+Z takes it back). Enter or Escape in the name leaves it, so
+  S and Space answer again. On Steps the editor beside it stays the place to
+  write, and the panel's head stays as it was.
+- **A step marked on the Timeline opens in the step panel.** After S,
+  *+ Step* or *Add a step here*, the panel shows the new step. With the
+  video paused the cursor is in its name, its text selected, so typing names
+  it; while the video plays nothing takes the focus, so the next S marks
+  the next step. A new step marked inside the step before it no longer
+  takes that step's description.
+- **A step marked on a video takes its picture by itself.** The frame of
+  the video at that moment is the step's screenshot, in the same edit as
+  the step: one Ctrl+Z takes both away, the file too. Where the frame
+  cannot be read the step is added without one. A step a video covers that
+  shows no screenshot offers *Use the video at m:ss* in the editor and in
+  the panel: one click takes that frame. A step deleted takes its added
+  screenshots with it, and a step merged into another hands them over.
+- **No Reference badge on a lone transaction.** A project of one
+  transaction has nothing it is the reference among, so Steps leaves the
+  badge out there.
 
 ## [2.0.6] (2026-11-04): several videos on one timeline
 

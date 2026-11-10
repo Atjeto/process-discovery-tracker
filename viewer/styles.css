@@ -287,6 +287,42 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .sp-said { list-style: none; margin: 0; padding: 0; }
 .sp-said .tr-row { font-size: 11px; }
 .sp-foot { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+/* Lane E-1: on the Timeline and the Map the panel's head is the step's name,
+   system and description as fields (step-panel.js _drawHead), drawn as the
+   editor's are (.editor-detail-pane) at the panel's size: the name and the
+   system read as text until hovered or focused, the description is a box. */
+.sp-name-edit { flex: 1 1 auto; min-width: 0; }
+.sp-name-edit[hidden], .sp-fields[hidden] { display: none; }
+.step-panel input.step-title-input {
+  display: block; width: 100%; margin: 0; padding: 2px 5px;
+  font-family: var(--font-ui); font-size: 15px; font-weight: 600; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+}
+.step-panel input.step-title-input:hover { border-color: var(--field-border); }
+.step-panel input.step-title-input:focus { background: var(--bg-1); border-color: var(--field-border); outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.sp-fields { display: flex; flex-direction: column; gap: 6px; }
+.sp-fields .sp-system { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; margin: 0; font-size: 12px; color: var(--fg-2); }
+.sp-fields .sp-screen { overflow-wrap: anywhere; }
+.sp-fields .sp-screen::before { content: "\00B7\00A0"; }
+.step-panel input.step-system-inline {
+  position: relative; field-sizing: content; min-width: 9ch; max-width: 100%; margin: 0 0 0 -6px; padding: 1px 22px 1px 5px;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+}
+.step-panel input.step-system-inline::-webkit-calendar-picker-indicator { position: absolute; right: 4px; top: 0; bottom: 0; margin: auto 0; }
+.step-panel input.step-system-inline::placeholder { color: var(--fg-2); opacity: 1; }
+.step-panel input.step-system-inline:hover { border-color: var(--field-border); }
+.step-panel input.step-system-inline:focus { background: var(--bg-1); border-color: var(--field-border); outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.sp-fields label.sp-field { display: block; margin: 0; font-size: 12px; font-weight: 600; color: var(--fg-2); }
+.sp-fields label.sp-field textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 6px 8px; background: var(--bg-1);
+  border: 1px solid var(--field-border); border-radius: 3px;
+  color: var(--fg); font-family: inherit; font-size: 13px; font-weight: 400; line-height: 1.45;
+  field-sizing: content; min-height: 52px; max-height: 200px; resize: vertical;
+}
+.sp-fields label.sp-field textarea:focus { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+/* "Use the video at 0:11": the highlighted row's one link to its frame. */
+.step-panel .step-use-video, .step-shots-part .step-use-video { font-size: 12px; padding: 2px 0; }
 .view.active > .loaded { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 /* ===== Empty states ===== */

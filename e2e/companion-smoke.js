@@ -860,9 +860,12 @@ function zipFiles(buf) {
       sp.addEventListener("seeked", res, { once: true });
       sp.currentTime = 10;
     }));
+    // Lane E-1: each step marked on the video took its own frame as it was
+    // added; this one is one more, the last entry.
+    const had = ((await session()).anno.analyst_screenshots || []).length;
     await shotMenu("video_frame");
-    await page.waitForFunction(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === 1, null, { timeout: T });
-    const shot = (await session()).anno.analyst_screenshots[0];
+    await page.waitForFunction((n) => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === n + 1, had, { timeout: T });
+    const shot = (await session()).anno.analyst_screenshots[had];
     const buf = fs.readFileSync(path.join(VPROJ, "screenshots", "analyst", shot.file));
     k.shot = { source: shot.source, at: shot.at, onStep: shot.step_id === first.step_id, png: buf[0] === 0x89 && buf[1] === 0x50, bytes: buf.length,
       atSec: (Date.parse(shot.at) - Date.parse(readJson(path.join(VPROJ, "manifest.json")).started_at)) / 1000 };
@@ -906,11 +909,15 @@ function zipFiles(buf) {
     await page.locator('#lanes-popup input[data-lane="screenshots"]').uncheck({ timeout: T });
     await page.locator("#btn-lanes").click({ timeout: T });
   } catch (x) { z.err = errText(x); }
-  const zTitle = (z.lane && z.lane[0] && z.lane[0].title) || "";
+  // Lane E-1: the two steps marked at 0:08 and 0:24 took their frames as they
+  // were added (the step added at a right-click and deleted took its frame
+  // with it), so the frame of (k) is one of three.
+  const zMark = ((z.lane || []).find((x) => /^Added by you, a frame at 0:(09|10), on /.test(x.title || ""))) || {};
+  const zTitle = zMark.title || "";
   record("(z) lane FX2: the frame added with a moment shows where the recording's screenshots do: a mark in the Timeline's Screenshots lane (its tooltip: added by you, when, on which step), a card in the Screenshots list badged added, and in the gallery under Added by you",
-    !z.err && !!z.on && z.lane.length === 1 && z.lane[0].added && /^Added by you, a frame at 0:(09|10), on /.test(zTitle) && zTitle.endsWith(", on " + z.on) &&
-      z.legend !== "none" && z.grid.length === 1 && z.grid[0].badge === "added" && z.grid[0].img && z.grid[0].shown && z.grid[0].title === zTitle &&
-      z.gallery.pos === "1 / 1" && z.gallery.reason === "added by you, on " + z.on && z.gallery.options.includes("Added by you"),
+    !z.err && !!z.on && z.lane.length === 3 && z.lane.every((x) => x.added) && !!zTitle && zTitle.endsWith(", on " + z.on) &&
+      z.legend !== "none" && z.grid.length === 3 && z.grid.every((c) => c.badge === "added" && c.img && c.shown) && z.grid.some((c) => c.title === zTitle) &&
+      z.gallery.pos === "1 / 3" && z.gallery.reason === "added by you, on " + z.on && z.gallery.options.includes("Added by you"),
     JSON.stringify(z));
 
   // (l) A note at a moment, in the Notes lane.
@@ -945,11 +952,17 @@ function zipFiles(buf) {
     const files = await exportPdd("video");
     const xml = files["word/document.xml"].toString("utf8");
     const media = new Set(Object.keys(files).filter((n) => n.startsWith("word/media/")).map((n) => sha1(files[n])));
-    m.steps = ((await session()).anno.steps || []).map((x) => xml.includes(x.name));
-    m.frame = media.has(k.frameHash);
+    const ms = await session();
+    m.steps = (ms.anno.steps || []).map((x) => xml.includes(x.name));
+    // Lane E-1: each step took its frame as it was marked, and the PDD prints
+    // one screenshot under each step of the reference transaction (its
+    // first, none chosen): the frame the step at 0:08 took as it was marked.
+    const ref = (ms.anno.steps || []).slice().sort((x, y) => Date.parse(x.time_range.start) - Date.parse(y.time_range.start))[0];
+    const printed = (ms.anno.analyst_screenshots || []).find((sh) => ref && sh.step_id === ref.step_id);
+    m.frame = !!printed && media.has(sha1(fs.readFileSync(path.join(VPROJ, "screenshots", "analyst", printed.file))));
     m.note = xml.includes("calls the warehouse");
   } catch (x) { m.err = errText(x); }
-  record("(m) the video project's PDD carries its steps and the captured frame, and no note",
+  record("(m) the video project's PDD carries its steps and the frame its reference step took, and no note",
     !m.err && m.steps.length === 2 && m.steps.every(Boolean) && m.frame && !m.note, JSON.stringify(m));
 
   // (y) Lane FX2 (validation pass 3, F5): steps the analyst added stay added
@@ -1383,6 +1396,183 @@ function zipFiles(buf) {
       JSON.stringify(p.busy) === '["true","false"]' &&
       p.second && p.firstKept && p.itemAfter.text === "Whole project (.zip)" && !p.itemAfter.disabled && p.help,
     JSON.stringify(p));
+
+  // ================= F. Marking a video in the step panel (lane E-1) =================
+  // A process manager marks a step on the video, names it and describes it
+  // in the step panel beside it, and the step takes its picture by itself:
+  // paused, S puts the cursor in the new step's name; playing, S marks the
+  // next step and no field takes a key; one Ctrl+Z takes a step and its
+  // picture; a step without a picture offers "Use the video at m:ss".
+  {
+    const FPROJ = path.join(TMP, "Marked call");
+    const F = {};
+    const shotsDir = path.join(FPROJ, "screenshots", "analyst");
+    const steps = async () => ((await session()).anno.steps || []).slice().sort((x, y) => Date.parse(x.time_range.start) - Date.parse(y.time_range.start));
+    const shots = async () => (await session()).anno.analyst_screenshots || [];
+    const focused = () => page.evaluate(() => { const a = document.activeElement; return a ? { tag: a.tagName, id: a.id || "" } : null; });
+    const pausedAt = async (sec) => {
+      await page.evaluate((t) => { const vd = document.getElementById("video"); vd.pause(); vd.currentTime = t; }, sec);
+      await page.waitForFunction((t) => { const vd = document.getElementById("video");
+        return !vd.seeking && vd.readyState >= 2 && Math.abs(vd.currentTime - t) < 0.05; }, sec, { timeout: T });
+    };
+    // How far an added screenshot's picture is from the video's frame at
+    // `sec` (a copy of the video off screen, drawn at the screenshot's size):
+    // how many of their pixels differ by more than a quarter of the range
+    // (the synthetic video paints its own time, so another moment's frame
+    // differs where the digits are).
+    const frameDiff = (file, sec) => page.evaluate(async ([png, src, t]) => {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = "file:///" + png.replace(/\\/g, "/"); });
+      const w = img.naturalWidth, hgt = img.naturalHeight;
+      const c1 = document.createElement("canvas"); c1.width = w; c1.height = hgt;
+      c1.getContext("2d").drawImage(img, 0, 0);
+      const v = document.createElement("video");
+      v.muted = true; v.preload = "auto";
+      await new Promise((res, rej) => { v.addEventListener("loadeddata", res, { once: true }); v.addEventListener("error", rej, { once: true }); v.src = "file:///" + src.replace(/\\/g, "/"); });
+      await new Promise((res) => { v.addEventListener("seeked", res, { once: true }); v.currentTime = t; });
+      const c2 = document.createElement("canvas"); c2.width = w; c2.height = hgt;
+      c2.getContext("2d").drawImage(v, 0, 0, w, hgt);
+      const a = c1.getContext("2d").getImageData(0, 0, w, hgt).data, b = c2.getContext("2d").getImageData(0, 0, w, hgt).data;
+      let n = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        if ((Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / 3 > 64) n += 1;
+      }
+      v.removeAttribute("src");
+      return n;
+    }, [file, VIDEO, sec]);
+    try {
+      await stubOpen(VIDEO);
+      await stubSave(FPROJ);
+      await newProject("#btn-new-from-video");
+      await opened(FPROJ);
+      await settled();
+      await level("flow");
+      await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 30000 });
+      // (a) Paused at 0:05, S: the panel opens on the new step, its name
+      // focused and selected; typing names it, Enter saves and leaves.
+      await pausedAt(5);
+      await page.keyboard.press("s");
+      await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 1, null, { timeout: T });
+      await page.waitForFunction(() => (document.activeElement || {}).id === "sp-name-input", null, { timeout: T });
+      const first = (await steps())[0];
+      F.a = await page.evaluate((sid) => {
+        const el = document.activeElement;
+        return { value: el.value, selected: el.selectionStart === 0 && el.selectionEnd === el.value.length,
+          panel: !document.getElementById("step-panel").hidden,
+          row: ((document.querySelector("#sp-body .sp-occ.focus") || { dataset: {} }).dataset.stepId) === sid,
+          shotInRow: document.querySelectorAll("#sp-body .sp-occ.focus .sp-shot").length };
+      }, first.step_id);
+      await page.screenshot({ path: path.join(__dirname, "companion-smoke-mark-paused.png") }).catch(() => {});
+      await page.keyboard.type("Take the call");
+      await page.keyboard.press("Enter");
+      await page.waitForFunction((sid) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === sid) || {}).name === "Take the call",
+        first.step_id, { timeout: T });
+      F.a.afterEnter = await focused();
+      // The description written in the panel saves when it is left.
+      await page.locator("#sp-desc").click({ timeout: T });
+      await page.keyboard.type("Note who calls and what they order.");
+      await page.locator("#sp-explain").click({ timeout: T });
+      await page.waitForFunction((sid) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === sid) || {}).description === "Note who calls and what they order.",
+        first.step_id, { timeout: T });
+      F.a.described = true;
+      // (b) Space plays on; two S presses while it plays give two steps and
+      // no field takes a key.
+      await page.keyboard.press(" ");
+      await page.waitForFunction(() => !document.getElementById("video").paused, null, { timeout: T });
+      F.b = { played: true };
+      await wait(1200);
+      await page.keyboard.press("s");
+      await wait(900);
+      await page.keyboard.press("s");
+      await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 3, null, { timeout: T });
+      await wait(600);
+      F.b.focus = await focused();
+      F.b.playing = await page.evaluate(() => !document.getElementById("video").paused);
+      await page.evaluate(() => document.getElementById("video").pause());
+      const three = await steps();
+      F.b.names = three.map((x) => x.name);
+      F.b.panelOnNewest = await page.evaluate((sid) => ((document.querySelector("#sp-body .sp-occ.focus") || { dataset: {} }).dataset.stepId) === sid, three[2].step_id);
+      F.b.descs = three.map((x) => x.description || "");
+      // (c) Each step has one added screenshot at its own moment; the first
+      // one's picture is the video's frame at 0:05, not another moment's.
+      const all = await shots();
+      const start = Date.parse(readJson(path.join(FPROJ, "manifest.json")).started_at);
+      F.c = { per: three.map((x) => all.filter((sh) => sh.step_id === x.step_id).length),
+        at: three.map((x) => { const sh = all.find((y) => y.step_id === x.step_id); return sh ? Math.round((Date.parse(sh.at) - Date.parse(x.time_range.start))) : null; }),
+        source: all.map((sh) => sh.source) };
+      const firstShot = all.find((sh) => sh.step_id === first.step_id);
+      F.c.firstAt = firstShot ? (Date.parse(firstShot.at) - start) / 1000 : null;
+      F.c.diffAt = await frameDiff(path.join(shotsDir, firstShot.file), 5);
+      F.c.diffOther = await frameDiff(path.join(shotsDir, firstShot.file), 20);
+      // One Ctrl+Z takes the newest step and its picture (the file leaves the
+      // folder); Ctrl+Y brings both back.
+      const newest = three[2];
+      const newestShot = all.find((sh) => sh.step_id === newest.step_id);
+      F.c.fileBefore = fs.existsSync(path.join(shotsDir, newestShot.file));
+      await page.locator("#sp-explain").click({ timeout: T });
+      await page.keyboard.press("Control+z");
+      await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 2, null, { timeout: T });
+      await wait(500);
+      F.c.undone = { shots: (await shots()).length, file: fs.existsSync(path.join(shotsDir, newestShot.file)) };
+      await page.keyboard.press("Control+y");
+      await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 3, null, { timeout: T });
+      await wait(500);
+      F.c.redone = { shots: (await shots()).length, file: fs.existsSync(path.join(shotsDir, newestShot.file)) };
+      // (d) A step whose picture was removed offers "Use the video at
+      // m:ss" in the editor and in the panel; one click takes it.
+      await level("steps");
+      await page.evaluate(() => { const b = document.querySelector("#step-list .run-group:not(.open) .run-row"); if (b && !document.querySelector("#step-list .run-group.open .step-row")) b.click(); });
+      await page.locator('#step-list .step-row[data-step-id="' + first.step_id + '"] .step-name').click({ timeout: T });
+      await page.waitForFunction((sid) => require("./state.js").getSelectedStepId() === sid, first.step_id, { timeout: T });
+      await wait(300);
+      F.a.inSteps = await page.evaluate(() => ({ name: (document.getElementById("step-name") || {}).value, desc: (document.getElementById("step-desc") || {}).value }));
+      await page.locator('#step-shots-sect .step-shot-card [data-shot-act="remove"]').click({ timeout: T });
+      await page.waitForFunction((sid) => !(require("./state.js").getSession().annotations.analyst_screenshots || []).some((x) => x.step_id === sid), first.step_id, { timeout: T });
+      await page.waitForSelector("#btn-step-use-video", { timeout: T });
+      F.d = { editor: (await page.locator("#btn-step-use-video").textContent()).trim() };
+      await page.screenshot({ path: path.join(__dirname, "companion-smoke-use-video.png") }).catch(() => {});
+      await page.locator("#btn-step-use-video").click({ timeout: T });
+      await page.waitForFunction((sid) => (require("./state.js").getSession().annotations.analyst_screenshots || []).filter((x) => x.step_id === sid).length === 1, first.step_id, { timeout: T });
+      F.d.editorAdded = true;
+      F.d.linkGone = await page.evaluate(() => !document.getElementById("btn-step-use-video"));
+      const second = three[1];
+      await page.locator('#step-list .step-row[data-step-id="' + second.step_id + '"] .step-name').click({ timeout: T });
+      await page.waitForFunction((sid) => require("./state.js").getSelectedStepId() === sid, second.step_id, { timeout: T });
+      await wait(300);
+      await page.locator('#step-shots-sect .step-shot-card [data-shot-act="remove"]').click({ timeout: T });
+      await page.waitForFunction((sid) => !(require("./state.js").getSession().annotations.analyst_screenshots || []).some((x) => x.step_id === sid), second.step_id, { timeout: T });
+      await level("flow");
+      await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
+        .dispatchEvent(new MouseEvent("click", { bubbles: true })), second.step_id);
+      await page.waitForSelector("#sp-body .sp-occ.focus .step-use-video", { timeout: T });
+      F.d.panel = (await page.locator("#sp-body .sp-occ.focus .step-use-video").textContent()).trim();
+      F.d.want = "Use the video at " + (() => { const s = Math.floor((Date.parse(second.time_range.start) - start) / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); })();
+      await page.locator("#sp-body .sp-occ.focus .step-use-video").click({ timeout: T });
+      await page.waitForFunction((sid) => (require("./state.js").getSession().annotations.analyst_screenshots || []).filter((x) => x.step_id === sid).length === 1, second.step_id, { timeout: T });
+      F.d.panelAdded = true;
+      await page.waitForSelector("#sp-body .sp-occ.focus .sp-shot", { timeout: T });
+      F.d.panelShows = await page.evaluate(() => !document.querySelector("#sp-body .sp-occ.focus .step-use-video"));
+    } catch (x) { F.err = errText(x); }
+    record("(F1) lane E-1: paused, S adds a step and the step panel opens on it with its name focused and selected; typing a name and Enter names it and leaves the field; the description typed in the panel is the step's; Steps then shows both, with no visit to Steps in between",
+      !F.err && F.a.value === "Step 1" && F.a.selected && F.a.panel && F.a.row &&
+        !!F.a.afterEnter && F.a.afterEnter.tag !== "INPUT" && F.a.afterEnter.tag !== "TEXTAREA" && F.a.described &&
+        !!F.a.inSteps && F.a.inSteps.name === "Take the call" && F.a.inSteps.desc === "Note who calls and what they order.",
+      JSON.stringify(F.err ? F : F.a));
+    record("(F2) lane E-1: after Enter, Space plays the video on; while it plays two S presses in a row give two steps, no field takes a key (the first step keeps its name), nothing takes the focus, the panel shows the newest step, and a new step takes none of the description of the step before it",
+      !F.err && !!F.b && F.b.played && F.b.playing && !!F.b.focus && F.b.focus.tag !== "INPUT" && F.b.focus.tag !== "TEXTAREA" &&
+        JSON.stringify(F.b.names) === '["Take the call","Step 1","Step 2"]' && F.b.panelOnNewest &&
+        JSON.stringify(F.b.descs) === '["Note who calls and what they order.","",""]',
+      JSON.stringify(F.b || F.err));
+    record("(F3) lane E-1: each step marked on the video has one added screenshot at its own moment; the first one's picture is the video's frame at 0:05 (closer to it than to the frame at 0:20); one Ctrl+Z takes the newest step and its picture, file included, and Ctrl+Y brings both back",
+      !F.err && !!F.c && JSON.stringify(F.c.per) === "[1,1,1]" && F.c.at.every((d) => d === 0) && F.c.source.every((x) => x === "video_frame") &&
+        Math.abs(F.c.firstAt - 5) < 0.1 && F.c.diffAt < 40 && F.c.diffOther > 200 && F.a.shotInRow === 1 &&
+        F.c.fileBefore && F.c.undone.shots === 2 && F.c.undone.file === false && F.c.redone.shots === 3 && F.c.redone.file === true,
+      JSON.stringify(F.c || F.err));
+    record("(F4) lane E-1: a step without a picture offers \"Use the video at m:ss\" (its start) in the editor and in the panel, and one click there adds that frame",
+      !F.err && !!F.d && F.d.editor === "Use the video at 0:05" && F.d.editorAdded && F.d.linkGone &&
+        F.d.panel === F.d.want && F.d.panelAdded && F.d.panelShows,
+      JSON.stringify(F.d || F.err));
+  }
 
   // ================= E. From a video to one zip: the Checklist fits the project =================
   // A project made from a video opens on the Timeline; its Checklist reads

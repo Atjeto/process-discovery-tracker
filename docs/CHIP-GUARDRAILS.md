@@ -507,6 +507,14 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 video has no moment of the row: not covered, or no time; lane FX2), the
 foot `#btn-sp-steps` or
 `#btn-sp-timeline` and, for a sub-process, `#btn-sp-open-sub`, `#btn-sp-close`.
+Lane E-1, on the Timeline and the Map only: `#sp-name-edit` holds the name
+field `#sp-name-input` (its picker `#sp-activity-list`, its quiet line
+`#sp-lib-note`; `#sp-name` keeps the name, `.sr-only`), and `#sp-fields`
+holds the System field `#sp-system` (in `.sp-system`, the screen
+`.sp-screen` after it) and the description `#sp-desc`; the editor's ids
+(`#step-name`, `#step-system`, `#step-desc`) are never the panel's. *Use the
+video at m:ss* is `.step-use-video` in `#sp-body .sp-occ.focus`, and
+`#btn-step-use-video` in the editor's `#step-shots-sect`.
 
 **Map** (`#session-layout-map`; lane MV: the map the PDD prints first, how
 the transactions ran one click away):

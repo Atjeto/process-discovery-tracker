@@ -406,6 +406,14 @@ The viewer says *transaction* for one pass through the process and
   cover says so; a time under a second reads "under 1s"), its screenshots,
   what was said and its notes, its flow in one line when one is set, and
   the waste flag; its foot goes to the step in Steps, or on the Timeline.
+  On the Timeline and the Map its head is the step's name, system and
+  description as fields, saved as the editor saves them (lane E-1); on
+  Steps, beside the editor, and in a project open read only, it is text. A
+  step marked on the Timeline (S, *+ Step*, *Add a step here*) opens there:
+  with the video paused the cursor is in its name, while it plays nothing
+  takes the keys. A step marked where a video shows takes that frame as its
+  screenshot, in the same undoable edit; a step a video covers that shows
+  no screenshot offers *Use the video at m:ss*, here and in the editor.
   How the transactions ran fits again when the panel opens or closes
   beside it.
 - **Saved as you go**: every change saves itself to the project folder, and
