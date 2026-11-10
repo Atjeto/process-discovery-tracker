@@ -47,6 +47,14 @@ function applyTheme(name) {
   const root = document.documentElement;
   if (name === "dark") root.setAttribute("data-theme", "dark");
   else root.removeAttribute("data-theme");
+  // Lane A-1: the toggle is a glyph; its name says what a press does.
+  const btn = typeof document.getElementById === "function" ? document.getElementById("btn-theme-toggle") : null;
+  if (btn && typeof btn.setAttribute === "function") btn.setAttribute("aria-label", toggleLabel(name));
+}
+
+/* The theme toggle's name in the theme `name`: what a press does. */
+function toggleLabel(name) {
+  return name === "dark" ? "Switch to the light theme" : "Switch to the dark theme";
 }
 
 /** @type {Set<(name: string) => void>} */
@@ -136,6 +144,6 @@ function appColors()    { return _theme === "dark" ? DARK_APP : LIGHT_APP; }
 function dfgStyleTokens() { return _theme === "dark" ? DARK_DFG : LIGHT_DFG; }
 
 module.exports = {
-  getTheme, setTheme, applyTheme, toggleTheme, onChange,
+  getTheme, setTheme, applyTheme, toggleTheme, onChange, toggleLabel,
   appColors, dfgStyleTokens,
 };

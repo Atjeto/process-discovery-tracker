@@ -68,6 +68,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **No Reference badge on a lone transaction.** A project of one
   transaction has nothing it is the reference among, so Steps leaves the
   badge out there.
+- **Every label readable, in both themes.** The light theme's filled buttons and the level shown are a darker amber now (`--accent-fill`, the colour of the links), so their label reads at 5.25:1 instead of 3.34:1; the amber stays on borders, marks and icons. No text is drawn in the faintest grey any more (*Transaction:*, the count of *Edited maps*, *No edited maps yet.*, the playback bar's key hint, the menus' headings): muted text is the muted grey, and the darker grey where it sits on a fill (a selected row's time, a key hint). Every text field, text area and list has a visible edge.
+- **One focus mark.** Every control the keyboard reaches shows the same 2 px slate ring; a text field shows it while you type in it. Link acts (*Replace*, *Remove*, *Only when...*) take a click across 24 px of height, with no row moved.
+- **Dialogs keep the keyboard.** The prompts (*+ Add step*, *Hand off...*), the confirmations, *Place after a step...*, Help and the library builder are announced as dialogs; Tab and Shift+Tab stay inside them, and closing one gives the focus back to the button that opened it. Help takes the focus when it opens, on its section shown.
+- **Messages are announced and an error stays while you read it.** The message line at the bottom is read out by a screen reader (an error at once). An error stays until you dismiss it (its cross, or Escape), a newer message replaces it, or you click or press a key elsewhere once it has been up 3.5 s; other messages keep their timing. A message never blocks a click on the page under it.
+- **Names and state.** The glyph buttons say what they do (*Help*, *Close*, *Zoom in*, *Switch to the dark theme*), the New, Open, Export and Lanes buttons say whether their menu is open, the level shown is marked as the current page, and every page of the viewer and the capture app says it is in English. The recording bar tells a screen reader its state and transaction when they change (never its clock each second), and its problem line is an alert; the capture windows' text fields have a visible edge.
 
 ## [2.0.6] (2026-11-04): several videos on one timeline
 

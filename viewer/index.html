@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file:; font-src 'self' file: data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -31,7 +31,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
          makes a project from a video or from nothing; Open opens a project
          folder (the folder a recorder saved, or one made here) or a recent one. -->
     <div class="project-menu" id="new-menu">
-      <button class="project-btn" id="btn-new-menu" title="Start a new project from a video of the process, or an empty one">
+      <button class="project-btn" id="btn-new-menu" aria-haspopup="true" aria-expanded="false" title="Start a new project from a video of the process, or an empty one">
         <span>New</span>
         <span class="project-menu-caret">▾</span>
       </button>
@@ -41,7 +41,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
       </div>
     </div>
     <div class="project-menu" id="recent-menu">
-      <button class="project-btn" id="btn-recent-menu" title="Open a project folder or a recent project">
+      <button class="project-btn" id="btn-recent-menu" aria-haspopup="true" aria-expanded="false" title="Open a project folder or a recent project">
         <span>Open</span>
         <span class="project-menu-caret">▾</span>
       </button>
@@ -57,7 +57,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     </div>
     <!-- The four levels. -->
     <nav class="view-mode-bar session-only" aria-label="Levels">
-      <button class="view-mode-btn active" data-level="overview" title="The checklist, the project and the document">
+      <button class="view-mode-btn active" data-level="overview" aria-current="page" title="The checklist, the project and the document">
         <span class="view-mode-icon">◈</span> Overview
       </button>
       <button class="view-mode-btn" data-level="flow" title="The recording: video, screenshots, transactions and what was said">
@@ -81,7 +81,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
          until a later save succeeds. Focusable, so a keyboard reaches it. -->
     <span class="save-state session-only" id="save-state" role="status" aria-live="polite" tabindex="0" data-state="saved" title="Every change saves itself to the project folder.">Saved</span>
     <div class="project-menu session-only" id="session-export-menu">
-      <button class="project-btn" id="btn-session-export-menu" title="Export this project: each export opens its folder with the file selected">
+      <button class="project-btn" id="btn-session-export-menu" aria-haspopup="true" aria-expanded="false" title="Export this project: each export opens its folder with the file selected">
         <span>Export</span><span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="session-export-popup" style="display:none">
@@ -111,8 +111,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
       </div>
     </div>
-    <button class="icon-btn help-btn" id="btn-help" title="Help (?)">?</button>
-    <button class="icon-btn theme-toggle" id="btn-theme-toggle" title="Toggle dark theme" aria-pressed="false">☾</button>
+    <button class="icon-btn help-btn" id="btn-help" title="Help (?)" aria-label="Help">?</button>
+    <button class="icon-btn theme-toggle" id="btn-theme-toggle" title="Toggle dark theme" aria-label="Switch to the dark theme" aria-pressed="false">☾</button>
   </header>
 
   <main id="view-host">
@@ -179,7 +179,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
                 <button class="icon-btn" id="btn-add-step" type="button" hidden title="Add a step at the video playhead (S)">+ Step</button>
                 <div class="lanes-menu" id="lanes-menu">
-                  <button class="icon-btn" id="btn-lanes" title="Choose which timeline lanes to show">Lanes ▾</button>
+                  <button class="icon-btn" id="btn-lanes" aria-haspopup="true" aria-expanded="false" title="Choose which timeline lanes to show">Lanes ▾</button>
                   <div class="lanes-popup" id="lanes-popup" style="display:none">
                     <div class="lanes-popup-title">Show lanes</div>
                     <label class="cb"><input type="checkbox" data-lane="idle" /> Idle</label>
@@ -191,9 +191,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                     <label class="cb" id="lane-notes-row" hidden><input type="checkbox" data-lane="notes" /> Notes</label>
                   </div>
                 </div>
-                <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)">−</button>
-                <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)">⊙</button>
-                <button class="icon-btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
+                <button class="icon-btn" id="btn-zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button>
+                <button class="icon-btn" id="btn-zoom-reset" title="Reset zoom (0)" aria-label="Reset zoom">⊙</button>
+                <button class="icon-btn" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
               </div>
             </div>
             <div class="timeline-minimap" id="timeline-minimap" title="The whole recording, shown while the timeline is zoomed in: the highlighted part is what the timeline below shows. Click to go to a part, or drag the highlighted part." style="display:none"></div>
@@ -454,14 +454,14 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     <span class="pb-hint">Space &middot; &larr;&rarr; &middot; Shift+&larr;&rarr;</span>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ========= Help modal ========= -->
   <div class="modal-backdrop" id="help-modal" style="display:none">
-    <div class="modal" role="dialog" aria-labelledby="help-title">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
       <header class="modal-header">
         <h2 id="help-title">How to use</h2>
-        <button class="icon-btn modal-close" id="btn-help-close" title="Close (Esc)">✕</button>
+        <button class="icon-btn modal-close" id="btn-help-close" title="Close (Esc)" aria-label="Close">✕</button>
       </header>
       <nav class="help-nav">
         <button class="help-nav-item active" data-section="start">Getting started</button>

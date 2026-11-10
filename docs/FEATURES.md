@@ -419,6 +419,7 @@ The viewer says *transaction* for one pass through the process and
 - **Saved as you go**: every change saves itself to the project folder, and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.
+- **Readable and keyboard safe**: labels at 4.5:1 in both themes, one focus ring, dialogs that keep Tab inside and give the focus back, messages a screen reader hears, and an error that stays until it is dismissed.
 - **Export**: the PDD (with a picture of each sub-process's map in its
   chapter; its pictures leave the steps' notes out; with attached files,
   one zip holding the PDD and an *Attachments* folder its attachment names

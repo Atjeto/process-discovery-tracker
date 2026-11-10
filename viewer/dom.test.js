@@ -75,7 +75,9 @@ test("the margin defaults to 4 px", () => {
 test("a held error toast stays until it ends: a success or info message does not replace it, another error does", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const el = { textContent: "", className: "", classList: { remove() { el.className = ""; } }, appendChild() {} };
-  global.document = { querySelector: (sel) => (sel === "#toast" ? el : null) };
+  // An error carries a Dismiss button (lane A-1): the stub makes one.
+  global.document = { querySelector: (sel) => (sel === "#toast" ? el : null),
+    createElement: () => ({ dataset: {}, addEventListener() {}, setAttribute() {} }) };
   try {
     toast("Saved, but a file was not moved.", "error", { hold: true });
     toast("Video removed.", "success");
@@ -93,6 +95,53 @@ test("a held error toast stays until it ends: a success or info message does not
     assert.equal(el.textContent, "A second failure.", "another error replaces a held one");
     toast("Done.", "success");
     assert.equal(el.textContent, "Done.", "a plain error holds nothing");
+  } finally {
+    delete global.document;
+  }
+});
+
+/* ---- lane A-1: an error stays until it is dismissed or replaced ---- */
+
+const { toastLifetime, toastClosesOnInteraction, hideToast } = require("./dom.js");
+
+test("how long a message shows: an error stays, an ordinary one 3.5 s, one with an action or a hold 8 s", () => {
+  assert.equal(toastLifetime("error"), null);
+  assert.equal(toastLifetime("error", { hold: true }), null);
+  assert.equal(toastLifetime("error", { action: { label: "Undo" } }), null);
+  assert.equal(toastLifetime(undefined), 3500);
+  assert.equal(toastLifetime("success"), 3500);
+  assert.equal(toastLifetime("info", { action: { label: "Undo" } }), 8000);
+  assert.equal(toastLifetime("success", { hold: true }), 8000);
+});
+
+test("a click or a key press outside an error closes it only once it has been up 3.5 s", () => {
+  assert.equal(toastClosesOnInteraction(1000, 1000), false);
+  assert.equal(toastClosesOnInteraction(1000, 4499), false);
+  assert.equal(toastClosesOnInteraction(1000, 4500), true);
+  assert.equal(toastClosesOnInteraction(1000, 60000), true);
+});
+
+test("an error message is still shown long after an ordinary one would have gone; Dismiss and a newer message end it", (t) => {
+  const el = { textContent: "", className: "", classList: { remove() { el.className = el.className.replace(/\s*show\b/, ""); } },
+    appendChild() {} };
+  global.document = { querySelector: (sel) => (sel === "#toast" ? el : null),
+    createElement: () => ({ dataset: {}, addEventListener() {}, setAttribute() {} }) };
+  // The previous test's timer belongs to its own mock clock: clearing it under
+  // this test's mock would clear this test's first timer (same id).
+  hideToast();
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  try {
+    toast("Saved.", "success");
+    t.mock.timers.tick(3500);
+    assert.ok(!/\bshow\b/.test(el.className), "an ordinary message goes after 3.5 s");
+    toast("The marker was not moved: a step would lose its last action.", "error");
+    t.mock.timers.tick(60000);
+    assert.equal(el.className, "toast show error", "the error is still shown a minute later");
+    hideToast();
+    assert.ok(!/\bshow\b/.test(el.className), "Dismiss takes it away");
+    toast("Another refusal.", "error");
+    toast("Done.", "success");
+    assert.equal(el.textContent, "Done.", "a newer message replaces an error");
   } finally {
     delete global.document;
   }

@@ -93,37 +93,124 @@ function cryptoRandomId() {
   return "id-" + Math.random().toString(36).slice(2);
 }
 
+/* How long a message shows (lane A-1). An error stays (null) until the
+   person dismisses it (its Dismiss, or Escape while no dialog or menu is
+   open), a newer message replaces it, or their next click or key press
+   outside it once it has been up TOAST_MS (toastClosesOnInteraction). An
+   ordinary or success message goes after TOAST_MS, TOAST_LONG_MS with an
+   action or a hold. Pure. */
+const TOAST_MS = 3500;
+const TOAST_LONG_MS = 8000;
+function toastLifetime(kind, opts) {
+  if (kind === "error") return null;
+  return opts && (opts.action || opts.hold) ? TOAST_LONG_MS : TOAST_MS;
+}
+function toastClosesOnInteraction(shownAt, now) {
+  return now - shownAt >= TOAST_MS;
+}
+
 let toastTimer = null;
+let toastFillTimer = null;
 let toastHeldUntil = 0;
-/* A transient message at the bottom of the window. opts.action =
+let toastShownAt = 0;
+let toastSticky = false;
+let toastWired = false;
+
+function hideToast() {
+  const el = $("#toast");
+  toastSticky = false;
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+  if (el) el.classList.remove("show");
+}
+
+/* A dialog or a menu is open: Escape is theirs, not the message's. */
+function _overlayOpen() {
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  return [...document.querySelectorAll('.modal-backdrop, [aria-modal="true"], .project-menu-popup, .lanes-popup, #refmap-editor-overlay')]
+    .some(shown);
+}
+
+function _wireToast() {
+  if (toastWired || typeof document.addEventListener !== "function") return;
+  toastWired = true;
+  const outside = (e) => {
+    const el = $("#toast");
+    return !(el && e.target && typeof el.contains === "function" && el.contains(e.target));
+  };
+  document.addEventListener("keydown", (e) => {
+    if (!toastSticky) return;
+    if (e.key === "Escape") {
+      // Not consumed: the page's own Escape (a context menu, the selection)
+      // still runs.
+      if (!e.defaultPrevented && !_overlayOpen()) hideToast();
+      return;
+    }
+    if (outside(e) && toastClosesOnInteraction(toastShownAt, Date.now())) hideToast();
+  }, true);
+  document.addEventListener("pointerdown", (e) => {
+    if (toastSticky && outside(e) && toastClosesOnInteraction(toastShownAt, Date.now())) hideToast();
+  }, true);
+}
+
+/* A message at the bottom of the window, announced: #toast is a polite live
+   region (role="status") and an error an assertive one (role="alert"); the
+   same text twice in a row is announced twice. opts.action =
    { label, act, onClick } adds one button to it (an offer such as "Hide in all
-   runs", or an Undo): the toast then stays a little longer and takes clicks
-   while it shows (only then: a hidden toast never catches a click).
+   runs", or an Undo): the toast then stays a little longer. A message never
+   blocks the page: only its own buttons take clicks, and only while it shows.
    opts.hold (an error the analyst must read, such as a save that moved no
-   file): it stays as long, and no message but another error replaces it
-   meanwhile, so the success message of the same act does not cover it. */
+   file): no message but another error replaces it for TOAST_LONG_MS, so the
+   success message of the same act does not cover it. An error carries a
+   Dismiss and stays (toastLifetime). */
 function toast(text, kind, opts) {
   if (kind !== "error" && Date.now() < toastHeldUntil) return;
   const el = $("#toast");
   const action = opts && opts.action;
-  el.textContent = text;
-  el.className = "toast show" + (kind ? " " + kind : "") + (action ? " has-action" : "");
-  if (action) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "toast-action";
-    if (action.act) b.dataset.act = action.act;
-    b.textContent = action.label;
-    b.addEventListener("click", () => {
-      el.classList.remove("show");
-      action.onClick();
-    });
-    el.appendChild(b);
+  const error = kind === "error";
+  if (toastFillTimer) { clearTimeout(toastFillTimer); toastFillTimer = null; }
+  // A live region announces a change: the same text again while it shows is
+  // cleared first and written a moment later.
+  const again = /\bshow\b/.test(el.className) && !!el.firstChild && el.firstChild.nodeValue === String(text);
+  if (typeof el.setAttribute === "function") {
+    el.setAttribute("role", error ? "alert" : "status");
+    el.setAttribute("aria-live", error ? "assertive" : "polite");
   }
+  const fill = () => {
+    toastFillTimer = null;
+    el.textContent = text;
+    if (action) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "toast-action";
+      if (action.act) b.dataset.act = action.act;
+      b.textContent = action.label;
+      b.addEventListener("click", () => {
+        hideToast();
+        action.onClick();
+      });
+      el.appendChild(b);
+    }
+    if (error) {
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "toast-close";
+      x.title = "Dismiss";
+      if (typeof x.setAttribute === "function") x.setAttribute("aria-label", "Dismiss");
+      x.addEventListener("click", hideToast);
+      el.appendChild(x);
+    }
+  };
+  if (again) { el.textContent = ""; toastFillTimer = setTimeout(fill, 60); } else fill();
+  el.className = "toast show" + (kind ? " " + kind : "") + (action ? " has-action" : "");
   const hold = !!(opts && opts.hold);
-  toastHeldUntil = hold ? Date.now() + 8000 : 0;
+  toastHeldUntil = hold ? Date.now() + TOAST_LONG_MS : 0;
+  toastShownAt = Date.now();
+  toastSticky = error;
+  _wireToast();
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), action || hold ? 8000 : 3500);
+  toastTimer = null;
+  const life = toastLifetime(kind, opts);
+  if (life != null) toastTimer = setTimeout(hideToast, life);
 }
 
 /* Where a w x h context menu opened at the click point (x, y) goes so all of
@@ -164,4 +251,4 @@ function placeMenu(menu, x, y) {
 }
 
 module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, clock, recordingStartMs, sinceStart, parseClock,
-  fillTable, cryptoRandomId, toast, fitMenuPosition, placeMenu };
+  fillTable, cryptoRandomId, toast, hideToast, toastLifetime, toastClosesOnInteraction, fitMenuPosition, placeMenu };

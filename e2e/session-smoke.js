@@ -293,6 +293,29 @@ async function unreadableAnnotationsPin() {
     /was not saved/.test(saveMsg) && /cannot be read/.test(saveMsg) && afterSave,
     "toast=" + JSON.stringify(saveMsg.slice(0, 200)) + " filesUntouched=" + afterSave);
 
+  // Lane A-1: an error message is announced (role="alert") and stays while it
+  // is read: still on screen after 5 s, gone on its Dismiss. Its text lets the
+  // clicks through; only its buttons take them.
+  const stays = {};
+  try {
+    await wait(5000);
+    stays.at5s = await p.evaluate(() => {
+      const el = document.getElementById("toast");
+      const x = el.querySelector(".toast-close");
+      return { shown: el.classList.contains("show") && el.classList.contains("error"), role: el.getAttribute("role"),
+        live: el.getAttribute("aria-live"), dismiss: x ? x.getAttribute("aria-label") : null,
+        textClicks: getComputedStyle(el).pointerEvents, buttonClicks: x ? getComputedStyle(x).pointerEvents : null };
+    });
+    await p.locator("#toast .toast-close").click({ timeout: T });
+    await wait(150);
+    stays.afterDismiss = await p.evaluate(() => document.getElementById("toast").classList.contains("show"));
+  } catch (e) { logActionError("A-1 an error stays", e); stays.err = String(e.message).split("\n")[0]; }
+  const s5 = stays.at5s || {};
+  record("lane A-1: an error message is an alert that stays on screen past 5 s and goes on Dismiss; its text lets clicks through to the page",
+    !stays.err && s5.shown && s5.role === "alert" && s5.live === "assertive" && s5.dismiss === "Dismiss" &&
+      s5.textClicks === "none" && s5.buttonClicks === "auto" && stays.afterDismiss === false,
+    JSON.stringify(stays));
+
   // AD-22: no analysis starts by itself over an unreadable annotations.json
   // (the banner says why; the pipeline would refuse). The one analysis by
   // hand, Help's Re-analyze, is refused with the reason, and the log shows
@@ -693,6 +716,57 @@ async function unreadableAnnotationsPin() {
       ["Show how the transactions ran", "Map:", "Edit as the As-Is map", "Edit a new copy", "To-Be map", "Edited maps", "Copy again",
         "Process map (image)", "Process map (BPMN)"].every((w) => (hm.text || "").includes(w)),
     JSON.stringify({ err: helpMap.err, nav: hm.nav, shown: hm.shown, heads: hm.heads }));
+
+  // Lane A-1: a dialog keeps the keyboard. Help takes the focus and gives it
+  // back to its button; the + Add step prompt is a labelled modal dialog,
+  // Tab pressed six times never leaves it, and Escape gives the focus back to
+  // + Add step.
+  const dlg = {};
+  try {
+    const inside = (sel) => page.evaluate((s) => {
+      const d = document.querySelector(s);
+      const a = document.activeElement;
+      return !!(d && a && a !== document.body && d.contains(a)) ? "in" : "OUT:" + (a ? a.tagName + "#" + (a.id || "") : "none");
+    }, sel);
+    await page.locator("#btn-help").click({ timeout: 15000 });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById("help-modal")).display !== "none", null, { timeout: 15000 });
+    dlg.help = await page.evaluate(() => {
+      const m = document.querySelector("#help-modal .modal");
+      return { role: m.getAttribute("role"), modal: m.getAttribute("aria-modal"), label: (document.getElementById(m.getAttribute("aria-labelledby")) || {}).textContent || "" };
+    });
+    dlg.helpTrail = [await inside("#help-modal .modal")];
+    // From its first item (the close cross) Shift+Tab goes round to its last,
+    // and Tab from there comes back to the first.
+    await page.locator("#btn-help-close").focus();
+    for (const key of ["Shift+Tab", "Tab", "Tab"]) { await page.keyboard.press(key); dlg.helpTrail.push(await inside("#help-modal .modal")); }
+    await page.keyboard.press("Escape");
+    await wait(150);
+    dlg.helpBack = await page.evaluate(() => (document.activeElement || {}).id || "");
+    const level = await page.evaluate(() => (document.querySelector(".view-mode-btn.active") || { dataset: {} }).dataset.level);
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: 15000 });
+    await page.locator("#btn-add-manual-step").click({ timeout: 15000 });
+    await page.waitForSelector(".modal-backdrop.modal-prompt .modal-input", { timeout: 15000 });
+    await wait(100);
+    dlg.prompt = await page.evaluate(() => {
+      const m = document.querySelector(".modal-backdrop.modal-prompt .modal");
+      const t = document.getElementById(m.getAttribute("aria-labelledby") || "");
+      return { role: m.getAttribute("role"), modal: m.getAttribute("aria-modal"), label: t ? t.textContent : "",
+        first: (document.activeElement || {}).className || "" };
+    });
+    dlg.trail = [];
+    for (let i = 0; i < 6; i++) { await page.keyboard.press("Tab"); dlg.trail.push(await inside(".modal-backdrop.modal-prompt .modal")); }
+    await page.locator(".modal-backdrop.modal-prompt .modal-input").focus();
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".modal-prompt", { state: "detached", timeout: 15000 });
+    dlg.back = await page.evaluate(() => (document.activeElement || {}).id || "");
+    if (level) await page.locator('.view-mode-btn[data-level="' + level + '"]').click({ timeout: 15000 });
+  } catch (e) { logActionError("A-1 dialogs keep the keyboard", e); dlg.err = String(e.message).split("\n")[0]; }
+  record("lane A-1: Help and the + Add step prompt are modal dialogs named by their title; each takes the focus, Tab and Shift+Tab stay inside, and closing gives the focus back to the button that opened it",
+    !dlg.err && dlg.help && dlg.help.role === "dialog" && dlg.help.modal === "true" && dlg.help.label === "How to use" &&
+      dlg.helpTrail.every((x) => x === "in") && dlg.helpBack === "btn-help" &&
+      dlg.prompt && dlg.prompt.role === "dialog" && dlg.prompt.modal === "true" && !!dlg.prompt.label && /modal-input/.test(dlg.prompt.first) &&
+      dlg.trail.length === 6 && dlg.trail.every((x) => x === "in") && dlg.back === "btn-add-manual-step",
+    JSON.stringify(dlg));
 
   // Lane FX3 (validation pass 3, F20): the Markers panel says why the
   // capture app ended a transaction by itself in plain words, never its code.

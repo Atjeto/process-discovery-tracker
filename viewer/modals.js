@@ -17,6 +17,85 @@
 
 const { escapeHtml, escapeAttr } = require("./dom.js");
 
+/* ---- A dialog keeps the keyboard (lane A-1) ---------------------------
+   holdFocus(dialog, opts) makes `dialog` (the .modal box) one: role="dialog",
+   aria-modal="true", labelled by its title (opts.title, else its first
+   heading; an aria-label it already has stays). While it is open Tab and
+   Shift+Tab go round inside it, first to last and back, and a focus that
+   lands outside it is brought back in. It returns release(), which ends that
+   and gives the focus back to the element that had it when the dialog
+   opened, when that element is still in the page. The dialog's own keys and
+   first focus stay its own. Dialogs opened over a dialog stack: only the top
+   one holds the keyboard. */
+const FOCUSABLE = [
+  "a[href]", "button", "input:not([type=hidden])", "select", "textarea", "summary",
+  "video[controls]", "[tabindex]", "[contenteditable=true]",
+].join(",");
+const _held = [];
+let _dialogSeq = 0;
+
+/* Where Tab goes from the focusable item `index` of `count` (-1: the focus
+   is not on one of them): the index to focus, or null when the browser's own
+   move stays inside the dialog. Pure. */
+function wrapFocusIndex(count, index, backwards) {
+  if (!(count > 0)) return -1;
+  if (index < 0 || index >= count) return backwards ? count - 1 : 0;
+  if (backwards && index === 0) return count - 1;
+  if (!backwards && index === count - 1) return 0;
+  return null;
+}
+
+function _focusables(root) {
+  return Array.from(root.querySelectorAll(FOCUSABLE)).filter((el) =>
+    !el.disabled && el.tabIndex >= 0 && el.getClientRects().length > 0 &&
+    !el.closest("[hidden], [inert]"));
+}
+
+function holdFocus(dialog, opts) {
+  const o = opts || {};
+  const opener = document.activeElement;
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  if (!dialog.hasAttribute("tabindex")) dialog.setAttribute("tabindex", "-1");
+  if (!dialog.hasAttribute("aria-label")) {
+    const title = o.title || dialog.querySelector("h1, h2, h3");
+    if (title) {
+      if (!title.id) title.id = "dialog-title-" + (++_dialogSeq);
+      dialog.setAttribute("aria-labelledby", title.id);
+    }
+  }
+  const entry = { dialog };
+  const top = () => _held[_held.length - 1] === entry;
+  const onKey = (e) => {
+    if (e.key !== "Tab" || !top() || e.defaultPrevented) return;
+    const items = _focusables(dialog);
+    const to = wrapFocusIndex(items.length, items.indexOf(document.activeElement), e.shiftKey);
+    if (to === null) return;
+    e.preventDefault();
+    (to >= 0 ? items[to] : dialog).focus();
+  };
+  const onFocusIn = (e) => {
+    if (!top() || !dialog.isConnected || dialog.contains(e.target)) return;
+    (_focusables(dialog)[0] || dialog).focus();
+  };
+  document.addEventListener("keydown", onKey, true);
+  document.addEventListener("focusin", onFocusIn, true);
+  _held.push(entry);
+  let released = false;
+  return function release() {
+    if (released) return;
+    released = true;
+    document.removeEventListener("keydown", onKey, true);
+    document.removeEventListener("focusin", onFocusIn, true);
+    const at = _held.indexOf(entry);
+    if (at >= 0) _held.splice(at, 1);
+    if (o.returnFocus === false) return;
+    if (opener && opener !== document.body && opener.isConnected && typeof opener.focus === "function") {
+      try { opener.focus(); } catch (_) { /* it cannot take the focus now */ }
+    }
+  };
+}
+
 /* opts.list (lane B-V2, the Hand off... dialog only): { lead, items, more,
    onPick } shows, before the input, the line `lead` and under it `items`
    (strings), each a link-style button, then `more` (a last line, no link)
@@ -42,7 +121,7 @@ function promptModal(opts) {
     backdrop.innerHTML =
       '<div class="modal modal-sm">' +
       '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Input") + '</h2>' +
-      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)" aria-label="Close">✕</button></header>' +
       '<div class="modal-body">' +
       (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
       (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
@@ -61,6 +140,7 @@ function promptModal(opts) {
       '</footer>' +
       '</div>';
     document.body.appendChild(backdrop);
+    const releaseFocus = holdFocus(backdrop.querySelector(".modal"));
     const input = backdrop.querySelector(".modal-input");
     const okBtn = backdrop.querySelector(".modal-ok");
     const cancelBtn = backdrop.querySelector(".modal-cancel");
@@ -70,6 +150,7 @@ function promptModal(opts) {
       if (resolved) return;
       resolved = true;
       backdrop.remove();
+      releaseFocus();
       resolve(value);
     }
     // opts.required (lane HV): OK waits for some text.
@@ -107,7 +188,7 @@ function confirmModal(opts) {
     backdrop.innerHTML =
       '<div class="modal modal-sm">' +
       '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Confirm") + '</h2>' +
-      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)" aria-label="Close">✕</button></header>' +
       '<div class="modal-body">' +
       (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
       (opts.detail ? '<p class="modal-detail">' + escapeHtml(opts.detail) + '</p>' : '') +
@@ -118,6 +199,7 @@ function confirmModal(opts) {
       '</footer>' +
       '</div>';
     document.body.appendChild(backdrop);
+    const releaseFocus = holdFocus(backdrop.querySelector(".modal"));
     const okBtn = backdrop.querySelector(".modal-ok");
     const cancelBtn = backdrop.querySelector(".modal-cancel");
     const closeBtn = backdrop.querySelector(".modal-close");
@@ -126,6 +208,7 @@ function confirmModal(opts) {
       if (resolved) return;
       resolved = true;
       backdrop.remove();
+      releaseFocus();
       document.removeEventListener("keydown", onKey);
       resolve(value);
     }
@@ -164,7 +247,7 @@ function chooseModal(opts) {
     backdrop.innerHTML =
       '<div class="modal modal-sm" role="dialog" aria-label="' + escapeAttr(opts.title || "Choose") + '">' +
       '<header class="modal-header"><h2>' + escapeHtml(opts.title || "Choose") + '</h2>' +
-      '<button class="icon-btn modal-close" title="Cancel (Esc)">✕</button></header>' +
+      '<button class="icon-btn modal-close" title="Cancel (Esc)" aria-label="Close">✕</button></header>' +
       '<div class="modal-body">' +
       (opts.message ? '<p class="modal-msg">' + escapeHtml(opts.message) + '</p>' : '') +
       '<select class="modal-input modal-list" size="' + Math.max(4, Math.min(12, count)) + '" aria-label="' +
@@ -179,6 +262,7 @@ function chooseModal(opts) {
       '</footer>' +
       '</div>';
     document.body.appendChild(backdrop);
+    const releaseFocus = holdFocus(backdrop.querySelector(".modal"));
     const list = backdrop.querySelector(".modal-list");
     const okBtn = backdrop.querySelector(".modal-ok");
     let resolved = false;
@@ -186,6 +270,7 @@ function chooseModal(opts) {
       if (resolved) return;
       resolved = true;
       backdrop.remove();
+      releaseFocus();
       resolve(value);
     }
     const chosen = () => (list.value ? list.value : null);
@@ -209,4 +294,4 @@ function chooseModal(opts) {
   });
 }
 
-module.exports = { promptModal, confirmModal, chooseModal };
+module.exports = { promptModal, confirmModal, chooseModal, holdFocus, wrapFocusIndex };

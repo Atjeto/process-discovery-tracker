@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Recording saved</title>
 <style>
@@ -10,6 +10,7 @@
     --bg-3:      #2E2E37;
     --bg-hover:  #3A3A44;
     --border:    #424250;
+    --field-border: #707080; /* lane A-1: a text field's edge, 3.77:1 on --bg, 3.25:1 on --bg-2 (--border is 1.86:1) */
     --fg:        #D8D6CE;
     --fg-2:      #A8A69E;
     --fg-3:      #8E8C82;
@@ -56,7 +57,7 @@
   .note.bad { color: var(--bad-fg); }
   input {
     width: 100%; padding: 8px 10px; border-radius: 4px; outline: none;
-    border: 1px solid var(--border); background: var(--bg-2); color: var(--fg);
+    border: 1px solid var(--field-border); background: var(--bg-2); color: var(--fg);
     font-family: inherit; font-size: 13px;
   }
   input:focus { border-color: var(--accent); }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Recording bar</title>
 <style>
@@ -32,6 +32,10 @@
   }
   body { border: 1px solid var(--border); }
   [hidden] { display: none !important; }
+  /* Lane A-1: read by a screen reader, not shown (the visible line repaints
+     every second; this one changes only with the state or the transaction). */
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   /* The whole row drags the bar; the buttons stay clickable. */
   .row {
@@ -98,7 +102,8 @@
     <button class="stop solid" id="btn-stop-yes">Stop recording</button>
   </div>
 </div>
-<div class="problem" id="problem" hidden></div>
+<div class="problem" id="problem" role="alert" hidden></div>
+<div class="sr-only" id="announce" role="status" aria-live="polite"></div>
 
 <script>
 const { ipcRenderer } = require("electron");
@@ -109,6 +114,7 @@ let view = {{INITIAL_VIEW}};
 let confirming = false;
 let stopping = false;
 let lastHeight = 0;
+let lastAnnounced = null;
 const $ = (id) => document.getElementById(id);
 
 function esc(s) {
@@ -146,6 +152,10 @@ function paint(next) {
       '<span class="sep">&middot;</span><span class="time">' + esc(view.elapsed) + '</span>';
   }
   status.title = view.title || "";
+  // The state and the transaction, said when they change (never the clock).
+  const said = stopping ? "Stopping the recording" : confirming ? "Stop the recording?"
+    : idle ? (view.stateText || "Not recording") : [view.stateText, view.runText].filter(Boolean).join(", ");
+  if (said !== lastAnnounced) { lastAnnounced = said; $("announce").textContent = said; }
   $("controls-idle").hidden = !idle || confirming || stopping;
   $("controls-rec").hidden = idle || confirming || stopping;
   $("controls-confirm").hidden = !confirming || stopping;

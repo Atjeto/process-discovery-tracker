@@ -40,6 +40,8 @@
   --fg: #2c2418;
   --fg-2: #635848;
   --fg-3: #786c5a;   /* darkened from #9a8e7e so muted labels clear AA (≥4.5:1) on --bg/--bg-1, per the design system's own ≥4.5 intent (was 3.03:1) */
+  /* A decoration colour only (a separator, a caret, a placeholder glyph):
+     about 2:1, never the colour of a text (fg4-guard.test.js). */
   --fg-4: #c0b5a5;
 
   /* Functional color -- amber accent, slate-blue secondary */
@@ -51,6 +53,11 @@
   --link: #99591c;
   --field-border: #948771;
   --accent-text: #fff8f0;
+  /* Lane A-1: the fill of a control whose text is --accent-text (the primary
+     button, the level shown): 5.25:1 with it, where --accent gives 3.34:1.
+     --accent stays for borders, marks and icons (3:1). */
+  --accent-fill: #99591c;
+  --accent-fill-hover: #874d15;
   --accent-2: #5a7a8a;
   --accent-3: #b08040;
   --warn: #b08040;
@@ -107,6 +114,8 @@
   --link: var(--accent);
   --field-border: #66708f;
   --accent-text: #0a2020;
+  --accent-fill: var(--accent);
+  --accent-fill-hover: var(--accent-hover);
   --accent-2: #6a93c4;
   --accent-3: #fbbf24;
   --warn: #fbbf24;
@@ -155,8 +164,17 @@ button { padding: 6px 14px; background: var(--bg-2); color: var(--fg);
 button:hover:not(:disabled) { background: var(--bg-3); border-color: var(--accent); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 500; }
-button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+button.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-text); font-weight: 500; }
+button.primary:hover:not(:disabled) { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
+
+/* Lane A-1: one focus mark. Every control the keyboard reaches shows a 2 px
+   ring in --accent-2 on :focus-visible; a text field, a text area and a
+   select show it on :focus (typing there always wants it), keeping their own
+   border. A container that clips it uses an inset offset (.run-row, the
+   pane splitter). */
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+input[type=checkbox]:focus:not(:focus-visible), input[type=radio]:focus:not(:focus-visible) { outline: none; }
 
 button.icon-btn { padding: 4px 8px; font-family: var(--font-mono); font-size: 14px; min-width: 28px; }
 #btn-add-step { font-family: inherit; font-size: 12px; }
@@ -164,13 +182,15 @@ button.icon-btn { padding: 4px 8px; font-family: var(--font-mono); font-size: 14
 .kbd { display: inline-block; padding: 0 5px; min-width: 16px; height: 16px;
   font-family: var(--font-mono); font-size: 10px; line-height: 16px; text-align: center;
   background: var(--bg-4); border: 1px solid var(--rule); border-radius: 3px;
-  color: var(--fg-3); margin-right: 6px; vertical-align: middle; }
+  color: var(--fg-2); margin-right: 6px; vertical-align: middle; }
 
 /* ===== Inputs ===== */
+/* A field's edge is --field-border (3.5:1 light, 3.1:1 dark), not the --rule
+   hairline (1.35:1): its fill alone is 1.19:1 against a card. */
 input[type=text], input[type=search], textarea {
-  background: var(--bg-3); color: var(--fg); border: 1px solid var(--rule);
+  background: var(--bg-3); color: var(--fg); border: 1px solid var(--field-border);
   border-radius: var(--radius-sm); padding: 7px 10px;
-  font-family: inherit; font-size: 12px; outline: none; transition: border-color 0.12s; }
+  font-family: inherit; font-size: 12px; transition: border-color 0.12s; }
 input:focus, textarea:focus { border-color: var(--accent-2); }
 input[type=checkbox] { accent-color: var(--accent); }
 textarea { width: 100%; min-height: 70px; resize: vertical; }
@@ -181,15 +201,21 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 /* A compact select (the reference-map gallery and editor). */
 .map-status-select {
   background: var(--bg-3); color: var(--fg);
-  border: 1px solid var(--rule); border-radius: 3px;
+  border: 1px solid var(--field-border); border-radius: 3px;
   padding: 1px 4px; font-size: 10px; font-family: var(--font-mono);
-  outline: none; max-width: 180px;
+  max-width: 180px;
 }
 .link-btn { background: transparent; border: 0; padding: 2px 4px; color: var(--link);
   font-family: inherit; font-size: 11px; cursor: pointer; text-decoration: underline;
   text-underline-offset: 2px; transition: color 0.12s; }
 .link-btn:hover:not(:disabled) { color: var(--fg); background: transparent; border-color: transparent; }
-.link-btn:focus { outline: 1px dotted var(--accent); outline-offset: 2px; }
+/* Lane A-1: a text action is easier to hit. Its hit area is at least 24 px
+   high, centred on the text, drawn by a pseudo-element that takes no room:
+   no row grows or shifts. */
+.link-btn, .tr-add, .editor-toolbar .link-help, .step-row .step-sub-open { position: relative; }
+.link-btn::after, .tr-add::after, .editor-toolbar .link-help::after, .step-row .step-sub-open::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%;
+  height: max(24px, 100%); transform: translateY(-50%); }
 
 /* ===== Layout ===== */
 .app { display: flex; flex-direction: column; height: 100%; }
@@ -204,8 +230,8 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .app:not(.has-session) .session-only { display: none; }
 .help-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%;
   font-family: var(--font-mono); font-weight: 600; font-size: 13px;
-  color: var(--accent); border-color: var(--accent); background: transparent; }
-.help-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+  color: var(--link); border-color: var(--accent); background: transparent; }
+.help-btn:hover:not(:disabled) { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-text); }
 .theme-toggle { width: 26px; height: 26px; padding: 0; border-radius: 50%;
   font-family: var(--font-mono); font-size: 13px; line-height: 1;
   color: var(--fg-2); border-color: var(--rule); background: transparent; }
@@ -217,7 +243,6 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .save-state[data-state="failed"] { color: var(--bad); font-weight: 600; }
 /* Lane HV: a hand-off opened read only; the version is in its tooltip. */
 .save-state[data-state="readonly"] { color: var(--fg); font-weight: 600; }
-.save-state:focus-visible { outline: 1px dotted var(--accent); outline-offset: 2px; }
 .save-state.fade { animation: save-state-fade 0.4s ease-out; }
 @keyframes save-state-fade { from { opacity: 0.2; } to { opacity: 1; } }
 /* Export while the project zip is made (renderer.js exportProjectZip): the
@@ -341,7 +366,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .recent-sessions { margin-top: 36px; text-align: left; }
 .recent-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .recent-header h3 { margin: 0; }
-.recent-clear-btn { background: none; border: none; color: var(--fg-4); font-size: 11px;
+.recent-clear-btn { background: none; border: none; color: var(--fg-3); font-size: 11px;
   cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
 .recent-clear-btn:hover { color: var(--fg-2); background: var(--bg-2); }
 .recent-sessions ul { list-style: none; padding: 0; margin: 0; }
@@ -359,7 +384,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .recent-sessions .recent-missing-tag { display: inline-block; font-family: var(--font-mono);
   font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px;
   border-radius: 8px; background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
-.recent-sessions .recent-remove { background: none; border: none; color: var(--fg-4);
+.recent-sessions .recent-remove { background: none; border: none; color: var(--fg-3);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px;
   opacity: 0; transition: opacity 0.12s, color 0.12s; flex: 0 0 auto; }
 .recent-sessions li:hover .recent-remove { opacity: 1; }
@@ -687,7 +712,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 9px;
   padding: 1px 4px; border-radius: 2px; font-family: var(--font-mono); }
 .screens-grid .thumb .badge { position: absolute; top: 2px; right: 2px;
-  background: var(--accent); color: var(--accent-text); font-size: 8px; font-weight: 600;
+  background: var(--accent-fill); color: var(--accent-text); font-size: 8px; font-weight: 600;
   padding: 1px 4px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .markers-list .marker-row { display: flex; gap: 8px; padding: 6px 10px;
@@ -698,7 +723,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   font-size: 11px; flex: 0 0 60px; }
 .markers-list .marker-row .dir { width: 16px; flex: 0 0 16px; text-align: center;
   font-family: var(--font-mono); font-weight: 600; }
-.markers-list .marker-row.start .dir { color: var(--accent); }
+.markers-list .marker-row.start .dir { color: var(--link); }
 .markers-list .marker-row.end .dir { color: var(--bad); }
 .markers-list .marker-row .lbl { flex: 1; }
 .markers-list .marker-row .marker-actions { display: flex; gap: 2px; opacity: 0;
@@ -802,11 +827,17 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   transition: all 0.2s; pointer-events: none; z-index: 10; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.error { border-color: var(--bad); color: var(--bad); }
-.toast.success { border-color: var(--accent); color: var(--accent); }
-/* L12b: a toast with one action (an offer, an Undo) takes clicks only while
-   it shows. */
-.toast.show.has-action { pointer-events: auto; }
+.toast.success { border-color: var(--accent); color: var(--link); }
+/* L12b, lane A-1: a message never blocks the page under it: clicks pass
+   through its text; only its own buttons (an offer, an Undo, Dismiss) take
+   them, and only while it shows. */
+.toast.show button { pointer-events: auto; }
 .toast-action { margin-left: 10px; padding: 2px 10px; font-size: 11px; }
+/* An error's Dismiss (dom.js toast): a small cross, named by its label. */
+.toast-close { margin: -2px -8px -2px 10px; padding: 0 6px; min-width: 24px; min-height: 24px;
+  background: transparent; border: 1px solid transparent; color: inherit; font-size: 12px; line-height: 1; }
+.toast-close::before { content: "\2715"; }
+.toast-close:hover:not(:disabled) { background: var(--bg-3); border-color: var(--rule); }
 
 /* ===== Help modal ===== */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72);
@@ -860,8 +891,8 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .lb-row { display: grid; grid-template-columns: auto minmax(0, 2fr) 96px minmax(0, 3fr); gap: 3px 8px;
   align-items: center; padding: 5px 0; }
 .lb-row input[type=text] { width: 100%; min-width: 0; padding: 4px 7px; font: inherit; font-size: 12px; color: var(--fg);
-  background: var(--bg-2); border: 1px solid var(--rule); border-radius: 3px; }
-.lb-row input[type=text]:focus { outline: none; border-color: var(--accent); }
+  background: var(--bg-2); border: 1px solid var(--field-border); border-radius: 3px; }
+.lb-row input[type=text]:focus { border-color: var(--accent); }
 .lb-row input[type=text]::placeholder { color: var(--fg-3); }
 .lb-meta { grid-column: 2 / -1; margin: 0; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
 .lb-count { margin-right: auto; align-self: center; font-size: 11px; color: var(--fg-3); }
@@ -878,7 +909,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   padding: 8px 12px; text-align: left; color: var(--fg-2); font-size: 12px;
   border-radius: 4px; cursor: pointer; transition: all 0.12s; }
 .help-nav-item:hover { background: var(--bg-3); color: var(--fg); }
-.help-nav-item.active { background: var(--bg-3); color: var(--accent);
+.help-nav-item.active { background: var(--bg-3); color: var(--link);
   border-left: 2px solid var(--accent); padding-left: 10px; }
 .help-version { margin-top: auto; padding: 8px 12px 2px; font-size: 11px; color: var(--fg-3);
   font-family: var(--font-mono); }
@@ -946,13 +977,13 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 }
 .view-mode-btn:hover { background: var(--bg-3); color: var(--fg); }
 .view-mode-btn.active {
-  background: var(--accent); color: var(--bg); border-color: var(--accent);
+  background: var(--accent-fill); color: var(--accent-text); border-color: var(--accent-fill);
   font-weight: 500;
 }
 /* F3: the active level keeps its colours under the mouse; the global
    button:hover rule outranks .active and turned its label illegible. */
 .view-mode-btn.active:hover:not(:disabled) {
-  background: var(--accent-hover); border-color: var(--accent-hover); color: var(--bg);
+  background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); color: var(--accent-text);
 }
 .view-mode-btn .view-mode-icon { font-size: 13px; }
 
@@ -1205,9 +1236,9 @@ details.analysis-module { padding: 0; }
 button.tool-btn { padding: 4px 10px; font-size: 11px; color: var(--fg-2); background: transparent; }
 button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2); }
 .editor-toolbar .link-help {
-  color: var(--accent-2); text-decoration: none; border-bottom: 1px dotted var(--accent-2);
+  color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link);
 }
-.editor-toolbar .link-help:hover { color: var(--accent); border-color: var(--accent); }
+.editor-toolbar .link-help:hover { color: var(--fg); border-color: var(--fg); }
 .editor-split {
   /* The runs list is where the analyst reads and fixes step names, so it
      gets the wider share (it was a 340px step list). The divider between the
@@ -1260,15 +1291,15 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 }
 .case-scope-label {
   font-family: var(--font-mono); letter-spacing: 0.5px;
-  text-transform: uppercase; font-size: 10px; color: var(--fg-4);
+  text-transform: uppercase; font-size: 10px; color: var(--fg-3);
 }
 .case-scope select {
   background: var(--bg-3); color: var(--fg);
-  border: 1px solid var(--rule); border-radius: 3px;
+  border: 1px solid var(--field-border); border-radius: 3px;
   padding: 4px 8px; font-size: 11px; font-family: inherit;
-  outline: none; max-width: 220px;
+  max-width: 220px;
 }
-.case-scope select:hover { border-color: var(--fg-4); }
+.case-scope select:hover { border-color: var(--fg-3); }
 .case-scope.scoped select { border-color: var(--accent); color: var(--fg); }
 
 /* Flow timeline activity bands dimmed when out of the scoped case. */
@@ -1316,7 +1347,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .steps-crumbs[hidden] { display: none; }
 .crumb-trail { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 4px; flex: 1 1 auto; min-width: 0; }
 .steps-crumbs button.crumb {
-  padding: 1px 4px; border: 0; background: transparent; color: var(--accent);
+  padding: 1px 4px; border: 0; background: transparent; color: var(--link);
   font-size: 12px; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; text-align: left;
 }
 .steps-crumbs button.crumb:hover:not(:disabled) { color: var(--fg); background: transparent; }
@@ -1354,12 +1385,16 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   width: 100%; padding: 1px 4px; margin: -1px 0;
   background: var(--bg-2); border: 1px solid var(--accent);
   color: var(--fg); border-radius: 2px;
-  font-family: inherit; font-size: 12px; outline: none;
+  font-family: inherit; font-size: 12px;
 }
+/* The row's name cell clips what overflows it: the ring is drawn inset. */
+.step-name-edit:focus { outline-offset: -1px; }
 .step-row .step-time {
   color: var(--fg-3); font-family: var(--font-mono); font-size: 11px;
   flex-shrink: 0;
 }
+/* Muted text on a fill reads in --fg-2 (--fg-3 is 4.32:1 on --bg-3). */
+.step-row:hover .step-time, .step-row.selected .step-time { color: var(--fg-2); }
 /* C19: a sub-process row's way in ("▸ 6 sub-steps"), a small button in the
    chips' shape; a click opens the sub-process, a double-click on the name
    still renames. */
@@ -1848,8 +1883,8 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .modal-pick-more { font-size: 12px; color: var(--fg-2); padding: 2px 0; }
 .modal-prompt .modal-input {
   width: 100%; padding: 9px 12px; background: var(--bg-2);
-  border: 1px solid var(--rule); border-radius: 4px;
-  color: var(--fg); font-family: inherit; font-size: 14px; outline: none;
+  border: 1px solid var(--field-border); border-radius: 4px;
+  color: var(--fg); font-family: inherit; font-size: 14px;
 }
 .modal-prompt .modal-input:focus { border-color: var(--accent); }
 .modal-prompt .modal-footer {
@@ -2028,7 +2063,7 @@ button.danger:disabled {
   max-width: 240px;
 }
 .project-btn:hover { background: var(--bg-3); color: var(--fg); border-color: var(--accent); }
-.project-btn .project-menu-caret { font-size: 9px; opacity: 0.7; }
+.project-btn .project-menu-caret { font-size: 9px; }
 .project-menu-popup {
   position: absolute; right: 0; top: calc(100% + 4px);
   min-width: 220px; background: var(--bg-2); border: 1px solid var(--rule);
@@ -2061,7 +2096,7 @@ button.danger:disabled {
 #recent-menu-popup, #new-menu-popup { right: auto; left: 0; }
 .recent-menu-heading {
   font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--fg-4); font-family: var(--font-mono);
+  color: var(--fg-3); font-family: var(--font-mono);
   padding: 6px 10px 3px;
 }
 .recent-menu-item {
@@ -2074,11 +2109,11 @@ button.danger:disabled {
 .recent-menu-item .ri-label { flex: 1; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .recent-menu-item .ri-tag {
-  font-size: 9px; font-family: var(--font-mono); color: var(--fg-4);
+  font-size: 9px; font-family: var(--font-mono); color: var(--fg-3);
   flex: 0 0 auto;
 }
-.recent-menu-item.missing .ri-label { color: var(--fg-4); text-decoration: line-through; }
-.recent-menu-empty { padding: 8px 10px; color: var(--fg-4); font-size: 11px; font-style: italic; }
+.recent-menu-item.missing .ri-label { color: var(--fg-3); text-decoration: line-through; }
+.recent-menu-empty { padding: 8px 10px; color: var(--fg-3); font-size: 11px; font-style: italic; }
 /* Lane MW: a recent project's row, with its button that opens it in a new
    window at the end. */
 .recent-menu-row { display: flex; align-items: stretch; gap: 2px; }
@@ -2100,7 +2135,7 @@ button.danger:disabled {
 }
 .lanes-popup-title {
   font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--fg-4); font-family: var(--font-mono); padding: 2px 6px 6px;
+  color: var(--fg-3); font-family: var(--font-mono); padding: 2px 6px 6px;
 }
 .lanes-popup label.cb {
   display: flex; align-items: center; gap: 7px;
@@ -2169,7 +2204,7 @@ button.danger:disabled {
 .selection-stats h4 { margin: 0 0 4px; font-size: 11px; color: var(--fg); font-weight: 500; }
 .selection-stats .row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
 .selection-stats .clear-link { display: inline-block; margin-top: 6px;
-  font-size: 10px; color: var(--accent); cursor: pointer; }
+  font-size: 10px; color: var(--link); cursor: pointer; }
 .selection-stats .clear-link:hover { text-decoration: underline; }
 
 /* ===== Phase H: interactive video re-sync ========================= */
@@ -2269,7 +2304,7 @@ button.danger:disabled {
 }
 .tr-more-head::-webkit-details-marker { display: none; }
 .tr-more-head:hover { color: var(--fg-2); }
-.tr-more[open] > .tr-more-head { color: var(--accent); }
+.tr-more[open] > .tr-more-head { color: var(--link); }
 .tr-more-title { text-transform: uppercase; letter-spacing: 0.6px; }
 /* What the Overview's list holds ("What was said outside the transactions"). */
 .tr-more-what { color: var(--fg-3); }
@@ -2283,7 +2318,7 @@ button.danger:disabled {
 .ov-tr { grid-column: 1 / -1; }
 .ov-tr-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
 .ov-tr-speaker {
-  background: var(--bg-3); color: var(--fg); border: 1px solid var(--rule);
+  background: var(--bg-3); color: var(--fg); border: 1px solid var(--field-border);
   border-radius: var(--radius-sm); padding: 6px 8px; font-family: inherit; font-size: 12px;
 }
 .ov-tr-search { flex: 1 1 200px; min-width: 0; }
@@ -2308,7 +2343,7 @@ button.danger:disabled {
   border: 1px solid var(--rule); pointer-events: none;
 }
 /* I10 -- gallery near-duplicate expand affordance */
-.gallery-similar { color: var(--accent); cursor: pointer; }
+.gallery-similar { color: var(--link); cursor: pointer; }
 .gallery-similar:hover { text-decoration: underline; }
 
 .screens-toolbar {
@@ -2330,7 +2365,7 @@ button.danger:disabled {
 }
 .screenshot-gallery-header .title { font-size: 14px; color: var(--fg); flex: 1; }
 .screenshot-gallery-header select {
-  background: var(--bg-3); border: 1px solid var(--rule);
+  background: var(--bg-3); border: 1px solid var(--field-border);
   color: var(--fg); padding: 4px 8px; border-radius: 3px;
   font-family: inherit; font-size: 12px;
 }
@@ -2397,20 +2432,20 @@ button.danger:disabled {
 }
 .pb-hint {
   font-family: var(--font-mono); font-size: 9px;
-  color: var(--fg-4); letter-spacing: 0.3px;
+  color: var(--fg-3); letter-spacing: 0.3px;
 }
 
 /* ===== ADR-0019: Reference Maps (fork / gallery / editor) =================
    Colours come from design tokens (--accent-2 cool, --va value-add green,
    --warn amber, --bad red) via color-mix, so light + dark read in parity. */
 .refmap-tools { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--rule); }
-.refmap-count { color: var(--fg-4); font-size: 11px; }
+.refmap-count { color: var(--fg-3); font-size: 11px; }
 
 .refmap-panel {
   border-top: 1px solid var(--rule);
   padding: 10px 12px; max-height: 40%; overflow: auto; background: var(--bg-2);
 }
-.refmap-empty { color: var(--fg-4); font-size: 12px; padding: 6px 0; }
+.refmap-empty { color: var(--fg-3); font-size: 12px; padding: 6px 0; }
 .refmap-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 /* One row, one line (P2.5): the name and the date on the left, the role
    control and the verbs on the right; it wraps only when the panel is narrow. */
@@ -2448,7 +2483,7 @@ button.danger:disabled {
 }
 .refmap-name-input {
   font-size: 13px; font-weight: 600; padding: 4px 8px; flex: 0 1 240px; min-width: 140px;
-  border: 1px solid var(--rule); border-radius: 4px; background: var(--bg-1); color: var(--fg);
+  border: 1px solid var(--field-border); border-radius: 4px; background: var(--bg-1); color: var(--fg);
 }
 .refmap-editor-spacer { flex: 1; }
 /* The editor host is intentionally NOT .map-host, so the bpmn-js palette +
@@ -2511,9 +2546,9 @@ button.danger:disabled {
 }
 .step-flow input[type=text], .step-flow select {
   min-width: 0; padding: 3px 6px; background: var(--bg-2); color: var(--fg);
-  border: 1px solid var(--rule); border-radius: 3px; font-family: inherit; font-size: 12px;
+  border: 1px solid var(--field-border); border-radius: 3px; font-family: inherit; font-size: 12px;
 }
-.step-flow input[type=text]:focus, .step-flow select:focus { outline: none; border-color: var(--accent); }
+.step-flow input[type=text]:focus, .step-flow select:focus { border-color: var(--accent); }
 .step-flow input[type=text]:disabled { opacity: 0.55; }
 #step-only-when, .flow-link-when { flex: 1 1 140px; }
 .flow-link .flow-link-to { max-width: 50%; }
@@ -2594,7 +2629,7 @@ button.danger:disabled {
 .modal-choose .modal-detail { color: var(--fg-3); font-size: 11px; margin: 8px 0 0; line-height: 1.55; }
 .modal-choose .modal-list {
   width: 100%; padding: 4px; background: var(--bg-2); color: var(--fg);
-  border: 1px solid var(--rule); border-radius: 4px; font-family: inherit; font-size: 13px; outline: none;
+  border: 1px solid var(--field-border); border-radius: 4px; font-family: inherit; font-size: 13px;
 }
 .modal-choose .modal-list:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-muted); }
 .modal-choose .modal-list optgroup { color: var(--fg-2); font-style: normal; font-weight: 600; }

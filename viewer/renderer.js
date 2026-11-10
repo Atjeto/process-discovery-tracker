@@ -1179,10 +1179,22 @@ function _editsInReadOnly(e) {
 
 /* ============ Help modal ========================================== */
 
+/* Lane A-1: Help is a dialog (modals.js holdFocus): it takes the focus, to
+   its section shown in the list, keeps Tab inside, and gives the focus back
+   when it closes. */
+const { holdFocus } = require("./modals.js");
+let _releaseHelpFocus = null;
 function openHelp(section) {
-  $("#help-modal").style.display = "";
+  const modal = $("#help-modal");
+  const wasOpen = modal.style.display !== "none";
+  modal.style.display = "";
   if (section) selectHelpSection(section);
   renderHelpLibrary();
+  if (!wasOpen) {
+    _releaseHelpFocus = holdFocus(modal.querySelector(".modal"));
+    const here = modal.querySelector(".help-nav-item.active") || $("#btn-help-close");
+    if (here) here.focus();
+  }
 }
 /* C21: Help's line on the app's activity library, its version and counts
    ("Library 1: 9 applications, 0 activities"), read again each time Help
@@ -1201,7 +1213,12 @@ async function renderHelpLibrary() {
     : escapeHtml(line);
   el.title = r ? String(r.path || "") + (r.error ? ": " + r.error : "") : "";
 }
-function closeHelp() { $("#help-modal").style.display = "none"; }
+function closeHelp() {
+  $("#help-modal").style.display = "none";
+  const release = _releaseHelpFocus;
+  _releaseHelpFocus = null;
+  if (release) release();
+}
 function selectHelpSection(name) {
   $$(".help-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === name));
   $$(".help-section").forEach((s) => s.classList.toggle("active", s.dataset.section === name));
@@ -1471,3 +1488,29 @@ function wireDropdownMenu(btnId, popupId) {
 }
 wireDropdownMenu("btn-new-menu", "new-menu-popup");
 wireDropdownMenu("btn-session-export-menu", "session-export-popup");
+
+/* Lane A-1: a menu's button says whether its menu is open (aria-expanded),
+   and the level shown is the current page (aria-current). Each is read from
+   what the page shows (the popup's display, the level button's .active), so
+   every way a menu opens or closes and every way a level is chosen keeps it
+   true. */
+(function syncTopBarStates() {
+  if (typeof MutationObserver !== "function") return;
+  for (const [btnId, popupId] of [["btn-new-menu", "new-menu-popup"], ["btn-recent-menu", "recent-menu-popup"],
+    ["btn-session-export-menu", "session-export-popup"], ["btn-lanes", "lanes-popup"]]) {
+    const btn = document.getElementById(btnId);
+    const popup = document.getElementById(popupId);
+    if (!btn || !popup) continue;
+    const sync = () => btn.setAttribute("aria-expanded", popup.style.display === "none" ? "false" : "true");
+    new MutationObserver(sync).observe(popup, { attributes: true, attributeFilter: ["style"] });
+    sync();
+  }
+  const levels = $$(".view-mode-btn");
+  const syncLevels = () => levels.forEach((b) => {
+    if (b.classList.contains("active")) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
+  const obs = new MutationObserver(syncLevels);
+  levels.forEach((b) => obs.observe(b, { attributes: true, attributeFilter: ["class"] }));
+  syncLevels();
+})();

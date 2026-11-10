@@ -22,6 +22,7 @@ const Library = require("../library.js");
 const Builder = require("../library-builder.js");
 const Handoff = require("../handoff.js");
 const { escapeHtml, escapeAttr, toast } = require("../dom.js");
+const { holdFocus } = require("../modals.js");
 
 const DIALOG_ID = "library-builder";
 
@@ -115,7 +116,7 @@ async function openLibraryBuilder(opts) {
   backdrop.innerHTML =
     '<div class="modal modal-simple lib-builder" role="dialog" aria-label="Build the library">' +
       '<header class="modal-header"><h2>Build the library</h2>' +
-        '<button class="icon-btn modal-close" data-act="close" title="Close">✕</button></header>' +
+        '<button class="icon-btn modal-close" data-act="close" title="Close" aria-label="Close">✕</button></header>' +
       '<div class="modal-body">' +
         '<p class="meta lb-intro" id="lb-intro"></p>' +
         '<div class="lb-sources">' +
@@ -137,8 +138,12 @@ async function openLibraryBuilder(opts) {
   const listEl = $b("#lb-list"), readEl = $b("#lb-read"), errEl = $b("#lb-error"), countEl = $b("#lb-count");
   $b("#lb-intro").textContent = _intro(base);
 
-  const close = () => backdrop.remove();
+  // Lane A-1: a dialog that keeps the keyboard (modals.js holdFocus); the
+  // focus goes to its first act, and back where it was when it closes.
+  const releaseFocus = holdFocus(backdrop.querySelector(".modal"));
+  const close = () => { backdrop.remove(); releaseFocus(); };
   for (const b of backdrop.querySelectorAll('[data-act="close"]')) b.addEventListener("click", close);
+  $b("#btn-lb-add-projects").focus();
 
   /* The rows with what the owner set on them. */
   const current = () => rows.map((r) => Object.assign({}, r, edits.get(r.key) || {}));

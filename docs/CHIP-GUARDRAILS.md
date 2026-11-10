@@ -90,6 +90,11 @@ every push.
    copy style guide) and no em or en dash. *Guard:*
    `viewer/ui-copy-guard.test.js` (the viewer and the capture windows; runs
    in `cd viewer && node --test`).
+7a. **No text in `--fg-4`.** It is a decoration colour (about 2:1); a muted
+   text is `--fg-3`, `--fg-2` on a fill, and a filled control's text sits on
+   `--accent-fill` (DESIGN-SYSTEM.md, Contrast, focus, dialogs and
+   messages). *Guard:* `viewer/fg4-guard.test.js` (a `color: var(--fg-4)`
+   outside its named decorations fails; runs in `cd viewer && node --test`).
 8. **Verify UI in the real viewer, not only in unit tests.** Green units
    are not enough: that is this project's most recurring failure. Drive the
    viewer (below), screenshot, read the PNGs back.
@@ -252,7 +257,13 @@ session `#session-loaded`; `#annotations-error-banner` (an unreadable
 naming the backup's time, then the unreadable file kept as
 `annotations.unreadable-<YYYYMMDD-HHMMSS>.json` and the project opened
 again); the analysis log `#log-host` (`#log-failure`, `#normalize-log`),
-shown only after a failed run; `#toast`.
+shown only after a failed run; `#toast` (a live region: `role="status"`,
+an error `role="alert"`; an error stays and carries `#toast .toast-close`,
+named Dismiss; an offer's or an Undo's button is `#toast .toast-action`).
+Every dialog's box (`.modal`, from `modals.js` `holdFocus`) carries
+`role="dialog"`, `aria-modal="true"` and `aria-labelledby` (its title): read
+the focus with `document.activeElement` against it. A menu's button carries
+`aria-expanded`; the level shown, `aria-current="page"`.
 
 **Overview** (`#overview-content`, `views/overview-view.js`):
 - Before the first analysis: `#ov-waiting` (`data-run` = the run state).
