@@ -89,7 +89,7 @@ function renderRecent() {
   }
 
   if (!recents.length) {
-    host.innerHTML = '<li style="cursor:default;background:transparent;border:none;color:var(--fg-4)">No recent projects yet.</li>';
+    host.innerHTML = '<li style="cursor:default;background:transparent;border:none;color:var(--fg-3)">No recent projects yet.</li>';
     if (clearBtn) clearBtn.style.display = "none";
     return;
   }

@@ -121,7 +121,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
     <section class="view active" id="view-session">
 
       <div class="empty-state" id="session-empty">
-        <div class="empty-icon">⌬</div>
+        <div class="empty-icon" aria-hidden="true">⌬</div>
         <h2>No project open</h2>
         <p>Open the folder the SME's capture app saved, or a project you made, or start a new one: from a video of the process, or empty.</p>
         <!-- The same acts as the Open and New menus: the ways into your own
@@ -421,7 +421,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- Lane E-1: on the Timeline and the Map the step's name, system and
              description are fields here, saved as the editor's are. -->
         <div class="sp-name-edit" id="sp-name-edit" hidden></div>
-        <button type="button" class="icon-btn sp-close" id="btn-sp-close" title="Close the panel">✕</button>
+        <button type="button" class="icon-btn sp-close" id="btn-sp-close" title="Close the panel" aria-label="Close the panel">✕</button>
       </div>
       <div class="sp-fields" id="sp-fields" hidden></div>
       <div class="sp-about" id="sp-about"></div>
