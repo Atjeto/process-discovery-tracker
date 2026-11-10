@@ -286,8 +286,9 @@ def test_the_about_sheet_says_the_version_in_its_three_states(tmp_path):
     assert about[1] == ["Working copy, not handed off yet"]
 
 
-def test_a_project_without_a_recording_has_its_sheets_and_no_transaction_column(tmp_path):
-    """C16: a blank project's one implicit run is no marked transaction."""
+def _blank_fixture():
+    """(annotations, stats, manifest, events) of a blank project (C16): one
+    step added by hand in the one implicit run, nothing recorded."""
     annotations = {"steps": [{"step_id": "m1", "case_id": "imp", "name": "Check the invoice",
                               "state": "manually_authored", "time_range": None, "order": 1, "system": "SAP",
                               "evidence": {"interaction_event_ids": [], "screenshot_refs": []}}]}
@@ -295,13 +296,61 @@ def test_a_project_without_a_recording_has_its_sheets_and_no_transaction_column(
                              "end_ts": None, "wall_clock_ms": None, "active_ms": None, "implicit": True}],
              "meta": {}}
     manifest = {"session_id": "b", "source": "blank", "started_at": _ts(0), "label": "Invoice check"}
-    wb = read_workbook(_write(tmp_path, fixture=(annotations, stats, manifest, [])))
-    assert wb["_order"] == SHEETS
-    assert wb["About"]["rows"][0] == ["Technical details: Invoice check"]
-    assert wb["About"]["rows"][2] == ["Transactions were not marked in this project, so every step is listed in order."]
-    assert wb["Data fields"]["rows"][0] == list(TD.DATA_HEADER) + ["Value"]
+    return annotations, stats, manifest, []
+
+
+def _sheets(tmp_path, fixture):
+    annotations, stats, manifest, events = fixture
+    return TD.tech_sheets(session_folder=tmp_path, annotations=annotations, stats=stats,
+                          manifest=manifest, events=events)
+
+
+def test_a_project_without_a_recording_has_its_sheets_and_no_transaction_column(tmp_path):
+    """C16: a blank project's one implicit run is no marked transaction. Its
+    sheets hold their headers alone, so no workbook is written (B7-P; the
+    sheets were written header-only before)."""
+    sheets = {sheet.name: sheet.rows for sheet in _sheets(tmp_path, _blank_fixture())}
+    assert list(sheets) == SHEETS
+    assert sheets["About"][0] == ["Technical details: Invoice check"]
+    assert sheets["About"][2] == ["Transactions were not marked in this project, so every step is listed in order."]
+    assert sheets["Data fields"][0] == list(TD.DATA_HEADER) + ["Value"]
     for name in SHEETS[1:]:
-        assert len(wb[name]["rows"]) == 1, name      # the header alone: nothing was recorded
+        assert len(sheets[name]) == 1, name      # the header alone: nothing was recorded
+
+
+def test_a_workbook_holds_rows_only_with_a_row_below_a_header(tmp_path):
+    """holds_rows: a row on any of the four sheets after About; a header is
+    not a row and About does not count."""
+    assert TD.holds_rows(_sheets(tmp_path, _blank_fixture())) is False
+    assert TD.holds_rows(_sheets(tmp_path, _fixture())) is True
+    # One recorded interaction and no step: only Applications has a row.
+    annotations, stats, manifest, _events = _blank_fixture()
+    manifest.pop("source")
+    annotations["steps"] = []
+    one = [_inter("e1", 1, "chrome.exe", SF, "invoked", "Search", "Button")]
+    sheets = _sheets(tmp_path, (annotations, stats, manifest, one))
+    assert [len(sheet.rows) for sheet in sheets[1:]] == [1, 1, 1, 2]
+    assert TD.holds_rows(sheets) is True
+
+
+def test_a_workbook_without_rows_is_not_written(tmp_path):
+    """B7-P: write_tech_details writes nothing and says so (False) when no
+    sheet would hold a row; a file already at the path is left as it was.
+    A recorded project's workbook is written (True)."""
+    out = tmp_path / "tech.xlsx"
+    annotations, stats, manifest, events = _blank_fixture()
+    kw = dict(session_folder=tmp_path, annotations=annotations, stats=stats, manifest=manifest,
+              events=events)
+    assert TD.write_tech_details(out, **kw) is False
+    assert not out.exists() and not list(tmp_path.glob("*.partial"))
+    out.write_bytes(b"an earlier workbook")
+    assert TD.write_tech_details(out, **kw) is False
+    assert out.read_bytes() == b"an earlier workbook"
+
+    annotations, stats, manifest, events = _fixture()
+    assert TD.write_tech_details(out, session_folder=tmp_path, annotations=annotations, stats=stats,
+                                 manifest=manifest, events=events) is True
+    assert read_workbook(out)["_order"] == SHEETS
 
 
 def test_the_writer_keeps_text_excel_can_hold():
@@ -351,11 +400,13 @@ def _demo(folder: Path) -> Path:
 
 
 @pytest.mark.skipif(not _PIPELINE_OK, reason="pipeline deps (pandas/pm4py) not installed")
-def test_the_demo_through_the_pipeline(tmp_path, _restore_root_logging):
+def test_the_demo_through_the_pipeline(tmp_path, _restore_root_logging, capsys):
     import normalize as normalize_mod
     folder = _demo(tmp_path / "demo")
     out = tmp_path / "tech.xlsx"
     normalize_mod.normalize(folder, taxonomy_path=str(TAXONOMY), mine=True, tech_out=str(out))
+    # A recording's workbook is written and said (B7-P control).
+    assert f"[normalize] wrote Technical details: {out}" in capsys.readouterr().out.splitlines()
     wb = read_workbook(out)
     assert wb["_order"] == SHEETS
     assert wb["About"]["rows"][1] == ["Working copy, not handed off yet"]

@@ -382,16 +382,30 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
         "at 0:10", "Open the order from the customer's mail."]
     assert _under(blocks, "Step 2: Check the stock") == ["SAP · at 1:00"]
     control = _section(blocks, "1. Document control")
-    # Lane FX3: the implicit transaction reads as the viewer names it.
-    assert ("Transactions recorded | One transaction (not marked)" in control
-            and "Video | Attached" in control)
-    assert _section(blocks, "4.1 Differences between transactions") == [
-        "One transaction (not marked), so there are no transactions to compare."]
-    # Lane FX3: steps with no system read "No system set", never "Not
-    # recorded" as if it were a system; nothing was typed into a video.
+    # B7-P: the document says only what is true of a project without a
+    # recording. The video's date stays; no SME was recorded, and the
+    # implicit run is no marked transaction.
+    assert "Recorded | 2026-09-24" in control and "Video | Attached" in control
+    assert not any(r.startswith("Recorded by | ") or r.startswith("Transactions recorded | ")
+                   for r in control), control
+    _assert_rules_only(blocks)
+    # Nothing was typed into a video: each system names its steps, the
+    # steps with no system last, under "No system set" (lane FX3).
     assert _section(blocks, "5. Systems and information used") == [
-        "System | Information entered", "No system set | none", "SAP | none"]
+        "System | Steps", "SAP | Check the stock",
+        "No system set | Open the order, Confirm the order"]
     _assert_no_zero_timing(_text(blocks))
+
+
+def _assert_rules_only(blocks):
+    """Section 4 of an implicit run (B7-P): nothing to compare, so no
+    Differences subsection; the rules are 4.1 and the exceptions 4.2."""
+    numbered = [t for k, t in blocks if k in ("Heading 1", "Heading 2") and t[:1] == "4"]
+    assert numbered == ["4. Rules and exceptions", "4.1 Business rules", "4.2 Exceptions"]
+    text = _text(blocks)
+    for gone in ("Differences between transactions", "no transactions to compare",
+                 "One transaction (not marked)", "Information entered", "| none"):
+        assert gone not in text, gone
 
 
 def test_inserted_markers_replace_the_implicit_run(tmp_path):
@@ -421,10 +435,51 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
         "Step 1: Open the order", "Step 2: Check the stock"]
     assert _under(blocks, "Step 2: Check the stock")[0] == (
         "SAP · in 1 of 2 transactions · Transaction 1 at 1:00")
+    # Marked transactions print as a recording's do; section 5 still names
+    # the reference transaction's steps, since nothing was recorded.
+    control = _section(blocks, "1. Document control")
+    assert "Transactions recorded | 2" in control
+    assert not any(r.startswith("Recorded by | ") for r in control), control
+    assert "4. Variations, rules and exceptions" in [t for k, t in blocks if k == "Heading 1"]
+    assert _section(blocks, "5. Systems and information used") == [
+        "System | Steps", "SAP | Check the stock", "No system set | Open the order"]
     # The document prints no recorded time (the analyst states the effort).
     assert _section(blocks, "6. Volume and effort") == [
         "[To be completed: how often the process is done, and how long one takes]"]
     _assert_no_zero_timing(_text(blocks))
+
+
+TECH_SKIPPED = "[normalize] Technical details not written: nothing was recorded in this project."
+
+
+def _normalize_tech(folder: Path, tech: Path):
+    return subprocess.run(
+        [sys.executable, str(NORMALIZATION / "normalize.py"), str(folder),
+         "--taxonomy", str(NORMALIZATION / "taxonomy.yaml"), "--mine",
+         "--tech-out", str(tech)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=str(NORMALIZATION.parent))
+
+
+def test_a_project_without_a_recording_writes_no_empty_technical_details(tmp_path):
+    """B7-P: a workbook of headers alone is not a deliverable. The run
+    writes no file, says so in one line, and does not fail; a file already
+    at the path is left as it was."""
+    session = _video_session(tmp_path / "video")
+    tech = tmp_path / "tech.xlsx"
+    proc = _normalize_tech(session, tech)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    lines = proc.stdout.splitlines()
+    assert TECH_SKIPPED in lines, proc.stdout[-3000:]
+    assert not any(line.startswith("[normalize] wrote Technical details") for line in lines)
+    assert not tech.exists()
+
+    before = b"an earlier workbook"
+    tech.write_bytes(before)
+    proc = _normalize_tech(session, tech)
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    assert TECH_SKIPPED in proc.stdout.splitlines()
+    assert tech.read_bytes() == before
 
 
 def test_marking_the_transactions_keeps_every_step_in_a_transaction(tmp_path):
@@ -497,14 +552,18 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
     assert [t for k, t in blocks if k == "Heading 3"] == [
         f"Step {i}: {name}" for i, name in enumerate(order, start=1)]
     control = _section(blocks, "1. Document control")
-    assert "Recorded | Nothing recorded" in control
-    assert "Transactions recorded | One transaction (not marked)" in control
+    # B7-P: a blank project recorded nothing, so no row says it did.
+    assert not any(r.startswith(("Recorded | ", "Recorded by | ", "Transactions recorded | "))
+                   for r in control), control
+    assert control[0].startswith("Process | ") and control[1].startswith("Project folder | ")
+    assert control[2] == "Video | None"
     steps_text = _section(blocks, "3.2 Process steps")
-    assert steps_text[:2] == [
-        "The process runs through SAP.",
-        "One transaction (not marked), so every step is listed in order."]
+    assert steps_text[:2] == ["The process runs through SAP.", "Step 1: Receive the request"]
+    assert "so every step is listed in order" not in _text(blocks)
+    _assert_rules_only(blocks)
     assert _section(blocks, "5. Systems and information used") == [
-        "System | Information entered", "No system set | none", "SAP | none"]
+        "System | Steps", "SAP | Log it in SAP",
+        "No system set | Receive the request, Check the stock, Reply to the customer"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -562,8 +621,7 @@ def test_a_new_blank_session_without_steps_analyzes_and_exports(tmp_path):
     blocks = _pdd(pdd)
     assert _section(blocks, "3.2 Process steps") == [
         "No steps have been added to this project yet."]
-    assert _section(blocks, "4.1 Differences between transactions") == [
-        "One transaction (not marked), so there are no transactions to compare."]
+    _assert_rules_only(blocks)
     assert _section(blocks, "5. Systems and information used") == [
         "No steps have been added to this project yet."]
 

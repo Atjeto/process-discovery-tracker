@@ -546,7 +546,7 @@ def _run_mining_exports(
     if tech_out:
         try:
             from tech_details import write_tech_details
-            write_tech_details(
+            written = write_tech_details(
                 Path(tech_out),
                 session_folder=session_folder,
                 annotations=existing_anno,
@@ -561,4 +561,9 @@ def _run_mining_exports(
             raise ExportFailed(
                 f"Technical details export to {tech_out} failed: {type(e).__name__}: {e}. "
                 "Nothing in the project was changed.") from e
-        print(f"[normalize] wrote Technical details: {tech_out}")
+        if written:
+            print(f"[normalize] wrote Technical details: {tech_out}")
+        else:
+            # A workbook of headers alone is not a deliverable (a project
+            # without a recording, C16): no file, and no failure.
+            print("[normalize] Technical details not written: nothing was recorded in this project.")

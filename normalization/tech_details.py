@@ -34,7 +34,9 @@ library (xlsx_writer.py). Its sheets:
                       coverage hint, whether it ran on a remote or terminal
                       surface (capture_detail's rule) and its steps.
 
-A cell the recording has no value for stays empty. Pure apart from reading
+A cell the recording has no value for stays empty. A workbook whose four
+sheets after About would hold their headers alone (a project without a
+recording, C16) is not written (holds_rows). Pure apart from reading
 the app vocabularies (through pdd_export's session); no python-docx.
 """
 
@@ -380,11 +382,25 @@ def tech_sheets(*, session_folder, annotations, stats, manifest, events,
     ]
 
 
+def holds_rows(sheets: list[Sheet]) -> bool:
+    """Whether the workbook holds anything: a row below the header on one of
+    the sheets after About (Steps and controls, Data fields, Re-keyed
+    values, Applications). About does not count: it describes the others. A
+    project without a recording (C16) has none, and a workbook of headers
+    alone is not a deliverable."""
+    return any(len(sheet.rows) > 1 for sheet in sheets if sheet.name != ABOUT)
+
+
 def write_tech_details(out_path: str | Path, *, session_folder, annotations, stats, manifest,
-                       events, handoff: int | None = None, library=None) -> None:
+                       events, handoff: int | None = None, library=None) -> bool:
     """Write the Technical details workbook to `out_path` (normalize.py
     --tech-out; `handoff` is --handoff, the version it is made for;
-    `library` the activity library of the run, contract C21)."""
-    write_workbook(out_path, tech_sheets(session_folder=session_folder, annotations=annotations,
-                                         stats=stats, manifest=manifest, events=events,
-                                         handoff=handoff, library=library))
+    `library` the activity library of the run, contract C21). False, with
+    nothing written and a file already at `out_path` left as it is, when
+    the workbook would hold no row (holds_rows)."""
+    sheets = tech_sheets(session_folder=session_folder, annotations=annotations, stats=stats,
+                         manifest=manifest, events=events, handoff=handoff, library=library)
+    if not holds_rows(sheets):
+        return False
+    write_workbook(out_path, sheets)
+    return True

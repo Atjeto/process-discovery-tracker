@@ -448,8 +448,6 @@ def test_the_document_says_transaction_and_project_never_run_or_session():
             "None of the recorded transactions has steps, so the transactions cannot be compared.",
             "No steps have been recorded for this project yet.",
             "No steps have been recorded for this transaction yet.",
-            "One transaction (not marked), so every step is listed in order.",
-            "Transactions recorded | One transaction (not marked)",
             "No steps have been added to this project yet.",
             "Transactions were not marked in this recording, so there is no map.",
             "None of the transactions has steps, so there is no map.",
@@ -459,6 +457,105 @@ def test_the_document_says_transaction_and_project_never_run_or_session():
     for name, text in states:
         left = _OLD_WORDS.findall(text.replace("runs through", ""))
         assert not left, (name, left)
+    # B7-P: the implicit run of a blank project is not said at all (these
+    # two sentences were printed for it before).
+    for name, text in states:
+        if name.startswith("blank"):
+            assert "One transaction (not marked)" not in text, name
+
+
+# ---- a project without a recording (C16, B7-P) --------------------------------------
+
+def _without_recording(source, name_known=False):
+    """The fixture as a project without a recording: `source` "blank" or
+    "video", its one implicit run (the `blank` state of _word_states), four
+    steps added by hand in two systems and one with no system, and nothing
+    recorded (C16: an empty events.jsonl)."""
+    manifest, annotations, stats, analysis, _events = _session()
+    m, a, s = manifest, annotations, stats
+    m["source"] = source
+    s["case_stats"] = [{"case_id": "implicit-run", "implicit": True, "label": None,
+                        "parent_case_id": None, "start_ts": None, "end_ts": None,
+                        "wall_clock_ms": None, "active_ms": None}]
+    a.pop("pattern_run", None)
+    a["steps"] = [{"step_id": f"h{i}", "case_id": "implicit-run", "name": name,
+                   "state": "manually_authored", "time_range": None, "order": i,
+                   "system": system}
+                  for i, (name, system) in enumerate([
+                      ("Open the order", "SAP"), ("Check the stock", None),
+                      ("Log it", "Excel"), ("Book it", "SAP")], start=1)]
+    for st in a["steps"]:
+        if st["system"] is None:
+            del st["system"]
+    a["document"] = dict(FIELDS)
+    if source == "video":
+        a["external_video"] = {"path": "video/call.mp4", "offset_ms": 0}
+    if not name_known:
+        m.pop("config")
+    return manifest, annotations, stats, analysis, []
+
+
+def test_a_project_without_a_recording_prints_no_recorder_wording():
+    """B7-P: every line of the document is true of the project. No row says
+    who recorded it or how many transactions were recorded; a blank project
+    has no Recorded row (a video project's is the video's date); 3.2 says
+    nothing of the one implicit run; section 4 has no transactions to
+    compare; section 5 names each system's steps, never "none"."""
+    if not _HAVE_DOCX:
+        return
+    for source in ("blank", "video"):
+        blocks = _blocks_of(*_without_recording(source))
+        control = _section(blocks, "1. Document control")
+        assert not any(r.startswith(("Recorded by | ", "Transactions recorded | "))
+                       for r in control), (source, control)
+        recorded = [r for r in control if r.startswith("Recorded | ")]
+        assert recorded == ([] if source == "blank" else ["Recorded | 2026-05-14"]), source
+        assert _section(blocks, "3.2 Process steps")[:2] == [
+            "The process runs through SAP and Excel.", "Step 1: Open the order"], source
+        numbered = _numbered(blocks)
+        assert [h for h in numbered if h[:1] == "4"] == [
+            "4. Rules and exceptions", "4.1 Business rules", "4.2 Exceptions"], source
+        assert _section(blocks, "4.1 Business rules") == [
+            "Orders over 10,000 need a second approval."], source
+        assert _section(blocks, "4.2 Exceptions")[0] == (
+            "A blocked customer goes to credit control."), source
+        assert _section(blocks, "5. Systems and information used") == [
+            "System | Steps", "SAP | Open the order, Book it", "Excel | Log it",
+            "No system set | Check the stock"], source
+        text = _all_text(blocks)
+        for gone in ("Not recorded", "Nothing recorded", "One transaction (not marked)",
+                     "so every step is listed in order", "Differences between transactions",
+                     "no transactions to compare", "Variations, rules and exceptions",
+                     "Information entered", "| none"):
+            assert gone not in text, (source, gone)
+
+
+def test_a_name_known_still_prints_who_recorded_a_project_without_a_recording():
+    if not _HAVE_DOCX:
+        return
+    control = _section(_blocks_of(*_without_recording("video", name_known=True)),
+                       "1. Document control")
+    assert "Recorded by | Ana Silva" in control
+
+
+def test_a_recording_keeps_its_recorder_wording():
+    """B7-P positive control: a recorded session prints every row and
+    section the rules above leave out of a project without a recording,
+    "Not recorded" included when the SME's name is unknown."""
+    if not _HAVE_DOCX:
+        return
+    blocks = _rendered()
+    control = _section(blocks, "1. Document control")
+    assert "Recorded | 2026-05-14" in control and "Recorded by | Ana Silva" in control
+    assert "Transactions recorded | 2" in control
+    assert "4. Variations, rules and exceptions" in _numbered(blocks)
+    assert _section(blocks, "4.1 Differences between transactions")
+    assert _section(blocks, "5. Systems and information used")[0] == "System | Information entered"
+    manifest, annotations, stats, analysis, events = _session()
+    manifest.pop("config")
+    control = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                       "1. Document control")
+    assert "Recorded by | Not recorded" in control
 
 
 # ---- the reference run (C3) and its steps -------------------------------------------

@@ -38,10 +38,13 @@ application work), and it reads in the reader's order:
      than the reference did them, and a conditional step not done; the rule
      is pinned with the viewer's Steps by shared/run-differences-golden.json,
      the wording is the document's own), then the business rules and the
-     exceptions.
+     exceptions. With the one implicit run (C16) there is nothing to
+     compare: "4. Rules and exceptions", 4.1 the rules, 4.2 the exceptions.
   5. Systems and information used: each system the process uses, with the
      information the reference transaction entered in it, named for the
-     reader (a workbook's cells as one entry); no values.
+     reader (a workbook's cells as one entry); no values. A project without
+     a recording (C16) lists the steps 3.2 prints done in each system
+     instead ("System | Steps"), since nobody recorded what was entered.
   6. Volume and effort: as the analyst states it (C6 `document.effort`),
      never the recorded times, which are a walkthrough's.
   7. Improvement and automation scope: the analyst's field, the re-keyed
@@ -70,7 +73,9 @@ first (its recorder screenshots come first, then the analyst's), never a
 hidden one (lane LF-PIPE: the drafting now gives every screenshot a step);
 a step names its attachments. A session without a recording
 (manifest.source "video" or "blank") has one implicit run, not a marked
-transaction, and says so; a step
+transaction, and its document says nothing a recorder would have: no
+Recorded row for a blank project, no Recorded by without a name, no
+Transactions recorded for the implicit run; a step
 without a time (`time_range: null`) orders by its `order` and prints no
 place in the recording. The notes pinned to steps and moments
 (annotations.analyst_notes) are not printed.
@@ -149,10 +154,6 @@ _VALUE_MAX = 200
 _DEFAULT_LABEL_WORDS = ("transaction", "run")
 # The step context line's separator (a middle dot, as the viewer's fact line).
 _SEP = " · "
-# A project without start markers (C16): its one implicit transaction, in the
-# words the viewer's Checklist, project line and Timeline use for it
-# (viewer/analyst-content.js IMPLICIT_TRANSACTION, lane FX3).
-_IMPLICIT = "One transaction (not marked)"
 # The System cell of section 5 for the steps that have no system (lane FX3):
 # never "Not recorded", which read as the name of a system.
 NO_SYSTEM = "No system set"
@@ -1063,19 +1064,24 @@ def _write_title(doc, s):
 
 def _write_document_control(doc, s):
     doc.add_heading("1. Document control", level=1)
-    # C16: a blank session recorded nothing; the implicit run of a session
-    # without a recording is not a marked transaction.
-    recorded = ("Nothing recorded" if s.source == "blank"
-                else s.captured or "Not recorded")
     rows = [
         ("Process", s.field("title") or "Not named yet"),
         ("Project folder", s.folder.resolve().name or "Not recorded"),
-        ("Recorded", recorded),
-        ("Recorded by", s.recorded_by or "Not recorded"),
-        ("Transactions recorded", _IMPLICIT if s.implicit else str(len(s.runs))),
-        # C23: a project made from several videos says how many.
-        ("Video", (f"{s.video_count} videos" if s.video_count > 1 else "Attached") if s.has_video else "None"),
     ]
+    # C16: an output says only what is true of the project. A blank project
+    # recorded nothing, so it has no Recorded row (a video project's is the
+    # video's date); a project without a recording has no Recorded by unless
+    # a name is known; the implicit run is not a marked transaction, so it
+    # has no Transactions recorded row.
+    if s.source != "blank":
+        rows.append(("Recorded", s.captured or "Not recorded"))
+    if s.recorded or s.recorded_by:
+        rows.append(("Recorded by", s.recorded_by or "Not recorded"))
+    if not s.implicit:
+        rows.append(("Transactions recorded", str(len(s.runs))))
+    # C23: a project made from several videos says how many.
+    rows.append(("Video", (f"{s.video_count} videos" if s.video_count > 1 else "Attached")
+                 if s.has_video else "None"))
     # AD-30: the capture's engagement is the Request; "project" is only
     # what the analyst opens (the Project folder row above).
     request = s.request()
@@ -1229,11 +1235,9 @@ def _write_steps(doc, s):
             doc.add_paragraph(f"{why}, so every step is listed in time order.")
     else:
         steps = s.run_steps(s.pattern_index)
-        if s.implicit:
-            # C16: one implicit run holds every step; the order is the time,
-            # then `order` for the steps added without a time.
-            doc.add_paragraph(f"{_IMPLICIT}, so every step is listed in order.")
-        else:
+        # C16: one implicit run holds every step (the order is the time, then
+        # `order` for the steps added without a time): nothing to say of it.
+        if not s.implicit:
             doc.add_paragraph(f"The steps as done in {s.run_label(s.pattern_index)}, "
                               "the reference transaction.")
         _drafts_line(doc, steps)
@@ -1827,14 +1831,28 @@ def _variation_lines(s, run_index) -> list[str]:
 
 
 def _write_variations(doc, s):
-    doc.add_heading("4. Variations, rules and exceptions", level=1)
+    # C16: the implicit run is the only transaction, so there is nothing to
+    # compare: no Differences subsection, and the section is the rules only.
+    compare = not s.implicit
+    doc.add_heading("4. Variations, rules and exceptions" if compare
+                    else "4. Rules and exceptions", level=1)
+    if compare:
+        _write_differences(doc, s)
+    first = 2 if compare else 1
+    doc.add_heading(f"4.{first} Business rules", level=2)
+    _field_or_placeholder(doc, s.field("business_rules"),
+                          "the business rules the process follows")
+    doc.add_heading(f"4.{first + 1} Exceptions", level=2)
+    _field_or_placeholder(doc, s.field("exceptions"),
+                          "the business exceptions and the application errors "
+                          "that can interrupt the process, and how each one is handled")
+
+
+def _write_differences(doc, s):
     doc.add_heading("4.1 Differences between transactions", level=2)
     if not s.runs:
         doc.add_paragraph("Transactions were not marked in this recording, so there "
                           "are no transactions to compare.")
-    elif s.implicit:
-        # C16: one implicit run covers the session: nothing to compare.
-        doc.add_paragraph(f"{_IMPLICIT}, so there are no transactions to compare.")
     elif s.pattern_index is None:
         doc.add_paragraph("None of the recorded transactions has steps, so the "
                           "transactions cannot be compared.")
@@ -1855,13 +1873,6 @@ def _write_variations(doc, s):
             doc.add_paragraph("Only one transaction was recorded.")
         elif same:
             doc.add_paragraph(f"No differences from the reference transaction: {_joined(same)}.")
-    doc.add_heading("4.2 Business rules", level=2)
-    _field_or_placeholder(doc, s.field("business_rules"),
-                          "the business rules the process follows")
-    doc.add_heading("4.3 Exceptions", level=2)
-    _field_or_placeholder(doc, s.field("exceptions"),
-                          "the business exceptions and the application errors "
-                          "that can interrupt the process, and how each one is handled")
 
 
 # ---- 5. Data ------------------------------------------------------------------
@@ -1976,7 +1987,10 @@ def information_section(s) -> dict:
     first of them entered there ("none" when no transaction entered
     anything there). No values: the transactions' entries and every value
     are the Technical details' and the viewer's."""
-    out = {"heading": "Systems and information used", "note": None, "rows": []}
+    out = {"heading": "Systems and information used", "note": None, "rows": [],
+           "columns": ("System", "Information entered")}
+    if not s.recorded:
+        return _steps_by_system(s, out)
     if s.pattern_index is not None:
         reference = s.units[s.pattern_index]
         units = s.run_units()
@@ -2019,6 +2033,26 @@ def information_section(s) -> dict:
     return out
 
 
+def _steps_by_system(s, out: dict) -> dict:
+    """Section 5 of a project without a recording (C16): nobody recorded what
+    was entered, so each system names the steps 3.2 prints that are done in
+    it (main level only), in the order the systems first appear there; the
+    steps with no system come last, under NO_SYSTEM."""
+    steps = s.run_steps(s.pattern_index) if s.pattern_index is not None else s.steps
+    if not steps:
+        out["note"] = "No steps have been added to this project yet."
+        return out
+    out["columns"] = ("System", "Steps")
+    names: dict[str, list] = {}
+    for step in steps:
+        names.setdefault(s.system_of(step) or "", []).append(_step_name(step))
+    unset = names.pop("", None)
+    out["rows"] = [[system, ", ".join(n)] for system, n in names.items()]
+    if unset:
+        out["rows"].append([NO_SYSTEM, ", ".join(unset)])
+    return out
+
+
 def _write_information(doc, s):
     """5: each system the process uses and the information entered in it
     (information_section)."""
@@ -2027,7 +2061,7 @@ def _write_information(doc, s):
     if d["note"]:
         doc.add_paragraph(d["note"])
         return
-    _table(doc, ("System", "Information entered"), d["rows"], widths=(2.0, 4.0))
+    _table(doc, d["columns"], d["rows"], widths=(2.0, 4.0))
 
 
 def _write_effort(doc, s):
