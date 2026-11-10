@@ -332,7 +332,11 @@
      the facts, the state, the code, the Recorded line, the description, the
      System field, the screenshots and what is attached, and (C21) the name
      field's picker: `picker` (library.js pickerFor) and
-     onPickActivity(stepId, activityId). */
+     onPickActivity(stepId, activityId). Lane PANE: the same editor draws
+     the step opened in the Timeline's pane (views/timeline-pane.js), in its
+     own host: `onTimeline` leaves out Show on timeline (the step is on it),
+     and `afterFactsHtml` goes under the line of facts (the pane's Also
+     happens in). */
   function renderStepDetail(host, step, callbacks) {
     _rendering = true;
     try { _renderStepDetail(host, step, callbacks || {}); } finally { _rendering = false; }
@@ -355,7 +359,8 @@
           <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
           ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
-        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel's video, beside the editor">▶ Play</button>` : ""}<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button></p>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel's video, beside the editor">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
+        ${callbacks.afterFactsHtml || ""}
       </div>
       <div class="step-body">
         <div class="step-write" id="step-doc">
@@ -378,14 +383,19 @@
         <div class="step-attached">${callbacks.attachedHtml || ""}</div>
       </div>`;
     // 2.0.1: Recorded stays open or closed as the analyst last left it.
-    const recEl = document.getElementById("step-recorded");
+    // Lane PANE: the parts are looked up in `host`, which may be the Steps
+    // editor's pane or the Timeline's pane (views/timeline-pane.js); one of
+    // them holds the editor at a time (steps-view.js renderStepInto).
+    const recEl = host.querySelector("#step-recorded");
     const recHead = recEl && recEl.querySelector("summary");
     if (recHead) recHead.addEventListener("click", () => _keepRecordedOpen(!recEl.open));
     // The name saves on Enter or when the field is left; Escape puts it back.
-    wireNameField(document.getElementById("step-name"), step, callbacks, { isRendering: () => _rendering });
+    // On the Timeline (lane PANE) Enter and Escape also leave the field, so
+    // Space plays on and S marks the next step, as the step panel's did.
+    wireNameField(host.querySelector("#step-name"), step, callbacks, { isRendering: () => _rendering, leave: !!callbacks.onTimeline });
     // The description saves when the field is left, and when a sentence of
     // the transcript is added to it.
-    const descEl = document.getElementById("step-desc");
+    const descEl = host.querySelector("#step-desc");
     let shownDesc = desc.trim();
     const commitDesc = () => {
       if (_rendering || !descEl.isConnected) return;
@@ -395,7 +405,7 @@
       callbacks.onDescription(step.step_id, v);
     };
     descEl.addEventListener("blur", commitDesc);
-    document.getElementById("flag-waste").addEventListener("change", () =>
+    host.querySelector("#flag-waste").addEventListener("change", () =>
       callbacks.onToggleWaste && callbacks.onToggleWaste(step.step_id));
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
     wireFlow(host, step, callbacks);
@@ -409,12 +419,12 @@
         if (callbacks.onSplitAt && Number.isInteger(after)) callbacks.onSplitAt(after);
       });
     });
-    const jumpBtn = document.getElementById("btn-step-jump");
+    const jumpBtn = host.querySelector("#btn-step-jump");
     if (jumpBtn) {
       jumpBtn.addEventListener("click", () => callbacks.onJumpToFlow && callbacks.onJumpToFlow(step));
       jumpBtn.disabled = !(step.time_range && step.time_range.start);
     }
-    const playBtn = document.getElementById("btn-step-watch");
+    const playBtn = host.querySelector("#btn-step-watch");
     if (playBtn) {
       playBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       playBtn.disabled = !(step.time_range && step.time_range.start);
@@ -836,7 +846,7 @@
       `<div class="tr-more-body">${body}</div></details>`;
   }
   function wireSaidDuringStep(host, said, save) {
-    const desc = document.getElementById("step-desc");
+    const desc = host.querySelector("#step-desc");
     if (!said || !said.synced || !desc) return;
     const byId = new Map(said.sentences.map((s) => [s.id, s]));
     const buttons = Array.from(host.querySelectorAll("#step-said .tr-add"));

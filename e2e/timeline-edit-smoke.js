@@ -92,11 +92,11 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
          seek into it plays it from there;
      (q) Include again, from the band's menu, takes it out; Ctrl+Z puts it
          back and Ctrl+Y takes it out again, none of them analyzing;
-     (r) E5: "<step>" starts here names the first step without a time, on one
-         line beside + Step; at 0:02, 0:24 and 0:16 it gives each step its
-         moment in two acts (seek, click), the next one selected and named
-         each time: their order in Steps stays as written, each is a band,
-         each took the video's frame; then the button hides; Ctrl+Z gives the
+     (r) E5, lane PANE: each step without a time has Starts here on its row
+         in the pane's Steps tab (the toolbar's button is gone); at 0:02, 0:24
+         and 0:16 it gives each step its moment in two acts (seek, click),
+         the focus on that row: their order in Steps stays as written, each is
+         a band, each took the video's frame; then no row offers it; Ctrl+Z gives the
          last one back its no time and takes its frame; the right-click menu
          offers the same act under Add a step here. */
 async function laneE(TMP) {
@@ -250,29 +250,34 @@ async function laneE(TMP) {
   // (r) E5.
   const r5 = {};
   try {
+    // Lane PANE: the act sits on the step, on its row in the pane's Steps
+    // tab beside the video (Starts here); the toolbar's button is gone.
     const button = () => page.evaluate(() => {
-      const b = document.getElementById("btn-show-here"), plus = document.getElementById("btn-add-step");
-      const rb = b.getBoundingClientRect(), rp = plus.getBoundingClientRect();
-      const name = b.querySelector(".show-here-name");
-      return { hidden: b.hidden, text: b.textContent, title: b.title, id: b.dataset.stepId, oneLine: !b.hidden && Math.abs(rb.top - rp.top) < 2 && rb.height < 40,
-        fits: !b.hidden && name.getBoundingClientRect().right <= rb.right };
+      const heres = [...document.querySelectorAll("#tp-steps .tp-item .tp-here")];
+      const b = heres[0] || null;
+      return { toolbar: !!document.getElementById("btn-show-here"), tab: document.getElementById("tp-tab-steps").getAttribute("aria-selected"),
+        ids: heres.map((x) => x.dataset.here), text: b ? b.textContent : null, title: b ? b.title : null,
+        hint: ((document.querySelector("#tp-steps .tp-hint") || {}).textContent || "").trim(),
+        oneLine: !!b && b.getBoundingClientRect().height < 40 && Math.abs(b.getBoundingClientRect().top - b.closest(".tp-item").querySelector(".tp-row").getBoundingClientRect().top) < 30 };
     });
+    await page.locator("#tp-tab-steps").click({ timeout: T });
     r5.first = await button();
     r5.acts = [];
     for (const [s, id] of [[2, "n1"], [24, "n2"], [16, "n3"]]) {
       await seek(s);
       const before = await button();
-      await page.click("#btn-show-here");
+      await page.locator('#tp-steps .tp-item[data-step-id="' + id + '"] .tp-here').click({ timeout: T });
       await page.waitForFunction((sid) => { const st = require("./state.js").getSession().annotations.steps.find((x) => x.step_id === sid); return !!(st && st.time_range); }, id, { timeout: T });
       await wait(400);
-      r5.acts.push({ named: before.id, at: s, next: (await button()).id || null });
+      const after = await button();
+      r5.acts.push({ offered: before.ids.join(","), at: s, left: after.ids.join(","), focus: await page.evaluate(() => ((document.activeElement || {}).dataset || {}).stepId || null) });
       if (id === "n1") r5.toast = await page.evaluate(() => document.getElementById("toast").textContent);
     }
     const a = await anno();
     r5.times = a.steps.map((s) => s.step_id + "@" + (s.time_range ? sec(Date.parse(s.time_range.start)) : "-"));
     r5.frames = ["n1", "n2", "n3"].map((id) => (a.analyst_screenshots || []).some((x) => x.step_id === id && x.source === "video_frame"));
     r5.bands = await page.evaluate(() => [...document.querySelectorAll("#timeline .tl-step-band")].map((b) => b.dataset.stepId).sort().join(","));
-    r5.hiddenAfter = (await button()).hidden;
+    r5.after = await button();
     await page.click('.view-mode-btn[data-level="steps"]');
     await wait(400);
     r5.rows = await page.evaluate(() => [...document.querySelectorAll("#step-list .step-row[data-step-id]")].map((x) => x.dataset.stepId).join(","));
@@ -282,7 +287,7 @@ async function laneE(TMP) {
     await page.waitForFunction(() => !require("./state.js").getSession().annotations.steps.find((x) => x.step_id === "n3").time_range, null, { timeout: T });
     await wait(400);
     const u = await anno();
-    r5.undo = { frame: (u.analyst_screenshots || []).some((x) => x.step_id === "n3"), button: (await button()).id };
+    r5.undo = { frame: (u.analyst_screenshots || []).some((x) => x.step_id === "n3"), button: (await button()).ids.join(",") };
     const g = await geom();
     const xr = g.left + ((T0 + 29000 - g.first) / g.span) * g.width;
     await page.mouse.click(xr, await bgY(g, xr), { button: "right" });
@@ -290,12 +295,14 @@ async function laneE(TMP) {
     await page.keyboard.press("Escape");
   } catch (e) { r5.err = errText(e); }
   const menuAt = r5.menu ? r5.menu.indexOf("Add a step here") : -1;
-  record("(r) lane E, E5: \"Open the order\" starts here, on one line beside + Step, gives the three steps written first their moments in two acts each (\"Open the order\" starts at 0:02.), naming the next each time; their order in Steps stays as written, each is a band with the video's frame; then it hides; Ctrl+Z gives the last its no time back and takes its frame; the right-click menu offers \"Send the invoice\" starts here under Add a step here",
-    !r5.err && r5.first.text === '"Open the order" starts here' && r5.first.oneLine && r5.first.fits &&
-      r5.first.title === 'Sets the start of "Open the order" to the moment the video shows now. Its place among the steps stays.' &&
+  record("(r) lane E, E5, lane PANE: in the pane's Steps tab each of the three steps written first has Starts here on its row (the toolbar's button is gone) under the hint \"3 steps have no time yet...\"; go to the moment, click it, two acts each (\"Open the order\" starts at 0:02.), the focus staying on that row; their order in Steps stays as written, each is a band with the video's frame; then no row offers it and the hint goes; Ctrl+Z gives the last its no time back (its Starts here again) and takes its frame; the right-click menu offers \"Send the invoice\" starts here under Add a step here",
+    !r5.err && !r5.first.toolbar && r5.first.tab === "true" && r5.first.text === "Starts here" && r5.first.oneLine &&
+      r5.first.title === "Sets the start of this step to the moment the video shows now." &&
+      r5.first.hint === "3 steps have no time yet. Go to the moment a step starts in the video, then click Starts here on that step." &&
       /"Open the order" starts at 0:02\./.test(r5.toast || "") &&
-      JSON.stringify(r5.acts) === JSON.stringify([{ named: "n1", at: 2, next: "n2" }, { named: "n2", at: 24, next: "n3" }, { named: "n3", at: 16, next: null }]) &&
-      r5.frames.every(Boolean) && r5.bands === "n1,n2,n3" && r5.hiddenAfter && r5.rows === "n1,n2,n3" &&
+      JSON.stringify(r5.acts) === JSON.stringify([{ offered: "n1,n2,n3", at: 2, left: "n2,n3", focus: "n1" }, { offered: "n2,n3", at: 24, left: "n3", focus: "n2" },
+        { offered: "n3", at: 16, left: "", focus: "n3" }]) &&
+      r5.frames.every(Boolean) && r5.bands === "n1,n2,n3" && r5.after.ids.length === 0 && r5.after.hint === "" && r5.rows === "n1,n2,n3" &&
       !r5.undo.frame && r5.undo.button === "n3" && menuAt >= 0 && r5.menu[menuAt + 1] === '"Send the invoice" starts here',
     JSON.stringify(r5));
 
@@ -438,10 +445,11 @@ async function laneE(TMP) {
     await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 1, null, { timeout: T });
     const step = (await anno()).steps[0];
     stepId = step.step_id;
-    // Lane E-1: the step just added opens in the step panel beside the
-    // Timeline, which is then narrower: 6 px after the step's start is
-    // measured again.
-    await page.waitForSelector("#step-panel:not([hidden])", { timeout: T });
+    // Lane E-1, lane PANE: the step just added opens in the pane beside the
+    // video, the step panel closed (the timeline keeps its width); 6 px after
+    // the step's start is measured again.
+    await page.waitForFunction((sid) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === sid &&
+      document.getElementById("step-panel").hidden, step.step_id, { timeout: T });
     await wait(300);
     g = await geo();
     await rightClickItem(xOf(g, Date.parse(step.time_range.start)) + 6, g.lowY, "Start a transaction here");

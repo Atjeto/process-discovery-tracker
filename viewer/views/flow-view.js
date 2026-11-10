@@ -4,8 +4,8 @@
  * Owns session load + analysis (loadSessionIntoView / openSessionFlow / the
  * automatic analysis and its status line), the timeline and every lane, the minimap,
  * range selection, the video <-> timeline sync, the event table, the
- * screenshots / markers side panel (incl. the screenshot gallery and marker
- * CRUD), and case scope. The module wires its own controls at require()
+ * marker inserts, and case scope. The pane beside the video (its tabs, the
+ * step opened in place) is views/timeline-pane.js (lane PANE). The module wires its own controls at require()
  * time (the DOM is already parsed when renderer.js pulls this in).
  * Cross-surface glue that stays in the entry (rerenderActiveLevel,
  * addStepAtTimestamp) is injected by renderer.js via initFlowView().
@@ -17,7 +17,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { $, $$, escapeHtml, formatDuration, toast, placeMenu, sinceStart, recordingStartMs } = require("../dom.js");
+const { $, escapeHtml, formatDuration, toast, placeMenu, sinceStart, recordingStartMs } = require("../dom.js");
 const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const SaveState = require("../save-state.js");
@@ -41,9 +41,7 @@ const {
 } = Video;
 const { renderScreenshots, openScreenshot } = require("./flow-view-screenshots.js");
 const FlowMarkers = require("./flow-view-markers.js");
-const {
-  effectiveLabel, renderMarkersList,
-} = FlowMarkers;
+const { effectiveLabel } = FlowMarkers;
 const Timeline = require("./flow-view-timeline.js");
 const {
   renderTimeline, renderTimelineSummary, restoreTimelineForCurrent,
@@ -52,6 +50,7 @@ const {
 const Transcript = require("./flow-view-transcript.js");
 const AnalystUI = require("./analyst-ui.js");
 const StepPanel = require("./step-panel.js");
+const Pane = require("./timeline-pane.js");
 const { ipcErrorText } = require("../project-folder.js");
 const RO = require("../read-only.js");
 const Handoff = require("../handoff.js");
@@ -61,22 +60,17 @@ const Handoff = require("../handoff.js");
 let rerenderActiveLevel = () => {};
 let addStepAtTimestamp = async () => {};
 
-/* ============ Annotation sub-tabs ================================= */
+/* ============ The pane's tabs ===================================== */
 
 /* The tab chosen stays chosen while the window lives (lane E, E3: the
-   Transcript tab too); it is not saved to the project. */
-function activateAnnoTab(name) {
-  $$(".anno-tab").forEach((t) => t.classList.toggle("active", t.dataset.anno === name));
-  $$(".anno-panel").forEach((p) =>
-    p.style.display = p.dataset.panel === name ? "" : "none"
-  );
-  // The sentence at the playhead in view as the tab shows.
-  if (name === "transcript") Transcript.tickTab(true);
+   Transcript tab too); it is not saved to the project. Lane PANE: the pane
+   is views/timeline-pane.js, and the Markers tab is gone: what opened it
+   ("markers") opens the Steps tab, at the transaction's header when
+   `caseId` names one. */
+function activateAnnoTab(name, caseId) {
+  if (name === "markers") Pane.showTransaction(caseId || null);
+  else Pane.showTab(name);
 }
-
-$$(".anno-tab").forEach((tab) => {
-  tab.addEventListener("click", () => activateAnnoTab(tab.dataset.anno));
-});
 
 /* ============ Case scope ========================================== */
 
@@ -170,9 +164,9 @@ function populateCaseScope() {
   });
 })();
 
-/* The markers side-panel and the marker-edit resolution live in
-   flow-view-markers.js (god-file split). effectiveLabel and renderMarkersList
-   are destructured at the top here; the marker-INSERT surfaces stay below. */
+/* The marker-edit resolution lives in flow-view-markers.js (god-file
+   split). effectiveLabel is destructured at the top here; the marker-INSERT
+   surfaces stay below. */
 
 /* ============ Session view: open + normalize ====================== */
 
@@ -584,7 +578,6 @@ async function loadSessionIntoView(folder, opts) {
   renderEventTable();
   syncRawEventsShown();
   renderScreenshots();
-  renderMarkersList();
   renderTimelineSummary();
   // Phase B+ surfaces. 2.0.3: the step selected stays selected when the
   // same project comes back from an analysis (a transaction's change applied
@@ -785,12 +778,12 @@ function renderSessionPills() {
   // Lane HV: nothing is applied in a hand-off opened read only.
   if (!sess || RO.isReadOnly(sess)) { host.innerHTML = ""; return; }
   // Marker changes that wait for an analysis (marker-edits.js). They already
-  // show in the Markers list and on the timeline as pending.
+  // show on the timeline as pending.
   const pending = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits,
     MarkerEdits.lastAnalysisMs(sess));
   host.innerHTML = pending > 0
     ? '<button type="button" class="pending-cta" id="btn-apply-marker-edits" title="' +
-      escapeHtml("Your marker changes already show on the timeline and in the Markers list. " +
+      escapeHtml("Your marker changes already show on the timeline. " +
         "The transactions, the steps and the map use them once you apply them.") + '">' +
       escapeHtml("Apply " + pending + " marker change" + (pending === 1 ? "" : "s")) +
       "</button>"
@@ -847,10 +840,11 @@ async function addStepAtPlayhead() {
 /* A step at the moment `tsISO` (+ Step at the playhead, and 2.0.1 the
    Timeline's right-click Add a step here), with the steps lane shown so the
    new step is seen at once. Lane E-1: the video's frame at that moment is
-   the step's picture (read first, while it is the frame on screen), and the
-   step panel opens on the new step; with the video paused its name takes
-   the focus, selected, so typing names it; while the video plays nothing
-   takes the focus, so the next S marks the next step. */
+   the step's picture (read first, while it is the frame on screen), and
+   (lane PANE) the new step opens in the pane beside the video; with the
+   video paused its name takes the focus, selected, so typing names it;
+   while the video plays nothing takes the focus, so the next S marks the
+   next step. */
 async function addStepAt(tsISO) {
   const playing = Video.isPlaying();
   const frame = AnalystUI.frameAtMoment(Date.parse(tsISO));
@@ -859,43 +853,28 @@ async function addStepAt(tsISO) {
   if (cb) cb.checked = true;
   const id = await addStepAtTimestamp(tsISO, { frame });
   if (!id || State.getLevel() !== "flow") return;
-  StepPanel.openAdded(id, { focusName: StepPanel.nameTakesFocus({ playing, readOnly: RO.isReadOnly(State.getSession()) }) });
+  Pane.openStep(id, { seek: false, focusName: StepPanel.nameTakesFocus({ playing, readOnly: RO.isReadOnly(State.getSession()) }) });
 }
 
 // The zoom buttons are wired in flow-view-timeline.js (god-file split).
 $("#btn-add-step").addEventListener("click", addStepAtPlayhead);
 
 /* ---- "<step>" starts here (lane E, item E5) ----------------------------------
-   Beside + Step, while a video is attached: the button names the step it
-   acts on (show-here.js targetOf: the selected step when its time is the
+   A step written first gets the moment of the video: lane PANE, on its row
+   in the pane's Steps tab (Starts here, at the moment the video shows), and
+   in the Timeline's right-click menu, at the moment clicked, on the step
+   show-here.js targetOf names (the selected step when its time is the
    analyst's to set, else the first step without a time in the process
-   order) and gives it the playhead's moment (steps-view.js showStepAt).
-   Then the next step without a time is selected, so the button names it:
-   go to the moment, click, for each step written first. The same act is
-   in the Timeline's right-click menu, at the moment clicked. */
+   order). The toolbar's button left: the act sits on the step. */
 function _showHereLabel(step, max) {
   const name = ShowHere.nameOf(step);
   return max && name.length > max ? name.slice(0, max - 1).trimEnd() + "…" : name;
 }
 
-function syncShowHere() {
-  const btn = document.getElementById("btn-show-here");
-  if (!btn) return;
-  const sess = State.getSession();
-  const target = sess && sess.recordingAvailable ? Steps.showHereTarget() : null;
-  btn.hidden = !target;
-  btn.dataset.stepId = target ? target.step_id : "";
-  if (!target) return;
-  const name = ShowHere.nameOf(target);
-  const el = btn.querySelector(".show-here-name");
-  if (el && el.textContent !== name) el.textContent = name;
-  btn.title = ShowHere.titleOf(target);
-  btn.setAttribute("aria-label", ShowHere.labelOf(target));
-}
-
 /* `stepId` gets the moment `atMs`; then the next step without a time is
-   selected (none: nothing is, and the button hides). */
-async function showHereAt(stepId, atMs) {
+   selected (none: nothing is), so the menu names it; `opts.select`
+   "self" (the pane's Starts here, on its row) keeps this step selected. */
+async function showHereAt(stepId, atMs, opts) {
   const sess = State.getSession();
   if (!sess) return;
   if (!Number.isFinite(atMs)) { toast("The video's moment could not be read.", "error"); return; }
@@ -911,29 +890,12 @@ async function showHereAt(stepId, atMs) {
   if (!ok || State.getSession() !== sess) return;
   const ordered = Steps.stepsInProcessOrder();
   const done = ordered.find((s) => s.step_id === stepId) || null;
-  const next = ShowHere.nextAfter(done, ordered);
+  const next = opts && opts.select === "self" ? done : ShowHere.nextAfter(done, ordered);
   State.setSelectedStepId(next ? next.step_id : null);
   renderTimeline();
   renderStepsLevel();
-  syncShowHere();
 }
 
-$("#btn-show-here").addEventListener("click", () => {
-  const id = $("#btn-show-here").dataset.stepId;
-  if (id) showHereAt(id, Video.playheadMs());
-});
-// What the button names follows the selection, wherever it changes (a band,
-// a row, the step panel) and every edit of the steps.
-let _showHereQueued = false;
-function _queueShowHere() {
-  if (_showHereQueued) return;
-  _showHereQueued = true;
-  setTimeout(() => { _showHereQueued = false; syncShowHere(); }, 0);
-}
-document.addEventListener("click", _queueShowHere);
-document.addEventListener("keyup", _queueShowHere);
-State.subscribe("steps", _queueShowHere);
-State.subscribe("timeline", _queueShowHere);
 
 /* P1.1: range selection on the timeline. Drag across the activity
    lane to select a time range; a stats card pops up summarizing what
@@ -1582,8 +1544,8 @@ if ($("#cb-show-interaction")) $("#cb-show-interaction").addEventListener("chang
    renderScreenshots + openScreenshot are destructured at the top here. */
 
 /* getMarkerEdit / effectiveLabel / effectiveTimestamp / isDeletedMarker,
-   renderMarkersList, and the per-marker adjust / delete /
-   rename actions live in flow-view-markers.js (god-file split). */
+   and the per-marker move / delete / rename actions live in
+   flow-view-markers.js (god-file split). */
 
 /* deps = { rerenderActiveLevel, addStepAtTimestamp }: the cross-surface
    glue kept in renderer.js. Call once at boot. */
@@ -1609,7 +1571,7 @@ function initFlowView(deps) {
 
 module.exports = {
   initFlowView,
-  loadSessionIntoView, renderTimeline, renderMarkersList,
+  loadSessionIntoView, renderTimeline,
   // Lane MW: a project in a new window (the Open menu's recent projects).
   openInNewWindow,
   // The analysis: automatic runs, the deliberate ones (confirm), and the
@@ -1619,6 +1581,8 @@ module.exports = {
   scheduleAutoApply, yieldAutoApply,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
   activateAnnoTab, addStepAtPlayhead, deriveCases,
+  // Lane PANE: Starts here on a row of the pane's Steps tab.
+  showHereAt,
   // The Overview's marker-problem fixes (overview-view.js).
   queueSyntheticMarker, queueMarkerDelete,
   // Lane FX3: the Raw events drawer's rule (renderer.js applyLevel), and

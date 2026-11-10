@@ -745,25 +745,6 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   background: var(--accent-fill); color: var(--accent-text); font-size: 8px; font-weight: 600;
   padding: 1px 4px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.markers-list .marker-row { display: flex; gap: 8px; padding: 6px 10px;
-  border-bottom: 1px solid var(--rule); align-items: center; font-size: 12px;
-  cursor: pointer; }
-.markers-list .marker-row:hover { background: var(--bg-3); }
-.markers-list .marker-row .ts { color: var(--fg-3); font-family: var(--font-mono);
-  font-size: 11px; flex: 0 0 60px; }
-.markers-list .marker-row .dir { width: 16px; flex: 0 0 16px; text-align: center;
-  font-family: var(--font-mono); font-weight: 600; }
-.markers-list .marker-row.start .dir { color: var(--link); }
-.markers-list .marker-row.end .dir { color: var(--bad); }
-.markers-list .marker-row .lbl { flex: 1; }
-.markers-list .marker-row .marker-actions { display: flex; gap: 2px; opacity: 0;
-  transition: opacity 0.15s; flex: 0 0 auto; }
-.markers-list .marker-row:hover .marker-actions { opacity: 1; }
-.markers-list .marker-row.deleted { opacity: 0.45; text-decoration: line-through; }
-.markers-list .marker-row.deleted .meta.bad { text-decoration: none; color: var(--bad); }
-/* Item 6: a change that waits for Apply marker changes. */
-.markers-list .marker-row.pending { box-shadow: inset 3px 0 0 var(--warn); }
-.markers-list .marker-row .pending-tag { color: var(--fg); font-weight: 600; text-decoration: none; }
 /* Item 6: the one call to action that applies pending marker changes (the
    top bar's status line, #session-pills). */
 .pending-cta {
@@ -1799,7 +1780,6 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .app.read-only .tl-tr-sync,
 .app.read-only .tl-tr-replace,
 .app.read-only .tl-tr-remove,
-.app.read-only .marker-actions,
 .app.read-only #btn-add-manual-step,
 .app.read-only #btn-delete-selected-steps,
 .app.read-only #btn-merge-selected,
@@ -2708,14 +2688,7 @@ button.danger:disabled {
 .modal-prompt .modal-preview { margin: 8px 0 0; font-size: 12px; color: var(--fg-2); line-height: 1.5; }
 .app.read-only #btn-paste-notes { display: none; }
 /* ===== Lane E: from a call (E3 the Transcript tab, E4 a stretch not part of
-   the process, E5 "<step>" starts here) ===== */
-/* E5: the button names its step; a long name ends in an ellipsis inside the
-   quotes, so the toolbar never wraps or clips. */
-button.icon-btn.show-here-btn { display: inline-flex; align-items: baseline; white-space: nowrap; max-width: 280px;
-  font-family: inherit; font-size: 12px; }
-button.icon-btn.show-here-btn[hidden], .app.read-only #btn-show-here { display: none; }
-.show-here-btn .show-here-name { display: inline-block; max-width: 180px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+   the process; E5's Starts here is on the pane's rows, lane PANE) ===== */
 /* E3: the tab fills the pane: the tools at the top, the list scrolls. */
 .anno-panel[data-panel="transcript"] { overflow: hidden; }
 .trt { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; }
@@ -2760,3 +2733,72 @@ button.icon-btn.show-here-btn[hidden], .app.read-only #btn-show-here { display: 
 .tr-add-menu .tr-add-menu-head { margin: 0; padding: 4px 10px 6px; font-size: 11px; color: var(--fg-3); }
 .tr-add-menu .project-menu-item[aria-disabled="true"] { color: var(--fg-3); cursor: default; }
 .tr-add-menu .project-menu-item[aria-disabled="true"]:hover { background: transparent; color: var(--fg-3); }
+
+/* ===== Lane PANE: the pane beside the video on the Timeline =====
+   (views/timeline-pane.js, plan section 11.2): five tabs on one line, the
+   Steps tab's list grouped by transaction, a step opened in place (the Steps
+   editor's own fields, .editor-detail-pane), Notes and Files. No text under
+   12 px; the row at the clock's moment says "now", the selected row has a
+   bar at its left (never colour alone). */
+#tp-tabs { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+#tp-tabs .anno-tab { font-size: 12px; letter-spacing: 0; padding: 6px 10px; flex: 0 0 auto; color: var(--fg-2); }
+#tp-tabs .anno-tab.active { color: var(--fg); font-weight: 600; }
+#tp-tabs .anno-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+#tp-tabs.short .tp-count { display: none; }
+#timeline-pane .link-btn { font-size: 12px; }
+#timeline-pane .tp-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#timeline-pane .tp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+#timeline-pane .tp-tools button { font-size: 12px; padding: 4px 10px; }
+#timeline-pane .tp-hint { margin: 0; font-size: 12px; line-height: 1.45; color: var(--fg-2); }
+#timeline-pane .tp-group + .tp-group { margin-top: 10px; }
+#timeline-pane .tp-tx-head { display: flex; flex-direction: column; gap: 4px; padding: 6px 4px;
+  border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+#timeline-pane .tp-tx-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+#timeline-pane .tp-tx-name { font-size: 13px; font-weight: 600; color: var(--fg); min-width: 0; overflow-wrap: anywhere; }
+#timeline-pane .tp-tx-line .run-pattern-badge { font-size: 12px; height: 18px; }
+#timeline-pane .tp-tx-input { font-size: 13px; padding: 2px 6px; min-width: 0; flex: 1 1 160px; }
+#timeline-pane .tp-tx-why { margin: 0; font-size: 12px; color: var(--fg-2); }
+#timeline-pane .tp-tx-head .run-times { font-size: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--fg-2); }
+#timeline-pane .tp-list, #timeline-pane .tp-rows { list-style: none; margin: 0; padding: 0; }
+#timeline-pane .tp-item { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#timeline-pane .tp-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left;
+  background: transparent; border: 0; border-radius: 3px; padding: 5px 6px; color: var(--fg); font: inherit; font-size: 13px;
+  box-shadow: inset 3px 0 0 transparent; }
+#timeline-pane .tp-row:hover { background: var(--bg-3); }
+#timeline-pane .tp-row:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+#timeline-pane .tp-row[aria-current="true"] { background: var(--accent-muted); box-shadow: inset 3px 0 0 var(--accent); }
+#timeline-pane .tp-num { flex: 0 0 auto; min-width: 18px; text-align: right; font-size: 12px; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+#timeline-pane .tp-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+#timeline-pane .tp-name, #timeline-pane .tp-text { overflow-wrap: anywhere; color: var(--fg); }
+#timeline-pane .tp-meta { font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
+#timeline-pane .tp-draft { font-size: 12px; height: 18px; color: var(--fg-2); border-style: dashed; }
+#timeline-pane .tp-when { flex: 0 0 auto; font-size: 12px; color: var(--fg-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#timeline-pane .tp-now { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--fg); padding: 0 5px;
+  border: 1px solid var(--accent); border-radius: 8px; }
+#timeline-pane .tp-row:not(.now) .tp-now { display: none; }
+#timeline-pane .tp-here { flex: 0 0 auto; font-size: 12px; padding: 3px 8px; }
+#timeline-pane .tp-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule); }
+#timeline-pane .tp-nav button:not(.link-btn) { font-size: 12px; padding: 3px 10px; }
+#timeline-pane .tp-nav [aria-disabled="true"] { opacity: 0.45; cursor: default; }
+#timeline-pane .tp-pos { font-size: 12px; color: var(--fg-2); }
+#timeline-pane .tp-open-steps { margin-left: auto; }
+#timeline-pane .tp-editor { background: transparent; border: 0; box-shadow: none; padding: 0; overflow: visible; min-width: 0; }
+#timeline-pane .tp-editor:focus { outline: none; }
+#timeline-pane .tp-also { margin: 6px 0 0; font-size: 12px; }
+#timeline-pane .tp-also-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+#timeline-pane .tp-also-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; color: var(--fg-2); }
+#timeline-pane .tp-verbs { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; border-top: 1px solid var(--rule); }
+#timeline-pane .tp-verbs button { font-size: 12px; padding: 4px 10px; }
+#timeline-pane .tp-verbs[hidden] { display: none; }
+#timeline-pane .tp-note-row, #timeline-pane .tp-file-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 4px;
+  border-bottom: 1px solid var(--rule-soft, var(--rule)); font-size: 13px; }
+#timeline-pane .tp-at, #timeline-pane .tp-at-none { flex: 0 0 auto; min-width: 44px; font-size: 12px; font-variant-numeric: tabular-nums; }
+#timeline-pane .tp-at-none { color: var(--fg-2); padding: 2px 4px; }
+#timeline-pane .tp-acts { flex: 0 0 auto; display: inline-flex; gap: 8px; margin-left: auto; }
+#timeline-pane .tp-file-step { text-align: left; padding: 0; }
+#timeline-pane .tp-here-item { background: var(--accent-muted); box-shadow: inset 3px 0 0 var(--accent); }
+#screenshots-grid .thumb.tp-here-item { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
+.app.read-only #tp-editor :is(input, textarea)[readonly] { background: transparent; border-color: transparent; resize: none; }
+.app.read-only #tp-editor label.step-field:has(> textarea:placeholder-shown),
+.app.read-only #tp-editor label.step-waste:has(> input:not(:checked)) { display: none; }

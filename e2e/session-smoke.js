@@ -768,33 +768,39 @@ async function unreadableAnnotationsPin() {
       dlg.trail.length === 6 && dlg.trail.every((x) => x === "in") && dlg.back === "btn-add-manual-step",
     JSON.stringify(dlg));
 
-  // Lane FX3 (validation pass 3, F20): the Markers panel says why the
-  // capture app ended a transaction by itself in plain words, never its code.
-  // The demo's markers carry no reason, so two are given one on the page (the
-  // recording's file is not touched) and the list is drawn again.
+  // Lane FX3 (validation pass 3, F20): why the capture app ended a
+  // transaction by itself, in plain words, never its code. Lane PANE: the
+  // Markers tab is gone; the transaction's header in the pane's Steps tab
+  // says it. The demo's markers carry no reason, so three are given one on
+  // the page (the recording's file is not touched) and the pane is drawn
+  // again; the headers are read in the transactions' order.
   const reasons = {};
   try {
     await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: 15000 });
-    await page.locator('.anno-tab[data-anno="markers"]').click({ timeout: 15000 });
+    await page.locator('#tp-tab-steps').click({ timeout: 15000 });
     reasons.rows = await page.evaluate(() => {
       const ends = require("./state.js").getSession().events.filter((e) => e.type === "marker" && e.data && e.data.marker_type === "end");
       const was = ends.slice(0, 3).map((e) => e.data.reason);
       ends[0].data.reason = "auto_close_for_sibling";
       ends[1].data.reason = "auto_end_idle";
       ends[2].data.reason = "some_future_code";
-      require("./views/flow-view-markers.js").renderMarkersList();
-      const rows = [...document.querySelectorAll("#markers-list .marker-row.end .lbl")].slice(0, 3).map((x) => x.textContent.replace(/\s+/g, " ").trim());
+      const Pane = require("./views/timeline-pane.js");
+      Pane.render();
+      const s = require("./state.js").getSession();
+      const runs = require("./runs-model.js").buildRuns(s.stats, s.annotations.steps).runs;
+      const heads = [...document.querySelectorAll("#tp-steps .tp-tx-head[data-case-id]")];
+      const rows = runs.slice(0, 3).map((r) => { const h = heads.find((x) => x.dataset.caseId === r.caseId);
+        return h ? ((h.querySelector(".tp-tx-why") || {}).textContent || "") : null; });
       ends.slice(0, 3).forEach((e, i) => { if (was[i] === undefined) delete e.data.reason; else e.data.reason = was[i]; });
-      require("./views/flow-view-markers.js").renderMarkersList();
+      Pane.render();
       return rows;
     });
-    await page.locator('.anno-tab[data-anno="screens"]').click({ timeout: 15000 });
     await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 15000 });
     await page.mouse.move(2, 600);
     await wait(500);   // the level buttons' colour transition ends before the next check reads them
   } catch (e) { logActionError("FX3 marker reasons", e); reasons.err = String(e.message).split("\n")[0]; }
-  record("lane FX3: the Markers panel says why a transaction ended by itself in plain words (the next transaction started, after a long idle stretch), never a raw code",
-    !reasons.err && JSON.stringify(reasons.rows) === JSON.stringify(["End (the next transaction started)", "End (after a long idle stretch)", "End"]),
+  record("lane FX3, lane PANE: a transaction's header in the pane's Steps tab says why it ended by itself in plain words (the next transaction started, after a long idle stretch), never a raw code",
+    !reasons.err && JSON.stringify(reasons.rows) === JSON.stringify(["Ended by itself: the next transaction started.", "Ended by itself: after a long idle stretch.", ""]),
     JSON.stringify(reasons));
 
   // F3: the active level button stays legible under the mouse (the global
@@ -1047,7 +1053,7 @@ async function unreadableAnnotationsPin() {
   const sidePanel = await page.evaluate(() => {
     const tabs = [...document.querySelectorAll("#session-layout-flow .anno-tab")].map((t) => ({
       anno: t.dataset.anno, active: t.classList.contains("active") }));
-    const screens = document.querySelector('.anno-panel[data-panel="screens"]');
+    const screens = document.querySelector('.anno-panel[data-panel="steps"]');
     // One clock (V2 item 6): the time since the recording started, m:ss.
     const origin = Date.parse(require("./state.js").getSession().manifest.started_at);
     const local = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
@@ -1057,7 +1063,7 @@ async function unreadableAnnotationsPin() {
     return {
       tabs,
       screensShown: !!(screens && getComputedStyle(screens).display !== "none"),
-      notesGone: document.querySelectorAll('.anno-tab[data-anno="notes"], .anno-panel[data-panel="notes"], #anno-note, #btn-save-note, #annotations-list').length === 0 &&
+      notesGone: document.querySelectorAll('#anno-note, #btn-save-note, #annotations-list, #markers-list, .anno-tab[data-anno="markers"]').length === 0 &&
         !!document.getElementById("lane-notes-row") && document.getElementById("lane-notes-row").hidden,
       overlayGone: !document.getElementById("shortcuts-overlay") && !document.querySelector(".kbd-hint"),
       stamps, localStamps: shots.map((e) => local(e.timestamp)),
@@ -1066,10 +1072,11 @@ async function unreadableAnnotationsPin() {
     };
   }).catch((e) => ({ err: e.message }));
   const panelOk = !!(sidePanel && !sidePanel.err &&
-    // Lane E (E3): the Transcript tab is the third.
-    JSON.stringify(sidePanel.tabs) === JSON.stringify([{ anno: "screens", active: true }, { anno: "markers", active: false }, { anno: "transcript", active: false }]) &&
+    // Lane PANE: five tabs, the project opening on Steps; the Markers tab is gone.
+    JSON.stringify(sidePanel.tabs) === JSON.stringify([{ anno: "steps", active: true }, { anno: "transcript", active: false },
+      { anno: "screens", active: false }, { anno: "notes", active: false }, { anno: "files", active: false }]) &&
     sidePanel.screensShown && sidePanel.notesGone && sidePanel.overlayGone);
-  record("P1.6 (AD-17, AD-27) + P1.1: Flow's side panel opens on Screenshots next to Markers and Transcript; no Notes tab or note field, and no Notes lane without a note pinned to a moment; no shortcuts overlay",
+  record("P1.6 (AD-17, AD-27) + P1.1, lane PANE: the pane beside the video opens on Steps, then Transcript, Screenshots, Notes and Files (no Markers tab, no note field), and no Notes lane without a note pinned to a moment; no shortcuts overlay",
     panelOk, JSON.stringify(sidePanel && { tabs: sidePanel.tabs, screensShown: sidePanel.screensShown,
       notesGone: sidePanel.notesGone, overlayGone: sidePanel.overlayGone, err: sidePanel.err }));
   const stampsOk = !!(sidePanel && !sidePanel.err && sidePanel.stamps.length > 0 &&
@@ -1078,6 +1085,52 @@ async function unreadableAnnotationsPin() {
   record("F4 + V2 item 6: the screenshot thumbnails show the one clock, the time since the recording started (m:ss), never a time of day",
     stampsOk, JSON.stringify(sidePanel && { stamps: sidePanel.stamps, sinceStart: sidePanel.localStamps, timeOfDay: sidePanel.utcStamps }));
   if (!(panelOk && stampsOk)) await shot(page, "fail-flow-side-panel.png");
+
+  // Lane PANE, item 1: the pane's tabs are tabs to a screen reader (a
+  // tablist, each tab naming its panel, the panel named by its tab, the
+  // chosen one aria-selected and the only Tab stop), the arrow keys, Home and
+  // End move between them, they stay on one line at the window's width (the
+  // counts may drop first where they cannot fit), and Steps counts the steps
+  // its list shows, Screenshots the screenshots of its grid.
+  const tabsA11y = {};
+  try {
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: 15000 });
+    await page.locator("#tp-tab-steps").click({ timeout: 15000 });
+    if (await page.locator("#tp-steps .tp-back").count()) await page.locator("#tp-steps .tp-back").click({ timeout: 15000 });
+    const read = () => page.evaluate(() => {
+      const list = document.getElementById("tp-tabs");
+      const tabs = [...list.querySelectorAll(".anno-tab")];
+      return {
+        role: list.getAttribute("role"),
+        tabs: tabs.map((t) => { const p = document.getElementById(t.getAttribute("aria-controls"));
+          return { anno: t.dataset.anno, role: t.getAttribute("role"), sel: t.getAttribute("aria-selected"), tab: t.tabIndex,
+            panel: !!p && p.getAttribute("role") === "tabpanel" && p.getAttribute("aria-labelledby") === t.id,
+            shown: !!p && getComputedStyle(p).display !== "none", label: t.getAttribute("aria-label") }; }),
+        oneLine: new Set(tabs.map((t) => Math.round(t.getBoundingClientRect().top))).size === 1 && list.scrollWidth <= list.clientWidth + 1,
+        short: list.classList.contains("short"),
+        focus: (document.activeElement || {}).id || "",
+        rows: document.querySelectorAll("#tp-steps .tp-row").length,
+        shots: require("./views/flow-view-screenshots.js").timelineScreenshots().length,
+      };
+    });
+    tabsA11y.start = await read();
+    await page.locator("#tp-tab-steps").focus();
+    await page.keyboard.press("ArrowRight");
+    tabsA11y.right = await read();
+    await page.keyboard.press("End");
+    tabsA11y.end = await read();
+    await page.keyboard.press("Home");
+    tabsA11y.home = await read();
+  } catch (e) { logActionError("PANE tabs", e); tabsA11y.err = String(e.message).split("\n")[0]; }
+  const tabOk = (st, want) => !!st && st.role === "tablist" && st.tabs.length === 5 &&
+    st.tabs.every((t) => t.role === "tab" && t.panel && (t.anno === want) === (t.sel === "true") && (t.anno === want) === (t.tab === 0) && (t.anno === want) === t.shown) &&
+    st.oneLine;
+  const s0 = tabsA11y.start || { tabs: [] };
+  record("lane PANE item 1: the pane's five tabs are a tablist (each tab names its panel, each panel is named by its tab, only the chosen tab is a Tab stop); Right, End and Home move the choice and the focus; one line at this width; Steps counts its rows, Screenshots its grid",
+    !tabsA11y.err && tabOk(tabsA11y.start, "steps") && tabOk(tabsA11y.right, "transcript") && tabsA11y.right.focus === "tp-tab-transcript" &&
+      tabOk(tabsA11y.end, "files") && tabsA11y.end.focus === "tp-tab-files" && tabOk(tabsA11y.home, "steps") && tabsA11y.home.focus === "tp-tab-steps" &&
+      s0.tabs[0].label === "Steps (" + s0.rows + ")" && s0.tabs[2].label === "Screenshots (" + s0.shots + ")" && s0.tabs[1].label === "Transcript",
+    JSON.stringify(tabsA11y));
   // V2 item 6: the timeline's axis reads the same clock (0:00 at the start),
   // and the time of day shows only in the summary with the recording's date.
   const axis = await page.evaluate(() => ({
@@ -1806,15 +1859,16 @@ async function unreadableAnnotationsPin() {
       runsLine: ((document.querySelector('#ov-summary [data-summary="runs"]') || {}).textContent || "").trim(),
       stepsRuns: document.querySelectorAll("#step-list .run-group").length,
     }));
+    // Lane PANE: the Markers list is gone; the insert opens the pane's Steps
+    // tab, and once applied the new transaction has its header there.
     const pinState = () => page.evaluate((label) => {
-      const rows = [...document.querySelectorAll("#markers-list .marker-row")];
-      const row = rows.find((r) => (r.textContent || "").includes(label));
-      const panel = document.querySelector('.anno-panel[data-panel="markers"]');
+      const head = [...document.querySelectorAll("#tp-steps .tp-tx-name")].find((r) => (r.textContent || "").includes(label));
+      const panel = document.querySelector('.anno-panel[data-panel="steps"]');
       const cta = document.getElementById("btn-apply-marker-edits");
       return {
-        row: row ? { pending: row.classList.contains("pending"), inserted: row.classList.contains("inserted"),
-          text: (row.textContent || "").replace(/\s+/g, " ").trim() } : null,
-        markersPanelShown: !!(panel && getComputedStyle(panel).display !== "none"),
+        row: head ? { text: (head.textContent || "").replace(/\s+/g, " ").trim() } : null,
+        markersPanelShown: !!(panel && getComputedStyle(panel).display !== "none") &&
+          document.getElementById("tp-tab-steps").getAttribute("aria-selected") === "true",
         pendingBars: document.querySelectorAll("#timeline .tl-marker-pending").length,
         // 2.0.3: the Transactions lane draws the marker as it now is: a band
         // of its own, pending, until Apply marker changes.
@@ -1853,8 +1907,8 @@ async function unreadableAnnotationsPin() {
       await page.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
       await page.locator(".modal-prompt .modal-input").fill(LABEL, { timeout: T });
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
-      await page.waitForFunction((label) => [...document.querySelectorAll("#markers-list .marker-row.pending")]
-        .some((r) => (r.textContent || "").includes(label)), LABEL, { timeout: T });
+      await page.waitForFunction((label) => [...document.querySelectorAll("#timeline .tl-case-band.pending")]
+        .some((b) => (b.title || "").includes(label)), LABEL, { timeout: T });
       pending = Object.assign(await pinState(), { cases: await cases() });
       // Saved as an insert edit near INSERT_AT (the right-click x maps to a
       // time through the timeline's pixel width, so allow 2 s either way).
@@ -1862,12 +1916,12 @@ async function unreadableAnnotationsPin() {
       onDisk = (a.marker_edits || []).some((e) => e && e.op === "insert" && e.marker_type === "start" &&
         e.label === LABEL && Math.abs(Date.parse(e.timestamp) - Date.parse(INSERT_AT)) <= 2000);
     } catch (e) { logActionError("item 6 pending marker insert", e); err = String(e.message).split("\n")[0]; }
-    const pendingOk = !!(pending && pending.row && pending.row.pending && pending.row.inserted &&
+    const pendingOk = !!(pending && !pending.row &&
       pending.markersPanelShown && pending.pendingBars === 0 &&
       /Not applied yet: Apply marker changes/.test(pending.pendingBand || "") &&
       pending.cta === "Apply 1 marker change" && onDisk &&
       pending.cases.analyzed === before.analyzed && pending.cases.bands === before.bands + 1);
-    record("item 6: a Start marker inserted from the timeline menu shows at once as pending (list + one call to action + 2.0.3 its own transaction band, pending, where it was put, and no bar), before any Analyze",
+    record("item 6, lane PANE: a Start marker inserted from the timeline menu shows at once as pending (one call to action + 2.0.3 its own transaction band, pending, where it was put, and no bar; the pane's Steps tab shown, no header yet), before any Analyze",
       pendingOk, JSON.stringify({ before, pending, onDisk, err }));
     if (!pendingOk) await shot(page, "fail-marker-pending.png");
 
@@ -1886,8 +1940,7 @@ async function unreadableAnnotationsPin() {
       }, null, { timeout: T }).then((h) => h.jsonValue(), () => null);
       statusLine = { text: statusLine, logShown: await page.$eval("#log-host", (el) => getComputedStyle(el).display !== "none") };
       await page.waitForFunction((label) => !document.getElementById("btn-apply-marker-edits") &&
-        [...document.querySelectorAll("#markers-list .marker-row")]
-          .some((r) => (r.textContent || "").includes(label) && !r.classList.contains("pending")),
+        [...document.querySelectorAll("#tp-steps .tp-tx-name")].some((r) => (r.textContent || "").includes(label)),
       LABEL, { timeout: 120000 });
       applied = Object.assign(await pinState(), { cases: await cases() });
       // Runs never nest (the pipeline's rule, case_assignment.py): the new run
@@ -1905,14 +1958,14 @@ async function unreadableAnnotationsPin() {
           nextLeft: next ? Math.round(next.r.left) : null, nextTop: next ? Math.round(next.r.top) : null };
       }, LABEL);
     } catch (e) { logActionError("item 6 Apply marker changes", e); err = String(e.message).split("\n")[0]; }
-    const appliedOk = !!(applied && before && applied.row && !applied.row.pending && applied.row.inserted &&
+    const appliedOk = !!(applied && before && applied.row &&
       applied.pendingBars === 0 && applied.cta === null &&
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
       // The Overview names the runs the Steps level lists; both follow the new
       // analysis.
       applied.cases.runsLine === applied.cases.stepsRuns + " transactions" &&
       before.runsLine === before.stepsRuns + " transactions");
-    record("item 6: Apply 1 marker change asks \"Update the drafts of the changed transactions?\", the top bar says Updating steps and map... with Cancel (no log), and the marker becomes a real one: the case count goes up by one",
+    record("item 6: Apply 1 marker change asks \"Update the drafts of the changed transactions?\", the top bar says Updating steps and map... with Cancel (no log), and the marker becomes a real one: the case count goes up by one, and its transaction has its header in the pane's Steps tab",
       appliedOk && /Update the drafts of the changed transactions\?/.test(confirmText || "") && !!statusLine &&
         statusLine.text === "Updating steps and map... | Cancel" && statusLine.logShown === false,
       JSON.stringify({ before: before && before.analyzed, applied, confirmText, statusLine, err }));

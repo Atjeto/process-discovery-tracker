@@ -196,9 +196,6 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 </label>
                 <!-- Shown only while a video is linked (flow-view.js syncVideoControls). -->
                 <button class="icon-btn" id="btn-add-step" type="button" hidden title="Add a step at the video playhead (S)">+ Step</button>
-                <!-- Lane E (E5): a step written first gets the playhead's moment
-                     (flow-view.js syncShowHere names the step). -->
-                <button class="icon-btn show-here-btn" id="btn-show-here" type="button" hidden>"<span class="show-here-name"></span>" starts here</button>
                 <div class="lanes-menu" id="lanes-menu">
                   <button class="icon-btn" id="btn-lanes" aria-haspopup="true" aria-expanded="false" title="Choose which timeline lanes to show">Lanes ▾</button>
                   <div class="lanes-popup" id="lanes-popup" style="display:none">
@@ -266,24 +263,36 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
             <div class="resize-h" id="resize-video" title="Drag to resize video width"></div>
 
-            <aside class="annotations-pane">
-              <div class="anno-tabs">
-                <button class="anno-tab active" data-anno="screens">Screenshots</button>
-                <button class="anno-tab" data-anno="markers">Markers</button>
-                <button class="anno-tab" data-anno="transcript">Transcript</button>
+            <!-- Lane PANE (plan section 11.2): the pane beside the video, a tab for
+                 each kind of thing (views/timeline-pane.js). The tabs are real tabs
+                 (the arrow keys move between them); a step opens in place in the
+                 Steps tab, drawn by the Steps editor's own code. -->
+            <aside class="annotations-pane" id="timeline-pane" aria-label="What the project holds">
+              <div class="anno-tabs" id="tp-tabs" role="tablist" aria-label="What the project holds">
+                <button type="button" class="anno-tab active" role="tab" id="tp-tab-steps" data-anno="steps" aria-controls="tp-panel-steps" aria-selected="true" tabindex="0"><span class="tp-tab-name">Steps</span><span class="tp-count"></span></button>
+                <button type="button" class="anno-tab" role="tab" id="tp-tab-transcript" data-anno="transcript" aria-controls="tp-panel-transcript" aria-selected="false" tabindex="-1"><span class="tp-tab-name">Transcript</span><span class="tp-count"></span></button>
+                <button type="button" class="anno-tab" role="tab" id="tp-tab-screens" data-anno="screens" aria-controls="tp-panel-screens" aria-selected="false" tabindex="-1"><span class="tp-tab-name">Screenshots</span><span class="tp-count"></span></button>
+                <button type="button" class="anno-tab" role="tab" id="tp-tab-notes" data-anno="notes" aria-controls="tp-panel-notes" aria-selected="false" tabindex="-1"><span class="tp-tab-name">Notes</span><span class="tp-count"></span></button>
+                <button type="button" class="anno-tab" role="tab" id="tp-tab-files" data-anno="files" aria-controls="tp-panel-files" aria-selected="false" tabindex="-1"><span class="tp-tab-name">Files</span><span class="tp-count"></span></button>
               </div>
-              <div class="anno-panel" data-panel="screens">
+              <div class="anno-panel" data-panel="steps" role="tabpanel" id="tp-panel-steps" aria-labelledby="tp-tab-steps">
+                <div id="tp-steps" class="tp-body"></div>
+              </div>
+              <!-- Lane E (E3): the transcript beside the video (flow-view-transcript.js renderTab). -->
+              <div class="anno-panel" data-panel="transcript" role="tabpanel" id="tp-panel-transcript" aria-labelledby="tp-tab-transcript" style="display:none">
+                <div id="transcript-tab" class="trt"></div>
+              </div>
+              <div class="anno-panel" data-panel="screens" role="tabpanel" id="tp-panel-screens" aria-labelledby="tp-tab-screens" style="display:none">
                 <div class="screens-toolbar">
                   <button id="btn-open-gallery" type="button" class="link-btn" title="Step through every screenshot full-screen with arrow keys.">Open gallery...</button>
                 </div>
                 <div id="screenshots-grid" class="screens-grid"></div>
               </div>
-              <div class="anno-panel" data-panel="markers" style="display:none">
-                <div id="markers-list" class="markers-list" title="A transaction starts at a Start marker. Double-click a Start to rename its transaction. The row buttons move a marker or delete it. A change shows here at once, marked pending, and applies to the transactions when you click Apply marker changes."></div>
+              <div class="anno-panel" data-panel="notes" role="tabpanel" id="tp-panel-notes" aria-labelledby="tp-tab-notes" style="display:none">
+                <div id="tp-notes" class="tp-body"></div>
               </div>
-              <!-- Lane E (E3): the transcript beside the video (flow-view-transcript.js renderTab). -->
-              <div class="anno-panel" data-panel="transcript" style="display:none">
-                <div id="transcript-tab" class="trt"></div>
+              <div class="anno-panel" data-panel="files" role="tabpanel" id="tp-panel-files" aria-labelledby="tp-tab-files" style="display:none">
+                <div id="tp-files" class="tp-body"></div>
               </div>
             </aside>
           </div>
@@ -548,10 +557,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Play the video on the Timeline. Where the SME starts the work, right-click the timeline and choose <em>Start a transaction here</em>.</li>
             <li>As each step starts, press S (or click <em>+ Step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
             <li>Where the transaction ends, right-click and choose <em>End the transaction here</em>: its last step ends there too. <em>Start a transaction here</em> for the next one ends the one before it the same way.</li>
-            <li>Each step you add opens in the step panel beside the video, its screenshot taken from the video at that moment. Pause the video before you press S, and the cursor is in the step's name: type the name, press Enter, and play on. Its system and its description are right under the name. While the video plays, S only marks the steps: name them in the panel or in Steps afterwards. Ctrl+Z takes back a mark put in the wrong place, with its screenshot.</li>
+            <li>Each step you add opens beside the video, in the <em>Steps</em> tab, its screenshot taken from the video at that moment. Pause the video before you press S, and the cursor is in the step's name: type the name, press Enter, and play on. Its system and its description are right under the name. While the video plays, S only marks the steps: name them in the <em>Steps</em> tab or in Steps afterwards. <em>All steps</em> goes back to the list. Ctrl+Z takes back a mark put in the wrong place, with its screenshot.</li>
             <li>The <em>Transcript</em> tab beside the video lists what was said, with its time and who said it. Type in its search to find a word, for example <em>invoice</em>: it shows how many sentences hold it. With several speakers, pick one to read only theirs. The sentence the video is at is marked and stays in view while the video plays, unless your pointer is on the list or the search holds text.</li>
             <li>Click a sentence to go to that moment. <em>Add step here</em>, after the sentence, adds a step that starts where it is said. <em>Copy to...</em> copies the sentence into the description of the selected step or into a field of the document.</li>
-            <li>Steps written first, from your notes, have no time. Go to the moment of the first one and click <em>"Open the order" starts here</em>, beside <em>+ Step</em> (the button names the step): the step starts at that moment and, without a picture, takes the video's frame there. Its place among the steps stays. The next step without a time is then selected and the button names it: go to its moment and click again. Select a step you added to give it another start. Right-clicking the timeline offers the same at the moment you click, and Ctrl+Z undoes it.</li>
+            <li>Steps written first, from your notes, have no time: the <em>Steps</em> tab beside the video says how many, and each of them has <em>Starts here</em> on its row. Go to the moment a step starts in the video, then click <em>Starts here</em> on that step: the step starts at that moment and, without a picture, takes the video's frame there. Its place among the steps stays. Right-clicking the timeline offers the same at the moment you click, naming the step, and Ctrl+Z undoes it.</li>
           </ol>
           <p><strong>Put a step where it belongs in the process</strong></p>
           <ol class="help-steps">
@@ -694,7 +703,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>Click <strong>Confirm transaction</strong>: the steps you did not change are accepted as they are. <em>Undo confirm</em>, beside the Confirmed badge, turns them back into drafts. A reference transaction with no drafted step (every step added or edited by you) has nothing to confirm and shows no Confirm transaction.</li>
           </ol>
           <h3>The step panel</h3>
-          <p>Select a step in Steps, click a box on the Map or a step band on the Timeline: the step panel opens beside it. It shows every time the step happens in the transactions, each with its moment (&#9654; plays it in the panel's own video), its screenshots, what was said and its notes. <em>&#9654; Play</em>, on the selected step's line in Steps, plays the step there and opens the panel again after you closed it.</p>
+          <p>Select a step in Steps or click a box on the Map: the step panel opens beside it. On the Timeline a step opens in the pane beside the video instead, in its <em>Steps</em> tab, with the fields of Steps. It shows every time the step happens in the transactions, each with its moment (&#9654; plays it in the panel's own video), its screenshots, what was said and its notes. <em>&#9654; Play</em>, on the selected step's line in Steps, plays the step there and opens the panel again after you closed it.</p>
           <h3>Fixes that carry to the other transactions</h3>
           <p>A name you give a drafted step goes at once to the same drafted steps in the other transactions (each transaction says in one line how many of its names came that way). A merge in the reference transaction is also made in the other transactions wherever they have the same drafted steps one after the other, and one Ctrl+Z undoes all of it. Hiding a drafted step offers to hide it in every transaction. Splits and added steps are made in each transaction that needs them.</p>
           <h3>Differences between transactions</h3>
@@ -748,10 +757,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ul class="help-list">
             <li><strong>Add</strong>: right-click the timeline at that moment and choose <em>Start a transaction here</em> or <em>End the transaction here</em>.</li>
             <li><strong>Move</strong>: in Steps, open the transaction and type its <em>Starts at</em> or <em>Ends at</em>; an empty <em>Ends at</em> takes its end marker out. Or drag the start or the end of its band on the Timeline: near a step's start or the playhead it snaps there, and Esc puts it back. A step that starts or ends where the marker is moves with it.</li>
-            <li><strong>Rename, move or delete</strong>: in the Timeline's Markers panel. Double-click a Start marker to rename it.</li>
+            <li><strong>Rename or delete</strong>: on the Timeline, in the <em>Steps</em> tab beside the video, each transaction's header has <em>Rename</em> and <em>Delete transaction</em>, with its <em>Starts at</em> and <em>Ends at</em>.</li>
             <li><strong>Apply</strong>: a changed marker shows at once as pending, its transaction's band dashed. <em>Apply marker changes</em>, in the bar at the top, updates the transactions, the steps and the map. In a project made from a video or from nothing, a change applies by itself a moment later.</li>
           </ul>
-          <p class="help-hint">To join two transactions, delete the End of the first and the Start of the second. To split a transaction, start a transaction where its second part begins: a Start ends the transaction before it.</p>
+          <p class="help-hint">To join two transactions, empty the <em>Ends at</em> of the first and click <em>Delete transaction</em> on the second. To split a transaction, start a transaction where its second part begins: a Start ends the transaction before it.</p>
         </section>
 
         <section class="help-section" data-section="capture">
@@ -798,8 +807,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </table>
           <h3>Clicks</h3>
           <ul class="help-list">
-            <li>Click a band on the timeline, or a marker in the Markers panel, to go to that moment. Click a screenshot to see it full size.</li>
-            <li>Click a step band on the timeline to open the step panel beside it.</li>
+            <li>Click a band on the timeline to go to that moment. Click a screenshot or a note on the timeline to show it in its tab beside the video; in the <em>Screenshots</em> tab, click one to see it full size.</li>
+            <li>Click a step band on the timeline to open the step beside the video, in the <em>Steps</em> tab. In the tabs, Left and Right go from tab to tab; in the list of steps, Up and Down go from step to step and Enter opens one.</li>
             <li>Drag the start or the end of a transaction's band, or of a step you added on a video's timeline, to move it. It snaps to a step's start or the playhead a few pixels away; Esc puts it back.</li>
             <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>
             <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>Fit</em>, puts the boxes back where the map lays them out.</li>

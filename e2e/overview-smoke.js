@@ -1135,17 +1135,20 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   await shot(page2, "overview-unsegmented-state.png");
 
-  // (e2) The button LANDS: the Timeline shows, with the Markers panel.
+  // (e2) The button LANDS: the Timeline shows, with (lane PANE: the Markers
+  // tab is gone) the pane's Steps tab, where each transaction's header is.
+  // Another tab is chosen first, so the landing is the button's doing.
   const markersTabBefore = await page2.evaluate(() => {
-    const t = document.querySelector('.anno-tab[data-anno="markers"]');
+    require("./views/timeline-pane.js").showTab("transcript");
+    const t = document.querySelector('.anno-tab[data-anno="steps"]');
     return !!(t && t.classList.contains("active"));
   }).catch(() => null);
   await page2.click("#btn-ov-next").catch((e) => console.log("mark-runs click", e.message));
   await wait(700);
   const landed = await page2.evaluate(() => {
     const flow = document.querySelector("#session-layout-flow");
-    const tab = document.querySelector('.anno-tab[data-anno="markers"]');
-    const panel = document.querySelector('.anno-panel[data-panel="markers"]');
+    const tab = document.querySelector('.anno-tab[data-anno="steps"]');
+    const panel = document.querySelector('.anno-panel[data-panel="steps"]');
     const r = panel ? panel.getBoundingClientRect() : null;
     return {
       flowVisible: !!(flow && getComputedStyle(flow).display !== "none"),
@@ -1154,7 +1157,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       panelOnScreen: !!(r && r.height > 0 && r.top < window.innerHeight && r.bottom > 0),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e2) 'Mark the transactions on the Timeline' lands on the Timeline with the Markers panel showing on screen",
+  record("(e2) 'Mark the transactions on the Timeline' lands on the Timeline with the pane's Steps tab (lane PANE: in place of the Markers panel) showing on screen",
     !!(landed && !landed.err && markersTabBefore === false && landed.flowVisible &&
       landed.markersTabActive && landed.markersPanelVisible && landed.panelOnScreen),
     JSON.stringify({ markersTabBefore, landed }));

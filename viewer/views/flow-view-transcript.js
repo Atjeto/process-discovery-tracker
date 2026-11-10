@@ -107,6 +107,9 @@ function transcriptLane(env) {
           block.addEventListener("click", (e) => {
             e.stopPropagation();
             Video.seekToTimestamp(new Date(s.startMs).toISOString());
+            // Lane PANE: the Transcript tab beside the video, at this sentence
+            // (it follows the clock; lazy: the pane requires this module).
+            require("./timeline-pane.js").showTab("transcript");
           });
           host.appendChild(block);
         }

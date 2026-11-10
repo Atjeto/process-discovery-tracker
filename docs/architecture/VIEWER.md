@@ -281,11 +281,40 @@ newProject`).
   breadcrumbs) moves `State.mapPath` and the picker with it; a plane the
   project has no map for leaves them as they are.
 
+**The Timeline's pane** (lane PANE, plan section 11.2, `#timeline-pane`,
+[`views/timeline-pane.js`](../../viewer/views/timeline-pane.js), the pure
+rows, counts, hint and acts in
+[`pane-lists.js`](../../viewer/pane-lists.js)) sits beside the video: a
+tablist `#tp-tabs` of five tabs (*Steps (n)*, *Transcript*, *Screenshots
+(n)*, *Notes (n)*, *Files (n)*; Left, Right, Home and End move between
+them; the counts drop where the five do not fit on one line), kept while
+the window lives, a project opening on Steps. The Steps tab (`#tp-steps`)
+lists the main level's visible steps in the order of the process
+(`runs-model.js` `buildRuns`), grouped under each transaction's header in
+a project with marked transactions (the reference first; the header holds
+the name, *Reference*, `steps-view.js` `_runTimesEl`, *Rename* and
+*Delete transaction* through `flow-view-markers.js` `renameMarker` and
+`deleteMarker`, and the end's reason); the list is one Tab stop (Up, Down,
+Home, End, Enter), and a step without a time has *Starts here*
+(`flow-view.js` `showHereAt`). A row or a step band opens the step in
+place: `steps-view.js` `renderStepInto` draws the Steps editor into
+`#tp-editor` with Steps' callbacks (`onTimeline` leaves out Show on
+timeline and makes Enter leave the name; `afterFactsHtml` carries *Also
+happens in*, read with `step-panel.js` `occurrences`), and the editor's
+parts are looked up in their host, so one host holds the editor at a time
+(Steps empties its pane on the Timeline and draws it again on arrival).
+Steps' verbs on the step come from `stepVerbStates`. The Notes tab
+(`#tp-notes`) and the Files tab (`#tp-files`) list every note and attached
+file with the acts of `analyst-ui.js`. Read only: no act that changes the
+project shows, and the editor's fields are locked.
+
 **The step panel** (`#step-panel`,
 [`views/step-panel.js`](../../viewer/views/step-panel.js)) sits beside the
-level on screen. It has three doors: a click on a map box, a click on a
-timeline step band, and a selected Steps row (Watch in the step pane opens
-it and plays the step); a task of the map the PDD prints is a map box too. It names
+level on screen. It has two doors: a click on a map box and a selected
+Steps row (Watch in the step pane opens it and plays the step); a task of
+the map the PDD prints is a map box too. Lane PANE: it never opens on the
+Timeline (`opensOn`), where a step opens in the pane beside the video
+(below). It names
 the step, its system and screen, its description, its flow in one short
 line when one is set (contract C17: "Only when ... · Goes back to step 2
 when ...") and "In N of M transactions, about Xs each" (without "about ...
@@ -297,7 +326,7 @@ for a second time in one transaction; "took under 1s", never "0s") with a
 play button for its own small video, which opens paused on the row the
 panel opened on, then the step's
 screenshots, what was said then and its notes, each under a small lead.
-On the Timeline and the Map (lane E-1) its head is the name, the system
+On the Map (lane E-1) its head is the name, the system
 and the description of the step it highlights as fields, drawn by the
 editor's own pieces (`step-editor.js` `nameFieldHtml` and `wireNameField`,
 `analyst-ui.js` `systemFieldHtml` and `wireSystemField`, ids of their own)
@@ -305,7 +334,7 @@ and saved by the editor's handlers (`steps-view.js` `panelFieldCallbacks`):
 Enter and Escape leave the name, a press outside the panel leaves any of
 them, and while one has the focus the panel drawn again leaves it as it is.
 On Steps and in a project open read only the head is text. A step added on
-the Timeline opens in the panel (`openAdded`); its name takes the focus
+the Timeline opens in the Timeline's pane; its name takes the focus
 only while the video is paused (`nameTakesFocus`, `flow-view-video.js`
 `isPlaying`). The highlighted row of a step a video covers that shows no
 screenshot offers *Use the video at m:ss* (`analyst-ui.js`
@@ -444,8 +473,9 @@ their module as `<name>.test.js`.
 | `flow-view-video.js` | The videos and the timeline (contract C23, 2.0.6): the chain on the clock (`chainOf`, `clipAtMs`, `clipSpan`), the span a video project runs on, the player (one video at a time, playing on into the next; `loadPlayer`, `seekClock`), the playhead as a moment on the clock (`playheadMs`), seeking, playing past a stretch put aside (lane E, `_skipLeftOut`), and the edits of the chain: Add video (several files; back to back, or synced with two clicks in a recording), Sync, Replace, Trim and Remove video, each one undoable edit of `external_videos` (`_commitChain`, which first ties the transcripts placed without a video to theirs; lane CC). |
 | `video-chain.js` (viewer root, pure) | 2.0.6, contract C23: the clips of `external_videos` (`clipsOf`, the old `external_video` read as one), where each is on the clock (`spanOf`, `clipAtRel`, `chainEndRel`), and the edits back to back: `planTrim` and `applyTrim`, `applyRemove`, `applyReplace`, `applyAppend`, with `shiftMarks` (what moves with them: steps at every level, inserted markers, notes and screenshots at a moment, stretches left out) and `cutBlocks` (a cut that would take a mark away, in one sentence). |
 | `views/video-lane.js` | 2.0.6: the Timeline's Videos lane: one band per video, a side dragged trims it, its right-click menu (trim, give a side back, sync, replace, remove, add). |
-| `flow-view-screenshots.js` | The Screenshots panel, the gallery, and the guarded open of a screenshot. |
-| `flow-view-markers.js` | The Markers panel: the markers with the analyst's changes laid over them, move, delete, rename. |
+| `flow-view-screenshots.js` | The Screenshots tab's grid, the gallery, and the guarded open of a screenshot. |
+| `flow-view-markers.js` | The marker edits: move (a dragged or typed side), delete and rename (a transaction's header in the Timeline's pane), insert; lane PANE removed the Markers tab. |
+| `timeline-pane.js` | Lane PANE: the pane beside the video on the Timeline, its five tabs, the Steps tab's list and the step opened in place, Notes and Files (section 2). |
 | `flow-view-transcript.js` | The Transcript lane (one row per transcript, C23), each transcript's Sync, Replace and Remove, and Attach (which asks which video a transcript is of when there are several). Lane E (E3): the Transcript tab beside the video (`renderTab`, built once per change of what it lists; `tickTab`, the sentence at the playhead; a sentence's menu: Add a step here, Add to the selected step's description, Add to a document field). |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
 | `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process dialog, a pick from the library (C21: `pickActivityAction`; a name typed that is an activity of the step's system is that pick, any other name leaves the library). C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
@@ -635,8 +665,8 @@ the bus. The topics and who listens (`renderer.js`):
 | Topic | Re-renders |
 |---|---|
 | `steps` | the Steps level, the Overview, the Map, the step panel |
-| `timeline` | the timeline, the Screenshots panel |
-| `markers` | the Markers panel, the status line, the Overview |
+| `timeline` | the timeline, the Screenshots tab, the Timeline's pane |
+| `markers` | the status line, the Overview, the Timeline's pane |
 | `analysis` | the Overview |
 | `mapPath` | the Map (the step panel's *Open sub-process* on the Map) |
 
@@ -663,7 +693,7 @@ Ipc.loadSession(folder) -> State.setSession(...)
   -> the save state (another folder starts over; an unreadable annotations.json is Not saved)
   -> Recents
   -> the video (or the slim no-video band), + Step and Sync video only with a video
-  -> renderTimeline, the Raw events table, the Screenshots and Markers panels,
+  -> renderTimeline, the Raw events table, the Screenshots tab (the pane follows the topics),
      the timeline summary, renderStepsLevel, renderOverviewLevel, the Transaction select
   -> the remembered timeline zoom and scroll
   -> the automatic analysis when the session needs one (section 8)

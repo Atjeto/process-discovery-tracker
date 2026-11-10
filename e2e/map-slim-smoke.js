@@ -811,19 +811,21 @@ const lockProbe = () => {
       forkLocked.title === "No map to edit yet: the process map is not shown for this project, and the Map says why." &&
       forkLocked.maps === 0 && !forkLocked.editor), JSON.stringify(forkLocked));
 
-  // The lock's call to action lands on Flow with the Markers panel showing.
+  // The lock's call to action lands on Flow with (lane PANE: the Markers
+  // tab is gone) the pane's Steps tab showing, another tab chosen before.
+  await page2.evaluate(() => require("./views/timeline-pane.js").showTab("files")).catch(() => {});
   await page2.click('#session-map-dfg-host [data-map-cta="mark-runs"]').catch((e) => console.log("cta", e.message));
   await wait(900);
   const ctaLanded = await page2.evaluate(() => {
     const flow = document.getElementById("session-layout-flow");
-    const tab = document.querySelector('.anno-tab[data-anno="markers"]');
-    const panel = document.querySelector('.anno-panel[data-panel="markers"]');
+    const tab = document.querySelector('.anno-tab[data-anno="steps"]');
+    const panel = document.querySelector('.anno-panel[data-panel="steps"]');
     return !!(flow && getComputedStyle(flow).display !== "none" &&
       tab && tab.classList.contains("active") &&
       panel && getComputedStyle(panel).display !== "none");
   }).catch(() => false);
-  record("(f3) the lock's button lands on Flow with the Markers panel showing",
-    !!ctaLanded, ctaLanded ? "" : "Flow + Markers panel did not show");
+  record("(f3) the lock's button lands on Flow with the pane's Steps tab showing (lane PANE: in place of the Markers panel)",
+    !!ctaLanded, ctaLanded ? "" : "Flow + the Steps tab did not show");
 
   await close2();
 

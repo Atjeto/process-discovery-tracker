@@ -302,18 +302,36 @@ the folder.
   step map's documentation (`step_context.fmt_ms`): "under 1s",
   "42s", "2m 07s", "3m", "1h 04m"; never "0s", "28.9s" or "414ms", and
   never "2:17", which is a moment on the one clock.
-- **The step panel** (`views/step-panel.js`): three doors (a map box, a
-  timeline step band, a Steps row; a task of the Map's picture is a map box
-  too) open one panel with every occurrence of the step: its moment, a
-  small video, screenshots, what was said, notes. How the transactions ran
-  fits again when the panel opens or closes beside it (`dfg-viewer.js`
-  `resize`). On the Timeline and the Map its head edits the step's name,
-  system and description with the editor's own handlers
-  (`steps-view.js` `panelFieldCallbacks`; text on Steps and read only); a
-  step marked on the Timeline opens there, its name focused only while the
-  video is paused (`nameTakesFocus`), and takes the video's frame at its
-  moment as an added screenshot in the same undoable edit
-  (`analyst-ui.js` `frameAtMoment`, lane E-1).
+- **The step panel** (`views/step-panel.js`): two doors (a map box, a
+  Steps row; a task of the Map's picture is a map box too) open one panel
+  with every occurrence of the step: its moment, a small video,
+  screenshots, what was said, notes. How the transactions ran fits again
+  when the panel opens or closes beside it (`dfg-viewer.js` `resize`). On
+  the Map its head edits the step's name, system and description with the
+  editor's own handlers (`steps-view.js` `panelFieldCallbacks`; text on
+  Steps and read only). It never opens on the Timeline (`opensOn`, lane
+  PANE): there a step opens in the pane beside the video.
+- **The Timeline's pane** (lane PANE, plan section 11.2,
+  `views/timeline-pane.js`, the pure rows in `pane-lists.js`): beside the
+  video, five tabs (`#tp-tabs`, a real tablist): *Steps (n)*,
+  *Transcript*, *Screenshots (n)*, *Notes (n)*, *Files (n)*; a project
+  opens on Steps. The Steps tab lists every step in the order of the
+  process, the ones without a time too (*Starts here* on their row,
+  `flow-view.js` `showHereAt`), grouped under each transaction's header in
+  a recording (the reference first; its name, *Starts at* and *Ends at*
+  from `steps-view.js` `_runTimesEl`, *Rename*, *Delete transaction*: the
+  Markers tab is gone). A row or a step's band opens the step in place,
+  drawn by the Steps editor's own code into another host
+  (`steps-view.js` `renderStepInto`; one host holds the editor at a time,
+  its parts carry ids) with *All steps*, *Previous*, *Next*, *Open in
+  Steps*, *Also happens in* (`step-panel.js` `occurrences`) and Steps'
+  verbs (`stepVerbStates`). A step marked on the Timeline (S, + Step, a
+  right-click, *Add step here*) opens there, its name focused only while
+  the video is paused (`nameTakesFocus`), and takes the video's frame at
+  its moment as an added screenshot in the same undoable edit
+  (`analyst-ui.js` `frameAtMoment`, lane E-1). Notes and Files list every
+  note and attached file; a screenshot or a note clicked on the timeline
+  opens its tab at it.
 - **The Steps page is an editor** (2.0.1, the owner's review): the toolbar
   acts on the selected step (Split..., Merge with next, Hide step, the
   sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a
@@ -454,9 +472,10 @@ the folder.
   label is a verb and its object, a tooltip one sentence saying what the
   click does, no unnamed menu button, a message says what happened.
   The Overview's list holds all the talk while no transaction is marked
-  (E6). *"<step>" starts here* beside *+ Step* (E5, `show-here.js`,
-  `steps-view.js` `showStepAt`) gives a step written first the playhead's
-  moment, its place in the process kept, then selects the next one.
+  (E6). *Starts here* on a step's row in the Timeline's pane (E5, lane
+  PANE; `steps-view.js` `showStepAt`) gives a step written first the
+  playhead's moment, its place in the process kept; the right-click menu's
+  *"<step>" starts here* (`show-here.js`) does it at the moment clicked.
 - **`analysis.json` `format`** (`pipeline_stages.ANALYSIS_FORMAT`, 5 now):
   the viewer analyzes a folder on open when it is missing or lower. 5 (2.0.1)
   cut `pdd_data`, `pdd_time` and `steps_signature`: the Overview no longer

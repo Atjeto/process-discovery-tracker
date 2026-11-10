@@ -356,7 +356,11 @@ async function laneE() {
       const a = await anno();
       const added = a.steps.find((s) => !["n1", "n2", "n3"].includes(s.step_id));
       m.added = { at: sec(Date.parse(added.time_range.start)), shot: (a.analyst_screenshots || []).some((x) => x.step_id === added.step_id && x.source === "video_frame"),
-        tab: await page.evaluate(() => document.querySelector(".anno-tab.active").dataset.anno) };
+        tab: await page.evaluate(() => document.querySelector(".anno-tab.active").dataset.anno),
+        // Lane PANE: the step added opens in place in the pane's Steps tab.
+        opened: await page.evaluate(() => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId || null) };
+      m.added.inPane = m.added.opened === added.step_id;
+      await page.locator("#tp-tab-transcript").click();
       await page.evaluate((id) => require("./state.js").setSelectedStepId(id), added.step_id);
       const row2 = page.locator(".trt-row", { hasText: "out of stock" });
       // Copy to... by the keyboard: one menu, its heading, the step's
@@ -389,11 +393,11 @@ async function laneE() {
       JSON.stringify(m.look.labels) === JSON.stringify(["Add step here|Adds a step that starts where this is said.",
         "Copy to...|Copies this sentence into the description of a step or a field of the document."]) &&
       m.look.idle === "0" && m.look.current === "1" && m.look.display !== "none" && m.look.focused.opacity === "1" && m.look.focused.h === m.look.h &&
-      m.added.at === 19 && m.added.shot && m.added.tab === "transcript" &&
+      m.added.at === 19 && m.added.shot && m.added.tab === "steps" && m.added.inPane &&
       m.menu.head === "Copy this sentence to" && m.menu.items[0] === 'The description of "Step 1"' && m.menu.focus === 'The description of "Step 1"' &&
       m.menu.items.includes("Exceptions") && m.desc && m.doc &&
       JSON.stringify(m.offItem) === '["The description of a step (select a step first)","true"]' && m.off.same && m.off.open;
-    record("(m) lane E, E3: each sentence carries Add step here and Copy to... (transparent on a row neither under the pointer, nor focused, nor the playhead's, shown there, the row's height unchanged); Add step here, by the keyboard, adds a step at its moment with the video's frame, the tab staying open; Copy to... opens one menu, \"Copy this sentence to\", the selected step's description first (focused), then the document's fields (Exceptions); with no step selected the description item says to select one and changes nothing",
+    record("(m) lane E, E3: each sentence carries Add step here and Copy to... (transparent on a row neither under the pointer, nor focused, nor the playhead's, shown there, the row's height unchanged); Add step here, by the keyboard, adds a step at its moment with the video's frame, and (lane PANE) the step opens in place in the pane's Steps tab; back on the Transcript tab, Copy to... opens one menu, \"Copy this sentence to\", the selected step's description first (focused), then the document's fields (Exceptions); with no step selected the description item says to select one and changes nothing",
       ok, JSON.stringify({ err, m }));
     if (!ok) await shot(page, "fail-transcript-lanee-acts.png");
   }

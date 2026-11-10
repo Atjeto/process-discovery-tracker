@@ -1,17 +1,18 @@
 /*
- * flow-view-markers.js -- the Flow level's marker side-panel:
- *   - the markers list: captured markers with annotations.marker_edits laid
- *     over them (marker-edits.js), including markers the analyst inserted,
- *     each change shown at once and tagged "pending" until Apply marker
- *     changes applies it (the call to action lives in the top bar's status
- *     line, flow-view.js),
+ * flow-view-markers.js: the Flow level's marker edits:
  *   - the per-marker move / delete / rename actions, for captured and
  *     inserted markers alike; moveMarker is also the move a transaction's
- *     edge dragged on the timeline makes (flow-view-timeline.js, 2.0.3).
+ *     edge dragged on the timeline makes (flow-view-timeline.js, 2.0.3),
+ *     and renameMarker and deleteMarker the acts of a transaction's header
+ *     in the Timeline's pane (views/timeline-pane.js; lane PANE: the
+ *     Markers tab that listed the markers is gone). Every change shows at
+ *     once, on the timeline, and waits for Apply marker changes in a
+ *     recording (the call to action lives in the top bar's status line,
+ *     flow-view.js).
  *
  * Extracted from flow-view.js (god-file split). Requires flow-view-video.js
- * for seekToTimestamp / videoStartTs (one-way), and never require()s
- * flow-view.js back. flow-view.js consumes renderMarkersList (session load).
+ * for timelineSpan (one-way), and never require()s
+ * flow-view.js back.
  *
  * The marker-INSERT surfaces (showMarkerInsertMenu, queueSyntheticMarker,
  * queueMarkerDelete) stay in flow-view.js with their timeline-right-click /
@@ -21,10 +22,10 @@
 "use strict";
 
 const State = require("../state.js");
-const { $, escapeHtml, cryptoRandomId, toast, recordingStartMs, sinceStart, parseClock } = require("../dom.js");
-const { promptModal, confirmModal } = require("../modals.js");
+const { cryptoRandomId, toast, parseClock } = require("../dom.js");
+const { confirmModal } = require("../modals.js");
 const { persistAnnotations } = require("../session.js");
-const { seekToTimestamp, timelineSpan, playheadMs } = require("./flow-view-video.js");
+const { timelineSpan } = require("./flow-view-video.js");
 const MarkerEdits = require("../marker-edits.js");
 const AC = require("../analyst-content.js");
 const TE = require("../time-edits.js");
@@ -36,7 +37,7 @@ function effectiveLabel(markerEvent) {
   return row ? row.label : ((markerEvent.data || {}).label || null);
 }
 
-/* ============ Markers list + per-marker edits ===================== */
+/* ============ Per-marker edits ===================================== */
 
 const APPLY_NOTE = "it applies to the transactions when you click Apply marker changes";
 
@@ -107,69 +108,6 @@ function markerReasonText(reason) {
   return (typeof reason === "string" && END_REASONS[reason]) || "";
 }
 
-function renderMarkersList() {
-  const host = $("#markers-list");
-  host.innerHTML = "";
-  const all = MarkerEdits.sessionMarkerView(State.getSession());
-  if (!all.length) {
-    // Lane FX3 (validation pass 3, F16): a project with no recording and no
-    // video has no timeline to right-click: it says what makes one.
-    const sess = State.getSession();
-    host.innerHTML = ((sess.events || []).length || sess.recordingAvailable)
-      ? '<p class="hint">No markers yet. To mark a transaction, right-click the timeline where it starts and choose Start a transaction here.</p>'
-      : '<p class="hint">No markers. Transactions are marked on the timeline, which a project without a recording has once a video is attached.</p>';
-    return;
-  }
-  // Story order: by the time shown (moves applied), the time since the
-  // recording started (the one clock). How to edit them is the list's
-  // tooltip (index.html).
-  const moveTitle = State.getSession().recordingAvailable
-    ? "Move to the current video time" : "Move to another time";
-  const origin = recordingStartMs(State.getSession());
-  for (const m of all) {
-    const row = document.createElement("div");
-    row.className = "marker-row " + m.markerType + (m.deleted ? " deleted" : "") +
-      (m.pending ? " pending" : "") + (m.inserted ? " inserted" : "");
-    row.dataset.markerKey = m.key;
-    // An End carries no label: it says what it is. A Start without one too.
-    const lbl = m.label || (m.markerType === "end" ? "End" : "Start");
-    const why = markerReasonText(m.reason);
-    const notes =
-      (m.inserted ? ' <span class="meta">· added</span>' : (m.edited ? ' <span class="meta">· edited</span>' : "")) +
-      (m.deleted ? ' <span class="meta bad">· deleted</span>' : "") +
-      (m.pending ? ' <span class="meta pending-tag" title="Not applied yet: Apply marker changes, in the top bar, applies it">· pending</span>' : "");
-    row.innerHTML =
-      '<span class="ts">' + escapeHtml(sinceStart(m.timestamp, origin)) + '</span>' +
-      '<span class="dir">' + (m.markerType === "start" ? "▶" : "■") + '</span>' +
-      '<span class="lbl">' + escapeHtml(lbl) +
-        (why ? ' <span class="meta">(' + escapeHtml(why) + ')</span>' : '') +
-        notes +
-      '</span>' +
-      '<span class="marker-actions">' +
-        '<button class="icon-btn xs" data-act="adjust" title="' + moveTitle + '">◷</button>' +
-        '<button class="icon-btn xs" data-act="delete" title="Delete marker (from the analysis)">✕</button>' +
-      '</span>';
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".marker-actions")) return;
-      seekToTimestamp(m.timestamp);
-    });
-    if (m.markerType === "start") {
-      row.addEventListener("dblclick", async (e) => {
-        if (e.target.closest(".marker-actions")) return;
-        // Lane HV: a hand-off opened read only renames nothing.
-        if (require("../read-only.js").isReadOnly(State.getSession())) return;
-        const current = m.label || "";
-        const next = await promptModal({ title: "Rename marker", message: "New label", defaultValue: current, okLabel: "Rename" });
-        if (next == null || next.trim() === "" || next === current) return;
-        await renameMarker(m, next.trim());
-      });
-    }
-    row.querySelector('[data-act="adjust"]').addEventListener("click", () => adjustMarkerToVideoTime(m));
-    row.querySelector('[data-act="delete"]').addEventListener("click", () => deleteMarker(m));
-    host.appendChild(row);
-  }
-}
-
 function _annotations() {
   const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
   anno.marker_edits = anno.marker_edits || [];
@@ -206,30 +144,8 @@ function sinceStartToIso(originMs, text) {
   return ms != null && isFinite(originMs) ? new Date(originMs + ms).toISOString() : null;
 }
 
-async function adjustMarkerToVideoTime(m) {
-  if (!State.getSession()) return;
-  // C23: the playhead's moment on the clock, whichever video shows it.
-  const at = playheadMs();
-  let newTs;
-  if (at != null) {
-    newTs = new Date(at).toISOString();
-  } else {
-    // No video to take the time from: ask for the time since the recording
-    // started, as the timeline shows it.
-    const origin = recordingStartMs(State.getSession());
-    const now = sinceStart(m.timestamp, origin);
-    const input = await promptModal({ title: "Move marker", message: "New time",
-      detail: "The time since the recording started, as the timeline shows it, for example " + now + ".",
-      defaultValue: now, okLabel: "Move" });
-    if (input == null) return;
-    newTs = sinceStartToIso(origin, input);
-    if (!newTs) { toast("Type a time such as " + now + ".", "error"); return; }
-  }
-  if (await moveMarker(m, newTs)) toast("Marker moved" + applyNote(State.getSession()) + ".", "success");
-}
-
 /* Move one marker (a row of the marker view) to `newTs`, an ISO time: the
-   Markers list's move and, 2.0.3, a transaction's side dragged on the
+   2.0.3, a transaction's side dragged on the
    timeline or typed in Steps. An inserted marker IS its insert edit, which
    moves itself; a captured marker gets a timestamp edit, or, while an earlier
    move of it still waits for Apply marker changes, that edit takes the new
@@ -289,7 +205,7 @@ function insertMarker(markerType, ts, label, topics) {
 
 /* Take one marker out (a row of the marker view): an added one's insert edit
    goes (with a delete of its id when the last analysis already applied it),
-   a captured one gets a delete edit. The Markers list's Delete, after its
+   a captured one gets a delete edit. Delete transaction, after its
    question, and (2.0.3) an End cleared in Steps. One undoable edit. Resolves
    true when saved. */
 async function removeMarker(m, topics) {
@@ -314,11 +230,20 @@ async function removeMarker(m, topics) {
   return true;
 }
 
+/* What the header's act on a transaction says once it is saved (lane PANE:
+   the header reads Rename and Delete transaction, so the messages name the
+   transaction, not its marker). */
+function _txDone(what) {
+  return what + (appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the steps and the map.");
+}
+
 async function deleteMarker(m) {
   if (!State.getSession()) return;
+  const start = m.markerType === "start";
   const ok = await confirmModal({
-    title: "Delete marker?",
-    message: m.inserted
+    title: start ? "Delete transaction?" : "Delete marker?",
+    message: start ? "Its stretch of the timeline will no longer be a transaction of its own."
+      : m.inserted
       ? `Remove this added ${m.markerType} marker?`
       : `Delete this ${m.markerType} marker from the analysis?`,
     detail: "The recording itself is not changed; the change is saved with the project" +
@@ -327,7 +252,7 @@ async function deleteMarker(m) {
     danger: true,
   });
   if (!ok) return;
-  if (await removeMarker(m)) toast("Marker deleted" + applyNote(State.getSession()) + ".", "success");
+  if (await removeMarker(m)) toast(start ? _txDone("Transaction deleted") : "Marker deleted" + applyNote(State.getSession()) + ".", "success");
 }
 
 async function renameMarker(m, newLabel) {
@@ -353,10 +278,12 @@ async function renameMarker(m, newLabel) {
   // The "markers"/"timeline" topics re-render the side panel and the
   // marker labels on the timeline.
   await persistAnnotations(anno, 'rename marker', ["markers", "timeline"]);
-  toast("Marker renamed" + applyNote(State.getSession()) + ".", "success");
+  toast(_txDone("Transaction renamed"), "success");
 }
 
 module.exports = {
-  effectiveLabel, renderMarkersList, sinceStartToIso, markerReasonText, moveMarker, insertMarker, insertMarkers, removeMarker,
+  effectiveLabel, sinceStartToIso, markerReasonText, moveMarker, insertMarker, insertMarkers, removeMarker,
+  // Lane PANE: a transaction's header in the Timeline's pane.
+  renameMarker, deleteMarker,
   keepApplied, clipStepsToTransactions, appliesItself, applyNote, APPLY_NOTE,
 };

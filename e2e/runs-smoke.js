@@ -939,24 +939,31 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         expected: isFinite(expected) ? new Date(expected).toISOString() : null }));
     if (!ok) await shot(page, "fail-runs-marker-at-click.png");
 
-    // The Markers list: local clock times, as the timeline axis shows them.
+    // Lane PANE: the Markers tab is gone; each transaction's header in the
+    // pane's Steps tab (which the insert opened) shows when it starts, on the
+    // clock the timeline axis shows.
     let rows = null;
     try {
-      await page.waitForSelector("#markers-list .marker-row", { timeout: T });
+      await page.waitForSelector('#tp-steps .tp-tx-head input[data-side="start"]', { timeout: T });
       rows = await page.evaluate(() => {
-        const view = require("./marker-edits.js").sessionMarkerView(require("./state.js").getSession());
-        const byKey = Object.fromEntries(view.map((m) => [m.key, m.timestamp]));
-        return [...document.querySelectorAll("#markers-list .marker-row")].map((r) => ({
-          ts: byKey[r.dataset.markerKey], shown: ((r.querySelector(".ts") || {}).textContent || "").trim(),
-        }));
+        const s = require("./state.js").getSession();
+        const view = require("./marker-edits.js").sessionMarkerView(s);
+        const runs = require("./runs-model.js").buildRuns(s.stats, s.annotations.steps).runs;
+        const TE = require("./time-edits.js");
+        return [...document.querySelectorAll("#tp-steps .tp-tx-head[data-case-id]")].map((h) => {
+          const run = runs.find((r) => r.caseId === h.dataset.caseId);
+          const sides = run ? TE.runSides(run, view) : {};
+          return { ts: sides.start ? sides.start.timestamp : null,
+            shown: ((h.querySelector('input[data-side="start"]') || {}).value || "").trim(), tab: document.getElementById("tp-tab-steps").getAttribute("aria-selected") };
+        });
       });
     } catch (e) { rows = [{ err: errText(e) }]; }
     // V2 item 6: the one clock, the time since the recording started (m:ss).
     const origin = Date.parse(readJson(path.join(SESSION, "manifest.json")).started_at);
     const since = (iso) => { const t = Math.floor((Date.parse(iso) - origin) / 1000); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
-    const bad = (rows || []).filter((r) => r.err || r.shown !== since(r.ts));
-    const ok2 = rows && rows.length >= 9 && bad.length === 0;
-    record("item 8 + V2 item 6: the Markers list shows the time since the recording started (the timeline's clock), never a time of day",
+    const bad = (rows || []).filter((r) => r.err || !r.ts || !(r.shown === since(r.ts) || r.shown.startsWith(since(r.ts) + ".")) || r.tab !== "true");
+    const ok2 = rows && rows.length >= 4 && bad.length === 0;
+    record("item 8 + V2 item 6, lane PANE: the transactions' headers in the pane's Steps tab (opened by the insert) show when each starts as the time since the recording started (the timeline's clock), never a time of day",
       ok2, "rows=" + (rows || []).length + " mismatched=" + JSON.stringify(bad.slice(0, 3)));
   }
 
@@ -1165,6 +1172,90 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         okFold, JSON.stringify({ err: errFold, fold }));
       if (!okFold) await shot(page, "fail-runs-stacked-fold.png");
     }
+  }
+
+  // ---- 13. Lane PANE: the Timeline's pane in a recording ----------------------
+  // The second copy (four transactions, all drafts): the pane's Steps tab
+  // groups the steps under each transaction's header (the reference first,
+  // with Reference, its times typed as Steps types them, Rename and Delete
+  // transaction, each with its tooltip) and offers Confirm transaction; a
+  // drafted step opened from its band says in which other transactions it
+  // happens, Go there opens it there; Rename makes the name a field (Escape
+  // leaves it as it was, Enter saves it as a marker change, pending until
+  // applied); Delete transaction asks first, and Cancel changes nothing.
+  {
+    let err = null;
+    const P = {};
+    try {
+      const A2 = path.join(await page.evaluate(() => require("./state.js").getSession().sessionFolder), "annotations.json");
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+      await page.locator("#tp-tab-steps").click({ timeout: T });
+      if (await page.locator("#tp-steps .tp-back").count()) await page.locator("#tp-steps .tp-back").click({ timeout: T });
+      const heads = () => page.evaluate(() => [...document.querySelectorAll("#tp-steps .tp-tx-head[data-case-id]")].map((h) => ({
+        caseId: h.dataset.caseId, name: (h.querySelector(".tp-tx-name") || {}).textContent || "",
+        ref: !!h.querySelector(".run-pattern-badge"), start: !!h.querySelector('input.time-field[data-side="start"]'),
+        end: !!h.querySelector('input.time-field[data-side="end"]'),
+        rename: (h.querySelector(".tp-tx-rename") || {}).title || null, del: (h.querySelector(".tp-tx-delete") || {}).title || null,
+        rows: h.parentElement.querySelectorAll(".tp-row").length })));
+      P.heads = await heads();
+      P.tools = await page.evaluate(() => [...document.querySelectorAll("#tp-steps .tp-tools button")].map((b) => b.textContent.trim() + "|" + b.title));
+      // A drafted step of the reference transaction, opened from its band.
+      const draft = await page.evaluate((r1) => (require("./state.js").getSession().annotations.steps.find((s) => s.case_id === r1 && s.state === "auto_suggested") || {}).step_id, R1);
+      await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
+        .dispatchEvent(new MouseEvent("click", { bubbles: true })), draft);
+      await page.waitForFunction((id) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === id, draft, { timeout: T });
+      P.also = await page.evaluate(() => ({ lead: ((document.querySelector("#tp-editor .tp-also .step-lead") || {}).textContent || ""),
+        lines: [...document.querySelectorAll("#tp-editor .tp-also li")].map((li) => li.querySelector("span").textContent),
+        go: [...document.querySelectorAll("#tp-editor .tp-go")].map((b) => b.textContent + "|" + b.title + "|" + b.dataset.go),
+        under: !!document.querySelector("#tp-editor #step-facts + .tp-also") }));
+      const target = P.target = (P.also.go[0] || "").split("|")[2];
+      await page.locator("#tp-editor .tp-go").first().click({ timeout: T });
+      await page.waitForFunction((id) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === id, target, { timeout: T });
+      P.went = await page.evaluate(() => ({ sel: require("./state.js").getSelectedStepId(),
+        caseId: (require("./state.js").getSession().annotations.steps.find((s) => s.step_id === require("./state.js").getSelectedStepId()) || {}).case_id }));
+      await page.locator("#tp-steps .tp-back").click({ timeout: T });
+      // Rename the second transaction: Escape first, then Enter.
+      const r2 = page.locator('#tp-steps .tp-tx-head[data-case-id="' + R2 + '"]');
+      await r2.locator(".tp-tx-rename").click({ timeout: T });
+      await page.waitForFunction(() => (document.activeElement || {}).className === "tp-tx-input", null, { timeout: T });
+      await page.keyboard.type(" changed");
+      await page.keyboard.press("Escape");
+      await wait(300);
+      P.escaped = { field: await page.locator("#tp-steps .tp-tx-input").count(), edits: (readJson(A2).marker_edits || []).length };
+      await r2.locator(".tp-tx-rename").click({ timeout: T });
+      await page.keyboard.press("Control+a");
+      await page.keyboard.type("Order 20000");
+      await page.keyboard.press("Enter");
+      const edit = await waitDisk(A2, (x) => (x.marker_edits || []).some((e) => e && e.field === "label" && e.value === "Order 20000"));
+      P.renamed = { onDisk: !!edit, cta: await page.evaluate(() => ((document.getElementById("btn-apply-marker-edits") || {}).textContent || "").trim()) };
+      await page.waitForFunction((r) => /Order 20000/.test((document.querySelector('#tp-steps .tp-tx-head[data-case-id="' + r + '"] .tp-tx-name') || {}).textContent || ""), R2, { timeout: T });
+      P.renamed.name = await r2.locator(".tp-tx-name").textContent();
+      // Delete transaction asks first; Cancel changes nothing.
+      const n0 = (readJson(A2).marker_edits || []).length;
+      await page.locator('#tp-steps .tp-tx-head[data-case-id="' + R4 + '"] .tp-tx-delete').click({ timeout: T });
+      await page.waitForSelector(".modal-confirm", { timeout: T });
+      P.ask = ((await page.locator(".modal-confirm").textContent()) || "").replace(/\s+/g, " ").trim();
+      await page.locator(".modal-confirm .modal-cancel").click({ timeout: T });
+      await wait(300);
+      P.cancelled = (readJson(A2).marker_edits || []).length === n0;
+    } catch (e) { err = errText(e); }
+    const H = P.heads || [];
+    record("lane PANE item 5: in a recording the pane's Steps tab groups the steps under each transaction's header, the reference first (Reference), each with its Starts at and Ends at fields, Rename (\"Changes the name of this transaction.\") and Delete transaction, and Confirm transaction above the list",
+      !err && H.length === RUNS.length && H[0].caseId === R1 && H[0].ref && H.slice(1).every((h) => !h.ref) && H.every((h) => h.start && h.end && h.rows > 0) &&
+        H.every((h) => h.rename === "Changes the name of this transaction." &&
+          h.del === "Deletes this transaction: its stretch of the timeline is no longer a transaction of its own. Ctrl+Z brings it back.") &&
+        P.tools.some((t) => t.startsWith("Confirm transaction|")) && P.tools[0].startsWith("Paste notes...|"),
+      JSON.stringify({ err, heads: H, tools: P.tools }));
+    record("lane PANE item 3: a drafted step opened from its band says, under its line of facts, Also happens in, a line per other transaction (\"Transaction 2 (...) at m:ss\") with Go there; Go there opens that one in place",
+      !err && !!P.also && P.also.lead === "Also happens in" && P.also.under && P.also.lines.length >= 1 &&
+        P.also.lines.every((l) => /^Transaction \d+( \(.+\))? at \d+:\d{2}$/.test(l)) &&
+        P.also.go.every((g) => g.startsWith("Go there|Opens this step in that transaction.|")) &&
+        !!P.went && P.went.sel === P.target && P.went.caseId !== R1,
+      JSON.stringify({ err, also: P.also, went: P.went }));
+    record("lane PANE item 5: Rename makes the name a field; Escape leaves it as it was (no change saved); Enter saves the new name as a marker change (Apply 1 marker change offered), and the header shows it; Delete transaction asks first (the Markers tab's own question) and Cancel changes nothing",
+      !err && !!P.escaped && P.escaped.field === 0 && P.renamed && P.renamed.onDisk && /^Apply \d+ marker changes?$/.test(P.renamed.cta) &&
+        /Order 20000/.test(P.renamed.name || "") && /Delete transaction\?/.test(P.ask || "") && P.cancelled,
+      JSON.stringify({ err, escaped: P.escaped, renamed: P.renamed, ask: P.ask, cancelled: P.cancelled }));
   }
 
   record("zero PAGE ERRORs", pageErrors.length === 0,

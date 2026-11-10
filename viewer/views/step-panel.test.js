@@ -4,8 +4,9 @@
  * Unit tests for the pure rules of views/step-panel.js that lane E-1 added:
  * when a step just marked on the Timeline puts the cursor in its name
  * (nameTakesFocus: paused yes, playing never, read only never) and where the
- * panel's head is fields (headEditable: the Timeline and the Map, never on
- * Steps beside the editor, never read only); and views/flow-view-video.js
+ * panel's head is fields (headEditable: the Map, never on Steps beside the
+ * editor, never read only; lane PANE: opensOn, the panel never opens on the
+ * Timeline); and views/flow-view-video.js
  * isPlaying, which says "playing".
  *
  * step-panel.js wires its page at require() time, so a permissive document
@@ -60,13 +61,20 @@ test("nameTakesFocus: never in a project open read only", () => {
   assert.equal(SP.nameTakesFocus({ playing: false, readOnly: true }), false);
 });
 
-test("headEditable: the panel's head is fields on the Timeline and the Map only, and never read only", () => {
-  assert.equal(SP.headEditable("flow", false), true);
+test("headEditable: the panel's head is fields on the Map only, and never read only", () => {
+  assert.equal(SP.headEditable("flow", false), false, "lane PANE: the panel no longer opens on the Timeline");
   assert.equal(SP.headEditable("map", false), true);
   assert.equal(SP.headEditable("steps", false), false, "on Steps the editor beside it is where the step is written");
   assert.equal(SP.headEditable("overview", false), false);
   assert.equal(SP.headEditable("flow", true), false);
   assert.equal(SP.headEditable("map", true), false);
+});
+
+test("lane PANE: the panel opens on the Map and on Steps, never on the Timeline or the Overview", () => {
+  assert.equal(SP.opensOn("map"), true);
+  assert.equal(SP.opensOn("steps"), true);
+  assert.equal(SP.opensOn("flow"), false, "a step opens in the pane beside the video there");
+  assert.equal(SP.opensOn("overview"), false);
 });
 
 test("the head's fields have ids of their own, never the editor's", () => {

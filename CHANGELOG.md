@@ -8,6 +8,31 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The pane beside the video on the Timeline.** One pane with a tab for
+  each kind of thing the project holds: *Steps (n)*, *Transcript*,
+  *Screenshots (n)*, *Notes (n)* and *Files (n)*, real tabs to a screen
+  reader (Left and Right move between them), kept while the window lives; a
+  project opens on Steps. The Steps tab lists every step in the order of the
+  process, the steps without a time too, grouped under each transaction's
+  header in a recording (the reference first); a row says its number, name,
+  system (or *No system yet*, then *no name yet* and *no description yet*
+  where they apply), *Draft* on a draft and when it starts, and the row at
+  the clock's moment says *now*. A step without a time has *Starts here* on
+  its row (the toolbar's *"<step>" starts here* left; the right-click entry
+  stays). A row, or a step's band on the timeline, opens the step in place,
+  drawn and saved by the Steps editor's own code, with *All steps*,
+  *Previous*, *Next*, "Step 3 of 7", *Open in Steps*, in a recording *Also
+  happens in* with *Go there*, and Steps' *Split...*, *Merge with next*,
+  *Hide step* and *Delete* under it; Escape goes back to the list. A step
+  marked with S, + Step, a right-click or *Add step here* opens there too.
+  Notes lists every note with its moment, *Edit* and *Delete*, and *Add
+  note*; Files every attached file with *Open* and *Remove*, and *Attach
+  file...*. A click on a screenshot or a note on the timeline opens its tab
+  at it. A transaction's header carries its name, *Reference*, *Starts at*
+  and *Ends at*, *Rename* and *Delete transaction*, and why the capture app
+  ended it when it did so by itself: the **Markers tab is gone**. The step
+  panel no longer opens on the Timeline, so the timeline keeps its width
+  with a step open; on the Map and on Steps it opens as before.
 - **The next act and Undo in the top bar.** On the Timeline, Steps and the
   Map the top bar names the Checklist's next act ("Next: write the steps (1
   of 7)", the count the Checklist keeps); a click opens the Overview with

@@ -18,14 +18,16 @@
 | [`left-out.js`](../../viewer/left-out.js) | Pure (lane E): the stretches put aside, the skip when playing, the sentences left out, the words of a recording and of a project without one. Unit-tested. |
 | [`show-here.js`](../../viewer/show-here.js) | Pure (lane E): the step "<step>" starts here acts on, the next one, the place it keeps. Unit-tested. |
 | [`views/flow-view.js`](../../viewer/views/flow-view.js) | The timeline's menus (a right-click starts or ends a transaction, adds a note, adds a step, gives a step written first its moment, jumps to a step; a transaction band's menu), range selection with Leave out of the analysis or Not part of the process, Include again, "<step>" starts here, the Transaction select. |
-| [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The Markers panel, and `moveMarker` (the move a dragged transaction side makes). |
+| [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The marker edits: `moveMarker` (the move a dragged transaction side makes), `renameMarker` and `deleteMarker` (a transaction's header in the pane). |
+| [`views/timeline-pane.js`](../../viewer/views/timeline-pane.js) | Lane PANE: the pane beside the video (five tabs; the Steps tab's list, the step opened in place, the transactions' headers; Notes; Files). |
+| [`pane-lists.js`](../../viewer/pane-lists.js) | Pure (lane PANE): the pane's groups and rows, the hint line, the acts above the list, Previous and Next, the notes and files rows. Unit-tested. |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The resize handles and the video modes. |
 
 ## The one clock
 
 Every time the Timeline shows is the time since the recording started
 (AD-26): the tick labels, the tooltips of activity bands, screenshots and
-notes, the Markers panel, the screenshot stamps and the transcript rows, as m:ss, or
+notes, the pane's rows and transactions' headers, the screenshot stamps and the transcript rows, as m:ss, or
 h:mm:ss from an hour. The origin is `manifest.started_at`, else the first
 event (`dom.recordingStartMs`); `chooseTicks(start, end, count, origin)`
 counts its ticks from it. The step pane, the step panel and the PDD's
@@ -49,9 +51,10 @@ place only: the summary line above the timeline, "Recorded <date> <time> ·
   timeline shows one line, "No recording and no video in this project.",
   with *Attach video...* (`#tl-empty`). The legend and the minimap hide, and
   so do the controls that act on a drawn timeline (the Transaction select,
-  Lanes, the zoom) and the video band (lane FX3); the Markers tab says that
-  transactions are marked on the timeline, which such a project has once a
-  video is attached, and the Steps list says the same.
+  Lanes, the zoom) and the video band (lane FX3); the pane's Steps tab
+  offers *Add step* and *Paste notes...* (lane PANE), and the Steps list
+  says that transactions are marked on the timeline once a video is
+  attached.
 
 ## The lanes
 
@@ -347,25 +350,31 @@ moment on the clock, whichever video shows it (`playheadMs`).
   most a few seconds), written as an added screenshot and named in the same
   undoable edit as the step (`steps-view.js` `addStepAtTimestamp`, which
   knows what it would add before the file is written); no frame, no
-  picture, and nothing said. The step then opens in the step panel, its
-  name focused and selected unless the video is playing. A step deleted
+  picture, and nothing said. The step then opens in place in the pane's
+  Steps tab beside the video (lane PANE), its name focused and selected
+  unless the video is playing; Enter then leaves the name, so Space plays
+  on. A step deleted
   takes its added screenshots with it, and a step merged into another
   hands them to it.
-- **"<step>" starts here** (lane E, E5; beside + Step, only with a video,
-  `#btn-show-here`): the button names the step it acts on (`show-here.js`
-  `targetOf`: the selected step when its time is the analyst's to set, else
-  the first step without a time in the process order; none, hidden; the
-  name ends in an ellipsis inside the quotes so the header never wraps).
-  A click gives that step the playhead's moment (`steps-view.js`
+- **Starts here** (lane E, E5; lane PANE: on the row of each step
+  without a time in the pane's Steps tab, only with a video,
+  `#tp-steps .tp-here`; the toolbar's `"<step>" starts here` left, the act
+  sits on the step). A click gives that step the playhead's moment
+  (`flow-view.js` `showHereAt`, `steps-view.js`
   `showStepAt`): a start typed's rules (`time-edits.js` `placeUntimed`, a
   step of the analyst's it lands in cut there), its place in the process
   kept (`show-here.js` `keepPlace`, deriveOrder's fewest placements) unless
   it joins another transaction, the video's frame as its screenshot when it
-  has none; one undoable edit. Then the next step without a time is
-  selected (`nextAfter`). The timeline's right-click menu offers the same
-  under *Add a step here*, at the moment clicked.
-- A step's own playback is in the step panel (Watch), beside the steps,
-  from the video that shows its moment.
+  has none; one undoable edit. The step stays selected and its row keeps
+  the focus. The timeline's right-click menu offers the same under *Add a
+  step here*, at the moment clicked, on the step `show-here.js` `targetOf`
+  names (the selected step when its time is the analyst's to set, else the
+  first step without a time), then selects the next one (`nextAfter`).
+- A click on a step band opens the step in place in the pane beside the
+  video, the clock at its start (a paused video stays paused); a
+  screenshot or a note on the timeline opens its tab at it. The step panel
+  no longer opens on the Timeline (lane PANE); its own playback (Watch)
+  is on Steps and the Map.
 - The playback bar at the bottom of the window covers the videos on the
   clock, from the first one's start: play, back and forward 5 s (the arrow
   keys too, across the videos), a scrub bar and the times.

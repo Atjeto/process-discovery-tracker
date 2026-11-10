@@ -36,7 +36,7 @@ const LeftOut = require("../left-out.js");
 const SPM = require("../sub-process-maps.js");
 const StepOrder = require("../step-order.js");
 const RO = require("../read-only.js");
-const { openScreenshot, timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
+const { timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 const { videoLane: makeVideoLane } = require("./video-lane.js");
 const { moveMarker, insertMarker, applyNote } = require("./flow-view-markers.js");
@@ -1329,8 +1329,16 @@ function renderTimeline() {
         dot.style.left = "calc(" + x + "% - 8px)";
         dot.style.top = markY + "px";
         dot.innerHTML = SCREENSHOT_ICON;
-        dot.title = added ? screenshotTitle(ev, origin) : "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "");
-        dot.addEventListener("click", (e) => { e.stopPropagation(); openScreenshot(ev.data.path); });
+        dot.title = (added ? screenshotTitle(ev, origin) : "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "")) +
+          "\nClick: show it in the Screenshots tab beside the video, and go to its moment.";
+        // Lane PANE: the Screenshots tab at this screenshot, the clock at its
+        // moment (the tab's own click opens it full size).
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const Pane = require("./timeline-pane.js");   // lazy: it requires this module's neighbours
+          Pane.showScreenshot(ev.data.path);
+          Pane.seekTo(Date.parse(ev.timestamp));
+        });
         host.appendChild(dot);
       }
     },
@@ -1410,7 +1418,7 @@ function renderTimeline() {
         band.title = lbl + " · " + (open ? "open: it ends where you add the next step, or where its transaction ends"
           : formatDuration(sEnd - sStart)) +
           (placed ? "\n" + placed : "") +
-          "\nClick: the step panel, and seek (Steps then opens on it) · Right-click: add the next step here, or Open in Steps, Place after a step, Hide or Delete" +
+          "\nClick: open this step beside the video, and go to its start · Right-click: add the next step here, or Open in Steps, Place after a step, Hide or Delete" +
           (movable ? "\nDrag its " + (open ? "start" : "start or its end") + " to change its time." : "");
         if (s.step_id) band.dataset.stepId = s.step_id;
         // 2.0.3: a step whose time is the analyst's drags its sides; a step
@@ -1434,7 +1442,6 @@ function renderTimeline() {
           host.querySelectorAll(".tl-step-band.tl-step-selected")
             .forEach((b) => b.classList.remove("tl-step-selected"));
           band.classList.add("tl-step-selected");
-          if (s.time_range && s.time_range.start) seekToTimestamp(s.time_range.start);
           // 2.0.1: Steps opens on this step (its transaction open, the row in
           // view), not on the step a seek would park for it.
           if (s.step_id) {
@@ -1442,10 +1449,12 @@ function renderTimeline() {
             State.setSelectedStepId(s.step_id);
             State.setPendingStepReveal();
           }
-          // V2 item 4: the step panel opens beside the timeline (lazy: the
-          // panel requires the video module this one requires too).
+          // Lane PANE: the step opens in place in the pane beside the video
+          // (lazy: the pane requires this module's neighbours), and the clock
+          // goes to its start, a paused video staying paused.
           const hit = SPM.findStep(_anno.steps || [], s.step_id);
-          if (hit) require("./step-panel.js").openForStep(hit.step);
+          if (hit) require("./timeline-pane.js").openStep(hit.step.step_id, { seek: false, from: hit.step.step_id });
+          if (s.time_range && s.time_range.start) require("./timeline-pane.js").seekTo(Date.parse(s.time_range.start));
         });
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -1472,8 +1481,14 @@ function renderTimeline() {
         pin.style.left = "calc(" + (((Date.parse(n.at) - first) / span) * 100) + "% - 7px)";
         pin.style.top = (ctx.slot.top + 2) + "px";
         pin.textContent = "✎";
-        pin.title = "Note at " + sinceStart(n.at, origin) + "\n" + n.text + "\nClick: go to this moment. Right-click: edit or delete it.";
-        pin.addEventListener("click", (e) => { e.stopPropagation(); seekToTimestamp(n.at); });
+        pin.title = "Note at " + sinceStart(n.at, origin) + "\n" + n.text + "\nClick: show it in the Notes tab beside the video, and go to this moment. Right-click: edit or delete it.";
+        pin.addEventListener("click", (e) => {
+          e.stopPropagation();
+          // Lane PANE: the Notes tab at this note, the clock at its moment.
+          const Pane = require("./timeline-pane.js");
+          Pane.showNote(n.id);
+          Pane.seekTo(Date.parse(n.at));
+        });
         pin.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();

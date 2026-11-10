@@ -171,13 +171,13 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 3. Where the transaction ends, right-click and choose *End the transaction
    here*: its last step ends there too. *Start a transaction here* for the
    next one ends the one before it the same way.
-4. Each step you add opens in the step panel beside the video, its
+4. Each step you add opens beside the video, in the *Steps* tab, its
    screenshot taken from the video at that moment. Pause the video before
    you press S, and the cursor is in the step's name: type the name, press
    Enter, and play on. Its system and its description are right under the
    name. While the video plays, S only marks the steps: name them in the
-   panel or in Steps afterwards. Ctrl+Z takes back a mark put in the wrong
-   place, with its screenshot.
+   *Steps* tab or in Steps afterwards. *All steps* goes back to the list.
+   Ctrl+Z takes back a mark put in the wrong place, with its screenshot.
 5. The *Transcript* tab beside the video lists what was said, with its time
    and who said it. Type in its search to find a word, for example
    *invoice*: it shows how many sentences hold it. With several speakers,
@@ -188,14 +188,13 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    sentence, adds a step that starts where it is said. *Copy to...* copies
    the sentence into the description of the selected step or into a field
    of the document.
-7. Steps written first, from your notes, have no time. Go to the moment of
-   the first one and click *"Open the order" starts here*, beside *+ Step*
-   (the button names the step): the step starts at that moment and, without
-   a picture, takes the video's frame there. Its place among the steps
-   stays. The next step without a time is then selected and the button names
-   it: go to its moment and click again. Select a step you added to give it
-   another start. Right-clicking the timeline offers the same at the moment
-   you click, and Ctrl+Z undoes it.
+7. Steps written first, from your notes, have no time: the *Steps* tab
+   beside the video says how many, and each of them has *Starts here* on its
+   row. Go to the moment a step starts in the video, then click *Starts here*
+   on that step: the step starts at that moment and, without a picture,
+   takes the video's frame there. Its place among the steps stays.
+   Right-clicking the timeline offers the same at the moment you click,
+   naming the step, and Ctrl+Z undoes it.
 
 ### Put a step where it belongs in the process
 

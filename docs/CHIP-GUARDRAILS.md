@@ -416,10 +416,30 @@ the focus with `document.activeElement` against it. A menu's button carries
   only for a video the analyst attached), the sync card `#video-sync-card`
   (`.vs-mark`, `.vs-cancel`; the transcript's is `#transcript-sync-card`),
   `#btn-video-expand`, `#btn-video-fullscreen`.
-- Side panel: `.anno-tab[data-anno="screens"|"markers"]`; `#screenshots-grid`,
-  `#btn-open-gallery` (the gallery `#screenshot-gallery`); `#markers-list
-  .marker-row` with `[data-act="adjust"|"delete"]` (double-click a Start to
-  rename it).
+- The pane beside the video (lane PANE, `#timeline-pane`,
+  `views/timeline-pane.js`): the tablist `#tp-tabs` (`.short` when the
+  counts drop) of `.anno-tab[role=tab]` `#tp-tab-steps|transcript|screens|notes|files`
+  (`data-anno` the same; `aria-selected`, `aria-label` "Steps (5)"), each
+  with its `.anno-panel[role=tabpanel]` `#tp-panel-<name>`; no Markers tab.
+  Steps `#tp-steps`: `.tp-tools` (`.tp-paste`, `.tp-add`, `.tp-confirm`,
+  `.tp-undo-confirm`), `.tp-hint`, per transaction `.tp-tx-head[data-case-id]`
+  (`.tp-tx-name`, `.run-pattern-badge`, `.tp-tx-rename` making the field
+  `.tp-tx-input`, `.tp-tx-delete`, `.tp-tx-why`, `.run-times` with
+  `input.time-field[data-side]`), the rows `.tp-item[data-step-id]` with
+  `.tp-row` (`.tp-num`, `.tp-name`, `.tp-meta`, `.tp-draft`, `.tp-when`,
+  `.tp-now` shown on `.tp-row.now`, `aria-current` on the selected one) and
+  `.tp-here` (Starts here). A step opened in place: `.tp-nav` (`.tp-back`,
+  `.tp-prev`, `.tp-next` with `aria-disabled` at the ends, `.tp-pos`,
+  `.tp-open-steps`), the Steps editor in `#tp-editor` (its own ids:
+  `#step-name`, `#step-desc`...; `data-step-id` the step drawn; *Also
+  happens in* `.tp-also` with `.tp-go[data-go]`), `.tp-verbs .tp-verb[data-verb="split"|"merge"|"hide"|"delete"]`.
+  Notes `#tp-notes` (`.tp-add-note`, `.tp-note-row[data-note-id]` with
+  `.tp-at`, `.tp-note-edit`, `.tp-note-delete`), Files `#tp-files`
+  (`.tp-attach`, `.tp-file-row[data-att-id]` with `.tp-file-step`,
+  `.tp-file-open`, `.tp-file-remove`). Screenshots: `#screenshots-grid`
+  (`.thumb[data-rel]`, `.tp-here-item` on one a lane's click opened),
+  `#btn-open-gallery` (the gallery `#screenshot-gallery`). The step editor
+  is in one host at a time: on the Timeline `#step-detail` is empty.
 - Raw events: `.event-table-host` (a `<details>`, shown on the Timeline
   only, and only when the project has events), `#event-table`,
   `#event-filter`.
@@ -528,7 +548,7 @@ task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 video has no moment of the row: not covered, or no time; lane FX2), the
 foot `#btn-sp-steps` or
 `#btn-sp-timeline` and, for a sub-process, `#btn-sp-open-sub`, `#btn-sp-close`.
-Lane E-1, on the Timeline and the Map only: `#sp-name-edit` holds the name
+Lane PANE: never on the Timeline. Lane E-1, on the Map only: `#sp-name-edit` holds the name
 field `#sp-name-input` (its picker `#sp-activity-list`, its quiet line
 `#sp-lib-note`; `#sp-name` keeps the name, `.sr-only`), and `#sp-fields`
 holds the System field `#sp-system` (in `.sp-system`, the screen

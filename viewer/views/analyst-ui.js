@@ -241,13 +241,22 @@ function wireSystemField(sys, step, isRendering) {
   sys.addEventListener("blur", commit);
 }
 
+/* The hosts of the step editor: the Steps pane, and (lane PANE) the step
+   opened in the Timeline's pane (views/timeline-pane.js). */
+const EDITOR_HOSTS = "#step-detail, #tp-editor";
+
+/* The step editor's host that holds `el`, or null. */
+function _editorHost(el) {
+  return el && el.closest ? el.closest(EDITOR_HOSTS) : null;
+}
+
 /* The three sections' clicks, delegated once: they act on the step the pane
-   shows (the selected step). */
+   shows (the selected step; the host names the step it draws). */
 if (typeof document !== "undefined") document.addEventListener("click", (e) => {
-  const pane = document.getElementById("step-detail");
   const t = e.target && e.target.closest ? e.target : null;
-  const stepId = State.getSelectedStepId();
-  if (!pane || !t || !pane.contains(t) || !stepId || !_sess()) return;
+  const pane = _editorHost(t);
+  const stepId = (pane && pane.dataset.stepId) || State.getSelectedStepId();
+  if (!pane || !t || !stepId || !_sess()) return;
   const card = t.closest(".step-shot-card");
   const shotAct = t.closest("[data-shot-act]");
   if (shotAct) {
@@ -571,14 +580,17 @@ async function showHiddenShots(stepId) {
 /* Ctrl+V in the step pane: an image on the clipboard becomes a screenshot of
    the selected step (text pasted into a field stays text). */
 if (typeof document !== "undefined") document.addEventListener("paste", (e) => {
-  const pane = document.getElementById("step-detail");
+  // Lane PANE: the Steps pane on Steps, the step opened in the Timeline's
+  // pane on the Timeline.
+  const level = State.getLevel();
+  const pane = document.getElementById(level === "steps" ? "step-detail" : level === "flow" ? "tp-editor" : "");
   const active = document.activeElement;
-  if (!pane || !_sess() || State.getLevel() !== "steps" || !active || !(active === pane || pane.contains(active))) return;
+  if (!pane || !_sess() || !active || !(active === pane || pane.contains(active))) return;
   // Lane HV: nothing is added to a hand-off opened read only.
   if (RO.isReadOnly(_sess())) return;
   const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
   const img = items.find((i) => i.kind === "file" && /^image\/(png|jpeg)$/.test(i.type));
-  const stepId = State.getSelectedStepId();
+  const stepId = pane.dataset.stepId || State.getSelectedStepId();
   if (!img || !stepId) return;
   if ((active.tagName === "INPUT" || active.tagName === "TEXTAREA") && items.some((i) => i.type === "text/plain")) return;
   e.preventDefault();

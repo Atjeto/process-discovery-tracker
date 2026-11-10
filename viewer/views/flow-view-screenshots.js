@@ -77,6 +77,8 @@ function renderScreenshots() {
   for (const s of shots) {
     const card = document.createElement("div");
     card.className = "thumb";
+    // Lane PANE: a lane's screenshot opens this tab at its card.
+    card.dataset.rel = s.data.path;
     const fullPath = path.join(State.getSession().sessionFolder, s.data.path);
     if (fs.existsSync(fullPath)) {
       const img = document.createElement("img");

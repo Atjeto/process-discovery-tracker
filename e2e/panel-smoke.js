@@ -199,6 +199,23 @@ const headState = (page) => page.evaluate(() => {
     focus: (document.activeElement || {}).id || "" };
 });
 
+/* Lane PANE: the step opened in place in the Timeline's pane (the Steps
+   editor's own fields, in #tp-editor), what the pane offers on it, and the
+   step panel, which no longer opens on the Timeline. */
+const paneState = (page) => page.evaluate(() => {
+  const ed = document.getElementById("tp-editor");
+  const n = ed && ed.querySelector("#step-name");
+  const a = document.activeElement;
+  const vd = document.getElementById("video");
+  return { open: ed ? ed.dataset.stepId : null, input: n ? n.value : null, readOnly: n ? n.readOnly : null,
+    system: !!(ed && ed.querySelector("#step-system")), desc: !!(ed && ed.querySelector("#step-desc")),
+    panelHidden: document.getElementById("step-panel").hidden,
+    verbs: [...document.querySelectorAll("#tp-steps .tp-verb")].filter((b) => !b.hidden && b.getClientRects().length).map((b) => b.textContent.trim()),
+    tools: [...document.querySelectorAll("#tp-steps .tp-tools button, #tp-steps .tp-here, #tp-steps .tp-tx-rename, #tp-steps .tp-tx-delete")].length,
+    focus: a ? (a.id || a.className || "") : "", row: a && a.classList && a.classList.contains("tp-row") ? a.dataset.stepId : null,
+    video: vd ? { t: vd.currentTime, paused: vd.paused } : null };
+});
+
 /* The line above the rows, as the rows shown make it (step-facts.js builds
    it; the unit tests pin its wording): "Transaction N" read from each row,
    the rows with a play, and (lane FX2) the rows the video does not cover. */
@@ -446,12 +463,16 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     // video again and plays it.
     const again = twice.st.rows[2] || {};
     twice.againId = again.id;
-    at("(g2) open the panel on a row past the video's end (its Timeline band)");
-    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
-    await page.waitForSelector('#timeline .tl-step-band[data-step-id="' + again.id + '"]', { timeout: T });
+    at("(g2) open the panel on a row past the video's end (its row in Steps)");
+    // Lane PANE: the panel no longer opens on the Timeline; Steps opens it on
+    // its selected row (the arrival Open in Steps makes).
     await page.evaluate((id) => {
-      document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const S = require("./state.js");
+      S.consumePendingStepJump();
+      S.setSelectedStepId(id);
+      S.setPendingStepReveal();
     }, again.id);
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
     await page.waitForFunction((id) => !!document.querySelector('#sp-body .sp-occ.focus[data-step-id="' + id + '"]'), again.id, { timeout: T });
     twice.outside = await panelState(page);
     at("(g2) press the covered row's play");
@@ -464,7 +485,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   } catch (e) { twice.err = errText(e); }
   const tr = (twice.st && twice.st.rows) || [];
   const out = twice.outside || {};
-  record("(g2) the owner's review + lane FX2: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row; the rows past the video's end say so, with no play; opened on one of them (its Timeline band) the panel hides its video and says why; Transaction 1's play moves the highlight there, shows the video and plays it",
+  record("(g2) the owner's review + lane FX2: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row; the rows past the video's end say so, with no play; opened on one of them (its row in Steps) the panel hides its video and says why; Transaction 1's play moves the highlight there, shows the video and plays it",
     !!(!twice.err && twice.st.explain === "This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers." &&
       JSON.stringify(tr.map((r) => r.at.split(" · ")[0])) === JSON.stringify(["Transaction 1", "Transaction 2", "Transaction 2, again", "Transaction 3", "Transaction 4"]) &&
       tr[0].play && !tr[0].nocover && tr.slice(1).every((r) => !r.play && r.nocover === StepFacts.NOT_COVERED) && twice.cue.ok &&
@@ -481,44 +502,54 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
     await page.waitForSelector('#timeline .tl-step-band[data-step-id="' + OPEN.step_id + '"]', { timeout: T });
     fromBand.laneOn = await page.evaluate(() => document.querySelector('#lanes-popup input[data-lane="steps"]').checked);
+    await page.evaluate(() => { const vd = document.getElementById("video"); if (vd && !vd.paused) vd.pause(); });
     await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
       .dispatchEvent(new MouseEvent("click", { bubbles: true })), OPEN.step_id);
-    await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, OPEN.name, { timeout: T });
-    fromBand.cue = await cued(OPEN);
-    fromBand.st = await panelState(page);
-    await page.locator("#sp-body .sp-occ.focus .sp-play").click({ timeout: T });
-    Object.assign(fromBand, await played(OPEN));
+    await page.waitForFunction((id) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === id, OPEN.step_id, { timeout: T });
+    const want = expectAt(OPEN);
+    fromBand.cued = await page.waitForFunction((w) => { const vd = document.getElementById("video");
+      return !!(vd && vd.paused && !vd.seeking && Math.abs(vd.currentTime - w) <= 0.3); }, want, { timeout: T }).then(() => true, () => false);
+    fromBand.st = await paneState(page);
+    fromBand.band = await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]').classList.contains("tl-step-selected"), OPEN.step_id);
   } catch (e) { fromBand.err = errText(e); }
-  record("(c2) V2 items 4 and 8: the Steps lane is on by default, and a click on its band opens the panel on that step, its video cued there (the row highlighted), and plays it",
-    !!(!fromBand.err && fromBand.laneOn && fromBand.ok && fromBand.cue.ok && fromBand.st.rows.some((r) => r.focus && r.id === OPEN.step_id)),
+  record("(c2) V2 items 4 and 8, lane PANE: the Steps lane is on by default, and a click on its band opens that step in place in the pane beside the video (its band outlined, the step panel closed: the timeline keeps its width), the video at its start and still paused",
+    !!(!fromBand.err && fromBand.laneOn && fromBand.cued && fromBand.st.open === OPEN.step_id && fromBand.st.input === OPEN.name &&
+      fromBand.st.panelHidden && fromBand.band && fromBand.st.video.paused),
     JSON.stringify(fromBand));
 
-  // (E1-timeline) Lane E-1: on the Timeline the panel's head edits the step
-  // it is on: keys typed there stay in the field (S adds no step), Escape
-  // puts the name back and leaves, Enter saves a rename and leaves (the band
-  // shows it), and Ctrl+Z takes it back.
+  // (E1-timeline) Lane E-1, lane PANE: on the Timeline the step opened in
+  // the pane edits the step it is on (the Steps editor's fields): keys typed
+  // there stay in the field (S adds no step), Escape puts the name back,
+  // leaves and goes back to the list (the focus on the step's row), Enter
+  // saves a rename and leaves (the band shows it), and Ctrl+Z takes it back.
   let head = {};
+  const openBand = async () => {
+    await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
+      .dispatchEvent(new MouseEvent("click", { bubbles: true })), OPEN.step_id);
+    await page.waitForFunction((id) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === id, OPEN.step_id, { timeout: T });
+  };
   try {
-    head.before = await headState(page);
+    head.before = await paneState(page);
     const stepsNow = () => page.evaluate(() => (require("./state.js").getSession().annotations.steps || []).length);
     const nameOf = () => page.evaluate((id) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === id) || {}).name, OPEN.step_id);
     head.n0 = await stepsNow();
-    await page.locator("#sp-name-input").click({ timeout: T });
+    await page.locator("#tp-editor #step-name").click({ timeout: T });
     await page.keyboard.press("Control+A");
     await page.keyboard.type("Look up the customer s");
     await wait(400);
-    head.typed = { value: await page.locator("#sp-name-input").inputValue(), steps: await stepsNow() };
+    head.typed = { value: await page.locator("#tp-editor #step-name").inputValue(), steps: await stepsNow() };
     await page.keyboard.press("Escape");
-    await wait(300);
-    head.escaped = Object.assign(await headState(page), { name: await nameOf() });
-    await page.locator("#sp-name-input").click({ timeout: T });
+    await wait(400);
+    head.escaped = Object.assign(await paneState(page), { name: await nameOf() });
+    await openBand();
+    await page.locator("#tp-editor #step-name").click({ timeout: T });
     await page.keyboard.press("Control+A");
     await page.keyboard.type("Open the customer record");
     await page.keyboard.press("Enter");
     await page.waitForFunction(([id, n]) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === id) || {}).name === n,
       [OPEN.step_id, "Open the customer record"], { timeout: T });
     await wait(500);
-    head.renamed = Object.assign(await headState(page), {
+    head.renamed = Object.assign(await paneState(page), {
       band: await page.evaluate((id) => { const b = document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]');
         return b ? ((b.textContent || "") + " | " + (b.title || "")) : ""; }, OPEN.step_id) });
     await page.screenshot({ path: path.join(__dirname, "panel-smoke-timeline-head.png") }).catch(() => {});
@@ -526,13 +557,13 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.waitForFunction(([id, n]) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === id) || {}).name === n,
       [OPEN.step_id, OPEN.name], { timeout: T });
     await wait(400);
-    head.undone = await headState(page);
+    head.undone = await paneState(page);
   } catch (e) { head.err = errText(e); }
-  record("(E1-timeline) lane E-1: on the Timeline the panel's head is the step's name, system and description as fields; S typed in the name stays there (no step added), Escape puts the name back and leaves the field, Enter saves a rename and leaves it (the band shows the new name), and Ctrl+Z takes it back",
-    !!(!head.err && head.before.input === OPEN.name && head.before.system && head.before.desc && head.before.headingHidden &&
+  record("(E1-timeline) lane E-1, lane PANE: on the Timeline the step opened in the pane has the step's name, system and description as fields (the step panel closed); S typed in the name stays there (no step added), Escape puts the name back, leaves the field and goes back to the list on its row, Enter saves a rename and leaves it (the band shows the new name), and Ctrl+Z takes it back",
+    !!(!head.err && head.before.input === OPEN.name && head.before.system && head.before.desc && head.before.panelHidden &&
       head.typed.value === "Look up the customer s" && head.typed.steps === head.n0 &&
-      head.escaped.input === OPEN.name && head.escaped.focus !== "sp-name-input" && head.escaped.name === OPEN.name &&
-      head.renamed.input === "Open the customer record" && head.renamed.focus !== "sp-name-input" && /Open the customer record/.test(head.renamed.band) &&
+      head.escaped.open === null && head.escaped.row === OPEN.step_id && head.escaped.name === OPEN.name &&
+      head.renamed.input === "Open the customer record" && head.renamed.focus !== "step-name" && /Open the customer record/.test(head.renamed.band) &&
       head.undone.input === OPEN.name),
     JSON.stringify(head));
 
@@ -859,7 +890,8 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
 
   // (E1-read-only) Lane E-1: in a hand-off opened read only (here one
   // unzipped by hand: its PDD beside the folder, its version in
-  // annotations.json) the panel's head on the Timeline reads as text.
+  // annotations.json) the step opened in the pane on the Timeline is read,
+  // with no act that changes the project (lane PANE).
   let ro = {};
   const roParent = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-panel-ro-"));
   temps.push(roParent);
@@ -876,14 +908,16 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.waitForSelector('#timeline .tl-step-band[data-step-id="' + OPEN.step_id + '"]', { timeout: T });
     await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
       .dispatchEvent(new MouseEvent("click", { bubbles: true })), OPEN.step_id);
-    await page.waitForFunction((n) => !document.getElementById("step-panel").hidden &&
-      (document.getElementById("sp-name") || {}).textContent === n, OPEN.name, { timeout: T });
-    ro.head = await headState(page);
+    await page.waitForFunction((id) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === id, OPEN.step_id, { timeout: T });
+    ro.head = await paneState(page);
+    ro.adds = await page.evaluate(() => [...document.querySelectorAll("#tp-editor .step-adds button")].filter((b) => b.getClientRects().length).length);
+    await page.locator("#tp-steps .tp-back").click({ timeout: T });
+    ro.list = await paneState(page);
     await v.close();
   } catch (e) { ro.err = errText(e); try { await v.close(); } catch (_) { /* closed */ } }
-  record("(E1-read-only) lane E-1: in a hand-off opened read only the panel's head on the Timeline is text, as before (no field)",
-    !ro.err && ro.readOnly === true && !!ro.head && ro.head.input === null && !ro.head.system && !ro.head.desc &&
-      !ro.head.headingHidden && ro.head.heading === OPEN.name, JSON.stringify(ro));
+  record("(E1-read-only) lane E-1, lane PANE: in a hand-off opened read only the step opened in the pane on the Timeline is read, not typed in (its name read only), with no verb, no add and, back on the list, no act that changes the project; the step panel stays closed",
+    !ro.err && ro.readOnly === true && !!ro.head && ro.head.input === OPEN.name && ro.head.readOnly === true && ro.head.panelHidden &&
+      ro.head.verbs.length === 0 && ro.adds === 0 && !!ro.list && ro.list.tools === 0, JSON.stringify(ro));
 
   record("zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   for (const d of temps) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) { /* temp */ } }

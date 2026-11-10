@@ -25,7 +25,7 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderMarkersList, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, runPipeline, UPDATING, syncRawEventsShown, scheduleAutoApply, yieldAutoApply } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, runPipeline, UPDATING, syncRawEventsShown, scheduleAutoApply, yieldAutoApply } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
@@ -422,7 +422,8 @@ const LEVEL_RENDERERS = { overview: renderOverviewLevel, flow: renderTimeline, s
    annotation topics is cheap and keeps the step-level maps fresh. */
 State.subscribe("steps",    renderStepsLevel);
 State.subscribe("timeline", renderTimeline);
-State.subscribe("markers",  renderMarkersList);
+// Lane PANE: the pane beside the video follows the topics itself
+// (views/timeline-pane.js; the Markers tab is gone).
 // Item 6: the top bar's "Apply N marker changes" call to action.
 State.subscribe("markers",  renderSessionPills);
 // 2.0.3: a project without a recording applies its marker changes itself.

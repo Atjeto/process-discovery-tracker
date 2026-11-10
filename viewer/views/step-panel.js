@@ -30,6 +30,10 @@
  * sub-process's panel has "Open sub-process" at its foot (its steps, or on
  * the Map its map).
  *
+ * Lane PANE (plan section 11): the panel no longer opens on the Timeline (the
+ * timeline door and a step marked there open the step in the pane beside the
+ * video, views/timeline-pane.js); its doors are the Map's and Steps'.
+ *
  * The panel is closed on the Overview and when a recording opens; its close
  * button is the inverse of every door (on Steps it then stays closed while
  * rows are selected, until a door opens it again).
@@ -95,11 +99,19 @@ function nameTakesFocus(o) {
   return !x.playing && !x.readOnly;
 }
 
-/* Whether the head shows fields: on the Timeline and the Map, in a project
-   that can change (on Steps the editor beside it is where the step is
-   written, lane E-1 1b). Pure. */
+/* Whether the head shows fields: on the Map, in a project that can change
+   (on Steps the editor beside it is where the step is written, lane E-1
+   1b; lane PANE: the panel no longer opens on the Timeline). Pure. */
 function headEditable(level, readOnly) {
-  return !readOnly && (level === "flow" || level === "map");
+  return !readOnly && level === "map";
+}
+
+/* Lane PANE (plan section 11): whether the panel opens on `level`: on the
+   Map and on Steps. On the Timeline a step opens in the pane beside the
+   video (views/timeline-pane.js), so the timeline keeps its width; on the
+   Overview it is closed. Pure. */
+function opensOn(level) {
+  return level === "map" || level === "steps";
 }
 
 const $ = (id) => document.getElementById(id);
@@ -373,27 +385,6 @@ function _drawHead(lead, editable, where) {
   });
 }
 
-/* Lane E-1: the name field of the head takes the focus, its text selected,
-   so typing replaces "Step 3" at once. False when the head has no field. */
-function focusName() {
-  const el = $(HEAD_IDS.name);
-  const panel = $("step-panel");
-  if (!el || !panel || panel.hidden || el.readOnly) return false;
-  el.focus();
-  el.select();
-  return document.activeElement === el;
-}
-
-/* Lane E-1: a step just added on the Timeline (S, + Step, Add a step here)
-   opens in the panel; `opts.focusName` (nameTakesFocus) puts the cursor in
-   its name. */
-function openAdded(stepId, opts) {
-  const step = _find(stepId);
-  if (!step) return;
-  openForStep(step);
-  if (opts && opts.focusName) focusName();
-}
-
 /* Draw the panel for the current state. The video moves only when the
    highlighted row is not the one it was cued to (an open on another row). */
 function render() {
@@ -549,8 +540,21 @@ function frameSource(stepId) {
   const shown = !!(panel && !panel.hidden && _state && _state.focusId === stepId && video && !video.hidden &&
     video.getAttribute("src") === src);
   if (shown && (m.kind === "covered" || _moved)) return { video, src, baseMs };
+  // Lane PANE: on the Timeline the step is beside the Timeline's own video;
+  // a step without a time takes the frame it shows now (the analyst played
+  // it to the step's moment).
+  if (State.getLevel() === "flow" && m.kind === "untimed") {
+    const main = document.getElementById("video");
+    const cur = Video.currentClip();
+    if (main && cur && cur.file && main.getAttribute("src")) {
+      const sp2 = Video.clipSpan(cur);
+      return { video: main, src: Video.fileUrl(cur.file), baseMs: sp2 ? sp2.fileStartMs : NaN };
+    }
+  }
   if (m.kind === "covered") return { at: m.at, src, baseMs };
-  return { why: _noTime() + ": play the step panel's video to its moment first, then add the frame." };
+  return { why: _noTime() + (State.getLevel() === "flow"
+    ? ": play the video to its moment first, then add the frame."
+    : ": play the step panel's video to its moment first, then add the frame.") };
 }
 
 function _show(open) {
@@ -575,7 +579,7 @@ function _reset() {
    step as its focus. */
 function openForStep(step, fromSteps) {
   _reset();
-  if (!step || !_session() || State.getLevel() === "overview") return;
+  if (!step || !_session() || !opensOn(State.getLevel())) return;
   if (!fromSteps) _dismissed = false;
   const hit = SPM.findStep(_steps(), step.step_id);
   _state = { label: mapNodeLabel(step), path: hit ? hit.path : [], focusId: step.step_id };
@@ -603,7 +607,7 @@ function openForNode(label, path) {
    copy was made): the panel names the task and says so in one line. */
 function openForMissing(name) {
   _reset();
-  if (!_session() || State.getLevel() === "overview") return;
+  if (!_session() || !opensOn(State.getLevel())) return;
   _dismissed = false;
   _state = { label: null, focusId: null, missing: String(name == null ? "" : name).trim() };
   _show(true);
@@ -674,9 +678,10 @@ function close() {
   _show(false);
 }
 
-/* The level changed: closed on the Overview, else the foot follows. */
+/* The level changed: closed where it does not open (the Overview, and
+   lane PANE the Timeline), else the foot follows. */
 function onLevel(name) {
-  if (name === "overview") { close(); return; }
+  if (!opensOn(name)) { close(); return; }
   if (_state) render();
 }
 
@@ -769,5 +774,6 @@ function refresh() {
 })();
 
 module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine, frameSource,
-  // Lane E-1: the head edits the step; a step marked on the Timeline opens here.
-  openAdded, focusName, nameTakesFocus, headEditable, HEAD_IDS };
+  // Lane E-1: the head edits the step (lane PANE: a step marked on the
+  // Timeline opens in the pane, by the same nameTakesFocus); where it opens.
+  nameTakesFocus, headEditable, HEAD_IDS, opensOn };

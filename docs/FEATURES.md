@@ -236,7 +236,9 @@ The viewer says *transaction* for one pass through the process and
   and moves with it; each has its own row with Sync, Replace and Remove.
   The PDD places each step on the timeline's clock, never in a video.
 - **Transaction repair**: *Start a transaction here* and *End the
-  transaction here* from a right-click; move, rename and delete markers,
+  transaction here* from a right-click; move, rename and delete them
+  (lane PANE: on each transaction's header in the pane's Steps tab, *Starts
+  at*, *Ends at*, *Rename*, *Delete transaction*; the Markers tab is gone),
   shown at once as pending until *Apply marker changes*; insert a
   transaction from a selected range. A transaction's band is drawn where its
   markers now are, dashed until applied, and its start and its end drag
@@ -282,12 +284,28 @@ The viewer says *transaction* for one pass through the process and
   shown on the row under the pointer, the focused row and the current row.
   A marked stretch is one row with *Include again*, and the step panel's
   *Said* leaves it out. Read only: read and searched only.
-- **"<step>" starts here** (lane E), beside *+ Step* with a video: sets
-  the start of the selected step, when its time is the analyst's, else of
-  the first step without a time, to the moment the video shows; the step keeps its place in the
-  process, takes the video's frame when it has no picture, and the next
-  step without a time is selected. Also in the right-click menu.
-- **Notes at a moment**, and the screenshots in a side panel and a gallery.
+- **Starts here** (lane E, lane PANE), on the row of each step without a
+  time in the pane's Steps tab, with a video: sets the start of that step to
+  the moment the video shows; the step keeps its place in the process and
+  takes the video's frame when it has no picture. The right-click menu's
+  *"<step>" starts here* does it at the moment clicked.
+- **The pane beside the video** (lane PANE): five tabs, *Steps (n)*,
+  *Transcript*, *Screenshots (n)*, *Notes (n)*, *Files (n)*, real tabs to a
+  screen reader; a project opens on Steps. Steps lists every step in the
+  order of the process, the ones without a time too, grouped under each
+  transaction's header in a recording (the reference first); each row says
+  its number, name, system or *No system yet* with *no name yet* and *no
+  description yet*, *Draft*, and when it starts; the row at the clock's
+  moment says *now*. A row or a step's band opens the step in place with
+  the Steps editor's own fields, *All steps*, *Previous*, *Next*, *Open in
+  Steps*, in a recording *Also happens in* with *Go there*, and *Split...*,
+  *Merge with next*, *Hide step*, *Delete*; Escape goes back to the list.
+  *Paste notes...* above the list, *Add step* with no video and no
+  recording, *Confirm transaction* and *Undo confirm* in a recording. Notes
+  lists every note (*Add note*, *Edit*, *Delete*), Files every attached
+  file (*Attach file...*, *Open*, *Remove*); a screenshot or a note clicked
+  on the timeline opens its tab at it.
+- **Notes at a moment**, and the screenshots in the pane and a gallery.
 
 **Steps**
 
@@ -437,15 +455,17 @@ The viewer says *transaction* for one pass through the process and
 **Everywhere**
 
 - **The step panel**: from a task of the map (or a box of how the
-  transactions ran), a timeline step band or a Steps row, every occurrence
+  transactions ran) or a Steps row (lane PANE: never on the Timeline, where
+  a step opens in the pane beside the video), every occurrence
   of the step with its moment in a small video (a moment the video does not
   cover says so; a time under a second reads "under 1s"), its screenshots,
   what was said and its notes, its flow in one line when one is set, and
   the waste flag; its foot goes to the step in Steps, or on the Timeline.
-  On the Timeline and the Map its head is the step's name, system and
-  description as fields, saved as the editor saves them (lane E-1); on
-  Steps, beside the editor, and in a project open read only, it is text. A
-  step marked on the Timeline (S, *+ Step*, *Add a step here*) opens there:
+  On the Map its head is the step's name, system and description as
+  fields, saved as the editor saves them (lane E-1); on Steps, beside the
+  editor, and in a project open read only, it is text. A step marked on the
+  Timeline (S, *+ Step*, *Add a step here*) opens in the pane beside the
+  video:
   with the video paused the cursor is in its name, while it plays nothing
   takes the keys. A step marked where a video shows takes that frame as its
   screenshot, in the same undoable edit; a step a video covers that shows

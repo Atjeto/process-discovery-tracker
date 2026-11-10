@@ -299,9 +299,13 @@ test("the step pane has no Save button: the name saves on Enter and blur, the de
   // panel (there Enter leaves the field, which saves it); its behaviour is
   // pinned below with a fake field.
   assert.ok(src.includes("if (o.leave) nameEl.blur(); else commitName();"), "Enter commits the name");
-  assert.ok(src.includes('wireNameField(document.getElementById("step-name"), step, callbacks'), "the editor wires its name with it");
+  // Lane PANE: looked up in the host it draws into (the Steps pane or the
+  // Timeline's pane), never in the whole page.
+  assert.ok(src.includes('wireNameField(host.querySelector("#step-name"), step, callbacks'), "the editor wires its name with it");
   assert.ok(src.includes('descEl.addEventListener("blur", commitDesc)'));
-  assert.ok(src.includes('getElementById("flag-waste").addEventListener("change"'));
+  assert.ok(src.includes('host.querySelector("#flag-waste").addEventListener("change"'));
+  assert.ok(!/document\.getElementById\("(step-name|step-desc|flag-waste|step-recorded|btn-step-jump|btn-step-watch)"\)/.test(src),
+    "lane PANE: no part of the editor is looked up in the whole page");
   assert.ok(!src.includes("step-remembered"), "no remembered tag on a row: the run says it in one line");
 });
 

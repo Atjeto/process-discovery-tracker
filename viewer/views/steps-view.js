@@ -112,10 +112,6 @@ let _ui = _freshUi(null);
 /* The datalist of a row's inline rename: the names used in the project. */
 const NAME_LIST_ID = "step-name-suggestions";
 
-/* The step the detail pane shows, so a redraw of the same step keeps the
-   field being typed in. */
-let _detailStepId = null;
-
 /* The Timeline's span (the recording's events, or a video project's video). */
 function getSpan() {
   return Video.timelineSpan();
@@ -553,34 +549,20 @@ function renderStepsLevel() {
   const selected = selId && visibleIds.has(selId) ? _findStep(selId) : null;
   _syncStepVerbs(selected);
   const title = $("#step-detail-title");
-  // The name or the description being typed in keeps what was typed and the
-  // cursor across a redraw (an autosave redraws the pane); leaving the field
-  // then saves it, as always.
   const detail = $("#step-detail");
-  const active = document.activeElement;
-  const typing = selected && detail && active && detail.contains(active) && _detailStepId === selected.step_id &&
-    (active.id === "step-name" || active.id === "step-desc" || active.id === "step-system" ||
-      active.id === "step-start" || active.id === "step-end" ||
-      active.id === "step-only-when" || /^flow-link-when-\d+$/.test(active.id))
-    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
-  if (selected) {
+  if (State.getLevel() === "flow") {
+    // Lane PANE: on the Timeline the step editor is in the pane beside the
+    // video (views/timeline-pane.js), and the editor's parts carry ids: one
+    // host holds it at a time. Steps draws it again when it shows.
+    if (detail) { detail.innerHTML = ""; delete detail.dataset.stepId; }
+  } else if (selected) {
     // 2.0.1: the step's name is the editor's title.
     if (title) title.textContent = "";
-    PdtSteps.renderStepDetail(detail, selected, stepDetailCallbacks(selected, interactionsById));
-    // Lane HV: in a hand-off opened read only the pane's fields are read, not
-    // typed in (its acts are hidden, styles.css .read-only).
-    if (RO.isReadOnly(session)) RO.lockInputs(detail);
-    _detailStepId = selected.step_id;
-    const el = typing && document.getElementById(typing.id);
-    if (el) {
-      if (el.value !== typing.value) el.value = typing.value;
-      el.focus();
-      try { el.setSelectionRange(typing.start, typing.end); } catch (_) { /* not a text field */ }
-    }
+    renderStepInto(detail, selected, null, interactionsById);
     // V2 item 4: the step panel beside the editor follows the selected row.
     if (State.getLevel() === "steps") StepPanel.followSteps(selected);
   } else {
-    _detailStepId = null;
+    if (detail) delete detail.dataset.stepId;
     if (path.length) renderLevelGuide(detail, model, pattern, containers, open, path);
     else renderRunGuide(detail, model, pattern, ref);
   }
@@ -1036,8 +1018,7 @@ function _runGroupEl(run, model, pattern, visible, stats, ref) {
   const canConfirm = !ro && isPattern && !reads && owed && run.visible.length > 0;
   const buttons = [];
   if (canConfirm) {
-    buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
-      "Accept this transaction's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
+    buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary", ACT_TITLES.confirm,
       () => confirmRunAction(run.caseId)));
   }
   // Its inverse, Undo confirm, is beside the Confirmed badge (_addUndoConfirm).
@@ -1317,6 +1298,42 @@ function panelFieldCallbacks(step) {
   };
 }
 
+/* The ids of the editor's fields whose typing survives a redraw. */
+function _keepsTyping(id) {
+  return id === "step-name" || id === "step-desc" || id === "step-system" || id === "step-start" || id === "step-end" ||
+    id === "step-only-when" || /^flow-link-when-\d+$/.test(id);
+}
+
+/* Draw the step editor for `step` into `host`: the Steps level's pane
+   (#step-detail), or (lane PANE) the step opened in the Timeline's pane
+   (views/timeline-pane.js), with the same callbacks, so every field saves
+   through the same handlers. One host holds the editor at a time (its parts
+   carry ids): drawn into another host, the Steps pane is emptied (Steps
+   draws it again when it shows). `extra` is laid over the callbacks (the
+   Timeline's pane: onTimeline, afterFactsHtml). The name or the description
+   being typed in keeps what was typed and the cursor across a redraw (an
+   autosave redraws the pane); leaving the field then saves it, as always. */
+function renderStepInto(host, step, extra, interactionsById) {
+  if (!host || !step) return;
+  const steps = document.getElementById("step-detail");
+  if (steps && steps !== host) { steps.innerHTML = ""; delete steps.dataset.stepId; }
+  const active = document.activeElement;
+  const typing = active && host.contains(active) && host.dataset.stepId === step.step_id && _keepsTyping(active.id)
+    ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
+  const inter = interactionsById || _interactionsById();
+  PdtSteps.renderStepDetail(host, step, Object.assign(stepDetailCallbacks(step, inter), extra || {}));
+  host.dataset.stepId = step.step_id;
+  // Lane HV: in a hand-off opened read only the pane's fields are read, not
+  // typed in (its acts are hidden, styles.css .read-only).
+  if (RO.isReadOnly(State.getSession())) RO.lockInputs(host);
+  const el = typing && host.querySelector("#" + typing.id);
+  if (el) {
+    if (el.value !== typing.value) el.value = typing.value;
+    el.focus();
+    try { el.setSelectionRange(typing.start, typing.end); } catch (_) { /* not a text field */ }
+  }
+}
+
 /* 2.0.1 (the owner's review of the Steps page): the verbs that change a
    step's shape are the toolbar's, acting on the selected step: Split...,
    Merge with next, Hide step or Unhide, Open as a sub-process or Open
@@ -1334,16 +1351,19 @@ function _syncStepVerbs(selected) {
   if (!bar) return;
   bar.hidden = !selected || State.getMultiSelectedStepIds().size >= 2;
   if (bar.hidden) return;
+  const states = stepVerbStates(selected);
+  for (const id of Object.keys(states)) applyVerbState($("#" + id), states[id]);
+}
+
+/* Lane PANE: what each verb on the selected step is for `selected`, keyed
+   by the Steps toolbar's ids: { show, why (the reason it cannot act, "" when
+   it can), title, label (when it changes) }. The Steps toolbar and the step
+   opened in the Timeline's pane read the same states. */
+function stepVerbStates(selected) {
   const isSub = SPM.isSubProcess(selected);
   const hidden = selected.state === "hidden";
-  const set = (id, show, why, title, label) => {
-    const b = $("#" + id);
-    if (!b) return;
-    b.hidden = !show;
-    b.disabled = !!why;
-    b.title = why || title || VERB_TITLES[id] || "";
-    if (label) b.textContent = label;
-  };
+  const out = {};
+  const set = (id, show, why, title, label) => { out[id] = { show: !!show, why: why || "", title: why || title || VERB_TITLES[id] || "", label }; };
   set("btn-step-split", !isSub, PdtSteps.splitBlocker(selected));
   set("btn-step-merge", !isSub, "");
   set("btn-step-hide", true, "", hidden ? "Bring this step back into the list"
@@ -1356,6 +1376,16 @@ function _syncStepVerbs(selected) {
     : "Drop its sub-steps, in every transaction; what you added to them moves to this step. Ctrl+Z undoes it.");
   set("btn-step-delete", selected.state === "manually_authored", "",
     isSub && selected.group === true ? "Delete this sub-process you made, with its steps" : "Delete this step you added");
+  return out;
+}
+
+/* Show a verb's button as its state says (stepVerbStates). */
+function applyVerbState(b, st) {
+  if (!b || !st) return;
+  b.hidden = !st.show;
+  b.disabled = !!st.why;
+  b.title = st.title;
+  if (st.label) b.textContent = st.label;
 }
 
 /* Split where the analyst chooses (2.0.1): Recorded opens (and stays open,
@@ -3694,7 +3724,36 @@ function showStepContextMenu(stepId, x, y) {
   renderStepsLevel();   // reflect the new selection immediately
 }
 
+/* Lane PANE: what the Timeline's pane (views/timeline-pane.js) lists and
+   offers, read as Steps reads it: the runs model, the reference transaction,
+   and whether Confirm transaction and Undo confirm show (_runGroupEl's
+   rules, the transaction open or not). */
+function paneProject() {
+  const sess = State.getSession();
+  const model = _model();
+  const pattern = RunsModel.patternRun((sess && sess.annotations) || {}, model.runs);
+  const run = pattern.run || null;
+  const rec = pattern.record || null;
+  const ro = RO.isReadOnly(sess);
+  const reads = !!run && RunsModel.patternConfirmed(rec, run);
+  return {
+    model, pattern, refCaseId: run ? run.caseId : null, implicitId: AC.implicitRunId(sess && sess.stats),
+    canConfirm: !ro && !!run && !reads && RunsModel.holdsDraft(run.members) && run.visible.length > 0,
+    canUndoConfirm: !ro && !!run && RunsModel.canReopen(run, rec, true),
+  };
+}
+
+/* The titles of Steps' own acts, for the pane's buttons of the same acts. */
+const ACT_TITLES = {
+  confirm: "Accept this transaction's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
+  undoConfirm: UNDO_CONFIRM_TITLE,
+};
+
 module.exports = {
+  // Lane PANE: the Timeline's pane draws and edits a step with the editor's
+  // own code, and offers Steps' own acts.
+  renderStepInto, stepVerbStates, applyVerbState, paneProject, ACT_TITLES, confirmRunAction, reopenRunAction,
+  beginSplit, toggleStepHidden, runTimesEl: (run) => _runTimesEl(run), isStepOpen: (s) => _stepOpen(s),
   initStepsView, renderStepsLevel, beginRenameOnSelected, addManualStep, pasteNotes,
   deleteSelectedSteps, deleteStep, splitStep, mergeStepWithNext, mergeSelectedSteps,
   addStepAtTimestamp, setStepTimes,

@@ -299,8 +299,9 @@ function zipFiles(buf) {
   // (a3) Lane FX3 (validation pass 3, F16, F22): a project with no recording
   // and no video, before its first step. The Timeline offers no control that
   // needs a drawn timeline (the Transaction select, Lanes, the zoom, the video
-  // band with a second Attach video, the gallery, Raw events), and its Markers
-  // tab says what makes a timeline; the Overview has the document and no
+  // band with a second Attach video, the gallery, Raw events), and (lane
+  // PANE) the pane beside it has no Markers tab: its Steps tab says, word for
+  // word, how the first step comes in; the Overview has the document and no
   // Observations (2.0.1); Apps outside the process is not offered; Edit as the As-Is map is
   // disabled with its reason, and Export's map image says why at once, with
   // no analysis and no file.
@@ -314,7 +315,9 @@ function zipFiles(buf) {
           .filter((id) => shown(document.getElementById(id))),
         raw: shown(document.querySelector(".event-table-host")),
         attach: [...document.querySelectorAll("#session-layout-flow button")].filter((b) => shown(b) && /Attach video/.test(b.textContent)).length,
-        markers: ((document.getElementById("markers-list") || {}).textContent || "").trim(),
+        markersTab: !!document.querySelector('#tp-tabs [data-anno="markers"]') || !!document.getElementById("markers-list"),
+        hint: ((document.querySelector("#tp-steps .tp-hint") || {}).textContent || "").trim(),
+        add: [...document.querySelectorAll("#tp-steps .tp-tools button")].map((b) => b.textContent.trim()),
       };
     });
     await level("overview");
@@ -346,9 +349,10 @@ function zipFiles(buf) {
     });
     a3.svgFile = fs.existsSync(svgOut);
   } catch (e) { a3.err = errText(e); }
-  record("(a3) lane FX3: no recording and no video: the Timeline offers none of the controls a drawn timeline needs (one Attach video, no Raw events), its Markers tab says a video makes one; the Overview has the document and no Observations (2.0.1); no Apps outside the process; Edit as the As-Is map disabled with its reason, and the map image export says why at once, with no analysis and no file",
+  record("(a3) lane FX3: no recording and no video: the Timeline offers none of the controls a drawn timeline needs (one Attach video, no Raw events); lane PANE: no Markers tab, the pane's Steps tab says how the first step comes in and offers Paste notes... and Add step; the Overview has the document and no Observations (2.0.1); no Apps outside the process; Edit as the As-Is map disabled with its reason, and the map image export says why at once, with no analysis and no file",
     !a3.err && a3.tl.controls.length === 0 && !a3.tl.raw && a3.tl.attach === 1 &&
-      /once a video is attached/.test(a3.tl.markers) && !/right-click the timeline/.test(a3.tl.markers) &&
+      !a3.tl.markersTab && a3.tl.hint === "No steps yet. Add step adds one, and Paste notes... adds one for each line of your notes." &&
+      JSON.stringify(a3.tl.add) === JSON.stringify(["Paste notes...", "Add step"]) &&
       !a3.obs.host && a3.obs.doc && !a3.apps &&
       a3.fork.disabled && a3.fork.title === "No map to edit yet: add steps in Steps to build the map." &&
       a3.svg.toast === "No process map to export: the transactions have no steps yet." && !/Updating/.test(a3.svg.pills) && !a3.svgFile,
@@ -913,9 +917,12 @@ function zipFiles(buf) {
   // were added (the step added at a right-click and deleted took its frame
   // with it), so the frame of (k) is one of three.
   const zMark = ((z.lane || []).find((x) => /^Added by you, a frame at 0:(09|10), on /.test(x.title || ""))) || {};
-  const zTitle = zMark.title || "";
+  // Lane PANE: the mark's tooltip says, on a line of its own, what a click
+  // does (the Screenshots tab at it); its first line is the card's tooltip.
+  const zTitle = String(zMark.title || "").split("\n")[0];
+  const zClick = /\nClick: show it in the Screenshots tab beside the video, and go to its moment\.$/.test(zMark.title || "");
   record("(z) lane FX2: the frame added with a moment shows where the recording's screenshots do: a mark in the Timeline's Screenshots lane (its tooltip: added by you, when, on which step), a card in the Screenshots list badged added, and in the gallery under Added by you",
-    !z.err && !!z.on && z.lane.length === 3 && z.lane.every((x) => x.added) && !!zTitle && zTitle.endsWith(", on " + z.on) &&
+    !z.err && !!z.on && z.lane.length === 3 && z.lane.every((x) => x.added) && !!zTitle && zTitle.endsWith(", on " + z.on) && zClick &&
       z.legend !== "none" && z.grid.length === 3 && z.grid.every((c) => c.badge === "added" && c.img && c.shown) && z.grid.some((c) => c.title === zTitle) &&
       z.gallery.pos === "1 / 3" && z.gallery.reason === "added by you, on " + z.on && z.gallery.options.includes("Added by you"),
     JSON.stringify(z));
@@ -1397,9 +1404,10 @@ function zipFiles(buf) {
       p.second && p.firstKept && p.itemAfter.text === "Whole project (.zip)" && !p.itemAfter.disabled && p.help,
     JSON.stringify(p));
 
-  // ================= F. Marking a video in the step panel (lane E-1) =================
+  // ================= F. Marking a video in the pane beside it (lane E-1, lane PANE) =================
   // A process manager marks a step on the video, names it and describes it
-  // in the step panel beside it, and the step takes its picture by itself:
+  // in the pane beside it (the step opened in place in its Steps tab, drawn
+  // by the Steps editor; the step panel no longer opens on the Timeline), and the step takes its picture by itself:
   // paused, S puts the cursor in the new step's name; playing, S marks the
   // next step and no field takes a key; one Ctrl+Z takes a step and its
   // picture; a step without a picture offers "Use the video at m:ss".
@@ -1448,19 +1456,19 @@ function zipFiles(buf) {
       await settled();
       await level("flow");
       await page.waitForFunction(() => /^Video · /.test((document.getElementById("timeline-summary") || {}).textContent || ""), null, { timeout: 30000 });
-      // (a) Paused at 0:05, S: the panel opens on the new step, its name
+      // (a) Paused at 0:05, S: the pane opens the new step in place, its name
       // focused and selected; typing names it, Enter saves and leaves.
       await pausedAt(5);
       await page.keyboard.press("s");
       await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 1, null, { timeout: T });
-      await page.waitForFunction(() => (document.activeElement || {}).id === "sp-name-input", null, { timeout: T });
+      await page.waitForFunction(() => { const a = document.activeElement; return !!a && a.id === "step-name" && !!a.closest("#tp-editor"); }, null, { timeout: T });
       const first = (await steps())[0];
       F.a = await page.evaluate((sid) => {
         const el = document.activeElement;
         return { value: el.value, selected: el.selectionStart === 0 && el.selectionEnd === el.value.length,
-          panel: !document.getElementById("step-panel").hidden,
-          row: ((document.querySelector("#sp-body .sp-occ.focus") || { dataset: {} }).dataset.stepId) === sid,
-          shotInRow: document.querySelectorAll("#sp-body .sp-occ.focus .sp-shot").length };
+          panel: document.getElementById("step-panel").hidden && document.querySelector("#tp-tab-steps").getAttribute("aria-selected") === "true",
+          row: (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === sid,
+          shotInRow: document.querySelectorAll("#tp-editor .step-shot-card").length };
       }, first.step_id);
       await page.screenshot({ path: path.join(__dirname, "companion-smoke-mark-paused.png") }).catch(() => {});
       await page.keyboard.type("Take the call");
@@ -1468,10 +1476,10 @@ function zipFiles(buf) {
       await page.waitForFunction((sid) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === sid) || {}).name === "Take the call",
         first.step_id, { timeout: T });
       F.a.afterEnter = await focused();
-      // The description written in the panel saves when it is left.
-      await page.locator("#sp-desc").click({ timeout: T });
+      // The description written in the pane saves when it is left.
+      await page.locator("#tp-editor #step-desc").click({ timeout: T });
       await page.keyboard.type("Note who calls and what they order.");
-      await page.locator("#sp-explain").click({ timeout: T });
+      await page.locator("#tp-steps .tp-pos").click({ timeout: T });
       await page.waitForFunction((sid) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === sid) || {}).description === "Note who calls and what they order.",
         first.step_id, { timeout: T });
       F.a.described = true;
@@ -1491,7 +1499,7 @@ function zipFiles(buf) {
       await page.evaluate(() => document.getElementById("video").pause());
       const three = await steps();
       F.b.names = three.map((x) => x.name);
-      F.b.panelOnNewest = await page.evaluate((sid) => ((document.querySelector("#sp-body .sp-occ.focus") || { dataset: {} }).dataset.stepId) === sid, three[2].step_id);
+      F.b.panelOnNewest = await page.evaluate((sid) => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId === sid, three[2].step_id);
       F.b.descs = three.map((x) => x.description || "");
       // (c) Each step has one added screenshot at its own moment; the first
       // one's picture is the video's frame at 0:05, not another moment's.
@@ -1509,7 +1517,7 @@ function zipFiles(buf) {
       const newest = three[2];
       const newestShot = all.find((sh) => sh.step_id === newest.step_id);
       F.c.fileBefore = fs.existsSync(path.join(shotsDir, newestShot.file));
-      await page.locator("#sp-explain").click({ timeout: T });
+      await page.locator("#tp-steps .tp-pos").click({ timeout: T });
       await page.keyboard.press("Control+z");
       await page.waitForFunction(() => (require("./state.js").getSession().annotations.steps || []).length === 2, null, { timeout: T });
       await wait(500);
@@ -1519,7 +1527,7 @@ function zipFiles(buf) {
       await wait(500);
       F.c.redone = { shots: (await shots()).length, file: fs.existsSync(path.join(shotsDir, newestShot.file)) };
       // (d) A step whose picture was removed offers "Use the video at
-      // m:ss" in the editor and in the panel; one click takes it.
+      // m:ss" in the editor, in Steps and in the pane; one click takes it.
       await level("steps");
       await page.evaluate(() => { const b = document.querySelector("#step-list .run-group:not(.open) .run-row"); if (b && !document.querySelector("#step-list .run-group.open .step-row")) b.click(); });
       await page.locator('#step-list .step-row[data-step-id="' + first.step_id + '"] .step-name').click({ timeout: T });
@@ -1544,21 +1552,21 @@ function zipFiles(buf) {
       await level("flow");
       await page.evaluate((id) => document.querySelector('#timeline .tl-step-band[data-step-id="' + id + '"]')
         .dispatchEvent(new MouseEvent("click", { bubbles: true })), second.step_id);
-      await page.waitForSelector("#sp-body .sp-occ.focus .step-use-video", { timeout: T });
-      F.d.panel = (await page.locator("#sp-body .sp-occ.focus .step-use-video").textContent()).trim();
+      await page.waitForSelector("#tp-editor #btn-step-use-video", { timeout: T });
+      F.d.panel = (await page.locator("#tp-editor #btn-step-use-video").textContent()).trim();
       F.d.want = "Use the video at " + (() => { const s = Math.floor((Date.parse(second.time_range.start) - start) / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); })();
-      await page.locator("#sp-body .sp-occ.focus .step-use-video").click({ timeout: T });
+      await page.locator("#tp-editor #btn-step-use-video").click({ timeout: T });
       await page.waitForFunction((sid) => (require("./state.js").getSession().annotations.analyst_screenshots || []).filter((x) => x.step_id === sid).length === 1, second.step_id, { timeout: T });
       F.d.panelAdded = true;
-      await page.waitForSelector("#sp-body .sp-occ.focus .sp-shot", { timeout: T });
-      F.d.panelShows = await page.evaluate(() => !document.querySelector("#sp-body .sp-occ.focus .step-use-video"));
+      await page.waitForSelector("#tp-editor .step-shot-card", { timeout: T });
+      F.d.panelShows = await page.evaluate(() => !document.querySelector("#tp-editor #btn-step-use-video"));
     } catch (x) { F.err = errText(x); }
-    record("(F1) lane E-1: paused, S adds a step and the step panel opens on it with its name focused and selected; typing a name and Enter names it and leaves the field; the description typed in the panel is the step's; Steps then shows both, with no visit to Steps in between",
+    record("(F1) lane E-1, lane PANE: paused, S adds a step and the pane beside the video opens it in place (the step panel stays closed) with its name focused and selected; typing a name and Enter names it and leaves the field; the description typed in the pane is the step's; Steps then shows both, with no visit to Steps in between",
       !F.err && F.a.value === "Step 1" && F.a.selected && F.a.panel && F.a.row &&
         !!F.a.afterEnter && F.a.afterEnter.tag !== "INPUT" && F.a.afterEnter.tag !== "TEXTAREA" && F.a.described &&
         !!F.a.inSteps && F.a.inSteps.name === "Take the call" && F.a.inSteps.desc === "Note who calls and what they order.",
       JSON.stringify(F.err ? F : F.a));
-    record("(F2) lane E-1: after Enter, Space plays the video on; while it plays two S presses in a row give two steps, no field takes a key (the first step keeps its name), nothing takes the focus, the panel shows the newest step, and a new step takes none of the description of the step before it",
+    record("(F2) lane E-1: after Enter, Space plays the video on; while it plays two S presses in a row give two steps, no field takes a key (the first step keeps its name), nothing takes the focus, the pane shows the newest step, and a new step takes none of the description of the step before it",
       !F.err && !!F.b && F.b.played && F.b.playing && !!F.b.focus && F.b.focus.tag !== "INPUT" && F.b.focus.tag !== "TEXTAREA" &&
         JSON.stringify(F.b.names) === '["Take the call","Step 1","Step 2"]' && F.b.panelOnNewest &&
         JSON.stringify(F.b.descs) === '["Note who calls and what they order.","",""]',
@@ -1568,10 +1576,140 @@ function zipFiles(buf) {
         Math.abs(F.c.firstAt - 5) < 0.1 && F.c.diffAt < 40 && F.c.diffOther > 200 && F.a.shotInRow === 1 &&
         F.c.fileBefore && F.c.undone.shots === 2 && F.c.undone.file === false && F.c.redone.shots === 3 && F.c.redone.file === true,
       JSON.stringify(F.c || F.err));
-    record("(F4) lane E-1: a step without a picture offers \"Use the video at m:ss\" (its start) in the editor and in the panel, and one click there adds that frame",
+    record("(F4) lane E-1: a step without a picture offers \"Use the video at m:ss\" (its start) in the editor in Steps and in the pane beside the video, and one click there adds that frame",
       !F.err && !!F.d && F.d.editor === "Use the video at 0:05" && F.d.editorAdded && F.d.linkGone &&
         F.d.panel === F.d.want && F.d.panelAdded && F.d.panelShows,
       JSON.stringify(F.d || F.err));
+
+    // ================= G. The pane's lists (lane PANE, items 2 to 4) =================
+    // In the same project (three steps marked on the video): All steps is the
+    // list in the order of the process; Paste notes... adds two steps without
+    // a time, the hint counts them and each row offers Starts here; going to
+    // a moment and clicking it gives the step its time; a step opened in place
+    // has Previous and Next (disabled at the ends), "Step i of n", Steps' own
+    // verbs and Open in Steps; Escape goes back to the list, the focus on its
+    // row; Up and Down move between the rows and Enter opens one. Notes and
+    // Files list what the project holds, and the counts follow.
+    const G = {};
+    try {
+      await level("flow");
+      if (await page.locator("#tp-steps .tp-back").count()) await page.locator("#tp-steps .tp-back").click({ timeout: T });
+      const list = () => page.evaluate(() => ({
+        rows: [...document.querySelectorAll("#tp-steps .tp-row")].map((r) => ({ id: r.dataset.stepId, num: r.querySelector(".tp-num").textContent,
+          name: r.querySelector(".tp-name").textContent, meta: r.querySelector(".tp-meta").textContent, when: r.querySelector(".tp-when").textContent,
+          now: r.classList.contains("now") && getComputedStyle(r.querySelector(".tp-now")).display !== "none", cur: r.getAttribute("aria-current") === "true",
+          title: r.title, here: !!r.parentElement.querySelector(".tp-here"), tab: r.tabIndex })),
+        hint: ((document.querySelector("#tp-steps .tp-hint") || {}).textContent || "").trim(),
+        tools: [...document.querySelectorAll("#tp-steps .tp-tools button")].map((b) => b.textContent.trim()),
+        tabs: [...document.querySelectorAll("#tp-tabs .anno-tab")].map((t) => t.getAttribute("aria-label")),
+        focus: ((document.activeElement || {}).dataset || {}).stepId || (document.activeElement || {}).id || "",
+      }));
+      G.list = await list();
+      // Paste notes... : two steps without a time.
+      await page.locator("#tp-steps .tp-paste").click({ timeout: T });
+      await page.waitForSelector(".modal-prompt .modal-input", { timeout: T });
+      await page.fill(".modal-prompt .modal-input", "Check the stock: in the stock sheet\nSend the confirmation");
+      await page.click(".modal-prompt .modal-ok");
+      await page.waitForSelector(".modal-prompt", { state: "detached", timeout: T });
+      await page.waitForFunction(() => document.querySelectorAll("#tp-steps .tp-row").length === 5, null, { timeout: T });
+      G.pasted = await list();
+      const untimed = G.pasted.rows.filter((r) => r.here).map((r) => r.id);
+      await pausedAt(26);
+      await page.locator('#tp-steps .tp-item[data-step-id="' + untimed[0] + '"] .tp-here').click({ timeout: T });
+      await page.waitForFunction((id) => !document.querySelector('#tp-steps .tp-item[data-step-id="' + id + '"] .tp-here'), untimed[0], { timeout: T });
+      await wait(300);
+      G.oneLeft = await list();
+      await pausedAt(29);
+      await page.locator('#tp-steps .tp-item[data-step-id="' + untimed[1] + '"] .tp-here').click({ timeout: T });
+      await page.waitForFunction((id) => !document.querySelector('#tp-steps .tp-item[data-step-id="' + id + '"] .tp-here'), untimed[1], { timeout: T });
+      await wait(300);
+      G.timed = await list();
+      // The keyboard: the list is one Tab stop; Down moves, Enter opens.
+      await page.locator("#tp-steps .tp-row").first().focus();
+      await page.keyboard.press("ArrowDown");
+      G.down = (await list()).focus;
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => !!document.getElementById("tp-editor"), null, { timeout: T });
+      const opened = () => page.evaluate(() => {
+        const nav = (s) => document.querySelector("#tp-steps " + s);
+        return { id: document.getElementById("tp-editor").dataset.stepId, pos: nav(".tp-pos").textContent,
+          prev: nav(".tp-prev").getAttribute("aria-disabled"), next: nav(".tp-next").getAttribute("aria-disabled"),
+          prevTitle: nav(".tp-prev").title, nextTitle: nav(".tp-next").title, steps: nav(".tp-open-steps").textContent, stepsTitle: nav(".tp-open-steps").title,
+          verbs: [...document.querySelectorAll("#tp-steps .tp-verb")].filter((b) => !b.hidden).map((b) => b.textContent + (b.disabled ? " (off)" : "")),
+          panel: document.getElementById("step-panel").hidden,
+          video: document.getElementById("video").paused,
+          tl: Math.round(document.getElementById("timeline-scroll").getBoundingClientRect().width) };
+      });
+      G.open2 = await opened();
+      await page.locator("#tp-steps .tp-prev").click({ timeout: T });
+      await page.waitForFunction((id) => document.getElementById("tp-editor").dataset.stepId !== id, G.open2.id, { timeout: T });
+      G.first = await opened();
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.getElementById("tp-editor"), null, { timeout: T });
+      await wait(200);
+      G.escaped = await list();
+      // The last row: Next disabled; Open in Steps selects it in Steps.
+      await page.locator("#tp-steps .tp-row").last().click({ timeout: T });
+      await page.waitForFunction(() => !!document.getElementById("tp-editor"), null, { timeout: T });
+      G.last = await opened();
+      await page.locator("#tp-steps .tp-open-steps").click({ timeout: T });
+      await page.waitForFunction(() => require("./state.js").getLevel() === "steps", null, { timeout: T });
+      await wait(400);
+      G.inSteps = await page.evaluate(() => ({ sel: require("./state.js").getSelectedStepId(), name: (document.getElementById("step-name") || {}).value }));
+      await level("flow");
+      // Notes: Add note at the clock's moment, then Edit and Delete.
+      await page.locator("#tp-tab-notes").click({ timeout: T });
+      G.notesEmpty = await page.evaluate(() => ({ text: document.getElementById("tp-notes").innerText.trim(),
+        add: (document.querySelector("#tp-notes .tp-add-note") || {}).title }));
+      await page.locator("#tp-notes .tp-add-note").click({ timeout: T });
+      await prompt("Ask about orders by phone");
+      await page.waitForSelector("#tp-notes .tp-note-row", { timeout: T });
+      G.note = await page.evaluate(() => ({ row: document.querySelector("#tp-notes .tp-note-row").innerText.replace(/\s+/g, " ").trim(),
+        tab: document.getElementById("tp-tab-notes").getAttribute("aria-label") }));
+      await page.locator("#tp-notes .tp-note-delete").click({ timeout: T });
+      await page.waitForFunction(() => !document.querySelector("#tp-notes .tp-note-row"), null, { timeout: T });
+      G.noteGone = await page.evaluate(() => document.getElementById("tp-tab-notes").getAttribute("aria-label"));
+      await page.keyboard.press("Control+z");
+      await page.waitForSelector("#tp-notes .tp-note-row", { timeout: T });
+      G.noteBack = true;
+      await page.locator("#tp-tab-files").click({ timeout: T });
+      G.files = await page.evaluate(() => ({ text: document.getElementById("tp-files").innerText.trim(),
+        attach: (document.querySelector("#tp-files .tp-attach") || {}).title }));
+      await page.locator("#tp-tab-steps").click({ timeout: T });
+    } catch (x) { G.err = errText(x); }
+    const L = G.list || { rows: [] };
+    record("(G1) lane PANE item 2: the Steps tab lists the steps in the order of the process, each with its number, name, the line \"No system yet\" with what it lacks, and its start (the step being marked \"· open\"); the row at the clock's moment says now; Paste notes... above it; a row's tooltip says it opens the step",
+      !G.err && L.rows.length === 3 && JSON.stringify(L.rows.map((r) => r.num)) === '["1","2","3"]' &&
+        L.rows[0].name === "Take the call" && L.rows[0].meta === "No system yet" &&
+        L.rows[1].meta === "No system yet · no name yet · no description yet" && /^\d:\d{2}$/.test(L.rows[0].when) && / · open$/.test(L.rows[2].when) &&
+        L.rows.filter((r) => r.now).length <= 1 && L.rows.every((r) => r.title === "Opens this step.") &&
+        JSON.stringify(L.tools) === '["Paste notes..."]' && L.tabs[0] === "Steps (3)",
+      JSON.stringify(G.err ? G : L));
+    const P2 = G.pasted || { rows: [] }, O1 = G.oneLeft || { rows: [] }, TT = G.timed || { rows: [] };
+    record("(G2) lane PANE item 2: two steps pasted as notes are listed with \"no time yet\" and Starts here, under \"2 steps have no time yet. ...\"; at a moment, Starts here gives each its time (the hint then counts 1, then goes), the focus staying on its row",
+      !G.err && P2.rows.length === 5 && P2.rows.filter((r) => r.here).length === 2 && P2.rows.filter((r) => r.when === "no time yet").length === 2 &&
+        P2.hint === "2 steps have no time yet. Go to the moment a step starts in the video, then click Starts here on that step." &&
+        O1.hint === "1 step has no time yet. Go to the moment a step starts in the video, then click Starts here on that step." &&
+        TT.hint === "" && TT.rows.every((r) => !r.here && r.when !== "no time yet") && TT.focus === P2.rows.filter((r) => r.here)[1].id &&
+        TT.tabs[0] === "Steps (5)",
+      JSON.stringify(G.err ? G : { pasted: P2, oneLeft: O1.hint, timed: TT }));
+    const o2 = G.open2 || {}, f1 = G.first || {}, la = G.last || {};
+    record("(G3) lane PANE item 3: Down then Enter opens the second step in place (Step 2 of 5), the step panel closed and the video still paused; Previous opens the first (Previous disabled there), Next disabled on the last, each with its tooltip; Split..., Merge with next, Hide step under it; Escape goes back to the list, the focus on the row it was opened from (the second); Open in Steps selects the step in Steps",
+      !G.err && G.down === (TT.rows[1] || {}).id && o2.id === G.down && o2.pos === "Step 2 of 5" && o2.prev === null && o2.next === null && o2.panel && o2.video &&
+        f1.pos === "Step 1 of 5" && f1.prev === "true" && f1.prevTitle === "Opens the step before this one." && f1.nextTitle === "Opens the step after this one." &&
+        la.pos === "Step 5 of 5" && la.next === "true" && la.steps === "Open in Steps" &&
+        la.stepsTitle === "Opens this step in Steps, where its flow and its sub-process are edited." &&
+        JSON.stringify(o2.verbs.slice(0, 3).map((v) => v.replace(" (off)", ""))) === '["Split…","Merge with next","Hide step"]' &&
+        G.escaped.focus === o2.id && !!G.inSteps && G.inSteps.sel === la.id,
+      JSON.stringify(G.err ? G : { open2: o2, first: f1, last: la, escaped: G.escaped && G.escaped.focus, inSteps: G.inSteps }));
+    record("(G4) lane PANE item 4: Notes says what a note is while there is none, Add note adds one at the clock's moment (its row: the moment, the text, At a moment, on no step; the tab counts it), Delete takes it out and Ctrl+Z brings it back; Files says what an attached file is, with Attach file...",
+      !G.err && G.notesEmpty.text.endsWith("No notes yet. A note sits on a step or at a moment, and stays out of the PDD.") &&
+        G.notesEmpty.add === "Adds a note at this moment. Notes stay out of the PDD." &&
+        /^\d:\d{2} Ask about orders by phone At a moment, on no step Edit Delete$/.test(G.note.row) && G.note.tab === "Notes (1)" &&
+        G.noteGone === "Notes (0)" && G.noteBack &&
+        G.files.text.endsWith("No files attached yet. An attached file is copied into the project and listed in the PDD.") &&
+        G.files.attach === "Copies a file into the project and lists it in the PDD.",
+      JSON.stringify(G.err ? G : { notesEmpty: G.notesEmpty, note: G.note, gone: G.noteGone, files: G.files }));
   }
 
   // ================= E. From a video to one zip: the Checklist fits the project =================
