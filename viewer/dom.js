@@ -183,7 +183,15 @@ function _wireToast() {
    Dismiss and stays (toastLifetime). The text is a span of its own
    (.toast-text) whose tooltip is the whole text: in the Timeline's row a
    long message is cut with an ellipsis. */
+/* Lane A-2: the last error said, { text, at } (field-refusal.js shows a
+   field's refusal beside it from the message its check gave). */
+let _lastError = null;
+function errorSince(t) {
+  return _lastError && _lastError.at >= t ? _lastError.text : null;
+}
+
 function toast(text, kind, opts) {
+  if (kind === "error") _lastError = { text: String(text), at: Date.now() };
   if (kind !== "error" && Date.now() < toastHeldUntil) return;
   const el = $("#toast");
   const action = opts && opts.action;
@@ -280,4 +288,5 @@ function placeMenu(menu, x, y) {
 }
 
 module.exports = { $, $$, escapeHtml, escapeAttr, formatDuration, clock, recordingStartMs, sinceStart, parseClock,
-  fillTable, cryptoRandomId, toast, hideToast, placeToast, toastLifetime, toastClosesOnInteraction, fitMenuPosition, placeMenu };
+  fillTable, cryptoRandomId, toast, hideToast, placeToast, toastLifetime, toastClosesOnInteraction, fitMenuPosition, placeMenu,
+  errorSince };

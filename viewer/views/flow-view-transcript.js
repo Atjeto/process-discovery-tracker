@@ -131,10 +131,9 @@ function transcriptLane(env) {
         const name = _partName(part, parts);
         label.innerHTML = (name ? '<span class="tl-tr-name">' + escapeAttr(name) + "</span>" : "") +
           (part.synced ? "" : '<span class="tl-tr-state">Not synced</span>') +
-          '<button type="button" class="link-btn tl-tr-sync" title="Place the transcript on the timeline: ' +
-          'pick a sentence, then click the moment on the timeline where it was said.">Sync...</button>' +
-          '<button type="button" class="link-btn tl-tr-replace" title="' + escapeAttr(TM.REPLACE_TITLE) + '">Replace...</button>' +
-          '<button type="button" class="link-btn tl-tr-remove" title="' + escapeAttr(TM.REMOVE_TITLE) + '">Remove</button>';
+          '<button type="button" class="link-btn tl-tr-sync" title="' + escapeAttr(TM.SYNC_TITLE) + '">Sync the transcript...</button>' +
+          '<button type="button" class="link-btn tl-tr-replace" title="' + escapeAttr(TM.REPLACE_TITLE) + '">Replace the transcript...</button>' +
+          '<button type="button" class="link-btn tl-tr-remove" title="' + escapeAttr(TM.REMOVE_TITLE) + '">Remove the transcript</button>';
         label.addEventListener("click", (e) => e.stopPropagation());
         label.querySelector(".tl-tr-sync").addEventListener("click", (e) => startTranscriptSync(e, part.file));
         label.querySelector(".tl-tr-replace").addEventListener("click", () => attachTranscript({ file: part.file }));
@@ -544,7 +543,7 @@ function renderTab(force) {
     const name = parts.length > 1 ? "Transcript " + u.number : "The transcript";
     return '<p class="trt-note">' + escapeAttr(name) + " is not placed on the clock yet" +
       (editable && timeline ? ': <button type="button" class="link-btn trt-sync" data-file="' + escapeAttr(u.file) + '" ' +
-        'title="Place the transcript on the timeline: pick a sentence, then click the moment on the timeline where it was said.">Sync...</button>'
+        'title="' + escapeAttr(TM.SYNC_TITLE) + '">Sync the transcript...</button>'
         : editable ? ": attach the video first, then sync it." : ".") + "</p>";
   }).join("");
   if (!model.rows.length) {

@@ -1255,7 +1255,7 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
     record("lane PANE item 5: in a recording the pane's Steps tab groups the steps under each transaction's header, the reference first (Reference), each with its Starts at and Ends at fields, Rename (\"Changes the name of this transaction.\") and Delete transaction, and Confirm transaction above the list",
       !err && H.length === RUNS.length && H[0].caseId === R1 && H[0].ref && H.slice(1).every((h) => !h.ref) && H.every((h) => h.start && h.end && h.rows > 0) &&
         H.every((h) => h.rename === "Changes the name of this transaction." &&
-          h.del === "Deletes this transaction: its stretch of the timeline is no longer a transaction of its own. Ctrl+Z brings it back.") &&
+          h.del === "Deletes this transaction: its stretch is no longer one of its own. Ctrl+Z brings it back.") &&
         P.tools.some((t) => t.startsWith("Confirm transaction|")) && P.tools[0].startsWith("Paste notes...|"),
       JSON.stringify({ err, heads: H, tools: P.tools }));
     record("lane PANE item 3: a drafted step opened from its band says, under its line of facts, Also happens in, a line per other transaction (\"Transaction 2 (...) at m:ss\") with Go there; Go there opens that one in place",

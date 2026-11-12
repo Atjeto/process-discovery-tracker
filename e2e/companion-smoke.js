@@ -430,7 +430,7 @@ function zipFiles(buf) {
   } catch (e) { b2.err = errText(e); }
   record("(b2) lane FX3 + 2.0.1: a step added by hand shows no recorded action and no scissors, is not split from the step menu, and S says why; Edit as the As-Is map acts once there are steps",
     !b2.err && !!b2.btn && b2.btn.scissors === 0 && b2.btn.text === "No action was recorded in this step." &&
-      b2.menu.length > 0 && !b2.menu.some((t) => /Split/.test(t)) && b2.toast.startsWith("No action (a click, a field typed) was recorded in this step") &&
+      b2.menu.length > 0 && !b2.menu.some((t) => /Split/.test(t)) && b2.toast.startsWith("No action was recorded in this step") &&
       !/interaction|\u2265/.test(b2.toast) && b2.fork,
     JSON.stringify(b2));
 
@@ -854,7 +854,7 @@ function zipFiles(buf) {
   } catch (x) { j2.err = errText(x); }
   record("(j2) 2.0.1: right-click the Timeline, Add a step here adds a step; a step band's right-click marks there first (Add a step here: steps are added one after another, on the band of the one before), then, under the step's name, Open in Steps and Delete step, which deletes it (asked first); a band click then Steps shows that step selected",
     !j2.err && j2.added && j2.items.includes("Add a step here") && j2.head === newestName &&
-      JSON.stringify(j2.items.slice(-4)) === JSON.stringify(["Open in Steps", "Select + seek here", "Place after a step…", "Delete step"]) &&
+      JSON.stringify(j2.items.slice(-4)) === JSON.stringify(["Open in Steps", "Play", "Place after a step…", "Delete step"]) &&
       j2.deleted && j2.shown, JSON.stringify(j2));
 
   // (k) A frame of the video as a screenshot of the first step.

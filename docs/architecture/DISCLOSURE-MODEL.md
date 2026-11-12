@@ -68,8 +68,10 @@ default-filled.
   takeaway + chevron*. The takeaway renders even when collapsed (it is the
   module's Memo altitude, e.g. "not judged yet — click to set"). Bodies
   expand; collapse state persists per analyst; gates keep their CTA.
-- **Flow / Steps / Phases** — Evidence. Space follows data: an empty video
-  stage collapses to a slim band (rule 5 applied spatially).
+- **Flow / Steps / Phases**: Evidence. Space follows data: without a video,
+  the video stage of a recording shows its screen from its screenshots (its
+  header reads SCREEN), and collapses to a slim band only when there is
+  nothing to show (rule 5 applied spatially).
 - **Map** — the reference implementation: calm resident chain, expert content
   in the named drawer. When in doubt on a new surface, copy the Map.
 - **Template / App Library** — Machine-heavy surfaces with a Memo-altitude

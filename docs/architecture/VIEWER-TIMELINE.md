@@ -244,7 +244,8 @@ menu at the moment clicked:
 - *Add note here...*: a note pinned to that moment (the Notes lane turns on).
 - *Add a step here*: a step at that moment, as *Add step* adds one at the
   playhead.
-- *Jump to step here*: the Steps level, on the step at that moment.
+- *Open in Steps*: the Steps level, on the step at that moment (lane A-2,
+  one name per act; it read *Jump to step here*).
 
 A transaction's start or end, and a step, start at the moment clicked, or
 at a step's start or the playhead within 8 px of it (2.0.3, `snapMoment`;
@@ -310,9 +311,11 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
 - **Every right-click marks there.** A step's or a transaction's band opens
   the Timeline's menu (`flow-view.js` `showMarkerInsertMenu` with a `band`:
   the moment's items, then a rule, the band's name as `.tl-ctx-head` and its
-  own items: *Open in Steps*, *Select + seek here*, *Place after a step...*
+  own items: *Open in Steps*, *Play* (where a video shows the step's start:
+  the step selected and played from its start, `seekClock`; lane A-2, it
+  read *Select + seek here*), *Place after a step...*
   (and *Back to its time* on a placed step), *Delete step* or *Hide step*;
-  *Jump to start*, *Jump to end*), so the next step is added on the band of
+  *Go to its start*, *Go to its end*), so the next step is added on the band of
   the open one before it.
 - **A step's place in the process is its own** (2.0.5, contract C22; the
   owner's report: a correction the SME shows late in a video, marked where
@@ -413,7 +416,7 @@ Lane E (E3), lane PANE: the pane's Transcript tab, beside Steps, Screenshots, No
 `transcript-list.js`). The chosen tab stays chosen while the window lives.
 Every placed sentence of every transcript in time order on the one clock
 (`transcript-model.js` `partsOf`), the speaker where it changes; a
-transcript not placed yet is a line with *Sync...*; without a transcript, a
+transcript not placed yet is a line with *Sync the transcript...*; without a transcript, a
 line with *Attach transcript...*. A search over the list hides what does not
 match, marks the matches and counts them ("3 of 340"); with more than one
 speaker a select ("Everyone" first) narrows to one. The list is built once
@@ -543,7 +546,7 @@ is known and nothing after: the video's own time no longer shows there.
 - A click on a step band opens the step in place in the pane beside the
   video, the clock at its start (a paused video stays paused); a
   screenshot or a note on the timeline opens its tab at it. The step panel
-  no longer opens on the Timeline (lane PANE); its own playback (Watch)
+  no longer opens on the Timeline (lane PANE); its own playback (*Play*)
   is on Steps and the Map.
 - The playback bar at the foot of the window is gone (lane SCREEN): it
   showed on every level and drove a video only the Timeline shows. Its keys

@@ -656,6 +656,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
   double hyphen, or a hyphen with spaces around it) between clauses; use a
   colon, a comma, parentheses or a new sentence.
   `viewer/ui-copy-guard.test.js` fails on an em or en dash in UI strings.
+- **Readable and reachable** (lane A-2): text is 12 px or more (11 px only
+  for a mono clock time), a tooltip is one sentence of 90 characters or
+  fewer, an act has one name (*Play*, *Show on timeline*, *Open in Steps*),
+  and Ctrl+Plus, Ctrl+Minus and Ctrl+0 zoom the app (`app-zoom.js`);
+  `type-floor-guard.test.js`, `tooltip-guard.test.js` and
+  `ui-copy-guard.test.js` in `viewer/` fail otherwise.
 
 ## Environment
 

@@ -279,7 +279,7 @@ async function laneLanes(TMP) {
       c.key.left > c.mid.left && c.key.clockKept &&
       c.all.boxW > 0.99 && c.all.left === 0 && c.all.zoom === 1 &&
       c.attrs.role === "scrollbar" && c.attrs.controls === "timeline-scroll" && c.attrs.orient === "horizontal" && c.attrs.tab === 0 && c.attrs.h >= 24 && c.attrs.track === 14 &&
-      c.attrs.title === "The whole length of the timeline. Drag the box to move along it, or click a place to go there.",
+      c.attrs.title === "The whole length of the timeline: drag the box, or click a place to go there.",
     JSON.stringify(c));
 
   // The Lanes menu: the lanes in the timeline's order, then what the marks mean.
@@ -722,12 +722,12 @@ async function laneE(TMP) {
   record("(o) lane E, E4: in a project made from a video a Shift-drag (which does not start the video) shows the stretch's times and length in the timeline's row and offers Not part of the process (filled, not Leave out of the analysis), Make it a transaction and Clear selection; one click marks it with no question and no analysis (\"Marked as not part of the process.\"), hatched with its label and tooltip, the legend in its words, and Steps says nothing of it",
     !o.err && o.pausedBefore && o.pausedAfter && /^0:0\d to 0:1\d · \ds$/.test(o.rows.times) && o.rows.cardGone &&
       JSON.stringify(o.card) === '["Not part of the process","Make it a transaction","Clear selection"]' && o.filled && !o.dialog &&
-      o.tip === "Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back." &&
+      o.tip === "Marks the selected stretch as not part of the process: playing skips it." &&
       /Marked as not part of the process\./.test(o.toast || "") &&
       !o.busy.busy && !o.busy.status && Math.abs(o.range[0] - 8) <= 0.3 && Math.abs(o.range[1] - 16) <= 0.3 &&
       /^Not part of the process: 0:0\d to 0:1\d\. Click it to include it again\.$/.test(o.drawn.title || "") && o.drawn.label === "Not part of the process" &&
       o.drawn.legend === "not part of the process" &&
-      o.drawn.legendTip === "A stretch you marked as not part of the process. It is skipped when playing and left out of the Transcript tab." &&
+      o.drawn.legendTip === "A stretch you marked as not part of the process: playing skips it." &&
       o.drawn.legendShown && o.steps.notes === 0 && !o.steps.text,
     JSON.stringify(o));
 
@@ -1012,7 +1012,7 @@ async function laneE(TMP) {
   record("(a) the report's clicks: Start a transaction here 6 px after a step's start starts it at the step's start (it snaps); the transaction is drawn at once where it was put, as any transaction (D4: no dashed state, nothing about applying), with no bar under it and no button; it applies itself with no click and no question and the step is in the transaction",
     !a.err && a.snapped && a.bandAtStep && a.drawn.bars === 0 && a.drawn.update === false &&
       /^tl-case-band( dangling)?$/.test(a.drawn.cls) && !/appl|pending/i.test(a.drawn.title) &&
-      /open: no end marked yet/.test(a.drawn.title) && /Drag its start or its end to move it, or right-click where it ends: End the transaction here[.]/.test(a.drawn.title) &&
+      /open: no end marked yet/.test(a.drawn.title) && /Drag its start to move it; right-click where it ends to end it[.]/.test(a.drawn.title) &&
       a.asked === false && a.runs.length === 1 && a.runs[0].label === "Order 1" && a.inRun &&
       JSON.stringify(a.groups) === '["Transaction 1: 1 step"]' && a.applied.bands === 1 && a.applied.cls.every((c) => /^tl-case-band( dangling)?$/.test(c)),
     JSON.stringify(a));
@@ -1232,6 +1232,26 @@ async function laneE(TMP) {
     await typeIn(page.locator("#step-start"), clockOf(new Date(Date.parse(s1.time_range.end) + 2000).toISOString()));
     gT.afterEnd = await toastText();
     gT.unchanged = (await stepById(stepId)).time_range.start === s1.time_range.start;
+    // Lane A-2 (audit A18): the reason stays beside the field, under its
+    // line, after the message has gone and 5 s on, until the field is edited.
+    await wait(5000);
+    gT.beside = await page.evaluate(() => {
+      const f = document.getElementById("step-start");
+      const id = f && f.getAttribute("aria-describedby");
+      const n = id ? document.getElementById(id) : null;
+      const fr = f && f.getBoundingClientRect(), nr = n && n.getBoundingClientRect();
+      return { invalid: f && f.getAttribute("aria-invalid"), role: n && n.getAttribute("role"), text: n ? n.textContent : null,
+        shown: !!(n && n.checkVisibility()), px: n ? parseFloat(getComputedStyle(n).fontSize) : 0,
+        under: !!(fr && nr && nr.top >= fr.bottom - 2 && nr.top - fr.bottom < 80 && nr.left < fr.right),
+        inEditor: !!(n && n.closest("#step-detail, #tp-editor")) };
+    });
+    await page.click("#step-start");
+    await page.keyboard.type("1");
+    gT.afterEdit = await page.evaluate(() => {
+      const f = document.getElementById("step-start");
+      return { invalid: f.getAttribute("aria-invalid"), described: f.getAttribute("aria-describedby"), lines: document.querySelectorAll(".field-refusal").length };
+    });
+    await page.keyboard.press("Escape");
   } catch (e) { gT.err = errText(e); }
   record("(g) the selected step's start and end are fields on its line of facts: a start typed moves it (before its transaction it leaves it, Ctrl+Z brings it back), Up adds a second and Escape puts it back, a text that is no time and a start after the end are refused, saying why",
     !gT.err && gT.shownOk && gT.shown.label === "Start of this step" && gT.up !== gT.shown.start && gT.escaped &&
@@ -1239,6 +1259,12 @@ async function laneE(TMP) {
       /^That is not a time: type it the way the timeline shows it/.test(gT.notATime) &&
       /^The start of this step can be from .+ to .+: a step does not run over the steps beside it[.]$/.test(gT.afterEnd) && gT.unchanged,
     JSON.stringify(gT));
+  record("(g2) lane A-2: the refusal (a step does not run over the steps beside it) is still on screen beside its field after 5 s: a 12 px alert under the field's line, the field aria-invalid and described by it; the next edit of the field takes it away",
+    !gT.err && !!gT.beside && gT.beside.invalid === "true" && gT.beside.role === "alert" && gT.beside.shown && gT.beside.px >= 12 &&
+      gT.beside.under && gT.beside.inEditor &&
+      /^The start of this step can be from .+ to .+: a step does not run over the steps beside it[.]$/.test(gT.beside.text || "") &&
+      !!gT.afterEdit && gT.afterEdit.invalid === null && gT.afterEdit.described === null && gT.afterEdit.lines === 0,
+    JSON.stringify({ beside: gT.beside, afterEdit: gT.afterEdit, err: gT.err }));
 
   // (h) The transaction's Starts at, typed: it applies by itself.
   let hT = {};
@@ -1425,7 +1451,7 @@ async function laneE(TMP) {
       lT.chain && lT.lastToEnd && JSON.stringify(lT.open) === "[false,false,true]" &&
       lT.newest.end === "" && lT.newest.ph === "open" && !/took/.test(lT.newest.line) &&
       lT.before.end !== "" && /took/.test(lT.before.line) &&
-      lT.txMenu.includes("End the transaction here") && lT.txMenu.includes("Jump to start") &&
+      lT.txMenu.includes("End the transaction here") && lT.txMenu.includes("Go to its start") &&
       lT.asked === false && lT.ended && lT.openAfter === false,
     JSON.stringify(lT));
 

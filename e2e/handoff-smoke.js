@@ -647,8 +647,8 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       return m ? Array.from(m.children).map((c) => c.textContent) : null;
     });
     await dev.keyboard.press("Escape");
-    record("(d) the Timeline's right-click offers only Jump to step here",
-      JSON.stringify(tlItems) === JSON.stringify(["Jump to step here"]), JSON.stringify(tlItems));
+    record("(d) the Timeline's right-click offers only Open in Steps (lane A-2: it read Jump to step here)",
+      JSON.stringify(tlItems) === JSON.stringify(["Open in Steps"]), JSON.stringify(tlItems));
     // Steps: a step selected; its pane read only; no verb from the keyboard,
     // a double-click or a right-click.
     await dev.click(".view-mode-btn[data-level=\"steps\"]");
@@ -685,7 +685,7 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     });
     await dev.keyboard.press("Escape");
     record("(d) a step's right-click offers only the ways to look at it",
-      !!stepItems && stepItems.length > 0 && stepItems.every((t) => ["Open sub-process", "Show on timeline", "Watch"].includes(t)),
+      !!stepItems && stepItems.length > 0 && stepItems.every((t) => ["Open sub-process", "Show on timeline", "Play"].includes(t)),
       JSON.stringify(stepItems));
     // The Map: the map the hand-off came with, drawn without an analysis.
     await dev.click(".view-mode-btn[data-level=\"map\"]");

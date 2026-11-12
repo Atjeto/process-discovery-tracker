@@ -201,6 +201,10 @@ function _showPane(shown) {
       el.classList.toggle("on-screen", screen);
     }
   }
+  // Lane A-2: the pane's header says what it shows: SCREEN while it shows a
+  // recording's screenshots, VIDEO otherwise (expanded and fullscreen say so).
+  const status = document.getElementById("vc-status-text");
+  if (status && (status.textContent === "VIDEO" || status.textContent === "SCREEN")) status.textContent = screen ? "SCREEN" : "VIDEO";
   onPane();
 }
 

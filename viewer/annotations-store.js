@@ -134,7 +134,7 @@ function backupTime(mtimeMs, locale) {
 function unreadableMessage(root, reason, backups, newest) {
   const names = (backups || []).map((b) => b.name);
   return "The file " + FILE + " in this project folder cannot be read (" + reason + "). " +
-    "Your steps, marker changes and notes for this project are not shown, and nothing " +
+    "Your steps, transaction changes and notes for this project are not shown, and nothing " +
     "will be saved until the file is fixed. " +
     (newest
       ? "Restore the newest backup puts back " + newest.name + ", saved " + backupTime(newest.mtimeMs) +

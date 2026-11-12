@@ -147,14 +147,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
 h1, h2, h3, h4 { font-weight: 500; margin: 0; }
 h1 { font-size: 14px; letter-spacing: 0.5px; }
 h2 { font-size: 16px; }
-h3 { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+h3 { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
   color: var(--fg-3); font-family: var(--font-mono); margin-bottom: 10px; }
 
-code { font-family: var(--font-mono); font-size: 11px;
+code { font-family: var(--font-mono); font-size: 12px;
   background: var(--bg-3); padding: 1px 5px; border-radius: 3px; }
 
-.meta { color: var(--fg-3); font-size: 11px; }
-.hint { color: var(--fg-3); font-size: 11px; margin: 4px 0 10px; line-height: 1.5; }
+.meta { color: var(--fg-3); font-size: 12px; }
+.hint { color: var(--fg-3); font-size: 12px; margin: 4px 0 10px; line-height: 1.5; }
 .flex-spacer { flex: 1; }
 
 /* ===== Buttons ===== */
@@ -179,7 +179,7 @@ input[type=checkbox]:focus:not(:focus-visible), input[type=radio]:focus:not(:foc
 button.icon-btn { padding: 4px 8px; font-family: var(--font-mono); font-size: 14px; min-width: 28px; }
 
 .kbd { display: inline-block; padding: 0 5px; min-width: 16px; height: 16px;
-  font-family: var(--font-mono); font-size: 10px; line-height: 16px; text-align: center;
+  font-family: var(--font-mono); font-size: 12px; line-height: 16px; text-align: center;
   background: var(--bg-4); border: 1px solid var(--rule); border-radius: 3px;
   color: var(--fg-2); margin-right: 6px; vertical-align: middle; }
 
@@ -201,11 +201,11 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .map-status-select {
   background: var(--bg-3); color: var(--fg);
   border: 1px solid var(--field-border); border-radius: 3px;
-  padding: 1px 4px; font-size: 10px; font-family: var(--font-mono);
+  padding: 1px 4px; font-size: 12px; font-family: var(--font-mono);
   max-width: 180px;
 }
 .link-btn { background: transparent; border: 0; padding: 2px 4px; color: var(--link);
-  font-family: inherit; font-size: 11px; cursor: pointer; text-decoration: underline;
+  font-family: inherit; font-size: 12px; cursor: pointer; text-decoration: underline;
   text-underline-offset: 2px; transition: color 0.12s; }
 .link-btn:hover:not(:disabled) { color: var(--fg); background: transparent; border-color: transparent; }
 /* Lane A-1: a text action is easier to hit. Its hit area is at least 24 px
@@ -237,7 +237,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 .theme-toggle:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 /* The save state (save-state.js): one quiet word before Export, in the error
    colour while a write failed. It fades in again after each save. */
-.save-state { font-size: 11px; color: var(--fg-3); white-space: nowrap;
+.save-state { font-size: 12px; color: var(--fg-3); white-space: nowrap;
   padding: 2px 4px; border-radius: var(--radius-sm); cursor: default; }
 .save-state[data-state="failed"] { color: var(--bad); font-weight: 600; }
 /* Lane HV: a hand-off opened read only; the version is in its tooltip. */
@@ -251,7 +251,7 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   .save-state.fade, .project-btn.busy::before { animation: none; }
 }
-.help-cta { color: var(--fg-3); font-size: 11px; margin-top: 16px; }
+.help-cta { color: var(--fg-3); font-size: 12px; margin-top: 16px; }
 .help-action { margin-top: 8px; }
 
 /* ===== Lane W0: the top bar's next act, Undo and Redo ===== */
@@ -316,7 +316,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
    no time): one line; and the row whose moment it does not cover. */
 .sp-video-note { margin: 0; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .sp-video-note[hidden] { display: none; }
-.sp-nocover { margin: 2px 0 0; font-size: 11px; color: var(--fg-3); }
+.sp-nocover { margin: 2px 0 0; font-size: 12px; color: var(--fg-3); }
 /* The waste flag, as the Steps row shows it. */
 .sp-about .sp-waste { color: var(--fg-2); }
 .sp-occ-head .sp-waste-tag { margin-left: auto; }
@@ -328,10 +328,10 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .sp-occ.focus { border-color: var(--accent); background: var(--accent-muted); box-shadow: inset 3px 0 0 var(--accent); }
 .sp-occ-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg); }
 .sp-at { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.sp-play { flex: none; padding: 1px 8px; font-size: 11px; }
+.sp-play { flex: none; padding: 1px 8px; font-size: 12px; }
 /* A row's screenshots, what was said and its notes, each under a small lead. */
 .sp-sec { margin-top: 6px; }
-.sp-lead { margin-bottom: 2px; font-size: 10px; font-weight: 600; color: var(--fg-3); }
+.sp-lead { margin-bottom: 2px; font-size: 12px; font-weight: 600; color: var(--fg-3); }
 /* On the highlighted row's fill, muted text takes --fg-2 (4.5:1 in both themes). */
 .sp-occ.focus .sp-lead, .sp-occ.focus .tr-time { color: var(--fg-2); }
 .sp-shots { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -339,7 +339,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   border: 1px solid var(--rule); border-radius: 3px; }
 .sp-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .sp-said { list-style: none; margin: 0; padding: 0; }
-.sp-said .tr-row { font-size: 11px; }
+.sp-said .tr-row { font-size: 12px; }
 .sp-foot { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 /* Lane E-1: on the Timeline and the Map the panel's head is the step's name,
    system and description as fields (step-panel.js _drawHead), drawn as the
@@ -395,7 +395,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .recent-sessions { margin-top: 36px; text-align: left; }
 .recent-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .recent-header h3 { margin: 0; }
-.recent-clear-btn { background: none; border: none; color: var(--fg-3); font-size: 11px;
+.recent-clear-btn { background: none; border: none; color: var(--fg-3); font-size: 12px;
   cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
 .recent-clear-btn:hover { color: var(--fg-2); background: var(--bg-2); }
 .recent-sessions ul { list-style: none; padding: 0; margin: 0; }
@@ -407,11 +407,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .recent-sessions li.missing { opacity: 0.55; }
 .recent-sessions li.missing:hover { border-color: var(--rule); background: var(--bg-2); cursor: default; }
 .recent-sessions .label { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-family: var(--font-mono); font-size: 11px;
+  white-space: nowrap; font-family: var(--font-mono); font-size: 12px;
   display: flex; align-items: center; gap: 6px; }
-.recent-sessions .when { color: var(--fg-3); font-size: 11px; flex: 0 0 auto; }
+.recent-sessions .when { color: var(--fg-3); font-size: 12px; flex: 0 0 auto; }
 .recent-sessions .recent-missing-tag { display: inline-block; font-family: var(--font-mono);
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 6px;
   border-radius: 8px; background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
 .recent-sessions .recent-remove { background: none; border: none; color: var(--fg-3);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px;
@@ -591,14 +591,14 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
    controls (V2 item 8). */
 .video-overlay { position: absolute; top: 46px; left: 8px; padding: 4px 10px;
   background: rgba(0, 0, 0, 0.55); border-radius: 4px; font-family: var(--font-mono);
-  font-size: 11px; color: rgba(255, 255, 255, 0.82); pointer-events: none; z-index: 2; }
+  font-size: 12px; color: rgba(255, 255, 255, 0.82); pointer-events: none; z-index: 2; }
 .video-overlay:empty { display: none; }
 
 /* Video header bar with mode controls */
 .video-controls { display: flex; align-items: center; justify-content: space-between;
   padding: 6px 10px; background: rgba(0, 0, 0, 0.5); flex-shrink: 0; z-index: 2; }
 .video-controls .vc-status { display: flex; align-items: center; gap: 6px;
-  font-family: var(--font-mono); font-size: 10px; color: #9aa0b0; }
+  font-family: var(--font-mono); font-size: 12px; color: #9aa0b0; }
 .video-controls .vc-buttons { display: flex; gap: 4px; }
 .video-controls button { padding: 4px 6px; background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 3px; color: #c0c4d0;
@@ -606,7 +606,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .video-controls button:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .video-controls button[hidden] { display: none; }
 /* Sync video..., a text button beside the two icon buttons. */
-.video-controls .vc-text-btn { line-height: 1.2; font-family: var(--font-ui); font-size: 11px; padding: 3px 8px; }
+.video-controls .vc-text-btn { line-height: 1.2; font-family: var(--font-ui); font-size: 12px; padding: 3px 8px; }
 
 /* Drag-resize handles */
 .resize-v { cursor: row-resize; height: 8px; width: 100%; flex-shrink: 0;
@@ -671,6 +671,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   .timeline-header button { padding: 5px 8px; }
   .tl-sep { margin: 0 2px; }
 }
+/* Lane A-2: narrower still (the app zoomed to 175% or 200%), the row goes
+   on a second line rather than cut its last controls. */
+@media (max-width: 800px) {
+  .timeline-header { flex-wrap: wrap; height: auto; min-height: 44px; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; }
+  .timeline-header > .tl-message { flex-basis: 120px; }
+}
 .timeline-controls .icon-btn { min-width: 30px; padding: 5px 8px; font-family: var(--font-ui); font-size: 14px; line-height: 1; }
 /* The Flow timeline sizes to fit its lane stack: `min-height` (not a fixed
    `height`) keeps the strip at least the drag-set --timeline-height while
@@ -700,7 +706,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .tl-lane-name:hover { color: var(--fg); background: color-mix(in srgb, var(--accent) 16%, var(--bg-1));
   box-shadow: inset 2px 0 0 var(--accent); }
 .tl-lane-label { flex: 1 1 auto; min-width: 0; line-height: 14px;
-  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A lane's key: a small copy of the lane's own marks, drawn in CSS (the
    Transcript's a speech bubble). */
@@ -715,7 +721,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .tl-lane-key-activity i { width: 4px; height: 12px; border-radius: 1px; background: var(--fg-4); }
 .tl-lane-key-transcript svg { width: 14px; height: 14px; color: var(--fg-3); }
 .tl-lane-key-notes::before { content: "\270E"; width: 12px; height: 12px; line-height: 12px; text-align: center;
-  font-size: 8px; color: var(--bg); background: var(--accent); border-radius: 3px; }
+  font-size: 12px; color: var(--bg); background: var(--accent); border-radius: 3px; }
 .tl-lane-key-screenshots svg { width: 12px; height: 12px; padding: 1.5px; box-sizing: border-box;
   color: #fff; background: var(--accent-2); border-radius: var(--radius-x); }
 .tl-lane-key-steps::before { content: ""; width: 14px; height: 10px; box-sizing: border-box; border-radius: 2px;
@@ -747,7 +753,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .tl-activity::after {
   content: "\22EF";  /* MIDLINE HORIZONTAL ELLIPSIS: compact and conventional */
   position: absolute; top: 2px; right: 4px;
-  font-size: 10px; line-height: 1; color: rgba(255, 255, 255, 0.85);
+  font-size: 12px; line-height: 1; color: rgba(255, 255, 255, 0.85);
   opacity: 0; pointer-events: none; transition: opacity 0.15s;
 }
 .tl-activity:hover::after { opacity: 0.7; }
@@ -768,18 +774,18 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
    intrinsic width, clipping against the band edge instead of eliding.
    min-width: 0 lets the flex item actually shrink to the ellipsis. */
 .tl-act-app {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.2px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   opacity: 0.95; min-width: 0;
 }
 .tl-act-title {
-  font-size: 10px; font-weight: 400;
+  font-size: 12px; font-weight: 400;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   opacity: 0.8; min-width: 0;
 }
 .tl-act-dur {
   position: absolute; bottom: 2px; right: 4px;
-  font-family: var(--font-mono); font-size: 9px; opacity: 0.85;
+  font-family: var(--font-mono); font-size: 12px; opacity: 0.85;
   background: rgba(0,0,0,0.3); padding: 0 4px; border-radius: 2px;
   color: #fff;
 }
@@ -813,8 +819,8 @@ body.tl-edge-dragging, body.tl-edge-dragging * { cursor: ew-resize !important; u
 body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .tl-drag-time { position: absolute; z-index: 8; transform: translateX(-50%); pointer-events: none;
   padding: 1px 5px; border-radius: 2px; background: var(--fg); color: var(--bg);
-  font-family: var(--font-mono); font-size: 10px; line-height: 14px; white-space: nowrap; }
-.tl-case-label { position: absolute; padding: 1px 5px; font-size: 10px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 14px; white-space: nowrap; }
+.tl-case-label { position: absolute; padding: 1px 5px; font-size: 12px;
   color: var(--bg); background: var(--accent-2); border-radius: 2px;
   white-space: nowrap; pointer-events: none; font-weight: 500;
   /* NAV-AUDIT §J/§9: clip a kept label to its band so it never spills into a
@@ -833,7 +839,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .anno-tabs { display: flex; gap: 2px; margin-bottom: 12px;
   border-bottom: 1px solid var(--rule); }
 .anno-tab { background: transparent; border: none; border-bottom: 2px solid transparent;
-  padding: 6px 12px; color: var(--fg-3); border-radius: 0; font-size: 11px;
+  padding: 6px 12px; color: var(--fg-3); border-radius: 0; font-size: 12px;
   letter-spacing: 0.5px; }
 .anno-tab.active { color: var(--fg); border-bottom-color: var(--accent); }
 .anno-tab:hover { color: var(--fg); background: transparent; }
@@ -847,10 +853,10 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .screens-grid .thumb:hover { border-color: var(--accent); }
 .screens-grid .thumb img { width: 100%; height: 100%; object-fit: cover; }
 .screens-grid .thumb .stamp { position: absolute; bottom: 2px; left: 2px;
-  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 9px;
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 11px;
   padding: 1px 4px; border-radius: 2px; font-family: var(--font-mono); }
 .screens-grid .thumb .badge { position: absolute; top: 2px; right: 2px;
-  background: var(--accent-fill); color: var(--accent-text); font-size: 8px; font-weight: 600;
+  background: var(--accent-fill); color: var(--accent-text); font-size: 12px; font-weight: 600;
   padding: 1px 4px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* D4: Update the steps, the top bar's status line (#session-pills) while
@@ -861,7 +867,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 }
 .update-cta:hover { background: color-mix(in srgb, var(--warn) 28%, transparent); }
 
-.icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1; }
+.icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 12px; line-height: 1; }
 
 
 /* ===== Event table ===== */
@@ -883,7 +889,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
    view, its lanes scrolling. */
 .view.on-timeline .lower-workspace.no-recording { min-height: 258px; }
 .event-table-host > summary { cursor: pointer; padding: 8px 0;
-  color: var(--fg-3); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--fg-3); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
   font-family: var(--font-mono); }
 /* The analysis log shows only when an analysis failed: the failure sentence
    is its summary line (first), the pipeline's lines under it. */
@@ -897,28 +903,28 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .event-filter input[type=text] { flex: 1; min-width: 180px; }
 .event-table-scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--rule);
   border-radius: var(--radius-sm); }
-.event-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.event-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .event-table th, .event-table td { padding: 5px 10px; border-bottom: 1px solid var(--rule);
   text-align: left; vertical-align: top; }
 .event-table th { color: var(--fg-3); font-weight: 500; background: var(--bg-2);
   position: sticky; top: 0; font-family: var(--font-mono); text-transform: uppercase;
-  letter-spacing: 0.5px; font-size: 10px; z-index: 1; }
+  letter-spacing: 0.5px; font-size: 12px; z-index: 1; }
 .event-table tr { cursor: pointer; transition: background 0.1s; }
 .event-table tr:hover { background: var(--bg-3); }
 .event-table tr.t-marker td { background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .event-table tr.t-system td { background: color-mix(in srgb, var(--accent-2) 8%, transparent); color: var(--fg-2); }
 .event-table td.t-time { font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
-.event-table td.t-type { font-family: var(--font-mono); font-size: 10px; }
+.event-table td.t-type { font-family: var(--font-mono); font-size: 12px; }
 .event-table td.t-actions { white-space: nowrap; }
 .event-table .ev-act {
   background: var(--bg-3); border: 1px solid var(--rule); color: var(--fg-3);
-  font-family: inherit; font-size: 10px; padding: 1px 6px; border-radius: 3px;
+  font-family: inherit; font-size: 12px; padding: 1px 6px; border-radius: 3px;
   cursor: pointer; margin-right: 3px;
 }
 .event-table .ev-act:hover { background: var(--bg-4); color: var(--fg); border-color: var(--accent); }
 
 .log-host pre { background: var(--bg-3); padding: 12px; border-radius: var(--radius-sm);
-  font-family: var(--font-mono); font-size: 11px; max-height: 240px; overflow: auto;
+  font-family: var(--font-mono); font-size: 12px; max-height: 240px; overflow: auto;
   border: 1px solid var(--rule); color: var(--fg-2); margin: 8px 0 2px; white-space: pre-wrap; }
 
 /* ===== Panels + process map ===== */
@@ -930,7 +936,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .panel-header h3 { margin: 0; }
 /* DFG zoom controls */
 .map-zoom { display: flex; align-items: center; gap: 4px; margin-left: auto;
-  color: var(--fg-3); font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+  color: var(--fg-3); font-size: 12px; flex-shrink: 0; white-space: nowrap; }
 .map-zoom .tool-btn { padding: 2px 8px; }
 /* Reset layout (lane CC) shows beside Fit only once a box was dragged. */
 .map-zoom .tool-btn[hidden] { display: none; }
@@ -946,11 +952,14 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   position: absolute; z-index: 5; pointer-events: none;
   padding: 3px 8px; border-radius: var(--radius-sm);
   background: var(--bg); border: 1px solid var(--rule);
-  color: var(--fg-2); font-family: var(--font-ui); font-size: 11px;
+  color: var(--fg-2); font-family: var(--font-ui); font-size: 12px;
   box-shadow: var(--shadow); max-width: 320px; line-height: 1.4;
 }
+/* Lane A-2: dark text on the card, the warning colour as its edge (the
+   light text on --warn it had read at 3.30:1). */
 .bpmn-warning { position: absolute; bottom: 8px; right: 8px; padding: 4px 10px;
-  background: var(--warn); color: var(--bg); font-size: 11px; border-radius: 3px; }
+  background: var(--bg-2); color: var(--fg); border: 1px solid var(--warn); border-left-width: 4px;
+  font-size: 12px; border-radius: 3px; box-shadow: var(--shadow); }
 /* ===== Toast ===== */
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(60px);
   padding: 10px 18px; background: var(--bg-2); color: var(--fg);
@@ -964,7 +973,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
    through its text; only its own buttons (an offer, an Undo, Dismiss) take
    them, and only while it shows. */
 .toast.show button { pointer-events: auto; }
-.toast-action { margin-left: 10px; padding: 2px 10px; font-size: 11px; }
+.toast-action { margin-left: 10px; padding: 2px 10px; font-size: 12px; }
 /* An error's Dismiss (dom.js toast): a small cross, named by its label. */
 .toast-close { margin: -2px -8px -2px 10px; padding: 0 6px; min-width: 24px; min-height: 24px;
   background: transparent; border: 1px solid transparent; color: inherit; font-size: 12px; line-height: 1; }
@@ -1023,22 +1032,22 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .modal.modal-simple.lib-builder { width: min(900px, calc(100vw - 40px)); }
 .lb-intro { margin: 0 0 10px; }
 .lb-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
-.lb-read { margin: 4px 0 0; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
+.lb-read { margin: 4px 0 0; font-size: 12px; color: var(--fg-3); overflow-wrap: anywhere; }
 .lb-read.lb-bad { color: var(--bad); }
 .lb-app { margin-top: 14px; }
-.lb-app h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
-.lb-app-empty { margin: 0; font-size: 11px; color: var(--fg-3); }
+.lb-app h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
+.lb-app-empty { margin: 0; font-size: 12px; color: var(--fg-3); }
 .lb-cluster { margin: 0 0 6px; padding: 0 6px; border-left: 2px solid transparent; border-radius: 0 3px 3px 0; }
 .lb-cluster.conflict { border-left-color: var(--warn); background: var(--accent-muted); }
-.lb-conflict-note { margin: 0; padding-top: 5px; font-size: 11px; color: var(--fg-2); }
+.lb-conflict-note { margin: 0; padding-top: 5px; font-size: 12px; color: var(--fg-2); }
 .lb-row { display: grid; grid-template-columns: auto minmax(0, 2fr) 96px minmax(0, 3fr); gap: 3px 8px;
   align-items: center; padding: 5px 0; }
 .lb-row input[type=text] { width: 100%; min-width: 0; padding: 4px 7px; font: inherit; font-size: 12px; color: var(--fg);
   background: var(--bg-2); border: 1px solid var(--field-border); border-radius: 3px; }
 .lb-row input[type=text]:focus { border-color: var(--accent); }
 .lb-row input[type=text]::placeholder { color: var(--fg-3); }
-.lb-meta { grid-column: 2 / -1; margin: 0; font-size: 11px; color: var(--fg-3); overflow-wrap: anywhere; }
-.lb-count { margin-right: auto; align-self: center; font-size: 11px; color: var(--fg-3); }
+.lb-meta { grid-column: 2 / -1; margin: 0; font-size: 12px; color: var(--fg-3); overflow-wrap: anywhere; }
+.lb-count { margin-right: auto; align-self: center; font-size: 12px; color: var(--fg-3); }
 .lb-error { margin: 10px 0 0; font-size: 12px; color: var(--bad); }
 .lb-error:empty { display: none; }
 .modal-header { grid-area: header; display: flex; align-items: center;
@@ -1054,7 +1063,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .help-nav-item:hover { background: var(--bg-3); color: var(--fg); }
 .help-nav-item.active { background: var(--bg-3); color: var(--link);
   border-left: 2px solid var(--accent); padding-left: 10px; }
-.help-version { margin-top: auto; padding: 8px 12px 2px; font-size: 11px; color: var(--fg-3);
+.help-version { margin-top: auto; padding: 8px 12px 2px; font-size: 12px; color: var(--fg-3);
   font-family: var(--font-mono); }
 /* C21: the app's activity library under the version: its version, then its
    counts on a line of their own, in the text face (the mono face would break
@@ -1065,7 +1074,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   color: var(--fg-2); font-size: 13px; line-height: 1.6; }
 .help-section { display: none; }
 .help-section.active { display: block; }
-.help-section h3 { color: var(--fg-3); margin: 18px 0 10px; font-size: 11px;
+.help-section h3 { color: var(--fg-3); margin: 18px 0 10px; font-size: 12px;
   font-family: var(--font-mono); }
 .help-section h3:first-child { margin-top: 0; }
 .help-section p { margin: 6px 0 12px; color: var(--fg-2); }
@@ -1088,7 +1097,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   overflow-x: auto; margin: 8px 0 16px;
 }
 .help-section pre code {
-  background: transparent; padding: 0; font-size: 11px;
+  background: transparent; padding: 0; font-size: 12px;
   color: var(--fg-2); white-space: pre;
 }
 .help-section .step-chip { margin-right: 4px; vertical-align: 1px; }
@@ -1100,13 +1109,10 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-5); }
 
-/* ===== Responsive: stack the lower workspace on narrower windows ===== */
-@media (max-width: 900px) {
-  .lower-workspace { flex-direction: column; }
-  .lower-workspace .video-pane { flex: 0 0 auto; min-height: 240px; }
-  .lower-workspace .resize-h { display: none; }
-  .lower-workspace:not(.no-recording) .annotations-pane { contain: none; }
-}
+/* Lane A-2: the stage stays side by side at every width. Its stacking under
+   900 px (the video over the pane, at least 240 px tall) predates the
+   Timeline workspace (lane SCREEN): with the app zoomed (1024 px at 125% is
+   819 px of page) it covered the timeline's row and lanes. */
 
 /* ===== The four levels, in the top bar ===== */
 .view-mode-bar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
@@ -1225,7 +1231,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   display: flex; align-items: baseline; gap: 8px;
   padding-left: calc(10px + var(--map-depth, 0) * 16px);
 }
-.map-pick-num { flex: none; min-width: 2.2em; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+.map-pick-num { flex: none; min-width: 2.2em; font-family: var(--font-mono); font-size: 12px; color: var(--fg-3); }
 .map-pick-name { min-width: 0; overflow-wrap: anywhere; }
 .map-picker-popup .map-pick.current { color: var(--fg); font-weight: 600; background: var(--bg-3); }
 /* Why the map the PDD prints does not show (not drawn yet, being drawn, or
@@ -1258,7 +1264,7 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   border-radius: var(--radius); padding: 10px 14px;
 }
 .ov-next-label {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-2);
 }
 .ov-next-stages {
@@ -1293,17 +1299,17 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .ov-summary-warn { display: flex; flex-direction: column; gap: 6px; }
 /* The one line beside a block's title that says who fills it (AD-29):
    "You write these. The PDD prints them." */
-.ov-block-who { font-size: 11px; color: var(--fg-3); }
+.ov-block-who { font-size: 12px; color: var(--fg-3); }
 .analysis-note.ov-stage-not-run { border-left: 3px solid var(--warn); padding: 4px 0 4px 8px;
   margin-top: 6px; font-style: normal; color: var(--fg-2); }
-.ov-stage-detail { margin-top: 4px; font-size: 11px; color: var(--fg-3);
+.ov-stage-detail { margin-top: 4px; font-size: 12px; color: var(--fg-3);
   font-family: var(--font-mono); overflow-wrap: anywhere; }
 /* The document (contract C6): a disclosure (.analysis-module) around a
    grid of the PDD's document fields. */
 .ov-doc-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 16px; }
 .ov-doc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ov-doc-label { font-size: 12px; font-weight: 600; color: var(--fg); }
-.ov-doc-optional { font-size: 11px; font-weight: 400; color: var(--fg-3); }
+.ov-doc-optional { font-size: 12px; font-weight: 400; color: var(--fg-3); }
 .ov-doc-input { width: 100%; box-sizing: border-box; font-family: var(--font-ui); font-size: 13px; }
 textarea.ov-doc-input { min-height: 64px; }
 /* AD-29: an empty field looks empty: its question is light and italic, well
@@ -1340,7 +1346,7 @@ details.analysis-module { padding: 0; }
 .analysis-module-head:hover { background: var(--bg-3); }
 .analysis-module[open] .analysis-module-head { border-bottom: 1px solid var(--rule-soft); }
 .analysis-module-title {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-3);
 }
 .analysis-module-takeaway { font-size: 12px; color: var(--fg-2); flex: 1; min-width: 0; }
@@ -1363,7 +1369,7 @@ details.analysis-module { padding: 0; }
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 0;
 }
-.editor-toolbar .hint { font-size: 11px; color: var(--fg-3); margin: 0; }
+.editor-toolbar .hint { font-size: 12px; color: var(--fg-3); margin: 0; }
 /* 2.0.1: the verbs on the selected step, beside + Add step. */
 .editor-toolbar .step-verbs { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .editor-toolbar .step-verbs[hidden] { display: none; }
@@ -1376,7 +1382,7 @@ details.analysis-module { padding: 0; }
    a smaller word in --fg-2, in the text face, on no fill inside the --rule
    border, the card's fill and the text colour under the mouse. Text never
    goes in an .icon-btn, a glyph's square. */
-button.tool-btn { padding: 4px 10px; font-size: 11px; color: var(--fg-2); background: transparent; }
+button.tool-btn { padding: 4px 10px; font-size: 12px; color: var(--fg-2); background: transparent; }
 button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2); }
 .editor-toolbar .link-help {
   color: var(--link); text-decoration: none; border-bottom: 1px dotted var(--link);
@@ -1451,13 +1457,13 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   min-height: 0;
 }
 .editor-pane-title {
-  font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
+  font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase;
   color: var(--fg-3); font-family: var(--font-mono);
   margin: 0 0 6px; padding: 2px 4px;
 }
 .editor-pane-title span { color: var(--fg-2); }
 /* Under the Transactions title: what a transaction is, in one line. */
-.editor-pane-note { margin: -2px 0 8px; padding: 0 4px; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
+.editor-pane-note { margin: -2px 0 8px; padding: 0 4px; font-size: 12px; line-height: 1.4; color: var(--fg-3); }
 .editor-pane-note:empty { display: none; }
 /* C19: inside a sub-process, the way down from the main process (each crumb
    goes up) and Dissolve sub-process beside it. */
@@ -1485,8 +1491,8 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .empty-pane strong { color: var(--fg); }
 .empty-pane ul, .empty-pane ol { margin: 4px 0 8px 20px; padding: 0; }
 .empty-pane li { margin-bottom: 4px; }
-.empty-pane .meta { font-size: 11px; color: var(--fg-3); }
-.empty-pane code { background: var(--bg-3); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.empty-pane .meta { font-size: 12px; color: var(--fg-3); }
+.empty-pane code { background: var(--bg-3); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
 
 /* ===== Step list rows (dense) ===== */
 .step-row {
@@ -1522,7 +1528,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
    still renames. */
 .step-row .step-sub-open {
   flex: none; display: inline-flex; align-items: center; height: 18px;
-  padding: 0 7px; border-radius: 9px; font-size: 10px; line-height: 1; white-space: nowrap;
+  padding: 0 7px; border-radius: 9px; font-size: 12px; line-height: 1; white-space: nowrap;
   color: var(--fg); border: 1px solid var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent);
 }
 .step-row .step-sub-open:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-muted); }
@@ -1533,7 +1539,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
    missing. */
 .step-diff {
   flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 8px;
-  font-size: 10px; color: var(--fg); border: 1px dashed var(--fg-3); white-space: nowrap;
+  font-size: 12px; color: var(--fg); border: 1px dashed var(--fg-3); white-space: nowrap;
 }
 .step-diff-extra { border-color: var(--accent-2); }
 .step-diff-repeated { border-color: var(--accent); }
@@ -1550,7 +1556,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .step-chip {
   flex: none; display: inline-flex; align-items: center; height: 16px;
   padding: 0 6px; border-radius: 8px; border: 1px solid var(--rule);
-  font-size: 10px; line-height: 1; white-space: nowrap; color: var(--fg-3);
+  font-size: 12px; line-height: 1; white-space: nowrap; color: var(--fg-3);
 }
 .step-chip-confirmed { color: var(--fg); border-color: var(--va); background: color-mix(in srgb, var(--va) 14%, transparent); }
 .step-chip-edited { color: var(--fg); border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
@@ -1578,7 +1584,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 }
 .run-row:hover { background: var(--bg-3); }
 .run-row:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
-.run-caret { flex: 0 0 10px; color: var(--fg-3); font-size: 10px; }
+.run-caret { flex: 0 0 10px; color: var(--fg-3); font-size: 12px; }
 .run-title { flex: none; font-weight: 600; white-space: nowrap; }
 .run-label {
   flex: 1 1 0; min-width: 0; color: var(--fg-3);
@@ -1592,7 +1598,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .run-badges { flex: none; display: inline-flex; align-items: center; gap: 8px; }
 .run-pattern-badge, .run-status {
   flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px;
-  border-radius: 8px; border: 1px solid var(--rule); font-size: 10px; line-height: 1; white-space: nowrap;
+  border-radius: 8px; border: 1px solid var(--rule); font-size: 12px; line-height: 1; white-space: nowrap;
 }
 .run-pattern-badge { font-weight: 700; color: var(--fg); border-color: var(--accent); background: var(--accent-muted); }
 .run-status { color: var(--fg-3); }
@@ -1601,28 +1607,28 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 /* Undo confirm, beside the Confirmed badge of the open reference transaction:
    a quiet link in the muted text colour (the link colour's --fg under the
    mouse). */
-.run-row .run-undo-confirm { flex: none; padding: 0 2px; font-size: 11px; line-height: 16px; color: var(--fg-3); white-space: nowrap; }
-.run-meta { flex: none; margin-left: auto; font-size: 11px; font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
+.run-row .run-undo-confirm { flex: none; padding: 0 2px; font-size: 12px; line-height: 16px; color: var(--fg-3); white-space: nowrap; }
+.run-meta { flex: none; margin-left: auto; font-size: 12px; font-family: var(--font-mono); color: var(--fg-3); white-space: nowrap; }
 .run-body { padding: 2px 8px 8px 26px; }
 .run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 6px; }
 .run-actions:empty { display: none; }
 .run-show-hidden {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-3); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-3); cursor: pointer;
 }
-.run-steps-empty { margin: 4px 0; font-size: 11px; color: var(--fg-3); }
+.run-steps-empty { margin: 4px 0; font-size: 12px; color: var(--fg-3); }
 /* One line per run: how many of its names are remembered names (names given
    to the same drafted step elsewhere in the project). */
-.run-names-note { flex: 1 1 100%; margin: 0; font-size: 11px; color: var(--fg-3); }
+.run-names-note { flex: 1 1 100%; margin: 0; font-size: 12px; color: var(--fg-3); }
 .run-guide p { margin: 0 0 10px; }
 
 /* L12b: the open run's differences from its reference (one plain line each). */
-.run-diffs { margin: 0 0 6px; padding: 0 0 0 16px; font-size: 11px; color: var(--fg-2); }
+.run-diffs { margin: 0 0 6px; padding: 0 0 0 16px; font-size: 12px; color: var(--fg-2); }
 .run-diffs li { margin: 1px 0; overflow-wrap: anywhere; }
 /* The lines said about the comparison that are no differences (lane CC: a
    stretch left out of the analysis; lane FX1: a step that happens only under
    a condition and was not done): above the differences, without bullets, so
    the head's count is the number of bullets. */
-.run-notes { margin: 0 0 4px; padding: 0 0 0 16px; list-style: none; font-size: 11px; font-style: italic; color: var(--fg-3); }
+.run-notes { margin: 0 0 4px; padding: 0 0 0 16px; list-style: none; font-size: 12px; font-style: italic; color: var(--fg-3); }
 .run-notes li { margin: 1px 0; overflow-wrap: anywhere; }
 
 /* ===== Step detail editor ===== */
@@ -1653,8 +1659,8 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .editor-detail-pane input.step-title-input:hover { border-color: var(--field-border); }
 .editor-detail-pane input.step-title-input:focus { background: var(--bg-2); border-color: var(--field-border); outline: 2px solid var(--accent-2); outline-offset: 1px; }
 /* C21: the code of the library activity the step is named from. */
-.step-code { flex: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--fg-2); }
-.step-lib-note { display: block; padding: 2px 7px 0; font-size: 11px; color: var(--fg-3); visibility: hidden; height: 0; }
+.step-code { flex: none; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--fg-2); }
+.step-lib-note { display: block; padding: 2px 7px 0; font-size: 12px; color: var(--fg-3); visibility: hidden; height: 0; }
 .step-name-field:focus-within .step-lib-note { visibility: visible; height: auto; }
 /* The line of facts: the system (a field that reads as the line's first
    fact until it is changed), the screen, where, how long, how common. */
@@ -1690,6 +1696,12 @@ input.time-field::placeholder { color: var(--fg-2); opacity: 1; font-style: ital
 input.time-field:hover { background: var(--bg-2); }
 input.time-field:focus { background: var(--bg-2); outline: 2px solid var(--accent-2); outline-offset: 1px; }
 input.time-field:disabled { border-style: dotted; background: transparent; cursor: not-allowed; }
+/* Lane A-2 (audit A18): a refused entry says why under its line until the
+   field is edited again (field-refusal.js); the field's edge in --bad. */
+.field-refusal { display: block; flex: 1 0 100%; margin: 4px 0 2px; font-size: 12px; line-height: 1.4;
+  color: var(--bad); font-weight: 600; }
+#tl-row + .field-refusal { margin: 0; padding: 2px 0 4px; }
+input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color: var(--bad); }
 .run-times { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--fg-2); }
 .run-times label { display: inline-flex; align-items: center; gap: 5px; }
 .step-facts .step-system-inline + datalist + .step-facts-rest::before { content: "\00B7\00A0"; }
@@ -1720,8 +1732,8 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .step-activity.active { box-shadow: inset 2px 0 0 var(--accent); }
 .step-activity-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .step-activity.current .step-activity-name { font-weight: 600; }
-.step-activity-code { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); }
-.step-activity-desc { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--fg-3); }
+.step-activity-code { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); }
+.step-activity-desc { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--fg-3); }
 /* P2.16: the step's screenshots, large enough to check the step against. */
 .step-shots {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1736,7 +1748,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .step-shot img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .step-shot .stamp {
   position: absolute; bottom: 3px; left: 3px; padding: 1px 5px; border-radius: 2px;
-  background: rgba(0, 0, 0, 0.62); color: #fff; font-family: var(--font-mono); font-size: 10px;
+  background: rgba(0, 0, 0, 0.62); color: #fff; font-family: var(--font-mono); font-size: 11px;
 }
 .editor-detail-pane label {
   display: block; margin-bottom: 10px; font-size: 12px; color: var(--fg-2);
@@ -1774,14 +1786,14 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
   opacity: 0.8; transition: opacity 0.12s, color 0.12s;
 }
 .editor-detail-pane .step-interaction:hover .si-split-btn { opacity: 1; }
-.editor-detail-pane .evidence .si-split-hint { margin: 0 0 4px; font-size: 11px; color: var(--fg-3); }
+.editor-detail-pane .evidence .si-split-hint { margin: 0 0 4px; font-size: 12px; color: var(--fg-3); }
 .editor-detail-pane .si-split-btn:hover { opacity: 1; color: var(--accent); }
 .editor-detail-pane .si-split-btn.active { opacity: 1; color: var(--accent); }
 /* 2.0.1: where the two steps of a Merge with next met. */
 .editor-detail-pane .step-interaction.was-boundary { border-bottom: 2px dashed var(--accent); }
 .editor-detail-pane .si-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .editor-detail-pane .si-text { color: var(--fg); overflow-wrap: anywhere; }
-.editor-detail-pane .si-control { font-size: 11px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-detail-pane .si-control { font-size: 12px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-detail-pane .si-time {
   flex: none; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px;
 }
@@ -1789,7 +1801,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
   display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
 }
 /* C19: why a sub-process has no Split or Merge, in one line. */
-.step-sub-note { flex: 1 1 100%; margin: 2px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-3); }
+.step-sub-note { flex: 1 1 100%; margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: var(--fg-3); }
 .editor-detail-pane .danger {
   background: transparent; border-color: var(--bad); color: var(--bad);
 }
@@ -1800,14 +1812,14 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
    strikethrough (it read as removed). */
 .step-tag-waste {
   flex: none; display: inline-flex; align-items: center; height: 16px;
-  padding: 0 6px; border-radius: 8px; font-size: 10px; line-height: 1; white-space: nowrap;
+  padding: 0 6px; border-radius: 8px; font-size: 12px; line-height: 1; white-space: nowrap;
   color: var(--fg); border: 1px solid var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent);
 }
 
 /* ===== Anno-tab badge ===== */
 .badge {
   display: inline-block; padding: 0 6px; border-radius: 8px;
-  background: var(--bg-3); color: var(--fg-3); font-size: 9px;
+  background: var(--bg-3); color: var(--fg-3); font-size: 12px;
   font-family: var(--font-mono); margin-left: 4px;
 }
 
@@ -1819,7 +1831,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
   border-left: 3px solid var(--warn); border-radius: 0 3px 3px 0;
 }
 .summary-problem .p-text { flex: 1; }
-.summary-fix { flex: 0 0 auto; padding: 3px 10px; font-size: 11px; }
+.summary-fix { flex: 0 0 auto; padding: 3px 10px; font-size: 12px; }
 
 /* RP-04: annotations.json exists but cannot be read. Persistent (not a toast)
    because nothing is saved until the analyst restores a backup. Same shape as
@@ -1957,7 +1969,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 }
 .step-row.multi-selected .multi-check::after {
   content: "✓"; position: absolute; inset: -3px 0 0 1px;
-  color: var(--bg); font-size: 11px; font-weight: 700;
+  color: var(--bg); font-size: 12px; font-weight: 700;
 }
 .step-row.multi-selected {
   background: color-mix(in srgb, var(--accent-2) 8%, transparent);
@@ -1990,7 +2002,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 .modal-prompt .modal-close:hover { color: var(--fg); }
 .modal-prompt .modal-body { padding: 16px 18px; }
 .modal-prompt .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
-.modal-prompt .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
+.modal-prompt .modal-detail { color: var(--fg-3); font-size: 12px; margin: 0 0 12px; line-height: 1.55; }
 /* Lane B-V2: the Hand off... dialog's list of what a reader will miss. */
 .modal-prompt .modal-sm:has(.modal-pick) { width: min(580px, calc(100vw - 40px)); }
 .modal-pick { margin: 0 0 12px; }
@@ -2017,7 +2029,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
   pointer-events: none;
 }
 .tl-flow-tick-label {
-  position: absolute; font-family: var(--font-mono); font-size: 9px;
+  position: absolute; font-family: var(--font-mono); font-size: 12px;
   color: var(--fg-3); pointer-events: none;
   letter-spacing: 0.5px;
 }
@@ -2052,7 +2064,7 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 
 /* Phase 3: classification manager modal. */
 .modal-confirm .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 6px; }
-.modal-confirm .modal-detail { color: var(--fg-3); font-size: 11px; margin: 0 0 12px; line-height: 1.55; }
+.modal-confirm .modal-detail { color: var(--fg-3); font-size: 12px; margin: 0 0 12px; line-height: 1.55; }
 .modal-confirm .modal-footer {
   display: flex; gap: 8px; justify-content: flex-end;
   padding: 12px 18px; border-top: 1px solid var(--rule);
@@ -2129,16 +2141,18 @@ button.danger:disabled {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--bg-2); border: 1px solid var(--rule);
   color: var(--fg-2); padding: 4px 10px; border-radius: 4px;
-  font-family: inherit; font-size: 11px; cursor: pointer;
+  font-family: inherit; font-size: 12px; cursor: pointer;
   max-width: 240px;
 }
 .project-btn:hover { background: var(--bg-3); color: var(--fg); border-color: var(--accent); }
-.project-btn .project-menu-caret { font-size: 9px; }
+.project-btn .project-menu-caret { font-size: 12px; }
 .project-menu-popup {
   position: absolute; right: 0; top: calc(100% + 4px);
   min-width: 220px; background: var(--bg-2); border: 1px solid var(--rule);
   border-radius: 5px; padding: 4px;
   box-shadow: var(--shadow); z-index: 200;
+  /* Lane A-2: a menu taller than the window (the app zoomed) scrolls. */
+  max-height: calc(100vh - 64px); overflow-y: auto;
 }
 .project-menu-item {
   display: block; width: 100%; text-align: left;
@@ -2164,8 +2178,14 @@ button.danger:disabled {
 /* The New and Open dropdowns (top bar): they open under their button. */
 .recent-menu-section { max-height: 380px; overflow-y: auto; }
 #recent-menu-popup, #new-menu-popup { right: auto; left: 0; }
+/* Lane A-2: on a window so narrow that the top bar takes two lines (the app
+   zoomed to 175% or 200%), Export starts the second line: its menu opens to
+   the right of it. */
+@media (max-width: 800px) {
+  #session-export-popup { right: auto; left: 0; }
+}
 .recent-menu-heading {
-  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
   color: var(--fg-3); font-family: var(--font-mono);
   padding: 6px 10px 3px;
 }
@@ -2179,11 +2199,11 @@ button.danger:disabled {
 .recent-menu-item .ri-label { flex: 1; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .recent-menu-item .ri-tag {
-  font-size: 9px; font-family: var(--font-mono); color: var(--fg-3);
+  font-size: 12px; font-family: var(--font-mono); color: var(--fg-3);
   flex: 0 0 auto;
 }
 .recent-menu-item.missing .ri-label { color: var(--fg-3); text-decoration: line-through; }
-.recent-menu-empty { padding: 8px 10px; color: var(--fg-3); font-size: 11px; font-style: italic; }
+.recent-menu-empty { padding: 8px 10px; color: var(--fg-3); font-size: 12px; font-style: italic; }
 /* Lane MW: a recent project's row, with its button that opens it in a new
    window at the end. */
 .recent-menu-row { display: flex; align-items: stretch; gap: 2px; }
@@ -2337,12 +2357,12 @@ button.danger:disabled {
   border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 .video-sync-card .vs-cancel {
-  padding: 3px 12px; font-size: 11px; cursor: pointer;
+  padding: 3px 12px; font-size: 12px; cursor: pointer;
   background: var(--bg-3); color: var(--fg-2);
   border: 1px solid var(--rule); border-radius: var(--radius-sm);
 }
 .video-sync-card .vs-mark {
-  padding: 3px 12px; font-size: 11px; cursor: pointer;
+  padding: 3px 12px; font-size: 12px; cursor: pointer;
 }
 .video-sync-target {
   outline: 2px solid var(--accent); outline-offset: -2px; cursor: crosshair;
@@ -2359,7 +2379,7 @@ button.danger:disabled {
    hatched. */
 .tl-clip {
   position: absolute; box-sizing: border-box; display: flex; align-items: center; overflow: hidden;
-  padding: 0 6px; border-radius: 3px; font-size: 11px; line-height: 16px; white-space: nowrap; cursor: pointer;
+  padding: 0 6px; border-radius: 3px; font-size: 12px; line-height: 16px; white-space: nowrap; cursor: pointer;
   color: var(--fg); background: color-mix(in srgb, var(--accent) 18%, var(--bg-2));
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
 }
@@ -2386,7 +2406,7 @@ button.danger:disabled {
 .tl-tr-block:hover { background: var(--fg-2); }
 .tl-tr-label {
   position: absolute; display: inline-flex; align-items: center; gap: 8px;
-  height: 16px; font-size: 11px; line-height: 16px; white-space: nowrap; color: var(--fg-3);
+  height: 16px; font-size: 12px; line-height: 16px; white-space: nowrap; color: var(--fg-3);
 }
 .tl-tr-label .tl-tr-sync { padding: 0 2px; line-height: 16px; }
 /* The Sync card: the video sync card, grown to a column for the list. */
@@ -2412,14 +2432,14 @@ button.danger:disabled {
 .tr-time { flex: 0 0 auto; min-width: 34px; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
 .tr-speaker { flex: 0 0 auto; font-weight: 600; color: var(--fg-2); }
 .tr-text { flex: 1 1 auto; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
-.tr-row .tr-add { flex: 0 0 auto; align-self: center; padding: 1px 8px; font-size: 11px; }
+.tr-row .tr-add { flex: 0 0 auto; align-self: center; padding: 1px 8px; font-size: 12px; }
 .tr-note { margin: 4px 0; font-size: 12px; color: var(--fg-3); }
 /* The two transcript disclosures (the step editor's, the Overview's): the
    step editor's More pattern, one chevron, native marker suppressed. */
 .tr-more { margin-top: 8px; border-top: 1px solid var(--rule-soft); }
 .tr-more-head {
   display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
-  user-select: none; padding: 8px 2px; font-size: 11px; color: var(--fg-3);
+  user-select: none; padding: 8px 2px; font-size: 12px; color: var(--fg-3);
 }
 .tr-more-head::-webkit-details-marker { display: none; }
 .tr-more-head:hover { color: var(--fg-2); }
@@ -2427,7 +2447,7 @@ button.danger:disabled {
 .tr-more-title { text-transform: uppercase; letter-spacing: 0.6px; }
 /* What the Overview's list holds ("What was said outside the transactions"). */
 .tr-more-what { color: var(--fg-3); }
-.tr-more-chevron { font-size: 10px; color: var(--fg-4); }
+.tr-more-chevron { font-size: 12px; color: var(--fg-4); }
 .tr-more-chevron::before { content: "▸"; }
 .tr-more[open] > .tr-more-head .tr-more-chevron::before { content: "▾"; }
 .tr-more-body { padding-bottom: 4px; }
@@ -2456,7 +2476,7 @@ button.danger:disabled {
 /* I43 -- which-monitor badge on a multi-display activity band */
 .tl-monitor-badge {
   position: absolute; top: 2px; right: 2px;
-  font-size: 9px; font-family: var(--font-mono);
+  font-size: 12px; font-family: var(--font-mono);
   padding: 0 3px; border-radius: 2px;
   background: var(--bg); color: var(--fg-2);
   border: 1px solid var(--rule); pointer-events: none;
@@ -2501,7 +2521,7 @@ button.danger:disabled {
   padding: 8px 14px; background: var(--bg-2);
   border-top: 1px solid var(--rule);
   display: flex; gap: 14px; align-items: center;
-  font-size: 11px; color: var(--fg-3);
+  font-size: 12px; color: var(--fg-3);
 }
 .screenshot-gallery-footer .pos { color: var(--fg); }
 .screenshot-gallery-footer .ts  { color: var(--fg-2); font-family: var(--font-mono); }
@@ -2514,7 +2534,7 @@ button.danger:disabled {
    Colours come from design tokens (--accent-2 cool, --va value-add green,
    --warn amber, --bad red) via color-mix, so light + dark read in parity. */
 .refmap-tools { display: inline-flex; gap: 6px; align-items: center; margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--rule); }
-.refmap-count { color: var(--fg-3); font-size: 11px; }
+.refmap-count { color: var(--fg-3); font-size: 12px; }
 
 .refmap-panel {
   border-top: 1px solid var(--rule);
@@ -2531,12 +2551,12 @@ button.danger:disabled {
 .refmap-row.missing { opacity: 0.85; border-style: dashed; }
 .refmap-row-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1 1 220px; min-width: 0; }
 .refmap-row-name { font-weight: 600; font-size: 13px; color: var(--fg); }
-.refmap-row-date { color: var(--fg-3); font-size: 11px; }
+.refmap-row-date { color: var(--fg-3); font-size: 12px; }
 .refmap-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 /* C18: under a copy the process map changed after, what Copy again gives. */
-.refmap-row-note { flex: 1 0 100%; margin: 0; font-size: 11px; color: var(--fg-2); }
-.refmap-drift-chip, .refmap-missing-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
-.refmap-bar-lbl { font-size: 11px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; }
+.refmap-row-note { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--fg-2); }
+.refmap-drift-chip, .refmap-missing-chip { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.refmap-bar-lbl { font-size: 12px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; }
 /* F3: a destructive text button is outlined in the error colour, so its label
    stays legible at rest (it was dark orange text on a red fill: button.danger
    filled it and this rule coloured the text). The fill comes on hover. The
@@ -2577,7 +2597,7 @@ button.danger:disabled {
 .step-sect { margin-top: 12px; }
 .step-shots-part > .step-sect, .step-attached > .step-sect:first-child { margin-top: 0; }
 .step-sect-head { display: flex; align-items: baseline; gap: 8px; }
-.step-sect-title { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
+.step-sect-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg-3); }
 /* Recorded opens and closes on its summary, its chevron the transcript's; it
    is the one part with a line of its own. */
 .step-part-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
@@ -2599,19 +2619,19 @@ button.danger:disabled {
 .step-sect .step-shots { margin-top: 4px; }
 
 .step-shot-card { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.step-shot-acts { display: flex; gap: 6px; font-size: 11px; }
-.step-shot-acts .link-btn { font-size: 11px; }
+.step-shot-acts { display: flex; gap: 6px; font-size: 12px; }
+.step-shot-acts .link-btn { font-size: 12px; }
 .link-btn.on { color: var(--fg); font-weight: 600; }
-.step-unhide-shots { font-size: 11px; margin-top: 4px; }
+.step-unhide-shots { font-size: 12px; margin-top: 4px; }
 .step-notes, .att-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .step-note, .att-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--fg); min-width: 0; }
 .step-note-text { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.step-note-at, .att-file, .att-step { flex: none; font-size: 11px; color: var(--fg-3); }
+.step-note-at, .att-file, .att-step { flex: none; font-size: 12px; color: var(--fg-3); }
 /* C17: the step pane's Flow line (step-editor.js flowSectionHtml): one line
    when nothing is set; a condition row and link rows (the sentence each
    reads, then its dropdown and "when" field) when something is. */
 .step-flow-head { flex-wrap: wrap; row-gap: 2px; }
-.step-flow .link-btn { font-size: 11px; }
+.step-flow .link-btn { font-size: 12px; }
 .flow-line { margin: 4px 0 0; font-size: 12px; color: var(--fg-2); }
 .step-flow-head .flow-line { margin: 0; }
 .flow-cond, .flow-link-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
@@ -2636,7 +2656,7 @@ button.danger:disabled {
 .flow-link-text { font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
 .flow-link.pending .flow-link-text { color: var(--fg-3); }
 .att-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.att-row .link-btn, .step-note .link-btn { flex: none; font-size: 11px; }
+.att-row .link-btn, .step-note .link-btn { flex: none; font-size: 12px; }
 .att-file, .att-step { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The Overview's Attachments, under the document fields. */
 .ov-attach { grid-column: 1 / -1; min-width: 0; }
@@ -2647,7 +2667,7 @@ button.danger:disabled {
 .tl-empty { padding: 14px 12px; font-size: 12px; color: var(--fg-2); }
 /* A note pinned to a moment (the Notes lane). */
 .tl-note { position: absolute; width: 14px; height: 14px; line-height: 14px; text-align: center;
-  font-size: 10px; color: var(--bg); background: var(--accent); border-radius: 3px; cursor: pointer; z-index: 3; }
+  font-size: 12px; color: var(--bg); background: var(--accent); border-radius: 3px; cursor: pointer; z-index: 3; }
 .tl-note:hover { transform: scale(1.2); }
 .lg-note::before { background: var(--accent); border-radius: 2px !important; }
 /* A stretch set aside (annotations.excluded_ranges, lane CC; lane LANES:
@@ -2688,8 +2708,8 @@ button.danger:disabled {
   background: repeating-linear-gradient(135deg, var(--bg-2) 0 2px, color-mix(in srgb, var(--fg-3) 45%, var(--bg-2)) 2px 3px); }
 /* The step panel's notes of an occurrence. */
 .sp-notes { list-style: none; margin: 0; padding: 0; }
-.sp-note { font-size: 11px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
-.sp-note-at { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+.sp-note { font-size: 12px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sp-note-at { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
 
 /* ===== A step's place in the process (contract C22, 2.0.5) =========
    The owner's report: a correction the SME shows late in a video belongs
@@ -2699,7 +2719,7 @@ button.danger:disabled {
    and a dotted foot (the legend's key is the same). */
 .step-placed {
   flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 8px;
-  font-size: 10px; line-height: 1; white-space: nowrap; color: var(--fg);
+  font-size: 12px; line-height: 1; white-space: nowrap; color: var(--fg);
   border: 1px solid var(--accent); background: var(--accent-muted);
 }
 .flow-placed { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 6px 0 0;
@@ -2713,7 +2733,7 @@ button.danger:disabled {
 /* The list a choice is made from (modals.js chooseModal). */
 .modal-choose .modal-body { padding: 16px 18px; }
 .modal-choose .modal-msg { color: var(--fg); font-size: 13px; margin: 0 0 8px; }
-.modal-choose .modal-detail { color: var(--fg-3); font-size: 11px; margin: 8px 0 0; line-height: 1.55; }
+.modal-choose .modal-detail { color: var(--fg-3); font-size: 12px; margin: 8px 0 0; line-height: 1.55; }
 .modal-choose .modal-list {
   width: 100%; padding: 4px; background: var(--bg-2); color: var(--fg);
   border: 1px solid var(--field-border); border-radius: 4px; font-family: inherit; font-size: 13px;
@@ -2774,7 +2794,7 @@ button.danger:disabled {
 /* Wide enough for its placeholder; the count wraps under it in a narrow pane. */
 .trt-search { flex: 1 1 170px; min-width: 170px; font-size: 12px; padding: 4px 8px; }
 .trt-speaker { flex: 0 1 auto; max-width: 160px; font-size: 12px; padding: 3px 6px; }
-.trt-count { flex: 0 0 auto; font-size: 11px; color: var(--fg-3); white-space: nowrap; }
+.trt-count { flex: 0 0 auto; font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .trt-list { position: relative; list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
 /* A call is thousands of rows: the ones off screen are not laid out until
    they scroll into view (the list is built once and filtered by hiding). */
@@ -2793,10 +2813,10 @@ button.danger:disabled {
    keep their space, so no row changes height under the pointer, and are
    transparent rather than hidden, so Tab still reaches them (a focused one
    shows its row's). */
-.trt-acts { flex: 0 0 auto; margin-left: auto; display: inline-flex; gap: 10px; padding: 0 4px; font-size: 11px;
+.trt-acts { flex: 0 0 auto; margin-left: auto; display: inline-flex; gap: 10px; padding: 0 4px; font-size: 12px;
   opacity: 0; }
 .trt-row:hover .trt-acts, .trt-row:focus-within .trt-acts, .trt-row.current .trt-acts { opacity: 1; }
-.trt-act { font-size: 11px; white-space: nowrap; }
+.trt-act { font-size: 12px; white-space: nowrap; }
 .trt-gap { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 6px 6px; font-size: 12px;
   color: var(--fg-2); border-bottom: 1px solid var(--rule-soft);
   background: repeating-linear-gradient(135deg,
@@ -2807,7 +2827,7 @@ button.danger:disabled {
 .trt-list.narrowed .trt-gap { display: none; }
 /* Copy to...'s menu (the Overview's, with a heading and the step's
    description first): an item that cannot act stays readable. */
-.tr-add-menu .tr-add-menu-head { margin: 0; padding: 4px 10px 6px; font-size: 11px; color: var(--fg-3); }
+.tr-add-menu .tr-add-menu-head { margin: 0; padding: 4px 10px 6px; font-size: 12px; color: var(--fg-3); }
 .tr-add-menu .project-menu-item[aria-disabled="true"] { color: var(--fg-3); cursor: default; }
 .tr-add-menu .project-menu-item[aria-disabled="true"]:hover { background: transparent; color: var(--fg-3); }
 
@@ -2822,6 +2842,9 @@ button.danger:disabled {
 #tp-tabs .anno-tab.active { color: var(--fg); font-weight: 600; }
 #tp-tabs .anno-tab:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
 #tp-tabs.short .tp-count { display: none; }
+/* Lane A-2: on a narrow pane (a zoomed app) a tab that still does not fit
+   with the counts dropped scrolls into view when it takes the focus. */
+#tp-tabs { overflow-x: auto; scrollbar-width: none; }
 #timeline-pane .link-btn { font-size: 12px; }
 #timeline-pane .tp-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 #timeline-pane .tp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }

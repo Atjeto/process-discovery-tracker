@@ -511,7 +511,8 @@ The viewer says *transaction* for one pass through the process and
 - **Saved as you go**: every change saves itself to the project folder, and
   the top bar says *Saved* (the time and the folder on hover), *Saving...*
   or *Not saved* with the reason.
-- **Readable and keyboard safe**: labels at 4.5:1 in both themes, one focus ring, dialogs that keep Tab inside and give the focus back, messages a screen reader hears, and an error that stays until it is dismissed.
+- **Readable and keyboard safe**: labels at 4.5:1 in both themes, one focus ring, dialogs that keep Tab inside and give the focus back (Apps outside the process, the screenshot gallery and the map editor too), messages a screen reader hears, and an error that stays until it is dismissed.
+- **Larger text, short tooltips, one name per act** (lane A-2): Ctrl+Plus, Ctrl+Minus and Ctrl+0 (and Ctrl with the mouse wheel) make the whole app larger, smaller or the usual size, in every window, kept on this computer; nothing a person reads is under 12 px; a tooltip is one short sentence, what a PM needs beyond it in Help; *Play*, *Show on timeline* and *Open in Steps* are the only names of their acts; a refused time or an emptied step name says why under its field until the field is edited again.
 - **Export**: the PDD (with a picture of each sub-process's map in its
   chapter; its pictures leave the steps' notes out; with attached files,
   one zip holding the PDD and an *Attachments* folder its attachment names

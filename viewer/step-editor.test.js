@@ -339,7 +339,7 @@ test("lane FX3: Split needs two recorded actions; below that it says why in plai
   assert.equal(splitBlocker(ids(2)), "");
   assert.equal(splitBlocker(ids(7)), "");
   assert.equal(splitBlocker(ids(1)), "Only one action (a click, a field typed) was recorded in this step, so it cannot be split.");
-  const none = "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it.";
+  const none = "No action was recorded in this step, so it cannot be split: add a step beside it.";
   assert.equal(splitBlocker(ids(0)), none);
   assert.equal(splitBlocker({ state: "manually_authored", evidence: null }), none, "a step added by hand");
   assert.equal(splitBlocker(null), none);
@@ -360,7 +360,7 @@ test("C21: the name field offers the activities of the step's system as a list u
   assert.ok(html.includes('role="combobox"') && html.includes('aria-controls="step-activity-list"'));
   assert.ok(html.includes('<ul class="step-activity-list" id="step-activity-list" role="listbox" aria-label="Activities of Salesforce" hidden></ul>'));
   assert.ok(!html.includes("step-lib-note"), "no quiet line when there are activities");
-  assert.ok(/title="The name of this step. Pick an activity of Salesforce from the library, or type any name./.test(html));
+  assert.ok(/title="The name of this step: pick an activity of Salesforce from the library, or type any name./.test(html));
   assert.ok(!html.includes(" list="), "no datalist on the step pane's name: the picker is the list");
 });
 

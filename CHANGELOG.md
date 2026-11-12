@@ -218,8 +218,51 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   screenshots whose marks would cover each other at this zoom are one mark
   with their count, "3 screenshots from 1:40 to 1:46. Click: show the first
   in the Screenshots tab."; zooming in splits it as the room allows.
+- **Make everything larger.** Ctrl+Plus (or Ctrl+=), Ctrl+Minus and Ctrl+0
+  make the whole app larger, smaller, or the usual size, in steps from 80% to
+  200%, and Ctrl with the mouse wheel does the same (over a map it still
+  zooms the map). The message area says "Zoom 125%."; every window shows the
+  same size, and this computer keeps it for the next start. The Timeline's
+  own +, - and 0 still zoom the timeline. At 125% on a 1366x768 screen every
+  level holds; at 150% a level may scroll; at 175% and 200% the Timeline's
+  row and the top bar take two lines, and every menu taller than the window
+  scrolls. The video and the pane beside it stay side by side on a narrow
+  window, where they used to stack over the timeline.
+- **A refused entry says why beside its field.** When a typed time is
+  refused (a step's start or end, a transaction's *Starts at* or *Ends at*,
+  the clock in the Timeline's row) or a step's name is emptied, the reason
+  stays under the field, in red, until you change the field; the field's
+  edge turns red and a screen reader reads the reason with it. The message
+  says it too, as before.
 
 ### Changed
+
+- **Nothing a person reads is under 12 px.** About 125 places that were 8
+  to 11 px are 12 px now, the Timeline's lane names, ticks, transaction and
+  system labels among them; only the clock times in the mono face (a step's
+  start on its row, a sentence's time, a screenshot's stamp) stay at 11 px.
+  The lane names keep their column, a little less spaced.
+- **Short tooltips.** Every tooltip is one short sentence on what the click
+  does; what the long ones also said is in Help (the Map section now says
+  how to move and zoom a map, that the PDD does not print how the
+  transactions ran, and what *Copy again* gives) or already was.
+- **One name per act.** *Play* plays a step everywhere (the Steps row menu
+  read *Watch*, the Timeline's step menu *Select + seek here*); *Open in
+  Steps* goes to Steps (the Timeline's menu read *Jump to step here*); a
+  transaction's band offers *Go to its start* and *Go to its end*; the Raw
+  events table's acts are *Go there* and *Add step here*; the Transcript
+  lane's links say what they act on: *Sync the transcript...*, *Replace the
+  transcript...*, *Remove the transcript*. Help's *Markers* section is
+  *Transactions*, "Transactions on the timeline", and Help, the guide and the
+  messages no longer say "playhead" or "marker". The video pane's header
+  reads SCREEN while it shows a recording's screenshots.
+- **Three more dialogs keep the keyboard.** *Apps outside the process*, the
+  screenshot gallery and the map editor keep Tab and Shift+Tab inside and
+  give the focus back to the button that opened them; Escape closes the
+  apps dialog too.
+- **The map's warning reads.** When a map file has parts that cannot be
+  read, the note over the map is dark text on the card with an amber edge
+  (it was light text on amber, 3.30:1), and says so in plain words.
 
 - **The gallery owns its keys.** While the screenshot gallery is open,
   Space, Left, Right and Escape are its own: the video and the clock do not

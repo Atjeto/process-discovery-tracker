@@ -48,6 +48,9 @@ const HandoffUI = require("./views/handoff-ui.js");
 const Library = require("./library.js");
 const LibraryBuilder = require("./views/library-builder-ui.js");
 const { exportBaseName } = require("./session-summary.js");
+// Lane A-2: the app's zoom (Ctrl+Plus, Ctrl+Minus, Ctrl+0, Ctrl and the
+// wheel), the same in every window and kept on this computer.
+require("./app-zoom.js").wire({ say: (text) => toast(text) });
 
 /* The name an export is offered under (lane FX3, validation pass 2, item
    20): the project's name, then the file's kind ("Order to cash PDD.docx",
@@ -367,7 +370,7 @@ function _renderMapPicker(lv) {
   const nameEl = document.getElementById("map-picker-name");
   if (nameEl) nameEl.textContent = name;
   const btn = document.getElementById("btn-map-picker");
-  if (btn) btn.title = "The map shown: " + name + ". Choose the main process or one of its sub-processes; Steps shows the same level.";
+  if (btn) btn.title = "Choose the main process or one of its sub-processes; Steps shows the same level.";
   popup.innerHTML = lv.tree.map((m) => {
     const here = SPM.samePath(m.path, lv.path);
     const nm = _mapName(lv, m.path);

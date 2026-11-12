@@ -294,4 +294,116 @@ test("UI copy guard: no em dash or en dash in viewer or capture user-facing stri
     "parentheses or a plain hyphen instead:\n  " + offenders.join("\n  "));
 });
 
-module.exports = { BANNED_COPY, BANNED_CAPTURE_ONLY, DASH_RE, jsStringLiterals };
+/* ---- Lane A-2: one name per act, and words a PM never reads -------------
+   One act has one name everywhere (audit A20): Play plays a step, Show on
+   timeline goes from Steps or the step panel to the Timeline, Open in Steps
+   goes to Steps. The names they had before are retired. And three words of
+   the code never reach a process manager: "playhead" (say the clock's
+   moment, or the moment the video shows), "pending" (say what waits), and
+   "marker" in Help's words (say a transaction's start or end; the guard
+   reads "marker" in index.html only, the JS keeps it in code).
+
+   Scope: the viewer's JS string literals that read as words (a literal of
+   one code token, such as "tl-playhead" or " pending", or of class names
+   with a hyphen, such as "flow-link pending", is code and not read), and
+   index.html's text and its title, aria-label, placeholder and alt values
+   (class, id and data-* values are code). Comments are never read. */
+const RETIRED_NAMES = [
+  { re: /^\s*Watch\s*$/, term: "Watch", instead: "Play" },
+  { re: /select \+ seek/i, term: "Select + seek here", instead: "Play" },
+  { re: /\bjump to\b/i, term: "Jump to ...", instead: "Show on timeline, Open in Steps, or Go to its start" },
+  { re: /^\s*\+ step\s*$/i, term: "+ step", instead: "Add step here" },
+  { re: /\bseek\b/i, term: "seek", instead: "go to (a moment)" },
+];
+const PM_WORDS = [
+  { re: /\bplayhead\b/i, term: "playhead", instead: "the clock's moment, or the moment the video shows" },
+  { re: /\bpending\b/i, term: "pending", instead: "say what waits" },
+];
+const HTML_ONLY_WORDS = [
+  { re: /\bmarkers?\b/i, term: "marker", instead: "a transaction's start or end" },
+];
+
+/* A literal that is code, not words: one token, or tokens that are all
+   lower case code names, at least one of them with a hyphen, underscore,
+   dot, slash or hash (class lists, ids, selectors, paths). */
+function isCodeLiteral(text) {
+  const tokens = String(text).trim().split(/\s+/).filter(Boolean);
+  if (tokens.length <= 1) {
+    const t = tokens[0] || "";
+    return /^[#.]?[\w./#:@$-]*$/.test(t) && (/^[#.]?[a-z0-9_$@:]/.test(t) || /[-_./#]/.test(t) || t === "");
+  }
+  return tokens.every((t) => /^[#.]?[a-z0-9][\w./#:-]*$/.test(t)) && tokens.some((t) => /[-_./#]/.test(t));
+}
+
+/* index.html's words: the text between tags and the values of title,
+   aria-label, placeholder, alt and label, comments, scripts and styles
+   taken out. [{ text, line }] */
+function htmlCopy(src) {
+  const blank = (m) => m.replace(/[^\n]/g, " ");
+  const s = src.replace(/<!--[\s\S]*?-->/g, blank).replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, blank);
+  const out = [];
+  const lineAt = (i) => s.slice(0, i).split("\n").length;
+  for (const m of s.matchAll(/<[^>]*>/g)) {
+    for (const a of m[0].matchAll(/\s(title|aria-label|placeholder|alt|label)="([^"]*)"/g)) out.push({ text: a[2], line: lineAt(m.index) });
+  }
+  const text = s.replace(/<[^>]*>/g, (t) => blank(t));
+  text.split("\n").forEach((t, k) => { if (t.trim()) out.push({ text: t, line: k + 1 }); });
+  return out;
+}
+
+/* Allowlist: file -> texts (trimmed, whole) excused, each with its reason. */
+const WORD_ALLOW = {
+  // The Raw events table's filter names the kinds of event as the recording
+  // writes them, the same words as its Kind column (the recorded data).
+  "viewer/index.html": ["marker"],
+};
+
+function wordOffenders(files, rules, htmlRules) {
+  const out = [];
+  for (const file of files) {
+    const rel = path.relative(REPO, file).replace(/\\/g, "/");
+    const src = fs.readFileSync(file, "utf8");
+    const html = file.endsWith(".html");
+    const pieces = (html ? htmlCopy(src) : jsStringLiterals(src).filter((l) => !isCodeLiteral(l.text)))
+      .filter((p) => !(WORD_ALLOW[rel] || []).includes(p.text.trim())).sort((a, b) => a.line - b.line);
+    for (const p of pieces) {
+      for (const r of rules.concat(html ? htmlRules : [])) {
+        if (r.re.test(p.text)) out.push(rel + ":" + p.line + ': "' + r.term + '" in ' + JSON.stringify(p.text.trim().slice(0, 80)) + ", use " + r.instead);
+      }
+    }
+  }
+  return out;
+}
+
+test("lane A-2: one name per act, and no playhead, pending or marker in what a PM reads", () => {
+  const files = appFiles(VIEWER, [".js", ".html"]);
+  const bad = wordOffenders(files, RETIRED_NAMES.concat(PM_WORDS), HTML_ONLY_WORDS);
+  assert.deepStrictEqual(bad, [], "A retired name or a word of the code in the viewer's copy:\n  " + bad.join("\n  "));
+});
+
+test("lane A-2: the word guard reads copy, not code (positive controls)", () => {
+  assert.strictEqual(isCodeLiteral("tl-playhead"), true);
+  assert.strictEqual(isCodeLiteral("#tl-playhead"), true);
+  assert.strictEqual(isCodeLiteral(" pending"), true);
+  assert.strictEqual(isCodeLiteral("flow-link pending"), true);
+  assert.strictEqual(isCodeLiteral("../marker-edits.js"), true);
+  assert.strictEqual(isCodeLiteral("Add step at playhead"), false);
+  assert.strictEqual(isCodeLiteral("a change pending"), false);
+  const dir = fs.mkdtempSync(path.join(require("os").tmpdir(), "copy-guard-"));
+  try {
+    const js = path.join(dir, "x.js");
+    fs.writeFileSync(js, [
+      "const a = 'tl-playhead'; // the playhead in a comment",
+      "addItem(\"Watch\", f);",
+      "label: \"Jump to step here\",",
+      "toast(\"Add a step at the video's playhead\");",
+      "el.className = 'row' + (open ? ' pending' : '');",
+    ].join("\n"));
+    const html = path.join(dir, "x.html");
+    fs.writeFileSync(html, '<div class="tl-bar-playhead" id="pending-x"></div>\n<!-- a marker -->\n<h3>Working with markers</h3>\n<b title="Seek the video">x</b>');
+    const got = wordOffenders([js, html], RETIRED_NAMES.concat(PM_WORDS), HTML_ONLY_WORDS).map((o) => o.replace(/^.*?(x\.\w+:\d+): "([^"]+)".*$/, "$1 $2"));
+    assert.deepStrictEqual(got.map((g) => g.replace(/^.*[\\/]/, "")), ["x.js:2 Watch", "x.js:3 Jump to ...", "x.js:4 playhead", "x.html:3 marker", "x.html:4 seek"]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+module.exports = { BANNED_COPY, BANNED_CAPTURE_ONLY, DASH_RE, jsStringLiterals, RETIRED_NAMES, PM_WORDS, isCodeLiteral };

@@ -365,7 +365,7 @@ async function persistAnnotations(anno, undoLabel, topics, extra) {
      the caller's success message never follows an unsaved edit. */
   const session = State.getSession();
   try {
-    await saveAnnotationsWithUndo(anno, undoLabel || "marker edit", extra);
+    await saveAnnotationsWithUndo(anno, undoLabel || "change", extra);
   } finally {
     // Only the session the edit belongs to (another may have been opened
     // while the save was queued).

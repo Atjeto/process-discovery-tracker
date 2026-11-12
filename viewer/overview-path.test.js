@@ -325,7 +325,7 @@ test("lane FX2: an As-Is map made before the steps changed is a Checklist item (
   assert.equal(st.next, "asis");
   assert.equal(st.ready, false, "the Checklist no longer says the PDD is ready");
   const html = overviewHtml(sess);
-  assert.ok(/<li class="ov-next-stage next" data-stage="asis" title="The As-Is map was made before the steps changed: check it, or Copy again\.[^"]*">Check the As-Is map<\/li>/.test(html), html.slice(0, 900));
+  assert.ok(/<li class="ov-next-stage next" data-stage="asis" title="The As-Is map is older than the steps: check it on the Map, or Copy again\.">Check the As-Is map<\/li>/.test(html), html.slice(0, 900));
   assert.ok(html.includes('data-next-act="asis"'));
   assert.ok(html.includes(">Check the As-Is map</button>"));
   assert.ok(html.includes('<div class="ov-next-say">The As-Is map was made before the steps changed: check it, or Copy again.</div>'));
@@ -538,9 +538,9 @@ test("a project from a video: the acts are Add the steps, Write the steps, Write
   const html = overviewHtml(sess);
   assert.deepEqual(stagesOf(html), [["steps", "Add the steps"], ["written", "Write the steps"],
     ["document", "Write the document"], ["handoff", "Hand off"]]);
-  assert.ok(html.includes('data-stage="steps" title="Add the steps of the process: on the Timeline, at the moments of the video (Add step, or S), or in Steps with + Add step. Ticked once there is a step."'));
-  assert.ok(html.includes('data-stage="written" title="Give each step a name of its own and a description: the PDD prints them. Ticked once every step has both."'));
-  assert.ok(html.includes('data-stage="handoff" title="Hand this version of the project to the developers: one zip with the project, the PDD and the process map. Ticked once a version was handed off."'));
+  assert.ok(html.includes('data-stage="steps" title="Add the steps on the Timeline (Add step, or S) or in Steps: ticked once there is one."'));
+  assert.ok(html.includes('data-stage="written" title="Give each step a name of its own and a description: ticked once every step has both."'));
+  assert.ok(html.includes('data-stage="handoff" title="Hand a numbered version to the developers: ticked once a version was handed off."'));
   assert.deepEqual(buttonOf(html), ["steps-timeline", "Mark the steps on the Timeline"]);
   assert.equal(sayOf(html), "Play the video and press S, or click Add step, where each step starts.");
   assert.ok(!/Confirm|Mark the transactions|Export the PDD/.test(checklistOf(html)), "no act with nothing behind it");

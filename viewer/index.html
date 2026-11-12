@@ -10,6 +10,8 @@
    localStorage key in sync with theme.js (THEME_KEY = "pdt.theme"). */
 try { if (localStorage.getItem("pdt.theme") === "dark")
   document.documentElement.setAttribute("data-theme", "dark"); } catch (e) {}
+/* Lane A-2: the zoom this computer keeps, before the first paint too. */
+try { require("./app-zoom.js").applyStored(); } catch (e) {}
 </script>
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="node_modules/bpmn-js/dist/assets/diagram-js.css" />
@@ -36,7 +38,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="new-menu-popup" style="display:none; min-width: 240px;">
-        <button class="project-menu-item" id="btn-new-from-video" type="button" title="Start a project from videos of the process: pick the videos and their Teams transcripts together. The videos are copied into a new folder, one after the other in the order of their names, each transcript goes with its video, and the Timeline follows them.">New project from a video...</button>
+        <button class="project-menu-item" id="btn-new-from-video" type="button" title="Start a project from videos of the process and their transcripts.">New project from a video...</button>
         <button class="project-menu-item" id="btn-new-blank" type="button" title="Start an empty project: you add its steps by hand in Steps.">New empty project...</button>
       </div>
     </div>
@@ -49,12 +51,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <button class="project-menu-item" id="btn-open-session" type="button" title="Open a project folder: the folder the SME's capture app saved, or a project made with New">Open project...</button>
         <!-- Lane MW: another project beside this one (flow-view.js
              openInNewWindowFlow); a recent project's own button does the same. -->
-        <button class="project-menu-item" id="btn-open-new-window" type="button" title="Open another project folder in a new window: the project on screen stays open. A project already open for editing in another window opens read only in the new one.">Open in a new window...</button>
+        <button class="project-menu-item" id="btn-open-new-window" type="button" title="Open another project folder in a new window, beside this one.">Open in a new window...</button>
         <!-- Lane B4a: any zip of one project (flow-view.js openHandoffFlow,
              renderer.js zipToOpen): a project zip is unzipped where you say
              and opens for editing, a hand-off opens read only. -->
-        <button class="project-menu-item" id="btn-open-handoff" type="button" title="Open a zip: the zip an SME sent, a whole project, or a hand-off, which opens read only. A project zip is unzipped into a folder where you say, beside the zip unless you choose another place, and opens for editing.">Open a zip...</button>
-        <button class="project-menu-item" id="btn-open-demo" type="button" title="Open a finished example project, four orders at a sales desk, that shows every part of PDT. Each time you get a fresh copy in Documents\PDT demo, so change anything.">Open the demo project</button>
+        <button class="project-menu-item" id="btn-open-handoff" type="button" title="Open a zip: the SME's zip, a whole project, or a hand-off.">Open a zip...</button>
+        <button class="project-menu-item" id="btn-open-demo" type="button" title="Open a finished example project, a fresh copy each time.">Open the demo project</button>
         <div class="recent-menu-section" id="recent-menu-content"></div>
       </div>
     </div>
@@ -102,27 +104,27 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- Lane HV (contract C20): a hand-off opened read only opens the two
              files it came with (views/handoff-ui.js); shown only there. -->
         <button class="project-menu-item" id="btn-handoff-open-pdd" title="Open the PDD this version came with. It says which version it is.">PDD of this version</button>
-        <button class="project-menu-item" id="btn-handoff-open-tech" title="Open the Technical details this version came with: the recorded controls, the data fields, the re-keyed values and the applications.">Technical details of this version</button>
+        <button class="project-menu-item" id="btn-handoff-open-tech" title="Open the Technical details this version came with.">Technical details of this version</button>
         <!-- The deliverable first (the headings are text: not focusable, no
              act; a hand-off opened read only shows none, styles.css). -->
         <div class="project-menu-heading" role="presentation">For the developers and the archive</div>
         <!-- Lane HV (contract C20): a numbered version for the developers
              (views/handoff-ui.js). -->
-        <button class="project-menu-item" id="btn-session-handoff" title="Hand this version of the project to the developers: one zip next to the project folder, numbered v1, v2 and on, with the whole project and, at its root, the PDD, the Technical details (when something was recorded), the process map and a Start here.txt that says what each file is. The PDD says which version it is.">Hand off...</button>
+        <button class="project-menu-item" id="btn-session-handoff" title="Make a numbered version of the project for the developers: one zip.">Hand off...</button>
         <div class="project-menu-heading" role="presentation">For another analyst</div>
         <!-- One zip of the whole project folder, next to it (project-zip.js). -->
-        <button class="project-menu-item" id="btn-session-zip" title="Make one zip of the whole project folder, next to it: the recording, your work, the video, the transcript, screenshots, attachments and edited maps. The way to hand the project to someone.">Whole project (.zip)</button>
+        <button class="project-menu-item" id="btn-session-zip" title="Make one zip of the whole project folder, next to it, for another analyst.">Whole project (.zip)</button>
         <div class="project-menu-heading" role="presentation">Single files</div>
-        <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx): its map is the one the Map shows first, your edited As-Is map when there is one, else the process map. A project with attached files saves one zip: the PDD and an Attachments folder its attachment names link to.">PDD (.docx)</button>
+        <button class="project-menu-item" id="btn-session-pdd" title="Write the Process Definition Document (.docx).">PDD (.docx)</button>
         <!-- Lane HV (contract C20): the workbook for developers (--tech-out). -->
-        <button class="project-menu-item" id="btn-session-tech" title="Write the Technical details (.xlsx) for developers: every recorded click, entry and choice of the reference transaction with the control it acted on, the data fields of each transaction, the values typed again in another system, and the applications.">Technical details (.xlsx)</button>
+        <button class="project-menu-item" id="btn-session-tech" title="Write the Technical details (.xlsx) for the developers.">Technical details (.xlsx)</button>
         <!-- P2.12: both map items save the As-Is map chosen for the PDD
              when there is one, else the process map
              (process_map_step.bpmn; the image drawn as the PDD draws it).
              C19: the image is the map the Map level shows (a sub-process's
              when one is chosen there); the BPMN file holds every map. -->
-        <button class="project-menu-item" id="btn-session-map-svg" title="Save the map the Map shows as an SVG image: the As-Is map chosen for the PDD, else the process map, drawn as the PDD draws it, with the notes the PDD leaves out. It opens in Figma, Lucidchart, browsers and image editors.">Process map (image)</button>
-        <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the As-Is map chosen for the PDD (else the map on the Map level) as a BPMN 2.0 file, which Adonis, Bizagi, Camunda and similar tools can import.">Process map (BPMN)</button>
+        <button class="project-menu-item" id="btn-session-map-svg" title="Save the map the Map shows as an SVG image.">Process map (image)</button>
+        <button class="project-menu-item" id="btn-session-step-bpmn" title="Save the map the Map shows as a BPMN 2.0 file, for other modelling tools.">Process map (BPMN)</button>
       </div>
     </div>
     <button class="icon-btn help-btn" id="btn-help" title="Help (?)" aria-label="Help">?</button>
@@ -143,10 +145,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <div class="hero-acts">
           <div class="hero-row">
             <button class="primary" id="btn-open-session-hero">Open project...</button>
-            <button id="btn-open-handoff-hero" type="button" title="Open a zip: the zip an SME sent, a whole project, or a hand-off, which opens read only. A project zip is unzipped where you say and opens for editing.">Open a zip...</button>
+            <button id="btn-open-handoff-hero" type="button" title="Open a zip: the SME's zip, a whole project, or a hand-off.">Open a zip...</button>
           </div>
           <div class="hero-row">
-            <button id="btn-new-video-hero" type="button" title="Start a project from videos of the process: pick the videos and their Teams transcripts together. The videos are copied into a new folder, each transcript goes with its video, and the Timeline follows them.">New project from a video...</button>
+            <button id="btn-new-video-hero" type="button" title="Start a project from videos of the process and their transcripts.">New project from a video...</button>
             <button id="btn-new-blank-hero" type="button" title="Start an empty project: you add its steps by hand in Steps.">New empty project...</button>
           </div>
         </div>
@@ -154,7 +156,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
              (renderer.js wireStartDrop); while files are dragged over it the
              line says it will take them. -->
         <p class="hero-drop" id="session-drop-line" data-idle="Or drop a project folder, a zip, or a video with its transcript here." data-ready="Let go to open it here.">Or drop a project folder, a zip, or a video with its transcript here.</p>
-        <p class="hero-demo"><button type="button" class="link-btn" id="btn-open-demo-hero" title="Open a finished example project that shows every part of PDT: a fresh copy each time, in Documents\PDT demo.">Open the demo project</button> to see every part of PDT on a finished example.</p>
+        <p class="hero-demo"><button type="button" class="link-btn" id="btn-open-demo-hero" title="Open a finished example project, a fresh copy each time.">Open the demo project</button> to see every part of PDT on a finished example.</p>
         <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
         <div class="recent-sessions">
           <div class="recent-header">
@@ -192,7 +194,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                   <!-- Shown only while a video is attached (flow-view.js syncVideoControls);
                        Remove video only while the video is the one the analyst attached. -->
                   <button id="btn-sync-video" class="vc-text-btn" type="button" hidden title="Sync the video: click a moment in it, then the same moment on the timeline.">Sync video...</button>
-                  <button id="btn-video-remove" class="vc-text-btn" type="button" hidden title="Take the video out of this project: its copy in the project's video folder is deleted. Ctrl+Z brings it back.">Remove video</button>
+                  <button id="btn-video-remove" class="vc-text-btn" type="button" hidden title="Take the video and its copy in the project folder out. Ctrl+Z brings both back.">Remove video</button>
                   <button id="btn-video-expand" title="Expand video to 70% width">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
                   </button>
@@ -208,7 +210,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <div class="no-video" id="no-video">
                 <span class="nv-icon">▶</span>
                 <span class="nv-text">No video linked</span>
-                <button type="button" id="btn-link-recording" class="link-btn nv-link" title="Attach a video of the recording (a Teams recording or a screen video), then sync it: click a moment in the video, then the same moment on the timeline.">Attach video...</button>
+                <button type="button" id="btn-link-recording" class="link-btn nv-link" title="Attach a video of the recording, then sync it with two clicks.">Attach video...</button>
               </div>
               <!-- Lane W2 (plan section 11.1): a recording without a video shows
                    the screen at the clock's moment from its screenshots, the
@@ -291,8 +293,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <option value="2">2x</option>
               </select>
               <span class="tl-sep" aria-hidden="true"></span>
-              <button type="button" id="btn-add-step" hidden title="Adds a step that starts at this moment of the video. The step before it ends here. Key: S">Add step</button>
-              <button type="button" id="btn-tl-transaction" hidden title="Starts a new transaction at this moment of the video. A transaction is one pass through the process.">Start transaction</button>
+              <button type="button" id="btn-add-step" hidden title="Adds a step at this moment of the video. The step before it ends here. Key: S">Add step</button>
+              <button type="button" id="btn-tl-transaction" hidden title="Starts a new transaction at this moment of the video.">Start transaction</button>
               <button type="button" id="btn-tl-note" hidden title="Adds a note at this moment of the video. Notes stay out of the PDD.">Add note</button>
               <span class="tl-selection" id="tl-selection" hidden>
                 <span class="tl-selection-times" id="tl-selection-times"></span>
@@ -328,8 +330,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                       <span class="lg-draft" title="A step the recorder drafted that nobody has confirmed yet.">dashed: a draft step</span>
                       <span class="lg-screenshot">screenshot</span>
                       <span class="lg-note">note</span>
-                      <span class="lg-left-out" title="Hatched: a stretch you left out of the analysis. Playing skips it, and the Transcript tab leaves out what was said in it. Click it to include it again.">left out of the analysis</span>
-                      <span class="lg-placed" title="A step you placed elsewhere in the process (Place after a step, or Alt+Up and Alt+Down in Steps): its band stays where it was shown.">placed elsewhere in the process</span>
+                      <span class="lg-left-out" title="Hatched: a stretch left out of the analysis. Click it to include it again.">left out of the analysis</span>
+                      <span class="lg-placed" title="A step placed elsewhere in the process: its band stays where it was shown.">placed elsewhere in the process</span>
                     </div>
                   </div>
                 </div>
@@ -345,7 +347,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                    (flow-view-timeline.js renderLaneNames). -->
               <div class="timeline-body">
                 <div class="tl-lane-names" id="tl-lane-names"></div>
-                <div class="timeline-scroll" id="timeline-scroll" title="Click a band to seek · right-click for menu · Shift-drag to select a range · Space play/pause">
+                <div class="timeline-scroll" id="timeline-scroll" title="Click to go to a moment, right-click to mark there, Shift and drag to select a stretch.">
                   <div class="timeline" id="timeline"></div>
                 </div>
               </div>
@@ -356,7 +358,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <div class="tl-bar-row" id="tl-bar-row">
               <div class="tl-bar" id="tl-bar" role="scrollbar" tabindex="0" aria-controls="timeline-scroll" aria-orientation="horizontal"
                    aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
-                   title="The whole length of the timeline. Drag the box to move along it, or click a place to go there.">
+                   title="The whole length of the timeline: drag the box, or click a place to go there.">
                 <div class="tl-bar-track" aria-hidden="true"></div>
                 <div class="tl-bar-box" id="tl-bar-box" aria-hidden="true"></div>
                 <div class="tl-bar-playhead" id="tl-bar-playhead" aria-hidden="true"></div>
@@ -368,10 +370,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <!-- ========= STEPS view (full-width editor, tight) ========= -->
         <div class="session-layout-stepsphases" id="session-layout-steps" style="display:none">
           <div class="editor-toolbar">
-            <button id="btn-add-manual-step" title="Add a step by hand, without a time: after the selected step of the open transaction, or at its end. Alt+Up and Alt+Down move it. The Timeline's Add step adds one at the moment the video shows.">+ Add step</button>
+            <button id="btn-add-manual-step" title="Add a step by hand, without a time, after the selected step.">+ Add step</button>
             <!-- Lane E1: the notes the analyst already has, in one paste
                  (steps-view.js pasteNotes, notes-paste.js). -->
-            <button id="btn-paste-notes" type="button" title="Paste your notes from Notepad, Teams or anywhere: each line becomes a step, the text after its first colon its description. A line that starts with a document field's name and a colon (Trigger:, Volume:) goes to that field. One Ctrl+Z takes it all back.">Paste notes...</button>
+            <button id="btn-paste-notes" type="button" title="Paste your notes: each line becomes a step.">Paste notes...</button>
             <!-- 2.0.1 (the owner's review of the Steps page): the verbs that
                  change the selected step's shape (steps-view.js
                  _syncStepVerbs shows the ones that apply, each disabled with
@@ -391,12 +393,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
             <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
             <!-- C19: the ticked steps, one after the other, into a new sub-process (in every transaction). -->
-            <button id="btn-group-selected" hidden title="Move the ticked steps, one after the other, into a new sub-process, and the same steps in the other transactions too. Dissolve sub-process is the inverse.">Group into a sub-process...</button>
+            <button id="btn-group-selected" hidden title="Move the ticked steps into a new sub-process, in every transaction.">Group into a sub-process...</button>
             <span class="meta" id="steps-summary"></span>
             <span class="flex-spacer"></span>
             <!-- A quiet tool beside the main work (the owner's review: say
                  what it does). -->
-            <button id="btn-ignored-apps" class="tool-btn" type="button" title="Pick the apps that are not part of the process, for example Teams or Outlook used during the call, or the recorder itself. Their clicks and typing are left out of the steps and the map, and the project is analyzed again.">Apps outside the process...</button>
+            <button id="btn-ignored-apps" class="tool-btn" type="button" title="Pick the apps that are not part of the process, such as Teams used during the call.">Apps outside the process...</button>
             <span class="hint"><a href="#" class="link-help" data-help-section="stepsphases">What is a step?</a></span>
           </div>
           <div class="editor-split">
@@ -446,7 +448,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <div class="project-menu-popup map-picker-popup" id="map-picker-popup" role="group" aria-label="Maps" style="display:none"></div>
               </div>
               <div class="map-zoom" id="session-map-zoom" style="display:none">
-                <button class="tool-btn" id="btn-session-map-zoom-fit" type="button" title="Fit the map in view, never so small that its names cannot be read (scroll to zoom, drag to pan)">Fit</button>
+                <button class="tool-btn" id="btn-session-map-zoom-fit" type="button" title="Fit the map in view, with its names still readable.">Fit</button>
                 <!-- Shown only while how the transactions ran shows with boxes moved by hand (map-controller.js). -->
                 <button class="tool-btn" id="btn-session-map-reset-layout" type="button" hidden title="Put the boxes you moved back where the map lays them out">Reset layout</button>
               </div>
@@ -454,8 +456,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <!-- The Map's one act (refmap-ui.js syncForkButton sets its
                      label and style): a copy of the process map in the editor,
                      chosen as the PDD's As-Is map when none is chosen yet. -->
-                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it. A copy you leave unchanged is not kept.">Edit as the As-Is map</button>
-                <button class="tool-btn" id="btn-toggle-refmaps" type="button" aria-expanded="false" title="Show or hide your edited copies of the process map. Analyzing the project again never changes them.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
+                <button class="primary" id="btn-fork-refmap" title="Copy the process map into the editor as the PDD's As-Is map.">Edit as the As-Is map</button>
+                <button class="tool-btn" id="btn-toggle-refmaps" type="button" aria-expanded="false" title="Show or hide your edited copies of the process map.">Edited maps <span class="refmap-count" id="refmap-count"></span></button>
               </div>
             </div>
             <!-- Lane MV: the one line that says which map shows (refmap-ui.js
@@ -470,8 +472,8 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               <!-- Lane FX2: the As-Is copy shown was made before the steps
                    changed (asis-freshness.js): said here, with Copy again. -->
               <span class="map-view-stale" id="map-view-stale" hidden></span>
-              <button type="button" class="link-btn" id="btn-map-asis-recopy" hidden title="Make a new copy of the process map as it is now. It is kept once you change something in it, and then the PDD prints it in place of this one; this one stays in Edited maps.">Copy again</button>
-              <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the map drawn from the transactions' steps as they ran: hover a line for how often it was taken and its time; a dashed line is a path set in Steps that no transaction took. The PDD does not print it.">Show how the transactions ran</button>
+              <button type="button" class="link-btn" id="btn-map-asis-recopy" hidden title="Make a new copy of the process map as it is now.">Copy again</button>
+              <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the map drawn from the transactions as they ran.">Show how the transactions ran</button>
               <button type="button" class="link-btn" id="btn-map-show-map" hidden title="Show the process map, the map the PDD prints">Show the process map</button>
             </div>
             <!-- Why the map the PDD prints does not show, when it does not (not
@@ -483,9 +485,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                  (asis-view.js): a task opens the step panel, a file its
                  attachment, a note its whole text. -->
             <div class="map-asis" id="session-map-asis" hidden>
-              <div class="map-asis-canvas" id="map-asis-canvas" title="Drag to pan, Ctrl and scroll to zoom. Click a task for its step, a file to open it, a note for its whole text."></div>
+              <div class="map-asis-canvas" id="map-asis-canvas" title="Click a task for its step, a file to open it, a note for its whole text."></div>
             </div>
-            <div class="map-host" title="Scroll to zoom · drag to pan · hover an arrow for its times and its condition; a dashed arrow is a path set in Steps; double-click a box marked + to open its sub-process">
+            <div class="map-host" title="Click a box for its step; double-click a box marked + to open its sub-process.">
               <div class="map-pane active" id="session-map-dfg-host"></div>
             </div>
             <div class="refmap-panel" id="refmap-panel" style="display:none">
@@ -552,7 +554,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <button class="help-nav-item active" data-section="start">Getting started</button>
         <button class="help-nav-item" data-section="stepsphases">Steps</button>
         <button class="help-nav-item" data-section="map">Map</button>
-        <button class="help-nav-item" data-section="markers">Markers</button>
+        <button class="help-nav-item" data-section="markers">Transactions</button>
         <button class="help-nav-item" data-section="capture">Recording keys</button>
         <button class="help-nav-item" data-section="handoff">Hand-offs</button>
         <button class="help-nav-item" data-section="shortcuts">Shortcuts</button>
@@ -587,7 +589,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Your first hour</h3>
           <p>The Overview's <em>Checklist</em> lists the main acts below and ticks each one when it is done; its button takes you to the next. For a recording the acts are <em>Mark the transactions</em>, <em>Confirm the reference transaction</em>, <em>Review the other transactions</em>, <em>Write the document</em> and <em>Hand off</em>. For a project made from a video or from nothing they are <em>Add the steps</em>, <em>Write the steps</em> (a name of its own and a description for each step), <em>Review the other transactions</em> when it has two or more, <em>Write the document</em> and <em>Hand off</em>. On the Timeline, Steps and the Map, the top bar shows the next act, such as <em>Next: write the steps (1 of 7)</em>, and a click on it opens the Checklist.</p>
           <ol class="help-steps">
-            <li><strong>Attach the video and the transcript.</strong> On the Overview, click <em>Attach</em> after <em>No video</em> and pick the video. PDT opens the Timeline: pause the video at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. The video is copied into the project folder. Attach the meeting transcript (a Teams .vtt or .docx) with <em>Attach</em> after <em>No transcript</em>: the synced video places its sentences in time. Without a video, <em>Sync...</em> on the Timeline's <em>Transcript</em> lane places it: pick a sentence, then click where it was said.</li>
+            <li><strong>Attach the video and the transcript.</strong> On the Overview, click <em>Attach</em> after <em>No video</em> and pick the video. PDT opens the Timeline: pause the video at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. The video is copied into the project folder. Attach the meeting transcript (a Teams .vtt or .docx) with <em>Attach</em> after <em>No transcript</em>: the synced video places its sentences in time. Without a video, <em>Sync the transcript...</em> on the Timeline's <em>Transcript</em> lane places it: pick a sentence, then click where it was said.</li>
             <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Transaction 1</em> to <em>Transaction 4</em>. If one is missing, right-click the timeline where it starts and choose <em>Start a transaction here...</em>. If one starts or ends in the wrong place, type its times in Steps or drag its band on the Timeline (see <em>Everyday tasks</em>). Without a video, the screenshots show the screen where the video would be: click the timeline, or press Left or Right, and the screenshot of that moment shows.</li>
             <li><strong>Name the steps of the reference transaction, or pick them from the library.</strong> In Steps, transaction 1 is the reference transaction. Where the recorder cut a step wrongly, split or merge it first (see <em>Everyday tasks</em>). Then click each step and type its name, the title of the selected step: the step that ends at <em>Save order</em> becomes <em>Enter the order</em>. The same drafted step in the other transactions takes the name too. Where the library has activities for the step's system, the <em>Name</em> field lists them: pick one instead of typing.</li>
             <li><strong>Write short descriptions.</strong> <em>Description</em>, under the step's name, is the text the PDD prints under the step. One or two sentences are enough, for example on <em>Add the order to the tracking sheet</em>: <em>Type the new order as a row of the order tracking sheet (order, customer, item, quantity, unit price) and save the sheet.</em> With a transcript, what the SME said during the step is right under it: <em>Add</em> copies a sentence into the description. The step panel on the right plays the step (<em>Play</em>) and shows every time it happened, with its screenshots, what was said and notes. What the recorder saw is under <em>Recorded</em>.</li>
@@ -619,9 +621,9 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p><strong>Work with several videos</strong></p>
           <ol class="help-steps">
             <li>On the Overview, click <em>Add another</em> after <em>Video</em> (<em>Add</em>, once there are several) and pick one or more videos: several go in the order of their names. In a project made from videos they go after the last one, back to back. In a recording you sync the first with two clicks, as when you attach one, and the others go after it; <em>Sync video...</em> on a video's band syncs that one again.</li>
-            <li>On the Timeline the <em>Videos</em> lane shows each video as a band. The timeline runs across them: a moment on it is the same moment however many videos there are. The video that shows the playhead plays, then the next one.</li>
+            <li>On the Timeline the <em>Videos</em> lane shows each video as a band. The timeline runs across them: a moment on it is the same moment however many videos there are. The video that shows the clock's moment plays, then the next one.</li>
             <li>To trim a video, drag the start or the end of its band, or right-click it and choose <em>Trim the start here</em> or <em>Trim the end here</em>. In a project made from videos, the videos after it and what you marked on them move with it, and a trim that would cut away a step or a mark is refused and says what is there. <em>Give its start back</em> and <em>Give its end back</em> undo a trim, and so does Ctrl+Z.</li>
-            <li>Right-click a band to replace or remove that video (a video whose file is not found offers <em>Find the video...</em>). Removing a video takes what you marked on it with it, after asking. A transcript belongs to one video: <em>Attach</em> asks which, and its sentences move with that video. <em>Add another</em> after <em>Transcript</em> attaches the next transcript; each has its own row on the Timeline, with <em>Sync...</em>, <em>Replace...</em> and <em>Remove</em>.</li>
+            <li>Right-click a band to replace or remove that video (a video whose file is not found offers <em>Find the video...</em>). Removing a video takes what you marked on it with it, after asking. A transcript belongs to one video: <em>Attach</em> asks which, and its sentences move with that video. <em>Add another</em> after <em>Transcript</em> attaches the next transcript; each has its own row on the Timeline, with <em>Sync the transcript...</em>, <em>Replace the transcript...</em> and <em>Remove the transcript</em>.</li>
           </ol>
           <p><strong>Add a step the recorder missed</strong></p>
           <ol class="help-steps">
@@ -633,10 +635,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </ol>
           <p><strong>Change when a transaction or a step starts or ends</strong></p>
           <ol class="help-steps">
-            <li>In Steps, open the transaction: <em>Starts at</em> and <em>Ends at</em> are under its name. Type a time the way the timeline shows it, for example <em>0:09</em> or <em>1:05.5</em>, and press Enter. Up and Down change it by a second. An empty <em>Ends at</em> runs until the next transaction starts, or to the end.</li>
+            <li>In Steps, open the transaction: <em>Starts at</em> and <em>Ends at</em> are under its name. Type a time the way the timeline shows it, for example <em>0:09</em> or <em>1:05.5</em>, and press Enter. Up and Down change it by a second. An empty <em>Ends at</em> runs until the next transaction starts, or to the end. A time that cannot be taken is refused: the field shows its time again, and why stays under it until you change the field.</li>
             <li>What you marked together moves together: a step that starts or ends where the transaction does moves with its <em>Starts at</em> or <em>Ends at</em>. A step you delete gives its time back to the step before it.</li>
             <li>A step you added has its times on the line under its name, for example <em>Transaction 1 · 0:09 to 0:31</em>: type a time there and press Enter. Emptied, its end goes back to where the next step starts or its transaction ends. A step added without a time says <em>no time yet</em>: type when it starts. The step then belongs to the transaction its start is in, and a step right against it moves along. A step the recorder drafted keeps the time of its recorded actions: split or merge it instead.</li>
-            <li>On the Timeline you can instead drag the start or the end of a transaction's band, or of a step you added; a transaction that runs to the end gets its end that way too. Near a step's start or the playhead it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a change.</li>
+            <li>On the Timeline you can instead drag the start or the end of a transaction's band, or of a step you added; a transaction that runs to the end gets its end that way too. Near a step's start or the clock's moment it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a change.</li>
           </ol>
           <p><strong>Split or merge steps</strong></p>
           <ol class="help-steps">
@@ -657,7 +659,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>An app, for example Calculator, where the SME checks a total out of habit: in Steps, click <em>Apps outside the process...</em>, tick the app and click <em>Save</em>.</li>
             <li>A stretch, for example where the SME started on the wrong customer: on the Timeline, hold Shift and drag across it, click <em>Leave out of the analysis</em> in the row above the timeline, then <em>Leave out</em>.</li>
             <li>The steps and the map are drafted again without it. A stretch left out shows hatched: click it and choose <em>Include again</em> to bring it back. Playing skips it, and the <em>Transcript</em> tab leaves out what was said in it.</li>
-            <li>In a project made from a video, a detour of the call, for example thirty minutes on another topic: hold Shift and drag across it, then click <em>Not part of the process</em>. Select a stretch: I where it starts, O where it ends, also while the video plays. It shows hatched, playing skips it, and the <em>Transcript</em> tab says <em>Not part of the process</em> in its place. Your steps stay as they are, and the maps and the PDD do not mention it. Seek into it to watch it anyway. Click it and choose <em>Include again</em> to bring it back, or press Ctrl+Z.</li>
+            <li>In a project made from a video, a detour of the call, for example thirty minutes on another topic: hold Shift and drag across it, then click <em>Not part of the process</em>. Select a stretch: I where it starts, O where it ends, also while the video plays. It shows hatched, playing skips it, and the <em>Transcript</em> tab says <em>Not part of the process</em> in its place. Your steps stay as they are, and the maps and the PDD do not mention it. Go to a moment inside it to watch it anyway. Click it and choose <em>Include again</em> to bring it back, or press Ctrl+Z.</li>
           </ol>
           <p><strong>Make a sub-process</strong></p>
           <ol class="help-steps">
@@ -683,7 +685,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <ol class="help-steps">
             <li>Press Ctrl+Z to undo your last change, and Ctrl+Y to redo it.</li>
             <li><em>Undo</em> and <em>Redo</em> in the top bar do the same.</li>
-            <li>Undo covers every change (steps, markers, document fields, edited maps, the video, a stretch left out, a removed transcript), up to 50, until you open another project.</li>
+            <li>Undo covers every change (steps, transactions, document fields, edited maps, the video, a stretch left out, a removed transcript), up to 50, until you open another project.</li>
             <li>In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the map.</li>
           </ol>
           <h3>Hand over to the developers</h3>
@@ -741,12 +743,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
         <section class="help-section" data-section="stepsphases">
           <h3>Transactions and drafted steps</h3>
-          <p>A <strong>transaction</strong> is one pass through the process, from a start marker to its end marker. The app drafts every transaction's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the work moves to another screen. Steps lists the transactions in time order; open one to see its steps. Steps outside every transaction are listed under <em>Outside the transactions</em>.</p>
+          <p>A <strong>transaction</strong> is one pass through the process, from where it starts to where it ends. The app drafts every transaction's steps: a step is one visit to a screen, and it ends at the action that commits the work there (Save, Search, Submit, Send) or where the work moves to another screen. Steps lists the transactions in time order; open one to see its steps. Steps outside every transaction are listed under <em>Outside the transactions</em>.</p>
           <h3>Confirm the reference transaction</h3>
           <ol class="help-steps">
             <li>Open the <strong>reference</strong> transaction: transaction 1, marked <em>Reference</em>, unless you choose another one (right-click a transaction, <em>Use as reference transaction</em>).</li>
             <li>Check its steps against the screenshots or the video. Where a boundary is wrong, <strong>merge</strong>, <strong>split</strong>, <strong>add</strong> or <strong>hide</strong> steps (the toolbar above the list acts on the selected step; right-click a step for the same).</li>
-            <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. In the step pane the name is saved when you press Enter or leave the field, the description when you leave it; there is no Save button, and Ctrl+Z undoes each change. A step's description is printed with it in the PDD.</li>
+            <li>Name the steps the way the document should: double-click a name, or select the step and press Enter. In the step pane the name and the system are saved when you press Enter or leave the field, the description when you leave it; there is no Save button, and Ctrl+Z undoes each change. A step cannot have an empty name: the name it had comes back, and a line under it says so. A step's description is printed with it in the PDD.</li>
             <li>Click <strong>Confirm transaction</strong>: the steps you did not change are accepted as they are. <em>Undo confirm</em>, beside the Confirmed badge, turns them back into drafts. A reference transaction with no drafted step (every step added or edited by you) has nothing to confirm and shows no Confirm transaction.</li>
           </ol>
           <h3>The step panel</h3>
@@ -785,12 +787,12 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
 
         <section class="help-section" data-section="map">
           <h3>What the Map shows</h3>
-          <p>The Map shows the map the PDD prints: your As-Is map when you made one, else the <strong>process map</strong> the app draws from the reference transaction and the others, a box per step with the system it is done in above it (said once when every step is done in one system), its notes and files beside it. In the map editor, a system is text you can change: select it and type. The line above the map says which one shows. <em>Show how the transactions ran</em> draws the map from the transactions as they ran: hover a line for how often it was taken and its time; a dashed line is a path set in Steps that no transaction took. Click a box for the step panel. <em>Fit</em> fits the map in view, and <em>Reset layout</em> puts back the boxes you dragged.</p>
+          <p>The Map shows the map the PDD prints: your As-Is map when you made one, else the <strong>process map</strong> the app draws from the reference transaction and the others, a box per step with the system it is done in above it (said once when every step is done in one system), its notes and files beside it. In the map editor, a system is text you can change: select it and type. The line above the map says which one shows. <em>Show how the transactions ran</em> draws the map from the transactions as they ran: hover a line for how often it was taken and its time; a dashed line is a path set in Steps that no transaction took. The PDD does not print it. Click a box for the step panel. Drag a map to move it; Ctrl and the mouse wheel zoom the process map, and the wheel alone zooms how the transactions ran. <em>Fit</em> fits the map in view, and <em>Reset layout</em> puts back the boxes you dragged.</p>
           <h3>Sub-processes</h3>
           <p>When a step holds a sub-process, <em>Map:</em> above the map chooses the main process or a sub-process; its number is its chapter in the PDD, and Steps shows the same level. On the process map, the arrow on a sub-process opens its map; on how the transactions ran, a double-click on a box marked + does.</p>
           <h3>Your As-Is and To-Be maps</h3>
           <ul class="help-list">
-            <li><strong>Edit as the As-Is map</strong> copies the process map into the editor, and the PDD prints the copy in its place. Change it there (Ctrl+Z and Ctrl+Y undo and redo in the editor); it is kept once you change something, and analyzing the project again never changes it. When the steps change after it was made, the Map says so, with <em>Copy again</em>.</li>
+            <li><strong>Edit as the As-Is map</strong> copies the process map into the editor, and the PDD prints the copy in its place. Change it there (Ctrl+Z and Ctrl+Y undo and redo in the editor); it is kept once you change something, and analyzing the project again never changes it. When the steps change after it was made, the Map says so, with <em>Copy again</em>: a new copy of the process map as it is now, kept once you change something in it; the PDD then prints it in place of the old one, which stays in <em>Edited maps</em>.</li>
             <li><strong>Edit a new copy</strong>, once the As-Is map exists, starts another copy: choose <em>To-Be map</em> in <em>Use in PDD as</em>, and the PDD prints it under its improvement scope.</li>
             <li><strong>Edited maps</strong> lists your copies: <em>Edit</em>, <em>Use in PDD as</em> (None, As-Is map, To-Be map), <em>Duplicate</em>, <em>Copy again</em> and <em>Delete</em> (Ctrl+Z brings a copy back).</li>
           </ul>
@@ -799,11 +801,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         </section>
 
         <section class="help-section" data-section="markers">
-          <h3>Working with markers</h3>
-          <p>A transaction starts at a start marker and ends at its end marker; the SME places them with the recording bar or the recording keys. An edited marker changes the transactions; the recording itself never changes.</p>
+          <h3>Transactions on the timeline</h3>
+          <p>A transaction runs from where it starts to where it ends; the SME marks both with the recording bar or the recording keys. Moving where a transaction starts or ends changes the transactions; the recording itself never changes.</p>
           <ul class="help-list">
             <li><strong>Add</strong>: right-click the timeline at that moment and choose <em>Start a transaction here</em> or <em>End the transaction here</em>.</li>
-            <li><strong>Move</strong>: in Steps, open the transaction and type its <em>Starts at</em> or <em>Ends at</em>; an empty <em>Ends at</em> takes its end marker out. Or drag the start or the end of its band on the Timeline: near a step's start or the playhead it snaps there, and Esc puts it back. A step that starts or ends where the marker is moves with it. The steps follow by themselves a moment later.</li>
+            <li><strong>Move</strong>: in Steps, open the transaction and type its <em>Starts at</em> or <em>Ends at</em>; an empty <em>Ends at</em> takes its end out, and it runs until the next transaction starts. Or drag the start or the end of its band on the Timeline: near a step's start or the clock's moment it snaps there, and Esc puts it back. A step that starts or ends there moves with it. The steps follow by themselves a moment later.</li>
             <li><strong>Rename or delete</strong>: on the Timeline, in the <em>Steps</em> tab beside the video, each transaction's header has <em>Rename</em> and <em>Delete transaction</em>, with its <em>Starts at</em> and <em>Ends at</em>.</li>
           </ul>
           <p class="help-hint">To join two transactions, empty the <em>Ends at</em> of the first and click <em>Delete transaction</em> on the second. To split a transaction, start a transaction where its second part begins: a Start ends the transaction before it.</p>
@@ -835,6 +837,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
         <section class="help-section" data-section="shortcuts">
           <h3>Keyboard shortcuts</h3>
           <table class="help-table">
+            <tr><td><span class="kbd">Ctrl+Plus</span>, <span class="kbd">Ctrl+Minus</span>, <span class="kbd">Ctrl+0</span></td><td>Make everything larger, smaller, or the usual size</td></tr>
             <tr><td><span class="kbd">Space</span></td><td>Play or pause the video</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Move 5 seconds along the video, or along the screenshots of a recording without one (hold <span class="kbd">Shift</span> for 10)</td></tr>
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Zoom the timeline in, out, or back to the whole recording</td></tr>
@@ -845,7 +848,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">Enter</span> (Steps)</td><td>Rename the selected step</td></tr>
             <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step (the scissors under its Recorded say where), or merge it with the next step of its transaction</td></tr>
             <tr><td><span class="kbd">N</span> (Steps)</td><td>Add a step by hand, without a time</td></tr>
-            <tr><td><span class="kbd">S</span> (Timeline, with a video)</td><td>Add a step at the video's playhead</td></tr>
+            <tr><td><span class="kbd">S</span> (Timeline, with a video)</td><td>Add a step at the moment the video shows</td></tr>
             <tr><td><span class="kbd">I</span>, <span class="kbd">O</span> (Timeline)</td><td>Select a stretch: I where it starts, O where it ends</td></tr>
             <tr><td><span class="kbd">Tab</span> (Timeline)</td><td>Go to the next lane of the timeline that has marks</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span> <span class="kbd">Home</span> <span class="kbd">End</span> (a lane of the timeline)</td><td>Go to the previous, the next, the first or the last mark of the lane; <span class="kbd">Enter</span> opens it</td></tr>
@@ -858,9 +861,10 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           </table>
           <h3>Clicks</h3>
           <ul class="help-list">
+            <li>Ctrl and the mouse wheel make everything larger or smaller, except over a map, where they zoom the map. PDT keeps the size on this computer, in every window.</li>
             <li>Click the video to play or pause it. Click a band on the timeline to go to that moment. Click a screenshot or a note on the timeline to show it in its tab beside the video; in the <em>Screenshots</em> tab, click one to see it full size.</li>
             <li>Click a step band on the timeline to open the step beside the video, in the <em>Steps</em> tab. In the tabs, Left and Right go from tab to tab; in the list of steps, Up and Down go from step to step and Enter opens one.</li>
-            <li>Drag the start or the end of a transaction's band, or of a step you added on a video's timeline, to move it. It snaps to a step's start or the playhead a few pixels away; Esc puts it back.</li>
+            <li>Drag the start or the end of a transaction's band, or of a step you added on a video's timeline, to move it. It snaps to a step's start or the clock's moment a few pixels away; Esc puts it back.</li>
             <li>Right-click the timeline to start or end a transaction there, or to add a note at that moment. Click a hatched stretch, left out of the analysis, to include it again.</li>
             <li>Double-click a transaction's band to show only that transaction; <em>Show all</em> shows the whole length again. Drag the box on the bar under the timeline to move along it, or click the bar to go to a place.</li>
             <li>On the Map, in how the transactions ran, drag a box to move it; <em>Reset layout</em>, beside <em>Fit</em>, puts the boxes back where the map lays them out.</li>
@@ -875,7 +879,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <dd>Another program on the SME's computer may hold the same key. The capture app says so when it starts: <em>Keys changed</em> names the key it uses instead, <em>Keys not available</em> means there is none. Use the recording bar (<em>Start recording</em>, then <em>Next transaction</em>) or the tray menu (<em>Next transaction</em>, <em>End transaction</em>), or close that program and start the capture app again.</dd>
 
             <dt>A Citrix or remote desktop window shows as one app</dt>
-            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the transaction markers and a video for that part and add its steps by hand in Steps.</dd>
+            <dd>The recorder cannot see inside a remote window from the SME's computer, so the work done in it shows as one app with no steps inside. Run the capture app inside the remote session, or rely on the transactions the SME marks and a video for that part and add its steps by hand in Steps.</dd>
 
             <dt>The annotations for this project cannot be read</dt>
             <dd>A banner at the top says so, and nothing is saved while it shows. <em>Restore the newest backup</em>, on the banner, puts back the newest backup that can be read (it asks first and says when that backup was saved) and keeps the file that cannot be read beside it, as <em>annotations.unreadable</em> with the time.</dd>

@@ -6,6 +6,8 @@
   const TM = require("./transcript-model.js");
   const StepFlow = require("./step-flow.js");
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
+  const FieldRefusal = require("./field-refusal.js");
+  const EMPTY_NAME = "A step needs a name, so the name it had is back.";
   // C21: the activities the name field's picker keeps as the analyst types.
   const { filterActivities } = require("./library.js");
   // One composed human identity line per element (App Library pass, R1):
@@ -60,7 +62,7 @@
 
   /* What each step chip means, on hover. */
   const CHIP_TITLES = {
-    draft: "Draft: the recorder drafted this step and it has not been checked yet. On the reference transaction, Confirm transaction accepts it as it is.",
+    draft: "Draft: the recorder drafted this step, and nobody has checked it yet.",
     confirmed: "Confirmed: you accepted the drafted step as it is.",
     edited: "Edited: you changed this step (its name, its boundaries or its flags).",
     added: "Added: you added this step by hand.",
@@ -273,7 +275,7 @@
     if (n >= 2) return "";
     return n === 1
       ? "Only one action (a click, a field typed) was recorded in this step, so it cannot be split."
-      : "No action (a click, a field typed) was recorded in this step, so it cannot be split. + Add step adds a step beside it.";
+      : "No action was recorded in this step, so it cannot be split: add a step beside it.";
   }
 
   /* 2.0.1 (the owner's review): Recorded is open or closed as the analyst
@@ -367,7 +369,7 @@
           <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
           ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
           ${flowSectionHtml(step, callbacks.flow)}
-          <label class="step-waste" title="This step should not be needed (rework, duplicate effort, copying between systems). The PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste: this step should not be needed</label>
+          <label class="step-waste" title="Rework, duplicate effort or copying between systems: the PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste: this step should not be needed</label>
         </div>
         ${callbacks.shotsHtml ? `<div class="step-shots-part">${callbacks.shotsHtml}</div>` : ""}
         <div class="step-made">
@@ -448,7 +450,7 @@
     const acts = picker && Array.isArray(picker.activities) ? picker.activities : [];
     const note = picker && picker.note ? `<span class="step-lib-note" id="${escapeAttr(id.note)}">${escapeHtml(picker.note)}</span>` : "";
     const title = acts.length
-      ? "The name of this step. Pick an activity of " + picker.system + " from the library, or type any name. Saved when you press Enter or leave the field"
+      ? "The name of this step: pick an activity of " + picker.system + " from the library, or type any name."
       : "The name of this step. Saved when you press Enter or leave the field";
     const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${escapeAttr(id.list)}"` : "";
     // 2.0.1: the name is the editor's title; its label is for a screen reader.
@@ -471,10 +473,20 @@
     if (!nameEl) return;
     const o = opts || {};
     const rendering = typeof o.isRendering === "function" ? o.isRendering : () => false;
+    // Lane A-2: an empty name is refused, and says so under the name until
+    // the name is edited again (field-refusal.js).
+    const refusalKey = "name:" + step.step_id + ":" + (nameEl.id || "");
+    FieldRefusal.renew(nameEl, refusalKey);
     const commitName = () => {
       if (rendering() || !nameEl.isConnected) return;
       const v = nameEl.value.trim();
-      if (!v) { nameEl.value = step.name || ""; return; }
+      if (!v) {
+        const had = String(step.name || "");
+        nameEl.value = had;
+        if (had.trim()) FieldRefusal.show(nameEl, EMPTY_NAME, refusalKey);
+        return;
+      }
+      FieldRefusal.clear(nameEl, refusalKey);
       if (v !== String(step.name || "").trim() && callbacks.onRename) callbacks.onRename(step.step_id, v);
     };
     const picker = wireNamePicker(nameEl, step, callbacks, o.listId);
@@ -606,16 +618,16 @@
   }
 
   const FLOW_TITLES = {
-    onlyWhen: "For a step some transactions skip: say when it is done. The map draws a decision before it, with an \"otherwise\" path around it. For a choice between two steps, use Decision on the step before them.",
-    goTo: "A decision after this step: when a condition holds, the process goes back to an earlier step (a loop), ahead to a later one (a skip), to a step another transaction did (the other side of a choice) or to the end. Otherwise it goes on to the next step.",
-    condition: "The condition under which this step happens. Saved when you press Enter or leave the field; empty removes it.",
+    onlyWhen: "For a step some transactions skip: say when it is done.",
+    goTo: "A decision after this step: when a condition holds, the process goes elsewhere.",
+    condition: "When this step happens. Saved when you press Enter or leave the field.",
     removeCondition: "Remove the condition: the step always happens",
     target: "Where the process goes after this step",
     when: "When the process goes there. Saved when you press Enter or leave the field.",
     removeLink: "Remove this link: the next step follows",
-    inherited: "A condition holds for this step in every transaction. Change it on the step where it is set.",
+    inherited: "A condition set on another step holds here in every transaction: change it there.",
     // C22 (2.0.5): its place in the process, apart from its time.
-    placeAfter: "Put this step after another step of the process (Alt+Up and Alt+Down move it one step): its band, its video and its time stay where they are on the Timeline. For a correction or a condition the SME gave later in the video.",
+    placeAfter: "Put this step after another step of the process; its time on the Timeline stays.",
     backToTime: "Put this step back where its time puts it in the process",
   };
 

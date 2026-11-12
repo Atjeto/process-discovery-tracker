@@ -184,8 +184,8 @@ function syncForkButton() {
   btn.textContent = done ? FORK_AGAIN : FORK_ASIS;
   btn.classList.toggle("primary", !done);
   btn.title = why ? why : done
-    ? "Copy the process map into the editor again, for example to start over. The As-Is map chosen for the PDD stays as it is. A copy you leave unchanged is not kept."
-    : "Copy the process map into the editor as the PDD's As-Is map. Your edits stay in the copy: analyzing the project again never changes it. A copy you leave unchanged is not kept.";
+    ? "Copy the process map into the editor again; the As-Is map the PDD prints stays as it is."
+    : "Copy the process map into the editor as the PDD's As-Is map.";
 }
 function _setForkBusy() {
   const btn = $("btn-fork-refmap");
@@ -392,8 +392,7 @@ function refresh() {
 /* Copy again (lane FX2): a new copy of the process map as it is now, named
    like the copy it was clicked on, kept at its first change (as Edit's), and
    then in that copy's place in the PDD. */
-const RECOPY_TITLE = "Make a new copy of the process map as it is now, named like this one. It is kept once you change " +
-  "something in it, and then takes this copy's place in the PDD; this copy stays as it is.";
+const RECOPY_TITLE = "Make a new copy of the process map as it is now, to take this copy's place in the PDD.";
 
 /* What Copy again gives a copy the process map changed after (C18): a copy
    made before the map had its systems, notes and attachments gets them. */
@@ -633,6 +632,8 @@ async function _takeBack(t) {
 }
 
 /* ---- editor overlay ----------------------------------------------------- */
+const { holdFocus } = require("./modals.js");
+let _releaseEditorFocus = null;
 /* Open a copy that is kept (the Map's Edit, a gallery row). */
 async function openEditor(id) {
   const s = session();
@@ -656,7 +657,19 @@ async function _openEditorOn(s, entry, xml) {
   if (nameInput) nameInput.value = entry.name || "";
   if (pddSel) pddSel.value = entry.pdd_role || "";
   const overlay = $("refmap-editor-overlay");
-  if (overlay) overlay.style.display = "";
+  if (overlay) {
+    const was = overlay.style.display !== "none";
+    overlay.style.display = "";
+    // Lane A-2: the editor keeps the keyboard (modals.js holdFocus): Tab
+    // stays inside it, and closing it gives the focus back to what opened
+    // it. The focus starts on the editor itself, not in its name field, so
+    // the map's own Ctrl+Z and Ctrl+Y answer at once.
+    if (!was || !_releaseEditorFocus) {
+      if (_releaseEditorFocus) _releaseEditorFocus();
+      _releaseEditorFocus = holdFocus(overlay);
+      overlay.focus();
+    }
+  }
   const host = $("refmap-editor-host");
   if (!host) return;
   try {
@@ -675,6 +688,7 @@ async function _openEditorOn(s, entry, xml) {
 async function closeEditor() {
   const overlay = $("refmap-editor-overlay");
   if (overlay) overlay.style.display = "none";
+  if (_releaseEditorFocus) { const release = _releaseEditorFocus; _releaseEditorFocus = null; release(); }
   // Ctrl+Z and Ctrl+Y are the viewer's again (bpmn-viewer.js bound them to
   // the map while the editor showed).
   PdtBpmn.unbindKeys();

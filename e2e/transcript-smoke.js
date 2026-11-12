@@ -708,11 +708,11 @@ async function laneE() {
       ov = (await surfaces()).overview;
     } catch (e) { err = errText(e); }
     const ok = !err && flow.laneName === "Transcript" && /Not synced/.test(flow.label) && flow.syncAction &&
-      JSON.stringify(flow.laneActs) === JSON.stringify(["Sync...", "Replace...", "Remove"]) &&
+      JSON.stringify(flow.laneActs) === JSON.stringify(["Sync the transcript...", "Replace the transcript...", "Remove the transcript"]) &&
       flow.blocks.length === 0 && step && step.note === NOT_SYNCED && step.rows.length === 0 && step.buttons.length === 0 &&
       ov && ov.count === "(10)" && ov.rows.length === 10 && ov.note === NOT_SYNCED && !ov.during && ov.inDocUnderSummary &&
       ov.what === "Everything that was said";
-    record("(c) not synced: the lane, named Transcript at the left, says Not synced with Sync..., Replace... and Remove, the step editor shows one line, the Overview lists all 10 (\"Everything that was said\") with the line and no transactions filter, in the document under the project line",
+    record("(c) not synced: the lane, named Transcript at the left, says Not synced with Sync the transcript..., Replace the transcript... and Remove the transcript (lane A-2: each names its object), the step editor shows one line, the Overview lists all 10 (\"Everything that was said\") with the line and no transactions filter, in the document under the project line",
       ok, JSON.stringify({ err, label: flow && flow.label, laneName: flow && flow.laneName, blocks: flow && flow.blocks.length, step, ov: ov && { count: ov.count, what: ov.what, rows: ov.rows.length, note: ov.note, during: ov.during, inDocUnderSummary: ov.inDocUnderSummary } }));
     if (!ok) await shot(page, "fail-transcript-not-synced.png");
   }

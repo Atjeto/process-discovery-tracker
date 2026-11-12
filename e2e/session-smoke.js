@@ -768,6 +768,127 @@ async function unreadableAnnotationsPin() {
       dlg.trail.length === 6 && dlg.trail.every((x) => x === "in") && dlg.back === "btn-add-manual-step",
     JSON.stringify(dlg));
 
+  // Lane A-2 (audit A12): the app's zoom. Ctrl+= twice makes everything 110%
+  // then 125% (app-zoom.js), says so and keeps it on this computer; at 125%
+  // the top bar and the Timeline's row hold: every control inside its bar
+  // and the window, whole, none over another. + without Ctrl stays the
+  // Timeline's own zoom; Ctrl+0 is the usual size again.
+  const zm = {};
+  try {
+    const wasLevel = await page.evaluate(() => (document.querySelector(".view-mode-btn.active") || { dataset: {} }).dataset.level);
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: 15000 });
+    await wait(600);
+    await page.evaluate(() => { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); });
+    const read = () => page.evaluate(() => ({ factor: require("electron").webFrame.getZoomFactor(), kept: localStorage.getItem("pdt.appZoom"),
+      said: ((document.querySelector("#toast .toast-text") || {}).textContent || ""), timeline: require("./state.js").getZoomFactor(), w: innerWidth }));
+    zm.start = await read();
+    await page.keyboard.press("Control+=");
+    zm.first = await read();
+    await page.keyboard.press("Control+=");
+    await wait(800);   // the layout follows the page's new size
+    zm.at125 = await read();
+    zm.bars = await page.evaluate(() => {
+      const vis = (el) => el.checkVisibility() && el.getBoundingClientRect().width > 0;
+      const out = {};
+      for (const sel of [".topbar", "#tl-row"]) {
+        const host = document.querySelector(sel);
+        const hr = host.getBoundingClientRect();
+        const items = [...host.querySelectorAll("button, select, input, .tl-message, #save-state")]
+          .filter((el) => vis(el) && !el.closest(".project-menu-popup, .lanes-popup, #toast"));
+        const r = (el) => el.getBoundingClientRect();
+        const name = (el) => el.id || el.className || el.tagName;
+        const overlaps = [];
+        for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+          if (items[i].contains(items[j]) || items[j].contains(items[i])) continue;
+          const a = r(items[i]), b = r(items[j]);
+          if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlaps.push(name(items[i]) + "/" + name(items[j]));
+        }
+        const outside = items.filter((el) => { const b = r(el); return b.left < hr.left - 1 || b.right > hr.right + 1 || b.top < hr.top - 1 || b.bottom > hr.bottom + 1 ||
+          b.right > innerWidth + 1 || b.bottom > innerHeight + 1; }).map(name);
+        const cut = items.filter((el) => el.tagName === "BUTTON" && getComputedStyle(el).textOverflow !== "ellipsis" && el.scrollWidth > el.clientWidth + 1).map(name);
+        out[sel] = { n: items.length, overlaps, outside, cut };
+      }
+      return out;
+    });
+    await page.keyboard.press("+");
+    await wait(200);
+    zm.plus = await read();
+    await page.keyboard.press("0");
+    await page.keyboard.press("Control+0");
+    await wait(600);
+    zm.end = await read();
+    if (wasLevel) await page.locator('.view-mode-btn[data-level="' + wasLevel + '"]').click({ timeout: 15000 });
+  } catch (e) { logActionError("A-2 zoom", e); zm.err = String(e.message).split("\n")[0]; }
+  const barOk = (b) => !!b && b.n > 0 && b.overlaps.length === 0 && b.outside.length === 0 && b.cut.length === 0;
+  record("lane A-2: Ctrl+= makes the app 110% then 125%, says \"Zoom 125%.\" and keeps it on this computer; at 125% the top bar and the Timeline's row hold (no control outside its bar or the window, none cut, none over another); + without Ctrl zooms the timeline, not the app; Ctrl+0 is the usual size",
+    !zm.err && zm.start.factor === 1 && Math.abs(zm.first.factor - 1.1) < 0.001 && Math.abs(zm.at125.factor - 1.25) < 0.001 &&
+      zm.at125.kept === "125" && zm.at125.said === "Zoom 125%." && zm.at125.w < zm.start.w &&
+      barOk(zm.bars[".topbar"]) && barOk(zm.bars["#tl-row"]) &&
+      Math.abs(zm.plus.factor - 1.25) < 0.001 && zm.plus.timeline > zm.at125.timeline &&
+      zm.end.factor === 1 && zm.end.kept === "100" && zm.end.w === zm.start.w,
+    JSON.stringify(zm));
+
+  // Lane A-2: the last dialogs keep the keyboard (modals.js holdFocus): Apps
+  // outside the process, the screenshot gallery and the map editor. Each
+  // takes the focus when it opens from the keyboard, Tab and Shift+Tab ten
+  // times each never leave it, and closing it gives the focus back to the
+  // button that opened it.
+  const fh = {};
+  try {
+    const inside = (sel) => page.evaluate((s) => {
+      const d = document.querySelector(s); const a = document.activeElement;
+      return !!(d && a && a !== document.body && d.contains(a)) ? "in" : "OUT:" + (a ? a.tagName + "#" + (a.id || "") : "none");
+    }, sel);
+    const walk = async (sel) => {
+      const trail = [await inside(sel)];
+      for (let i = 0; i < 10; i++) { await page.keyboard.press("Tab"); trail.push(await inside(sel)); }
+      for (let i = 0; i < 10; i++) { await page.keyboard.press("Shift+Tab"); trail.push(await inside(sel)); }
+      return trail;
+    };
+    const asDialog = (sel) => page.evaluate((s) => { const d = document.querySelector(s); return d ? d.getAttribute("role") + "/" + d.getAttribute("aria-modal") : null; }, sel);
+    const backTo = () => page.evaluate(() => (document.activeElement || {}).id || "");
+    // Apps outside the process, from the Steps toolbar.
+    await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: 15000 });
+    await page.locator("#btn-ignored-apps").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("#ia-save", { state: "visible", timeout: 15000 });
+    await wait(100);
+    fh.apps = { dialog: await asDialog(".modal:has(#ia-save)"), trail: await walk(".modal:has(#ia-save)") };
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#ia-save", { state: "detached", timeout: 15000 });
+    fh.apps.back = await backTo();
+    // The screenshot gallery, from the Timeline's Screenshots tab.
+    await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: 15000 });
+    await page.locator("#tp-tab-screens").click({ timeout: 15000 });
+    await page.locator("#btn-open-gallery").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("#screenshot-gallery", { state: "visible", timeout: 15000 });
+    await wait(100);
+    fh.gallery = { dialog: await asDialog("#screenshot-gallery"), trail: await walk("#screenshot-gallery") };
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#screenshot-gallery", { state: "hidden", timeout: 15000 });
+    fh.gallery.back = await backTo();
+    // The map editor, from the Map (a copy left unchanged is not kept).
+    await page.locator('.view-mode-btn[data-level="map"]').click({ timeout: 15000 });
+    await mapSettled(page);
+    await page.locator("#btn-fork-refmap").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("#refmap-editor-overlay", { state: "visible", timeout: 120000 });
+    await page.waitForSelector("#refmap-editor-host .djs-container > svg", { timeout: 60000 });
+    await wait(200);
+    fh.editor = { dialog: await asDialog("#refmap-editor-overlay"), trail: await walk("#refmap-editor-overlay") };
+    await page.locator("#btn-refmap-editor-close").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("#refmap-editor-overlay", { state: "hidden", timeout: 30000 });
+    await wait(300);
+    fh.editor.back = await backTo();
+    await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: 15000 });
+  } catch (e) { logActionError("A-2 dialogs keep the keyboard", e); fh.err = String(e.message).split("\n")[0]; }
+  const held = (d, opener) => !!d && d.dialog === "dialog/true" && d.trail.length === 21 && d.trail.every((x) => x === "in") && d.back === opener;
+  record("lane A-2: Apps outside the process, the screenshot gallery and the map editor are modal dialogs that keep the keyboard: opened from the keyboard each takes the focus, Tab and Shift+Tab ten times each stay inside, and closing gives the focus back to the button that opened it",
+    !fh.err && held(fh.apps, "btn-ignored-apps") && held(fh.gallery, "btn-open-gallery") && held(fh.editor, "btn-fork-refmap"),
+    JSON.stringify(fh));
+
   // Lane FX3 (validation pass 3, F20): why the capture app ended a
   // transaction by itself, in plain words, never its code. Lane PANE: the
   // Markers tab is gone; the transaction's header in the pane's Steps tab
@@ -2457,7 +2578,7 @@ async function unreadableAnnotationsPin() {
     record("lane CC: Leave out of the analysis (a Shift-drag's card, asked first) draws the stretch on the Timeline, hatched, with its legend; its steps are not drafted",
       !!(!lo.err && lo.card === "Leave out of the analysis" && /Leave this stretch out of the analysis\?/.test(lo.confirm || "") &&
         B.ranges && B.ranges.length === 0 && !B.band &&
-        L.ranges && L.ranges.length === 1 && L.band && /^Left out of the analysis, \d+:\d\d to \d+:\d\d: /.test(L.band.title) &&
+        L.ranges && L.ranges.length === 1 && L.band && /^Left out of the analysis, \d+:\d\d to \d+:\d\d[.] Click it to include it again[.]$/.test(L.band.title) &&
         L.band.start === L.ranges[0][0] && L.legend &&
         !inside(L.run2.starts, L.ranges[0]) && L.run2.steps < B.run2.steps),
       JSON.stringify({ card: lo.card, confirm: lo.confirm, before: B, left: L, err: lo.err }));
@@ -2538,7 +2659,7 @@ async function unreadableAnnotationsPin() {
       JSON.stringify({ err: ap.err, rows: ap.rows }));
     record("lane FX2: an app left out of the analysis (Notepad) is drawn hatched on the Timeline, with the tooltip and the legend's entry of a stretch left out; included again, it is plain",
       !!(!ap.err && ap.out && ap.out.notepad > 0 && ap.out.hatched === ap.out.notepad && ap.out.others === 0 &&
-        /^Left out of the analysis: Notepad is among the apps outside the process, so its steps are not drafted and its time is not counted\./.test(ap.out.title || "") &&
+        /^Left out of the analysis: Notepad is among the apps outside the process, set in Steps\./.test(ap.out.title || "") &&
         ap.out.legend && ap.back && ap.back.hatched === 0 && ap.back.notepad === ap.out.notepad && !ap.back.legend),
       JSON.stringify({ out: ap.out, back: ap.back }));
   }

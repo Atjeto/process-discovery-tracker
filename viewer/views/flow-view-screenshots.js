@@ -24,6 +24,7 @@ const { seekToTimestamp, playheadMs } = require("./flow-view-video.js");
 const AC = require("../analyst-content.js");
 const SPM = require("../sub-process-maps.js");
 const Screen = require("../timeline-screen.js");
+const { holdFocus } = require("../modals.js");
 
 /* P2.7 gallery state. _allScreenshots is stashed by renderScreenshots so
    the gallery can step through the same set the grid shows. */
@@ -269,6 +270,7 @@ function openScreenshotGallery(rel) {
     overlay = document.createElement("div");
     overlay.id = "screenshot-gallery";
     overlay.className = "screenshot-gallery";
+    overlay.setAttribute("aria-label", "Screenshot gallery");
     overlay.innerHTML =
       '<div class="screenshot-gallery-header">' +
         '<span class="title">Screenshot gallery</span>' +
@@ -287,7 +289,7 @@ function openScreenshotGallery(rel) {
         '<span class="ts" id="gallery-ts">-</span>' +
         '<span class="reason" id="gallery-reason">-</span>' +
         '<span class="flex-spacer" style="flex:1"></span>' +
-        '<span style="color:var(--fg-3);font-size:10px">← / → step · Space play · Esc close · click image to seek video</span>' +
+        '<span class="gallery-keys">Left and Right: the screenshot before or after · Space: play · Esc: close · Click the picture: go to its moment</span>' +
       '</div>';
     document.body.appendChild(overlay);
     document.getElementById("gallery-close").addEventListener("click", closeScreenshotGallery);
@@ -310,10 +312,18 @@ function openScreenshotGallery(rel) {
   _galleryRenderFrame();
   document.removeEventListener("keydown", _galleryKey);
   document.addEventListener("keydown", _galleryKey);
+  // Lane A-2: the gallery keeps the keyboard (modals.js holdFocus): Tab
+  // stays inside it, and closing it gives the focus back to what opened it.
+  if (!_releaseGallery) {
+    _releaseGallery = holdFocus(overlay);
+    overlay.focus();
+  }
 }
+let _releaseGallery = null;
 function closeScreenshotGallery() {
   const overlay = document.getElementById("screenshot-gallery");
   if (overlay) overlay.style.display = "none";
+  if (_releaseGallery) { const release = _releaseGallery; _releaseGallery = null; release(); }
   if (_galleryState && _galleryState.playTimer) clearTimeout(_galleryState.playTimer);
   document.removeEventListener("keydown", _galleryKey);
   _galleryState = null;

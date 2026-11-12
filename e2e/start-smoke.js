@@ -210,7 +210,7 @@ function freshRecording(dest) {
   record("(a) the start page: Open a zip... (button and menu item) says what it takes; the drop line shows",
     !a.err && a.page.hero === "Open a zip..." && a.page.item === "Open a zip..." && a.page.lineShown &&
       a.page.line === "Or drop a project folder, a zip, or a video with its transcript here." &&
-      /the zip an SME sent, a whole project, or a hand-off, which opens read only/.test(a.page.heroTitle), JSON.stringify(a.page || a.err));
+      a.page.heroTitle === "Open a zip: the SME's zip, a whole project, or a hand-off.", JSON.stringify(a.page || a.err));
   record("(a) files dragged over the page: an outline and the line saying Let go to open it here; the drop is accepted",
     !a.err && a.drag.ready && a.drag.line === "Let go to open it here." && /dashed/.test(a.drag.outline) && a.drag.accepted,
     JSON.stringify(a.drag));

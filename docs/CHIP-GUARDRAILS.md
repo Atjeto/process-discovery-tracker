@@ -96,6 +96,13 @@ every push.
    `--accent-fill` (DESIGN-SYSTEM.md, Contrast, focus, dialogs and
    messages). *Guard:* `viewer/fg4-guard.test.js` (a `color: var(--fg-4)`
    outside its named decorations fails; runs in `cd viewer && node --test`).
+7b. **A floor of 12 px; tooltips of 90 characters; one name per act** (lane
+   A-2). Nothing a person reads is under 12 px, only a mono clock time 11 px;
+   a tooltip is one sentence on what the click does, 90 characters or fewer;
+   *Play*, *Show on timeline*, *Open in Steps* are the only names of their
+   acts, and no "playhead" or "pending" (nor "marker" in Help) reaches a PM.
+   *Guards:* `viewer/type-floor-guard.test.js`, `viewer/tooltip-guard.test.js`
+   and the A-2 tests of `viewer/ui-copy-guard.test.js`.
 8. **Verify UI in the real viewer, not only in unit tests.** Green units
    are not enough: that is this project's most recurring failure. Drive the
    viewer (below), screenshot, read the PNGs back.
@@ -281,6 +288,24 @@ Every dialog's box (`.modal`, from `modals.js` `holdFocus`) carries
 the focus with `document.activeElement` against it. A menu's button carries
 `aria-expanded`; the level shown, `aria-current="page"`.
 
+Lane A-2 handles. The app's zoom: `page.keyboard.press("Control+=")` (and
+`Control+-`, `Control+0`), read with
+`require("electron").webFrame.getZoomFactor()` and
+`localStorage["pdt.appZoom"]` (percent); a throwaway profile starts at 100,
+and a Playwright `page.screenshot` of a zoomed page is cropped: capture the
+window with `BrowserWindow.webContents.capturePage()` instead. A refused
+entry: the field carries `aria-invalid="true"` and `aria-describedby` the
+line `.field-refusal` (`role="alert"`, `data-key`) under its line, gone at
+the field's next input. The Apps outside the process dialog (`.modal` with
+`#ia-save`), `#screenshot-gallery` and `#refmap-editor-overlay` carry
+`role="dialog"` and `aria-modal="true"` and keep Tab inside; the gallery and
+the editor take the focus on themselves. The video pane's header
+`#vc-status-text` reads SCREEN while a recording's screenshots show there.
+The Raw events table's row acts are *Go there* and *Add step here*
+(`.ev-act`); the Transcript lane's links read *Sync the transcript...*,
+*Replace the transcript...* and *Remove the transcript*; the Steps row
+menu's play item is *Play* (it read *Watch*).
+
 **Overview** (`#overview-content`, `views/overview-view.js`):
 - Before the first analysis: `#ov-waiting` (`data-run` = the run state).
 - The Checklist `#ov-next` (`data-next` = the next stage; stages
@@ -444,11 +469,14 @@ the focus with `document.activeElement` against it. A menu's button carries
   0), no `#run-status` and `analysisBusy()` false instead of clicking.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
   text: "Start a transaction here…", "End the transaction here", "Add note
-  here…", "Add a step here", "Jump to step here"; the transaction and step
+  here…", "Add a step here", "Open in Steps" (lane A-2; it read "Jump to
+  step here"); the transaction and step
   items start at a step's start or the playhead within 8 px of the click,
   2.0.3; a step's or a transaction's band gives the same items first, then
-  its name as `.tl-ctx-head` and its own: "Open in Steps", "Select + seek
-  here", "Delete step" or "Hide step"; "Jump to start", "Jump to end"; on a
+  its name as `.tl-ctx-head` and its own: "Open in Steps", "Play" (where a
+  video shows the step's start; it read "Select + seek here"), "Delete
+  step" or "Hide step"; "Go to its start", "Go to its end" (they read
+  "Jump to start", "Jump to end"); on a
   stretch left out "Include again", "Go to its start"). A Shift-drag
   range shows in the row (`#tl-selection`, above). A
   Shift-drag starts only on the timeline's own background: find a point

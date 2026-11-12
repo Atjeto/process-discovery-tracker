@@ -228,8 +228,8 @@ test("leftOutBands: the excluded ranges the Timeline draws, readable ones only, 
 test("a band left out says what it is and what a click does; its label is the legend's words", () => {
   assert.equal(Timeline.LEFT_OUT_LABEL, "Left out of the analysis");
   assert.equal(Timeline.leftOutTitle("1:10", "1:45"),
-    "Left out of the analysis, 1:10 to 1:45: its steps are not drafted and its time is not counted. Click to include it again.");
-  assert.ok(Timeline.leftOutTitle("", "").startsWith("Left out of the analysis: "));
+    "Left out of the analysis, 1:10 to 1:45. Click it to include it again.");
+  assert.equal(Timeline.leftOutTitle("", ""), "Left out of the analysis. Click it to include it again.");
   // The label: whole where it fits, its first words on a narrower band, none on a thin one.
   assert.deepEqual([200, 150, 149, 64, 63, 0].map(Timeline.leftOutLabel),
     ["Left out of the analysis", "Left out of the analysis", "Left out", "Left out", "", ""]);
@@ -250,7 +250,7 @@ test("lane FX2: an app outside the process is left out of the analysis: its band
   assert.equal(appLeftOut("", ["notepad.exe"]), false);
   assert.equal(appLeftOut("chrome.exe", null), false);
   assert.equal(appLeftOutTitle("Notepad"),
-    "Left out of the analysis: Notepad is among the apps outside the process, so its steps are not drafted and its time is not counted. Apps outside the process, in Steps, includes it again.");
+    "Left out of the analysis: Notepad is among the apps outside the process, set in Steps.");
 });
 
 test("lane FX2: a one-click step (it starts and ends in the same moment) gets a band on the steps lane; only a step with no time or one ending before it starts gets none", () => {

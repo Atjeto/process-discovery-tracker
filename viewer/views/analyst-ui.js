@@ -102,8 +102,8 @@ function systemFieldHtml(step, derived, ids) {
   const choices = AC.systemChoices(_sessionSystems(), SystemNames.knownSystems());
   return '<input type="text" class="step-system-inline" id="' + escapeAttr(id.input) + '" list="' + escapeAttr(id.list) + '" value="' + escapeAttr(own) + '"' +
     ' placeholder="' + escapeAttr(derived && !own ? derived : "Set the system") + '" aria-label="System"' +
-    ' title="' + escapeAttr("The system this step is done in" + (derived ? " (the recording says " + derived + ")" : "") +
-      ". Type another to change it; empty gives back the recorded one. Saved when you press Enter or leave the field.") + '">' +
+    ' title="' + escapeAttr("The system this step is done in" + (derived ? " (recorded: " + derived + ")" : "") +
+      ". Empty gives back the recorded one.") + '">' +
     '<datalist id="' + escapeAttr(id.list) + '">' + choices.map((c) => '<option value="' + escapeAttr(c) + '"></option>').join("") + "</datalist>";
 }
 
@@ -135,8 +135,8 @@ function stepShotsHtml(step) {
       '<div class="step-shot-acts">' +
         '<button type="button" class="link-btn' + (inPdd ? " on" : "") + '" data-shot-act="pdd" aria-pressed="' + inPdd + '" title="' +
           escapeAttr(!inPdd ? "Print this screenshot under the step in the PDD, in place of the one it prints now"
-            : chosen ? "The PDD prints this screenshot under the step. Click to print the step's first screenshot again."
-              : "The PDD prints one screenshot per step: this one, the step's first. Use in PDD on another prints that one.") +
+            : chosen ? "The PDD prints this screenshot. Click to print the step's first screenshot again."
+              : "The PDD prints this one, the step's first screenshot.") +
           '">' + (inPdd ? "In the PDD" : "Use in PDD") + "</button>" +
         '<button type="button" class="link-btn" data-shot-act="remove" title="' + escapeAttr(sh.kind === "analyst"
           ? "Remove this screenshot you added. Ctrl+Z brings it back." : "Take this screenshot off the step; the recording keeps it.") + '">Remove</button>' +
@@ -198,9 +198,9 @@ function stepAttachedHtml(step) {
   return (atts ? '<div class="step-sect" id="step-atts-sect">' + _lead("Attachments") + '<ul class="att-list">' + atts + "</ul></div>" : "") +
     (notes ? '<div class="step-sect" id="step-notes-sect">' + _lead("Notes", NOT_PRINTED) + '<ul class="step-notes">' + notes + "</ul></div>" : "") +
     '<div class="step-adds">' +
-      '<button type="button" class="link-btn" id="btn-step-add-shot" title="Add a screenshot to this step: a frame of the video, a pasted image (Ctrl+V in this pane) or a file">Add screenshot ▾</button>' +
+      '<button type="button" class="link-btn" id="btn-step-add-shot" title="Add a screenshot to this step: a frame of the video, a pasted image or a file">Add screenshot ▾</button>' +
       '<button type="button" class="link-btn" id="btn-step-add-note" title="Add a note to this step. ' + escapeAttr(NOT_PRINTED) + '">Add note</button>' +
-      '<button type="button" class="link-btn" id="btn-step-attach" title="Attach a file to this step (an example email, a form, a spreadsheet). It is copied into the project folder; the PDD lists it and its export carries it.">Attach file…</button>' +
+      '<button type="button" class="link-btn" id="btn-step-attach" title="Attach a file to this step, such as an example email: the PDD lists it.">Attach file…</button>' +
     "</div>";
 }
 
@@ -697,7 +697,7 @@ function overviewAttachmentsHtml(anno) {
   }).join("");
   return '<div class="ov-attach" id="ov-attach">' +
     '<div class="step-sect-head"><span class="ov-doc-label">Attachments</span>' +
-      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project (an example email, an input spreadsheet, an SOP). It is copied into the project folder; the PDD lists it and its export carries it.">Add file...</button></div>' +
+      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project, such as an input spreadsheet: the PDD lists it.">Add file...</button></div>' +
     (rows ? '<ul class="att-list">' + rows + "</ul>" : '<p class="ov-attach-empty">No files attached. The PDD lists the files you attach here.</p>') +
     "</div>";
 }

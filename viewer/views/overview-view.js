@@ -207,36 +207,26 @@ function documentStatus(doc) {
    nothing (its steps are added by hand), absent for both. */
 const PATH_STAGES = [
   { key: "runs", label: "Mark the transactions", recording: true,
-    title: "A transaction is one pass through the process. Each starts at a start marker: the SME's transaction key " +
-      "sets one, or you add one on the Timeline. A project without a recording is one transaction from the start. " +
-      "Ticked once there is at least one transaction." },
+    title: "Mark where each transaction starts and ends: ticked once there is one." },
   { key: "steps", label: "Add the steps", recording: false,
-    title: "Add the steps of the process: on the Timeline, at the moments of the video (Add step, or S), or in Steps " +
-      "with + Add step. Ticked once there is a step." },
+    title: "Add the steps on the Timeline (Add step, or S) or in Steps: ticked once there is one." },
   { key: "written", label: "Write the steps", recording: false,
-    title: "Give each step a name of its own and a description: the PDD prints them. Ticked once every step has both." },
+    title: "Give each step a name of its own and a description: ticked once every step has both." },
   { key: "pattern", label: "Confirm the reference transaction", recording: true,
-    title: "In Steps, check the reference transaction's drafted steps (transaction 1 unless you pick another), fix " +
-      "their boundaries and names, then click Confirm transaction. Ticked once it is confirmed, or once none of its " +
-      "steps is a draft." },
+    title: "Confirm the reference transaction's steps in Steps: ticked once none is a draft." },
   // Without a recording, listed only when the project has two or more
   // transactions: one has no other to review.
   { key: "review", label: "Review the other transactions",
-    title: "Open each other transaction in Steps: it lists how it differs from the reference transaction. The other " +
-      "transactions are not confirmed. Ticked once each transaction that differs from the reference transaction " +
-      "has been opened." },
+    title: "Open each transaction that differs from the reference one: ticked once each is opened." },
   { key: "document", label: "Write the document",
-    title: "Write the document fields on this page: you write them, and the PDD prints them. Ticked once every " +
-      "field but Notes is written." },
+    title: "Write the document fields on this page: ticked once every field but Notes is written." },
   // Lane FX2: listed only while the As-Is map the PDD prints was made
   // before the steps changed (asis-freshness.js); not an act otherwise
   // (AD-28: the As-Is map is not a stage).
   { key: "asis", label: "Check the As-Is map", onlyWhenDue: true,
-    title: "The As-Is map was made before the steps changed: check it, or Copy again. On the Map, Edit opens it; " +
-      "Copy again makes a new copy of the process map as it is now, which then takes its place in the PDD." },
+    title: "The As-Is map is older than the steps: check it on the Map, or Copy again." },
   { key: "handoff", label: "Hand off",
-    title: "Hand this version of the project to the developers: one zip with the project, the PDD and the process " +
-      "map. Ticked once a version was handed off." },
+    title: "Hand a numbered version to the developers: ticked once a version was handed off." },
 ];
 
 /* Lane FX2: the Checklist's line while the As-Is map is older than the steps. */
@@ -336,8 +326,7 @@ function _hasVideo(sess) {
 }
 
 const HANDOFF_BUTTON = "Hand off...";
-const HANDOFF_BUTTON_TITLE = "Hand this version of the project to the developers: one zip next to the project " +
-  "folder with the project, the PDD and the process map. It starts the Export menu's Hand off.";
+const HANDOFF_BUTTON_TITLE = "Make a numbered version of the project for the developers: one zip.";
 
 /* The one button for the next act: its text and, where the text alone does
    not say enough, the sentence shown before it. A transaction's title reads
@@ -360,19 +349,19 @@ function _nextAct(state) {
     }
     case "pattern":
       return { button: state.pattern ? "Confirm " + state.pattern.title.toLowerCase() + " in Steps" : "Open the transactions in Steps",
-        title: "Check the reference transaction's drafted steps, fix their boundaries and names, then click Confirm transaction." };
+        title: "Opens Steps: fix the drafted steps' boundaries and names, then Confirm transaction." };
     case "review":
       // The review is owed only while a transaction that differs is not
       // opened yet, and the button opens one of those (lane FX1).
       return { button: "Review " + state.nextOther.title.toLowerCase() + " in Steps",
-        title: "Open the transaction to see how it differs from the reference transaction. The other transactions are not confirmed.",
+        title: "Opens the transaction in Steps, with how it differs from the reference transaction.",
         say: _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction." };
     case "document":
       return { button: "Write the document",
-        title: "Purpose, scope, trigger, result, contacts, rules, exceptions and the improvement and automation scope: you write them, and the PDD prints them in place of its placeholders." };
+        title: "Opens the document fields: the PDD prints what you write in place of its placeholders." };
     case "asis":
       return { button: "Check the As-Is map", say: ASIS_STALE,
-        title: "Open the Map: Edit the As-Is map to match the steps, or Copy again for a new copy of the process map as it is now." };
+        title: "Opens the Map: edit the As-Is map to match the steps, or Copy again." };
     default:
       return { button: HANDOFF_BUTTON, title: HANDOFF_BUTTON_TITLE };
   }
@@ -550,7 +539,7 @@ function _missingHtml(sess, state, entries) {
   const items = entries.map((e, i) => '<li><button type="button" class="link-btn ov-miss-go" data-miss="' + escapeAttr(e.key) +
     '" data-miss-i="' + i + '">' + escapeHtml(e.text) + "</button></li>").join("");
   return '<details class="analysis-section analysis-module ov-miss" id="ov-miss"' + (_missOpen ? " open" : "") + ">" +
-    '<summary class="analysis-module-head" title="What the PDD of the next version leaves out. Each line opens the place where it is written. You can hand off as it is.">' +
+    '<summary class="analysis-module-head" title="What the PDD of the next version leaves out: each line opens where it is written.">' +
       '<span class="ov-miss-line" id="ov-miss-line">' + escapeHtml(Readiness.overviewLine(entries)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
@@ -613,7 +602,7 @@ function _mediaParts(sess) {
   const found = new Set(((sess && sess.videos) || []).filter((v) => v && v.path).map((v) => v.id));
   const nameOf = (c) => String(c.path || "").split(/[\\/]/).filter(Boolean).pop() || "video";
   const addTitle = "Add a video" + ((sess && (sess.events || []).length)
-    ? ": the first is placed with two clicks, a moment in the video and the same moment on the timeline."
+    ? ": the first is synced with two clicks, the others go after it."
     : ": it goes after the last one, back to back.");
   let video;
   if (clips.length > 1) {
@@ -627,20 +616,19 @@ function _mediaParts(sess) {
     const copy = isVideoCopy(clips[0].path);
     video = '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" data-clip="' +
         escapeAttr(clips[0].id) + '" title="' + escapeAttr("Put another video in place of this one" +
-        ((sess.events || []).length ? ", then sync it: click a moment in the video, then the same moment on the timeline." : ".") +
-        (copy ? " The copy it replaces leaves the project folder; Ctrl+Z brings it back." : " Ctrl+Z brings this one back.")) + '">Replace</button>' +
+        ((sess.events || []).length ? ", then sync it." : ".") + " Ctrl+Z brings this one back.") + '">Replace</button>' +
       ' <button type="button" class="link-btn" id="btn-remove-video" data-clip="' + escapeAttr(clips[0].id) + '" title="' +
-        escapeAttr("Take the video out of this project" + (copy ? ": its copy in the project's video folder is deleted." : ".") +
-          " Ctrl+Z brings it back.") + '">Remove</button>' +
+        escapeAttr(copy ? "Take the video and its copy in the project folder out. Ctrl+Z brings both back."
+          : "Take the video out of this project. Ctrl+Z brings it back.") + '">Remove</button>' +
       ' <button type="button" class="link-btn" id="btn-add-video" title="' + escapeAttr(addTitle) + '">Add another</button>';
   } else if (!clips.length && sess && sess.recordingAvailable) {
     // The recording's own video: another takes its place.
     video = '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
-      'title="' + escapeAttr("Attach another video in place of this one, then sync it: click a moment in the video, then the same moment on the timeline.") + '">Replace</button>';
+      'title="' + escapeAttr("Attach another video in place of this one, then sync it with two clicks.") + '">Replace</button>';
   } else {
     // None, or the one video's file is not found here (Attach finds it: it keeps its place).
     video = '<span data-summary="video">No video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
-      'title="Attach a video of the recording (a Teams recording or a screen video), then sync it: click a moment in the video, then the same moment on the timeline.">Attach</button>';
+      'title="Attach a video of the recording, then sync it with two clicks.">Attach</button>';
   }
   const parts = TM.transcriptsOf(sess);
   let transcript;
@@ -1082,8 +1070,7 @@ function _documentHtml(anno, sess, open) {
   // A disclosure (.analysis-module): a title, who fills it, a one-line status
   // that shows while it is closed, and a chevron.
   return '<details class="analysis-section analysis-module ov-doc" id="ov-doc"' + (open ? " open" : "") + ">" +
-    '<summary class="analysis-module-head" title="The PDD prints each field you write in place of its ' +
-      'placeholder; the fields are kept for every later export.">' +
+    '<summary class="analysis-module-head" title="The PDD prints each field you write, in this and every later export.">' +
       '<span class="analysis-module-title">Document</span>' +
       '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(handedOff ? DOC_WHO_READ_ONLY : DOC_WHO) + "</span>" +
       '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, handedOff)) + "</span>" +

@@ -54,19 +54,21 @@ test("the words: the video, or the recording in a recording without a video; the
   const v = R.titles(R.nounOf(true));
   assert.equal(v.play, "Plays or pauses the video. Key: Space");
   assert.equal(v.clock, "The time since the start of the video. Click to type a time and go there.");
-  assert.equal(v.addStep, "Adds a step that starts at this moment of the video. The step before it ends here. Key: S");
-  assert.equal(v.start, "Starts a new transaction at this moment of the video. A transaction is one pass through the process.");
+  assert.equal(v.addStep, "Adds a step at this moment of the video. The step before it ends here. Key: S");
+  assert.equal(v.start, "Starts a new transaction at this moment of the video.");
   assert.equal(v.end, "Ends the transaction at this moment of the video.");
   assert.equal(v.addNote, "Adds a note at this moment of the video. Notes stay out of the PDD.");
-  assert.equal(v.notPart, "Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back.");
-  assert.equal(v.leaveOut, "Drafts the steps and the map again without what was recorded in this stretch. Playing skips it, and the Transcript tab leaves out what was said in it.");
+  assert.equal(v.notPart, "Marks the selected stretch as not part of the process: playing skips it.");
+  assert.equal(v.leaveOut, "Drafts the steps and the map again without this stretch: playing skips it.");
   assert.equal(v.makeTx, "Makes a transaction that starts and ends where the selection does.");
   assert.equal(v.lanes, "Choose which lanes the timeline shows, and see what its marks mean");
   assert.equal(v.zoomOut, "Shows more of the timeline. Key: -");
   assert.equal(v.showAll, "Shows the whole length of the timeline. Key: 0");
   assert.equal(v.zoomIn, "Shows less of the timeline, larger. Key: +");
   const r = R.titles(R.nounOf(false));
-  assert.equal(r.start, "Starts a new transaction at this moment of the recording. A transaction is one pass through the process.");
+  assert.equal(r.start, "Starts a new transaction at this moment of the recording.");
+  // Lane A-2: every tooltip of the row is 90 characters or fewer, in both words.
+  for (const set of [v, r]) for (const k of Object.keys(set)) assert.ok(set[k].length <= 90, k + ": " + set[k]);
   assert.equal(r.clock, "The time since the start of the recording. Click to type a time and go there.");
   assert.deepEqual([R.LABELS.addStep, R.LABELS.start, R.LABELS.end, R.LABELS.addNote, R.LABELS.notPart, R.LABELS.leaveOut,
     R.LABELS.makeTx, R.LABELS.clear, R.LABELS.lanes, R.LABELS.showAll],

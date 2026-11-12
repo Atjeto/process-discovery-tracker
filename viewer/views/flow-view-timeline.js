@@ -263,8 +263,7 @@ function appLeftOut(app, ignored) {
 }
 /* What such a band says under the pointer, before the band's own lines. */
 function appLeftOutTitle(system) {
-  return "Left out of the analysis: " + (system || "this app") + " is among the apps outside the process, so its steps " +
-    "are not drafted and its time is not counted. Apps outside the process, in Steps, includes it again.";
+  return "Left out of the analysis: " + (system || "this app") + " is among the apps outside the process, set in Steps.";
 }
 
 /* What a band left out of the analysis says under the pointer. Lane E (E4):
@@ -276,8 +275,7 @@ function leftOutTitle(startText, endText, recorded) {
     return "Not part of the process" + (startText && endText ? ": " + startText + " to " + endText : "") +
       ". Click it to include it again.";
   }
-  return "Left out of the analysis" + times +
-    ": its steps are not drafted and its time is not counted. Click to include it again.";
+  return "Left out of the analysis" + times + ". Click it to include it again.";
 }
 const LEFT_OUT_LABEL = "Left out of the analysis";
 const LEFT_OUT_LABEL_SHORT = "Left out";
@@ -544,10 +542,16 @@ function _showStepBandMenu(x, y, stepId, ts, at, name) {
     const stepsBtn = document.querySelector('.view-mode-btn[data-level="steps"]');
     if (stepsBtn) setTimeout(() => stepsBtn.click(), 0);
   });
-  addItem("Select + seek here", () => {
-    if (stepId) State.setSelectedStepId(stepId);
-    if (ts) seekToTimestamp(ts);
-  });
+  // Lane A-2: one name per act. Play plays the step, from its start, where a
+  // video shows that moment (it read "Select + seek here").
+  const startMs = Date.parse(ts);
+  const shown = Number.isFinite(startMs) ? require("./flow-view-video.js").clipAtMs(startMs) : null;
+  if (shown && shown.clip && shown.clip.file) {
+    addItem("Play", () => {
+      if (stepId) State.setSelectedStepId(stepId);
+      require("./flow-view-video.js").seekClock(startMs, true);
+    });
+  }
   // 2.0.1: take the step out here, as in Steps: a step added by hand is
   // deleted (asked first), a recorded one hidden; Ctrl+Z brings it back.
   const sess = State.getSession();
@@ -719,14 +723,14 @@ const SCREENSHOT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCol
   '<rect x="3" y="3" width="18" height="18" rx="2"/>' +
   '<circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L6 21"/></svg>';
 const LANE_NAMES = {
-  cases: { name: "Transactions", title: "Transactions: each pass through the process, from its start to its end; click one to go to its start." },
-  activity: { name: "Systems", title: "Systems: the system on screen at each moment, one band per window; click a band to go there, right-click to start or end a transaction or to add a note." },
-  videos: { name: "Videos", title: "Videos: the videos of this project where they are on the timeline, one after the other; click one to go there, drag a side to trim it, right-click to trim, replace or remove it, or to add a video." },
-  transcript: { name: "Transcript", title: "Transcript: what was said, one block per sentence at the moment it was said, once the transcript is synced; click one to go there." },
-  notes: { name: "Notes", title: "Notes: your notes pinned to a moment; click one to go there, right-click to edit or delete it." },
-  screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot taken during the recording, and one per frame of the video you added to a step; click one to see it full size." },
+  cases: { name: "Transactions", title: "Transactions: each pass through the process; click one to go to its start." },
+  activity: { name: "Systems", title: "Systems: the system on screen at each moment; click a band to go there." },
+  videos: { name: "Videos", title: "Videos: click one to go there, drag a side to trim it, right-click for more." },
+  transcript: { name: "Transcript", title: "Transcript: one block per sentence, where it was said; click one to go there." },
+  notes: { name: "Notes", title: "Notes: your notes at their moments; click one to go there, right-click to edit it." },
+  screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot; click one to see it full size." },
   steps: { name: "Steps", title: "Steps: each step in the order of the process; click one to open it beside the video." },
-  idle: { name: "Idle", title: "Idle: the stretches when the keyboard and the mouse were not used; hatched where the recorder still saw work at the desk." },
+  idle: { name: "Idle", title: "Idle: no keyboard or mouse; hatched where the recorder still saw work at the desk." },
 };
 
 /* A lane's key in its header: a small copy of the lane's own marks (a
@@ -971,9 +975,8 @@ function _syncLegend(shows, observedApps) {
     const recorded = AC.hasRecording(sess);
     lgOut.textContent = LeftOut.wordsFor(recorded).legend;
     lgOut.title = recorded
-      ? "Hatched: left out of the analysis (a stretch, or an app outside the process). Playing skips a stretch left out, " +
-        "and the Transcript tab leaves out what was said in it. Click a stretch to include it again."
-      : "A stretch you marked as not part of the process. It is skipped when playing and left out of the Transcript tab.";
+      ? "Hatched: left out of the analysis. Click a stretch to include it again."
+      : "A stretch you marked as not part of the process: playing skips it.";
   }
   placeLanesMenu();
 }
@@ -1551,7 +1554,7 @@ function renderTimeline() {
         if (c.endKey) band.dataset.endKey = c.endKey;
         band.title = c.title + (c.label ? " · " + c.label : "") +
           (c.dangling ? " · open: no end marked yet" : "\n" + formatDuration(c.endMs - c.startMs)) +
-          (editable ? "\nDrag its start or its end to move it" + (c.endKey ? "." : ", or right-click where it ends: End the transaction here.") : "") +
+          (editable ? (c.endKey ? "\nDrag its start or its end to move it." : "\nDrag its start to move it; right-click where it ends to end it.") : "") +
           "\n" + ZOOM_TO_TX_LINE;
         // 2.0.3: its start and its end drag (the marker there moves; a start
         // that ends the transaction before moves that end too; one running to
@@ -1833,9 +1836,9 @@ function renderTimeline() {
         const movable = editable && AC.stepTimeMovable(s.step);
         band.title = lbl + " · " + (open ? "open: it ends where you add the next step, or where its transaction ends"
           : formatDuration(sEnd - sStart)) +
-          (draft ? "\nA draft: the recorder drafted it, and nobody has confirmed it yet." : "") +
+          (draft ? "\nA draft: nobody has confirmed it yet." : "") +
           (placed ? "\n" + placed : "") +
-          "\nClick: open this step beside the video, and go to its start · Right-click: add the next step here, or Open in Steps, Place after a step, Hide or Delete" +
+          "\nClick: open it beside the video. Right-click: add the next step here, and more." +
           (movable ? "\nDrag its " + (open ? "start" : "start or its end") + " to change its time." : "");
         if (s.step_id) band.dataset.stepId = s.step_id;
         // 2.0.3: a step whose time is the analyst's drags its sides; a step
@@ -1902,7 +1905,7 @@ function renderTimeline() {
         pin.style.left = "calc(" + (((Date.parse(n.at) - first) / span) * 100) + "% - 7px)";
         pin.style.top = (ctx.slot.top + 2) + "px";
         pin.textContent = "✎";
-        pin.title = "Note at " + sinceStart(n.at, origin) + "\n" + n.text + "\nClick: show it in the Notes tab beside the video, and go to this moment. Right-click: edit or delete it.";
+        pin.title = "Note at " + sinceStart(n.at, origin) + "\n" + n.text + "\nClick: show it in the Notes tab. Right-click: edit or delete it.";
         pin.addEventListener("click", (e) => {
           e.stopPropagation();
           // Lane PANE: the Notes tab at this note, the clock at its moment.

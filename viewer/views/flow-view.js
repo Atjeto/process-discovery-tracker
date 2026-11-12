@@ -54,6 +54,8 @@ const { ipcErrorText } = require("../project-folder.js");
 const RO = require("../read-only.js");
 const Handoff = require("../handoff.js");
 const TimelineRow = require("../timeline-row.js");
+// Lane A-2: a refused entry says why beside its field.
+const FieldRefusal = require("../field-refusal.js");
 const StretchKeys = require("../stretch-keys.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
@@ -454,6 +456,8 @@ async function loadSessionIntoView(folder, opts) {
   if (prevFolder !== folder) resetUndoStack();
   // C19: another project opens at its main level.
   if (prevFolder !== folder) State.setMapPath([]);
+  // Lane A-2: a refusal said beside a field belongs to its project.
+  if (prevFolder !== folder) FieldRefusal.forgetAll();
   // Capture the loaded annotations as the undo baseline on EVERY load (including
   // a same-folder re-analyze), so the first edit records the true pre-edit state.
   captureBaseline();
@@ -586,9 +590,10 @@ function syncVideoControls() {
     remove.hidden = !Video.attachedVideoShown(sess) || !clip || clip.obs;
     if (!remove.hidden) {
       const many = Video.addedClips(sess).length > 1;
-      remove.title = "Take " + (many ? Video.clipName(clip) : "the video") + " out of this project" +
-        (isVideoCopy(clip.path) ? ": its copy in the project's video folder is deleted." : ".") +
-        " Ctrl+Z brings it back.";
+      // Lane A-2: one short sentence (the video's name aside).
+      remove.title = isVideoCopy(clip.path)
+        ? "Take " + (many ? Video.clipName(clip) : "the video") + " and its copy in the project folder out. Ctrl+Z brings both back."
+        : "Take " + (many ? Video.clipName(clip) : "the video") + " out of this project. Ctrl+Z brings it back.";
     }
   }
 }
@@ -740,7 +745,7 @@ async function queueMarkerDelete(eventId) {
     ts: new Date().toISOString(),
   });
   try {
-    await persistAnnotations(a, "delete marker", ["markers", "timeline"]);
+    await persistAnnotations(a, "take out a transaction's start or end", ["markers", "timeline"]);
   } catch (_) {
     return false;
   }
@@ -769,7 +774,7 @@ async function addStepAtPlayhead() {
   // C23: the playhead is a moment on the clock, whichever video shows it.
   const at = Video.playheadMs();
   const tsISO = at != null ? new Date(at).toISOString() : null;
-  if (!tsISO) { toast("No video timing: can't place a step at the playhead", "error"); return; }
+  if (!tsISO) { toast("No step was added: the video has no moment to add it at yet.", "error"); return; }
   await addStepAt(tsISO);
 }
 
@@ -1112,7 +1117,10 @@ function syncTimelineRow() {
 
 /* The clock: a click turns it into a field to type a time; Enter goes
    there, Escape (or leaving the field) leaves it as it was; a time that
-   cannot be read says so in the message area and the field stays. */
+   cannot be read says so in the message area and the field stays, and
+   (lane A-2) the reason stays under the row until the field is edited or
+   left. */
+const CLOCK_KEY = "clock";
 function _startClockEdit() {
   const sess = State.getSession();
   const field = document.getElementById("tl-clock-field");
@@ -1127,6 +1135,7 @@ function _startClockEdit() {
 }
 function _endClockEdit(refocus) {
   _clockEditing = false;
+  FieldRefusal.clear(document.getElementById("tl-clock-field"), CLOCK_KEY);
   syncTimelineRow();
   const btn = document.getElementById("btn-tl-clock");
   if (refocus && btn && !btn.hidden) btn.focus();
@@ -1136,7 +1145,7 @@ function _goToTypedTime() {
   const field = document.getElementById("tl-clock-field");
   if (!sess || !field) return;
   const r = TimelineRow.clockTarget(field.value, recordingStartMs(sess), Video.timelineSpan());
-  if (r.error) { toast(r.error, "error"); field.select(); return; }
+  if (r.error) { toast(r.error, "error"); FieldRefusal.show(field, r.error, CLOCK_KEY); field.select(); return; }
   _goToMoment(r.ms);
   _endClockEdit(true);
 }
@@ -1321,7 +1330,8 @@ function showMarkerInsertMenu(x, y, ts, band) {
     }
   }
   if (!band) {
-    addItem("Jump to step here",         () => {
+    // Lane A-2: one name per act (it read "Jump to step here").
+    addItem("Open in Steps",         () => {
       State.setPendingStepJump(ts);
       const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
       // Defer the synthetic click out of the menu's own click handler so
@@ -1339,7 +1349,7 @@ function showMarkerInsertMenu(x, y, ts, band) {
     const head = document.createElement("p");
     head.className = "tl-ctx-head";
     head.textContent = band.title;
-    head.style.cssText = "margin:0;padding:2px 14px 4px;font-size:11px;color:var(--fg-3);max-width:260px;" +
+    head.style.cssText = "margin:0;padding:2px 14px 4px;font-size:12px;color:var(--fg-3);max-width:260px;" +
       "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
     menu.appendChild(head);
     for (const [label, act] of band.items) addItem(label, act);
@@ -1607,8 +1617,8 @@ async function includeRangeAgain(range) {
    transaction, End the transaction, Add a step: an open transaction's band
    runs on to the end, over where its next marks go), then its own jumps. */
 function showCaseContextMenu(x, y, c, ts) {
-  const items = [["Jump to start", () => seekToTimestamp(new Date(c.startMs).toISOString())]];
-  if (!c.dangling) items.push(["Jump to end", () => seekToTimestamp(new Date(c.endMs).toISOString())]);
+  const items = [["Go to its start", () => seekToTimestamp(new Date(c.startMs).toISOString())]];
+  if (!c.dangling) items.push(["Go to its end", () => seekToTimestamp(new Date(c.endMs).toISOString())]);
   showMarkerInsertMenu(x, y, ts || new Date(c.startMs).toISOString(),
     { title: c.title + (c.label && c.label !== c.title ? " · " + c.label : ""), items });
 }
@@ -1701,11 +1711,12 @@ function buildEventActions(ev) {
     b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
     return b;
   };
-  cell.appendChild(mkBtn("jump", "Seek the video and timeline to this event",
+  // Lane A-2: the names the rest of the app gives these acts.
+  cell.appendChild(mkBtn("Go there", "Goes to the moment of this event.",
     () => seekToTimestamp(ev.timestamp)));
   // Lane HV: no step is added in a hand-off opened read only.
   if (!RO.isReadOnly(State.getSession())) {
-    cell.appendChild(mkBtn("+ step", "Create a step at this event's time",
+    cell.appendChild(mkBtn("Add step here", "Adds a step that starts at this event's moment.",
       () => addStepAtTimestamp(ev.timestamp)));
   }
   return cell;

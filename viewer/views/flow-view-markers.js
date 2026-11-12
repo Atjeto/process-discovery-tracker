@@ -141,7 +141,7 @@ async function moveMarker(m, newTs, topics) {
   const now = new Date().toISOString();
   if (m.inserted) {
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return false; }
+    if (!e) { toast("This start or end of a transaction could not be found in the project's changes.", "error"); return false; }
     keepApplied(e, MarkerEdits.lastAnalysisMs(State.getSession()));
     e.timestamp = newTs;
     e.ts = now;
@@ -160,7 +160,7 @@ async function moveMarker(m, newTs, topics) {
     }
   }
   const cut = clipStepsToTransactions(anno, { type: m.markerType, fromMs: Date.parse(m.timestamp), toMs: Date.parse(newTs) });
-  await persistAnnotations(anno, 'move marker', _topics(topics, cut));
+  await persistAnnotations(anno, "move a transaction's start or end", _topics(topics, cut));
   return true;
 }
 
@@ -179,7 +179,8 @@ async function insertMarkers(adds, topics) {
     });
   }
   const cut = clipStepsToTransactions(anno);
-  await persistAnnotations(anno, adds.length === 1 ? "insert " + adds[0].type + " marker" : "insert markers", _topics(topics, cut));
+  await persistAnnotations(anno, adds.length === 1 ? (adds[0].type === "end" ? "end a transaction" : "start a transaction")
+    : "mark transactions", _topics(topics, cut));
   return true;
 }
 function insertMarker(markerType, ts, label, topics) {
@@ -197,7 +198,7 @@ async function removeMarker(m, topics) {
   const now = new Date().toISOString();
   if (m.inserted) {
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return false; }
+    if (!e) { toast("This start or end of a transaction could not be found in the project's changes.", "error"); return false; }
     anno.marker_edits = anno.marker_edits.filter((x) => x !== e);
     // An insert the last analysis already applied needs one more analysis to
     // take it out again: a delete of its marker id is that change, newer
@@ -210,7 +211,7 @@ async function removeMarker(m, topics) {
     anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.eventId, op: "delete", ts: now });
   }
   const cut = clipStepsToTransactions(anno, { type: m.markerType, fromMs: Date.parse(m.timestamp), removed: true });
-  await persistAnnotations(anno, 'delete marker', _topics(topics, cut));
+  await persistAnnotations(anno, "take out a transaction's start or end", _topics(topics, cut));
   return true;
 }
 
@@ -237,7 +238,7 @@ async function renameMarker(m, newLabel) {
   const now = new Date().toISOString();
   if (m.inserted) {
     const e = _insertEdit(anno, m);
-    if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return; }
+    if (!e) { toast("This start or end of a transaction could not be found in the project's changes.", "error"); return; }
     keepApplied(e, MarkerEdits.lastAnalysisMs(State.getSession()));
     e.label = newLabel;
     e.ts = now;
@@ -253,7 +254,7 @@ async function renameMarker(m, newLabel) {
   // baseline that made the NEXT edit's undo also revert this rename (H-5).
   // The "markers"/"timeline" topics re-render the side panel and the
   // marker labels on the timeline.
-  await persistAnnotations(anno, 'rename marker', ["markers", "timeline"]);
+  await persistAnnotations(anno, "rename a transaction", ["markers", "timeline"]);
   toast("Transaction renamed.", "success");
 }
 

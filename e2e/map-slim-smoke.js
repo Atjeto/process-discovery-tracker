@@ -757,7 +757,7 @@ const lockProbe = () => {
   record("(m7) lane FX2: a step renamed after the As-Is copy was made: the header says so at once (no analysis first), with Copy again, and the Overview's Checklist lists Check the As-Is map, not done",
     !!(!m7.err && h7.shown && h7.title === "As-Is map" && h7.stale === STALE_TEXT && h7.recopy === "Copy again" && h7.edit && m7.analyzed === false &&
       m7.checklist && m7.checklist.item === "Check the As-Is map" && !m7.checklist.done && !m7.checklist.ready &&
-      /made before the steps changed: check it, or Copy again/.test(m7.checklist.title || "")),
+      /older than the steps: check it on the Map, or Copy again/.test(m7.checklist.title || "")),
     JSON.stringify({ err: m7.err, header: { title: h7.title, stale: h7.stale, recopy: h7.recopy }, analyzed: m7.analyzed, checklist: m7.checklist }));
   const k7 = m7.kept || {};
   record("(m7) lane FX2: Copy again opens a new copy named like the old one and in its PDD role; left without a change it keeps nothing; with a change it keeps the new copy, which takes the old one's PDD role and shows without the line; Ctrl+Z gives the old copy its role back, Ctrl+Y the new one",

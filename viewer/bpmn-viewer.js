@@ -172,7 +172,10 @@
       if (warnings.length) {
         const note = document.createElement("div");
         note.className = "bpmn-warning";
-        note.textContent = `${warnings.length} BPMN parse warning(s) -- diagram may be imperfect.`;
+        // Lane A-2: plain words, and no double hyphen between clauses.
+        note.textContent = warnings.length === 1
+          ? "A part of the map file could not be read, so the map may not be complete."
+          : warnings.length + " parts of the map file could not be read, so the map may not be complete.";
         host.appendChild(note);
       }
     } catch (e) {

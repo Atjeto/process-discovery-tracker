@@ -13,6 +13,11 @@ what each act gives.
 In the app, the same guide is Help, *Getting started* (the ? in the top
 bar).
 
+**Larger text.** Ctrl+Plus, Ctrl+Minus, Ctrl+0: make everything larger,
+smaller, or the usual size. Ctrl and the mouse wheel make everything larger
+or smaller, except over a map, where they zoom the map. PDT keeps the size
+on this computer, in every window.
+
 ## What PDT does
 
 1. The SME records the process a few times: each pass is a transaction, for
@@ -72,8 +77,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    moment on the timeline. The video is copied into the project folder.
    Attach the meeting transcript (a Teams .vtt or .docx) with *Attach* after
    *No transcript*: the synced video places its sentences in time. Without a
-   video, *Sync...* on the Timeline's *Transcript* lane places it: pick a
-   sentence, then click where it was said.
+   video, *Sync the transcript...* on the Timeline's *Transcript* lane places
+   it: pick a sentence, then click where it was said.
 2. **Check the transactions.** On the Timeline, each transaction is a band,
    from *Transaction 1* to *Transaction 4*. If one is missing, right-click the
    timeline where it starts and choose *Start a transaction here...*. If one
@@ -239,7 +244,7 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    syncs that one again.
 2. On the Timeline the *Videos* lane shows each video as a band. The
    timeline runs across them: a moment on it is the same moment however many
-   videos there are. The video that shows the playhead plays, then the next
+   videos there are. The video that shows the clock's moment plays, then the next
    one.
 3. To trim a video, drag the start or the end of its band, or right-click it
    and choose *Trim the start here* or *Trim the end here*. In a project
@@ -252,7 +257,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    marked on it with it, after asking. A transcript belongs to one video:
    *Attach* asks which, and its sentences move with that video. *Add
    another* after *Transcript* attaches the next transcript; each has its
-   own row on the Timeline, with *Sync...*, *Replace...* and *Remove*.
+   own row on the Timeline, with *Sync the transcript...*, *Replace the
+   transcript...* and *Remove the transcript*.
 
 ### Add a step the recorder missed
 
@@ -279,7 +285,9 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 1. In Steps, open the transaction: *Starts at* and *Ends at* are under its
    name. Type a time the way the timeline shows it, for example *0:09* or
    *1:05.5*, and press Enter. Up and Down change it by a second. An empty
-   *Ends at* runs until the next transaction starts, or to the end.
+   *Ends at* runs until the next transaction starts, or to the end. A time
+   that cannot be taken is refused: the field shows its time again, and why
+   stays under it until you change the field.
 2. What you marked together moves together: a step that starts or ends
    where the transaction does moves with its *Starts at* or *Ends at*. A
    step you delete gives its time back to the step before it.
@@ -293,8 +301,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    recorded actions: split or merge it instead.
 4. On the Timeline you can instead drag the start or the end of a
    transaction's band, or of a step you added; a transaction that runs to
-   the end gets its end that way too. Near a step's start or the playhead
-   it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a
+   the end gets its end that way too. Near a step's start or the clock's
+   moment it snaps there. Esc while dragging puts it back, and Ctrl+Z undoes a
    change.
 
 ### Split or merge steps
@@ -344,9 +352,9 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    part of the process*. Select a stretch: I where it starts, O where it
    ends, also while the video plays. It shows hatched, playing skips it, and the
    *Transcript* tab says *Not part of the process* in its place. Your steps
-   stay as they are, and the maps and the PDD do not mention it. Seek into it
-   to watch it anyway. Click it and choose *Include again* to bring it back,
-   or press Ctrl+Z.
+   stay as they are, and the maps and the PDD do not mention it. Go to a
+   moment inside it to watch it anyway. Click it and choose *Include again*
+   to bring it back, or press Ctrl+Z.
 
 ### Make a sub-process
 
@@ -381,7 +389,7 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 
 1. Press Ctrl+Z to undo your last change, and Ctrl+Y to redo it.
 2. *Undo* and *Redo* in the top bar do the same.
-3. Undo covers every change (steps, markers, document fields, edited maps,
+3. Undo covers every change (steps, transactions, document fields, edited maps,
    the video, a stretch left out, a removed transcript), up to 50, until you
    open another project.
 4. In the map editor, Ctrl+Z and Ctrl+Y undo and redo the changes to the

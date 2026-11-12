@@ -51,8 +51,10 @@
 
 "use strict";
 
-const { $, escapeHtml, escapeAttr, cryptoRandomId, toast, placeMenu, recordingStartMs, sinceStart } = require("../dom.js");
-const { confirmModal, promptModal, chooseModal } = require("../modals.js");
+const { $, escapeHtml, escapeAttr, cryptoRandomId, toast, placeMenu, recordingStartMs, sinceStart, errorSince } = require("../dom.js");
+// Lane A-2: a refused time says why beside its field.
+const FieldRefusal = require("../field-refusal.js");
+const { confirmModal, promptModal, chooseModal, holdFocus } = require("../modals.js");
 const State = require("../state.js");
 const Session = require("../session.js");
 const PdtSteps = require("../step-editor.js");
@@ -428,7 +430,7 @@ function _diffMeta(diffs, compared) {
 }
 
 /* The tooltip of the line on a stretch left out of the analysis. */
-const NOTES_TITLE = "No difference: a part of this transaction left out of the analysis (the Timeline shows it hatched)";
+const NOTES_TITLE = "No difference: a part left out of the analysis, hatched on the Timeline";
 
 /* A transaction's one line under its head, after `after` in `body`, when a
    stretch of it was left out of the analysis. 2.0.1 (the owner's review):
@@ -700,7 +702,7 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
   const buttons = [];
   if (isRef && !confirmed && owed && run.visible.length > 0) {
     buttons.push(_actionBtn("confirm-run", "Confirm transaction", "primary",
-      "Accept the remaining drafted steps of this transaction, at every level (Ctrl+Enter). Ctrl+Z undoes it.",
+      "Accept the remaining drafted steps of this transaction, at every level (Ctrl+Enter).",
       () => confirmRunAction(run.caseId)));
   }
   for (const b of buttons.reverse()) acts.insertBefore(b, acts.firstChild);
@@ -825,14 +827,12 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
   if (model.outside.length) host.appendChild(_outsideGroupEl(model, visible));
 }
 
-const PATTERN_TITLE = "The reference transaction: confirm it. Its step names carry over to the other transactions, which are compared with it.";
+const PATTERN_TITLE = "The reference transaction: you confirm it, and the others are compared with it.";
 const OTHER_RUN_TITLE = "Right-click to use this transaction as the reference transaction";
 // Undo confirm, the inverse of Confirm transaction (it read Reopen
 // transaction until the owner's review).
-const UNDO_CONFIRM_TITLE = "Turn this transaction's confirmed steps back into drafts, so you can change them and confirm again. " +
-  "The steps you edited or added stay as they are. Ctrl+Z confirms it again.";
-const UNDO_CONFIRM_LEVEL_TITLE = "Turn this transaction's confirmed steps back into drafts, at every level, so you can change them and confirm again. " +
-  "The steps you edited or added stay as they are. Ctrl+Z confirms it again.";
+const UNDO_CONFIRM_TITLE = "Turn the confirmed steps back into drafts; your edited and added steps stay.";
+const UNDO_CONFIRM_LEVEL_TITLE = "Turn the confirmed steps back into drafts at every level; your own steps stay.";
 
 /* The reference transaction's badges in its head, Reference and its status,
    as one unit (`.run-badges`) that Undo confirm joins: where the head is too
@@ -1064,10 +1064,11 @@ function _showProbeMenu(p, x, y) {
   const why = p.source === "analysis"
     ? "Drafted steps: how many steps the analysis drafted for this transaction."
     : p.source === "designation"
-      ? "Drafted steps: the analysis file does not record how many steps it drafted, so this is the number of steps the transaction had when it became the reference transaction."
+      ? "Drafted steps: the steps it had when it became the reference transaction."
       : "The drafted step count is not recorded; Re-analyze in Help, Troubleshooting records it.";
-  _runMenu([{ act: "copy-probe", label: "Copy: " + p.text, title: why + " Boundary fixes: the merges, splits, " +
-    "added steps and hidden drafts made to the transaction from when it became the reference transaction until you confirmed it.",
+  // Lane A-2: what a boundary fix is, the P1 runbook says
+  // (docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md); the tooltip says what the count is.
+  _runMenu([{ act: "copy-probe", label: "Copy: " + p.text, title: why,
   run: () => { if (_copyText(p.text)) toast("Copied: " + p.text, "success"); else toast("Could not copy the line.", "error"); } }], x, y);
 }
 
@@ -1342,9 +1343,9 @@ function renderStepInto(host, step, extra, interactionsById) {
    ones instead (syncMultiSelectButtons). A verb that cannot act is disabled
    and says why in its title. */
 const VERB_TITLES = {
-  "btn-step-split": "Split this step where you choose: under Recorded, click the scissors after the action where the first part ends (S)",
-  "btn-step-merge": "Merge this step with the whole next step of its transaction (M). To move the line between them, merge, then click the scissors where this step should end.",
-  "btn-step-make-sub": "Give this step its own steps, one per action recorded in it (a field typed, a click, a sheet's cells), in every transaction where it happens, and show them",
+  "btn-step-split": "Split this step: under Recorded, click the scissors where the first part ends (S)",
+  "btn-step-merge": "Merge this step with the next step of its transaction (M)",
+  "btn-step-make-sub": "Give this step its own steps, one per action recorded in it, in every transaction",
 };
 function _syncStepVerbs(selected) {
   const bar = $("#step-verbs");
@@ -1367,13 +1368,13 @@ function stepVerbStates(selected) {
   set("btn-step-split", !isSub, PdtSteps.splitBlocker(selected));
   set("btn-step-merge", !isSub, "");
   set("btn-step-hide", true, "", hidden ? "Bring this step back into the list"
-    : "Take this step out. Every analysis keeps it out; Show hidden steps on its transaction lists it again.", hidden ? "Unhide" : "Hide step");
+    : "Take this step out; Show hidden steps on its transaction lists it again.", hidden ? "Unhide" : "Hide step");
   set("btn-step-make-sub", !isSub && !hidden && _inTransaction(selected), _oneAction(selected));
   const count = isSub ? selected.sub_steps.filter((x) => x && x.state !== "hidden").length : 0;
   set("btn-step-open-sub", isSub, "", "Show the " + _plural(count, "step", "steps") + " of this sub-process, in every transaction that goes through it");
   set("btn-step-dissolve", isSub, "", selected.group === true
     ? "Put its steps back in its place, in every transaction. Ctrl+Z undoes it."
-    : "Drop its sub-steps, in every transaction; what you added to them moves to this step. Ctrl+Z undoes it.");
+    : "Drop its sub-steps in every transaction; what you added to them moves to this step.");
   set("btn-step-delete", selected.state === "manually_authored", "",
     isSub && selected.group === true ? "Delete this sub-process you made, with its steps" : "Delete this step you added");
   return out;
@@ -1416,7 +1417,7 @@ function _inTransaction(step) {
 /* Why Open as a sub-process has nothing to open for `step` (2.0.1): its
    recording holds fewer than two actions, so its one sub-step would repeat
    it; "" when there is something to open. */
-const ONE_ACTION = "This step has one recorded action (a sheet's cells filled one after another count as one), so it has no steps of its own to open.";
+const ONE_ACTION = "This step has one recorded action, so it has no steps of its own to open.";
 function _oneAction(step, interactionsById) {
   if (!step || !((step.evidence && step.evidence.interaction_event_ids) || []).length) return "";
   return SPV.draftSubSteps(step, interactionsById || _interactionsById(), {}).length < 2 ? ONE_ACTION : "";
@@ -1896,7 +1897,7 @@ async function addStepAtTimestamp(tsISO, opts) {
   const sess = State.getSession();
   if (!sess || RO.isReadOnly(sess)) return null;
   const t = new Date(tsISO).getTime();
-  if (!isFinite(t)) { toast("Couldn't read the playhead position", "error"); return null; }
+  if (!isFinite(t)) { toast("No step was added: the moment could not be read.", "error"); return null; }
   // What would be added is known before the frame is written, so a step
   // that cannot be added leaves no file behind.
   const pre = _stepAt(t, true);
@@ -1915,7 +1916,7 @@ async function addStepAtTimestamp(tsISO, opts) {
     if (!Array.isArray(anno.analyst_screenshots)) anno.analyst_screenshots = [];
     anno.analyst_screenshots.push(AnalystUI.frameEntry(shot, r.stepId, new Date(t).toISOString()));
   }
-  try { await persistAnnotations(anno, "Add step at playhead"); } catch (_) { return null; }   // already shown
+  try { await persistAnnotations(anno, "Add step"); } catch (_) { return null; }   // already shown
   toast(r.toast, "success");
   return r.stepId || null;
 }
@@ -2260,7 +2261,8 @@ function _timeFieldHtml(id, valueText, label, title, extra) {
     (o.placeholder ? ' placeholder="' + escapeAttr(o.placeholder) + '"' : "") + (o.disabled ? " disabled" : "") +
     ' aria-label="' + escapeAttr(label) + '" title="' + escapeAttr(title) + '" spellcheck="false" autocomplete="off">';
 }
-const TIME_TYPING = "Type a time the way the timeline shows it, for example 0:09 or 1:05.5, and press Enter. Up and Down change it by a second.";
+/* Lane A-2: how to type a time is said in Help (Change when a transaction
+   or a step starts or ends); a field's tooltip says what it holds. */
 const NOT_A_TIME = "That is not a time: type it the way the timeline shows it, for example 0:09 or 1:05.5.";
 
 /* The time part of the selected step's line of facts, as HTML, or "" when its
@@ -2277,20 +2279,19 @@ function _stepTimeHtml(step, runs, origin, took) {
   if (AC.stepTimeMovable(step)) {
     const a = Date.parse(step.time_range.start), b = Date.parse(step.time_range.end);
     return where + " · " +
-      _timeFieldHtml("step-start", TE.fieldTime(a, origin), "Start of this step", "When this step starts. " + TIME_TYPING) + " to " +
+      _timeFieldHtml("step-start", TE.fieldTime(a, origin), "Start of this step", "When this step starts: type a time, for example 0:09, and press Enter.") + " to " +
       (_stepOpen(step)
-        ? _timeFieldHtml("step-end", "", "End of this step", "Open: it ends where you add the next step, or where its " +
-          "transaction ends. Type a time to end it there. " + TIME_TYPING, { placeholder: "open" })
-        : _timeFieldHtml("step-end", TE.fieldTime(b, origin), "End of this step", "When this step ends. " + TIME_TYPING +
-          " Empty it to let it run until the next step starts or its transaction ends.")) +
+        ? _timeFieldHtml("step-end", "", "End of this step", "Open: it ends where you add the next step. Type a time to end it there.",
+          { placeholder: "open" })
+        : _timeFieldHtml("step-end", TE.fieldTime(b, origin), "End of this step", "When this step ends; empty, it runs until the next step starts.")) +
       (took ? " · took " + escapeHtml(took) : "");
   }
   if (AC.stepTimePlaceable(step)) {
     return (run ? where + " · " : "") + "no time yet: " +
-      _timeFieldHtml("step-start", "", "Start of this step", "Type when this step starts, for example 1:05, and press Enter: " +
-        "a step you added that runs on there ends at it, and this one gets a band on the Timeline.", { placeholder: "0:00" }) + " to " +
-      _timeFieldHtml("step-end", "", "End of this step", "Type when it starts first: it then ends where the next step starts " +
-        "or its transaction ends, and you can change its end here.", { disabled: true });
+      _timeFieldHtml("step-start", "", "Start of this step", "Type when this step starts, for example 1:05, and press Enter.",
+        { placeholder: "0:00" }) + " to " +
+      _timeFieldHtml("step-end", "", "End of this step", "Type when it starts first; it then ends where the next step starts.",
+        { disabled: true });
   }
   return "";
 }
@@ -2299,9 +2300,12 @@ function _stepTimeHtml(step, runs, origin, took) {
    showed, Up and Down change it by a second, and leaving it saves a change.
    `commit(ms)` gets the time typed, in ms since the recording started (null
    for an emptied field), and resolves false when it did not take it (it said
-   why): the field then shows its time again. */
-function _wireTimeField(el, commit, isRendering) {
+   why): the field then shows its time again, and (lane A-2) the reason stays
+   under its line until the field is edited again (field-refusal.js; `key`
+   names the field and what it is for, so a field drawn again shows it too). */
+function _wireTimeField(el, commit, isRendering, key) {
   const shown = el.value;
+  FieldRefusal.renew(el, key);
   el.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); el.blur(); }
     else if (e.key === "Escape") { e.preventDefault(); el.value = shown; el.blur(); }
@@ -2310,6 +2314,7 @@ function _wireTimeField(el, commit, isRendering) {
       if (ms == null) return;
       e.preventDefault();
       el.value = TE.fieldTime(Math.max(0, ms + (e.key === "ArrowUp" ? 1000 : -1000)), 0);
+      FieldRefusal.clear(el, key);
     }
   });
   el.addEventListener("blur", async () => {
@@ -2320,11 +2325,21 @@ function _wireTimeField(el, commit, isRendering) {
     if (text && ms == null) {
       toast(NOT_A_TIME, "error");
       el.value = shown;
+      FieldRefusal.show(el, NOT_A_TIME, key);
       return;
     }
+    const asked = Date.now();
     let ok = false;
     try { ok = await commit(ms); } catch (_) { ok = false; }   // a failed save has been shown
-    if (!ok && el.isConnected) el.value = shown;
+    if (ok) { FieldRefusal.clear(el, key); return; }
+    const why = errorSince(asked);
+    if (el.isConnected) {
+      el.value = shown;
+      if (why) FieldRefusal.show(el, why, key);
+    } else if (why && key) {
+      // Drawn again meanwhile: the new field shows it (renew).
+      FieldRefusal.show(null, why, key);
+    }
   });
 }
 
@@ -2332,7 +2347,7 @@ function _wireTimeField(el, commit, isRendering) {
 function _wireStepTimes(host, step, isRendering) {
   for (const [id, edge] of [["step-start", "start"], ["step-end", "end"]]) {
     const el = host.querySelector("#" + id);
-    if (el) _wireTimeField(el, (ms) => commitStepTime(step.step_id, edge, ms), isRendering);
+    if (el) _wireTimeField(el, (ms) => commitStepTime(step.step_id, edge, ms), isRendering, "step:" + step.step_id + ":" + edge);
   }
 }
 
@@ -2439,7 +2454,7 @@ function _runTimesEl(run) {
   const endMs = sides.end ? Date.parse(sides.end.timestamp) : NaN;
   const untilMs = sides.next ? Date.parse(sides.next.timestamp) : line.endMs;
   const untilWhat = sides.next ? "It ends where the next transaction starts"
-    : "Open: no end marked yet, so it runs to the end of the " + (AC.hasRecording(sess) ? "recording" : "video");
+    : "Open: it runs to the end of the " + (AC.hasRecording(sess) ? "recording" : "video");
   const el = document.createElement("div");
   el.className = "run-times";
   el.setAttribute("role", "group");
@@ -2451,14 +2466,13 @@ function _runTimesEl(run) {
   }
   el.innerHTML =
     "<label>Starts at " + (sides.start
-      ? _timeFieldHtml(null, fmt(startMs), "Start of " + run.title, "Its start marker. " + TIME_TYPING, { side: "start" })
-      : _timeFieldHtml(null, "", "Start of " + run.title, "No marker starts it yet: it is the whole project. Type where it starts to mark it. " +
-        TIME_TYPING, { side: "start", placeholder: fmt(line.startMs) })) + "</label>" +
+      ? _timeFieldHtml(null, fmt(startMs), "Start of " + run.title, "Where this transaction starts: type a time, for example 0:09, and press Enter.",
+        { side: "start" })
+      : _timeFieldHtml(null, "", "Start of " + run.title, "Type where this transaction starts; until then it is the whole project.",
+        { side: "start", placeholder: fmt(line.startMs) })) + "</label>" +
     "<label>Ends at " + (sides.end
-      ? _timeFieldHtml(null, fmt(endMs), "End of " + run.title, "Its end marker. " + TIME_TYPING +
-        " Empty the field to take the end marker out.", { side: "end" })
-      : _timeFieldHtml(null, "", "End of " + run.title, untilWhat + ". Type an earlier time to end it there" +
-        (sides.next ? "" : ", and its last step ends there too") + ". " + TIME_TYPING,
+      ? _timeFieldHtml(null, fmt(endMs), "End of " + run.title, "Where this transaction ends; empty the field to take its end out.", { side: "end" })
+      : _timeFieldHtml(null, "", "End of " + run.title, untilWhat + ". Type an earlier time to end it there.",
         { side: "end", placeholder: sides.next ? fmt(untilMs) : "open" })) + "</label>";
   const times = sides.now.map((r) => Date.parse(r.timestamp));
   const topics = ["markers", "timeline", "steps"];
@@ -2478,7 +2492,7 @@ function _runTimesEl(run) {
     const b = TE.markerDragBounds(times, sides.index, line.startMs, line.endMs);
     if (at < b.lo || at > b.hi) return refuse("start", b.lo, b.hi, "the transactions keep their order");
     return FlowMarkers.moveMarker(sides.start, iso(at), topics);
-  });
+  }, null, "run:" + run.caseId + ":start");
   if (endEl) {
     _wireTimeField(endEl, async (ms) => {
       if (sides.end) {
@@ -2499,7 +2513,7 @@ function _runTimesEl(run) {
       const hi = Number.isFinite(untilMs) ? untilMs - (sides.next ? TE.MIN_SPAN_MS : 0) : Infinity;
       if (at < lo || at > hi) return refuse("end", lo, hi, sides.next ? "the next transaction starts at " + fmt(untilMs) : "");
       return FlowMarkers.insertMarker("end", iso(at), null, topics);
-    });
+    }, null, "run:" + run.caseId + ":end");
   }
   return el;
 }
@@ -3413,8 +3427,7 @@ function distinctSessionApps() {
    recording (C16) has none, so it is not offered there; a recording without
    one click or field typed offers it disabled, with the reason. */
 const NO_APPS = "No clicks or typing were recorded in this project, so there is no app to leave out.";
-const APPS_TITLE = "Pick the apps that are not part of the process, for example Teams or Outlook used during the call, " +
-  "or the recorder itself. Their clicks and typing are left out of the steps and the map, and the project is analyzed again.";
+const APPS_TITLE = "Pick the apps that are not part of the process, such as Teams used during the call.";
 function _syncAppsOutside(session) {
   const btn = $("#btn-ignored-apps");
   if (!btn) return;
@@ -3439,7 +3452,7 @@ function openIgnoredAppsDialog() {
   backdrop.innerHTML =
     '<div class="modal modal-simple" role="dialog" aria-label="Apps outside the process">' +
       '<header class="modal-header"><h2>Apps outside the process</h2>' +
-        '<button class="icon-btn modal-close" id="ia-close" title="Close">✕</button></header>' +
+        '<button class="icon-btn modal-close" id="ia-close" title="Close" aria-label="Close">✕</button></header>' +
       '<div class="modal-body">' +
         '<p class="meta" style="margin-top:0">Tick the apps that are not part of the process you are mapping, for example Teams or Outlook used during the call, or the recorder itself. Their clicks and typing are left out of the steps and the map. Saving analyzes the project again.</p>' +
         '<div id="ia-list" style="margin-top:10px"></div>' +
@@ -3470,10 +3483,15 @@ function openIgnoredAppsDialog() {
       '</label>';
   }).join("");
 
-  function close() { backdrop.remove(); }
+  // Lane A-2: a dialog keeps the keyboard (modals.js holdFocus): Tab stays
+  // inside, Escape closes it, and the focus goes back to what opened it.
+  const releaseFocus = holdFocus(backdrop.querySelector(".modal"));
+  function close() { backdrop.remove(); releaseFocus(); }
   backdrop.querySelector("#ia-close").addEventListener("click", close);
   backdrop.querySelector("#ia-cancel").addEventListener("click", close);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  backdrop.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
+  setTimeout(() => { const first = list.querySelector("input[type=checkbox]") || backdrop.querySelector("#ia-save"); if (first) first.focus(); }, 0);
 
   backdrop.querySelector("#ia-save").addEventListener("click", async () => {
     const picked = Array.from(list.querySelectorAll("input[type=checkbox]"))
@@ -3590,12 +3608,12 @@ function _runMenu(items, x, y) {
 
 function showRunContextMenu(caseId, x, y) {
   _runMenu([{ act: "use-pattern", label: "Use as reference transaction",
-    title: "Make this the transaction you confirm, the one the other transactions are compared with. The boundary fix count starts again at zero.",
+    title: "Make this the transaction you confirm, the one the others are compared with.",
     run: () => usePatternAction(caseId) }], x, y);
 }
 
 /* Lane HV: the step menu's items a hand-off opened read only keeps. */
-const READ_ONLY_ITEMS = new Set(["Open sub-process", "Show on timeline", "Watch"]);
+const READ_ONLY_ITEMS = new Set(["Open sub-process", "Show on timeline", "Play"]);
 
 /* A5: right-click context menu for a step, from its list row. Mirrors the
    inline-styled menu pattern used by the Flow timeline (flow-view.js
@@ -3677,7 +3695,8 @@ function showStepContextMenu(stepId, x, y) {
     if (s) jumpToStepInFlow(s);
   });
   if (session && session.recordingAvailable) {
-    addItem("Watch", () => {
+    // Lane A-2: one name per act (it read "Watch").
+    addItem("Play", () => {
       const s = _findStep(stepId);
       if (s) watchStep(s);
     });
@@ -3726,7 +3745,7 @@ function paneProject() {
 
 /* The titles of Steps' own acts, for the pane's buttons of the same acts. */
 const ACT_TITLES = {
-  confirm: "Accept this transaction's remaining drafted steps as they are (Ctrl+Enter). Ctrl+Z undoes it.",
+  confirm: "Accept this transaction's remaining drafted steps as they are (Ctrl+Enter).",
   undoConfirm: UNDO_CONFIRM_TITLE,
 };
 

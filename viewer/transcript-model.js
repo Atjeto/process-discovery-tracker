@@ -46,15 +46,14 @@ const NOT_SYNCED_LINE = "The transcript is not synced to the recording yet. Sync
 
 /* The tooltips of Attach (Replace) and Remove, on the Overview's recording
    line and on the Timeline's Transcript lane label alike. */
-const ATTACH_TITLE = "Attach the meeting transcript Teams saved (.vtt or .docx). Its sentences show on the " +
-  "timeline, next to each step and beside the document fields.";
-const REPLACE_TITLE = "Replace the transcript with another Teams file (.vtt or .docx). Sync the new one again " +
-  "unless a video is attached.";
-const REMOVE_TITLE = "Take the transcript out of this project, with its original file in the project's " +
-  "transcript folder. Ctrl+Z brings them back.";
+const ATTACH_TITLE = "Attach the meeting transcript Teams saved (.vtt or .docx).";
+const REPLACE_TITLE = "Put another Teams transcript (.vtt or .docx) in place of this one.";
+const REMOVE_TITLE = "Take the transcript and its file out of this project. Ctrl+Z brings them back.";
 /* C23 (2.0.6): one more transcript, of another video. */
-const ADD_TITLE = "Attach another transcript (.vtt or .docx), of another video of this project: its sentences " +
-  "are placed from that video's start.";
+const ADD_TITLE = "Attach the transcript of another video of this project (.vtt or .docx).";
+/* Lane A-2: Sync the transcript..., on its row of the Timeline and in the
+   Transcript tab. */
+const SYNC_TITLE = "Place the transcript on the timeline: pick a sentence, then click where it was said.";
 
 /* Why a parsed transcript.json cannot be used, in one line, or null when it
    can: a version 1 object with a segments list. */
@@ -417,7 +416,7 @@ function attachedMessage(transcript, synced) {
 }
 
 module.exports = {
-  VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE, ADD_TITLE,
+  VERSION, STEP_LEAD_MS, NOT_SYNCED_LINE, ATTACH_TITLE, REPLACE_TITLE, REMOVE_TITLE, ADD_TITLE, SYNC_TITLE,
   validateTranscript, segmentsOf, effectiveOffsetMs, storedOffsetFor, videoIdOf, wallMs, placeTranscript,
   transcriptsOf, partsOf, forSession, bindsBeforeChainEdit,
   overlaps, stepWindow, prevEndMs, sentencesInWindow, sentencesForStep, runSpans, outsideRuns, listsAllTalk,

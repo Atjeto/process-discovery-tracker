@@ -117,9 +117,10 @@
     if (full) full.setAttribute("aria-pressed", mode === "fullscreen" ? "true" : "false");
 
     const status = document.getElementById("vc-status-text");
+    const pane = document.getElementById("video-pane");
     if (status) status.textContent =
       mode === "fullscreen" ? "FULLSCREEN" :
-      mode === "expanded" ? "EXPANDED" : "VIDEO";
+      mode === "expanded" ? "EXPANDED" : pane && pane.classList.contains("on-screen") ? "SCREEN" : "VIDEO";
   }
 
   function initVideoModes() {

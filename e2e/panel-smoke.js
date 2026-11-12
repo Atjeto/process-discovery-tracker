@@ -639,7 +639,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       sepsOk(lanes.def) && sepsOk(lanes.shots) && lanes.lit === true && lanes.unlit === true &&
       JSON.stringify(said(lanes.shots.names)) === '["Transactions","Steps","Systems","Videos","Screenshots"]' && eachOk(lanes.shots.names) &&
       lanes.def.names.find((n) => n.lane === "steps").title === "Steps: each step in the order of the process; click one to open it beside the video." &&
-      lanes.bar.shown && lanes.bar.part && lanes.bar.title === "The whole length of the timeline. Drag the box to move along it, or click a place to go there."),
+      lanes.bar.shown && lanes.bar.part && lanes.bar.title === "The whole length of the timeline: drag the box, or click a place to go there."),
     JSON.stringify(lanes));
 
   // (c3) A Steps row, and Watch in the step pane.
@@ -657,7 +657,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     fromRow.listWidth = await page.evaluate(() => Math.round(document.getElementById("step-list").getBoundingClientRect().width));
   } catch (e) { fromRow.err = errText(e); }
   const rowShots = ((fromRow.st && fromRow.st.rows) || []);
-  record("(c3) V2 item 4: a selected Steps row opens the panel beside the list (Show on timeline), its video cued to that row, and Watch in the step pane plays the step there without leaving Steps; a row's screenshots sit under a Screenshots lead",
+  record("(c3) V2 item 4: a selected Steps row opens the panel beside the list (Show on timeline), its video cued to that row, and Play in the step pane plays the step there without leaving Steps; a row's screenshots sit under a Screenshots lead",
     !!(!fromRow.err && fromRow.ok && fromRow.cue.ok && fromRow.level === "steps" && fromRow.listWidth > 250 &&
       JSON.stringify(fromRow.st.foot) === '["Show on timeline"]' && rowShots.some((r) => r.shots > 0) &&
       rowShots.every((r) => (r.shots > 0) === (r.leads[0] === "Screenshots"))), JSON.stringify(fromRow));
@@ -677,7 +677,7 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await wait(400);
     closed.afterWatch = (await panelState(page)).shown;
   } catch (e) { closed.err = errText(e); }
-  record("(d) the panel's close is its inverse: closed on Steps it stays closed while rows are selected, and Watch opens it again",
+  record("(d) the panel's close is its inverse: closed on Steps it stays closed while rows are selected, and Play opens it again",
     !closed.err && closed.afterRow === false && closed.afterWatch === true, JSON.stringify(closed));
   await page.screenshot({ path: path.join(__dirname, "panel-smoke-steps.png") }).catch(() => {});
 

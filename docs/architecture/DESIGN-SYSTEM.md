@@ -110,20 +110,33 @@ both self-hosted variable woff2, declared via `@font-face` at the top of
 ### Type scale (both apps)
 
 Every font-size sits on this ladder; don't invent in-between steps on new
-surfaces:
+surfaces. **The floor is 12px** (lane A-2, audit A4 and A5): nothing a
+person reads is smaller, glyphs and badges included; only a mono clock time
+(a moment on the one clock, such as a step's start on its row, a sentence's
+time, a screenshot's stamp) may be 11px. `viewer/type-floor-guard.test.js`
+fails on a `font-size` under 12px in `styles.css` (or in an inline style the
+viewer's JS writes) outside its short list of mono clock times. Where 12px
+does not fit, the layout changes, not the floor.
 
 | Step | Use | Weight |
 |---|---|---|
-| 8 to 9px | micro mono badges (state glyphs, axis ticks, the screenshot rail label) | 400 to 600 |
-| 10 to 11px | **overline labels**: uppercase, `letter-spacing: 0.4px`, 600, `--fg-3` (section titles); the pane titles (`.editor-pane-title`, `h3`) and the step pane's section titles are 11px since 2.0.1, legible at 1024x720 | 600 |
-| 11px | secondary text, mono data values (a transaction's head, `.run-meta`), hints | 400 |
-| 12px | controls, buttons, body-secondary | 400 |
+| 11px | mono clock times only (`--font-mono`; the guard's list) | 400 |
+| 12px | **the floor**: overline labels (uppercase, `letter-spacing: 0.4px`, 600, `--fg-3`; section titles, the pane titles `.editor-pane-title` and `h3`), secondary text, mono data values (`.run-meta`), hints, badges and chips, the Timeline's lane names, ticks and band labels, controls and buttons | 400 to 600 |
 | 13px | **body** (the `html` base) and emphasized labels | 400 / 600 |
 | 14px | icon buttons (mono glyphs), dialog titles | 400 to 600 |
 | 15 to 16px | pane titles (the step panel's step name, `h2`) | 600 |
 
 Larger sizes are glyphs only, never text: the empty state's icon, the
 no-video icon, a list's remove cross.
+
+**The app's zoom** (lane A-2, audit A12): Ctrl+Plus (or Ctrl+=), Ctrl+Minus
+and Ctrl+0, and Ctrl with the mouse wheel, zoom the whole app in steps (80,
+90, 100, 110, 125, 150, 175, 200%), in every window, kept on this computer
+(`localStorage` `pdt.appZoom`, `viewer/app-zoom.js`, applied before the
+first paint). The layouts hold at 125% on 1366x768 (a 1093x614 page); at
+150% a level may scroll. Below 800px of page (175% and 200%) the Timeline's
+row and the top bar take two lines, and Export's menu opens to the right of
+its button; every menu taller than the window scrolls.
 
 ### Capture windows share the same stack
 
@@ -147,12 +160,12 @@ byte-copies) by hand in the same commit.
   Overview's Checklist is the exception: an amber wash (`--accent-muted`)
   inside an `--accent` border.
 - **Who fills a block**: one short line beside an Overview block's title
-  (`.ov-block-who`, 11px `--fg-3`): "You write these. The PDD prints them."
+  (`.ov-block-who`, 12px `--fg-3`): "You write these. The PDD prints them."
   for the Document.
 - **An empty field looks empty**: a document field's placeholder (its
   question) is light and italic (a mix of `--fg-3` and `--fg-4`, about 3:1
   on the field), well apart from written text.
-- **The save state**: one quiet 11px word in the top bar (`--fg-3`), *Not
+- **The save state**: one quiet 12px word in the top bar (`--fg-3`), *Not
   saved* in `--bad` at 600 weight; it fades in again after each save (no
   fade with reduced motion). While the project zip is made, the Export
   button carries the status line's pulsing dot.
@@ -168,7 +181,7 @@ byte-copies) by hand in the same commit.
   wherever it sits: *Dissolve sub-process* is a button in the step pane
   and in the breadcrumb (2.0.1). A quiet tool beside the main
   work (the Steps toolbar's *Apps outside the process...*; the Map's *Fit*, *Reset layout* and *Edited maps*, and
-  the edited maps' row acts) is `.tool-btn`: 11px `--fg-2` in the text
+  the edited maps' row acts) is `.tool-btn`: 12px `--fg-2` in the text
   face on no fill inside the `--rule` border, the card's fill under the
   mouse (`.tool-btn.danger` outlined in `--bad`). Text never goes in an
   `.icon-btn`, a glyph's square in the mono face.
@@ -180,7 +193,7 @@ byte-copies) by hand in the same commit.
   their own, like a video editor's track headers (`--bg-1`, a `--rule`
   divider from the lanes): a cell per lane as tall as the lane, a 14px key
   drawn in CSS that copies the lane's own marks, and the name in the mono
-  label type (10px, uppercase, 1.2px spacing, `--fg-2`). The dividers
+  label type (12px, uppercase, 0.4px spacing, `--fg-2`). The dividers
   between the cells run on across the lanes; a cell under the pointer takes
   a 2px accent edge and a 16% accent wash, and its lane an 11% one.
 - **The timeline's first row** (lane SCREEN, in place of the bottom playback
@@ -204,7 +217,10 @@ byte-copies) by hand in the same commit.
   mean is listed one entry a line in 12px `--fg-2`, its key before it.
 - **Video pane**: stays dark (`#0a0908` under a radial glow) whatever the
   theme; video is dark by nature, and its overlay controls use light on
-  dark. Without a video it collapses to a slim band.
+  dark. Without a video, a recording with screenshots shows its screen
+  there, from the screenshot taken last before the clock's moment, and the
+  pane's header reads SCREEN in place of VIDEO; with nothing to show it
+  collapses to a slim band.
 
 ## Contrast, focus, dialogs and messages
 
@@ -238,8 +254,29 @@ Lane A-1 (an accessibility pass, WCAG 2.1 AA, both themes):
   `.modal` a dialog (`role="dialog"`, `aria-modal="true"`, labelled by its
   title), keeps Tab and Shift+Tab inside it and gives the focus back, when
   it closes, to the element that had it. The prompt, the confirm, the
-  chooser, Help and the library builder use it; a dialog keeps its own keys
-  and first focus (Help's: its section shown in the list).
+  chooser, Help and the library builder use it, and since lane A-2 *Apps
+  outside the process*, the screenshot gallery and the map editor (these
+  two take the focus on themselves, so the gallery's keys and the map's own
+  Ctrl+Z answer at once); a dialog keeps its own keys and first focus
+  (Help's: its section shown in the list).
+- **A refused entry says why beside its field** (lane A-2, audit A18): a
+  time typed in Steps or in the Timeline's pane (a step's start and end, a
+  transaction's *Starts at* and *Ends at*), the Timeline row's clock and an
+  emptied step name. The reason is a line under the field's line
+  (`.field-refusal`, `role="alert"`, 12px 600 in `--bad`: light 5.23:1 on
+  the card, dark 5.30:1), the field `aria-invalid="true"` with its edge in
+  `--bad` and `aria-describedby` the line, until the next edit of that
+  field; the message says it too. One helper, `viewer/field-refusal.js`.
+- **A tooltip is short** (lane A-2, audit A7): one sentence on what the
+  click does, 90 characters or fewer; what a PM needs to know beyond it is
+  in Help (and `docs/HOW-TO.md` in the same words) or in a line where the
+  act is. A tooltip that shows a mark's own text (a sentence said, a note,
+  a band's window title, the folder of the save state) carries that text
+  whole, with at most one short line on what a click does.
+  `viewer/tooltip-guard.test.js` fails on a static one over 90 characters.
+- **The map's warning** (`.bpmn-warning`, shown when a map file has parts
+  that cannot be read): `--fg` on `--bg-2` with a 4px `--warn` edge
+  (light 15.3:1, dark 12.5:1; the light text on `--warn` it had was 3.30:1).
 - **Messages are heard and stay while read**: `#toast` is a polite live
   region (`role="status"`); an error is an alert (`role="alert"`), carries
   a *Dismiss* and stays until dismissed (or Escape while no dialog or menu
@@ -289,16 +326,29 @@ v1.1.0 walk-through ([docs/To-Do/ui-copy-feedback.md](../To-Do/ui-copy-feedback.
 | cargo-cult | (code comments/docs only) |
 | anchor *(worker/business copy)* | "the field that identifies the ticket/order"; it may stay in analyst surfaces with a plain tooltip |
 
+4. **One name per act** (lane A-2, audit A20). The guard
+   (`RETIRED_NAMES`, `PM_WORDS` in `ui-copy-guard.test.js`) fails on a
+   retired name or a word of the code in the viewer's copy:
+
+| Retired in copy | Say instead |
+|---|---|
+| Watch, Select + seek here | *Play* (plays a step) |
+| Jump to step here, Jump to start, Jump to end | *Open in Steps* (goes to Steps), *Show on timeline* (goes to the Timeline), *Go to its start*, *Go to its end* (a moment) |
+| + step (the Raw events table) | *Add step here* |
+| seek | go to (a moment) |
+| playhead | the clock's moment, the moment the video shows |
+| pending | say what waits |
+| marker *(Help, index.html)* | a transaction's start or end; Help's *Working with markers* is *Transactions on the timeline* |
+
 **Worked examples (the bar), from the light version:**
 
 - An act said by what the analyst gets: *Apps outside the process...*,
-  *"Pick the apps that are not part of the process, for example Teams or
-  Outlook used during the call, or the recorder itself. Their clicks and
-  typing are left out of the steps and the map, and the project is
-  analyzed again."*
+  *"Pick the apps that are not part of the process, such as Teams used
+  during the call."* (its tooltip), and what that does in the dialog's own
+  line and in Help.
 - A mark explained where it shows: a stretch left out of the analysis on
-  the Timeline, *"Left out of the analysis, 1:10 to 1:45: its steps are not
-  drafted and its time is not counted. Click to include it again."*
+  the Timeline, *"Left out of the analysis, 1:10 to 1:45. Click it to
+  include it again."*
 - A state said in plain words: the Checklist's *Export the PDD*, *"The app
   keeps no record of an export, so this item is never ticked."*
 
