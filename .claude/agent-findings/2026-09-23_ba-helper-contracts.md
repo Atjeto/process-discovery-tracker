@@ -1111,3 +1111,7 @@ recorded, and question 4 asks the why at the end).
   (each only when set): "Maria Keller, sales assistant, Operations"; without a name, the `worker.id`
   as today. The pipeline does not read `sme_answers` or `sme_files`.
 - Round trip: the viewer never writes `manifest.json`'s `sme_answers` or `sme_files`.
+- **As built (2026-11-12):** *Use* also adds the key to `sme_answers_dismissed`, in the same
+  undoable edit as the field, so an answer used and then edited does not come back; the viewer
+  keeps `annotations.sme_files_adopted` (the file names it added), so a file the analyst removes
+  is not added again. Both keys are in `shared/SCHEMA.md`.

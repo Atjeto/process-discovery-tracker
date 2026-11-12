@@ -35,6 +35,14 @@ The SME's tray app; see [architecture/CAPTURE.md](architecture/CAPTURE.md).
   transactions and the time recorded (a pause said beside it), a warning
   when no transaction was marked, an optional name for the recording, and
   under it *Make a zip for the analyst* (nothing is sent from the app).
+- **What the SME gives at the end.** The end summary also asks, each
+  optional and in one line: What starts this work? What do you have when
+  it is done? How often do you do it, and how long does one take? What
+  goes differently sometimes, and what do you do then? It takes example
+  files (an e-mail, a sheet, a form) with *Add an example file...* and
+  *Remove*. The answers and the files are saved in the recording before
+  the zip, so the analyst gets them with it (contract C24); nothing is
+  asked during the recording.
 - **Trustworthy recordings.** The sidecar is restarted a few times per
   recording and then reported dead; a silent recorder is flagged within
   minutes; a lost write, a program the recorder cannot see and failing

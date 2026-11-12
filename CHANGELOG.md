@@ -8,6 +8,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The SME answers four short questions and adds example files when a
+  recording stops** (contract C24, lane C). The capture app's end summary
+  asks, each optional and in one line: what starts this work, what you
+  have when it is done, how often you do it and how long one takes, and
+  what goes differently sometimes; and it takes example files (an e-mail,
+  a sheet, a form) with *Add an example file...* and *Remove*. Both are
+  saved in the recording before the zip, so the analyst gets them with it:
+  the answers on the manifest, the files in `attachments/`. At most 20
+  files of 50 MB each; a refused file is named with its reason. Nothing is
+  asked during the recording.
+- **Every control of the capture app's windows shows a focus ring** when
+  reached by the keyboard.
 - **What the SME gives at the end reaches the document** (contract C24,
   lane C). The answers the SME gives in the capture app's end summary wait
   under Trigger, Result, Exceptions and Volume and effort on the Overview:

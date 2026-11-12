@@ -47,7 +47,10 @@ A Windows tool in three layers that never talk over a network:
    recording with Transaction 1, then each press starts the next
    transaction. It writes an append-only `events.jsonl`, a `manifest.json`
    and screenshots (OBS video optional); the end summary makes a zip for
-   the analyst.
+   the analyst, after four optional one-line questions and example files
+   (C24, `sme-answers.js`: `manifest.sme_answers`, `manifest.sme_files`
+   and their copies in `attachments/`), which the viewer's Overview offers
+   under their document fields and adopts as attachments.
 2. **Normalization** (`normalization/`): the Python pipeline: runs from the
    markers, drafted steps, statistics and the analysis, the step-level map
    (`--mine`) and the PDD (`--pdd-out`).

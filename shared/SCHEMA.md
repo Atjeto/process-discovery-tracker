@@ -531,6 +531,22 @@ spreadsheet, an SOP, a form):
   its id is `DataObjectReference_<attachment id>`.
 - Removing one deletes its entry and its copied file. The pipeline never
   writes this key and round-trips it untouched.
+- An attachment the SME gave at the end of the recording (contract C24,
+  `manifest.sme_files`) carries `"from": "sme"` and `step_id: null`: the
+  viewer adds it once, when the project first opens for editing, in a
+  save that is not on the undo stack.
+
+**`sme_files_adopted`** *(array of file names; contract C24, viewer-written)*:
+the `manifest.sme_files` entries already added to `attachments`, so a file
+the analyst later removes is neither added again nor reported missing.
+
+**`sme_answers_dismissed`** *(array of keys; contract C24, viewer-written)*:
+the keys of `manifest.sme_answers` (`trigger`, `result`, `effort`,
+`exceptions`) the analyst dismissed or used. *Use* writes the answer into
+the document field and adds its key here in one undoable edit; *Dismiss*
+adds the key alone. The Overview offers an answer only while its key is
+not here and its field does not hold it. The pipeline never reads these
+keys and round-trips them untouched.
 
 **`step_filters`** *(object)*: apps and windows the analyst left out of the
 analysis. `ignored_processes` is written by the viewer's *Apps outside the
