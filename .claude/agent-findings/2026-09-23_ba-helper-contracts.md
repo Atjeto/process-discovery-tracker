@@ -1072,3 +1072,42 @@ later videos and their marks.
   moved with the videos (`session.js` revertFollowUp).
 - **Marks:** the Videos lane (one band per clip named after its file; a trimmed side drawn thicker,
   a clip whose file is not found hatched), its row in the Lanes menu, its name at the left.
+
+## C24. What the SME gives at the end (owner 2026-11-12: "just build"; lane C)
+
+The design: the canvas https://claude.ai/artifact/2ZPLq57Raj4GgRGkf7rxkh (plan section 5.2, C1, C2, B5;
+C4, a note typed from the recording bar, is cut: typing during a recording interrupts the work being
+recorded, and question 4 asks the why at the end).
+
+- **Written by the capture app** (`capture/`), on the recording's `manifest.json`, by the end summary,
+  as the recording's name is (`pdt:setSessionLabel`): saved on leaving a field, before the zip and on
+  Done, so the zip carries them.
+  - `sme_answers` *(object, optional)*: `{ "trigger": string, "result": string, "effort": string,
+    "exceptions": string }`. Each value is the SME's one line, trimmed; a key whose answer is empty is
+    left out; the object is left out when all four are empty. The questions, in the end summary, in
+    this order: *What starts this work?* (`trigger`), *What do you have when it is done?* (`result`),
+    *How often do you do it, and how long does one take?* (`effort`), *What goes differently
+    sometimes, and what do you do then?* (`exceptions`). Each at most 300 characters.
+  - `sme_files` *(array, optional)*: `[{ "file": "Order 10900.msg", "label": "Order 10900.msg",
+    "added_at": "ISO 8601" }]`. *Add an example file...* copies each picked file into the
+    recording's `attachments/` folder (the folder analyst attachments use, C16), a numeric suffix
+    when the name exists (" (2)" before the extension); `file` is the name in that folder, `label`
+    the picked file's own name. *Remove* deletes the copy and the entry. At most 20 files, each at
+    most 50 MB; a bigger file is refused with its reason on the window.
+- **Read by the viewer** (`viewer/`):
+  - The Overview shows, under the document field of each key, while the field's text is not the
+    answer and the key is not dismissed: "The SME wrote: <answer>" with *Use* (writes the answer
+    into the field, the field's own undoable save) and *Dismiss* (adds the key to
+    `annotations.sme_answers_dismissed`, an array of keys, one undoable edit). The Overview's
+    summary line says "The SME answered N questions: each waits under its field." while one waits.
+  - `sme_files` become attachments of the whole project: when an editable project opens and an
+    entry's `file` is in `attachments/` and in no `annotations.attachments` entry, it is added as
+    `{ id, file, label, step_id: null, added_at, from: "sme" }` in one save (not on the undo
+    stack: it is what the recording brought). The Files tab and the Overview's attachments say
+    "From the SME" on them. From then on they are attachments like any other (the PDD lists them,
+    they travel in its zip and in a hand-off).
+- **Read by the pipeline** (`normalization/pdd_export.py`, B5): Document control's *Recorded by*
+  reads the capture profile's `worker.name`, then `worker.role`, then `worker.bu`, joined by ", "
+  (each only when set): "Maria Keller, sales assistant, Operations"; without a name, the `worker.id`
+  as today. The pipeline does not read `sme_answers` or `sme_files`.
+- Round trip: the viewer never writes `manifest.json`'s `sme_answers` or `sme_files`.
