@@ -1115,3 +1115,46 @@ recorded, and question 4 asks the why at the end).
   undoable edit as the field, so an answer used and then edited does not come back; the viewer
   keeps `annotations.sme_files_adopted` (the file names it added), so a file the analyst removes
   is not added again. Both keys are in `shared/SCHEMA.md`.
+
+## C25. Who does a step, and what the automation takes (owner 2026-11-12: "just build"; plan D7, D8)
+
+The team's notation (plan section 8, fact 5): a box is a step; an icon in its corner says manual or
+automated work; a label on top names the application; a label at the bottom names the role or the
+employee. No lanes. The map already puts the application above the box (C18); this contract gives
+the corner icon its meaning and adds the label under the box.
+
+- **`step.automation`** *(string, optional; viewer-written)*: one of `"undecided"` (also: the key
+  absent), `"automated"` (the automation does it), `"person"` (it stays with a person),
+  `"not_needed"` (no longer needed: today's Waste). It takes the place of the step editor's Waste
+  tick: one choice, *Automation* in the step editor, with the four options read as
+  "Not decided yet", "The automation does it", "Stays with a person", "No longer needed".
+  - `flags.waste` stays in step with it, so every reader of waste keeps working: setting
+    `"not_needed"` sets `flags.waste: true`; any other value sets it `false`. A step with
+    `flags.waste: true` and no `automation` (an older project, or a vocab's default) reads as
+    `"not_needed"`.
+  - A draft that gets a choice becomes `edited` (as the flow does, C17).
+  - Sub-steps carry it the same way.
+- **`step.done_by`** *(string, optional; viewer-written)*: a role or an employee, one line, at most
+  80 characters. Without one, the step is done by the recording's role: `manifest.config.worker.role`
+  (else nobody is named). *Done by* in the step editor, a text field with the default as its
+  placeholder ("Sales assistant (from the recording)"); a typed value wins; emptied, the default
+  comes back.
+- **The step map** (`process_map_step.bpmn`, `normalization` C18): a task's kind follows its
+  automation: `"automated"` a `bpmn:serviceTask` (the gear), `"person"` a `bpmn:manualTask` (the
+  hand), `"undecided"` and `"not_needed"` a plain `bpmn:task`. The old rule (a step outside every
+  system is a manual task) goes: the hand now means only "stays with a person". Under each task a
+  short text annotation names who does it (`TextAnnotation_doneby_<k>`), unless every task of the map
+  is done by the same one: the map then says it once ("Done by: Sales assistant",
+  `TextAnnotation_doneby`, joined to nothing), as the system label does. A step's notes stay under
+  its task, below the Done by label.
+- **The live map** (how the transactions ran, `process-map-levels.js`): no change.
+- **The PDD** (`pdd_export.py`): a step's context line gains who does it ("SAP, Order entry · done
+  by Sales assistant · in 3 of 4 transactions · Transaction 1 at 0:19"); section 7, Improvement and
+  automation scope, lists the steps by choice under four headings ("The automation does it", "Stays
+  with a person", "No longer needed", "Not decided yet"), each heading only when it holds a step;
+  the waste mark the PDD prints today reads from `"not_needed"`.
+- **The Technical details** (`tech_details.py`): a column *Automation* and a column *Done by* on the
+  reference transaction's steps sheet.
+- The viewer's Steps rows and the Timeline's pane rows show nothing new; the choice and Done by are
+  in the step editor (Steps and the step opened in the Timeline's pane), the readiness list
+  (`readiness.js`) counts no new miss.
