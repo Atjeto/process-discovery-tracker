@@ -95,9 +95,10 @@ The session golden. It copies each of the 10 demo sessions in
 activity, so the golden also proves that an empty library changes nothing),
 and compares a projection with `normalization/golden/`: stable
 `stats.json` meta counts, the step count, the distinct `process_label` set,
-and the step map's task names, its tasks counted by kind (contract C18 as
-lane CL amended it: every task of the demo is a plain `task`, no user task
-and no manual task), and its start and end events with the end's name.
+and the step map's task names, its tasks counted by kind (every task of the
+demo is a plain `task`, no user task and no manual task: no step of it says
+what the automation does with it, contract C25), and its start and end
+events with the end's name.
 Gateway and flow counts are left out because
 they move with the pm4py version; the viewer's e2e connectivity check pins
 the map's shape instead. Run it with a Python that has the pipeline
@@ -338,12 +339,22 @@ the boxes, and every element and name placed clear of the boxes, the lines
 and the other names. What a BPMN tool receives besides the shapes:
 
 - **Tasks** named by the step names (the system stays out of the name, so
-  an import into a BPMN tool stays clean). A task is a `manualTask` (BPMN's
-  hand marker) when every step it stands for was done outside every system:
-  added by hand (manually authored, no recorded interaction) with no system
-  set; else a plain `task`, a step done in a system (C18 as lane CL amended
-  it: a `userTask` on every recorded step put the same person marker on
-  every box).
+  an import into a BPMN tool stays clean). A task's kind says what the
+  automation does with its step (contract C25, `step_context.step_automation`,
+  the first choice among the task's steps, the reference transaction's
+  first): a `serviceTask` (the gear) for "automated", a `manualTask` (the
+  hand) for "person", a plain `task` for "undecided" and "not_needed". C25
+  dropped lane CL's rule (a step added by hand with no system was a manual
+  task): the hand means only "stays with a person".
+- **Who does a task** (contract C25): a short text annotation under the
+  task (`TextAnnotation_doneby_<k>`, joined by `Association_doneby_<k>`
+  falling from the task's bottom, 18 px in from its left side) naming the
+  step's `done_by`, else the recording's role (`step_context.recording_role`,
+  passed as `StepContext(role=...)`), the task's notes under it and its
+  files right of it. When every labelled task of a map is done by the same
+  one, the map says it once, "Done by: <who>", `TextAnnotation_doneby`,
+  joined to nothing and placed clear of the map's system label: the system
+  label's rule (`bpmn_observed._said_once`).
 - Each task's `<bpmn:documentation>`: the step's analyst description (the
   pattern run's first), then one line "System, screen. In N of M
   transactions, T on average." (no run count for the implicit run, no time
@@ -365,8 +376,7 @@ and the other names. What a BPMN tool receives besides the shapes:
   a map that is done in a system is done in the same one, the map says it
   once instead: one text annotation "System: <name>" joined to nothing
   (`TextAnnotation_system`, inside the map where there is room, else
-  beside or under it), and no task gets a label. A manual task keeps the
-  hand marker and gets no label. The map has no colours (no `bioc:fill` or
+  beside or under it), and no task gets a label. The map has no colours (no `bioc:fill` or
   `bioc:stroke`) and no legend: no BPMN editor could change a colour, so an
   edited map kept the wrong ones, and `write_observed_bpmn` no longer takes
   the library's application order.
@@ -473,7 +483,9 @@ gaps. The sections, in the reader's order:
    description (C7: the analyst's text; a draft's generated narration is
    left out; without one, the description of the library activity the step
    is, C21), the fields it entered, its attachments, its screenshots, the
-   waste flag, and one line per link: "Then goes back to step N, <name>,
+   line "No longer needed." on a sub-step of a chapter whose automation is
+   "not_needed" (C25, or an older waste flag without a choice; a step of
+   3.2 gets no mark, section 7 lists it), and one line per link: "Then goes back to step N, <name>,
    when ...", "Then goes on to step N ...", "Then skips to step N ..." or
    "The process ends here when ...". A step whose map node is a
    sub-process (C19) ends with "Sub-process: see section 3.<k>.". After 3.2, one
@@ -524,7 +536,12 @@ gaps. The sections, in the reader's order:
    often the process is done and how long one takes. The recorded times are
    a walkthrough with explanations, not the usual handling time, so the
    document never prints them; the viewer shows them.
-7. **Improvement and automation scope.** The analyst's field; then, when a
+7. **Improvement and automation scope.** The analyst's field; then
+   (contract C25) the steps 3.2 prints by what the automation does with
+   each, under "The automation does it", "Stays with a person", "No longer
+   needed" and "Not decided yet", in that order, each heading only when it
+   holds a step, each step as "Step N: <name>", none of them while no step
+   has a choice other than "undecided"; then, when a
    value is typed in one system and typed again in another in the same
    transaction, "Re-keyed data" with one sentence per pair of fields and the
    number of transactions that did it; 7.1 the To-Be map picture when one
@@ -536,7 +553,9 @@ gaps. The sections, in the reader's order:
 
 **The step context line** under each step heading: the code of the library
 activity the step is ("Code SF-01", contract C21, when the activity has one),
-system and screen, "in N of M transactions", and where it is in the recording
+system and screen, who does it (contract C25: "done by Sales assistant", the
+step's `done_by`, else the recording's role, left out when nobody is named),
+"in N of M transactions", and where it is in the recording
 ("Transaction 1 at 0:19", the time since the recording started; "0:19 into
 the recording" outside every transaction; in a video session the clock is
 its videos', back to back, and the implicit run reads "at 1:00"). C23 (2.0.6,
@@ -572,7 +591,10 @@ Its sheets:
   class name, the identity source and confidence, the window title, the
   program (`process_name`) and the system (the step's own system first, else
   `shared/system-names.json`), then Activity and Code: the name and the code
-  of the library activity the row's step is (C21), empty when it is none.
+  of the library activity the row's step is (C21), empty when it is none;
+  then Automation and Done by (C25): what the automation does with the
+  row's step, in the PDD's words, and who does it (its `done_by`, else the
+  recording's role; empty when neither is set).
 - **Data fields**: one row per field typed or chosen in a step (a field in
   a step, aligned across the transactions by the step's draft key), with the field's automation id,
   control type, system and screen and step, then one column per transaction
@@ -688,7 +710,7 @@ SCHEMA.md.
 | `case_assignment.py` | Marker-based runs (never nested), deterministic case ids, `case_ids` stamping, the implicit run (C16). |
 | `app_vocab.py` | Loads the shipped vocabularies (`app_vocabularies/*.yaml`, plus any folder in `PDT_APP_VOCABULARIES`) and enriches matching interactions. `regex_guard.py` refuses authored title patterns that could backtrack catastrophically. |
 | `app_names.py` | Readable application names and business system names from `shared/system-names.json` (above; the site rule's `site_name`, 2.0.1). |
-| `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (`process_order`: time, then `order`, and contract C22, a step the analyst placed after another right after it, pinned with the viewer by `shared/step-order-golden.json`; `place_starts`, where a placed step falls among the stretches left out), the recording clock ("0:19"), the videos of the chain (`video_clips`, `video_count`, contract C23) and the first video's start. Read by the PDD and the step map. |
+| `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (`process_order`: time, then `order`, and contract C22, a step the analyst placed after another right after it, pinned with the viewer by `shared/step-order-golden.json`; `place_starts`, where a placed step falls among the stretches left out), the recording clock ("0:19"), the videos of the chain (`video_clips`, `video_count`, contract C23), the first video's start, and contract C25: what the automation does with a step (`step_automation`, `AUTOMATION_WORDS`) and who does it (`step_done_by`, `recording_role`, `StepContext.done_by`). Read by the PDD, the Technical details and the step map. |
 | `recognition.py` | The platform recognition layer (below). |
 | `step_suggest.py` | The drafting rule, `session_names()`, `draft_summary()`, `library_drafts()` (C21), `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
 | `library.py` | Contract C21, standard library only: `load_library` (the format number, unique activity ids, names unique within an application, no run of screens in two activities; a file missing or failing a check is an empty library whose `problem` says why) and `project_library` (the project's `library.json`, else a copy of the app's library, staged with the run, else none). |
@@ -696,8 +718,8 @@ SCHEMA.md.
 | `stats_compute.py` | Builds the `stats.json` statistics; step statistics group by `process_label`. |
 | `case_quality.py` | The transaction check of `analysis.json`: how the runs were found, how many, and the share of the recorded actions inside them. |
 | `capture_detail.py` | `coverage_caveat` of `analysis.json`: the apps the recorder saw with less detail, with one plain claim the Overview shows. |
-| `mining.py` | The pure-Python BPMN writer and layout (`export_bpmn`: task kinds, the system labels (a map's one label placed where the legend was), notes, data objects and the Waste marks placed with the rest, a gateway's flows from its corners; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
-| `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 adds beside the tasks (`_map_extras`), and a plane per sub-process (`_sub_process_planes`, C19). |
+| `mining.py` | The pure-Python BPMN writer and layout (`export_bpmn`: task kinds, the system labels (a map's one label placed where the legend was), the Done by labels under the tasks (C25; a map's one label placed clear of the system's), notes, data objects and the Waste marks placed with the rest, a gateway's flows from its corners; one `_Plane` per map, a sub-process's map written inside its collapsed `bpmn:subProcess` and drawn in a diagram of its own, C19); only the step map uses it. |
+| `bpmn_observed.py` | The step map from the runs' visible steps: the chain, the mined model or the step flow edges, with its documentation, event and branch names, early ends, what C18 and C25 add beside the tasks (`_map_extras`: the task kinds, the system and Done by labels), and a plane per sub-process (`_sub_process_planes`, C19). |
 | `step_flow.py` | The step flow of contract C17, pure (no pm4py): `flow_edges` (the rule the viewer's map shares, pinned by `shared/flow-links-golden.json`), `changes_map`, `declares_flow`, and a step's `condition_of`, `links_of` and `node_of` (the map node: a drafted step, `draft_key`, or a drafted sub-step, `action_key`, is its name). |
 | `sub_process_maps.py` | Contract C19, pure (no pm4py): `map_tree`, the maps a project holds (the main one, then one per sub-process, depth first), each with its path of nodes, its number and the traces it is drawn from, pinned with the viewer by `shared/sub-process-maps-golden.json`. The step map's planes and the PDD's chapters read it. |
 | `pdd_export.py` | The PDD (above), its half of the differences rule (`_collapse_merged`, `_named_alike`), and `rekey_pairs` (the re-keyed data, which the Technical details lists with its values). |

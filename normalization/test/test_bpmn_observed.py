@@ -291,10 +291,11 @@ def _by_name(root, tag):
     return {el.get("name"): el for el in process if el.tag == f"{_BPMN}{tag}"}
 
 
-# Contract C18 as lane CL amended it: a step done in a system is a plain task,
-# a step done outside every system a manual task (a user task is the kind every
-# recorded step had before; the helpers read tasks of any kind).
-_TASK_TAGS = ("task", "userTask", "manualTask")
+# Contract C25: a task's kind follows what the automation does with its step
+# (a plain task, the gear of a service task, the hand of a manual task; a user
+# task is the kind every recorded step had before C18 as lane CL amended it;
+# the helpers read tasks of any kind).
+_TASK_TAGS = ("task", "userTask", "manualTask", "serviceTask")
 
 
 def _tasks(root):
@@ -563,7 +564,7 @@ def _well_formed(root):
     elements, flows = _graph(root)
     tags = [_tag(el) for el in elements.values()]
     assert tags.count("startEvent") == 1 and tags.count("endEvent") >= 1, tags
-    assert set(tags) <= {"startEvent", "endEvent", "task", "manualTask",
+    assert set(tags) <= {"startEvent", "endEvent", "task", "manualTask", "serviceTask",
                          "exclusiveGateway"}, tags
     out, inc = {}, {}
     for _fid, s, t, _name in flows:
@@ -922,7 +923,7 @@ def _annotations(root):
         if re.match(r"^TextAnnotation_\d+$", note.get("id")):
             notes[task.get("name")] = note
     free = [el for el in process.findall(f"{_BPMN}textAnnotation")
-            if el.get("id") not in joined]
+            if el.get("id") not in joined and el.get("id") != "TextAnnotation_doneby"]
     assert len(free) <= 1
     return notes, (free[0] if free else None)
 
@@ -945,25 +946,42 @@ def _text(el, child="text"):
     return found.text if found is not None else None
 
 
-def test_steps_in_a_system_are_plain_tasks_and_steps_outside_every_system_manual_tasks():
-    """C18 as lane CL amended it: the same person marker on every box said
-    nothing. A step done in a system is a plain task, a step added by hand
-    with no system a manual task (BPMN's hand marker), and the legend says
-    what the hand means; a step added by hand with its system set is done in
-    that system."""
+def test_a_tasks_kind_follows_what_the_automation_does_with_its_step():
+    """Contract C25: the gear (a service task) for "The automation does it",
+    the hand (a manual task) for "Stays with a person", a plain task for "Not
+    decided yet" (or no choice), "No longer needed" and an older waste flag.
+    A step added by hand without a system is a plain task now: the hand
+    means only "stays with a person". A task done in a system keeps its
+    system label whatever its kind."""
     anno = _rich_anno()
     anno["steps"].append({"step_id": "hand-2", "case_id": "A", "name": "Log the call in SAP",
                           "state": "manually_authored", "time_range": None, "order": 2,
                           "system": "SAP",
                           "evidence": {"interaction_event_ids": [], "screenshot_refs": []}})
+    steps = anno["steps"]
+    steps[0]["automation"] = "automated"                 # Receive the order
+    steps[1]["automation"] = "person"                    # Check the customer
+    steps[2]["automation"] = "not_needed"                # Book the order
+    steps[2]["flags"] = {"waste": True}
+    steps[3]["automation"] = "undecided"                 # Confirm the lines
+    steps[4]["flags"] = {"waste": True}                  # an older project's waste flag
     root = _written(anno, context=_plain_context())
     kinds = {name: _tag(el) for name, el in _tasks(root).items()}
     assert kinds == {**{name: "task" for name in _FLOW_STEPS},
-                     "Phone the customer": "manualTask", "Log the call in SAP": "task"}
-    # 2.0.1: a task done in a system is labelled with it; the manual task,
-    # done outside every system, carries its hand and no label.
+                     "Receive the order": "serviceTask", "Check the customer": "manualTask",
+                     "Phone the customer": "task", "Log the call in SAP": "task"}
     labels = _system_labels(root)
+    assert labels["Check the customer"][0] == "Salesforce" and labels["Receive the order"][0] == "Outlook"
     assert "Phone the customer" not in labels and labels["Log the call in SAP"][0] == "SAP"
+    _well_formed(root)
+
+
+def test_an_unknown_automation_value_is_a_plain_task():
+    anno = _rich_anno()
+    anno["steps"][0]["automation"] = "robot"
+    anno["steps"][0]["flags"] = {"waste": True}
+    kinds = {name: _tag(el) for name, el in _tasks(_written(anno, context=_plain_context())).items()}
+    assert kinds["Receive the order"] == "task"
 
 
 def test_a_step_added_by_hand_with_its_system_set_is_a_plain_task_labelled_with_it():
@@ -977,26 +995,28 @@ def test_a_step_added_by_hand_with_its_system_set_is_a_plain_task_labelled_with_
 def test_a_map_of_steps_outside_the_systems_has_no_system_label():
     anno = {"steps": [_untimed("A", "Receive the letter", 1), _untimed("A", "File it", 2)]}
     root = _written(anno, context=_plain_context())
-    assert {_tag(el) for el in _tasks(root).values()} == {"manualTask"}
+    assert {_tag(el) for el in _tasks(root).values()} == {"task"}
     assert _system_labels(root) == {} and _annotations(root)[1] is None
     assert not any(k.startswith(_BIOC) for sh in _di_shapes(root).values() for k in sh.attrib)
 
 
-def test_a_task_recorded_in_one_transaction_is_a_plain_task():
-    """One node for a step recorded in one transaction and added by hand in
-    another is recorded work; a step added by hand over recorded
-    interactions is recorded too."""
+def test_a_task_of_several_steps_takes_the_first_choice_made_on_them():
+    """Contract C25 on a node several transactions did: the choice of the
+    first of its steps that has one (the reference transaction's first), so
+    a choice made on another transaction's copy counts; a step added by
+    hand without a choice is a plain task."""
     anno = _two_case_anno()
     for s in anno["steps"]:
         if s["case_id"] == "B" and s["name"] == "Resolve":
-            s["state"] = "manually_authored"
-        if s["name"] == "Escalate":
-            s["state"] = "manually_authored"
-            s["evidence"] = {"interaction_event_ids": ["e1"]}
+            s["automation"] = "person"
+        if s["case_id"] == "A" and s["name"] == "Search":
+            s["automation"] = "automated"
+        if s["case_id"] == "B" and s["name"] == "Search":
+            s["automation"] = "person"
     anno["steps"].append(_untimed("B", "Call back", 1))
     kinds = {name: _tag(el) for name, el in _tasks(_written(anno)).items()}
-    assert kinds == {"Search": "task", "Open ticket": "task", "Escalate": "task",
-                     "Resolve": "task", "Call back": "manualTask"}
+    assert kinds == {"Search": "serviceTask", "Open ticket": "task", "Escalate": "task",
+                     "Resolve": "manualTask", "Call back": "task"}
 
 
 def test_each_link_to_end_ends_at_an_end_event_named_by_its_when():
@@ -1434,3 +1454,113 @@ def test_steps_done_in_another_order_are_never_drawn_as_parallel_work():
         "Enter items", "Save", "Search", "Set address"]
     # A branch says in how many of the transactions it was taken.
     assert "2 of 3 transactions" in xml and "1 of 3 transactions" in xml
+
+
+# ---- contract C25: who does each step, a label under its task ----------------------
+
+def _role_context(role):
+    from step_context import StepContext
+    return StepContext({}, {}, vocabs=[], role=role)
+
+
+def _done_by_labels(root, plane=None):
+    """{task name: (label text, association)} of the Done by labels joined to
+    the tasks (TextAnnotation_doneby_<k>), and the map's one Done by label
+    (TextAnnotation_doneby, joined to nothing) or None."""
+    container = plane if plane is not None else _process(root)
+    by_id = {el.get("id"): el for el in container}
+    out = {}
+    for assoc in container.findall(f"{_BPMN}association"):
+        label = by_id[assoc.get("targetRef")]
+        if re.search(r"TextAnnotation_doneby_\d+$", label.get("id")):
+            out[by_id[assoc.get("sourceRef")].get("name")] = (_text(label), assoc)
+    once = [el for el in container.findall(f"{_BPMN}textAnnotation")
+            if re.search(r"TextAnnotation_doneby$", el.get("id"))]
+    assert len(once) <= 1
+    return out, (_text(once[0]) if once else None)
+
+
+def test_every_task_done_by_the_same_role_says_it_once_for_the_map():
+    """The recording's role, with no step's own: "Done by: <role>" once,
+    joined to nothing, and no task is labelled (the system label's rule)."""
+    root = _written(_rich_anno(), context=_role_context("Sales assistant"))
+    labels, once = _done_by_labels(root)
+    assert labels == {} and once == "Done by: Sales assistant"
+    assert _bounds(_di_shapes(root)["TextAnnotation_doneby"])
+    _assert_valid_bpmn(root)
+    _assert_readable(root)
+
+
+def test_two_different_done_bys_label_each_task_under_it():
+    """A step's own Done by wins over the role: two different ones label
+    every task under it, the association falling from the task's bottom;
+    the step's notes sit under its Done by label."""
+    anno = _rich_anno()
+    anno["steps"][1]["done_by"] = "Credit control"         # Check the customer: notes too
+    anno["steps"][3]["done_by"] = "  Warehouse   clerk "   # Confirm the lines
+    root = _written(anno, context=_role_context("Sales assistant"))
+    labels, once = _done_by_labels(root)
+    assert once is None
+    assert {name: text for name, (text, _a) in labels.items()} == {
+        **{name: "Sales assistant" for name in _FLOW_STEPS}, "Phone the customer": "Sales assistant",
+        "Check the customer": "Credit control", "Confirm the lines": "Warehouse clerk"}
+    shapes, edges = _di_shapes(root), _di_edges(root)
+    tasks = _tasks(root)
+    notes, _map = _annotations(root)
+    for name, (_text_, assoc) in labels.items():
+        task = _bounds(shapes[tasks[name].get("id")])
+        label = _bounds(shapes[assoc.get("targetRef")])
+        # Under the task, in from its left side; the line falls from its bottom.
+        assert label[1] == task[1] + task[3] + 16 and label[0] > task[0]
+        a, b = _points(edges[assoc.get("id")])
+        assert a[1] == task[1] + task[3] and b[1] == label[1] and a[0] == b[0]
+        if name in notes:
+            note = _bounds(shapes[notes[name].get("id")])
+            assert note[1] >= label[1] + label[3] + 16 and note[0] == task[0]
+    assert "Check the customer" in notes and "Confirm the lines" in notes
+    _assert_valid_bpmn(root)
+    _well_formed(root)
+    _assert_readable(root)
+
+
+def test_without_a_role_or_a_done_by_no_task_is_labelled():
+    root = _written(_rich_anno(), context=_plain_context())
+    assert _done_by_labels(root) == ({}, None)
+    # Only the steps that name someone are labelled: the others stay bare.
+    anno = _rich_anno()
+    anno["steps"][0]["done_by"] = "Ana"
+    anno["steps"][2]["done_by"] = "Bo"
+    labels, once = _done_by_labels(_written(anno, context=_plain_context()))
+    assert once is None and {n: t for n, (t, _a) in labels.items()} == {
+        "Receive the order": "Ana", "Book the order": "Bo"}
+    # One person on some tasks and nobody on the others: said once (the rule
+    # the system labels follow).
+    anno["steps"][2]["done_by"] = "Ana"
+    assert _done_by_labels(_written(anno, context=_plain_context())) == ({}, "Done by: Ana")
+
+
+def test_a_map_label_for_the_system_and_one_for_who_does_it_never_overlap():
+    anno = _rich_anno()
+    for s in anno["steps"]:
+        s["system"] = "SAP"
+    root = _written(anno, context=_role_context("Order processor"))
+    shapes = _di_shapes(root)
+    assert _done_by_labels(root) == ({}, "Done by: Order processor")
+    assert _text(next(el for el in _process(root).findall(f"{_BPMN}textAnnotation")
+                      if el.get("id") == "TextAnnotation_system")) == "System: SAP"
+    assert not _overlaps(_bounds(shapes["TextAnnotation_system"]), _bounds(shapes["TextAnnotation_doneby"]))
+    _assert_readable(root)
+
+
+def test_done_by_labels_on_a_mined_map_with_files_stay_clear():
+    """Two transactions (branches), a note and a file: the files sit right
+    of the Done by label, and nothing overlaps or is crossed."""
+    anno = _mined_rich_anno()
+    for s in anno["steps"]:
+        s["done_by"] = "Agent" if s["case_id"] == "A" else "Supervisor"
+    root = _written(anno, context=_plain_context())
+    labels, once = _done_by_labels(root)
+    assert once is None and labels["Search"][0] == "Agent" and labels["Call the customer back"][0] == "Supervisor"
+    _assert_valid_bpmn(root)
+    _well_formed(root)
+    _assert_readable(root, min_label_w=84)

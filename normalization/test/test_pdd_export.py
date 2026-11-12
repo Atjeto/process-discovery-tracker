@@ -296,9 +296,13 @@ def test_document_fields_replace_their_gaps():
     assert _section(blocks, "4.3 Exceptions") == [
         "A blocked customer goes to credit control.", "The CRM times out: save again."]
     assert _section(blocks, "6. Volume and effort") == ["About 40 orders a day, 3 minutes each."]
-    # The re-keyed data is a finding of the improvement scope, after its field.
+    # The re-keyed data is a finding of the improvement scope, after its field
+    # and (C25) the steps by what the automation does with them (step 3 is
+    # flagged as waste in an older project: no longer needed).
     assert _section(blocks, "7. Improvement and automation scope") == [
         "Automate the order entry; the credit check stays manual.",
+        "No longer needed", "Step 3: Mail - Compose: Send",
+        "Not decided yet", "Step 1: Look up the order", "Step 2: CRM - Orders: Save",
         "Re-keyed data",
         "Order number (Contoso CRM) is typed again as Subject (Outlook) in 1 of 2 transactions."]
     assert "Process | Order intake" in _section(blocks, "1. Document control")
@@ -711,14 +715,19 @@ def test_the_place_is_on_the_timeline_never_a_video_time():
     assert "Video | 2 videos" in _section(blocks, "1. Document control")
 
 
-def test_a_step_shows_its_description_field_names_and_waste_flag():
+def test_a_step_shows_its_description_and_field_names_and_its_waste_flag_only_in_section_7():
     if not _HAVE_DOCX:
         return
-    steps = _section(_rendered(), "3.2 Process steps")
+    blocks = _rendered()
+    steps = _section(blocks, "3.2 Process steps")
     i = steps.index("Step 1: Look up the order")
     assert steps[i + 2:i + 4] == ["Search the order by its number.", "Fields: Order number."]
     j = steps.index("Step 3: Mail - Compose: Send")
-    assert steps[j + 2:j + 4] == ["Fields: To, Subject, Password.", "Flagged as waste."]
+    # C25: step 3 is flagged as waste (no longer needed): section 7 lists it
+    # so, and no second mark prints under it.
+    assert steps[j + 2:] == ["Fields: To, Subject, Password."]
+    seven = _section(blocks, "7. Improvement and automation scope")
+    assert seven[seven.index("No longer needed") + 1] == "Step 3: Mail - Compose: Send"
     # The values live in the data table, not under the steps.
     assert not any("customer@example.com" in t for t in steps)
 
@@ -799,7 +808,7 @@ def test_a_step_prints_the_flow_set_on_it():
         "Then goes on to step 3, Mail - Compose: Send, when the mail is ready.",
         "Then goes back to step 1, Look up the order."]
     assert steps[three + 2:] == [
-        "Fields: To, Subject, Password.", "Flagged as waste.",
+        "Fields: To, Subject, Password.",
         "Then goes back to step 1, Look up the order, when the customer changes the order.",
         "The process ends here when the customer cancels.",
         "The process ends here."]
@@ -1694,7 +1703,7 @@ def test_a_group_prints_its_name_line_description_flow_and_pointer_not_its_membe
     send = chapter.index("Step 3.1: Mail - Compose: Send")
     assert chapter[send + 1:] == [
         "Outlook, Order confirmation · in 1 of 1 transaction · Transaction 1 at 0:10",
-        "Fields: To, Subject, Password.", "Flagged as waste."]
+        "Fields: To, Subject, Password.", "No longer needed."]   # C25: section 7 lists 3.2's steps only
     assert pictures == 1
 
 
@@ -1870,3 +1879,97 @@ def test_lane_lf_pipe_what_counts_as_a_field_entered():
               "value": "Croatia"}) == ("Country", "Croatia")
     assert E({"kind": "selection_changed", "name": "Plant", "selected_value": "1000"}) == (
         "Plant", "1000")
+
+
+# ---- contract C25: who does each step, what the automation does with it ------------
+
+def test_a_steps_context_line_says_who_does_it():
+    """Its Done by, else the recording's role (its first letter a capital),
+    after the system and screen; nobody named, nothing said."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    manifest["config"]["worker"]["role"] = "sales assistant"
+    annotations["steps"][1]["done_by"] = "Finance clerk"          # step 2
+    steps = _section(_blocks_of(manifest, annotations, stats, analysis, events), "3.2 Process steps")
+    line = lambda name: steps[steps.index(name) + 1]
+    assert line("Step 1: Look up the order") == (
+        "Contoso CRM, Orders · done by Sales assistant · in 2 of 2 transactions · Transaction 1 at 0:01")
+    assert line("Step 2: CRM - Orders: Save").startswith("Contoso CRM, Orders · done by Finance clerk · in 2 of 2")
+    manifest["config"]["worker"].pop("role")
+    steps = _section(_blocks_of(manifest, annotations, stats, analysis, events), "3.2 Process steps")
+    assert "done by" not in steps[steps.index("Step 1: Look up the order") + 1]
+    assert "done by Finance clerk" in steps[steps.index("Step 2: CRM - Orders: Save") + 1]
+
+
+def test_section_7_lists_the_steps_by_what_the_automation_does_with_them():
+    """Four headings in C25's order, each only when it holds a step; the
+    steps numbered as 3.2 numbers them."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    steps = annotations["steps"]
+    steps[0]["automation"] = "person"
+    steps[1]["automation"] = "automated"
+    steps[3]["automation"] = "not_needed"
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    seven = _section(blocks, "7. Improvement and automation scope")
+    assert seven[1:7] == ["The automation does it", "Step 2: CRM - Orders: Save",
+                          "Stays with a person", "Step 1: Look up the order",
+                          "No longer needed", "Step 3: Mail - Compose: Send"]
+    assert "Not decided yet" not in seven
+    # Every choice: all four, in order.
+    steps[3]["automation"] = "undecided"
+    steps[3]["flags"] = {"waste": False}
+    seven = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "7. Improvement and automation scope")
+    assert [t for t in seven if t in ("The automation does it", "Stays with a person", "No longer needed",
+                                      "Not decided yet")] == [
+        "The automation does it", "Stays with a person", "Not decided yet"]
+    assert seven[seven.index("Not decided yet") + 1:seven.index("Not decided yet") + 2] == [
+        "Step 3: Mail - Compose: Send"]
+
+
+def test_section_7_lists_no_step_while_no_choice_is_made():
+    """A project where no step has a choice other than Not decided yet
+    (none set, or set to undecided) does not list every step under Not
+    decided yet: section 7 holds the analyst's field (and the re-keyed data)
+    as before."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    annotations["document"] = {"improvement": "Automate the order entry."}
+    steps = annotations["steps"]
+    steps[3]["flags"] = {"waste": False}                        # the fixture's one waste flag
+    steps[0]["automation"] = "undecided"
+    seven = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "7. Improvement and automation scope")
+    assert seven[0] == "Automate the order entry."
+    for heading in ("The automation does it", "Stays with a person", "No longer needed", "Not decided yet"):
+        assert heading not in seven
+    assert not any(t.startswith("Step ") for t in seven)
+    assert seven[1] == "Re-keyed data"
+
+
+def test_no_longer_needed_reads_from_the_choice_or_an_older_waste_flag():
+    """A step no longer needed (the choice, or an older project's waste flag
+    without one) is listed so in section 7 and gets no second mark under it
+    in 3.2; a choice other than no longer needed takes it out."""
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    steps = annotations["steps"]
+    steps[0]["automation"] = "not_needed"                        # no flag at all
+    steps[3]["automation"] = "person"                            # flagged, then chosen otherwise
+    blocks = _blocks_of(manifest, annotations, stats, analysis, events)
+    three_two = _section(blocks, "3.2 Process steps")
+    assert not any(t in ("Flagged as waste.", "No longer needed.") for t in three_two)
+    seven = _section(blocks, "7. Improvement and automation scope")
+    at = seven.index("No longer needed")
+    assert seven[at + 1] == "Step 1: Look up the order"
+    assert "Step 3: Mail - Compose: Send" == seven[seven.index("Stays with a person") + 1]
+    # An older project: the waste flag alone.
+    manifest, annotations, stats, analysis, events = _session()
+    seven = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                     "7. Improvement and automation scope")
+    assert seven[seven.index("No longer needed") + 1] == "Step 3: Mail - Compose: Send"

@@ -24,13 +24,36 @@ const Library = require("./library.js");
 // a DOM, so we scan the source for every retired control id (the step detail's
 // old flag-conditional / flag-exception / flag-auto, and the curate form's
 // bb-flag-* forms, which contain them) to pin the invariant DOM-free.
-test("ADR-0027: no step form exposes a retired per-step flag; the waste flag stays", () => {
+test("ADR-0027: no step form exposes a retired per-step flag; the waste flag stays, as the Automation choice's No longer needed (C25)", () => {
   const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
-  for (const id of ["flag-conditional", "flag-exception", "flag-auto"]) {
+  for (const id of ["flag-conditional", "flag-exception", "flag-auto", "flag-waste"]) {
     assert.ok(!src.includes(id),
       `retired per-step flag control ${id} must not return to a step form`);
   }
-  assert.ok(src.includes('id="flag-waste"'), "the waste flag control must remain");
+  assert.ok(src.includes('<select id="step-automation">'), "the Automation choice holds the waste flag");
+  assert.ok(src.includes("StepScope.CHOICES.map("), "its options are step-scope.js's four choices");
+});
+
+// C25: one word for the choice. A step no longer needed (the waste flag) is
+// tagged in the Automation choice's words on a Steps row and in the step
+// panel; no UI string says "Waste" there any more, and the Steps toolbar's
+// "Flagged: N waste" count is gone.
+test("C25: a Steps row and the step panel tag a step No longer needed, never Waste; no waste count on the toolbar", () => {
+  const editor = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
+  const panel = fs.readFileSync(path.join(__dirname, "views", "step-panel.js"), "utf-8");
+  const steps = fs.readFileSync(path.join(__dirname, "views", "steps-view.js"), "utf-8");
+  const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  assert.ok(editor.includes('const flagBadges = StepScope.automationOf(s) === "not_needed"'), "the row reads the choice");
+  assert.ok(editor.includes('${escapeHtml(StepScope.labelOf("not_needed"))}</span>'), "the row's tag in the choice's words");
+  assert.ok(panel.includes('escapeHtml(StepScope.labelOf("not_needed")) + "</span>"'), "the panel's tag in the choice's words");
+  assert.equal((panel.match(/NOT_NEEDED_TAG\("/g) || []).length, 2, "the panel's two marks use it");
+  for (const [name, src] of [["step-editor.js", editor], ["step-panel.js", panel], ["steps-view.js", steps]]) {
+    assert.ok(!/>Waste<|"Waste"|Flagged as waste|Flagged: /.test(src), name + " says Waste nowhere");
+  }
+  assert.ok(!html.includes('id="steps-summary"') && !steps.includes("steps-summary"), "no waste count on the toolbar");
+  const S = require("./step-scope.js");
+  assert.equal(S.labelOf("not_needed"), "No longer needed");
+  assert.ok(S.NOT_NEEDED_TITLE.length <= 90 && !/waste/i.test(S.NOT_NEEDED_TITLE));
 });
 
 function inter(data) {
@@ -303,8 +326,10 @@ test("the step pane has no Save button: the name saves on Enter and blur, the de
   // Timeline's pane), never in the whole page.
   assert.ok(src.includes('wireNameField(host.querySelector("#step-name"), step, callbacks'), "the editor wires its name with it");
   assert.ok(src.includes('descEl.addEventListener("blur", commitDesc)'));
-  assert.ok(src.includes('host.querySelector("#flag-waste").addEventListener("change"'));
-  assert.ok(!/document\.getElementById\("(step-name|step-desc|flag-waste|step-recorded|btn-step-jump|btn-step-watch)"\)/.test(src),
+  assert.ok(src.includes('const autoEl = host.querySelector("#step-automation");'));
+  assert.ok(src.includes('autoEl.addEventListener("change"'));
+  assert.ok(src.includes('wireDoneBy(host.querySelector("#step-done-by"), step, callbacks);'));
+  assert.ok(!/document\.getElementById\("(step-name|step-desc|step-automation|step-done-by|step-recorded|btn-step-jump|btn-step-watch)"\)/.test(src),
     "lane PANE: no part of the editor is looked up in the whole page");
   assert.ok(!src.includes("step-remembered"), "no remembered tag on a row: the run says it in one line");
 });
@@ -313,8 +338,8 @@ test("2.0.1: the step editor in the order of the work: the head (with Play and S
   const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
   const at = (s) => src.indexOf(s);
   const order = ['<div class="step-head">', "${nameFieldHtml(step, callbacks.picker)}", 'step-state"', '<span class="step-code" id="step-code"',
-    'id="step-facts"', "${callbacks.systemHtml", 'id="btn-step-watch"', 'id="btn-step-jump"',
-    '<div class="step-write" id="step-doc">', '<textarea id="step-desc"', "${saidDuringStepHtml(", "${flowSectionHtml(", 'id="flag-waste"',
+    'id="step-facts"', "${callbacks.systemHtml", "${doneByHtml(step, callbacks)}", 'id="btn-step-watch"', 'id="btn-step-jump"',
+    '<div class="step-write" id="step-doc">', '<textarea id="step-desc"', "${saidDuringStepHtml(", "${flowSectionHtml(", "${automationHtml(step, callbacks)}",
     "${callbacks.shotsHtml", '<div class="step-made">', "${recordedHtml(", '<div class="step-attached">'];
   for (let i = 1; i < order.length; i++) {
     assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), "in order: " + order[i]);

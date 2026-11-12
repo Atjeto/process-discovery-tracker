@@ -539,8 +539,8 @@ def test_the_technical_details_name_each_rows_activity_and_code(tmp_path):
     sheets = TD.tech_sheets(session_folder=tmp_path, annotations=annotations, stats=stats,
                             manifest=manifest, events=events, library=lib)
     steps = next(sh for sh in sheets if sh.name == TD.STEPS).rows
-    assert steps[0][-2:] == ["Activity", "Code"]
-    assert [(r[0], r[-2], r[-1]) for r in steps[1:]] == [
+    assert steps[0][-4:-2] == ["Activity", "Code"]
+    assert [(r[0], r[-4], r[-3]) for r in steps[1:]] == [
         ("Step 1", "Enter the order", "ORD-1"), ("Step 1", "Enter the order", "ORD-1"),
         ("Step 2", "Print the order", "ORD-2"), ("Step 3", "", "")]
 

@@ -90,11 +90,14 @@ The Python pipeline the viewer runs by itself; see
   the analyst set on steps (a decision for a step that happens only under a
   condition, a loop back, a skip, an early end), the start named after the
   trigger, the main end after the result and each early end after its
-  condition, plain tasks for the steps done in a system and manual tasks
-  (the hand marker) for the steps done outside every system, the system of
+  condition, each task's kind from what the automation does with its step
+  (a service task, the gear, for *The automation does it*, a manual task,
+  the hand, for *Stays with a person*, else a plain task), the system of
   each task in a short label above it (or said once, "System: SAP", when
-  every task is done in one system), a *Waste* note beside a step flagged
-  as waste, each step's notes under it and its attachments as files under
+  every task is done in one system), who does it in a short label under it
+  (the step's *Done by*, else the recording's role; said once, "Done by:
+  Sales assistant", when every task is done by the same one), a *Waste*
+  note beside a step no longer needed, each step's notes under it and its attachments as files under
   it, and a decision's paths leaving from its own corners. The labels are
   text a process manager changes in any BPMN tool; the map has no colours
   and no legend (2.0.1). Task names stay the step names, so a BPMN tool
@@ -108,11 +111,13 @@ The Python pipeline the viewer runs by itself; see
   sales assistant, Operations", from the capture profile's name, role and
   business unit, else the Windows login); purpose, scope, trigger, result and
   contacts; the As-Is map and the reference transaction's steps (each with
-  its system, screen, "in N of M transactions", "Transaction 1 at 0:19",
+  its system, screen, who does it ("done by Sales assistant"), "in N of M
+  transactions", "Transaction 1 at 0:19",
   "Only when" its condition, its description, the fields it entered, one
   screenshot (the one chosen for the PDD, else its first) and its
-  attachments, a waste flag, and where the process goes after it besides
-  the next step), each step headed "Step 2: <name>" so its number never
+  attachments (a sub-step no longer needed says so in its chapter; a step
+  of the process steps is listed so in section 7), and where the
+  process goes after it besides the next step), each step headed "Step 2: <name>" so its number never
   reads as a section's, under a line saying how many the analyst has not
   yet confirmed while any is a draft; variations in plain
   sentences (the lines the Steps level lists: extra, reordered, skipped and
@@ -120,7 +125,11 @@ The Python pipeline the viewer runs by itself; see
   the analysis), business rules and exceptions; the systems used, each with
   the information entered in it (a workbook's cells as one entry); the
   volume and effort as the analyst writes it; improvement and automation
-  scope with the re-keyed data (a value typed again in another system) and
+  scope with the steps by what the automation does with each (*The
+  automation does it*, *Stays with a person*, *No longer needed*, *Not
+  decided yet*, each heading only when it holds a step, and none while no
+  step has a choice), the re-keyed data
+  (a value typed again in another system) and
   the To-Be map; notes; attachments (each name a link to its file where
   the files travel with the PDD). The analyst's fields survive every
   re-export; an empty field leaves a visible gap. Every PDD says which
@@ -132,7 +141,8 @@ The Python pipeline the viewer runs by itself; see
   in the viewer: every recorded click, entry and choice of the reference transaction
   in the PDD's step order (Step 3, Step 3.2), with its control type,
   automation id, name, class name, how the recorder identified it and how
-  far that can be trusted, the window, the program and the system; every
+  far that can be trusted, the window, the program and the system, what
+  the automation does with its step and who does it; every
   field typed or chosen, with what was entered in each transaction (a
   password never recorded); the values typed again in another system (the
   PDD's re-keyed data); and each program's coverage, whether it ran on a
@@ -428,10 +438,13 @@ The viewer says *transaction* for one pass through the process and
   row).
 - **The selected step**, one column in the order of the work, each fact
   once: its name as the title, its state and its library code; one line of
-  facts (the system, a field, then the screen, where the step is, how long
+  facts (the system, a field, then *Done by*, a field whose placeholder is
+  the recording's role, then the screen, where the step is, how long
   it took, in how many transactions) with *Play* and *Show on timeline*;
   what you write (Description with what was said under it, each sentence
-  under one step, with *Add*; the Flow line; Waste); the screenshots, the
+  under one step, with *Add*; the Flow line; *Automation*: Not decided yet,
+  The automation does it, Stays with a person or No longer needed, in place
+  of the Waste tick, as text in a project opened read only); the screenshots, the
   one the PDD prints marked; *Recorded* (the actions with the control each
   acted on, the scissors to split), open or closed as you last left it; the
   attachments and notes, and one row of adds. The step panel adds what the
@@ -529,7 +542,7 @@ The viewer says *transaction* for one pass through the process and
   of the step with its moment in a small video (a moment the video does not
   cover says so; a time under a second reads "under 1s"), its screenshots,
   what was said and its notes, its flow in one line when one is set, and
-  the waste flag; its foot goes to the step in Steps. On the Map its head
+  the tag *No longer needed* (C25, the waste flag); its foot goes to the step in Steps. On the Map its head
   is the step's name, system and description as fields, saved as the
   editor saves them (lane E-1); in a project open read only, it is text.
   On Steps (plan D2) it shows only what the editor beside it lacks: the

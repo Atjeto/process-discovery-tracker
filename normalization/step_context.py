@@ -106,11 +106,19 @@ class StepContext:
 
     def __init__(self, interactions: dict[str, dict] | None,
                  app_names: dict[str, str] | None,
-                 vocabs: list[dict] | None = None):
+                 vocabs: list[dict] | None = None, *, role: str = ""):
         self.interactions = interactions if isinstance(interactions, dict) else {}
         self.app_names = app_names if isinstance(app_names, dict) else {}
         vocabs = load_vocabs() if vocabs is None else vocabs
         self.screens = screen_names(vocabs)
+        # Contract C25: who does a step without a Done by of its own, the
+        # role the recording was made under (recording_role).
+        self.role = role if isinstance(role, str) else ""
+
+    def done_by(self, step: dict) -> str:
+        """Who does the step (contract C25, step_done_by): its own Done by,
+        else the recording's role, else ""."""
+        return step_done_by(step, self.role)
 
     def _datas(self, step: dict) -> list[dict]:
         ids = ((step or {}).get("evidence") or {}).get("interaction_event_ids") or []
@@ -388,6 +396,64 @@ def declares_place(step: Any) -> bool:
     carries a placed_after."""
     a = step.get("placed_after") if isinstance(step, dict) else None
     return isinstance(a, str) and bool(a.strip())
+
+
+# ---- contract C25: what the automation does with a step, and who does it ----------
+
+# The choices of `step.automation`, in the step editor's order, with the
+# words the viewer and the PDD read them as (viewer/step-scope.js CHOICES).
+AUTOMATION_WORDS = {
+    "undecided": "Not decided yet",
+    "automated": "The automation does it",
+    "person": "Stays with a person",
+    "not_needed": "No longer needed",
+}
+DONE_BY_MAX = 80
+
+
+def step_automation(step: Any) -> str:
+    """What the automation does with a step (contract C25): its
+    `automation` when it is one of AUTOMATION_WORDS; "not_needed" for a step
+    flagged as waste (`flags.waste: true`) that carries none (an older
+    project, a vocabulary's default); else "undecided" (an unknown value
+    too)."""
+    if not isinstance(step, dict):
+        return "undecided"
+    value = step.get("automation")
+    if value is None:
+        flags = step.get("flags")
+        return "not_needed" if isinstance(flags, dict) and flags.get("waste") is True else "undecided"
+    return value if isinstance(value, str) and value in AUTOMATION_WORDS else "undecided"
+
+
+def _one_line(value: Any) -> str:
+    return " ".join(value.split()) if isinstance(value, str) else ""
+
+
+def recording_role(manifest: Any) -> str:
+    """The role the recording was made under (contract C25): the capture
+    profile's `manifest.config.worker.role`, its first letter a capital
+    ("Sales assistant"), or "" when none is set."""
+    config = manifest.get("config") if isinstance(manifest, dict) else None
+    worker = config.get("worker") if isinstance(config, dict) else None
+    role = _one_line(worker.get("role")) if isinstance(worker, dict) else ""
+    return role[:1].upper() + role[1:]
+
+
+def step_done_by(step: Any, role: str = "") -> str:
+    """Who does a step (contract C25): its own `done_by` (one line, at most
+    DONE_BY_MAX characters), else `role` (recording_role), else ""."""
+    own = _one_line(step.get("done_by")) if isinstance(step, dict) else ""
+    return own[:DONE_BY_MAX] or (role or "")
+
+
+def declares_scope(step: Any) -> bool:
+    """True when the analyst chose what the automation does with the step or
+    who does it (contract C25): it carries an `automation`, or a `done_by`
+    that is not empty. A draft that does is the analyst's (kept `edited`)."""
+    if not isinstance(step, dict):
+        return False
+    return isinstance(step.get("automation"), str) or bool(_one_line(step.get("done_by")))
 
 
 def fmt_ms(ms: Any) -> str:

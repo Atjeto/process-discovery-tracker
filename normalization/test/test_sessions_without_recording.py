@@ -560,12 +560,12 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
     bpmn = session / "process_map_step.bpmn"
     assert _chain(bpmn) == order
     tasks = _bpmn_tasks(bpmn)
-    # Every step of a blank project was added by hand: the one with its
-    # system set is done in SAP, a plain task; the others are done outside
-    # every system, manual tasks (C18 as lane CL amended it).
+    # Every step of a blank project was added by hand, and none says what
+    # the automation does with it: each is a plain task (contract C25: the
+    # hand means only "stays with a person", no longer "outside every system").
     assert {name: el.tag for name, el in tasks.items()} == {
-        "Receive the request": f"{_BPMN}manualTask", "Log it in SAP": f"{_BPMN}task",
-        "Check the stock": f"{_BPMN}manualTask", "Reply to the customer": f"{_BPMN}manualTask"}
+        "Receive the request": f"{_BPMN}task", "Log it in SAP": f"{_BPMN}task",
+        "Check the stock": f"{_BPMN}task", "Reply to the customer": f"{_BPMN}task"}
     assert tasks["Log it in SAP"].find(f"{_BPMN}documentation").text == "SAP."
     assert tasks["Receive the request"].find(f"{_BPMN}documentation") is None
 

@@ -712,6 +712,12 @@ function _dissolveGroup(anno, transactions, path, g) {
     if (desc) first.description = _t(first.description) ? _t(first.description) + "\n\n" + desc : desc;
     if (g.pdd_screenshot && !first.pdd_screenshot) first.pdd_screenshot = g.pdd_screenshot;
     if (g.flags && g.flags.waste === true) first.flags = Object.assign({}, first.flags, { waste: true });
+    // C25: the group's choice and Done by, when its first sub-step has none.
+    if (typeof g.automation === "string" && first.automation === undefined) {
+      first.automation = g.automation;
+      first.flags = Object.assign({}, first.flags, { waste: g.automation === "not_needed" });
+    }
+    if (typeof g.done_by === "string" && g.done_by.trim() && !(typeof first.done_by === "string" && first.done_by.trim())) first.done_by = g.done_by;
   }
   // Untimed sub-steps take the group's place among the untimed steps.
   const untimed = subs.filter((s) => !AC.hasTime(s));

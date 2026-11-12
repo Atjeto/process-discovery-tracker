@@ -133,7 +133,7 @@ function bpmnFirstTasks(file) {
     if (seen.has(n)) continue;
     seen.add(n);
     if (/Gateway$/.test(kinds[n] || "")) todo.push(...(out[n] || []));
-    else if (/^(task|userTask|manualTask|subProcess)$/.test(kinds[n] || "")) tasks.push(names[n]);
+    else if (/^(task|userTask|manualTask|serviceTask|subProcess)$/.test(kinds[n] || "")) tasks.push(names[n]);
   }
   return tasks;
 }

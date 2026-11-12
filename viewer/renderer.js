@@ -1072,9 +1072,11 @@ document.addEventListener("keydown", (e) => {
   // Lane HV: in a hand-off opened read only no shortcut edits anything (the
   // video, the zoom, the step selection and Help still answer).
   if (RO.isReadOnly(State.getSession()) && _editsInReadOnly(e)) return;
-  // Don't intercept other shortcuts while typing in inputs
+  // Don't intercept other shortcuts while typing in inputs, or in a list
+  // (C25's Automation choice: a letter picks its option there, never a
+  // Steps verb).
   const tag = (e.target.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea") return;
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
   // Lane W2: the screenshot gallery owns its keys (it steps, plays and
   // closes with them); the clock does not move behind it.
   if (Screens.galleryOpen() && (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Escape")) return;

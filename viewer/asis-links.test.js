@@ -60,6 +60,8 @@ Then the rate.</bpmn:text>
     <bpmn:textAnnotation id="TextAnnotation_3" />
     <bpmn:textAnnotation id="TextAnnotation_system_1"><bpmn:text>Salesforce</bpmn:text></bpmn:textAnnotation>
     <bpmn:textAnnotation id="TextAnnotation_system"><bpmn:text>System: Salesforce</bpmn:text></bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_doneby_1"><bpmn:text>Sales assistant</bpmn:text></bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TextAnnotation_doneby"><bpmn:text>Done by: Sales assistant</bpmn:text></bpmn:textAnnotation>
     <bpmn:textAnnotation id="TextAnnotation_legend">
       <bpmn:text>Colour by system
 Salesforce: blue</bpmn:text>
@@ -323,4 +325,13 @@ test("2.0.1: a system label, above a task or once for the map, is part of the pi
   }
   assert.strictEqual(L.isSystemLabel(el.TextAnnotation_1), false, "a note is no label");
   assert.strictEqual(L.isSystemLabel(el.TextAnnotation_legend), false);
+});
+
+test("C25: a Done by label, under a task or once for the map, is part of the picture too: no click, never a note", async () => {
+  const el = await elements();
+  for (const id of ["TextAnnotation_doneby_1", "TextAnnotation_doneby"]) {
+    assert.strictEqual(L.isSystemLabel(el[id]), true, id);
+    assert.strictEqual(L.elementAction(el[id]), null, id);
+    assert.strictEqual(L.isStepNote(el[id]), false, id);
+  }
 });

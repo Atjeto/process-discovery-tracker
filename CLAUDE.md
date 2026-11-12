@@ -423,10 +423,14 @@ the folder.
   text annotation above it naming the system (`TextAnnotation_system_<k>`),
   unless every task of the map done in a system is done in the same one:
   the map then says it once ("System: SAP", `TextAnnotation_system`, joined
-  to nothing). A step done outside every system (added by hand, no system
-  set) is a manual task, the hand marker, with no label (lane CL: the person
-  marker on every box said nothing). A step's notes are a text annotation
-  under its task, its attachments data objects under it; a flow that turns
+  to nothing). A task's kind is what the automation does with its step (C25,
+  `step.automation`): a service task, the gear, for *The automation does
+  it*, a manual task, the hand, for *Stays with a person*, else a plain
+  task; who does it (`step.done_by`, else the recording's role) is a short
+  text annotation under it (`TextAnnotation_doneby_<k>`), said once by the
+  system label's rule ("Done by: Sales assistant", `TextAnnotation_doneby`).
+  A step's notes are a text annotation under its task (under its Done by
+  label), its attachments data objects under it; a flow that turns
   up or down leaves or enters a gateway at its top or bottom corner, and the
   map keeps its merge gateways. No colours and no legend since
   2.0.1: a label is text a process manager changes in any BPMN tool, where
@@ -510,9 +514,11 @@ the folder.
   owner, 2026-09-26). The developers work from the project (a read-only
   hand-off) and the Technical details, so the PDD holds no values, controls
   or recorded times: its section 5 names the systems and the information
-  entered in each, 6 is the analyst's *Volume and effort*, and the re-keyed
-  data is said under 7. A step's context line reads "SAP, Order entry · in
-  3 of 4 transactions · Transaction 1 at 0:19", and while steps are drafts
+  entered in each, 6 is the analyst's *Volume and effort*, and 7 lists the
+  steps by what the automation does with them once a choice is made
+  (C25; a step no longer needed gets no second mark) and says the re-keyed
+  data. A step's context line reads "SAP, Order entry · done by Sales
+  assistant · in 3 of 4 transactions · Transaction 1 at 0:19", and while steps are drafts
   the PDD says so ("The analyst has not yet confirmed N of these M
   steps."). Tool-neutral, built around the confirmed reference run. The document
   fields (C6) fill their places and survive re-export; Document control's

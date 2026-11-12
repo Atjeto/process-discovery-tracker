@@ -71,7 +71,7 @@ test("what the map does not draw changes nothing: confirming, a description, a s
   assert.equal(sig(p), before);
 });
 
-test("what the step map draws changes it: a flow, a condition, a note, a file, a system, the waste flag, a hidden step, the Trigger and the Result", () => {
+test("what the step map draws changes it: a flow, a condition, a note, a file, a system, the waste flag, the automation's choice, Done by, a hidden step, the Trigger and the Result", () => {
   const cases = {
     link: (p) => { find(p, "c").links = [{ to: "a", when: "a price is missing" }]; },
     condition: (p) => { find(p, "b").only_when = "the customer is new"; },
@@ -79,6 +79,9 @@ test("what the step map draws changes it: a flow, a condition, a note, a file, a
     file: (p) => { p.annotations.attachments = [{ id: "f1", file: "form.pdf", label: "Order form", step_id: "b" }]; },
     system: (p) => { find(p, "a").system = "SAP"; },
     waste: (p) => { find(p, "b").flags.waste = true; },
+    automation: (p) => { find(p, "a").automation = "automated"; },
+    person: (p) => { find(p, "a").automation = "person"; },
+    doneBy: (p) => { find(p, "c").done_by = "Finance clerk"; },
     hidden: (p) => { find(p, "c2").state = "hidden"; },
     trigger: (p) => { p.annotations.document.trigger = "A phone call"; },
     result: (p) => { p.annotations.document.result = "The order is saved"; },
@@ -93,6 +96,17 @@ test("what the step map draws changes it: a flow, a condition, a note, a file, a
   const p = project();
   p.annotations.analyst_notes = [{ id: "n2", text: "The phone rang", step_id: null, at: t(2) }];
   assert.equal(sig(p), base);
+  // C25: "Not decided yet" and an empty Done by draw nothing, so a copy made
+  // before C25 keeps its signature.
+  const q = project();
+  find(q, "a").automation = "undecided";
+  find(q, "c").done_by = "  ";
+  assert.equal(sig(q), base);
+  // Two choices that draw different kinds of task differ.
+  const auto = project(), person = project();
+  find(auto, "a").automation = "automated";
+  find(person, "a").automation = "person";
+  assert.notEqual(sig(auto), sig(person));
 });
 
 test("C19: a sub-process's map counts too: a sub-step renamed changes it", () => {

@@ -80,6 +80,7 @@ const FlowMarkers = require("./flow-view-markers.js");
 const StepOrder = require("../step-order.js");
 const ShowHere = require("../show-here.js");
 const LeftOut = require("../left-out.js");
+const StepScope = require("../step-scope.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -541,7 +542,6 @@ function renderStepsLevel() {
   if (pc) pc.textContent = String(model.runs.length);
   const pn = $("#runs-pane-note");
   if (pn) pn.textContent = path.length ? NOTE_LEVEL : transactionNote(session);
-  _renderFlagSummary(allSteps);
   _renderCrumbs(model, pattern, path);
 
   if (path.length) renderLevelList($("#step-list"), model, pattern, containers, open, visible);
@@ -790,16 +790,6 @@ function transactionNote(session) {
   if (recorded) return "";
   if (!(AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats)) return "";
   return session && session.recordingAvailable ? NOTE_UNRECORDED : NOTE_UNRECORDED_NO_VIDEO;
-}
-
-/* A3: the waste-flagged step count on the toolbar. Waste is the only per-step
-   flag (ADR-0027); the retired flags an older annotations.json may still
-   carry are ignored here like everywhere else (C10). */
-function _renderFlagSummary(allSteps) {
-  const sumEl = $("#steps-summary");
-  if (!sumEl) return;
-  const waste = SPM.allSteps(allSteps).filter((st) => st.flags && st.flags.waste).length;
-  sumEl.textContent = waste ? "Flagged: " + waste + " waste" : "";
 }
 
 /* The list pane: the runs (the open one with its steps), then the steps
@@ -1238,7 +1228,10 @@ function stepDetailCallbacks(selected, interactionsById) {
   return {
     onRename: (stepId, name) => inlineRenameStep(stepId, name, false),
     onDescription: describeStepAction,
-    onToggleWaste: (stepId) => toggleStepFlag(stepId, "waste"),
+    // C25: what the automation does with the step, and who does it.
+    onAutomation: (stepId, value) => setAutomationAction(stepId, value),
+    onDoneBy: (stepId, text) => setDoneByAction(stepId, text),
+    doneBy: { placeholder: StepScope.doneByPlaceholder(_manifest()), role: StepScope.recordingRole(_manifest()) },
     onSplitAt: (after) => { if (selected) splitStep(selected.step_id, after); },
     onJumpToFlow: (step) => jumpToStepInFlow(step),
     // Play: the step in the step panel's video (it opens the panel again
@@ -1302,7 +1295,8 @@ function panelFieldCallbacks(step) {
 
 /* The ids of the editor's fields whose typing survives a redraw. */
 function _keepsTyping(id) {
-  return id === "step-name" || id === "step-desc" || id === "step-system" || id === "step-start" || id === "step-end" ||
+  return id === "step-name" || id === "step-desc" || id === "step-system" || id === "step-done-by" ||
+    id === "step-start" || id === "step-end" ||
     id === "step-only-when" || /^flow-link-when-\d+$/.test(id);
 }
 
@@ -1656,6 +1650,42 @@ async function describeStepAction(stepId, text) {
   step.description = text;
   _markEdited(step);
   try { await persistAnnotations(anno, "edit step description"); } catch (_) { /* already shown */ }
+}
+
+/* C25: what the automation does with a step (its Automation choice, waste in
+   step with it), one undoable edit; a draft becomes edited. */
+async function setAutomationAction(stepId, value) {
+  if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const step = _findStep(stepId);
+  if (!step || !StepScope.setAutomation(step, value)) return;
+  _markEdited(step);
+  try {
+    await persistAnnotations(anno, "set what the automation does");
+    toast("Automation: " + StepScope.labelOf(value) + ".", "success");
+  } catch (_) { /* already shown */ }
+}
+
+/* C25: who does a step (Done by), one undoable edit; emptied, the
+   recording's role again. A draft becomes edited. */
+async function setDoneByAction(stepId, text) {
+  if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
+  const anno = ensureAnnoShape(State.getSession().annotations);
+  const step = _findStep(stepId);
+  if (!step || !StepScope.setDoneBy(step, text)) return;
+  _markEdited(step);
+  const role = StepScope.recordingRole(_manifest());
+  try {
+    await persistAnnotations(anno, "set who does the step");
+    toast(step.done_by ? "Done by: " + step.done_by + "."
+      : role ? "Done by: " + role + ", the recording's role." : "Nobody is named for this step.", "success");
+  } catch (_) { /* already shown */ }
+}
+
+/* The loaded project's manifest.json ({} without one). */
+function _manifest() {
+  const s = State.getSession();
+  return (s && s.manifest) || {};
 }
 
 /* ===== Boundary verbs (counted on the pattern run, C3) ================ */
@@ -3550,20 +3580,6 @@ function initStepsView(deps) {
   if ($("#steps-splitter")) PaneSplitter.wire($("#steps-splitter"));
 }
 
-/* A2/A5: toggle one boolean flag on a step and persist. Shared by the step
-   timeline context menu and any other quick-flag affordance. */
-async function toggleStepFlag(stepId, flagKey) {
-  if (!State.getSession()) return;
-  const anno = ensureAnnoShape(State.getSession().annotations);
-  const step = _findStep(stepId);
-  if (!step) return;
-  step.flags = step.flags || {};
-  step.flags[flagKey] = !step.flags[flagKey];
-  _markEdited(step);
-  await persistAnnotations(anno, (step.flags[flagKey] ? "flag " : "unflag ") + flagKey);
-  toast(step.flags[flagKey] ? "Flagged" : "Flag cleared", "success");
-}
-
 /* A run's right-click menu (P3.8): on another run "Use as reference run",
    the once-a-session choice; on the confirmed reference run its probe line.
    items = [{ act, label, title, run }]. The same inline-styled menu as the
@@ -3655,7 +3671,6 @@ function showStepContextMenu(stepId, x, y) {
     menu.appendChild(sep);
   }
 
-  const flags = step.flags || {};
   const isSub = SPM.isSubProcess(step);
   // C19: a sub-process opens and dissolves; it is not split or merged.
   if (isSub) {
@@ -3702,9 +3717,12 @@ function showStepContextMenu(stepId, x, y) {
       if (s) watchStep(s);
     });
   }
+  // C25: the step editor's Automation choice of "No longer needed" (it took
+  // the place of the waste flag), and back to "Not decided yet".
   addSep();
-  addItem(flags.waste ? "Clear waste flag" : "Flag as waste",
-    () => toggleStepFlag(stepId, "waste"));
+  const notNeeded = StepScope.automationOf(step) === "not_needed";
+  addItem(notNeeded ? "Mark as not decided yet" : "Mark as no longer needed",
+    () => setAutomationAction(stepId, notNeeded ? "undecided" : "not_needed"));
 
   document.body.appendChild(menu);
   placeMenu(menu, x, y);   // at (x, y), kept inside the window

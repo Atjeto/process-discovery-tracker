@@ -18,9 +18,10 @@ library (xlsx_writer.py). Its sheets:
                       chapter prints), the action and its value, the control
                       (type, automation id, name, class name), how the
                       recorder identified it (identity source, confidence),
-                      the window title, the program and the system, and the
+                      the window title, the program and the system, the
                       library activity the step is with its code (contract
-                      C21);
+                      C21), what the automation does with the step and who
+                      does it (contract C25);
   Data fields         one row per field typed or chosen in a step, with
                       the field's identity and one column per transaction
                       holding what was entered there; a password field reads "typed
@@ -49,9 +50,9 @@ from _dt import parse_ts_or_none as _parse_ts
 from capture_detail import _WALL_FRAMEWORKS
 from handoff_versions import version_line
 from pdd_export import (DEFAULT_REQUEST_CODE, DEFAULT_REQUEST_NAME, SECRET_VALUE, _Session, _align_key,
-                        _members, _step_name, rekey_pairs)
+                        _members, _step_name, printed_steps, rekey_pairs)
 from recorder_noise import is_blank_value
-from step_context import step_system
+from step_context import AUTOMATION_WORDS, step_automation, step_system
 from xlsx_writer import Sheet, write_workbook
 
 ABOUT = "About"
@@ -66,8 +67,8 @@ NOT_RECORDED = "Not recorded"
 
 STEPS_HEADER = ("Step", "Step name", "Action", "Value", "Control type", "Automation id", "Name",
                 "Class name", "Identity source", "Confidence", "Window title", "Program", "System",
-                "Activity", "Code")
-_STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12)
+                "Activity", "Code", "Automation", "Done by")
+_STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12, 24, 22)
 DATA_HEADER = ("Field", "Automation id", "Control type", "System and screen", "Step")
 _DATA_WIDTHS = (24, 24, 14, 30, 30)
 REKEYED_HEADER = ("Source system", "Source field", "Target system", "Target field", "Values",
@@ -79,8 +80,9 @@ _APPS_WIDTHS = (22, 22, 12, 19, 8)
 # One line on each sheet, and on the recorder's words, for the About sheet.
 SHEET_LINES = (
     (STEPS, "Every recorded click, entry and choice of the reference transaction, in the order "
-            "of its steps, with the control it acted on, how the recorder identified it and the "
-            "library activity its step is, with the activity's code."),
+            "of its steps, with the control it acted on, how the recorder identified it, the "
+            "library activity its step is, with the activity's code, what the automation does "
+            "with the step and who does it."),
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
            "transaction. A password field reads \"typed (hidden)\": the recorder never reads it."),
     (REKEYED, "The values typed in one system and typed again in another in the same "
@@ -109,12 +111,6 @@ def _number(value: Any):
 
 
 # ---- Steps and controls --------------------------------------------------------
-
-def _printed_steps(s) -> list[dict]:
-    """The steps the PDD's 3.2 prints: the reference transaction's, else
-    (no transaction with steps) every step in time order."""
-    return s.run_steps(s.pattern_index) if s.pattern_index is not None else list(s.steps)
-
 
 def _sub_labels(s) -> dict[str, str]:
     """{step_id: "Step 2.1"} of the sub-steps the PDD's chapters print (the
@@ -195,11 +191,14 @@ def _time(s, eid: str):
 def steps_rows(s) -> list[list[Any]]:
     """The rows of Steps and controls (STEPS_HEADER). Activity and Code are
     the name and the code of the library activity the row's step is
-    (contract C21, `library_activity`), empty when it is none."""
+    (contract C21, `library_activity`), empty when it is none. Automation
+    and Done by (contract C25) are what the automation does with the row's
+    step, in the PDD's words, and who does it (its Done by, else the
+    recording's role; empty when neither is set)."""
     labels = _sub_labels(s)
     rows: list[list[Any]] = []
     seen: set[str] = set()
-    for number, step in enumerate(_printed_steps(s), start=1):
+    for number, step in enumerate(printed_steps(s), start=1):
         owner, hidden = _owners(step, f"Step {number}", labels)
         ids = [eid for eid in owner if eid not in hidden and eid not in seen and eid in s.interactions]
         # In time order; ids of one moment keep the order the steps list them.
@@ -216,7 +215,8 @@ def steps_rows(s) -> list[list[Any]]:
                          _text(data.get("class_name")), _text(data.get("identity_source")),
                          _number(data.get("confidence")), title, app, system,
                          activity.name if activity is not None else "",
-                         activity.code if activity is not None else ""])
+                         activity.code if activity is not None else "",
+                         AUTOMATION_WORDS[step_automation(holder)], s.ctx.done_by(holder)])
     return rows
 
 

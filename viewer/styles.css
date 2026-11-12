@@ -1752,7 +1752,9 @@ input.time-field:disabled { border-style: dotted; background: transparent; curso
 input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color: var(--bad); }
 .run-times { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--fg-2); }
 .run-times label { display: inline-flex; align-items: center; gap: 5px; }
-.step-facts .step-system-inline + datalist + .step-facts-rest::before { content: "\00B7\00A0"; }
+.step-facts .step-system-inline + datalist + .step-facts-rest::before,
+.step-facts .step-system-inline + datalist + .step-doneby::before,
+.step-facts .step-doneby + .step-facts-rest::before { content: "\00B7\00A0"; }
 .step-facts .link-btn { font-size: 12px; }
 /* The body: one column, its groups parted by space. */
 .step-body { display: flex; flex-direction: column; gap: 18px; }
@@ -1810,10 +1812,28 @@ input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color
 .editor-detail-pane label textarea:focus { outline: 2px solid var(--accent-2); outline-offset: 1px; }
 /* The description grows with its text. */
 .editor-detail-pane textarea { field-sizing: content; min-height: 72px; max-height: 320px; resize: vertical; }
-/* Waste, the last line of what you write. */
-.editor-detail-pane label.step-waste {
-  display: inline-flex; gap: 6px; align-items: center; margin: 8px 0 0; font-size: 12px; color: var(--fg);
+/* C25: Automation, the last line of what you write (in place of the Waste
+   tick); read only, the choice as text. */
+.editor-detail-pane label.step-automation {
+  display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 0; font-size: 12px; color: var(--fg-2);
 }
+.editor-detail-pane label.step-automation select {
+  max-width: 100%; padding: 3px 6px; font-family: inherit; font-size: 12px; color: var(--fg);
+  background: var(--bg-2); border: 1px solid var(--field-border); border-radius: 3px;
+}
+.editor-detail-pane label.step-automation select:focus { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.editor-detail-pane p.step-automation { margin: 8px 0 0; font-size: 12px; color: var(--fg); }
+/* C25: Done by, after the system on the line of facts: a field that reads as
+   a fact until it is changed, its placeholder the recording's role. */
+.step-facts .step-doneby { display: inline-flex; align-items: baseline; gap: 4px; margin: 0; font-size: 12px; color: var(--fg-2); }
+.editor-detail-pane input.step-doneby-input {
+  field-sizing: content; min-width: 12ch; max-width: 100%; margin: 0; padding: 1px 5px;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+}
+.editor-detail-pane input.step-doneby-input::placeholder { color: var(--fg-2); opacity: 1; font-weight: 400; }
+.editor-detail-pane input.step-doneby-input:hover { border-color: var(--field-border); }
+.editor-detail-pane input.step-doneby-input:focus { background: var(--bg-2); border-color: var(--field-border); outline: 2px solid var(--accent-2); outline-offset: 1px; }
 /* Recorded: the actions one line each (what happened, the control it acted
    on, when); the verb says the kind, so no colour code. */
 .editor-detail-pane .evidence { margin: 0; font-size: 12px; }
@@ -1989,10 +2009,10 @@ input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color
 /* A field that is read, not typed in: no fill, a dashed edge. */
 .app.read-only #ov-doc :is(input, textarea)[readonly] { background: transparent; border-style: dashed; resize: none; }
 /* 2.0.1: a hand-off opened read only reads the selected step as a record:
-   its fields as text, an empty description and an unset Waste left out. */
+   its fields as text, an empty description left out (C25: the Automation
+   choice and Done by are drawn as text there, step-editor.js). */
 .app.read-only #step-detail :is(input, textarea)[readonly] { background: transparent; border-color: transparent; resize: none; }
-.app.read-only #step-detail label.step-field:has(> textarea:placeholder-shown),
-.app.read-only #step-detail label.step-waste:has(> input:not(:checked)) { display: none; }
+.app.read-only #step-detail label.step-field:has(> textarea:placeholder-shown) { display: none; }
 
 /* ===== Multi-select feedback on step rows ===== */
 .step-row .multi-check {
@@ -2950,5 +2970,4 @@ button.danger:disabled {
 #timeline-pane .tp-here-item { background: var(--accent-muted); box-shadow: inset 3px 0 0 var(--accent); }
 #screenshots-grid .thumb.tp-here-item { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
 .app.read-only #tp-editor :is(input, textarea)[readonly] { background: transparent; border-color: transparent; resize: none; }
-.app.read-only #tp-editor label.step-field:has(> textarea:placeholder-shown),
-.app.read-only #tp-editor label.step-waste:has(> input:not(:checked)) { display: none; }
+.app.read-only #tp-editor label.step-field:has(> textarea:placeholder-shown) { display: none; }

@@ -761,7 +761,9 @@ lives at `derived_maps/<map_id>.bpmn`.
   main one and one per sub-process), its boxes and lines by the live map's
   rule (the conditions, the paths no transaction took, how often each was
   taken), each box's notes, files, system set, hand marker, sub-process and
-  waste mark, and the first lines of the Trigger and the Result. It is taken
+  waste mark, (C25, only when a step of the box has one) the automation's
+  choices and the Done by typed on its steps, and the first lines of the
+  Trigger and the Result. It is taken
   from the steps themselves, so a rename counts at once, before an analysis
   writes the step map again; a confirmed transaction, a description or a
   screenshot changes nothing. `null`, or absent, on a copy made before it
@@ -782,7 +784,8 @@ lives at `derived_maps/<map_id>.bpmn`.
   merges, and the stale copy stays. A copy made before the step map had
   what C18 added (`viewer/reference-maps.js` `predatesRichMap`: none of a
   user or manual task, the legend, a colour or, since 2.0.1, a system
-  label) says that Copy again brings them.
+  label; since C25 a service task or a Done by label count too) says that
+  Copy again brings them.
 - **`pdd_role`**: `null` | `as_is` | `to_be`: which PDD slot the map fills
   (one map per slot). At export the viewer renders the copy to PNG and passes
   it as `--pdd-map-image` (As-Is, section 3.1) or `--pdd-tobe-image` (To-Be,
@@ -828,6 +831,8 @@ delete.
   "only_when": "string, optional: the step happens only under this condition (C17)",
   "links": [{ "to": "a step_id, or \"end\"", "when": "string: when the process goes there (C17)" }],
   "placed_after": "string, optional: the step_id of the step it comes after in the process, or \"start\" (C22)",
+  "automation": "string, optional: undecided|automated|person|not_needed, what the automation does with the step (C25)",
+  "done_by": "string, optional: a role or a person who does the step, at most 80 characters (C25)",
   "sub_steps": ["step entities, the same shape, recursively: the step is a sub-process (C19)"],
   "group": "true on a group of steps made into a sub-process (C19), else absent",
   "evidence": {
@@ -1029,7 +1034,36 @@ analysis, the PDD's sections 4 to 9) sees the main level only.
   map without one gets no PDD chapter. The map node is the main rule at
   every level.
 
-`flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)).
+**What the automation does with a step, and who does it (contract C25).**
+Two viewer-written keys, both optional, set in the step editor (Steps, and
+the step opened in the Timeline's pane), at any level (a sub-step carries
+them the same way):
+
+- **`automation`**: `"undecided"` (also: the key absent), `"automated"`
+  (the automation does it), `"person"` (it stays with a person) or
+  `"not_needed"` (no longer needed), read as "Not decided yet", "The
+  automation does it", "Stays with a person", "No longer needed". It took
+  the place of the step editor's Waste tick, and `flags.waste` stays in step
+  with it: `"not_needed"` sets `flags.waste: true`, any other choice sets it
+  `false`, so every reader of waste keeps working. A step with
+  `flags.waste: true` and no `automation` (an older project, a vocabulary's
+  default) reads as `"not_needed"`; an unknown value reads as
+  `"undecided"` (`viewer/step-scope.js` `automationOf`,
+  `normalization/step_context.py` `step_automation`).
+- **`done_by`**: a role or a person, one line, at most 80 characters.
+  Without one, the step is done by the recording's role,
+  `manifest.config.worker.role` (its first letter a capital), else nobody is
+  named (`step-scope.js` `doneByOf`, `step_context.py` `step_done_by`).
+
+A draft given either becomes `edited` (the viewer does it, and
+re-normalization keeps a draft that still carries one as `edited`). The step
+map draws them (below: the task's kind, a Done by label), the PDD prints who
+does a step on its context line and, once a step has a choice other than
+"undecided", lists the steps by choice in its section
+7, and the Technical details have a column for each.
+
+`flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)),
+kept in step with `automation` (C25, above).
 Older files may still carry `conditional`, `exception_path`,
 `automation_candidate` or `condition_text`; they are ignored.
 
@@ -1736,12 +1770,15 @@ the main line); the map keeps its merge gateways.
   condition, or a path no transaction took), a single run is drawn from
   the edges too, early ends included.
 - **Tasks.** Named by the step names; the system stays out of the name. A
-  task is a `manualTask` (BPMN's hand marker) when every step it stands for
-  was done outside every system: added by hand (manually authored, no
-  recorded interaction) with no system set; else a plain `task`, a step
-  done in a system (C18 as lane CL amended it: every recorded step was a
-  `userTask` before, the same person marker on every box). A collapsed
-  sub-process (C19) is neither.
+  task's kind says what the automation does with its step (contract C25,
+  the step's `automation`; for a task of several steps, the choice of the
+  first of them that has one, the reference transaction's first): a
+  `serviceTask` (the gear) for "automated", a `manualTask` (the hand) for
+  "person", a plain `task` for "undecided" and "not_needed". C25 dropped
+  the rule of lane CL (a step added by hand with no system was a manual
+  task): the hand now means only "stays with a person". (Before C18 as
+  lane CL amended it every recorded step was a `userTask`.) A collapsed
+  sub-process (C19) is none of them.
   Its documentation holds its description, then its system, screen, the
   number of transactions it happened in and its average time.
 - **Events.** The start event takes the first line of `document.trigger`
@@ -1761,14 +1798,25 @@ the main line); the map keeps its merge gateways.
   map (a plane) that is done in a system is done in the same one, the map
   says it once instead: one text annotation "System: <name>",
   `TextAnnotation_system`, joined to nothing (inside the map where there
-  is room, else beside or under it), and no task gets a label. A manual
-  task keeps the hand marker and gets no label. The file has no colours
+  is room, else beside or under it), and no task gets a label. The file has no colours
   (no `bioc:fill` or `bioc:stroke`) and no legend: the colour per system
   and `TextAnnotation_legend` ("Colour by system", "Hand icon: done outside
   the systems", "Waste: a step that should not be needed") are gone, since
   no BPMN editor could change a colour. The viewer takes a system label for
   part of the picture: a click on one does nothing (`asis-links.js`
   `isSystemLabel`), and the PDD's pictures keep it.
+- **Who does a task** (contract C25). Under each task a short text
+  annotation names who does it (the step's `done_by`, else the recording's
+  role; for a task of several steps, the first `done_by` among them, the
+  reference transaction's first), `TextAnnotation_doneby_<k>`, joined by
+  `Association_doneby_<k>` falling from the task's bottom, 18 px in from
+  its left side; the task's notes sit under it. When every labelled task of
+  a plane is done by the same one, the plane says it once instead, "Done
+  by: <who>", `TextAnnotation_doneby`, joined to nothing, placed as the
+  map's one system label is and clear of it: the system label's rule. A
+  task nobody is named for has no label. The viewer takes a Done by label
+  for part of the picture, as a system label (`isSystemLabel`), and the
+  PDD's pictures keep it.
 - **Waste** (lane FX3). A task a visible step of which is flagged as waste
   (`flags.waste`, the live map's rule) has a small text annotation above
   it, `TextAnnotation_waste_<k>` with the text "Waste" and the

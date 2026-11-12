@@ -293,6 +293,21 @@ test("C19 Dissolve a group: its sub-steps come back in its place, in every trans
   assert.equal(anno.attachments[0].step_id, "check1");
 });
 
+test("C25 Dissolve a group: its Automation choice and its Done by go to its first sub-step, when that has none", () => {
+  const { t1, t2, t3, root } = groupFixture();
+  const anno = { steps: root };
+  const r = SPV.groupInto(root, [t1, t2, t3], [], ["check1", "create1"], { name: "Create the sales order", newId });
+  for (const g of r.groups) { g.automation = "not_needed"; g.flags = { waste: true }; g.done_by = "Credit control"; }
+  // The second transaction's first sub-step has its own.
+  t2[0].automation = "person";
+  t2[0].done_by = "Ana";
+  const txs = ["run1", "run2", "run3"].map((c) => root.filter((s) => s.case_id === c));
+  SPV.dissolve(anno, txs, [], "Create the sales order");
+  const first = (c) => root.find((s) => s.case_id === c && s.step_id.startsWith("check"));
+  assert.deepEqual([first("run1").automation, first("run1").flags.waste, first("run1").done_by], ["not_needed", true, "Credit control"]);
+  assert.deepEqual([first("run2").automation, first("run2").done_by], ["person", "Ana"]);
+});
+
 test("C19 Dissolve an opened step: it drops its sub-steps, what the analyst added to them moves to it, and the loss counts only what the analyst wrote", () => {
   const save1 = drafted("save1", "run1", "09:00:29", "09:00:37", K_SAVE, "Save order");
   const save2 = drafted("save2", "run2", "09:01:52", "09:01:59", K_SAVE, "Save order");

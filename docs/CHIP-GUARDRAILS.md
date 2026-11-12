@@ -568,7 +568,7 @@ menu's play item is *Play* (it read *Watch*).
 **Steps** (`#session-layout-steps`, `views/steps-view.js`):
 - Toolbar: `#btn-add-manual-step`, `#btn-delete-selected-steps`,
   `#btn-merge-selected` and `#btn-group-selected` (Group into a
-  sub-process..., contract C19; shown with two or more ticked rows), `#steps-summary`,
+  sub-process..., contract C19; shown with two or more ticked rows),
   `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`;
   lane FX3: not shown in a project without a recording, disabled with its
   reason in a recording without a click or a field typed).
@@ -646,7 +646,12 @@ menu's play item is *Play* (it read *Watch*).
   `.flow-link-text`, the dropdown `select.flow-link-to`
   (`#flow-link-to-<i>`, its options the transaction's steps and `end`),
   `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
-  `#flag-waste`;
+  the Automation choice `select#step-automation` (C25: `undecided`,
+  `automated`, `person`, `not_needed`; read only, the text
+  `#step-automation-text`, "Automation: <choice>"); on the line of facts
+  after the System field, Done by `input#step-done-by` (its placeholder the
+  recording's role; read only, the text `#step-done-by-text`, "Done by
+  <who>");
   `#step-shots-sect` (only when the step has screenshots;
   `.step-shot-card[data-ref][data-kind]` with `[data-shot-act="pdd"|"remove"]`,
   and `[data-shot-act="unhide"]`); Recorded `details#step-recorded` (a
@@ -740,6 +745,8 @@ the transactions ran one click away):
   `.pdt-link`, the system labels marked `.pdt-inert`: 2.0.1,
   `TextAnnotation_system_<k>` above a task or a map's one
   `TextAnnotation_system`, "System: <name>", `Sub<n>_` inside a plane;
+  C25's Done by labels likewise, `TextAnnotation_doneby_<k>` under a task
+  or a map's one `TextAnnotation_doneby`, "Done by: <who>";
   the legend `TextAnnotation_legend` of a copy made before 2.0.1 is inert
   too); a note (a step's notes are `TextAnnotation_<n>`, under its task)
   opens the popover `#map-asis-note` (`.map-asis-pop-text`,
@@ -845,7 +852,12 @@ capture app's Recording setup (`session-config-window.js`,
 Setup (analyst)'s *Recording setup...*) and its named transactions (the
 bar's caret, `pdt:namedRunMenu`, the tray's *Start a named transaction*);
 and the Steps row's duration (the row's `.step-time` is when the step
-starts).
+starts). Gone since contract C25 (2026-11-12): the step editor's Waste tick
+`#flag-waste` (now the Automation choice's *No longer needed*,
+`#step-automation`), the step menu's *Flag as waste* and *Clear waste flag*
+(now *Mark as no longer needed* and *Mark as not decided yet*), and the
+step map's manual task for a step added by hand with no system (the hand
+now means only *Stays with a person*).
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

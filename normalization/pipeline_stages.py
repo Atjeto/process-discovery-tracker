@@ -480,15 +480,17 @@ def _run_mining_exports(
         # Built from annotations -- no Process Template needed.
         try:
             import bpmn_observed
-            from step_context import StepContext
+            from step_context import StepContext, recording_role
             if any(s.get("state") != "hidden"
                    for s in (existing_anno.get("steps") or [])):
-                # The system and screen each task's documentation names.
+                # The system and screen each task's documentation names, and
+                # (C25) who does a step without a Done by of its own.
                 context = StepContext(
                     {e["event_id"]: e["data"] for e in events or []
                      if e.get("type") == "interaction" and e.get("event_id")
                      and isinstance(e.get("data"), dict)},
-                    ((summary or {}).get("meta") or {}).get("app_names"))
+                    ((summary or {}).get("meta") or {}).get("app_names"),
+                    role=recording_role(manifest))
                 # The implicit run of a session without a recording (C16).
                 rows = [r for r in (summary or {}).get("case_stats") or [] if isinstance(r, dict)]
                 implicit = [r.get("case_id") for r in rows if r.get("implicit")]

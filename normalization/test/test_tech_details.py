@@ -236,6 +236,39 @@ def test_steps_and_controls_lists_the_reference_transaction_in_step_order(tmp_pa
     assert all(r[4] != "Noise" and r[6] != "Hidden click" for r in body)
 
 
+def test_steps_and_controls_say_what_the_automation_does_and_who_does_it(tmp_path):
+    """Contract C25: two columns, Automation (in the PDD's words) and Done by
+    (its own, else the recording's role), for the row's step (a sub-step
+    its chapter prints is its own step)."""
+    fixture = _fixture()
+    annotations, _stats, manifest, _events = fixture
+    manifest["config"] = {"worker": {"id": "w1", "role": "order clerk"}}
+    steps = {s["step_id"]: s for s in annotations["steps"]}
+    steps["s1"]["automation"] = "automated"
+    steps["s3"]["automation"] = "person"
+    steps["s3"]["done_by"] = "Payments team"
+    subs = {s["step_id"]: s for s in steps["s2"]["sub_steps"]}
+    subs["ss3"]["automation"] = "not_needed"
+    rows = read_workbook(_write(tmp_path, fixture=fixture))["Steps and controls"]["rows"]
+    assert rows[0][-2:] == ["Automation", "Done by"]
+    assert [(r[0], r[-2], r[-1]) for r in rows[1:]] == [
+        ("Step 1", "The automation does it", "Order clerk"),
+        ("Step 1", "The automation does it", "Order clerk"),
+        ("Step 2.1", "Not decided yet", "Order clerk"),
+        ("Step 2.2", "No longer needed", "Order clerk"),
+        ("Step 2.3", "Not decided yet", "Order clerk"),
+        ("Step 3", "Stays with a person", "Payments team"),
+    ]
+    # Without a role and a Done by, nobody is named.
+    manifest.pop("config")
+    rows = read_workbook(_write(tmp_path, fixture=fixture))["Steps and controls"]["rows"]
+    # An empty cell is not written, so a row ends at its last value.
+    full = [r + [""] * (len(TD.STEPS_HEADER) - len(r)) for r in rows[1:]]
+    assert [(r[-2], r[-1]) for r in full] == [
+        ("The automation does it", ""), ("The automation does it", ""), ("Not decided yet", ""),
+        ("No longer needed", ""), ("Not decided yet", ""), ("Stays with a person", "Payments team")]
+
+
 def test_data_fields_hold_one_column_per_transaction(tmp_path):
     rows = read_workbook(_write(tmp_path))["Data fields"]["rows"]
     header = rows[0]

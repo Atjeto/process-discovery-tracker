@@ -294,10 +294,12 @@ function predatesLabels(xml) {
     !/\sid="(?:Sub\d+_)?TextAnnotation_system(?:_\d+)?"/.test(s);
 }
 
+/* C25 adds its marks: a service task (the gear) and a Done by label
+   (TextAnnotation_doneby, TextAnnotation_doneby_<k>). */
 function predatesRichMap(xml) {
   const s = String(xml || "");
-  return !/<(?:[\w.-]+:)?(?:userTask|manualTask)[\s/>]/.test(s) &&
-    !/\sid="(?:Sub\d+_)?TextAnnotation_(?:legend|system(?:_\d+)?)"/.test(s) &&
+  return !/<(?:[\w.-]+:)?(?:userTask|manualTask|serviceTask)[\s/>]/.test(s) &&
+    !/\sid="(?:Sub\d+_)?TextAnnotation_(?:legend|system(?:_\d+)?|doneby(?:_\d+)?)"/.test(s) &&
     !/\s[\w.-]+:fill="/.test(s);
 }
 

@@ -20,8 +20,9 @@ application work), and it reads in the reader's order:
      contract C6): purpose, scope, trigger, result and key contacts.
   3. As-Is process: the systems the process runs through, the As-Is map on
      a page of its own, and the steps of the reference transaction (the
-     pattern run, contract C3). Each step says its system and screen, in
-     how many transactions it happened and where it is in the recording
+     pattern run, contract C3). Each step says its system and screen, who
+     does it (contract C25), in how many transactions it happened and where
+     it is in the recording
      ("Transaction 1 at 0:19", on the project's one clock, never a time in a
      video, C23), never a time it took; its description (C7) is its text. The flow
      the analyst set on it (C17) prints under it: "Only when" its condition,
@@ -47,7 +48,11 @@ application work), and it reads in the reader's order:
      instead ("System | Steps"), since nobody recorded what was entered.
   6. Volume and effort: as the analyst states it (C6 `document.effort`),
      never the recorded times, which are a walkthrough's.
-  7. Improvement and automation scope: the analyst's field, the re-keyed
+  7. Improvement and automation scope: the analyst's field, the steps 3.2
+     prints by what the automation does with each (contract C25: "The
+     automation does it", "Stays with a person", "No longer needed", "Not
+     decided yet", each heading only when it holds a step; none while no
+     step has a choice), the re-keyed
      data (a value typed again in another system in the same transaction),
      and the To-Be map when one was chosen.
   8. Notes: only when written.
@@ -120,8 +125,9 @@ from _dt import parse_ts_or_none as _parse_ts
 from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
-from step_context import (StepContext, clock, has_video, place_starts, process_order, step_start,
-                          step_system, untimed_key, video_count)
+from step_context import (AUTOMATION_WORDS, StepContext, clock, has_video, place_starts,
+                          process_order, recording_role, step_automation, step_start, step_system,
+                          untimed_key, video_count)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
 from recognition import is_browser_chrome
@@ -520,7 +526,8 @@ class _Session:
                 self.interactions[ev["event_id"]] = ev["data"]
                 self.times[ev["event_id"]] = str(ev.get("timestamp") or "")
         self.have_events = events is not None
-        self.ctx = StepContext(self.interactions, self.app_names)
+        # C25: who does a step without a Done by of its own.
+        self.ctx = StepContext(self.interactions, self.app_names, role=recording_role(self.manifest))
         self.has_video = has_video(self.manifest, self.annotations)
         self.video_count = video_count(self.manifest, self.annotations)
 
@@ -691,9 +698,10 @@ class _Session:
 
     def context_line(self, step, level=None) -> str:
         """The line under a step's heading: the code of the library activity
-        the step is (contract C21, "Code SF-01"), system and screen, in how
-        many transactions it happened ("in 3 of 4 transactions"), where it
-        is in the recording. No time it took: the recording's times are a
+        the step is (contract C21, "Code SF-01"), system and screen, who does
+        it (contract C25, "done by Sales assistant": its Done by, else the
+        recording's role), in how many transactions it happened ("in 3 of 4
+        transactions"), where it is in the recording. No time it took: the recording's times are a
         walkthrough with explanations, and section 6 states the effort as
         the analyst writes it. The implicit run (transactions not marked) is
         not counted. Contract C19: a sub-step of a chapter (`level`, its map)
@@ -706,6 +714,9 @@ class _Session:
         where = self.where(step)
         if where:
             parts.append(where)
+        who = self.ctx.done_by(_members(step)[0])
+        if who:
+            parts.append(f"done by {who}")
         sub = level is not None and bool(level.path)
         if not self.implicit and sub and self.pattern_index is not None:
             parts.append(f"in {len(level.node_runs.get(node_of(step)) or ()) or 1} of "
@@ -1247,14 +1258,13 @@ def _write_steps(doc, s):
     systems = _systems_in_order(s)
     if systems:
         doc.add_paragraph(f"The process runs through {_joined(systems)}.")
+    steps = printed_steps(s)
     if s.pattern_index is None:
-        steps = s.steps
         if steps:
             why = ("Transactions were not marked in this recording" if not s.runs
                    else "None of the recorded transactions has steps")
             doc.add_paragraph(f"{why}, so every step is listed in time order.")
     else:
-        steps = s.run_steps(s.pattern_index)
         # C16: one implicit run holds every step (the order is the time, then
         # `order` for the steps added without a time): nothing to say of it.
         if not s.implicit:
@@ -1430,7 +1440,9 @@ def _write_step(doc, s, step, number, steps, level=None):
     """One printed step: its heading ("Step 2: <name>"), its context line,
     "Only when" its condition, its description when the analyst wrote it
     (else its library activity's, C21), the fields it entered, its
-    attachments, its screenshots, the waste flag and its flow (C17).
+    attachments, its screenshots, "No longer needed." on a sub-step of a
+    chapter the automation does not need (C25; a step of 3.2 is listed so in
+    section 7) and its flow (C17).
     Contract C19: `level` is the map it is drawn in; in a
     sub-process's chapter it is numbered "Step <chapter number>.<number>". A
     group of steps (`group: true`) prints no fields and no screenshot: its
@@ -1464,8 +1476,12 @@ def _write_step(doc, s, step, number, steps, level=None):
     alt = f"Screenshot of step {_step_number(number, level)}: {_step_name(step)}"
     for ref in [] if group else s.screenshots(step):
         _embed_screenshot(doc, s.folder, ref, step, alt)
-    if (step.get("flags") or {}).get("waste") is True:
-        p = doc.add_paragraph("Flagged as waste.")
+    # C25: a step no longer needed (an older project's waste flag reads so
+    # too) is listed under "No longer needed" in section 7, which lists the
+    # steps 3.2 prints; a sub-step of a chapter, which section 7 does not
+    # list, says it here, in the choice's words.
+    if step_automation(step) == "not_needed" and level is not None and level.path:
+        p = doc.add_paragraph(AUTOMATION_WORDS["not_needed"] + ".")
         for run in p.runs:
             run.italic = True
     # C17: where the process goes after the step, besides the next step.
@@ -2097,12 +2113,45 @@ def _write_effort(doc, s):
 
 # ---- 7. Improvement and automation scope, 8. Notes ---------------------------------
 
+# Contract C25: the order of section 7's headings, by what the automation does
+# with a step.
+_AUTOMATION_ORDER = ("automated", "person", "not_needed", "undecided")
+
+
+def printed_steps(s) -> list:
+    """The steps 3.2 prints, in its order: the reference transaction's, else
+    (no transaction with steps) every step in time order."""
+    return s.run_steps(s.pattern_index) if s.pattern_index is not None else list(s.steps)
+
+
+def _automation_groups(s) -> list[tuple[str, list[tuple[int, dict]]]]:
+    """Section 7's lists (contract C25): [(heading, [(step number, step)])]
+    of the steps 3.2 prints, by what the automation does with each
+    (step_context.step_automation), in the order "The automation does it",
+    "Stays with a person", "No longer needed", "Not decided yet"; a heading
+    only when it holds a step. Nothing while no step has a choice other
+    than "undecided": a project where nothing was decided does not list
+    every step under "Not decided yet"."""
+    by_choice: dict[str, list[tuple[int, dict]]] = {}
+    for number, step in enumerate(printed_steps(s), start=1):
+        by_choice.setdefault(step_automation(step), []).append((number, step))
+    if not any(c != "undecided" for c in by_choice):
+        return []
+    return [(AUTOMATION_WORDS[c], by_choice[c]) for c in _AUTOMATION_ORDER if by_choice.get(c)]
+
+
 def _write_improvement(doc, s, tobe_map_image, notes_follow):
     doc.add_heading("7. Improvement and automation scope", level=1)
     _field_or_placeholder(doc, s.field("improvement"),
                           "what to improve or automate, what stays manual, and why")
     # A value typed again in another system in the same transaction: a
     # finding for the improvement scope, stated once per pair of fields.
+    # C25: the steps 3.2 prints by what the automation does with them, each
+    # heading only when it holds a step.
+    for heading, numbered in _automation_groups(s):
+        doc.add_paragraph().add_run(heading).bold = True
+        for number, step in numbered:
+            doc.add_paragraph(f"Step {number}: {_step_name(step)}", style="List Bullet")
     rekeys = _rekeyed(s)
     if rekeys:
         doc.add_paragraph().add_run("Re-keyed data").bold = True

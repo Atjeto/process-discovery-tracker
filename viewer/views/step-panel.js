@@ -68,6 +68,11 @@ const MarkerEdits = require("../marker-edits.js");
 const TE = require("../time-edits.js");
 const RO = require("../read-only.js");
 const StepEditor = require("../step-editor.js");
+// C25: a step no longer needed (the waste flag) says so in the Automation
+// choice's words.
+const StepScope = require("../step-scope.js");
+const NOT_NEEDED_TAG = (cls) => '<span class="' + cls + '" title="' + escapeAttr(StepScope.NOT_NEEDED_TITLE) + '">' +
+  escapeHtml(StepScope.labelOf("not_needed")) + "</span>";
 
 /* { label, path, focusId }: the map box shown, the level it is at (C19, []
    the main level) and the occurrence the foot's act and a play act on; null
@@ -333,14 +338,14 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer, part
   const focus = st.step_id === focusId;
   // Lane FX2: a moment the video does not cover says so, and has no play.
   const m = hasVideo ? _moment(st) : null;
-  const waste = has("waste") && !!(st.flags && st.flags.waste);
+  const waste = has("waste") && StepScope.automationOf(st) === "not_needed";
   return '<li class="sp-occ' + (focus ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '"' +
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
       (m && m.kind === "covered" ? '<button type="button" class="sp-play" title="Play this occurrence in the video above" aria-label="' +
         escapeAttr("Play " + StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun(), open)) + '">▶</button>' : "") +
       '<span class="sp-at">' + escapeHtml(StepFacts.occurrenceLine(st, o.run, again, origin, _clockNoun(), open)) + "</span>" +
-      (waste ? '<span class="step-tag-waste sp-waste-tag" title="Flagged as waste: this step should not be needed">Waste</span>' : "") +
+      (waste ? NOT_NEEDED_TAG("step-tag-waste sp-waste-tag") : "") +
     "</div>" +
     (m && m.kind === "outside" ? '<p class="sp-nocover">' + escapeHtml(StepFacts.NOT_COVERED) + "</p>" : "") +
     (shots.length ? '<div class="sp-sec"><div class="sp-lead">Screenshots</div><div class="sp-shots">' + shots.map((sh) =>
@@ -462,8 +467,8 @@ function render() {
     new Map(SPM.allSteps((s.annotations && s.annotations.steps) || []).map((x) => [x.step_id, x.name])));
   const isSub = SPM.isSubProcessNode(txs, path, _state.label);
   // Lane FX2 (validation pass 2, F21): the waste flag shows here too, as in
-  // Steps and the PDD.
-  const wasted = occ.filter((o) => o.step.flags && o.step.flags.waste).length;
+  // Steps and the PDD; C25: in the Automation choice's words.
+  const wasted = occ.filter((o) => StepScope.automationOf(o.step) === "not_needed").length;
   // Lane E-1: on the Map the name, the system and the description are
   // fields (_drawHead); read only, text. Plan D2: on Steps the editor beside
   // the panel has them, the waste flag, the flow and the count, so the panel
@@ -476,8 +481,8 @@ function render() {
   if (nameEl && !has("name")) nameEl.classList.add("sr-only");
   const aboutHtml =
     (has("system") && !editable && (where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
-    (has("waste") && wasted ? '<p class="sp-waste" id="sp-waste"><span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span> ' +
-      escapeHtml(wasted === occ.length ? "Flagged as waste" : "Flagged as waste in " + wasted + " of " + occ.length) + "</p>" : "") +
+    (has("waste") && wasted ? '<p class="sp-waste" id="sp-waste">' + NOT_NEEDED_TAG("step-tag-waste") +
+      (wasted === occ.length ? "" : " " + escapeHtml("in " + wasted + " of " + occ.length)) + "</p>" : "") +
     (has("description") && !editable && desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
     (has("flow") && flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
     (has("count") ? '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length, open)) + "</p>" : "");

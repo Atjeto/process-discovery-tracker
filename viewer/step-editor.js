@@ -7,6 +7,9 @@
   const StepFlow = require("./step-flow.js");
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
   const FieldRefusal = require("./field-refusal.js");
+  // C25: what the automation does with the step, and who does it.
+  const StepScope = require("./step-scope.js");
+  const { NOT_NEEDED_TITLE } = StepScope;
   const EMPTY_NAME = "A step needs a name, so the name it had is back.";
   // C21: the activities the name field's picker keeps as the analyst types.
   const { filterActivities } = require("./library.js");
@@ -133,10 +136,11 @@
         (s.state === "hidden" ? " step-hidden" : "");
       row.dataset.stepId = s.step_id;
       row.dataset.state = s.state || "";
-      // Waste is the only per-step flag (ADR-0027): a small tag, never a
+      // Waste is the only per-step flag (ADR-0027), since C25 the Automation
+      // choice No longer needed, said in its words: a small tag, never a
       // strikethrough (which read as removed).
-      const flagBadges = (s.flags && s.flags.waste)
-        ? '<span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span>' : "";
+      const flagBadges = StepScope.automationOf(s) === "not_needed"
+        ? `<span class="step-tag-waste" title="${escapeAttr(NOT_NEEDED_TITLE)}">${escapeHtml(StepScope.labelOf("not_needed"))}</span>` : "";
       const chip = stepChip(s.state);
       const chipHtml = (o.baseline && chip.cls === o.baseline) ? ""
         : `<span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>`;
@@ -303,14 +307,16 @@
 
   /* The selected step's editor (P1.7; 2.0.1, the owner's review of the Steps
      page: an editor for the analyst, in the order the work goes, each fact
-     once). Nothing waits for a Save button: the name saves on Enter or when
-     the field is left, the description when it is left, Waste on its click;
+     once). Nothing waits for a Save button: the name and (C25) Done by save
+     on Enter or when the field is left, the description when it is left,
+     Automation when a choice is made;
      each is one undoable edit. The verbs that change the step's shape are
      the Steps toolbar's (steps-view.js), the scissors excepted.
        the head: the name as the title (C21: the library's picker under it),
          the step's state and (C21) the code of the library activity it is
          named from; then one line of facts: the system (C16, a field: the
-         recording's until the analyst types another), the screen, where the
+         recording's until the analyst types another), Done by (C25, a
+         field: the recording's role until the analyst types another), the screen, where the
          step is, how long it took (2.0.3: its start and end as fields
          when its time is the analyst's, `factsHtml`), in how many
          transactions, then Play
@@ -320,7 +326,9 @@
        what you write: the Description (C7; the drafting's narration is not
          its hint: the actions are under Recorded) with what was said during
          the step under it (C8), each sentence with Add, the Flow line (C17:
-         Only when and Decision, each a sentence of fields) and Waste;
+         Only when and Decision, each a sentence of fields) and Automation
+         (C25: what the automation does with the step, in place of the Waste
+         tick; read only, the choice as text);
        the step's screenshots, the one the PDD prints marked;
        what it is made of: Recorded (a native <details>, open or closed as
          the analyst last left it; open in a hand-off opened read only): how
@@ -333,9 +341,11 @@
      only what it lacks (plan D2): the step's video and every time the step
      happened, each with its play. Callbacks (steps-view.js stepDetailCallbacks) carry
      the facts, the state, the code, the Recorded line, the description, the
-     System field, the screenshots and what is attached, and (C21) the name
+     System field, the screenshots and what is attached, (C21) the name
      field's picker: `picker` (library.js pickerFor) and
-     onPickActivity(stepId, activityId). Lane PANE: the same editor draws
+     onPickActivity(stepId, activityId), and (C25) `doneBy` ({ placeholder,
+     role }: what the Done by field shows while empty, the recording's role),
+     onDoneBy(stepId, text) and onAutomation(stepId, value). Lane PANE: the same editor draws
      the step opened in the Timeline's pane (views/timeline-pane.js), in its
      own host: `onTimeline` leaves out Show on timeline (the step is on it),
      and `afterFactsHtml` goes under the line of facts (the pane's Also
@@ -345,7 +355,6 @@
     try { _renderStepDetail(host, step, callbacks || {}); } finally { _rendering = false; }
   }
   function _renderStepDetail(host, step, callbacks) {
-    const flags = step.flags || {};
     const interMap = (callbacks && callbacks.interactionsById) || {};
     const interIds = (step.evidence && step.evidence.interaction_event_ids) || [];
     const resolvedInter = interIds.map((id) => interMap[id]).filter(Boolean);
@@ -362,7 +371,7 @@
           <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
           ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
-        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel, which lists every time it happened">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${doneByHtml(step, callbacks)}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel, which lists every time it happened">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
         ${callbacks.afterFactsHtml || ""}
       </div>
       <div class="step-body">
@@ -370,7 +379,7 @@
           <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
           ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
           ${flowSectionHtml(step, callbacks.flow)}
-          <label class="step-waste" title="Rework, duplicate effort or copying between systems: the PDD marks it as waste."><input type="checkbox" id="flag-waste" ${flags.waste ? "checked" : ""}> Waste: this step should not be needed</label>
+          ${automationHtml(step, callbacks)}
         </div>
         ${callbacks.shotsHtml ? `<div class="step-shots-part">${callbacks.shotsHtml}</div>` : ""}
         <div class="step-made">
@@ -408,8 +417,13 @@
       callbacks.onDescription(step.step_id, v);
     };
     descEl.addEventListener("blur", commitDesc);
-    host.querySelector("#flag-waste").addEventListener("change", () =>
-      callbacks.onToggleWaste && callbacks.onToggleWaste(step.step_id));
+    // C25: a choice saves at once; Done by saves as the name does.
+    const autoEl = host.querySelector("#step-automation");
+    if (autoEl) autoEl.addEventListener("change", () => {
+      if (_rendering || !autoEl.isConnected) return;
+      if (callbacks.onAutomation) callbacks.onAutomation(step.step_id, autoEl.value);
+    });
+    wireDoneBy(host.querySelector("#step-done-by"), step, callbacks);
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
     wireFlow(host, step, callbacks);
     // C16: the System field, the screenshots, notes and attachments.
@@ -432,6 +446,53 @@
       playBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       playBtn.disabled = !(step.time_range && step.time_range.start);
     }
+  }
+
+  /* C25: what the automation does with the step, the last line of what you
+     write: a choice of four (step-scope.js CHOICES), or in a project opened
+     read only the choice as text. */
+  const AUTOMATION_TITLE = "What the automation will do with this step.";
+  function automationHtml(step, callbacks) {
+    const value = StepScope.automationOf(step);
+    if (callbacks.readOnly) {
+      return `<p class="step-automation" id="step-automation-text">Automation: ${escapeHtml(StepScope.labelOf(value))}</p>`;
+    }
+    const options = StepScope.CHOICES.map((c) =>
+      `<option value="${escapeAttr(c.value)}"${c.value === value ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
+    return `<label class="step-automation" title="${escapeAttr(AUTOMATION_TITLE)}">Automation <select id="step-automation">${options}</select></label>`;
+  }
+
+  /* C25: who does the step, on the line of facts after the system: a field
+     whose placeholder is the recording's role ("Sales assistant (from the
+     recording)"), a typed value winning; in a project opened read only the
+     value or the role as text, nothing when nobody is named. */
+  const DONE_BY_TITLE = "A role or a person; empty, the recording's role.";
+  function doneByHtml(step, callbacks) {
+    const d = callbacks.doneBy || {};
+    const own = StepScope.cleanDoneBy(step.done_by);
+    if (callbacks.readOnly) {
+      const who = own || d.role || "";
+      return who ? `<span class="step-doneby" id="step-done-by-text">Done by ${escapeHtml(who)}</span>` : "";
+    }
+    return `<label class="step-doneby" title="${escapeAttr(DONE_BY_TITLE)}">Done by ` +
+      `<input type="text" id="step-done-by" class="step-doneby-input" maxlength="${StepScope.DONE_BY_MAX}" value="${escapeAttr(own)}"` +
+      ` placeholder="${escapeAttr(d.placeholder || "A role or a person")}"></label>`;
+  }
+
+  /* Done by saves when the field is left, Enter leaves it, Escape puts back
+     what it held; a redraw saves nothing. */
+  function wireDoneBy(input, step, callbacks) {
+    if (!input) return;
+    const shown = input.value;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      else if (e.key === "Escape") { e.preventDefault(); input.value = shown; input.blur(); }
+    });
+    input.addEventListener("blur", () => {
+      if (_rendering || !input.isConnected) return;
+      if (StepScope.cleanDoneBy(input.value) === StepScope.cleanDoneBy(shown)) return;
+      if (callbacks.onDoneBy) callbacks.onDoneBy(step.step_id, input.value);
+    });
   }
 
   /* C21: the name field and its picker. The field offers the activities of

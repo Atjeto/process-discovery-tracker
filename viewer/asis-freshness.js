@@ -19,7 +19,8 @@
  * conditions on the lines, the paths no transaction took and how often each
  * was taken), each box's notes, files, the system set on its steps, whether
  * it is done outside every system (the hand marker), whether it is a
- * sub-process and whether it is flagged as waste, and the Trigger and the
+ * sub-process, whether it is flagged as waste and (C25) what the automation
+ * does with it and who does it, and the Trigger and the
  * Result that name the start and the end. A confirmed transaction, a
  * description, a screenshot or the reference transaction draw nothing on
  * the map, so they change nothing here.
@@ -38,6 +39,7 @@ const path = require("node:path");
 const RunsModel = require("./runs-model.js");
 const SPM = require("./sub-process-maps.js");
 const RefStore = require("./reference-maps.js");
+const StepScope = require("./step-scope.js");
 const { buildAnnotationDfg, flowEdges, mapNodeLabel } = require("./process-map-levels.js");
 
 /* An analyst's text as one line ("" for a non string). */
@@ -52,7 +54,9 @@ function _firstLine(doc, key) {
 function _sorted(list) { return [...new Set(list)].sort(); }
 
 /* What one box of a map shows beside its name, from the steps it stands
-   for: [notes, files, systems, manual, sub-process, waste]. */
+   for: [notes, files, systems, manual, sub-process, waste], then (C25) only
+   when a step of it has one, the choices made on it and the Done by typed
+   on it, so a copy made before C25 keeps its signature. */
 function _boxFacts(steps, notesBy, filesBy) {
   const ids = steps.map((s) => s.step_id);
   const notes = _sorted(ids.flatMap((id) => notesBy.get(id) || []));
@@ -60,7 +64,11 @@ function _boxFacts(steps, notesBy, filesBy) {
   const systems = _sorted(steps.map((s) => _line(s.system)).filter(Boolean));
   const manual = steps.every((s) => s.state === "manually_authored" &&
     !((s.evidence && s.evidence.interaction_event_ids) || []).length && !_line(s.system));
-  return [notes, files, systems, manual, steps.some(SPM.isSubProcess), steps.some((s) => !!(s.flags && s.flags.waste))];
+  const facts = [notes, files, systems, manual, steps.some(SPM.isSubProcess), steps.some((s) => !!(s.flags && s.flags.waste))];
+  const choices = steps.map((s) => StepScope.automationOf(s)).filter((v) => v !== "undecided");
+  const doneBy = _sorted(steps.map((s) => StepScope.cleanDoneBy(s.done_by)).filter(Boolean));
+  if (choices.length || doneBy.length) facts.push(choices, doneBy);
+  return facts;
 }
 
 /**

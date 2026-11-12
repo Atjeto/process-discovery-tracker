@@ -13,7 +13,9 @@
  *   a text annotation shows its note: its documentation holds the whole text
  *     when the map shows it cut, else its text is the whole note;
  *   a system label (2.0.1: TextAnnotation_system_<k> above a task, or a
- *     map's one TextAnnotation_system), the legend of a copy made before
+ *     map's one TextAnnotation_system), a Done by label (C25:
+ *     TextAnnotation_doneby_<k> under a task, or TextAnnotation_doneby),
+ *     the legend of a copy made before
  *     2.0.1 (TextAnnotation_legend), the flows, the events and the gateways
  *     do nothing.
  * Contract C19: a map with sub-processes has a plane per sub-process
@@ -34,8 +36,9 @@ const Planes = require("./map-planes.js");
 
 const LEGEND_ID = "TextAnnotation_legend";
 /* A system label the pipeline writes (2.0.1): above a task, or the one label
-   of a map done in one system. */
-const SYSTEM_ID = /^TextAnnotation_system(?:_\d+)?$/;
+   of a map done in one system; and (C25) a Done by label: under a task, or
+   the one label of a map done by one role or person. */
+const SYSTEM_ID = /^TextAnnotation_(?:system|doneby)(?:_\d+)?$/;
 const DATA_PREFIX = "DataObjectReference_";
 /* The id the pipeline gives the text annotation of a step's notes (C18,
    mining.py: TextAnnotation_1, TextAnnotation_2, ...; in a sub-process's
@@ -77,8 +80,8 @@ function isLegend(element) {
   return is(element, "bpmn:TextAnnotation") && Planes.baseId(_bo(element).id) === LEGEND_ID;
 }
 
-/* A system label (2.0.1): part of the picture, never a link. The analyst
-   changes it by typing in the map editor. */
+/* A system label (2.0.1) or a Done by label (C25): part of the picture,
+   never a link. The analyst changes it by typing in the map editor. */
 function isSystemLabel(element) {
   return is(element, "bpmn:TextAnnotation") && SYSTEM_ID.test(Planes.baseId(_bo(element).id));
 }

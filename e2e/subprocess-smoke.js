@@ -27,7 +27,9 @@
  *   - Confirm transaction confirms the reference transaction's drafts at
  *     every level; a new sub-process with drafts makes it read Draft again;
  *   - the step panel and the Timeline's steps lane follow the level (the
- *     occurrences of a sub-step in every visit; "Steps in Save order");
+ *     occurrences of a sub-step in every visit, the panel opened from its
+ *     row from 1440 px and from the editor's Play below, plan D2; "Steps in
+ *     Save order");
  *   - the Map at a level (lane SUB-V2): the picker lists every map (Main
  *     process, then each sub-process indented with its number) and the live
  *     map marks the sub-processes' boxes; choosing Save order draws its live
@@ -464,6 +466,23 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       await openRow(SAVE).locator(".step-sub-open").click({ timeout: T });
       await page.waitForSelector("#steps-crumbs:not([hidden])", { timeout: T });
       await openRow("Enter Unit price").click({ timeout: T });
+      // Plan D2: from 1440 px the row opens the panel beside the editor;
+      // below, the row opens nothing and only Play opens it, in the place of
+      // the step list (as panel-smoke opens it). This project has no video,
+      // so the editor offers no Play button: the smoke calls what Play calls
+      // (renderer.js watchStep: step-panel.js watch) on the selected step.
+      const beside = await page.evaluate(() => require("./views/step-panel.js").standsBeside(window.innerWidth));
+      if (!beside) {
+        await page.waitForFunction(() => !!require("./state.js").getSelectedStepId(), null, { timeout: T });
+        const opened = await page.evaluate(() => {
+          const panelHidden = document.getElementById("step-panel").hidden;
+          const id = require("./state.js").getSelectedStepId();
+          const hit = require("./sub-process-maps.js").findStep(require("./state.js").getSession().annotations.steps, id);
+          require("./views/step-panel.js").watch(hit && hit.step);
+          return { rowOpenedNothing: panelHidden, step: !!hit };
+        });
+        if (!opened.rowOpenedNothing || !opened.step) throw new Error("below 1440 px: " + JSON.stringify(opened));
+      }
       await page.waitForFunction(() => !document.getElementById("step-panel").hidden &&
         (document.getElementById("sp-name") || {}).textContent === "Enter Unit price", null, { timeout: T });
       panel = await page.evaluate(() => ({
@@ -471,6 +490,12 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
         occ: document.querySelectorAll("#sp-body .sp-occ").length,
         explain: (document.getElementById("sp-explain") || {}).textContent || "",
       }));
+      panel.opened = beside ? "row" : "play";
+      // Below 1440 px Escape gives the step list back for the crumbs below.
+      if (!beside) {
+        await page.keyboard.press("Escape");
+        await page.waitForFunction(() => document.getElementById("step-panel").hidden, null, { timeout: T });
+      }
       await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
       await page.waitForSelector('.tl-lane-name[data-lane="steps"]', { timeout: T });
       const subIds = new Set(opened(readJson(ANNO)).flatMap((s) => s.sub_steps.map((x) => x.step_id)));
@@ -488,9 +513,16 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       await page.waitForSelector('.tl-lane-name[data-lane="steps"]', { timeout: T });
       main = await page.evaluate(() => document.querySelector('.tl-lane-name[data-lane="steps"]').textContent);
       await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
-    } catch (e) { err = errText(e); }
+    } catch (e) {
+      err = errText(e) + " " + JSON.stringify(await page.evaluate(() => ({
+        selected: require("./state.js").getSelectedStepId(), play: !!document.querySelector("#step-detail #btn-step-watch"),
+        panelHidden: document.getElementById("step-panel").hidden,
+        spName: ((document.getElementById("sp-name") || {}).textContent || null),
+      })).catch(() => null));
+    }
     const okPanel = !err && panel && panel.name === "Enter Unit price" && panel.occ === 4 && /once in each transaction/.test(panel.explain);
-    record("the step panel at a level: a sub-step's occurrences in every visit of its sub-process", okPanel, JSON.stringify({ err, panel }));
+    record("the step panel at a level: a sub-step's occurrences in every visit of its sub-process (plan D2: opened from its row from 1440 px; below, the row opening nothing, by what Play calls)",
+      okPanel, JSON.stringify({ err, panel }));
     const okLane = !err && lane && lane.name === "Steps in " + SAVE && lane.allSub && lane.count >= 16 && main === "Steps";
     record("the Timeline's steps lane shows the level's steps and says so (\"Steps in <name>\"); back at the main level it reads Steps",
       okLane, JSON.stringify({ err, lane, main }));
