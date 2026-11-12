@@ -631,12 +631,25 @@ menu's play item is *Play* (it read *Watch*).
   `#step-lib-note`, shown only while the name has the focus), `.step-state`
   (the step's chip), `#step-code` (the library activity's code, C21, when
   the step is named from one), the line of facts `#step-facts`: `#step-system`
-  (with `#step-system-list`), `.step-facts-rest`, `#btn-step-watch` (Play,
-  only with a video: the step in the step panel; plan D2: below 1440 px
-  the panel's only door on Steps) and `#btn-step-jump`; what
+  (with `#step-system-list`), `.step-facts-rest`, lane D6's
+  `.step-facts-occ #btn-step-occurrences` ("in 3 of 4 transactions", only
+  when the step happened in two transactions or more; it opens the step
+  panel at the step without playing; text, no button, on the Timeline),
+  `#btn-step-watch` (Play, only with a video: the step in the step panel;
+  plan D2: below 1440 px it and `#btn-step-occurrences` are the panel's
+  doors on Steps) and `#btn-step-jump`; what
   you write `#step-doc`: `#step-desc` (leaving it saves), `#step-said` (the
   sentences that start in the step's window, the step before bounding its
-  lead),
+  lead), the Information section `#step-info` (contract C26: its heading
+  `#step-info-title`; once it has a row, the header row `.info-head` with
+  `#info-col-name`, `#info-col-example`, `#info-col-where` and the rows
+  `#step-info-rows`: the recorded fields `.info-row.info-recorded` (text,
+  `.info-cell`, marked `.info-from` "Recorded"), then the analyst's lines
+  `.info-row.info-typed[data-i]` with `input.info-input` `#info-name-<i>`,
+  `#info-example-<i>`, `#info-where-<i>` (each `aria-labelledby` its
+  column) and `.info-remove`, and `data-i="new"` for the row being added
+  (`#info-name-new`...); then `#btn-info-add`; read only, every row text
+  and no act),
   the Flow line `#step-flow` (contract C17: `#step-flow-line`,
   `#btn-flow-only-when`, `#btn-flow-go-to`, and C22's `#btn-flow-place`
   with, on a placed step, `#step-placed-line` and `#btn-flow-back-to-time`;
@@ -680,13 +693,15 @@ Lane PANE: never on the Timeline. Plan D2, on Steps: only `#sp-video`,
 `#sp-name` is `.sr-only`, `#sp-about` hidden, no `.sp-lead`, `.sp-shot` or
 foot (`step-panel.js` `partsOn`). From 1440 px of window width
 (`standsBeside(window.innerWidth)`) it stands in `<main>` beside the level
-and follows the selected row; below, only `#btn-step-watch` (or a refused
-frame of the video of a step without a time) opens it, moved into
+and follows the selected row; below, only `#btn-step-watch`,
+`#btn-step-occurrences` (lane D6) or a refused
+frame of the video of a step without a time opens it, moved into
 `#session-layout-steps .editor-split` as its first child, the split
 `.sp-in-list` (`#steps-list-pane` and `#steps-splitter` hidden;
 `step-panel.js` `inList()`), the focus on `#sp-video` (else
 `#btn-sp-close`); Escape in it or its close gives the list back and the
-focus to `#btn-step-watch`. Lane E-1, on the Map only: `#sp-name-edit` holds the name
+focus to the door that opened it (`#btn-step-watch` or
+`#btn-step-occurrences`). Lane E-1, on the Map only: `#sp-name-edit` holds the name
 field `#sp-name-input` (its picker `#sp-activity-list`, its quiet line
 `#sp-lib-note`; `#sp-name` keeps the name, `.sr-only`), and `#sp-fields`
 holds the System field `#sp-system` (in `.sp-system`, the screen

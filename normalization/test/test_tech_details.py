@@ -32,7 +32,7 @@ import tech_details as TD
 import xlsx_writer as XW
 
 NS = {"m": XW.MAIN_NS}
-SHEETS = ["About", "Steps and controls", "Data fields", "Re-keyed values", "Applications"]
+SHEETS = ["About", "Steps and controls", "Information", "Data fields", "Re-keyed values", "Applications"]
 DEMO = NORMALIZATION.parent / "sessions" / "example-aggregate" / "sess-2026-0514-0900"
 TAXONOMY = NORMALIZATION / "taxonomy.yaml"
 _PIPELINE_OK = all(importlib.util.find_spec(m) is not None for m in ("pandas", "pm4py"))
@@ -311,7 +311,7 @@ def test_the_about_sheet_says_the_version_in_its_three_states(tmp_path):
     assert about[0] == ["Technical details: Order entry"]
     assert about[1] == ["Version 1, handed off 2026-09-25 by rasha"]
     assert about[4] == ["Sheet", "What it lists"]
-    assert [r[0] for r in about[5:9]] == SHEETS[1:]
+    assert [r[0] for r in about[5:10]] == SHEETS[1:]
     assert read_workbook(_write(tmp_path))["About"]["rows"][1] == ["Working copy after version 1"]
     annotations, stats, manifest, events = _fixture()
     annotations.pop("handoffs")
@@ -352,7 +352,7 @@ def test_a_project_without_a_recording_has_its_sheets_and_no_transaction_column(
 
 
 def test_a_workbook_holds_rows_only_with_a_row_below_a_header(tmp_path):
-    """holds_rows: a row on any of the four sheets after About; a header is
+    """holds_rows: a row on any of the five sheets after About; a header is
     not a row and About does not count."""
     assert TD.holds_rows(_sheets(tmp_path, _blank_fixture())) is False
     assert TD.holds_rows(_sheets(tmp_path, _fixture())) is True
@@ -362,7 +362,7 @@ def test_a_workbook_holds_rows_only_with_a_row_below_a_header(tmp_path):
     annotations["steps"] = []
     one = [_inter("e1", 1, "chrome.exe", SF, "invoked", "Search", "Button")]
     sheets = _sheets(tmp_path, (annotations, stats, manifest, one))
-    assert [len(sheet.rows) for sheet in sheets[1:]] == [1, 1, 1, 2]
+    assert [len(sheet.rows) for sheet in sheets[1:]] == [1, 1, 1, 1, 2]
     assert TD.holds_rows(sheets) is True
 
 

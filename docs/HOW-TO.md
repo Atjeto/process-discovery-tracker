@@ -107,9 +107,17 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    transcript, what the SME said during the step is right under it: *Add*
    copies a sentence into the description. *Play*, on the step's line, plays
    the step in the step panel, which lists every time it happened. In a
-   window narrower than 1440 pixels the panel opens only with *Play*, in
-   place of the list; Escape gives the list back. What the recorder saw is
-   under *Recorded*. *Automation*, under the Flow line, says what the
+   window narrower than 1440 pixels the panel opens only with *Play*, or
+   with the step's *in 3 of 4 transactions* on its line when it happened in
+   two or more, in place of the list; Escape gives the list back. A project
+   without a video has no *Play*: there *in 3 of 4 transactions* opens the
+   panel. What the recorder saw is under *Recorded*. *Information*, under
+   the description, lists what the step uses or enters: first the fields the
+   recorder saw, marked *Recorded*, then your own lines. *Add information*
+   adds a line: the information, an example and where it goes, such as
+   *Customer number*, *10482*, *SAP, Sold-to party*. The PDD names the
+   information, never an example; the Technical details give the developers
+   the examples too. *Automation*, under the Flow line, says what the
    automation will do with the step: *The automation does it*, *Stays with
    a person*, *No longer needed* or *Not decided yet*; the PDD lists the
    steps by it under its improvement and automation scope. Choose *No
@@ -434,8 +442,10 @@ for ADONIS, Camunda, Bizagi and similar tools (*Order to cash enter a
 customer order v1 map.bpmn*). The Technical details is a
 spreadsheet for the developers: every click and entry of the reference
 transaction with the control it acted on, the fields typed in each
-transaction, and the applications. A project made from a video or from
-nothing recorded none of that, so its zip has no Technical details.
+transaction, the information each step uses or enters with an example,
+and the applications. A project made from a video or from nothing
+recorded none of that, so its zip has the Technical details only when its
+steps list information.
 
 **How a developer opens it.** In PDT, choose *Open*, *Open a zip...* and
 pick the zip. It opens read only: everything can be looked at

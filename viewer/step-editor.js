@@ -10,6 +10,8 @@
   // C25: what the automation does with the step, and who does it.
   const StepScope = require("./step-scope.js");
   const { NOT_NEEDED_TITLE } = StepScope;
+  // C26: the information the step uses or enters.
+  const StepInfo = require("./step-information.js");
   const EMPTY_NAME = "A step needs a name, so the name it had is back.";
   // C21: the activities the name field's picker keeps as the analyst types.
   const { filterActivities } = require("./library.js");
@@ -319,13 +321,16 @@
          field: the recording's role until the analyst types another), the screen, where the
          step is, how long it took (2.0.3: its start and end as fields
          when its time is the analyst's, `factsHtml`), in how many
-         transactions, then Play
+         transactions (lane D6: from two up a link to the step panel's rows,
+         `occurrencesHtml`), then Play
          (with a video: the step in the step panel's video, the panel opening
          again when it was closed; plan D2: below 1440 px it opens only so,
          in the place of the step list) and Show on timeline;
        what you write: the Description (C7; the drafting's narration is not
          its hint: the actions are under Recorded) with what was said during
-         the step under it (C8), each sentence with Add, the Flow line (C17:
+         the step under it (C8), each sentence with Add, Information (C26:
+         `informationHtml`, the recorded fields, then the analyst's lines,
+         each change one undoable edit), the Flow line (C17:
          Only when and Decision, each a sentence of fields) and Automation
          (C25: what the automation does with the step, in place of the Waste
          tick; read only, the choice as text);
@@ -371,13 +376,14 @@
           <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
           ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
-        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${doneByHtml(step, callbacks)}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel, which lists every time it happened">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${doneByHtml(step, callbacks)}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${occurrencesHtml(callbacks)}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel, which lists every time it happened">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
         ${callbacks.afterFactsHtml || ""}
       </div>
       <div class="step-body">
         <div class="step-write" id="step-doc">
           <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
           ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
+          ${informationHtml(step, callbacks)}
           ${flowSectionHtml(step, callbacks.flow)}
           ${automationHtml(step, callbacks)}
         </div>
@@ -425,6 +431,7 @@
     });
     wireDoneBy(host.querySelector("#step-done-by"), step, callbacks);
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
+    wireInformation(host, step, callbacks);
     wireFlow(host, step, callbacks);
     // C16: the System field, the screenshots, notes and attachments.
     if (callbacks.wireExtras) callbacks.wireExtras(host, () => _rendering);
@@ -445,6 +452,184 @@
     if (playBtn) {
       playBtn.addEventListener("click", () => callbacks.onWatchStep && callbacks.onWatchStep(step));
       playBtn.disabled = !(step.time_range && step.time_range.start);
+    }
+    // The "in N of M transactions" fact: the step panel at this step.
+    const occBtn = host.querySelector("#btn-step-occurrences");
+    if (occBtn) occBtn.addEventListener("click", () => callbacks.onShowOccurrences && callbacks.onShowOccurrences(step));
+  }
+
+  /* The line of facts' "in N of M transactions" (`callbacks.occurrences`:
+     { text, n }): with N of 2 or more, on Steps, a link that opens the step
+     panel at the step (its rows, one per transaction: the door of a project
+     without a video, which has no Play); on the Timeline (the step panel does
+     not open there) the same words as text; else nothing (the text is then
+     among the facts, steps-view.js stepFacts). */
+  const OCCURRENCES_TITLE = "Shows every time this step happened, one row per transaction.";
+  function occurrencesHtml(callbacks) {
+    const o = callbacks.occurrences;
+    if (!o || !o.text) return "";
+    if (callbacks.onTimeline) return `<span class="step-facts-occ">${escapeHtml(o.text)}</span>`;
+    return `<span class="step-facts-occ"><button type="button" class="link-btn" id="btn-step-occurrences" title="${escapeAttr(OCCURRENCES_TITLE)}">${escapeHtml(o.text)}</button></span>`;
+  }
+
+  /* C26: the Information section, after the Description: first the recorded
+     fields of the step (read only, `callbacks.information.recorded`,
+     step-information.js recordedRows), marked Recorded; then the analyst's
+     lines, each a row of three fields (Information, Example, Where it goes)
+     with Remove; then Add information. A header row names the columns, and
+     each field is labelled by its column (aria-labelledby). A field saves
+     when it is left or on Enter, Escape puts back what it held; a line whose
+     name is emptied goes (the steps view says so). Add information opens a
+     row that is kept once it has a name, when the focus leaves the row or on
+     Enter (Escape closes it); until then a redraw keeps what was typed in it.
+     Read only: the same rows as text, no acts. The steps view makes each add,
+     change or remove one undoable edit (callbacks.onInfoAdd, onInfoField,
+     onInfoRemove). */
+  let _infoOpen = { stepId: null, adding: false, draft: {} };
+  let _infoFocus = null;   // { stepId, id }: a part to focus once drawn
+  function _infoOpenFor(step) {
+    if (_infoOpen.stepId !== step.step_id) {
+      _infoOpen = { stepId: step.step_id, adding: false, draft: {} };
+      _infoFocus = null;
+    }
+    return _infoOpen;
+  }
+  const INFO_RECORDED_TITLE = "Read from the actions recorded in this step.";
+  const INFO_IDS = { name: "info-name", example: "info-example", goes_to: "info-where" };
+  const INFO_COLS = { name: "info-col-name", example: "info-col-example", goes_to: "info-col-where" };
+
+  function _infoTextRow(e, recorded) {
+    const cell = (v) => `<span class="info-cell" title="${escapeAttr(v || "")}">${escapeHtml(v || "")}</span>`;
+    return `<li class="info-row${recorded ? " info-recorded" : " info-typed"}">` + cell(e.name) + cell(e.example) + cell(e.goes_to) +
+      (recorded ? `<span class="info-from" title="${escapeAttr(INFO_RECORDED_TITLE)}">${escapeHtml(StepInfo.WORDS.recorded)}</span>` : `<span class="info-from"></span>`) +
+      `</li>`;
+  }
+  function _infoEditRow(key, e) {
+    const field = (k) => `<input type="text" class="info-input" id="${INFO_IDS[k]}-${key}" data-key="${k}" aria-labelledby="${INFO_COLS[k]}"` +
+      ` maxlength="${k === "name" ? StepInfo.NAME_MAX : StepInfo.TEXT_MAX}" value="${escapeAttr(e[k] || "")}" autocomplete="off">`;
+    return `<li class="info-row info-typed${key === "new" ? " pending" : ""}" data-i="${key}">` + field("name") + field("example") + field("goes_to") +
+      `<button type="button" class="link-btn info-remove" title="${escapeAttr(StepInfo.WORDS.removeTitle)}">${escapeHtml(StepInfo.WORDS.remove)}</button></li>`;
+  }
+
+  function informationHtml(step, callbacks) {
+    if (!step) return "";
+    const W = StepInfo.WORDS;
+    const recorded = (callbacks.information && Array.isArray(callbacks.information.recorded)) ? callbacks.information.recorded : [];
+    const entries = StepInfo.entriesOf(step);
+    const ro = !!callbacks.readOnly;
+    const open = ro ? { adding: false, draft: {} } : _infoOpenFor(step);
+    let rows = recorded.map((e) => _infoTextRow(e, true)).join("");
+    rows += ro ? entries.map((e) => _infoTextRow(e, false)).join("") : entries.map((e, i) => _infoEditRow(String(i), e)).join("");
+    if (open.adding) rows += _infoEditRow("new", open.draft);
+    const head = rows
+      ? `<div class="info-row info-head"><span class="info-col" id="${INFO_COLS.name}">${escapeHtml(W.name)}</span>` +
+        `<span class="info-col" id="${INFO_COLS.example}">${escapeHtml(W.example)}</span>` +
+        `<span class="info-col" id="${INFO_COLS.goes_to}">${escapeHtml(W.goesTo)}</span><span class="info-col"></span></div>` +
+        `<ul class="info-rows" id="step-info-rows">${rows}</ul>`
+      : "";
+    const add = ro ? "" : `<button type="button" class="link-btn" id="btn-info-add" title="${escapeAttr(W.addTitle)}">${escapeHtml(W.add)}</button>`;
+    return `<div class="step-sect step-info" id="step-info" role="group" aria-labelledby="step-info-title">` +
+      `<div class="step-sect-head"><span class="step-sect-title" id="step-info-title">${escapeHtml(W.heading)}</span></div>` +
+      head + add + `</div>`;
+  }
+
+  /* Wire the Information section just drawn. Opening or closing the row
+     being added draws the section again by itself; a saved change comes back
+     through the steps view's redraw. */
+  function wireInformation(host, step, callbacks) {
+    const sect = host.querySelector("#step-info");
+    if (!sect || callbacks.readOnly) return;
+    const open = _infoOpenFor(step);
+    const id = step.step_id;
+    const redraw = () => {
+      const cur = host.querySelector("#step-info");
+      if (!cur) return;
+      _rendering = true;
+      try {
+        const box = document.createElement("div");
+        box.innerHTML = informationHtml(step, callbacks);
+        cur.replaceWith(box.firstElementChild);
+      } finally { _rendering = false; }
+      wireInformation(host, step, callbacks);
+    };
+    const live = (el) => !_rendering && el && el.isConnected;
+    const addBtn = sect.querySelector("#btn-info-add");
+    if (addBtn) addBtn.addEventListener("click", () => {
+      if (!open.adding) { open.adding = true; open.draft = {}; }
+      _infoFocus = { stepId: id, id: INFO_IDS.name + "-new" };
+      redraw();
+    });
+    for (const row of sect.querySelectorAll(".info-row[data-i]")) {
+      const key = row.dataset.i;
+      const inputs = Array.from(row.querySelectorAll(".info-input"));
+      if (key === "new") {
+        // The row being added: kept once it has a name, when the focus leaves
+        // the row or on Enter; Escape closes it.
+        let done = false;
+        const commit = (byKey) => {
+          if (done || !live(row)) return;
+          const entry = {};
+          for (const el of inputs) entry[el.dataset.key] = el.value;
+          if (!StepInfo.cleanEntry(entry)) {
+            // No name: a row left with nothing in it closes; one with text
+            // waits for its name.
+            if (!inputs.some((el) => el.value.trim())) { done = true; open.adding = false; open.draft = {}; redraw(); }
+            return;
+          }
+          done = true;
+          open.adding = false;
+          open.draft = {};
+          if (byKey) _infoFocus = { stepId: id, id: "btn-info-add" };
+          if (callbacks.onInfoAdd) callbacks.onInfoAdd(id, entry);
+        };
+        for (const el of inputs) {
+          el.addEventListener("input", () => { open.draft[el.dataset.key] = el.value; });
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(true); }
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              done = true;
+              open.adding = false;
+              open.draft = {};
+              _infoFocus = { stepId: id, id: "btn-info-add" };
+              redraw();
+            }
+          });
+        }
+        row.addEventListener("focusout", (e) => {
+          if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+          commit(false);
+        });
+        row.querySelector(".info-remove").addEventListener("click", () => {
+          done = true;
+          open.adding = false;
+          open.draft = {};
+          _infoFocus = { stepId: id, id: "btn-info-add" };
+          redraw();
+        });
+        continue;
+      }
+      const i = parseInt(key, 10);
+      for (const el of inputs) {
+        const shown = el.value;
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+          else if (e.key === "Escape") { e.preventDefault(); el.value = shown; if (callbacks.onTimeline) el.blur(); }
+        });
+        el.addEventListener("blur", () => {
+          if (!live(el)) return;
+          const v = el.value.replace(/\s+/g, " ").trim();
+          if (v === shown.replace(/\s+/g, " ").trim()) return;
+          if (callbacks.onInfoField) callbacks.onInfoField(id, i, el.dataset.key, el.value);
+        });
+      }
+      row.querySelector(".info-remove").addEventListener("click", () => {
+        if (callbacks.onInfoRemove) callbacks.onInfoRemove(id, i);
+      });
+    }
+    if (_infoFocus && _infoFocus.stepId === id) {
+      const el = sect.querySelector("#" + _infoFocus.id);
+      if (el) { _infoFocus = null; el.focus(); }
     }
   }
 
@@ -1048,5 +1233,7 @@
     renderStepList, renderStepDetail,
     describeInteraction, renderInteractionList, recordedHtml, recordedOpen, keepRecordedOpen: _keepRecordedOpen, splitBlocker,
     nameFieldHtml, activityListHtml, wireNameField, DESC_HINT,
+    // C26 and lane D6, for the tests.
+    informationHtml, occurrencesHtml,
   };
 })();

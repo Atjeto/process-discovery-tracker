@@ -22,7 +22,12 @@ library (xlsx_writer.py). Its sheets:
                       library activity the step is with its code (contract
                       C21), what the automation does with the step and who
                       does it (contract C25);
-  Data fields         one row per field typed or chosen in a step, with
+  Information         contract C26: one row per field recorded in a step 3.2
+                      prints (and in a sub-step its chapter prints) and per
+                      line of information the analyst typed there: the step,
+                      the information, its example, where it goes, and From
+                      ("Recorded" or "Typed by the analyst");
+  Data fields        one row per field typed or chosen in a step, with
                       the field's identity and one column per transaction
                       holding what was entered there; a password field reads "typed
                       (hidden)" (pdd_export.SECRET_VALUE), as recorded;
@@ -35,9 +40,11 @@ library (xlsx_writer.py). Its sheets:
                       coverage hint, whether it ran on a remote or terminal
                       surface (capture_detail's rule) and its steps.
 
-A cell the recording has no value for stays empty. A workbook whose four
+A cell the recording has no value for stays empty. A workbook whose five
 sheets after About would hold their headers alone (a project without a
-recording, C16) is not written (holds_rows). Pure apart from reading
+recording, C16, and without typed information, C26) is not written
+(holds_rows): a project made from a video or from nothing whose steps list
+information now gets one, its Information sheet. Pure apart from reading
 the app vocabularies (through pdd_export's session); no python-docx.
 """
 
@@ -50,13 +57,14 @@ from _dt import parse_ts_or_none as _parse_ts
 from capture_detail import _WALL_FRAMEWORKS
 from handoff_versions import version_line
 from pdd_export import (DEFAULT_REQUEST_CODE, DEFAULT_REQUEST_NAME, SECRET_VALUE, _Session, _align_key,
-                        _members, _step_name, printed_steps, rekey_pairs)
+                        _entered, _members, _step_name, printed_steps, rekey_pairs)
 from recorder_noise import is_blank_value
-from step_context import AUTOMATION_WORDS, step_automation, step_system
+from step_context import AUTOMATION_WORDS, step_automation, step_information, step_system
 from xlsx_writer import Sheet, write_workbook
 
 ABOUT = "About"
 STEPS = "Steps and controls"
+INFO = "Information"
 DATA = "Data fields"
 REKEYED = "Re-keyed values"
 APPS = "Applications"
@@ -69,6 +77,8 @@ STEPS_HEADER = ("Step", "Step name", "Action", "Value", "Control type", "Automat
                 "Class name", "Identity source", "Confidence", "Window title", "Program", "System",
                 "Activity", "Code", "Automation", "Done by")
 _STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12, 24, 22)
+INFO_HEADER = ("Step", "Information", "Example", "Where it goes", "From")
+_INFO_WIDTHS = (36, 28, 24, 40, 20)
 DATA_HEADER = ("Field", "Automation id", "Control type", "System and screen", "Step")
 _DATA_WIDTHS = (24, 24, 14, 30, 30)
 REKEYED_HEADER = ("Source system", "Source field", "Target system", "Target field", "Values",
@@ -83,6 +93,8 @@ SHEET_LINES = (
             "of its steps, with the control it acted on, how the recorder identified it, the "
             "library activity its step is, with the activity's code, what the automation does "
             "with the step and who does it."),
+    (INFO, "The information each step of the reference transaction uses or enters: the fields "
+           "recorded in it, with the value typed as an example, and the lines the analyst typed."),
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
            "transaction. A password field reads \"typed (hidden)\": the recorder never reads it."),
     (REKEYED, "The values typed in one system and typed again in another in the same "
@@ -217,6 +229,67 @@ def steps_rows(s) -> list[list[Any]]:
                          activity.name if activity is not None else "",
                          activity.code if activity is not None else "",
                          AUTOMATION_WORDS[step_automation(holder)], s.ctx.done_by(holder)])
+    return rows
+
+
+# ---- Information (contract C26) ----------------------------------------------------
+
+FROM_TYPED = "Typed by the analyst"
+FROM_RECORDED = "Recorded"
+
+
+def information_rows(s) -> list[list[Any]]:
+    """The rows of Information (INFO_HEADER), contract C26: for each step 3.2
+    prints, in its order, and each of its sub-steps a chapter prints (as
+    Steps and controls labels them; a hidden one left out), first the fields
+    recorded in it (once per field, in the order first entered: the value
+    typed as its example, a password "typed (hidden)", the system and screen
+    as where it goes, pdd_export's entry rule), then the lines the analyst
+    typed on it in their order. Step is its number and name ("Step 3: Enter
+    the order"); From says which ("Recorded", "Typed by the analyst")."""
+    labels = _sub_labels(s)
+    rows: list[list[Any]] = []
+    seen_ids: set[str] = set()
+    for number, step in enumerate(printed_steps(s), start=1):
+        owner, hidden = _owners(step, f"Step {number}", labels)
+        by_holder: dict[int, list[str]] = {}
+        for eid, (_label, holder) in owner.items():
+            if eid not in hidden and eid not in seen_ids and eid in s.interactions:
+                by_holder.setdefault(id(holder), []).append(eid)
+        # The rows' holders, as _owners holds the interactions: the step and
+        # each sub-step a chapter prints; a sub-step no chapter prints gives
+        # its typed lines to the holder above it.
+        holders: list[tuple[str, dict]] = []
+        typed: dict[int, list[dict]] = {}
+
+        def walk(st, lab, holder):
+            if holder is st:
+                holders.append((lab, st))
+            typed.setdefault(id(holder), []).extend(step_information(st))
+            for sub in st.get("sub_steps") or []:
+                if not isinstance(sub, dict) or sub.get("state") == "hidden":
+                    continue
+                sid = sub.get("step_id")
+                if isinstance(sid, str) and sid in labels:
+                    walk(sub, labels[sid], sub)
+                else:
+                    walk(sub, lab, holder)
+
+        walk(step, f"Step {number}", step)
+        for label, holder in holders:
+            name = f"{label}: {_step_name(holder)}"
+            fields: set[str] = set()
+            for eid in sorted(by_holder.get(id(holder), []), key=lambda e: _time(s, e)):
+                seen_ids.add(eid)
+                data = s.interactions[eid]
+                got = _entered(data)
+                if not got or got[0] in fields:
+                    continue
+                fields.add(got[0])
+                system, screen = s.entry_where(holder, data)
+                rows.append([name, got[0], got[1], ", ".join(x for x in (system, screen) if x), FROM_RECORDED])
+            for line in typed.get(id(holder), []):
+                rows.append([name, line["name"], line["example"], line["goes_to"], FROM_TYPED])
     return rows
 
 
@@ -373,6 +446,8 @@ def tech_sheets(*, session_folder, annotations, stats, manifest, events,
         Sheet(ABOUT, about, bold_rows=head_rows, widths=[22, 110]),
         Sheet(STEPS, [list(STEPS_HEADER)] + steps_rows(s), bold_rows={0}, freeze=1,
               widths=list(_STEPS_WIDTHS)),
+        Sheet(INFO, [list(INFO_HEADER)] + information_rows(s), bold_rows={0}, freeze=1,
+              widths=list(_INFO_WIDTHS)),
         Sheet(DATA, [data_header] + data, bold_rows={0}, freeze=1,
               widths=list(_DATA_WIDTHS) + [22] * (len(data_header) - len(DATA_HEADER))),
         Sheet(REKEYED, [list(REKEYED_HEADER)] + rekeyed_rows(s), bold_rows={0}, freeze=1,
@@ -384,10 +459,11 @@ def tech_sheets(*, session_folder, annotations, stats, manifest, events,
 
 def holds_rows(sheets: list[Sheet]) -> bool:
     """Whether the workbook holds anything: a row below the header on one of
-    the sheets after About (Steps and controls, Data fields, Re-keyed
-    values, Applications). About does not count: it describes the others. A
-    project without a recording (C16) has none, and a workbook of headers
-    alone is not a deliverable."""
+    the sheets after About (Steps and controls, Information, Data fields,
+    Re-keyed values, Applications). About does not count: it describes the
+    others. A project without a recording (C16) has none unless its steps
+    list information (C26), and a workbook of headers alone is not a
+    deliverable."""
     return any(len(sheet.rows) > 1 for sheet in sheets if sheet.name != ABOUT)
 
 

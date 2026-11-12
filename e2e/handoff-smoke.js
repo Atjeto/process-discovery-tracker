@@ -27,7 +27,9 @@
  *       folder (its annotations.json with the version entry) and, at its
  *       root, "Order entry v1 PDD.docx" (Document control reads "Version 1,
  *       handed off <date> by <user>" over a Version history table of one
- *       row), "Order entry v1 Technical details.xlsx" (its five sheets),
+ *       row), "Order entry v1 Technical details.xlsx" (its six sheets;
+ *       C26: its Information sheet holds the recorded fields the step
+ *       editor shows as Recorded rows in (a2)),
  *       "Order entry v1 map.svg", "Order entry v1 map.bpmn" and "Start
  *       here.txt"; the project folder in it without the backups and the
  *       analysis log; the Checklist then ticks Hand off;
@@ -250,6 +252,7 @@ const EDITING = [
   "#btn-step-hide", "#btn-step-make-sub", "#btn-step-dissolve", "#btn-step-add-shot", "[data-shot-act]",
   "#btn-step-add-note", "[data-note-act]", "#btn-step-attach", "#btn-step-split", "#btn-step-merge",
   "#btn-step-merge-selected", "#btn-step-delete", ".si-split-btn", "#step-automation", "#step-done-by",
+  "#btn-info-add", ".info-remove", ".info-input",
   "#btn-fork-refmap", "#btn-toggle-refmaps", "#refmap-panel", "#btn-map-asis-edit", "#btn-map-asis-recopy",
   "#btn-update-steps", "#btn-help-reanalyze", "#btn-restore-annotations",
 ];
@@ -442,6 +445,11 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
         title: document.querySelector("label.step-automation").title,
         placeholder: document.getElementById("step-done-by").placeholder,
         doneByTitle: document.querySelector("label.step-doneby").title,
+        // C26 (lane D6): the step's recorded fields, read only, marked Recorded.
+        recorded: [...document.querySelectorAll("#step-info .info-recorded")].map((li) =>
+          [...li.querySelectorAll(".info-cell")].map((c) => c.textContent)),
+        recordedMarks: [...document.querySelectorAll("#step-info .info-recorded .info-from")].map((m) => m.textContent),
+        recordedFields: document.querySelectorAll("#step-info .info-recorded input, #step-info .info-recorded button").length,
       }));
       await page.selectOption("#step-automation", value);
       await untilDisk(st.id, (x) => x.automation === value);
@@ -470,7 +478,12 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
         fits: inside("#step-automation") && inside("#step-done-by") && pane.scrollWidth <= pane.clientWidth + 1 };
     });
     await shotsBothThemes(page, "c25-editor", size);
-    scope = { s1, s2, s3 };
+    scope = { s1, s2, s3, editor };
+    const withRecorded = Object.values(editor).filter((e) => e.recorded.length > 0);
+    record("(a2) C26: in the recording, a step's recorded fields show in the editor's Information section as rows marked Recorded, text with no field or act",
+      withRecorded.length >= 1 && withRecorded.every((e) => e.recordedMarks.length === e.recorded.length &&
+        e.recordedMarks.every((m) => m === "Recorded") && e.recordedFields === 0 && e.recorded.every((r) => r.length === 3 && r[0])),
+      JSON.stringify(Object.values(editor).map((e) => e.recorded)));
     const words = ["Not decided yet", "The automation does it", "Stays with a person", "No longer needed"];
     record("(a2) C25: the step editor's Automation choice (four options in C25's words, its tooltip) set on three steps saves each, a draft becoming edited, No longer needed setting the waste flag and any other clearing it",
       Object.values(editor).every((e) => JSON.stringify(e.options) === JSON.stringify(words) &&
@@ -581,9 +594,19 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       pdd.text.includes("The files are in the " + root + "attachments folder beside this document"),
       JSON.stringify(docxLinks(files["Order entry v1 PDD.docx"])));
     const x = xlsxInfo(files["Order entry v1 Technical details.xlsx"]);
-    record("(a) its Technical details hold the five sheets, and the About sheet names the version",
-      JSON.stringify(x.names) === JSON.stringify(["About", "Steps and controls", "Data fields", "Re-keyed values", "Applications"]) &&
+    record("(a) its Technical details hold the six sheets (C26: Information after Steps and controls), and the About sheet names the version",
+      JSON.stringify(x.names) === JSON.stringify(["About", "Steps and controls", "Information", "Data fields", "Re-keyed values", "Applications"]) &&
       x.text(1).includes(line1) && x.text(2).includes("Step 1"), x.names.join(", "));
+    // C26: the Information sheet holds the recorded fields the editor shows.
+    if (scope) {
+      const info = x.text(3);
+      const want = Object.values(scope.editor).flatMap((e) => e.recorded.map((r) => [r[0], r[1]]));
+      const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const missing = want.filter(([n, ex]) => !info.includes(">" + esc(n) + "<") || (ex && !info.includes(">" + esc(ex) + "<")));
+      record("(a) C26: its Technical details' Information sheet lists the recorded fields (marked Recorded) with the examples the editor shows",
+        info.includes(">From<") && info.includes(">Recorded<") && want.length >= 1 && missing.length === 0,
+        JSON.stringify({ want: want.slice(0, 6), missing }));
+    }
     // C25: what (a2) set reaches the map, the PDD and the workbook.
     if (scope) {
       const { s1, s2, s3 } = scope;
@@ -701,7 +724,8 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     await waitFor(() => fs.existsSync(tech) && fs.statSync(tech).size > 0, 120000, 300);
     const x = xlsxInfo(fs.readFileSync(tech));
     record("(c) Export, Technical details (.xlsx) writes the workbook on its own, a working copy",
-      x.names.length === 5 && x.text(1).includes("Working copy after version 2") && (await shown()).includes(tech), x.names.join(", "));
+      x.names.length === 6 && x.names[2] === "Information" && x.text(1).includes("Working copy after version 2") &&
+        (await shown()).includes(tech), x.names.join(", "));
   } catch (e) { record("(c) exports between hand-offs", false, errText(e)); }
   await nativeCheck(v.app, "(c)");
   record("no page error in the analyst's viewer", errs.length === 0, errs.slice(0, 3).join(" | "));

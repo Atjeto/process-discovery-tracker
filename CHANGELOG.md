@@ -8,6 +8,30 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Write down the information each step uses or enters** (contract C26,
+  plan D6). The step editor has an *Information* section after the
+  Description: first the fields the recorder saw in the step, read only and
+  marked *Recorded* (the field, the value typed as its example, the system
+  and screen as where it goes), then your own lines, each *Information*,
+  *Example* and *Where it goes*, with *Remove*, and *Add information*. A
+  field saves when it is left or on Enter, Escape puts it back, a line whose
+  name is emptied goes and says so, and Ctrl+Z takes any change back. The
+  PDD names the information and never an example: under each system in
+  section 5 (a step with no system under *Not in a system*, which read *No
+  system set*), and one line under each step, "Information: Customer
+  number, Order lines.", in place of "Fields: ...". The Technical details
+  have an *Information* sheet with every line and every recorded field,
+  its example, where it goes and where it comes from, so a project made
+  from a video or from nothing now gets the workbook, and its hand-off zip
+  holds it, once a step lists information. A hand-off opened read only
+  shows the rows as text.
+- **The step panel opens on Steps in a project without a video.** On the
+  step editor's line of facts, *in 3 of 4 transactions* (when the step
+  happened in two transactions or more) is a link that opens the step
+  panel at the step, one row per transaction: in a window narrower than
+  1440 pixels in place of the list (Escape gives the list back and the
+  focus to the link), from 1440 pixels beside the editor. A project without
+  a video has no *Play*, so this was the step panel's missing door there.
 - **Say what the automation does with each step, and who does it**
   (contract C25, plan D7 and D8). The step editor's *Automation* choice,
   under the Flow line where the Waste tick was: *Not decided yet*, *The automation does it*,

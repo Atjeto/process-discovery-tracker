@@ -98,7 +98,7 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
 7. **Hand off**, the Checklist's last act and the Export menu's first group
    (*For the developers and the archive*): one zip next to the folder with
    the project, the PDD, the Technical details (where something was
-   recorded), the process map (SVG and BPMN) and *Start here.txt* of that
+   recorded, or a step lists its information), the process map (SVG and BPMN) and *Start here.txt* of that
    version. The PDD's map is the edited As-Is copy when one exists, else the
    map from the runs. *For another analyst*: *Whole project (.zip)*.
    *Single files*: the PDD, the *Technical details (.xlsx)* and the map
@@ -397,8 +397,13 @@ the folder.
   transaction's differences (`rowMarks`), and the selected step reads in
   one column in the order of the work: name as the title, one line of
   facts (with Play, into the step panel: beside it from 1440 px, in place
-  of the list below, plan D2), what you write, the screenshots, Recorded,
-  what is attached (`step-editor.js` `_renderStepDetail`).
+  of the list below, plan D2; lane D6: its "in 3 of 4 transactions" a link
+  to the panel's rows from two transactions up, the door of a project
+  without a video), what you write (C26: *Information* after the
+  Description, the step's recorded fields marked *Recorded*, then the
+  analyst's lines `step.information`, `step-information.js`), the
+  screenshots, Recorded, what is attached (`step-editor.js`
+  `_renderStepDetail`).
 - **The map** (lane MV, `map-view.js`, `refmap-ui.js`). The Map shows the map
   the PDD prints: the As-Is copy chosen for the PDD, else
   `process_map_step.bpmn` (written by `--mine`), drawn by bpmn-js and linked
@@ -475,7 +480,7 @@ the folder.
   `<project> v<N>.zip` next to the folder: the folder (without
   `annotations.json.2` to `.5`, `normalize.log`, `*.pdt-staged`), and at
   the zip's root the PDD, the Technical details (none where nothing was
-  recorded), `<project> v<N> map.svg`, `<project> v<N> map.bpmn` and
+  recorded and no step lists information, C26), `<project> v<N> map.svg`, `<project> v<N> map.bpmn` and
   `Start here.txt` made for that version (`normalize.py --handoff N`,
   `--tech-out`; `viewer/handoff-zip.js`). What a reader of the version
   will miss (`viewer/readiness.js`: the reference transaction's drafts,
@@ -496,7 +501,9 @@ the folder.
   comparison: a newer version is a zip of its own. The Technical details
   (`tech_details.py`, written by `xlsx_writer.py` on the standard library):
   the reference transaction's recorded controls in the PDD's step order,
-  the data fields per transaction, the re-keyed values, the applications.
+  C26's Information (each printed step's recorded fields and the
+  analyst's lines, with their examples), the data fields per transaction,
+  the re-keyed values, the applications.
 - **Several windows** (lane MW). One viewer process, several windows, one
   project each: *Open in a new window...* (Open menu) or the button beside
   a recent project opens another project beside the one on screen, and a
@@ -514,7 +521,9 @@ the folder.
   owner, 2026-09-26). The developers work from the project (a read-only
   hand-off) and the Technical details, so the PDD holds no values, controls
   or recorded times: its section 5 names the systems and the information
-  entered in each, 6 is the analyst's *Volume and effort*, and 7 lists the
+  entered in each (C26: the analyst's lines too, a step with no system
+  under "Not in a system"; never an example), a step's "Information: ..."
+  line names what it uses or enters, 6 is the analyst's *Volume and effort*, and 7 lists the
   steps by what the automation does with them once a choice is made
   (C25; a step no longer needed gets no second mark) and says the re-keyed
   data. A step's context line reads "SAP, Order entry · done by Sales

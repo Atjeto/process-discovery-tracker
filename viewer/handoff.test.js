@@ -129,6 +129,18 @@ test("the hand-off dialog says what the zip holds: the Technical details only wh
     "Call v1.zip is made next to the project folder: the whole project, with the PDD and the process map of version 1.");
 });
 
+test("C26: the dialog counts the Technical details in where a step lists information, in a project without a recording too", () => {
+  const { holdsTechDetails } = require("./views/handoff-ui.js");
+  const video = (steps) => ({ manifest: { source: "video" }, events: [], annotations: { steps } });
+  assert.equal(holdsTechDetails({ manifest: {}, events: [{ type: "interaction" }], annotations: {} }), true, "a recording");
+  assert.equal(holdsTechDetails(video([{ state: "manually_authored", name: "Take the call" }])), false, "nothing typed");
+  assert.equal(holdsTechDetails(video([{ state: "manually_authored", information: [{ name: "Customer number" }] }])), true);
+  assert.equal(holdsTechDetails(video([{ state: "edited", sub_steps: [{ state: "edited", information: [{ name: "Unit price" }] }] }])), true,
+    "a sub-step's line");
+  assert.equal(holdsTechDetails(video([{ state: "hidden", information: [{ name: "Customer number" }] }])), false, "a hidden step prints nothing");
+  assert.equal(holdsTechDetails(video([{ state: "edited", information: [{ name: "  " }] }])), false, "a line without a name is not kept");
+});
+
 /* Lane B-V2: what a reader of this version will miss, in the dialog. */
 test("with nothing missing the hand-off dialog is exactly the dialog it was", () => {
   const { dialogOptions } = require("./views/handoff-ui.js");

@@ -27,9 +27,11 @@
  *   - Confirm transaction confirms the reference transaction's drafts at
  *     every level; a new sub-process with drafts makes it read Draft again;
  *   - the step panel and the Timeline's steps lane follow the level (the
- *     occurrences of a sub-step in every visit, the panel opened from its
- *     row from 1440 px and from the editor's Play below, plan D2; "Steps in
- *     Save order");
+ *     occurrences of a sub-step in every visit, the panel opened by the
+ *     editor's "in 4 of 4 transactions", lane D6, the project having no
+ *     video and so no Play: below 1440 px in the place of the step list,
+ *     Escape giving the list back with the focus on it, from 1440 px beside
+ *     the editor after its close; "Steps in Save order");
  *   - the Map at a level (lane SUB-V2): the picker lists every map (Main
  *     process, then each sub-process indented with its number) and the live
  *     map marks the sub-processes' boxes; choosing Save order draws its live
@@ -467,33 +469,47 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
       await page.waitForSelector("#steps-crumbs:not([hidden])", { timeout: T });
       await openRow("Enter Unit price").click({ timeout: T });
       // Plan D2: from 1440 px the row opens the panel beside the editor;
-      // below, the row opens nothing and only Play opens it, in the place of
-      // the step list (as panel-smoke opens it). This project has no video,
-      // so the editor offers no Play button: the smoke calls what Play calls
-      // (renderer.js watchStep: step-panel.js watch) on the selected step.
-      const beside = await page.evaluate(() => require("./views/step-panel.js").standsBeside(window.innerWidth));
-      if (!beside) {
-        await page.waitForFunction(() => !!require("./state.js").getSelectedStepId(), null, { timeout: T });
-        const opened = await page.evaluate(() => {
-          const panelHidden = document.getElementById("step-panel").hidden;
-          const id = require("./state.js").getSelectedStepId();
-          const hit = require("./sub-process-maps.js").findStep(require("./state.js").getSession().annotations.steps, id);
-          require("./views/step-panel.js").watch(hit && hit.step);
-          return { rowOpenedNothing: panelHidden, step: !!hit };
-        });
-        if (!opened.rowOpenedNothing || !opened.step) throw new Error("below 1440 px: " + JSON.stringify(opened));
-      }
+      // below, the row opens nothing. This project has no video, so the
+      // editor offers no Play: lane D6 gives it the door, the line of facts'
+      // "in N of M transactions", a link from two transactions up that opens
+      // the panel at the step (below 1440 px in the place of the step list,
+      // Escape giving the list back with the focus on the link; from 1440 px
+      // beside the editor, after its close too).
+      await page.waitForFunction(() => !!require("./state.js").getSelectedStepId(), null, { timeout: T });
+      const beside = await page.evaluate(() => window.innerWidth >= 1440);
+      const pre = await page.evaluate(() => ({ panelHidden: document.getElementById("step-panel").hidden,
+        play: !!document.querySelector("#step-detail #btn-step-watch") }));
+      if (beside) {
+        // Opened by the row: its close, then the link opens it again.
+        await page.waitForFunction(() => !document.getElementById("step-panel").hidden, null, { timeout: T });
+        await page.locator("#btn-sp-close").click({ timeout: T });
+        await page.waitForFunction(() => document.getElementById("step-panel").hidden, null, { timeout: T });
+      } else if (!pre.panelHidden) throw new Error("below 1440 px the row opened the panel: " + JSON.stringify(pre));
+      const link = page.locator("#step-detail #btn-step-occurrences");
+      const linkSeen = { text: ((await link.textContent({ timeout: T })) || "").trim(), title: await link.getAttribute("title") };
+      await link.click({ timeout: T });
       await page.waitForFunction(() => !document.getElementById("step-panel").hidden &&
         (document.getElementById("sp-name") || {}).textContent === "Enter Unit price", null, { timeout: T });
       panel = await page.evaluate(() => ({
         name: document.getElementById("sp-name").textContent,
         occ: document.querySelectorAll("#sp-body .sp-occ").length,
         explain: (document.getElementById("sp-explain") || {}).textContent || "",
+        inList: !!document.querySelector(".editor-split.sp-in-list"),
+        focusInPanel: document.getElementById("step-panel").contains(document.activeElement),
       }));
-      panel.opened = beside ? "row" : "play";
-      // Below 1440 px Escape gives the step list back for the crumbs below.
+      panel.opened = "link";
+      panel.link = linkSeen;
+      panel.play = pre.play;
+      panel.beside = beside;
+      // Escape (below 1440 px) or the close gives the step list back, the
+      // focus on the link, for the crumbs below.
       if (!beside) {
         await page.keyboard.press("Escape");
+        await page.waitForFunction(() => document.getElementById("step-panel").hidden, null, { timeout: T });
+        panel.back = await page.evaluate(() => ({ focus: (document.activeElement || {}).id || "",
+          list: !document.querySelector(".editor-split.sp-in-list") }));
+      } else {
+        await page.locator("#btn-sp-close").click({ timeout: T });
         await page.waitForFunction(() => document.getElementById("step-panel").hidden, null, { timeout: T });
       }
       await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
@@ -520,8 +536,11 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
         spName: ((document.getElementById("sp-name") || {}).textContent || null),
       })).catch(() => null));
     }
-    const okPanel = !err && panel && panel.name === "Enter Unit price" && panel.occ === 4 && /once in each transaction/.test(panel.explain);
-    record("the step panel at a level: a sub-step's occurrences in every visit of its sub-process (plan D2: opened from its row from 1440 px; below, the row opening nothing, by what Play calls)",
+    const okPanel = !err && panel && panel.name === "Enter Unit price" && panel.occ === 4 && /once in each transaction/.test(panel.explain) &&
+      !panel.play && panel.link.text === "in 4 of 4 transactions" &&
+      panel.link.title === "Shows every time this step happened, one row per transaction." &&
+      (panel.beside ? !panel.inList : panel.inList && panel.focusInPanel && !!panel.back && panel.back.focus === "btn-step-occurrences" && panel.back.list);
+    record("the step panel at a level: a sub-step's occurrences in every visit of its sub-process; lane D6: with no video (no Play) the facts' \"in 4 of 4 transactions\" opens it (below 1440 px in the list's place, Escape giving the list back with the focus on the link; from 1440 px beside the editor)",
       okPanel, JSON.stringify({ err, panel }));
     const okLane = !err && lane && lane.name === "Steps in " + SAVE && lane.allSub && lane.count >= 16 && main === "Steps";
     record("the Timeline's steps lane shows the level's steps and says so (\"Steps in <name>\"); back at the main level it reads Steps",

@@ -44,6 +44,7 @@ const StepFlow = require("./step-flow.js");
 const AC = require("./analyst-content.js");
 const { isBlankValue } = require("./step-facts.js");
 const StepOrder = require("./step-order.js");
+const StepInfo = require("./step-information.js");
 
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
 const ELLIPSIS = String.fromCharCode(0x2026);
@@ -718,6 +719,8 @@ function _dissolveGroup(anno, transactions, path, g) {
       first.flags = Object.assign({}, first.flags, { waste: g.automation === "not_needed" });
     }
     if (typeof g.done_by === "string" && g.done_by.trim() && !(typeof first.done_by === "string" && first.done_by.trim())) first.done_by = g.done_by;
+    // C26: the group's information goes after its first sub-step's.
+    if (StepInfo.hasEntries(g)) StepInfo.putJoined(first, [first, g]);
   }
   // Untimed sub-steps take the group's place among the untimed steps.
   const untimed = subs.filter((s) => !AC.hasTime(s));
@@ -741,7 +744,8 @@ function _dissolveGroup(anno, transactions, path, g) {
    `node` at level `path`: a group is replaced by its sub-steps in place (see
    _dissolveGroup for the links, the condition and the content), an opened
    step loses its sub_steps and the analyst's screenshots, notes and
-   attachments on them move to the step. Returns { groups, opened }. */
+   attachments on them move to the step, and (C26) the information written
+   on them after the step's own. Returns { groups, opened }. */
 function dissolve(anno, transactions, path, node) {
   let groups = 0, opened = 0;
   for (const s of _dissolveTargets(transactions, path, node)) {
@@ -750,6 +754,9 @@ function dissolve(anno, transactions, path, node) {
       groups++;
     } else {
       _moveContent(anno, new Set(SPM.descendants(s).map((d) => d.step_id)), s.step_id);
+      // C26: the information written on its sub-steps moves to the step.
+      const subs = SPM.descendants(s).filter((d) => d && d.state !== "hidden");
+      if (subs.some(StepInfo.hasEntries)) StepInfo.putJoined(s, [s].concat(subs));
       delete s.sub_steps;
       opened++;
     }

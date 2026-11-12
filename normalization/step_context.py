@@ -456,6 +456,41 @@ def declares_scope(step: Any) -> bool:
     return isinstance(step.get("automation"), str) or bool(_one_line(step.get("done_by")))
 
 
+# ---- contract C26: the information a step uses or enters -------------------------
+
+INFO_NAME_MAX = 80
+INFO_TEXT_MAX = 120
+
+
+def _info_line(value: Any, limit: int) -> str:
+    return _one_line(value)[:limit].strip()
+
+
+def step_information(step: Any) -> list[dict]:
+    """The lines of information the analyst typed on a step (contract C26,
+    `step.information`, viewer/step-information.js), cleaned as the viewer
+    keeps them: [{"name", "example", "goes_to"}] in the analyst's order, a
+    name at most INFO_NAME_MAX characters, an example and where it goes at
+    most INFO_TEXT_MAX each ("" when not given); a line without a name, or
+    anything but a mapping, is left out. The pipeline never writes the key."""
+    items = step.get("information") if isinstance(step, dict) else None
+    out: list[dict] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = _info_line(item.get("name"), INFO_NAME_MAX)
+        if name:
+            out.append({"name": name, "example": _info_line(item.get("example"), INFO_TEXT_MAX),
+                        "goes_to": _info_line(item.get("goes_to"), INFO_TEXT_MAX)})
+    return out
+
+
+def declares_information(step: Any) -> bool:
+    """True when the analyst typed a line of information on the step
+    (contract C26). A draft that did is the analyst's (kept `edited`)."""
+    return bool(step_information(step))
+
+
 def fmt_ms(ms: Any) -> str:
     """A duration in the reader's words, the one rule the viewer's dom.js
     formatDuration shares (2.0.1): "under 1s", "42s", "2m 07s", "3m",

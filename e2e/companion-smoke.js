@@ -127,6 +127,38 @@ function zipFiles(buf) {
   return out;
 }
 
+/* A .docx's paragraphs and table rows ("a | b"), its entries as zipFiles
+   gives them. */
+function docxText(files) {
+  const xml = files["word/document.xml"].toString("utf8");
+  const texts = (part) => (part.match(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g) || []).map((t) => t.replace(/<[^>]+>/g, "")).join("");
+  const rows = (xml.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) || []).map((tr) =>
+    (tr.match(/<w:tc>[\s\S]*?<\/w:tc>/g) || []).map(texts).join(" | "));
+  const body = xml.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/g, "");
+  const paras = (body.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || []).map(texts).filter(Boolean);
+  return { rows, paras };
+}
+
+/* The rows of one sheet of an .xlsx (its entries as zipFiles gives them),
+   each cell's inline text placed by its column. */
+function xlsxRows(files, sheetName) {
+  const names = [...files["xl/workbook.xml"].toString("utf8").matchAll(/<sheet name="([^"]*)"/g)].map((m) => m[1]);
+  const i = names.indexOf(sheetName);
+  if (i < 0) return { names, rows: null };
+  const xml = files["xl/worksheets/sheet" + (i + 1) + ".xml"].toString("utf8");
+  const unesc = (t) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
+  const rows = (xml.match(/<row[ >][\s\S]*?<\/row>/g) || []).map((row) => {
+    const out = [];
+    for (const c of row.match(/<c [^>]*>[\s\S]*?<\/c>/g) || []) {
+      const col = (c.match(/ r="([A-Z]+)\d+"/) || [])[1] || "A";
+      const t = c.match(/<t(?: [^>]*)?>([^<]*)<\/t>/) || c.match(/<v>([^<]*)<\/v>/);
+      out[col.charCodeAt(0) - 65] = t ? unesc(t[1]) : "";
+    }
+    return Array.from(out, (x) => (x === undefined ? "" : x));
+  });
+  return { names, rows };
+}
+
 (async () => {
   const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-companion-"));
   const errs = [];
@@ -1844,6 +1876,135 @@ function zipFiles(buf) {
         }, [sid, name, desc], { timeout: T });
         if (E.selected.length === 1) { await level("overview"); E.oneWritten = await checklist(); }
       }
+      // C26 (lane D6): the information the steps use, typed in Steps: the
+      // first step (done in SAP) gets two lines, the second (no system) one.
+      // A line whose name is emptied goes and says so; Ctrl+Z brings it back,
+      // and a second Ctrl+Z takes back the line's add.
+      await level("steps");
+      const I = (E.info = {});
+      const infoOf = (sid) => page.evaluate((s) => {
+        const st = (require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === s);
+        return st && Array.isArray(st.information) ? st.information : [];
+      }, sid);
+      const lines = (sid, n) => page.waitForFunction(([s, k]) => {
+        const st = (require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === s);
+        return ((st && st.information) || []).length === k;
+      }, [sid, n], { timeout: T });
+      const addLine = async (sid, name, example, where) => {
+        const n = (await infoOf(sid)).length;
+        await page.click("#btn-info-add");
+        await page.waitForSelector("#info-name-new", { timeout: T });
+        if (I.focus === undefined) I.focus = await page.evaluate(() => (document.activeElement || {}).id || "");
+        await page.keyboard.type(name);
+        if (example || where) { await page.keyboard.press("Tab"); await page.keyboard.type(example || ""); }
+        if (where) { await page.keyboard.press("Tab"); await page.keyboard.type(where); }
+        await page.keyboard.press("Enter");
+        await lines(sid, n + 1);
+        await wait(300);
+      };
+      await selectStep(E.selected[0]);
+      I.empty = await page.evaluate(() => {
+        const sect = document.getElementById("step-info");
+        const add = document.getElementById("btn-info-add");
+        return sect ? { head: (document.getElementById("step-info-title") || {}).textContent, rows: sect.querySelectorAll(".info-row").length,
+          add: add ? add.textContent : null, addTitle: add ? add.title : null,
+          afterDesc: !!sect.compareDocumentPosition && !!(document.getElementById("step-desc").compareDocumentPosition(sect) & Node.DOCUMENT_POSITION_FOLLOWING) } : null;
+      });
+      await page.fill("#step-system", "SAP");
+      await page.press("#step-system", "Enter");
+      await page.waitForFunction((s) => ((require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === s) || {}).system === "SAP",
+        E.selected[0], { timeout: T });
+      await addLine(E.selected[0], "Customer number", "10482", "SAP, Sold-to party");
+      await addLine(E.selected[0], "Order lines", "2", "");
+      const fitInfo = () => page.evaluate(() => {
+        // Every part of the section inside the pane, no two parts of a row
+        // over each other, and a text cut only where it ends in an ellipsis.
+        const sect = document.getElementById("step-info");
+        const pane = document.getElementById("step-detail");
+        const r = pane.getBoundingClientRect();
+        const parts = [...sect.querySelectorAll(".info-row > *, #btn-info-add")].filter((el) => el.getBoundingClientRect().width > 0);
+        const outside = parts.filter((el) => { const b = el.getBoundingClientRect(); return b.left < r.left - 1 || b.right > r.right + 1; }).length;
+        let overlaps = 0;
+        for (const row of sect.querySelectorAll(".info-row")) {
+          const kids = [...row.children].map((k) => k.getBoundingClientRect()).filter((b) => b.width > 0);
+          for (let i = 1; i < kids.length; i++) if (kids[i].left < kids[i - 1].right - 1 && kids[i].top < kids[i - 1].bottom - 1) overlaps++;
+        }
+        const cutButtons = [...sect.querySelectorAll("button")].filter((b) => b.scrollWidth > b.clientWidth + 1).length;
+        const add = document.getElementById("btn-info-add").getBoundingClientRect();
+        return { outside, overlaps, cutButtons, wide: pane.scrollWidth - pane.clientWidth, addHeight: Math.round(add.height),
+          fieldWidth: Math.round((sect.querySelector(".info-input") || { getBoundingClientRect: () => ({ width: 0 }) }).getBoundingClientRect().width) };
+      });
+      I.editor = await page.evaluate(() => {
+        const sect = document.getElementById("step-info");
+        const label = (el) => (el.getAttribute("aria-labelledby") || "").split(" ").map((id) => (document.getElementById(id) || {}).textContent || "").join(" ");
+        return {
+          cols: [...sect.querySelectorAll(".info-head .info-col")].map((c) => c.textContent),
+          rows: [...sect.querySelectorAll(".info-row.info-typed")].map((row) => [...row.querySelectorAll("input")].map((i) => i.value)),
+          labels: [...sect.querySelectorAll(".info-row.info-typed input")].slice(0, 3).map(label),
+          remove: [...sect.querySelectorAll(".info-remove")].map((b) => [b.textContent, b.title]),
+          focusAfter: (document.activeElement || {}).id || "",
+        };
+      });
+      I.fit = await fitInfo();
+      const shotDir = process.env.PDT_D6_SHOTS || "";
+      const sz = await page.evaluate(() => window.innerWidth + "x" + window.innerHeight);
+      const shotAs = async (tag) => {
+        if (!shotDir) return;
+        fs.mkdirSync(shotDir, { recursive: true });
+        await page.evaluate(() => { document.getElementById("step-info").scrollIntoView({ block: "center" }); return true; });
+        await wait(300);
+        // The window as it shows (the app's zoom included), from Electron.
+        const png = await app.evaluate(async ({ BrowserWindow }) => {
+          const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.isVisible()) || BrowserWindow.getAllWindows()[0];
+          return (await w.webContents.capturePage()).toPNG().toString("base64");
+        }).catch(() => null);
+        if (png) fs.writeFileSync(path.join(shotDir, "d6-window-" + sz + tag + ".png"), Buffer.from(png, "base64"));
+      };
+      await shotAs("");
+      // At 125% (app-zoom.js: Ctrl+Plus twice) the section still fits.
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); return true; });
+      await page.keyboard.press("Control+=");
+      await page.keyboard.press("Control+=");
+      await wait(600);
+      I.zoom = await page.evaluate(() => require("electron").webFrame.getZoomFactor()).catch(() => null);
+      I.fit125 = await fitInfo();
+      await shotAs("-125");
+      await page.keyboard.press("Control+0");
+      await wait(600);
+      await selectStep(E.selected[1]);
+      await addLine(E.selected[1], "Delivery date", "2026-11-20", "");
+      // Escape puts back what a field held.
+      await page.click("#info-example-0");
+      await page.keyboard.press("End");
+      await page.keyboard.type(" or later");
+      await page.keyboard.press("Escape");
+      I.escaped = await page.evaluate(() => document.getElementById("info-example-0").value);
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); return true; });
+      await wait(300);
+      I.afterEscape = (await infoOf(E.selected[1])).map((e) => e.example || "");
+      await addLine(E.selected[1], "Temporary note", "", "");
+      await page.fill("#info-name-1", "");
+      await page.press("#info-name-1", "Enter");
+      await lines(E.selected[1], 1);
+      I.toast = await page.evaluate(() => ((document.getElementById("toast") || {}).textContent || "").trim());
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); return true; });
+      await wait(300);
+      await page.keyboard.press("Control+z");
+      await lines(E.selected[1], 2);
+      I.back = (await infoOf(E.selected[1])).map((e) => e.name);
+      await wait(300);
+      await page.keyboard.press("Control+z");
+      await lines(E.selected[1], 1);
+      await wait(600);
+      I.disk = (readJson(path.join(EPROJ, "annotations.json")).steps || []).filter((x) => Array.isArray(x.information))
+        .map((x) => ({ id: x.step_id, state: x.state, info: x.information }));
+      // The PDD, exported: section 5 names the lines under their systems,
+      // each step its "Information:" line, and no example is printed.
+      const pddFiles = await exportPdd("call-info");
+      const pddDoc = docxText(pddFiles);
+      I.pdd = { five: pddDoc.rows.filter((r) => /^(System|SAP|Not in a system) \| /.test(r)),
+        lines: pddDoc.paras.filter((t) => t.startsWith("Information: ")),
+        examples: ["10482", "Sold-to party", "2026-11-20"].filter((x) => pddDoc.paras.concat(pddDoc.rows).some((t) => t.includes(x))) };
       await level("overview");
       E.written = await checklist();
       for (const [key, value] of Object.entries(FULL)) await docField(key, value);
@@ -1877,6 +2038,18 @@ function zipFiles(buf) {
       const entry = (readJson(path.join(EPROJ, "annotations.json")).handoffs || [])[0] || null;
       E.entry = entry;
       const tech = E.root.includes("Order to cash call v1 Technical details.xlsx");
+      E.tech = tech;
+      // C26: the lines typed on the steps make the Technical details of a
+      // project without a recording; its Information sheet holds them.
+      if (tech) {
+        const sheet = xlsxRows(zipFiles(files["Order to cash call v1 Technical details.xlsx"]), "Information");
+        E.sheets = sheet.names;
+        E.infoSheet = sheet.rows;
+      }
+      if (files["Order to cash call v1 PDD.docx"]) {
+        const d = docxText(zipFiles(files["Order to cash call v1 PDD.docx"]));
+        E.zipPdd = { five: d.rows.filter((r) => /^(System|SAP|Not in a system) \| /.test(r)), lines: d.paras.filter((t) => t.startsWith("Information: ")) };
+      }
       E.note = files["Start here.txt"] ? files["Start here.txt"].toString("utf8") : "";
       E.wantNote = entry ? require(path.join(VIEWER, "handoff.js")).startHereText({ base: "Order to cash call", version: 1, entry,
         folder: path.basename(EPROJ), has: { tech, mapSvg: true, mapBpmn: true } }) : null;
@@ -1904,8 +2077,9 @@ function zipFiles(buf) {
       !E.err && !!E.ready && E.ready.ready === "Everything before the hand-off is done." && E.ready.button === "Hand off..." &&
       E.ready.act === "handoff" && E.ready.stages.length === 0 && !!E.steps && E.steps.confirm === 0 && E.steps.draft === 0 && E.steps.undo === 0,
       JSON.stringify({ ready: E.ready, steps: E.steps }));
-    record("(E4) Hand off... from the Checklist: its line says what the zip holds; the zip's root holds the PDD, the map as a picture and as BPMN and Start here.txt (and the Technical details where the pipeline writes them), the project folder leaving out the backups and the log",
-      !E.err && E.dialog === "Order to cash call v1.zip is made next to the project folder: the whole project, with the PDD and the process map of version 1." &&
+    record("(E4) Hand off... from the Checklist: its line says what the zip holds (C26: with the Technical details, its steps listing information); the zip's root holds the PDD, the Technical details, the map as a picture and as BPMN and Start here.txt, the project folder leaving out the backups and the log",
+      !E.err && E.dialog === "Order to cash call v1.zip is made next to the project folder: the whole project, with the PDD, the Technical details and the process map of version 1." &&
+      E.tech === true &&
       JSON.stringify(E.root) === JSON.stringify(E.wantRoot) && E.note === E.wantNote && E.backups.length >= 1 && E.leftOut.length === 0 &&
       E.inFolder && E.shown.length === 1 && path.resolve(E.shown[0]) === path.resolve(EZIP),
       JSON.stringify({ dialog: E.dialog, root: E.root, backups: E.backups, leftOut: E.leftOut, note: E.note.slice(0, 200), shown: E.shown }));
@@ -1913,6 +2087,46 @@ function zipFiles(buf) {
       !E.err && !!E.after && !!E.entry &&
       E.after.ready === "Version 1 was handed off on " + E.entry.handed_off_at.slice(0, 10) + ". Hand off again after a change." &&
       E.after.button === "Hand off...", JSON.stringify(E.after));
+    // C26 (lane D6): the information a step uses, in a project made from a video.
+    const I = E.info || {};
+    const W = { add: "Adds a line for something this step uses or enters.", remove: "Takes this line out. Ctrl+Z brings it back." };
+    record("(E6) C26: Steps' editor has an Information section after the Description: with nothing yet, its heading and Add information (its tooltip) only; Add information opens a row with its name focused",
+      !E.err && !!I.empty && I.empty.head === "Information" && I.empty.rows === 0 && I.empty.add === "Add information" &&
+      I.empty.addTitle === W.add && I.empty.afterDesc && I.focus === "info-name-new",
+      JSON.stringify({ empty: I.empty, focus: I.focus }));
+    record("(E7) C26: two lines typed on the first step and one on the second, each saved on Enter: three fields under the column names Information, Example and Where it goes (each field labelled by its column), Remove on each (its tooltip), the focus back on Add information, nothing outside the pane",
+      !E.err && !!I.editor && JSON.stringify(I.editor.cols) === JSON.stringify(["Information", "Example", "Where it goes", ""]) &&
+      JSON.stringify(I.editor.rows) === JSON.stringify([["Customer number", "10482", "SAP, Sold-to party"], ["Order lines", "2", ""]]) &&
+      JSON.stringify(I.editor.labels) === JSON.stringify(["Information", "Example", "Where it goes"]) &&
+      I.editor.remove.length === 2 && I.editor.remove.every(([t, title]) => t === "Remove" && title === W.remove) &&
+      I.editor.focusAfter === "btn-info-add",
+      JSON.stringify(I.editor));
+    const fits = (f) => !!f && f.outside === 0 && f.overlaps === 0 && f.cutButtons === 0 && f.wide <= 0 && f.addHeight >= 16 && f.fieldWidth >= 60;
+    record("(E7b) C26: the Information section fits the editor's pane at this window and at 125% zoom: nothing outside the pane, no part of a row over another, no button cut",
+      !E.err && fits(I.fit) && Math.abs((I.zoom || 0) - 1.25) < 0.01 && fits(I.fit125),
+      JSON.stringify({ fit: I.fit, zoom: I.zoom, fit125: I.fit125 }));
+    record("(E8) C26: Escape puts back what a field held; a line whose name is emptied goes, saying \"A line needs a name, so it was taken out. Ctrl+Z brings it back.\"; Ctrl+Z brings it back, and a second Ctrl+Z takes back its add",
+      !E.err && I.escaped === "2026-11-20" && JSON.stringify(I.afterEscape) === '["2026-11-20"]' &&
+      I.toast === "A line needs a name, so it was taken out. Ctrl+Z brings it back." &&
+      JSON.stringify(I.back) === '["Delivery date","Temporary note"]' && Array.isArray(I.disk) &&
+      JSON.stringify(I.disk.map((x) => x.info)) === JSON.stringify([
+        [{ name: "Customer number", example: "10482", goes_to: "SAP, Sold-to party" }, { name: "Order lines", example: "2" }],
+        [{ name: "Delivery date", example: "2026-11-20" }]]) && I.disk.every((x) => x.state === "manually_authored"),
+      JSON.stringify({ escaped: I.escaped, afterEscape: I.afterEscape, toast: I.toast, back: I.back, disk: I.disk }));
+    const five = ["System | Information entered", "SAP | Customer number, Order lines", "Not in a system | Delivery date"];
+    const stepLines = ["Information: Customer number, Order lines.", "Information: Delivery date."];
+    record("(E9) C26: the exported PDD names the information under its systems in section 5 and under each step (\"Information: ...\"), and prints no example; the hand-off's PDD says the same",
+      !E.err && !!I.pdd && JSON.stringify(I.pdd.five) === JSON.stringify(five) && JSON.stringify(I.pdd.lines) === JSON.stringify(stepLines) &&
+      I.pdd.examples.length === 0 && !!E.zipPdd && JSON.stringify(E.zipPdd.five) === JSON.stringify(five) &&
+      JSON.stringify(E.zipPdd.lines) === JSON.stringify(stepLines),
+      JSON.stringify({ pdd: I.pdd, zip: E.zipPdd }));
+    record("(E10) C26: the hand-off's Technical details have an Information sheet of three rows (Step, Information, Example, Where it goes, From), the lines as typed",
+      !E.err && Array.isArray(E.infoSheet) && JSON.stringify(E.infoSheet) === JSON.stringify([
+        ["Step", "Information", "Example", "Where it goes", "From"],
+        ["Step 1: Take the call", "Customer number", "10482", "SAP, Sold-to party", "Typed by the analyst"],
+        ["Step 1: Take the call", "Order lines", "2", "", "Typed by the analyst"],
+        ["Step 2: Enter the order", "Delivery date", "2026-11-20", "", "Typed by the analyst"]]),
+      JSON.stringify({ sheets: E.sheets, rows: E.infoSheet }));
   }
   } // end of D.
 

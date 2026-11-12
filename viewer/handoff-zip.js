@@ -8,7 +8,8 @@
  * staged output, a zip being built), and, at the zip's root beside that
  * folder, the files made for this version: "<project> v<N> PDD.docx",
  * "<project> v<N> Technical details.xlsx" (only when the pipeline wrote it:
- * none where nothing was recorded), "<project> v<N> map.svg" and
+ * none where nothing was recorded and no step lists information, C26),
+ * "<project> v<N> map.svg" and
  * "<project> v<N> map.bpmn" (only when a map could be drawn), and
  * "Start here.txt", which says what each file in the zip is
  * (handoff.js startHereText). Export, Whole project (.zip) stays the whole

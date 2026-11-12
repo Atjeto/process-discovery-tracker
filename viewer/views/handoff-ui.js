@@ -17,8 +17,8 @@
  *   3. the PDD and the Technical details of this version, by the PDD's own
  *      path (renderer.js writeDocuments: the analysis first when the step map
  *      is older than the steps, then one run with --handoff N); where nothing
- *      was recorded the pipeline writes no Technical details, and the zip
- *      goes out without them;
+ *      was recorded and no step lists information (C26) the pipeline writes
+ *      no Technical details, and the zip goes out without them;
  *   4. the process map as a picture and as BPMN, by the two map exports'
  *      own paths (renderer.js writeHandoffMaps); none when no map can be
  *      drawn;
@@ -42,6 +42,7 @@ const Session = require("../session.js");
 const Handoff = require("../handoff.js");
 const RO = require("../read-only.js");
 const AC = require("../analyst-content.js");
+const StepInfo = require("../step-information.js");
 const Readiness = require("../readiness.js");
 const { toast } = require("../dom.js");
 const { promptModal } = require("../modals.js");
@@ -103,7 +104,7 @@ async function handOff() {
   // Overview's module wires the DOM it renders into.
   const Overview = require("./overview-view.js");
   const missing = Overview.missingOf(sess);
-  const note = await promptModal(dialogOptions({ version, zipName: names.zip, recording: AC.hasRecording(sess), missing,
+  const note = await promptModal(dialogOptions({ version, zipName: names.zip, recording: holdsTechDetails(sess), missing,
     onPick: (entry) => Overview.goToMissing(entry) }));
   if (note === null || State.getSession() !== sess) return;
   _setBusy(true);
@@ -173,8 +174,14 @@ async function openVersionFile(kind) {
   }
 }
 
+/* Whether the pipeline writes the project's Technical details: something was
+   recorded, or (C26) a step lists information the analyst typed. Pure. */
+function holdsTechDetails(sess) {
+  return AC.hasRecording(sess) || StepInfo.anyEntries(((sess && sess.annotations) || {}).steps);
+}
+
 /* The dialog's line on what the zip holds: the Technical details only where
-   something was recorded (the pipeline writes none otherwise). */
+   the pipeline writes them (`recording`: holdsTechDetails). */
 function detailLine(zipName, version, recording) {
   return zipName + " is made next to the project folder: the whole project, with the PDD" +
     (recording ? ", the Technical details" : "") + " and the process map of version " + version + ".";
@@ -223,4 +230,4 @@ function initHandoffUI(deps) {
   on("btn-handoff-open-tech", () => openVersionFile("tech"));
 }
 
-module.exports = { initHandoffUI, handOff, openVersionFile, detailLine, dialogOptions };
+module.exports = { initHandoffUI, handOff, openVersionFile, detailLine, dialogOptions, holdsTechDetails };

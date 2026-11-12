@@ -43,9 +43,13 @@ application work), and it reads in the reader's order:
      compare: "4. Rules and exceptions", 4.1 the rules, 4.2 the exceptions.
   5. Systems and information used: each system the process uses, with the
      information the reference transaction entered in it, named for the
-     reader (a workbook's cells as one entry); no values. A project without
-     a recording (C16) lists the steps 3.2 prints done in each system
+     reader (a workbook's cells as one entry), and the information the
+     analyst typed on its steps (contract C26, under the step's system); no
+     values and no examples. A project without a recording (C16) and without
+     typed information lists the steps 3.2 prints done in each system
      instead ("System | Steps"), since nobody recorded what was entered.
+     Under each step in 3.2, one line names the information it uses or
+     enters ("Information: Customer number, Order lines.").
   6. Volume and effort: as the analyst states it (C6 `document.effort`),
      never the recorded times, which are a walkthrough's.
   7. Improvement and automation scope: the analyst's field, the steps 3.2
@@ -126,8 +130,8 @@ from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
 from step_context import (AUTOMATION_WORDS, StepContext, clock, has_video, place_starts,
-                          process_order, recording_role, step_automation, step_start, step_system,
-                          untimed_key, video_count)
+                          process_order, recording_role, step_automation, step_information, step_start,
+                          step_system, untimed_key, video_count)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
 from recognition import is_browser_chrome
@@ -161,8 +165,9 @@ _DEFAULT_LABEL_WORDS = ("transaction", "run")
 # The step context line's separator (a middle dot, as the viewer's fact line).
 _SEP = " · "
 # The System cell of section 5 for the steps that have no system (lane FX3):
-# never "Not recorded", which read as the name of a system.
-NO_SYSTEM = "No system set"
+# never "Not recorded", which read as the name of a system. Contract C26
+# names it "Not in a system" (it read "No system set").
+NO_SYSTEM = "Not in a system"
 # The capture app's defaults for the request (capture/config.js): a
 # recording made without setting one prints no request.
 DEFAULT_REQUEST_NAME = "Default engagement"
@@ -300,6 +305,18 @@ def _align_key(step) -> str:
 def _step_name(step) -> str:
     name = step.get("name")
     return name.strip() if isinstance(name, str) and name.strip() else "(unnamed step)"
+
+
+def _once(names) -> list[str]:
+    """Each name once, case aside, the first spelling kept, in order."""
+    seen: set[str] = set()
+    out = []
+    for name in names:
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            out.append(name)
+    return out
 
 
 def _members(unit) -> list:
@@ -795,6 +812,40 @@ class _Session:
         """The distinct fields entered in a step, in the order first entered,
         named for the reader (business_names)."""
         return self.business_names(self.entries(step))
+
+    def typed_information(self, step) -> list[tuple[dict, dict]]:
+        """(line, member) of every line of information the analyst typed on a
+        step (contract C26, step_context.step_information), its members' in
+        their order; the member is the step the line is on."""
+        return [(line, member) for member in _members(step) if isinstance(member, dict)
+                for line in step_information(member)]
+
+    def typed_information_deep(self, step) -> list[tuple[dict, dict]]:
+        """typed_information of a step and of its sub-steps at every depth
+        (contract C19; a hidden sub-step, and what it holds, left out), in
+        order: section 5 names every line of the process."""
+        out = []
+
+        def walk(st):
+            out.extend((line, st) for line in step_information(st))
+            for sub in st.get("sub_steps") or []:
+                if isinstance(sub, dict) and sub.get("state") != "hidden":
+                    walk(sub)
+
+        for member in _members(step):
+            if isinstance(member, dict):
+                walk(member)
+        return out
+
+    def information_names(self, step, recorded: bool = True) -> list[str]:
+        """The names of the information a step uses or enters (contract C26):
+        the fields recorded in it (field_names; none when `recorded` is
+        False: a group of steps, whose chapter prints its steps' fields), then
+        the lines the analyst typed on it, each name once (case aside), in
+        that order. No value and no example: the PDD holds none."""
+        names = (self.field_names(step) if recorded else []) + [
+            line["name"] for line, _member in self.typed_information(step)]
+        return _once(names)
 
     def business_names(self, entries) -> list[str]:
         """The fields of `entries` (as entries() gives them), each once in the
@@ -1439,13 +1490,16 @@ def _step_number(number, level=None) -> str:
 def _write_step(doc, s, step, number, steps, level=None):
     """One printed step: its heading ("Step 2: <name>"), its context line,
     "Only when" its condition, its description when the analyst wrote it
-    (else its library activity's, C21), the fields it entered, its
+    (else its library activity's, C21), the information it uses or enters
+    (contract C26: "Information: Customer number, Order lines.", the fields
+    recorded in it and the lines the analyst typed, names only), its
     attachments, its screenshots, "No longer needed." on a sub-step of a
     chapter the automation does not need (C25; a step of 3.2 is listed so in
     section 7) and its flow (C17).
     Contract C19: `level` is the map it is drawn in; in a
     sub-process's chapter it is numbered "Step <chapter number>.<number>". A
-    group of steps (`group: true`) prints no fields and no screenshot: its
+    group of steps (`group: true`) prints no recorded field (only the lines
+    typed on the group itself) and no screenshot: its
     chapter prints its steps with theirs. A step whose map node has a
     chapter ends with the line that points at its section."""
     doc.add_heading(f"Step {_step_number(number, level)}: {_step_name(step)}", level=3)
@@ -1460,9 +1514,11 @@ def _write_step(doc, s, step, number, steps, level=None):
     if desc:
         _text(doc, desc)
     group = step.get("group") is True
-    fields = [] if group else s.field_names(step)
-    if fields:
-        doc.add_paragraph("Fields: " + ", ".join(fields) + ".")
+    # C26: the information the step uses or enters, the recorded fields and
+    # the lines the analyst typed, names only, each once.
+    info = s.information_names(step, recorded=not group)
+    if info:
+        doc.add_paragraph("Information: " + ", ".join(info) + ".")
     attached = s.step_attachments(step)
     if attached:
         p = doc.add_paragraph("Attachments: ")
@@ -2021,8 +2077,12 @@ def information_section(s) -> dict:
     reference transaction entered in it (business_names), else, for a
     system only the other transactions entered information in, what the
     first of them entered there ("none" when no transaction entered
-    anything there). No values: the transactions' entries and every value
-    are the Technical details' and the viewer's."""
+    anything there). Contract C26: the names of the lines of information the
+    analyst typed on those steps (and their sub-steps) are listed too, after
+    the recorded fields, under their step's system (NO_SYSTEM, "Not in a
+    system", for a step with none), each name once. No values and no
+    examples: the transactions' entries, every value and every example are
+    the Technical details' and the viewer's."""
     out = {"heading": "Systems and information used", "note": None, "rows": [],
            "columns": ("System", "Information entered")}
     if not s.recorded:
@@ -2036,47 +2096,69 @@ def information_section(s) -> dict:
         out["note"] = ("No steps have been added to this project yet." if not s.recorded
                        else "No steps have been recorded for this project yet.")
         return out
-    systems: dict[str, list] = {}
+    # {system: (recorded entries, names the analyst typed)}
+    systems: dict[str, tuple[list, list]] = {}
     for unit in units:
-        systems.setdefault(s.system_of(unit) or NO_SYSTEM, [])
+        systems.setdefault(s.system_of(unit) or NO_SYSTEM, ([], []))
 
-    def entries_by_system(of_units) -> dict[str, list]:
-        found: dict[str, list] = {}
+    def found_by_system(of_units) -> dict[str, tuple[list, list]]:
+        found: dict[str, tuple[list, list]] = {}
         for unit in of_units:
             for entry in s.entries(unit):
                 _field, _value, data, _ts, member = entry
                 system = s.entry_where(member, data)[0] or s.system_of(unit) or NO_SYSTEM
-                found.setdefault(system, []).append(entry)
+                found.setdefault(system, ([], []))[0].append(entry)
+            # C26: a typed line's system is its step's.
+            for line, member in s.typed_information_deep(unit):
+                system = s.ctx.where(member)[0] or s.system_of(unit) or NO_SYSTEM
+                found.setdefault(system, ([], []))[1].append(line["name"])
         return found
 
-    for system, entries in entries_by_system(reference).items():
-        systems.setdefault(system, []).extend(entries)
+    for system, (entries, typed) in found_by_system(reference).items():
+        got = systems.setdefault(system, ([], []))
+        got[0].extend(entries)
+        got[1].extend(typed)
     # A system the reference transaction entered nothing in: what the first
     # other transaction that did entered there.
     if s.pattern_index is not None:
         for i in range(len(s.runs)):
             if i == s.pattern_index:
                 continue
-            for system, entries in entries_by_system(s.units[i]).items():
-                if system in systems and not systems[system]:
-                    systems[system] = entries
-    for system, entries in systems.items():
+            for system, found in found_by_system(s.units[i]).items():
+                if system in systems and not systems[system][0] and not systems[system][1]:
+                    systems[system] = found
+    for system, (entries, typed) in systems.items():
         if not s.have_events:
-            info = "not available to this export"
+            info = ", ".join(_once(typed)) or "not available to this export"
         else:
-            info = ", ".join(s.business_names(entries)) or "none"
+            info = ", ".join(_once(s.business_names(entries) + typed)) or "none"
         out["rows"].append([system, info])
     return out
 
 
 def _steps_by_system(s, out: dict) -> dict:
     """Section 5 of a project without a recording (C16): nobody recorded what
-    was entered, so each system names the steps 3.2 prints that are done in
-    it (main level only), in the order the systems first appear there; the
-    steps with no system come last, under NO_SYSTEM."""
+    was entered. Contract C26: when the analyst typed information on the
+    steps 3.2 prints (or their sub-steps), each system names the information
+    entered in it ("System | Information entered", a line's system its
+    step's, "none" where nothing was typed); else each system names the steps
+    3.2 prints that are done in it (main level only, "System | Steps"). The
+    systems come in the order they first appear there, the steps with no
+    system last, under NO_SYSTEM."""
     steps = s.run_steps(s.pattern_index) if s.pattern_index is not None else s.steps
     if not steps:
         out["note"] = "No steps have been added to this project yet."
+        return out
+    typed: dict[str, list] = {}
+    for step in steps:
+        typed.setdefault(s.system_of(step) or "", [])
+        for line, member in s.typed_information_deep(step):
+            typed.setdefault(s.ctx.where(member)[0] or s.system_of(step) or "", []).append(line["name"])
+    if any(typed.values()):
+        unset = typed.pop("", None)
+        out["rows"] = [[system, ", ".join(_once(n)) or "none"] for system, n in typed.items()]
+        if unset is not None:
+            out["rows"].append([NO_SYSTEM, ", ".join(_once(unset)) or "none"])
         return out
     out["columns"] = ("System", "Steps")
     names: dict[str, list] = {}

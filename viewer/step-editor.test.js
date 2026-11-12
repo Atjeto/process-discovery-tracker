@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { describeInteraction, renderInteractionList, recordedHtml, recordedOpen, splitBlocker,
-  nameFieldHtml, activityListHtml, wireNameField } = require("./step-editor.js");
+  nameFieldHtml, activityListHtml, wireNameField, informationHtml, occurrencesHtml } = require("./step-editor.js");
 const Library = require("./library.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
@@ -338,8 +338,9 @@ test("2.0.1: the step editor in the order of the work: the head (with Play and S
   const src = fs.readFileSync(path.join(__dirname, "step-editor.js"), "utf-8");
   const at = (s) => src.indexOf(s);
   const order = ['<div class="step-head">', "${nameFieldHtml(step, callbacks.picker)}", 'step-state"', '<span class="step-code" id="step-code"',
-    'id="step-facts"', "${callbacks.systemHtml", "${doneByHtml(step, callbacks)}", 'id="btn-step-watch"', 'id="btn-step-jump"',
-    '<div class="step-write" id="step-doc">', '<textarea id="step-desc"', "${saidDuringStepHtml(", "${flowSectionHtml(", "${automationHtml(step, callbacks)}",
+    'id="step-facts"', "${callbacks.systemHtml", "${doneByHtml(step, callbacks)}", "${occurrencesHtml(callbacks)}", 'id="btn-step-watch"', 'id="btn-step-jump"',
+    '<div class="step-write" id="step-doc">', '<textarea id="step-desc"', "${saidDuringStepHtml(", "${informationHtml(step, callbacks)}",
+    "${flowSectionHtml(", "${automationHtml(step, callbacks)}",
     "${callbacks.shotsHtml", '<div class="step-made">', "${recordedHtml(", '<div class="step-attached">'];
   for (let i = 1; i < order.length; i++) {
     assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), "in order: " + order[i]);
@@ -348,6 +349,50 @@ test("2.0.1: the step editor in the order of the work: the head (with Play and S
     "stepFieldsHtml", "descriptionHint", "In the PDD<"]) {
     assert.ok(!src.includes(gone), "not in the editor: " + gone);
   }
+});
+
+test("C26: the Information section: the recorded fields marked Recorded, the analyst's lines as three labelled fields with Remove, then Add information", () => {
+  const step = { step_id: "s1", information: [{ name: "Customer number", example: "10482", goes_to: "SAP, Sold-to party" }, { name: "Order lines" }] };
+  const html = informationHtml(step, { information: { recorded: [{ name: "Material", example: "M-100", goes_to: "SAP, Create sales order" }] } });
+  assert.ok(html.includes('<span class="step-sect-title" id="step-info-title">Information</span>'), "its heading");
+  assert.ok(html.includes('role="group" aria-labelledby="step-info-title"'));
+  for (const [id, word] of [["info-col-name", "Information"], ["info-col-example", "Example"], ["info-col-where", "Where it goes"]]) {
+    assert.ok(html.includes(`id="${id}">${word}</span>`), "the header row names " + word);
+  }
+  const recorded = html.indexOf("info-recorded"), typed = html.indexOf('data-i="0"'), add = html.indexOf('id="btn-info-add"');
+  assert.ok(recorded > 0 && recorded < typed && typed < add, "recorded first, then the analyst's lines, then Add information");
+  assert.ok(html.includes(">Recorded</span>"), "a recorded row is marked Recorded");
+  const recLi = html.slice(recorded, html.indexOf("</li>", recorded));
+  assert.ok(recLi.includes(">M-100</span>") && !recLi.includes("<input") && !recLi.includes("<button"), "a recorded row is text, never a field");
+  for (const [k, col] of [["name", "info-col-name"], ["example", "info-col-example"], ["where", "info-col-where"]]) {
+    assert.ok(html.includes(`id="info-${k}-0"`) && html.includes(`aria-labelledby="${col}"`), "a field labelled by its column: " + k);
+  }
+  assert.ok(html.includes('id="info-name-0" data-key="name" aria-labelledby="info-col-name" maxlength="80" value="Customer number"'));
+  assert.ok(html.includes('id="info-example-1" data-key="example" aria-labelledby="info-col-example" maxlength="120" value=""'));
+  assert.equal((html.match(/title="Takes this line out\. Ctrl\+Z brings it back\.">Remove<\/button>/g) || []).length, 2, "Remove on each line");
+  assert.ok(html.includes('title="Adds a line for something this step uses or enters.">Add information</button>'));
+});
+
+test("C26: read only, the same rows as text and no acts; a step with neither shows Add information only", () => {
+  const step = { step_id: "s2", information: [{ name: "Customer number", example: "10482" }] };
+  const ro = informationHtml(step, { readOnly: true, information: { recorded: [{ name: "Material", example: "M-100", goes_to: "" }] } });
+  assert.ok(!ro.includes("<input") && !ro.includes("btn-info-add") && !ro.includes("info-remove"), "no field and no act");
+  assert.ok(ro.includes(">Customer number</span>") && ro.includes(">10482</span>") && ro.includes(">Recorded</span>"));
+  const none = informationHtml({ step_id: "s3" }, {});
+  assert.ok(none.includes(">Information</span>") && none.includes('id="btn-info-add"'), "the section and its add");
+  assert.ok(!none.includes("info-head") && !none.includes("<ul"), "no header row without a row");
+});
+
+test("lane D6: in two transactions or more, the facts' \"in N of M transactions\" is a link to the step panel; on the Timeline it is text", () => {
+  const cb = { occurrences: { text: "in 3 of 4 transactions", n: 3 } };
+  assert.equal(occurrencesHtml(cb), '<span class="step-facts-occ"><button type="button" class="link-btn" id="btn-step-occurrences" ' +
+    'title="Shows every time this step happened, one row per transaction.">in 3 of 4 transactions</button></span>');
+  assert.equal(occurrencesHtml(Object.assign({ onTimeline: true }, cb)), '<span class="step-facts-occ">in 3 of 4 transactions</span>');
+  assert.equal(occurrencesHtml({}), "");
+  const src = fs.readFileSync(path.join(__dirname, "views", "steps-view.js"), "utf-8");
+  assert.ok(src.includes("const occurrences = inRuns >= 2 && inAll ? { text: inAll, n: inRuns } : null;"), "a link from two transactions up");
+  assert.ok(src.includes("const inN = occurrences ? \"\" : inAll;"), "said once: the link, else the fact");
+  assert.ok(src.includes("onShowOccurrences: (step) => StepPanel.showOccurrences(step),"));
 });
 
 test("2.0.1: the name is the editor's title, labelled for a screen reader; the library code is beside it, not in the field", () => {

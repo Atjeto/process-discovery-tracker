@@ -290,6 +290,10 @@ textarea { width: 100%; min-height: 70px; resize: vertical; }
 main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hidden; }
 .view { display: none; padding: 18px 20px 28px; }
 .view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+/* A level that scrolls keeps the room of its scrollbar, so its panes do not
+   change width when its content grows past the window (the Steps editor's
+   Information section, a long step). The Timeline does not scroll. */
+.view.active:not(.on-timeline) { scrollbar-gutter: stable; }
 
 /* The step panel (V2 item 4): beside the content, which keeps its place. */
 .step-panel {
@@ -1754,7 +1758,10 @@ input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color
 .run-times label { display: inline-flex; align-items: center; gap: 5px; }
 .step-facts .step-system-inline + datalist + .step-facts-rest::before,
 .step-facts .step-system-inline + datalist + .step-doneby::before,
-.step-facts .step-doneby + .step-facts-rest::before { content: "\00B7\00A0"; }
+.step-facts .step-doneby + .step-facts-rest::before,
+.step-facts > * + .step-facts-occ::before { content: "\00B7\00A0"; }
+/* Lane D6: "in N of M transactions" as a link to the step panel's rows. */
+.step-facts-occ { display: inline-flex; align-items: baseline; }
 .step-facts .link-btn { font-size: 12px; }
 /* The body: one column, its groups parted by space. */
 .step-body { display: flex; flex-direction: column; gap: 18px; }
@@ -1979,6 +1986,8 @@ input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color
 .app.read-only #btn-flow-go-to,
 .app.read-only #btn-flow-remove-condition,
 .app.read-only .flow-link-remove,
+.app.read-only #btn-info-add,
+.app.read-only .info-remove,
 .app.read-only #step-verbs,
 .app.read-only #btn-step-split,
 .app.read-only #btn-step-hide,
@@ -2723,6 +2732,27 @@ button.danger:disabled {
 .flow-link .flow-link-edit { display: contents; }
 .flow-link-text { font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
 .flow-link.pending .flow-link-text { color: var(--fg-3); }
+/* C26: the Information section (step-editor.js informationHtml): a header
+   row naming the columns, the recorded fields as text marked Recorded, the
+   analyst's lines as three fields with Remove, then Add information. One
+   grid for every row, so the columns line up. */
+.step-info .info-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.step-info .info-row {
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.3fr) 5.5em;
+  align-items: center; gap: 4px 6px; min-width: 0; font-size: 12px; color: var(--fg);
+}
+.step-info .info-head { margin-top: 4px; margin-bottom: 2px; }
+.step-info .info-col { font-size: 12px; font-weight: 600; color: var(--fg-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-info .info-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 0; }
+.step-info .info-recorded .info-cell { color: var(--fg-2); }
+.step-info .info-from { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
+.step-info input.info-input {
+  min-width: 0; width: 100%; margin: 0; padding: 3px 6px; background: var(--bg-2); color: var(--fg);
+  border: 1px solid var(--field-border); border-radius: 3px; font-family: inherit; font-size: 12px;
+}
+.step-info input.info-input:focus { border-color: var(--accent); outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.step-info .info-remove { justify-self: start; font-size: 12px; }
+.step-info #btn-info-add { margin-top: 6px; font-size: 12px; }
 .att-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-row .link-btn, .step-note .link-btn { flex: none; font-size: 12px; }
 .att-file, .att-step { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

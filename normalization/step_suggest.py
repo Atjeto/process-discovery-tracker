@@ -1239,7 +1239,8 @@ def _merge_steps(existing: list, fresh: list,
 
     Contract C22: so is a draft the analyst placed elsewhere in the process
     (it carries `placed_after`), kept as `edited` by the same rule, and
-    (contract C25) a draft given an `automation` or a `done_by`.
+    (contract C25) a draft given an `automation` or a `done_by`, and
+    (contract C26) a draft given a line of `information`.
 
     Contract C19: a draft opened as a sub-process (it carries `sub_steps`,
     even an empty list) is the analyst's too, kept as `edited` by the same
@@ -1257,11 +1258,12 @@ def _merge_steps(existing: list, fresh: list,
     run took in then points at the named draft (_repoint_links). An empty
     library changes nothing."""
     from step_flow import declares_flow   # step_flow reads step_context, which imports this module
-    from step_context import declares_place, declares_scope
+    from step_context import declares_information, declares_place, declares_scope
     by_state = {st: [] for st in PRESERVED_STATES}
     for s in existing or []:
         st = s.get("state")
         if st not in by_state and (declares_flow(s) or declares_place(s) or declares_scope(s)
+                                   or declares_information(s)
                                    or isinstance(s.get("sub_steps"), list)):
             s["state"] = st = "edited"
         if st in by_state:

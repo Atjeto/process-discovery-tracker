@@ -390,10 +390,11 @@ def test_the_video_sessions_map_and_pdd_follow_the_video_clock(tmp_path):
                    for r in control), control
     _assert_rules_only(blocks)
     # Nothing was typed into a video: each system names its steps, the
-    # steps with no system last, under "No system set" (lane FX3).
+    # steps with no system last, under "Not in a system" (lane FX3; the
+    # words of contract C26).
     assert _section(blocks, "5. Systems and information used") == [
         "System | Steps", "SAP | Check the stock",
-        "No system set | Open the order, Confirm the order"]
+        "Not in a system | Open the order, Confirm the order"]
     _assert_no_zero_timing(_text(blocks))
 
 
@@ -442,7 +443,7 @@ def test_inserted_markers_replace_the_implicit_run(tmp_path):
     assert not any(r.startswith("Recorded by | ") for r in control), control
     assert "4. Variations, rules and exceptions" in [t for k, t in blocks if k == "Heading 1"]
     assert _section(blocks, "5. Systems and information used") == [
-        "System | Steps", "SAP | Check the stock", "No system set | Open the order"]
+        "System | Steps", "SAP | Check the stock", "Not in a system | Open the order"]
     # The document prints no recorded time (the analyst states the effort).
     assert _section(blocks, "6. Volume and effort") == [
         "[To be completed: how often the process is done, and how long one takes]"]
@@ -584,7 +585,7 @@ def test_a_blank_session_orders_its_steps_by_order_everywhere(tmp_path):
     _assert_rules_only(blocks)
     assert _section(blocks, "5. Systems and information used") == [
         "System | Steps", "SAP | Log it in SAP",
-        "No system set | Receive the request, Check the stock, Reply to the customer"]
+        "Not in a system | Receive the request, Check the stock, Reply to the customer"]
     _assert_no_zero_timing(_text(blocks))
 
 

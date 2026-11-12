@@ -113,7 +113,9 @@ The Python pipeline the viewer runs by itself; see
   contacts; the As-Is map and the reference transaction's steps (each with
   its system, screen, who does it ("done by Sales assistant"), "in N of M
   transactions", "Transaction 1 at 0:19",
-  "Only when" its condition, its description, the fields it entered, one
+  "Only when" its condition, its description, the information it uses or
+  enters (C26: "Information: Customer number, Order lines.", the fields
+  recorded in it and the lines the analyst typed, names only), one
   screenshot (the one chosen for the PDD, else its first) and its
   attachments (a sub-step no longer needed says so in its chapter; a step
   of the process steps is listed so in section 7), and where the
@@ -123,7 +125,9 @@ The Python pipeline the viewer runs by itself; see
   sentences (the lines the Steps level lists: extra, reordered, skipped and
   repeated steps, a conditional step not done, and a stretch left out of
   the analysis), business rules and exceptions; the systems used, each with
-  the information entered in it (a workbook's cells as one entry); the
+  the information entered in it (a workbook's cells as one entry) and the
+  information the analyst typed on its steps (a step with no system under
+  "Not in a system"; never an example); the
   volume and effort as the analyst writes it; improvement and automation
   scope with the steps by what the automation does with each (*The
   automation does it*, *Stays with a person*, *No longer needed*, *Not
@@ -146,8 +150,13 @@ The Python pipeline the viewer runs by itself; see
   field typed or chosen, with what was entered in each transaction (a
   password never recorded); the values typed again in another system (the
   PDD's re-keyed data); and each program's coverage, whether it ran on a
-  remote or terminal surface, and its steps. Written with the standard
-  library, it opens in Excel without a repair.
+  remote or terminal surface, and its steps. Its *Information* sheet (C26)
+  lists, per step of the reference transaction, the fields recorded in it
+  and the lines the analyst typed, each with its example, where it goes and
+  where it comes from (*Recorded*, *Typed by the analyst*); a project made
+  from a video or from nothing gets the workbook once a step lists
+  information. Written with the standard library, it opens in Excel without
+  a repair.
 - **Meeting transcripts.** A Teams `.vtt` or `.docx` transcript is parsed
   into timed, speaker-tagged sentences; nothing interprets what was said.
   A project holds one per video (2.0.6, `--out transcript-2.json` and on).
@@ -440,17 +449,22 @@ The viewer says *transaction* for one pass through the process and
   once: its name as the title, its state and its library code; one line of
   facts (the system, a field, then *Done by*, a field whose placeholder is
   the recording's role, then the screen, where the step is, how long
-  it took, in how many transactions) with *Play* and *Show on timeline*;
+  it took, in how many transactions: from two up a link that opens the step
+  panel's rows, lane D6) with *Play* and *Show on timeline*;
   what you write (Description with what was said under it, each sentence
-  under one step, with *Add*; the Flow line; *Automation*: Not decided yet,
+  under one step, with *Add*; *Information* (C26): the fields recorded in
+  the step, marked *Recorded*, then the analyst's lines, each
+  *Information*, *Example* and *Where it goes* with *Remove*, and *Add
+  information*; the Flow line; *Automation*: Not decided yet,
   The automation does it, Stays with a person or No longer needed, in place
   of the Waste tick, as text in a project opened read only); the screenshots, the
   one the PDD prints marked; *Recorded* (the actions with the control each
   acted on, the scissors to split), open or closed as you last left it; the
   attachments and notes, and one row of adds. The step panel adds what the
   editor lacks (plan D2): from 1440 px of window width it stands beside it;
-  below, *Play* opens it in place of the list, so the editor keeps its
-  width. Everything saves as you go, and Ctrl+Z undoes it. A hand-off opened
+  below, *Play* or the facts' *in 3 of 4 transactions* (the door of a
+  project without a video) opens it in place of the list, so the editor
+  keeps its width. Everything saves as you go, and Ctrl+Z undoes it. A hand-off opened
   read only reads it as a record.
 - **Step flow**: the Flow line reads "Always · then the next step" until
   the analyst sets *Only when...* (a condition: the map draws a decision
@@ -549,9 +563,11 @@ The viewer says *transaction* for one pass through the process and
   video and one row per occurrence (its transaction, its moment, its play);
   from 1440 px of window width (the app's zoom counts) it stands beside the
   editor and follows the selected step, and below it opens only with the
-  editor's *Play* (or for a frame of the video of a step without a time),
-  in place of the step list, the focus in it; its close or Escape gives the
-  list back and the focus to *Play*. A step marked on the
+  editor's *Play*, its *in 3 of 4 transactions* (lane D6: a link on the
+  line of facts when the step happened in two transactions or more, which
+  opens the rows without playing) or for a frame of the video of a step
+  without a time, in place of the step list, the focus in it; its close or
+  Escape gives the list back and the focus to the control that opened it. A step marked on the
   Timeline (S, *Add step*, *Add a step here*) opens in the pane beside the
   video:
   with the video paused the cursor is in its name, while it plays nothing
@@ -576,15 +592,16 @@ The viewer says *transaction* for one pass through the process and
   the project to another analyst. The menu groups them under three
   headings: *For the developers and the archive* (*Hand off...*), *For
   another analyst* (*Whole project (.zip)*) and *Single files* (the rest).
-  Where nothing was recorded, *Technical details (.xlsx)* writes no file
-  and says so. A file is offered under the project's name (the
+  Where nothing was recorded and no step lists information, *Technical
+  details (.xlsx)* writes no file and says so. A file is offered under the project's name (the
   document title once it is written: *Order to cash PDD.docx*, *Order to
   cash map.svg*), and every export opens its folder with the file selected.
 - **Hand off to the developers**: *Export*, *Hand off...* (the Export
   menu's first group, and the Checklist's last act) asks what changed in
   this version and makes *<project> v2.zip* next to the project folder: the
   whole project (without the working file's backups and the analysis log),
-  with the PDD, the Technical details (where something was recorded), the
+  with the PDD, the Technical details (where something was recorded or a
+  step lists information), the
   process map as a picture and as BPMN, and *Start here.txt* (what each
   file is) of version 2 at its root. The versions go up by one, the PDD lists them, and Ctrl+Z takes
   a version back (its zip stays). When the PDD of that version leaves

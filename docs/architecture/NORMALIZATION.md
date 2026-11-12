@@ -222,7 +222,9 @@ helpers in `pipeline_stages.py`, in this order:
    at the named draft. A draft that still
    carries a step flow key (`only_when` or `links`, contract C17) is the
    analyst's: it is kept as `edited`, so no analysis drafts the flow away;
-   so is a draft that carries `sub_steps` (contract C19, a sub-process).
+   so is a draft that carries `sub_steps` (contract C19, a sub-process),
+   and one that carries a line of `information` (contract C26), which the
+   pipeline never writes and keeps as it is.
    A preserved step keeps its sub-steps as they are; each sub-step, at
    every depth, gets its `process_label` by the main level's rule (a
    drafted sub-step's `action_key` counts like a `draft_key`).
@@ -274,7 +276,9 @@ helpers in `pipeline_stages.py`, in this order:
    `--mine`, `bpmn_observed.py` writes `process_map_step.bpmn` from the
    visible steps that belong to a run (below). With `--pdd-out`,
    `pdd_export.write_pdd` renders the PDD, and with `--tech-out`,
-   `tech_details.write_tech_details` writes the workbook, both for the
+   `tech_details.write_tech_details` writes the workbook (only when a sheet
+   after About holds a row: a project without a recording gets one once a
+   step lists information, contract C26), both for the
    `--handoff` version when one is given; a failure of either raises, and
    the run commits nothing (exit 3).
 9. **Commit** (`normalize.normalize`). The staged outputs move into place
@@ -482,7 +486,12 @@ gaps. The sections, in the reader's order:
    condition (C17), its
    description (C7: the analyst's text; a draft's generated narration is
    left out; without one, the description of the library activity the step
-   is, C21), the fields it entered, its attachments, its screenshots, the
+   is, C21), the information it uses or enters (contract C26: one line,
+   "Information: Customer number, Order lines.", the fields recorded in it
+   and then the lines the analyst typed on it, `step.information`, names
+   only, each once whatever its letters' case; a group of steps names only
+   the lines typed on it, its chapter its steps'), its attachments, its
+   screenshots, the
    line "No longer needed." on a sub-step of a chapter whose automation is
    "not_needed" (C25, or an older waste flag without a choice; a step of
    3.2 gets no mark, section 7 lists it), and one line per link: "Then goes back to step N, <name>,
@@ -531,7 +540,14 @@ gaps. The sections, in the reader's order:
    information the reference transaction entered in it, named for the
    reader (a field's name; a workbook's cells as one entry, "cells A2 to F5
    of orders.xlsx"), else the first other transaction's entries in it, else
-   "none"; no values (`information_section`).
+   "none"; no values (`information_section`). Contract C26: the names of
+   the lines the analyst typed on those steps (and on their visible
+   sub-steps) follow the recorded ones, under their step's system (a step
+   with no system under "Not in a system", which read "No system set"),
+   each name once; never an example. A project without a recording lists
+   them the same way ("System | Information entered", "none" for a system
+   none was typed for) once a step has a line, else each system's steps
+   ("System | Steps", `_steps_by_system`).
 6. **Volume and effort.** The analyst's field (C6 `document.effort`): how
    often the process is done and how long one takes. The recorded times are
    a walkthrough with explanations, not the usual handling time, so the
@@ -595,6 +611,14 @@ Its sheets:
   then Automation and Done by (C25): what the automation does with the
   row's step, in the PDD's words, and who does it (its `done_by`, else the
   recording's role; empty when neither is set).
+- **Information** (contract C26, `information_rows`): for each step 3.2
+  prints, in its order, and each sub-step its chapter prints (a hidden one
+  left out), first the fields recorded in it (once per field in the order
+  first entered, pdd_export's entry rule: the value typed as its example, a
+  password "typed (hidden)", the system and screen as where it goes), then
+  the lines the analyst typed on it: Step ("Step 3: Enter the order"),
+  Information, Example, Where it goes, From ("Recorded" or "Typed by the
+  analyst").
 - **Data fields**: one row per field typed or chosen in a step (a field in
   a step, aligned across the transactions by the step's draft key), with the field's automation id,
   control type, system and screen and step, then one column per transaction
@@ -710,7 +734,7 @@ SCHEMA.md.
 | `case_assignment.py` | Marker-based runs (never nested), deterministic case ids, `case_ids` stamping, the implicit run (C16). |
 | `app_vocab.py` | Loads the shipped vocabularies (`app_vocabularies/*.yaml`, plus any folder in `PDT_APP_VOCABULARIES`) and enriches matching interactions. `regex_guard.py` refuses authored title patterns that could backtrack catastrophically. |
 | `app_names.py` | Readable application names and business system names from `shared/system-names.json` (above; the site rule's `site_name`, 2.0.1). |
-| `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (`process_order`: time, then `order`, and contract C22, a step the analyst placed after another right after it, pinned with the viewer by `shared/step-order-golden.json`; `place_starts`, where a placed step falls among the stretches left out), the recording clock ("0:19"), the videos of the chain (`video_clips`, `video_count`, contract C23), the first video's start, and contract C25: what the automation does with a step (`step_automation`, `AUTOMATION_WORDS`) and who does it (`step_done_by`, `recording_role`, `StepContext.done_by`). Read by the PDD, the Technical details and the step map. |
+| `step_context.py` | Where and when a step happened, in the reader's words: its system and screen, its duration (none without a time), the step order (`process_order`: time, then `order`, and contract C22, a step the analyst placed after another right after it, pinned with the viewer by `shared/step-order-golden.json`; `place_starts`, where a placed step falls among the stretches left out), the recording clock ("0:19"), the videos of the chain (`video_clips`, `video_count`, contract C23), the first video's start, and contract C25: what the automation does with a step (`step_automation`, `AUTOMATION_WORDS`) and who does it (`step_done_by`, `recording_role`, `StepContext.done_by`), and contract C26: the lines of information a step lists (`step_information`, `declares_information`; the viewer's `step-information.js` keeps them the same way). Read by the PDD, the Technical details and the step map. |
 | `recognition.py` | The platform recognition layer (below). |
 | `step_suggest.py` | The drafting rule, `session_names()`, `draft_summary()`, `library_drafts()` (C21), `_merge_steps()`, `restamp_preserved_case_ids()`, `step_identity()` (the alignment and grouping key), and the value-free `process_label` and `screen_label` from the shared rule files. |
 | `library.py` | Contract C21, standard library only: `load_library` (the format number, unique activity ids, names unique within an application, no run of screens in two activities; a file missing or failing a check is an empty library whose `problem` says why) and `project_library` (the project's `library.json`, else a copy of the app's library, staged with the run, else none). |

@@ -332,6 +332,30 @@ test("C19 Dissolve an opened step: it drops its sub-steps, what the analyst adde
   assert.equal(save1.state, "edited", "it keeps everything it had");
 });
 
+test("C26 Dissolve: a group's information goes after its first sub-step's; an opened step takes its visible sub-steps' lines after its own", () => {
+  const { t1, t2, t3, root } = groupFixture();
+  const anno = { steps: root };
+  const r = SPV.groupInto(root, [t1, t2, t3], [], ["check1", "create1"], { name: "Create the sales order", newId });
+  for (const g of r.groups) g.information = [{ name: "Order type", example: "OR" }];
+  t2[0].information = [{ name: "Sold-to party" }];
+  const txs = ["run1", "run2", "run3"].map((c) => root.filter((s) => s.case_id === c));
+  SPV.dissolve(anno, txs, [], "Create the sales order");
+  const first = (c) => root.find((s) => s.case_id === c && s.step_id.startsWith("check"));
+  assert.deepEqual(first("run1").information, [{ name: "Order type", example: "OR" }]);
+  assert.deepEqual(first("run2").information, [{ name: "Sold-to party" }, { name: "Order type", example: "OR" }]);
+
+  const save1 = drafted("save1", "run1", "09:00:29", "09:00:37", K_SAVE, "Save order");
+  save1.information = [{ name: "Order number" }];
+  SPV.openAsSubProcess([[save1]], [], save1, INTER, { newId });
+  save1.sub_steps[1].information = [{ name: "Quantity", example: "3" }, { name: "Order number" }];
+  save1.sub_steps[2].information = [{ name: "Never printed" }];
+  save1.sub_steps[2].state = "hidden";
+  SPV.dissolve({ steps: [save1] }, [[save1]], [], "Save order");
+  assert.equal(save1.sub_steps, undefined);
+  assert.deepEqual(save1.information, [{ name: "Order number" }, { name: "Quantity", example: "3" }],
+    "each line once, a hidden sub-step's left out");
+});
+
 test("lane FX2: Group then Dissolve gives each link back to the member that carried it, and each link to a member back to that member", () => {
   // Validation pass 2, F5: Check carries a Go to step 3 (a loop back), Create
   // follows it; grouped, the link moves to the group; dissolved, it went to

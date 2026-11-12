@@ -525,7 +525,7 @@ def test_a_project_without_a_recording_prints_no_recorder_wording():
             "A blocked customer goes to credit control."), source
         assert _section(blocks, "5. Systems and information used") == [
             "System | Steps", "SAP | Open the order, Book it", "Excel | Log it",
-            "No system set | Check the stock"], source
+            "Not in a system | Check the stock"], source
         text = _all_text(blocks)
         for gone in ("Not recorded", "Nothing recorded", "One transaction (not marked)",
                      "so every step is listed in order", "Differences between transactions",
@@ -721,11 +721,11 @@ def test_a_step_shows_its_description_and_field_names_and_its_waste_flag_only_in
     blocks = _rendered()
     steps = _section(blocks, "3.2 Process steps")
     i = steps.index("Step 1: Look up the order")
-    assert steps[i + 2:i + 4] == ["Search the order by its number.", "Fields: Order number."]
+    assert steps[i + 2:i + 4] == ["Search the order by its number.", "Information: Order number."]
     j = steps.index("Step 3: Mail - Compose: Send")
     # C25: step 3 is flagged as waste (no longer needed): section 7 lists it
     # so, and no second mark prints under it.
-    assert steps[j + 2:] == ["Fields: To, Subject, Password."]
+    assert steps[j + 2:] == ["Information: To, Subject, Password."]
     seven = _section(blocks, "7. Improvement and automation scope")
     assert seven[seven.index("No longer needed") + 1] == "Step 3: Mail - Compose: Send"
     # The values live in the data table, not under the steps.
@@ -801,14 +801,14 @@ def test_a_step_prints_the_flow_set_on_it():
     one, two, three = (steps.index(h) for h in (
         "Step 1: Look up the order", "Step 2: CRM - Orders: Save", "Step 3: Mail - Compose: Send"))
     assert steps[one + 2:two] == [
-        "Search the order by its number.", "Fields: Order number.",
+        "Search the order by its number.", "Information: Order number.",
         "Then skips to step 3, Mail - Compose: Send, when the order is a repeat."]
     assert steps[two + 2:three] == [
         "Only when the order is new.",
         "Then goes on to step 3, Mail - Compose: Send, when the mail is ready.",
         "Then goes back to step 1, Look up the order."]
     assert steps[three + 2:] == [
-        "Fields: To, Subject, Password.",
+        "Information: To, Subject, Password.",
         "Then goes back to step 1, Look up the order, when the customer changes the order.",
         "The process ends here when the customer cancels.",
         "The process ends here."]
@@ -1012,7 +1012,7 @@ def test_a_workbooks_cells_are_one_entry_for_the_reader():
                                       state="confirmed"))
     blocks = _blocks_of(manifest, annotations, stats, analysis, events)
     assert "Excel | cells A2 to F5 of Order log.xlsx" in _section(blocks, "5. Systems and information used")
-    assert "Fields: cells A2 to F5 of Order log.xlsx." in _section(blocks, "3.2 Process steps")
+    assert "Information: cells A2 to F5 of Order log.xlsx." in _section(blocks, "3.2 Process steps")
 
 
 def test_section_6_is_the_analysts_volume_and_effort_never_the_recorded_times():
@@ -1642,7 +1642,7 @@ def test_a_chapter_prints_its_map_then_the_reference_transactions_first_visit():
     one = chapter.index("Step 2.1: Enter the order number")
     assert chapter[one + 1:one + 3] == [
         "Contoso CRM, Orders · in 2 of 2 transactions · Transaction 1 at 0:04",
-        "Fields: Order number."]
+        "Information: Order number."]
     save = chapter.index("Step 2.3: Click Save")
     assert chapter[save + 1].startswith("Contoso CRM, Orders · ")
     assert chapter[save + 2:] == ["The sub-process ends here when the order is on hold."]
@@ -1703,7 +1703,7 @@ def test_a_group_prints_its_name_line_description_flow_and_pointer_not_its_membe
     send = chapter.index("Step 3.1: Mail - Compose: Send")
     assert chapter[send + 1:] == [
         "Outlook, Order confirmation · in 1 of 1 transaction · Transaction 1 at 0:10",
-        "Fields: To, Subject, Password.", "No longer needed."]   # C25: section 7 lists 3.2's steps only
+        "Information: To, Subject, Password.", "No longer needed."]   # C25: section 7 lists 3.2's steps only
     assert pictures == 1
 
 

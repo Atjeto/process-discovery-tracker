@@ -833,6 +833,7 @@ delete.
   "placed_after": "string, optional: the step_id of the step it comes after in the process, or \"start\" (C22)",
   "automation": "string, optional: undecided|automated|person|not_needed, what the automation does with the step (C25)",
   "done_by": "string, optional: a role or a person who does the step, at most 80 characters (C25)",
+  "information": [{ "name": "string, required, at most 80 characters", "example": "string, optional, at most 120", "goes_to": "string, optional, at most 120" }],
   "sub_steps": ["step entities, the same shape, recursively: the step is a sub-process (C19)"],
   "group": "true on a group of steps made into a sub-process (C19), else absent",
   "evidence": {
@@ -1061,6 +1062,31 @@ map draws them (below: the task's kind, a Done by label), the PDD prints who
 does a step on its context line and, once a step has a choice other than
 "undecided", lists the steps by choice in its section
 7, and the Technical details have a column for each.
+
+**The information a step uses or enters (contract C26).** One
+viewer-written key, optional, set in the step editor's *Information*
+section (Steps, and the step opened in the Timeline's pane), at any level (a
+sub-step carries it the same way):
+
+- **`information`**: `[{ "name", "example", "goes_to" }]`, the analyst's
+  lines in the analyst's order, for example `{ "name": "Customer number",
+  "example": "10482", "goes_to": "SAP, Create sales order: Sold-to party" }`.
+  `name` is required (one line, at most 80 characters); `example` and
+  `goes_to` are optional (one line, at most 120 characters each, the key
+  left out when empty). A line whose name is empty is not kept, and a step
+  with no line has no key (`viewer/step-information.js` `entriesOf`,
+  `normalization/step_context.py` `step_information`).
+
+A draft given a line becomes `edited` (the viewer does it, and
+re-normalization keeps a draft that still carries one as `edited`); the
+pipeline never writes the key and round-trips it untouched. The step's
+recorded fields (the fields its recorded actions typed into or chose in) are
+not stored: the editor reads them from the step's actions, as the Technical
+details do. The PDD names the information, never an example: under each
+system in section 5, and one line "Information: ..." under a step; the
+Technical details list every line and every recorded field, with its
+example, on their *Information* sheet, and are written for a project without
+a recording once a step lists information.
 
 `flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)),
 kept in step with `automation` (C25, above).

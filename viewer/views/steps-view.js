@@ -81,6 +81,7 @@ const StepOrder = require("../step-order.js");
 const ShowHere = require("../show-here.js");
 const LeftOut = require("../left-out.js");
 const StepScope = require("../step-scope.js");
+const StepInfo = require("../step-information.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -1201,7 +1202,11 @@ function stepFacts(step, interactionsById) {
   // rest of the video (the owner: "you always add steps sequentially").
   const open = _stepOpen(step);
   const took = open ? "" : StepFacts.duration(step.time_range);
-  const inN = runs.length > 1 && inRuns ? "in " + inRuns + " of " + runs.length + " transactions" : "";
+  const inAll = runs.length > 1 && inRuns ? "in " + inRuns + " of " + runs.length + " transactions" : "";
+  // Item 2 (lane D6): in two transactions or more the words are a link to
+  // the step panel's rows (step-editor.js occurrencesHtml), not a fact.
+  const occurrences = inRuns >= 2 && inAll ? { text: inAll, n: inRuns } : null;
+  const inN = occurrences ? "" : inAll;
   // 2.0.3: a step whose time is the analyst's shows it as two fields.
   const timeHtml = _stepTimeHtml(step, runs, origin, took);
   return {
@@ -1209,6 +1214,12 @@ function stepFacts(step, interactionsById) {
     code: Library.codeOf(_library(), step),
     facts: [where.screen, StepFacts.pointer(step, runs, origin), took ? "took " + took : open ? "open" : "", inN],
     factsHtml: timeHtml ? [escapeHtml(where.screen || ""), timeHtml, escapeHtml(inN)].filter(Boolean).join(" · ") : "",
+    occurrences,
+    // C26: the recorded fields of the step, from its recorded actions.
+    recordedInfo: StepInfo.recordedRows(datas || [], (d) => {
+      const w = SystemNames.whereData(d.process_name, d.window_title, _appNames());
+      return [String(step.system || "").trim() || w.system, w.screen].filter(Boolean).join(", ");
+    }),
     recorded: StepFacts.recordedLine({ actions: ((step.evidence && step.evidence.interaction_event_ids) || []).length,
       ends: StepFacts.endsAt(step, datas || []) }),
     // A draft's narration is never the description: the PDD leaves it out,
@@ -1237,11 +1248,22 @@ function stepDetailCallbacks(selected, interactionsById) {
     // Play: the step in the step panel's video (it opens the panel again
     // when it was closed).
     onWatchStep: (step) => watchStep(step),
+    // Item 2 (lane D6): "in N of M transactions" opens the step panel at the
+    // step, its rows one per transaction (a project without a video has no
+    // Play).
+    occurrences: facts.occurrences,
+    onShowOccurrences: (step) => StepPanel.showOccurrences(step),
     recordingAvailable: !!(State.getSession() && State.getSession().recordingAvailable),
     interactionsById,
     mergedAfterIndex: (selected && _mergedLine.stepId === selected.step_id) ? _mergedLine.after : null,
     code: facts.code, recorded: facts.recorded, description: facts.description, facts: facts.facts,
     factsHtml: facts.factsHtml, originMs: facts.originMs,
+    // C26: the information the step uses or enters, each change one
+    // undoable edit.
+    information: { recorded: facts.recordedInfo },
+    onInfoAdd: (id, entry) => _infoEdit(id, "add information", (s) => StepInfo.addEntry(s, entry)),
+    onInfoField: (id, i, key, value) => _infoField(id, i, key, value),
+    onInfoRemove: (id, i) => _infoEdit(id, "remove information", (s) => StepInfo.removeEntry(s, i)),
     // Lane HV: a hand-off opened read only shows its recorded actions open.
     readOnly: RO.isReadOnly(State.getSession()),
     // C16: the System field (first on the line of facts), the step's
@@ -1297,7 +1319,8 @@ function panelFieldCallbacks(step) {
 function _keepsTyping(id) {
   return id === "step-name" || id === "step-desc" || id === "step-system" || id === "step-done-by" ||
     id === "step-start" || id === "step-end" ||
-    id === "step-only-when" || /^flow-link-when-\d+$/.test(id);
+    id === "step-only-when" || /^flow-link-when-\d+$/.test(id) ||
+    /^info-(name|example|where)-(\d+|new)$/.test(id);   // C26
 }
 
 /* Draw the step editor for `step` into `host`: the Steps level's pane
@@ -1501,6 +1524,27 @@ async function _flowEdit(stepId, label, edit) {
   if (!step || !edit(step)) return;
   _markEdited(step);
   try { await persistAnnotations(anno, label); } catch (_) { /* already shown */ }
+}
+
+/* C26: one edit of a step's information (step-information.js marks a
+   draft edited), one undoable edit. */
+async function _infoEdit(stepId, label, edit) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return false;
+  const anno = ensureAnnoShape(sess.annotations);
+  const step = _findStep(stepId);
+  if (!step || !edit(step)) return false;
+  try { await persistAnnotations(anno, label); } catch (_) { return false; }
+  return true;
+}
+
+/* C26: a field of a line changed; a line whose name was emptied goes, and
+   the message says so. */
+async function _infoField(stepId, i, key, value) {
+  let result = "";
+  const saved = await _infoEdit(stepId, key === "name" && !String(value || "").trim() ? "remove information" : "change information",
+    (s) => { result = StepInfo.setField(s, i, key, value); return !!result; });
+  if (saved && result === "removed") toast(StepInfo.WORDS.emptyName, "info");
 }
 
 /* The toast's sentence when taking steps out dropped the links that went to
@@ -1900,6 +1944,7 @@ async function splitStep(stepId, after) {
     state });
   // C17: the condition stays with the first half, the links leave the second.
   StepFlow.splitFlow(first, second);
+  StepInfo.splitInformation(first, second);   // C26: the lines stay with the first half
   loc.list.splice(loc.list.indexOf(s), 1, first, second);
   _splitPlace(first, second, true);   // C22
   await persistAnnotations(anno, 'split step');
@@ -2020,6 +2065,7 @@ function _stepAt(t, dry) {
       for (const k of ["library_activity", "pdd_screenshot", "hidden_screenshots", "process_label"]) delete second[k];
     }
     StepFlow.splitFlow(first, second);   // C17, as in splitStep
+    StepInfo.splitInformation(first, second);   // C26, as in splitStep
     place.list.splice(place.index, 1, first, second);
     // C22: a step of the analyst's cut here is the step being marked and
     // the new one the next step, which its time places; a recorded step's two
@@ -2622,6 +2668,8 @@ function mergeStepObjects(toMerge) {
     state: AC.derivedState(toMerge),
   });
   if (keys) merged.draft_keys = keys;
+  // C26: every member's lines, once each.
+  StepInfo.putJoined(merged, toMerge);
   const links = StepFlow.mergedLinks(toMerge);
   if (links.length) merged.links = links; else delete merged.links;
   return merged;
@@ -3363,7 +3411,7 @@ async function dissolveAction(path, node) {
       title: "Dissolve the sub-process?",
       message: '"' + name + '" loses its ' + _plural(loss.subSteps, "step", "steps") +
         (loss.opened > 1 ? " in " + _plural(loss.opened, "transaction", "transactions") : "") + ", with " + lost + ".",
-      detail: "The screenshots, notes and files you added to them move to the step. Ctrl+Z brings everything back.",
+      detail: "The screenshots, notes, files and information you added to them move to the step. Ctrl+Z brings everything back.",
       okLabel: "Dissolve",
       danger: true,
     });

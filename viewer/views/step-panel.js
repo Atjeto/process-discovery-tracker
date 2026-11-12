@@ -41,9 +41,12 @@
  * the editor's (`partsOn`). From 1440 px of window width up (CSS pixels, so
  * the app's zoom counts: `standsBeside`) it stands beside the editor and
  * follows the selection; below, it opens only on Play (the editor's line of
- * facts, the step menu) and takes the place of the step list while open, so
- * the editor keeps its width; Escape or its close gives the list back and
- * the focus to Play.
+ * facts, the step menu) or (lane D6) on the line of facts' "in N of M
+ * transactions", a link when the step happened in two transactions or more
+ * (`showOccurrences`: the door of a project without a video), and takes the
+ * place of the step list while open, so the editor keeps its width; Escape
+ * or its close gives the list back and the focus to the control that opened
+ * it.
  *
  * The panel is closed on the Overview and when a recording opens; its close
  * button is the inverse of every door (on Steps it then stays closed while
@@ -674,23 +677,32 @@ function _focusIn() {
 /* Plan D2: the panel opened on Steps by the analyst (Play, a frame of the
    video): it stays open below 1440 px, in the list's place, and takes the
    focus there. */
-function _openAsked(step) {
+function _openAsked(step, door) {
   _dismissed = false;
   _asked = true;
+  _door = door || DOOR_PLAY;
   openForStep(step);
   if (inList()) _focusIn();
 }
 
+/* The editor's control that opened the panel on Steps (plan D2: Play; lane
+   D6: the line of facts' "in N of M transactions"): the focus goes back to it
+   when the panel closes in the place of the list. */
+const DOOR_PLAY = "btn-step-watch";
+const DOOR_OCCURRENCES = "btn-step-occurrences";
+let _door = DOOR_PLAY;
+
 /* The close (its button, or Escape in the list's place): on Steps it stays
    closed while rows are selected; closed in the list's place, the list
-   comes back and the focus goes back to the editor's Play. */
+   comes back and the focus goes back to the editor's control that opened it
+   (Play, or "in N of M transactions"). */
 function _closeByHand() {
   const back = inList();
   if (State.getLevel() === "steps") _dismissed = true;
   close();
   if (back) {
-    const play = document.querySelector("#step-detail #btn-step-watch");
-    if (play) play.focus({ preventScroll: true });
+    const door = document.querySelector("#step-detail #" + _door) || document.querySelector("#step-detail #" + DOOR_PLAY);
+    if (door) door.focus({ preventScroll: true });
   }
 }
 
@@ -800,9 +812,21 @@ function play(stepId) {
    place of the step list, and the focus goes into it. */
 function watch(step) {
   if (!step) return;
-  _openAsked(step);
+  _openAsked(step, DOOR_PLAY);
   play(step.step_id);
   if (inList()) _focusIn();
+}
+
+/* Lane D6: the editor's "in N of M transactions" (a link on its line of
+   facts when the step happened in two transactions or more): the panel opens
+   at the step, every time it happened one row per transaction, without
+   playing anything. Below 1440 px it takes the place of the step list, the
+   focus going into it (Escape and its close give the list back and the
+   focus to that link); from 1440 px it stands beside the editor again when
+   it was closed. The door of a project without a video, which has no Play. */
+function showOccurrences(step) {
+  if (!step) return;
+  _openAsked(step, DOOR_OCCURRENCES);
 }
 
 function close() {
@@ -924,7 +948,7 @@ function refresh() {
   }
 })();
 
-module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine, frameSource,
+module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, showOccurrences, play, close, onLevel, refresh, occurrences, countLine, frameSource,
   // Lane E-1: the head edits the step (lane PANE: a step marked on the
   // Timeline opens in the pane, by the same nameTakesFocus); where it opens.
   nameTakesFocus, headEditable, HEAD_IDS, opensOn,

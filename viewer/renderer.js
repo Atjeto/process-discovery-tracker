@@ -741,7 +741,8 @@ async function writeDocuments(target, { pddOut, techOut, handoff, label, pddAtta
     let doc = { exists: false, size: 0 };
     try { const st = fs.statSync(p); doc = { exists: st.isFile(), size: st.size }; }
     catch (e) { if (e.code !== "ENOENT") console.error("[renderer] could not read the exported file:", e); }
-    // Nothing recorded: the pipeline succeeds and writes no Technical details.
+    // Nothing recorded and no information typed (C26): the pipeline
+    // succeeds and writes no Technical details.
     if (p === techOut && !doc.exists && r && r.ok && !r.cancelled) { techWritten = false; continue; }
     const outcome = pddExportOutcome(r, doc);
     if (!outcome.ok) {
@@ -755,7 +756,7 @@ async function writeDocuments(target, { pddOut, techOut, handoff, label, pddAtta
   return { ok: true, techWritten };
 }
 
-const NO_TECH_DETAILS = "Nothing was recorded in this project, so there are no Technical details to write.";
+const NO_TECH_DETAILS = "Nothing was recorded and no step lists information, so there are no Technical details to write.";
 
 /* Export, Technical details (.xlsx) (contract C20, lane HV): the workbook a
    developer reads beside the PDD, written by the pipeline (--tech-out),
