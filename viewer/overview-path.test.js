@@ -766,3 +766,69 @@ test("lane B-V2: the reference transaction's drafts count on a recording once it
   assert.ok(miss.includes("2 steps have no description: Step a, Step b."), miss);
   assert.ok(!miss.includes("Step c") && !miss.includes("still a draft"), "only the reference transaction, confirmed");
 });
+
+/* ---- C24 (lane C): what the SME gives at the end ------------------------------ */
+
+const SME = { trigger: "An order <b>mail</b> in the shared mailbox", result: "A sales order in SAP",
+  effort: "About 30 a day", exceptions: "A new customer: I create them first" };
+
+function smeLines(html) {
+  return [...html.matchAll(/<div class="ov-sme" data-sme="(\w+)">([\s\S]*?)<\/div>/g)].map((m) => ({ key: m[1], body: m[2] }));
+}
+
+test("C24: each SME answer waits under its field with Use and Dismiss; the document's line counts them", () => {
+  const sess = session({ manifest: { engagement_id: "eng-1", sme_answers: SME } });
+  const html = overviewHtml(sess);
+  const lines = smeLines(html);
+  assert.deepEqual(lines.map((l) => l.key), ["trigger", "result", "exceptions", "effort"]);
+  assert.ok(lines[0].body.includes("<strong>The SME wrote:</strong> An order &lt;b&gt;mail&lt;/b&gt; in the shared mailbox"),
+    "the answer is text, never HTML");
+  assert.ok(lines.every((l) => l.body.includes('data-sme-act="use"') && l.body.includes('data-sme-act="dismiss"')));
+  assert.ok(html.includes('title="Writes the SME&#39;s answer into this field."'));
+  assert.ok(html.includes('title="Hides the SME&#39;s answer for this field. Ctrl+Z brings it back."'));
+  assert.match(html, /<div class="ov-doc-cell" data-doc-cell="trigger"><label class="ov-doc-field">[\s\S]*?data-doc="trigger"/);
+  assert.ok(html.includes("0 of 10 written. The SME answered 4 questions: each waits under its field."), html);
+});
+
+test("C24: a field that holds the answer, or a dismissed key, has no line waiting (positive control above)", () => {
+  const sess = session({ manifest: { sme_answers: SME } });
+  sess.annotations.document = { trigger: SME.trigger };
+  sess.annotations.sme_answers_dismissed = ["exceptions"];
+  const html = overviewHtml(sess);
+  assert.deepEqual(smeLines(html).map((l) => l.key), ["result", "effort"]);
+  assert.ok(html.includes('<div class="ov-sme-from" data-sme-from="trigger">Written from the SME&#39;s answer.</div>'),
+    "the field written from it says so");
+  assert.ok(html.includes("The SME answered 2 questions: each waits under its field."));
+  sess.annotations.sme_answers_dismissed = ["exceptions", "result", "effort"];
+  const none = overviewHtml(sess);
+  assert.deepEqual(smeLines(none), []);
+  assert.ok(!none.includes("The SME answered"));
+});
+
+test("C24: a project opened read only shows the answers as text, with no buttons", () => {
+  const sess = session({ manifest: { sme_answers: SME }, readOnly: true });
+  const lines = smeLines(overviewHtml(sess));
+  assert.equal(lines.length, 4);
+  assert.ok(lines.every((l) => !l.body.includes("<button")), "no Use, no Dismiss");
+  const html = overviewHtml(sess);
+  assert.ok(html.includes("0 of 10 written. The SME answered 4 questions.</span>"), "read only: how many, nothing waits");
+  assert.ok(!html.includes("each waits"));
+});
+
+test("C24: an answer used and then edited has no line under its field, and no Written from line", () => {
+  const sess = session({ manifest: { sme_answers: SME } });
+  sess.annotations.document = { trigger: SME.trigger + " or a call" };
+  sess.annotations.sme_answers_dismissed = ["trigger"];
+  const html = overviewHtml(sess);
+  assert.deepEqual(smeLines(html).map((l) => l.key), ["result", "exceptions", "effort"]);
+  assert.ok(!html.includes('data-sme-from="trigger"'));
+  sess.annotations.document = { trigger: SME.trigger };
+  assert.ok(overviewHtml(sess).includes('data-sme-from="trigger"'), "while the text is exactly the answer");
+});
+
+test("C24: a file the SME added that is not in the folder is said once on the project line's warnings", () => {
+  const sess = session({ smeFilesMissing: ["Order 10900.msg"] });
+  const html = overviewHtml(sess);
+  assert.equal(html.split("The SME&#39;s file Order 10900.msg is not in the project folder.").length - 1, 1, html);
+  assert.ok(!overviewHtml(session({})).includes("is not in the project folder"));
+});

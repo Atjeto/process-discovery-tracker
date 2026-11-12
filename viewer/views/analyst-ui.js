@@ -18,13 +18,14 @@ const path = require("node:path");
 const fs = require("node:fs");
 const State = require("../state.js");
 const Ipc = require("../ipc.js");
-const { persistAnnotations, ensureAnnoShape } = require("../session.js");
+const { persistAnnotations, ensureAnnoShape, saveAnnotationsDirect } = require("../session.js");
 const { escapeHtml, escapeAttr, toast, placeMenu, cryptoRandomId, recordingStartMs, sinceStart } = require("../dom.js");
 const { promptModal } = require("../modals.js");
 const AC = require("../analyst-content.js");
 const SPM = require("../sub-process-maps.js");
 const SystemNames = require("../system-names.js");
 const RO = require("../read-only.js");
+const SmeGives = require("../sme-gives.js");
 // Lazy: the Overview's unit tests load this module without a page.
 const Video = () => require("./flow-view-video.js");
 
@@ -681,6 +682,33 @@ async function renameAttachment(id, label) {
   await _save(anno, "rename an attachment");
 }
 
+/* C24 (lane C): the files the SME added at the end of the recording
+   (manifest.sme_files, copied into attachments/ by the capture app) become
+   attachments of the whole project when an editable project opens: one save,
+   not on the undo stack (it is what the recording brought). A project opened
+   read only adds nothing and writes nothing. Either way the names of the
+   listed files not in the folder are kept on the session
+   (`smeFilesMissing`), which the Overview says. Resolves to the number
+   added (0 when nothing was, or the save failed: session.js has said why). */
+async function adoptSmeFiles(sess) {
+  if (!sess || !sess.sessionFolder) return 0;
+  const dir = path.join(sess.sessionFolder, "attachments");
+  const exists = (f) => {
+    try { return fs.statSync(path.join(dir, f)).isFile(); } catch (_) { return false; }
+  };
+  const r = SmeGives.filesToAdopt(sess.manifest, sess.annotations || {}, exists, _now());
+  sess.smeFilesMissing = r.missing;
+  if (!r.add.length || RO.isReadOnly(sess) || sess.annotationsError || State.getSession() !== sess) return 0;
+  const anno = ensureAnnoShape(sess.annotations);
+  const n = SmeGives.adoptFiles(anno, r.add, cryptoRandomId);
+  try {
+    await saveAnnotationsDirect(anno, "list the SME's files as attachments");
+  } catch (_) {
+    return 0;
+  }
+  return n;
+}
+
 /* The Overview's Attachments list, under the document fields: every file
    attached to the session or to a step, its label editable. */
 function overviewAttachmentsHtml(anno) {
@@ -690,6 +718,8 @@ function overviewAttachmentsHtml(anno) {
     return '<li class="att-row" data-att-id="' + escapeAttr(x.id) + '">' +
       '<input type="text" class="att-label-input" value="' + escapeAttr(x.label || "") + '" placeholder="' + escapeAttr(x.file) +
         '" aria-label="Label" title="The label the PDD prints for this file">' +
+      // C24 (lane C): a file the SME added at the end of the recording.
+      (SmeGives.fromSme(x) ? '<span class="att-from">' + escapeHtml(SmeGives.WORDS.fromSme) + "</span>" : "") +
       '<span class="att-file" title="' + escapeAttr(x.file) + '">' + escapeHtml(x.file) + "</span>" +
       (st ? '<span class="att-step" title="' + escapeAttr(st.name || "") + '">on ' + escapeHtml(st.name || "a step") + "</span>" : "") +
       '<button type="button" class="link-btn" data-att-act="open">Open</button>' +
@@ -724,6 +754,8 @@ module.exports = {
   fileUrl, shotsOf, notesOf, systemFieldHtml, stepShotsHtml, stepAttachedHtml, wireStepPane, setSystem,
   addScreenshot, togglePdd, removeShot, addNote, editNote, deleteNote,
   attachFile, openAttachment, removeAttachment, overviewAttachmentsHtml, wireOverviewAttachments,
+  // C24 (lane C): the SME's example files.
+  adoptSmeFiles,
   // A step marked on a video takes its frame (lane E-1).
   wireSystemField, frameAtMoment, settleFrame, writeFrame, frameEntry, useVideoAt, useVideoOffer, useVideoText,
   offersVideoFrame, useVideoButtonHtml, FRAME_WAIT_MS,

@@ -39,7 +39,9 @@ on this computer, in every window.
   made (beside the zip unless you choose another place). PDT unzips it,
   opens it and analyzes the recording by itself: the top bar says *Updating
   steps and map...* until it is done. You can also drop the zip on the page
-  shown while no project is open.
+  shown while no project is open. The SME can answer four short questions
+  and add example files when the recording stops: the answers wait under
+  their fields on the Overview, the files are in Files.
 - **From a video.** Choose *New*, *New project from a video...* and pick the
   video, for example a Teams recording of the SME at work, with its
   transcript if you have one: pick both at once. Several videos go one after

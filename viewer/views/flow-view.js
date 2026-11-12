@@ -461,6 +461,10 @@ async function loadSessionIntoView(folder, opts) {
   // Capture the loaded annotations as the undo baseline on EVERY load (including
   // a same-folder re-analyze), so the first edit records the true pre-edit state.
   captureBaseline();
+  // C24 (lane C): the SME's example files become the project's attachments
+  // (one save, not on the undo stack; nothing in a project opened read only),
+  // before anything is drawn and before the analysis on open.
+  await AnalystUI.adoptSmeFiles(State.getSession());
   $("#session-empty").style.display = "none";
   $("#session-loaded").style.display = "";
   // The top bar's levels, status line and Export show once a recording is open.

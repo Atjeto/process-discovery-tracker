@@ -54,6 +54,8 @@ const Handoff = require("../handoff.js");
 const Readiness = require("../readiness.js");
 const SystemNames = require("../system-names.js");
 const StepFacts = require("../step-facts.js");
+const SmeGives = require("../sme-gives.js");
+const { confirmModal } = require("../modals.js");
 
 /* ---- Stage failures (contract C12, RP-10) -------------------------------- */
 
@@ -751,12 +753,24 @@ function _summaryWarnings(sess) {
         "; if it fails again, the analysis log names the problem.") + "</div>" + _technicalDetail(err));
     }
   }
+  // C24 (lane C): a file the SME added that did not come with the project.
+  for (const name of _smeMissing(sess)) {
+    out.push('<div class="summary-problem ov-sme-missing"><span class="p-text">⚠ ' + escapeHtml(SmeGives.missingLine(name)) + "</span></div>");
+  }
   const coverage = analysis.coverage_caveat && typeof analysis.coverage_caveat.claim === "string"
     ? analysis.coverage_caveat : null;
   if (coverage) {
     out.push('<div class="summary-problem ov-coverage"><span class="p-text">⚠ ' + escapeHtml(coverage.claim) + "</span></div>");
   }
   return out.join("");
+}
+
+/* C24 (lane C): the names of the files the SME added that are not in the
+   project folder, as the project's open found them (flow-view.js
+   adoptSmeFiles sets `smeFilesMissing`). */
+function _smeMissing(sess) {
+  const list = sess && sess.smeFilesMissing;
+  return Array.isArray(list) ? list.filter((n) => typeof n === "string" && n) : [];
 }
 
 /* Lane HV (contract C20): the line of a hand-off opened read only, "Version
@@ -829,10 +843,15 @@ let _docFolder = null;
    scope": the count, and the empty fields by name while some are written
    (with none written, every field is still to write). Commas only: a label
    can hold "and". */
-function _documentStatusText(st, readOnly) {
+function _documentStatusText(st, readOnly, smeWaiting, smeReadOnly) {
   const count = st.filled + " of " + st.total + " written";
   // Lane HV: a hand-off opened read only names the empty fields, not a to-do.
-  return st.filled > 0 && st.missing.length ? count + (readOnly ? ". Not written: " : ". To write: ") + st.missing.join(", ") : count;
+  const base = st.filled > 0 && st.missing.length ? count + (readOnly ? ". Not written: " : ". To write: ") + st.missing.join(", ") : count;
+  // C24 (lane C): while one of the SME's answers waits under its field; a
+  // project opened read only (a hand-off, or open in another window) only
+  // says how many.
+  const sme = SmeGives.waitingLine(smeWaiting || 0, !!smeReadOnly);
+  return sme ? base + ". " + sme : base;
 }
 
 /* Who fills the document, in the summary beside its title (AD-29); in a
@@ -1047,12 +1066,95 @@ function _wireTranscript(host) {
   });
 }
 
+/* ---- 3c. What the SME wrote (contract C24, lane C) -------------------------- */
+
+/* The line under the document field `key`: while the SME's answer waits
+   (`waiting`, sme-gives.js waitingAnswers), "The SME wrote: <answer>" with
+   Use and Dismiss (a project opened read only: the answer as text, no
+   buttons); once the field's text is the SME's answer, one quiet line that
+   says so (the design); else nothing. */
+function _smeLineHtml(key, waiting, answer, value, readOnly) {
+  const W = SmeGives.WORDS;
+  if (waiting) {
+    return '<div class="ov-sme" data-sme="' + escapeAttr(key) + '">' +
+      '<span class="ov-sme-text"><strong>' + escapeHtml(W.wrote) + "</strong> " + escapeHtml(waiting) + "</span>" +
+      (readOnly ? "" :
+        '<button type="button" class="primary ov-sme-use" data-sme-act="use" title="' + escapeAttr(W.useTitle) + '">' +
+          escapeHtml(W.use) + "</button>" +
+        '<button type="button" class="link-btn ov-sme-dismiss" data-sme-act="dismiss" title="' + escapeAttr(W.dismissTitle) + '">' +
+          escapeHtml(W.dismiss) + "</button>") +
+      "</div>";
+  }
+  if (answer && SmeGives.holdsAnswer(value, answer)) {
+    return '<div class="ov-sme-from" data-sme-from="' + escapeAttr(key) + '">' + escapeHtml(SmeGives.WRITTEN_FROM) + "</div>";
+  }
+  return "";
+}
+
+/* How many of the SME's answers wait under their fields in `sess`. */
+function _smeWaitingCount(sess) {
+  return SmeGives.waitingAnswers(sess && sess.manifest, (sess && sess.annotations) || {}).length;
+}
+
+/* Use: the SME's answer into its field and its key dismissed, one undoable
+   edit under the field's own label (sme-gives.js usedAnswer): an answer used
+   does not come back once the field is edited, and one Ctrl+Z gives back
+   the field's old text and the line. A field that holds other text asks
+   first, so nothing typed is lost unseen. */
+async function _useSmeAnswer(key) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return;
+  const answer = SmeGives.answersOf(sess.manifest)[key];
+  if (!answer) return;
+  const now = _docFieldText(key);
+  if (now.trim() && !SmeGives.holdsAnswer(now, answer)) {
+    const ok = await confirmModal({ title: "Use the SME's answer", message: SmeGives.WORDS.replaceQuestion,
+      detail: "Ctrl+Z brings back what the field holds now.", okLabel: SmeGives.WORDS.replaceOk });
+    if (!ok || State.getSession() !== sess) return;
+  }
+  const field = document.querySelector('#ov-doc [data-doc="' + key + '"]');
+  if (field) field.value = answer;
+  const anno = sess.annotations || {};
+  const used = SmeGives.usedAnswer(anno, key, answer);
+  anno.document = used.document;
+  anno.sme_answers_dismissed = used.sme_answers_dismissed;
+  const label = (DOC_FIELDS.find((f) => f.key === key) || {}).label || key;
+  try {
+    // The field's own label (as typing in it saves); the Overview draws
+    // itself again on the "analysis" topic.
+    await persistAnnotations(anno, "edit document field " + label, ["analysis"]);
+  } catch (_) {
+    return;   // already shown to the analyst by session.js
+  }
+  toast(label + " now holds the SME's answer. Ctrl+Z takes it back.", "success");
+}
+
+/* Dismiss: the SME's answer for `key` waits no more (one undoable edit,
+   annotations.sme_answers_dismissed). */
+async function _dismissSmeAnswer(key) {
+  const sess = State.getSession();
+  if (!sess || RO.isReadOnly(sess)) return;
+  const anno = sess.annotations || {};
+  anno.sme_answers_dismissed = SmeGives.withDismissed(anno, key);
+  try {
+    // The Overview draws itself again on the "analysis" topic.
+    await persistAnnotations(anno, "dismiss the SME's answer", ["analysis"]);
+  } catch (_) {
+    return;   // already shown to the analyst by session.js
+  }
+  toast("The SME's answer is hidden. Ctrl+Z brings it back.", "success");
+}
+
 function _documentHtml(anno, sess, open) {
   const doc = (anno && anno.document) || null;
   const st = documentStatus(doc);
   // Lane HV: a hand-off says who wrote the fields; lane MW: a project open
   // for editing in another window is the analyst's own, still to write there.
   const handedOff = RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess);
+  // C24 (lane C): the SME's answers that wait under their fields.
+  const manifest = (sess && sess.manifest) || null;
+  const waiting = new Map(SmeGives.waitingAnswers(manifest, anno).map((w) => [w.key, w.answer]));
+  const answers = SmeGives.answersOf(manifest);
   const fields = DOC_FIELDS.map((f) => {
     const value = _docValue(doc, f.key);
     // P3.6: where the field lands is its tooltip, not a line. AD-29: an
@@ -1063,9 +1165,12 @@ function _documentHtml(anno, sess, open) {
     const input = f.line
       ? '<input type="text" class="ov-doc-input"' + attrs + ' value="' + escapeAttr(value) + '" />'
       : '<textarea class="ov-doc-input"' + attrs + ' rows="3">' + escapeHtml(value) + "</textarea>";
-    return '<label class="ov-doc-field">' +
+    const field = '<label class="ov-doc-field">' +
       '<span class="ov-doc-label">' + escapeHtml(f.label) + (f.optional ? ' <span class="ov-doc-optional">optional</span>' : "") + "</span>" +
       input + "</label>";
+    const sme = _smeLineHtml(f.key, waiting.get(f.key), answers[f.key], value, RO.isReadOnly(sess));
+    // The SME's line sits under its field, in the field's cell of the grid.
+    return sme ? '<div class="ov-doc-cell" data-doc-cell="' + f.key + '">' + field + sme + "</div>" : field;
   }).join("");
   // A disclosure (.analysis-module): a title, who fills it, a one-line status
   // that shows while it is closed, and a chevron.
@@ -1073,7 +1178,7 @@ function _documentHtml(anno, sess, open) {
     '<summary class="analysis-module-head" title="The PDD prints each field you write, in this and every later export.">' +
       '<span class="analysis-module-title">Document</span>' +
       '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(handedOff ? DOC_WHO_READ_ONLY : DOC_WHO) + "</span>" +
-      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, handedOff)) + "</span>" +
+      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, handedOff, waiting.size, RO.isReadOnly(sess))) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
     '<div class="analysis-module-body ov-doc-body">' + fields + AnalystUI.overviewAttachmentsHtml(anno) +
@@ -1108,7 +1213,23 @@ async function _saveDocField(key, value) {
     const base = String(sess.sessionFolder || "").split(/[\\/]/).filter(Boolean).pop() || "";
     pushRecent(sess.sessionFolder, SessionSummary.recentLabel(sess, base));
   }
+  _refreshSmeLineInPlace(sess, key);
   _refreshPathInPlace();
+}
+
+/* C24 (lane C): the SME's line under field `key` after its text was saved,
+   in place (the rest of the panel stays as it is, as typing needs): a field
+   edited away from the answer drops "Written from the SME's answer.", and
+   one whose text became the answer drops its waiting line. */
+function _refreshSmeLineInPlace(sess, key) {
+  const cell = document.querySelector('#ov-doc [data-doc-cell="' + key + '"]');
+  if (!cell) return;
+  const anno = sess.annotations || {};
+  const waiting = SmeGives.waitingAnswers(sess.manifest, anno).find((w) => w.key === key);
+  const html = _smeLineHtml(key, waiting && waiting.answer, SmeGives.answersOf(sess.manifest)[key],
+    _docValue(anno.document, key), RO.isReadOnly(sess));
+  cell.querySelectorAll(".ov-sme, .ov-sme-from").forEach((el) => el.remove());
+  if (html) cell.insertAdjacentHTML("beforeend", html);
 }
 
 /* Update the Checklist, the document status and the recording line without
@@ -1125,7 +1246,8 @@ function _refreshPathInPlace() {
     _refreshMissing(host, sess, state);
   }
   const status = host.querySelector("#ov-doc-status");
-  if (status) status.textContent = _documentStatusText(state.doc);
+  if (status) status.textContent = _documentStatusText(state.doc, RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess), _smeWaitingCount(sess),
+    RO.isReadOnly(sess));
   // P3.9: the recording line names the document title once it is written.
   const summary = host.querySelector("#ov-summary .ov-summary-line");
   if (summary) {
@@ -1140,6 +1262,15 @@ function _wireDocument(host) {
   panel.addEventListener("toggle", () => { _docOpen = panel.open; });
   panel.querySelectorAll("[data-doc]").forEach((el) => {
     el.addEventListener("change", () => _saveDocField(el.dataset.doc, el.value));
+  });
+  // C24 (lane C): Use and Dismiss under a field the SME answered.
+  panel.addEventListener("click", (e) => {
+    const b = e.target && e.target.closest ? e.target.closest("[data-sme-act]") : null;
+    const line = b && b.closest("[data-sme]");
+    if (!line) return;
+    e.preventDefault();
+    if (b.dataset.smeAct === "use") _useSmeAnswer(line.dataset.sme);
+    else _dismissSmeAnswer(line.dataset.sme);
   });
 }
 

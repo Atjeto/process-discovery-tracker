@@ -273,7 +273,12 @@ the folder.
   any exports its PDD as one zip, the PDD and `Attachments/`, the names
   linking there, `pdd-zip.js`, `--pdd-attachments`; a hand-off's PDD links
   into the project folder beside it), and `step.system`. Removing one
-  deletes its entry and file; Undo restores both.
+  deletes its entry and file; Undo restores both. C24 (lane C): the SME's
+  end-summary answers (`manifest.sme_answers`) wait under their document
+  fields with *Use* and *Dismiss* (`sme-gives.js`,
+  `annotations.sme_answers_dismissed`), and the SME's example files
+  (`manifest.sme_files`) become attachments `from: "sme"` when an editable
+  project opens (`analyst-ui.js` `adoptSmeFiles`, not on the undo stack).
 - **Step flow** (C17, AD-31). A step may carry `only_when` (a condition)
   and `links` (`[{ to: step_id | "end", when }]`: a loop back, a skip or an
   early end), set in the step pane's Flow line (*Only when...*, *Decision...*,

@@ -38,6 +38,7 @@ const WORDS = {
   onStep: "On the step: ",
   atMoment: "At a moment, on no step",
   onProject: "On the whole project",
+  fromSme: "From the SME",
 };
 
 function _text(v) { return typeof v === "string" ? v.trim() : ""; }
@@ -233,14 +234,18 @@ function noteRows(notes, stepOf) {
 }
 
 /* The rows of the Files tab, in the order they were attached: [{ id, name,
-   file, where, stepId }]. */
+   file, where, stepId, fromSme }]. C24 (lane C): a file the SME added at
+   the end of the recording says so first ("From the SME · On the whole
+   project"). */
 function fileRows(attachments, stepOf) {
   return (Array.isArray(attachments) ? attachments : []).filter((a) => a && a.id).map((a) => {
     const st = a.step_id && typeof stepOf === "function" ? stepOf(a.step_id) : null;
+    const fromSme = a.from === "sme";
+    const where = st ? WORDS.onStep + (_text(st.name) || "(unnamed step)") : WORDS.onProject;
     return {
       id: a.id, name: _text(a.label) || _text(a.file) || "(unnamed file)", file: _text(a.file),
-      stepId: st ? st.step_id : null,
-      where: st ? WORDS.onStep + (_text(st.name) || "(unnamed step)") : WORDS.onProject,
+      stepId: st ? st.step_id : null, fromSme,
+      where: fromSme ? WORDS.fromSme + " · " + where : where,
     };
   });
 }

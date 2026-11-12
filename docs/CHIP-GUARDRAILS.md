@@ -360,7 +360,15 @@ menu's play item is *Play* (it read *Watch*).
   count, "N of 10 written": `request` and `notes` are optional and not
   counted; and the empty fields by name); the attachments `#ov-attach`
   (`#btn-ov-attach`, `.att-row[data-att-id]` with `.att-label-input` and
-  `[data-att-act="open"|"remove"]`); the transcript `#ov-tr` (`#ov-tr-list`,
+  `[data-att-act="open"|"remove"]`, `.att-from` "From the SME" on a file
+  the SME added, C24); C24, the SME's answers: a field with one waiting
+  sits in `.ov-doc-cell[data-doc-cell="<key>"]` with its line
+  `.ov-sme[data-sme="trigger"|"result"|"exceptions"|"effort"]`
+  (`.ov-sme-text`, `[data-sme-act="use"]` `.ov-sme-use`,
+  `[data-sme-act="dismiss"]` `.ov-sme-dismiss`; no buttons read only), a
+  field written from it `.ov-sme-from[data-sme-from]`, and a file the SME
+  added that is not in the folder `#ov-summary .ov-sme-missing`; the
+  transcript `#ov-tr` (`#ov-tr-list`,
   `.tr-add-to[data-seg]` opens `#ov-tr-add-menu [data-doc-target]`).
 - No Observations since 2.0.1: the PDD's sections are the document's
   alone, and opening the Overview never starts an analysis.
@@ -541,7 +549,8 @@ menu's play item is *Play* (it read *Watch*).
   Notes `#tp-notes` (`.tp-add-note`, `.tp-note-row[data-note-id]` with
   `.tp-at`, `.tp-note-edit`, `.tp-note-delete`), Files `#tp-files`
   (`.tp-attach`, `.tp-file-row[data-att-id]` with `.tp-file-step`,
-  `.tp-file-open`, `.tp-file-remove`). Screenshots: `#screenshots-grid`
+  `.tp-file-open`, `.tp-file-remove`; a file the SME added reads "From
+  the SME · On the whole project" in its `.tp-meta`, C24). Screenshots: `#screenshots-grid`
   (`.thumb[data-rel]`, `.tp-here-item` on one a lane's click opened),
   `#btn-open-gallery` (the gallery `#screenshot-gallery`). The step editor
   is in one host at a time: on the Timeline `#step-detail` is empty.

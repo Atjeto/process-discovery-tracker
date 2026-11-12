@@ -558,6 +558,41 @@ def test_a_recording_keeps_its_recorder_wording():
     assert "Recorded by | Not recorded" in control
 
 
+# ---- who recorded, in full (C24, B5) -------------------------------------------------
+
+def test_recorded_by_joins_the_name_the_role_and_the_business_unit():
+    """C24 (B5): the name, then the role, then the business unit, each only
+    when set; without a name, the login as before."""
+    f = pdd_export.recorded_by_of
+    assert f({"id": "mkeller", "name": "Maria Keller", "role": "sales assistant",
+              "bu": "Operations"}) == "Maria Keller, sales assistant, Operations"
+    assert f({"id": "mkeller", "name": "Maria Keller", "role": "sales assistant"}) == (
+        "Maria Keller, sales assistant")
+    assert f({"id": "mkeller", "name": "Maria Keller", "bu": "Operations"}) == "Maria Keller, Operations"
+    assert f({"id": "mkeller", "name": " Maria Keller ", "role": "  ", "bu": None}) == "Maria Keller"
+    # No name: the login, never the role or the business unit alone.
+    assert f({"id": "mkeller", "role": "sales assistant", "bu": "Operations"}) == "mkeller"
+    assert f({"id": "mkeller", "name": "", "role": "sales assistant"}) == "mkeller"
+    assert f({}) == "" and f(None) == "" and f("mkeller") == ""
+
+
+def test_document_control_prints_who_recorded_in_full():
+    if not _HAVE_DOCX:
+        return
+    manifest, annotations, stats, analysis, events = _session()
+    manifest["config"]["worker"] = {"id": "mkeller", "name": "Maria Keller",
+                                    "role": "sales assistant", "bu": "Operations"}
+    control = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                       "1. Document control")
+    assert "Recorded by | Maria Keller, sales assistant, Operations" in control
+    # A role without a name keeps today's rule: the login.
+    manifest["config"]["worker"] = {"id": "mkeller", "role": "sales assistant", "bu": "Operations"}
+    control = _section(_blocks_of(manifest, annotations, stats, analysis, events),
+                       "1. Document control")
+    assert "Recorded by | mkeller" in control
+    assert not any("sales assistant" in r for r in control)
+
+
 # ---- the reference run (C3) and its steps -------------------------------------------
 
 def _steps_section(annotations_change=None, stats_change=None):

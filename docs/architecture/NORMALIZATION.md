@@ -444,8 +444,10 @@ field prints a "[To be completed: ...]" gap, and only those fields leave
 gaps. The sections, in the reader's order:
 
 1. **Document control.** The process (the document title), the project
-   folder, when it was recorded and by whom (the SME's profile name, else
-   the Windows login), the transactions recorded, whether a video is
+   folder, when it was recorded and by whom (C24, B5: the capture
+   profile's `worker.name`, `worker.role` and `worker.bu`, each only when
+   set, joined by ", ", "Maria Keller, sales assistant, Operations"
+   (`recorded_by_of`); without a name, the Windows login), the transactions recorded, whether a video is
    attached, the request: the one the analyst wrote in the document (C6
    `request`, 2.0.1), else the capture's when one was set (AD-30: its name
    and its code, "Invoice intake review (REQ-2026-042)", the capture app's

@@ -374,6 +374,18 @@ def _text_of(v) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
+def recorded_by_of(worker) -> str:
+    """Document control's Recorded by (C24, B5): the capture profile's
+    `worker.name`, `worker.role` and `worker.bu`, each only when set, joined
+    by ", " ("Maria Keller, sales assistant, Operations"); without a name,
+    the login it ran under (`worker.id`), as before; "" when neither is set."""
+    w = worker if isinstance(worker, dict) else {}
+    name = _text_of(w.get("name"))
+    if not name:
+        return _text_of(w.get("id"))
+    return ", ".join(p for p in (name, _text_of(w.get("role")), _text_of(w.get("bu"))) if p)
+
+
 def _read_map_images(manifest) -> dict[tuple[str, ...], Path]:
     """The pictures of the maps (contract C19, `--pdd-map-images`): {path of
     nodes: PNG file} from a manifest {"maps": [{"path": [<node>, ...],
@@ -459,7 +471,10 @@ class _Session:
         worker = config.get("worker") if isinstance(config, dict) else None
         worker = worker if isinstance(worker, dict) else {}
         # The SME's name from the capture profile, else the login it ran under.
-        self.recorded_by = _text_of(worker.get("name")) or _text_of(worker.get("id"))
+        # C24 (B5): with a name, who recorded in full: the name, then the
+        # role, then the business unit, each only when set ("Maria Keller,
+        # sales assistant, Operations").
+        self.recorded_by = recorded_by_of(worker)
         started = self.manifest.get("started_at")
         self.captured = started[:10] if isinstance(started, str) and len(started) >= 10 else ""
         self.recording_start = _parse_ts(started)

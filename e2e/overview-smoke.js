@@ -179,15 +179,19 @@ function zipCentral(buf, fn) {
   }
   return undefined;
 }
-function readZipEntry(buf, name) {
+function readZipBuf(buf, name) {
   const r = zipCentral(buf, (n, p) => {
     if (n !== name) return undefined;
     const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), local = buf.readUInt32LE(p + 42);
     const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
     const data = buf.subarray(start, start + csize);
-    return (method === 0 ? data : zlib.inflateRawSync(data)).toString("utf8");
+    return method === 0 ? data : zlib.inflateRawSync(data);
   });
   return r === undefined ? null : r;
+}
+function readZipEntry(buf, name) {
+  const r = readZipBuf(buf, name);
+  return r === null ? null : r.toString("utf8");
 }
 /* The tables of a document.xml, each as rows of cell texts (the text runs of
    a cell joined, the XML entities read back). */
@@ -1636,6 +1640,334 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   for (const dir of [SESSION_W0, W0_TMP]) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
   }
+
+  // ================= Launches 6 to 8 (lane C, contract C24): what the SME gives
+  // The capture app's end summary writes sme_answers and sme_files on the
+  // manifest (written here into a temp copy, the capture side being another
+  // lane): the answers wait under their document fields with Use and
+  // Dismiss, the files become attachments of the whole project once, and the
+  // PDD names who recorded in full. Then the same project opened again adds
+  // nothing, and a hand-off unzipped by hand writes nothing.
+  const SME_BASE = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-ov-sme-"));
+  const SME_PROJECT = path.join(SME_BASE, "Order intake");
+  const SME_RO = path.join(SME_BASE, "unzipped", "Order intake");
+  const SME_ANSWERS = { trigger: "An order mail from a customer in the shared mailbox",
+    result: "A sales order in SAP and a confirmation sent to the customer",
+    effort: "About 30 a day, 4 minutes each", exceptions: "A new customer: I create them first in Salesforce" };
+  const SME_FILES = [
+    { file: "Order 10900.msg", label: "Order 10900.msg", added_at: "2026-11-12T09:00:00.000Z" },
+    { file: "Price list 2026.xlsx", label: "Price list 2026.xlsx", added_at: "2026-11-12T09:01:00.000Z" },
+    { file: "Delivery note.pdf", label: "Delivery note.pdf", added_at: "2026-11-12T09:02:00.000Z" },
+  ];
+  const SME_WHO = "Maria Keller, sales assistant, Operations";
+  const smeAnnoPath = (dir) => path.join(dir, "annotations.json");
+  const smeAnno = (dir) => JSON.parse(fs.readFileSync(smeAnnoPath(dir), "utf-8"));
+  const smeOfAnno = (a) => (a.attachments || []).filter((x) => x && x.from === "sme");
+  const sme = {};
+  try {
+    const src = makeTempSession({ stripMarkers: false });
+    fs.cpSync(src, SME_PROJECT, { recursive: true });
+    fs.rmSync(src, { recursive: true, force: true });
+    if (!normalize(SME_PROJECT)) throw new Error("no deps-bearing Python");
+    const m = JSON.parse(fs.readFileSync(path.join(SME_PROJECT, "manifest.json"), "utf-8"));
+    m.sme_answers = SME_ANSWERS;
+    m.sme_files = SME_FILES;
+    m.config = Object.assign({}, m.config, { worker: Object.assign({}, (m.config || {}).worker, { name: "Maria Keller", role: "sales assistant", bu: "Operations" }) });
+    fs.writeFileSync(path.join(SME_PROJECT, "manifest.json"), JSON.stringify(m, null, 2));
+    // Two of the three files came with the recording; the third did not.
+    fs.mkdirSync(path.join(SME_PROJECT, "attachments"), { recursive: true });
+    fs.writeFileSync(path.join(SME_PROJECT, "attachments", "Order 10900.msg"), "An example order mail.");
+    fs.writeFileSync(path.join(SME_PROJECT, "attachments", "Price list 2026.xlsx"), "An example price list.");
+    // The hand-off unzipped by hand, made before the first open: nothing taken yet.
+    fs.cpSync(SME_PROJECT, SME_RO, { recursive: true });
+    const ra = smeAnno(SME_RO);
+    ra.handoffs = [{ version: 1, handed_off_at: "2026-11-12T09:30:00.000Z", by: "e2e", note: "C24" }];
+    fs.writeFileSync(smeAnnoPath(SME_RO), JSON.stringify(ra, null, 2));
+    fs.writeFileSync(path.join(SME_BASE, "unzipped", "Order intake v1 PDD.docx"), "");
+  } catch (e) { sme.err = "setup: " + String(e.message).split("\n")[0]; }
+
+  const smeSettled = (pg, folder) => pg.waitForFunction((f) => {
+    const s = require("./state.js").getSession();
+    return !!s && String(s.sessionFolder).toLowerCase() === f.toLowerCase() && !!s.analysis &&
+      !require("./views/flow-view.js").analysisBusy() && !document.getElementById("run-status");
+  }, path.resolve(folder), { timeout: 120000 });
+  const smeToLevel = async (pg, l) => { await pg.locator('.view-mode-btn[data-level="' + l + '"]').click({ timeout: T }); await wait(400); };
+  const smeOpenDoc = async (pg) => {
+    await smeToLevel(pg, "overview");
+    if (!(await pg.evaluate(() => document.getElementById("ov-doc").open))) await pg.click("#ov-doc > summary", { timeout: T });
+    await wait(200);
+  };
+  // The Overview as a reader sees it, and where each SME line's parts are.
+  const smeRead = (pg) => pg.evaluate(() => {
+    const hit = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+    const lines = [...document.querySelectorAll("#ov-doc .ov-sme")].map((l) => {
+      const box = l.getBoundingClientRect();
+      const tb = l.querySelector(".ov-sme-text").getBoundingClientRect();
+      const btns = [...l.querySelectorAll("button")];
+      const rects = btns.map((b) => b.getBoundingClientRect());
+      const cell = l.closest(".ov-doc-cell").getBoundingClientRect();
+      return {
+        key: l.dataset.sme, text: l.querySelector(".ov-sme-text").textContent,
+        buttons: btns.map((b) => [b.textContent.trim(), b.title]),
+        inside: rects.every((r) => r.left >= box.left - 0.5 && r.right <= box.right + 0.5 && r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5),
+        overlap: rects.some((r) => hit(r, tb)) || (rects.length === 2 && hit(rects[0], rects[1])),
+        fits: box.right <= cell.right + 0.5 && l.scrollWidth <= l.clientWidth + 1 && box.width > 0,
+      };
+    });
+    return {
+      lines,
+      from: [...document.querySelectorAll("#ov-doc .ov-sme-from")].map((e) => [e.dataset.smeFrom, e.textContent]),
+      status: ((document.getElementById("ov-doc-status") || {}).textContent || "").trim(),
+      missing: [...document.querySelectorAll("#ov-summary .ov-sme-missing")].map((e) => e.textContent.trim()),
+      att: [...document.querySelectorAll("#ov-attach .att-row")].map((r) => [(r.querySelector(".att-file") || {}).textContent || "",
+        (r.querySelector(".att-from") || {}).textContent || ""]),
+      noPageScroll: document.documentElement.scrollWidth <= innerWidth,
+      fields: Object.fromEntries(["trigger", "result", "exceptions", "effort"].map((k) => [k, (document.querySelector('#ov-doc [data-doc="' + k + '"]') || {}).value])),
+    };
+  });
+  const smeUndo = async (pg) => {
+    await pg.evaluate(() => { if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); });
+    await pg.keyboard.press("Control+z");
+  };
+  const smeWaitDisk = async (pred) => {
+    for (let k = 0; k < 80; k++) {
+      try { if (pred(smeAnno(SME_PROJECT))) return true; } catch (_) { /* mid-write */ }
+      await wait(125);
+    }
+    return false;
+  };
+  const smeDoc = (a, k) => ((a.document || {})[k] || "");
+  let smeZip = null;
+  if (!sme.err) {
+    let app6, page6, close6;
+    try {
+      ({ app: app6, page: page6, close: close6 } = await launch(SME_PROJECT, pageErrors));
+      await smeSettled(page6, SME_PROJECT);
+      await app6.evaluate(({ shell }) => { shell.showItemInFolder = () => {}; });
+      // Item 2: the two files in the folder are taken once, from the SME, on the whole project.
+      const a0 = smeAnno(SME_PROJECT);
+      sme.adopted = smeOfAnno(a0).map((x) => [x.file, x.label, x.step_id, x.added_at, typeof x.id === "string" && x.id.length > 8]);
+      sme.adoptedKey = a0.sme_files_adopted;
+      sme.undoAfterOpen = await page6.evaluate(() => document.getElementById("btn-undo").getAttribute("aria-disabled"));
+      await smeToLevel(page6, "flow");
+      await page6.click("#tp-tab-files", { timeout: T });
+      await wait(300);
+      sme.files = await page6.evaluate(() => [...document.querySelectorAll("#tp-files .tp-file-row")].map((r) =>
+        [r.querySelector(".tp-text").textContent.trim(), r.querySelector(".tp-meta").textContent.trim()]));
+      // Item 1: the answers under their fields.
+      await smeOpenDoc(page6);
+      await page6.locator('#ov-doc [data-doc-cell="trigger"]').scrollIntoViewIfNeeded();
+      sme.first = await smeRead(page6);
+      await page6.screenshot({ path: path.join(OUT, "overview-sme-" + SIZE + ".png") });
+      // Use on an empty Trigger writes it; Ctrl+Z takes it back and the line returns.
+      await page6.click('#ov-doc .ov-sme[data-sme="trigger"] [data-sme-act="use"]', { timeout: T });
+      sme.usedOnDisk = await smeWaitDisk((a) => smeDoc(a, "trigger") === SME_ANSWERS.trigger &&
+        (a.sme_answers_dismissed || []).includes("trigger"));
+      await wait(300);
+      sme.noAsk = await page6.evaluate(() => !document.querySelector(".modal-confirm"));
+      sme.used = await smeRead(page6);
+      // The analyst edits the field: the answer's line stays gone.
+      const EDITED = SME_ANSWERS.trigger + ", or a call to the order desk";
+      await page6.locator('#ov-doc [data-doc="trigger"]').fill(EDITED, { timeout: T });
+      await page6.locator('#ov-doc [data-doc="trigger"]').press("Tab");
+      sme.editedOnDisk = await smeWaitDisk((a) => smeDoc(a, "trigger") === EDITED);
+      await wait(400);
+      sme.edited = await smeRead(page6);
+      // Ctrl+Z takes the edit back (the answer, still used); Ctrl+Z again takes
+      // Use back: the field's old text and the answer's line, in one step.
+      await smeUndo(page6);
+      sme.undo1OnDisk = await smeWaitDisk((a) => smeDoc(a, "trigger") === SME_ANSWERS.trigger);
+      await wait(400);
+      sme.undo1 = await smeRead(page6);
+      await smeUndo(page6);
+      sme.undoneOnDisk = await smeWaitDisk((a) => smeDoc(a, "trigger") === "" && !(a.sme_answers_dismissed || []).includes("trigger"));
+      await wait(400);
+      sme.undoToast = await page6.evaluate(() => ((document.getElementById("toast") || {}).textContent || "").trim());
+      sme.undone = await smeRead(page6);
+      // Use on a field that holds other text asks first; Cancel keeps it, Replace writes.
+      await page6.locator('#ov-doc [data-doc="result"]').fill("What the analyst typed", { timeout: T });
+      await page6.locator('#ov-doc [data-doc="result"]').press("Tab");
+      await smeWaitDisk((a) => smeDoc(a, "result") === "What the analyst typed");
+      await page6.click('#ov-doc .ov-sme[data-sme="result"] [data-sme-act="use"]', { timeout: T });
+      await page6.waitForSelector(".modal-confirm", { timeout: T });
+      sme.ask = await page6.evaluate(() => {
+        const d = document.querySelector(".modal-confirm");
+        return { title: d.querySelector("h2").textContent, msg: (d.querySelector(".modal-msg") || {}).textContent,
+          detail: (d.querySelector(".modal-detail") || {}).textContent, ok: d.querySelector(".modal-ok").textContent };
+      });
+      await page6.click(".modal-confirm .modal-cancel", { timeout: T });
+      await page6.waitForSelector(".modal-confirm", { state: "detached", timeout: T });
+      await wait(300);
+      sme.cancelKept = smeDoc(smeAnno(SME_PROJECT), "result") === "What the analyst typed";
+      await page6.click('#ov-doc .ov-sme[data-sme="result"] [data-sme-act="use"]', { timeout: T });
+      await page6.waitForSelector(".modal-confirm", { timeout: T });
+      await page6.click(".modal-confirm .modal-ok", { timeout: T });
+      sme.replaced = await smeWaitDisk((a) => smeDoc(a, "result") === SME_ANSWERS.result);
+      // Dismiss on Exceptions hides it; Ctrl+Z brings it back.
+      await wait(300);
+      await page6.click('#ov-doc .ov-sme[data-sme="exceptions"] [data-sme-act="dismiss"]', { timeout: T });
+      sme.dismissedOnDisk = await smeWaitDisk((a) => (a.sme_answers_dismissed || []).includes("exceptions"));
+      await wait(400);
+      sme.dismissed = await smeRead(page6);
+      await smeUndo(page6);
+      sme.backOnDisk = await smeWaitDisk((a) => !(a.sme_answers_dismissed || []).includes("exceptions"));
+      await wait(400);
+      sme.back = await smeRead(page6);
+      // At 125% zoom (app-zoom.js) the lines still hold.
+      await page6.evaluate(() => document.activeElement && document.activeElement.blur());
+      await page6.keyboard.press("Control+=");
+      await page6.keyboard.press("Control+=");
+      await wait(600);
+      sme.zoom = await page6.evaluate(() => require("electron").webFrame.getZoomFactor());
+      await page6.evaluate(() => document.querySelector('#ov-doc [data-doc-cell="trigger"]').scrollIntoView({ block: "center" }));
+      await wait(300);
+      sme.at125 = await smeRead(page6);
+      // The window as drawn (Playwright's own picture crops a zoomed page to its CSS size).
+      const png125 = await app6.evaluate(async ({ BrowserWindow }) =>
+        (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString("base64"));
+      fs.writeFileSync(path.join(OUT, "overview-sme-125-" + SIZE + ".png"), Buffer.from(png125, "base64"));
+      await page6.keyboard.press("Control+0");
+      await wait(400);
+      // Use Trigger again, then hand off: the PDD and the zip.
+      await page6.click('#ov-doc .ov-sme[data-sme="trigger"] [data-sme-act="use"]', { timeout: T });
+      await smeWaitDisk((a) => smeDoc(a, "trigger") === SME_ANSWERS.trigger);
+      await wait(300);
+      await page6.click("#btn-session-export-menu");
+      await page6.waitForSelector("#btn-session-handoff", { state: "visible", timeout: T });
+      await page6.click("#btn-session-handoff");
+      await page6.waitForSelector(".modal-backdrop.modal-prompt", { timeout: T });
+      await page6.click(".modal-backdrop.modal-prompt .modal-ok", { timeout: T });
+      const deadline = Date.now() + 180000;
+      while (Date.now() < deadline && !smeZip) {
+        const z = fs.readdirSync(SME_BASE).find((n) => / v1\.zip$/.test(n));
+        if (z) {
+          try {
+            const buf = fs.readFileSync(path.join(SME_BASE, z));
+            if (buf.length > 1000 && zipNames(buf).length) smeZip = { name: z, buf };
+          } catch (_) { /* still being written */ }
+        }
+        if (!smeZip) await wait(500);
+      }
+      await wait(1000);
+      sme.beforeAgain = fs.statSync(smeAnnoPath(SME_PROJECT)).mtimeMs;
+      sme.countBefore = smeOfAnno(smeAnno(SME_PROJECT)).length;
+    } catch (e) { logActionError("C24 SME", e); sme.err = String(e.message).split("\n")[0]; if (page6) await shot(page6, "fail-overview-sme.png"); }
+    if (close6) await close6();
+  }
+  if (smeZip) {
+    const names = zipNames(smeZip.buf);
+    const pddName = names.find((n) => !n.includes("/") && / v1 PDD\.docx$/.test(n));
+    // The files under the project's attachments/ (not the folder's own entry).
+    sme.zipFiles = names.filter((n) => /\/attachments\/[^/]+$/.test(n)).map((n) => n.split("/").pop()).sort();
+    if (pddName) {
+      const xml = readZipEntry(readZipBuf(smeZip.buf, pddName), "word/document.xml");
+      const text = docxText(xml);
+      sme.pddTrigger = text.includes("2.3 Trigger" + SME_ANSWERS.trigger);
+      sme.pddWho = docxTables(xml).some((t) => t.some((r) => r[0] === "Recorded by" && r[1] === SME_WHO));
+      const at = text.lastIndexOf("Attachments");
+      sme.pddAttach = at >= 0 && text.slice(at).includes("Order 10900.msg") && text.slice(at).includes("Price list 2026.xlsx") &&
+        !text.slice(at).includes("Delivery note.pdf");
+    }
+  }
+  const smeL = (r, k) => r && r.lines.find((l) => l.key === k);
+  const smeKeys = (r) => (r ? r.lines.map((l) => l.key) : null);
+  record("(sme) C24 item 2: the SME's two files in the folder are attachments of the whole project once, from the SME, " +
+    "in a save not on the undo stack; the Files tab says From the SME · On the whole project",
+    !sme.err && same(sme.adopted, [["Order 10900.msg", "Order 10900.msg", null, "2026-11-12T09:00:00.000Z", true],
+      ["Price list 2026.xlsx", "Price list 2026.xlsx", null, "2026-11-12T09:01:00.000Z", true]]) &&
+      same(sme.adoptedKey, ["Order 10900.msg", "Price list 2026.xlsx"]) && sme.undoAfterOpen === "true" &&
+      same(sme.files, [["Order 10900.msg", "From the SME · On the whole project"], ["Price list 2026.xlsx", "From the SME · On the whole project"]]),
+    JSON.stringify({ adopted: sme.adopted, key: sme.adoptedKey, undo: sme.undoAfterOpen, files: sme.files, err: sme.err }));
+  record("(sme) the Overview's attachments say From the SME, and the file not in the folder is said once",
+    !sme.err && sme.first && same(sme.first.att, [["Order 10900.msg", "From the SME"], ["Price list 2026.xlsx", "From the SME"]]) &&
+      same(sme.first.missing, ["⚠ The SME's file Delivery note.pdf is not in the project folder."]),
+    JSON.stringify(sme.first && { att: sme.first.att, missing: sme.first.missing }));
+  record("(sme) C24 item 1: the four answers wait under Trigger, Result, Exceptions and Volume and effort as text, each with Use and Dismiss " +
+    "and their tooltips; the document's line counts them; at " + SIZE + " nothing overlaps or is cut, and the page does not scroll sideways",
+    !sme.err && sme.first && same(smeKeys(sme.first), ["trigger", "result", "exceptions", "effort"]) &&
+      smeL(sme.first, "trigger").text === "The SME wrote: " + SME_ANSWERS.trigger &&
+      sme.first.lines.every((l) => same(l.buttons, [["Use", "Writes the SME's answer into this field."],
+        ["Dismiss", "Hides the SME's answer for this field. Ctrl+Z brings it back."]]) && l.inside && !l.overlap && l.fits) &&
+      sme.first.noPageScroll && / The SME answered 4 questions: each waits under its field\.$/.test(sme.first.status),
+    JSON.stringify(sme.first && { lines: sme.first.lines, status: sme.first.status, noPageScroll: sme.first.noPageScroll }));
+  record("(sme) Use on an empty Trigger writes the answer without a question and dismisses its key (the field and annotations.json), " +
+    "the line says it was written from it; the field edited, the answer's line stays gone and so does Written from; " +
+    "Ctrl+Z takes the edit back, a second Ctrl+Z takes Use back (Undone: edit document field Trigger): the old text and the line return",
+    !sme.err && sme.usedOnDisk && sme.noAsk && sme.used && sme.used.fields.trigger === SME_ANSWERS.trigger && !smeL(sme.used, "trigger") &&
+      same(sme.used.from, [["trigger", "Written from the SME's answer."]]) && /The SME answered 3 questions/.test(sme.used.status) &&
+      sme.editedOnDisk && sme.edited && !smeL(sme.edited, "trigger") && same(sme.edited.from, []) &&
+      sme.undo1OnDisk && sme.undo1 && sme.undo1.fields.trigger === SME_ANSWERS.trigger && !smeL(sme.undo1, "trigger") &&
+      same(sme.undo1.from, [["trigger", "Written from the SME's answer."]]) &&
+      sme.undoneOnDisk && sme.undone && sme.undone.fields.trigger === "" && !!smeL(sme.undone, "trigger") && same(sme.undone.from, []) &&
+      /Undone: edit document field Trigger/.test(sme.undoToast || ""),
+    JSON.stringify({ used: sme.used && [sme.used.fields.trigger, smeKeys(sme.used), sme.used.from, sme.used.status],
+      edited: sme.edited && [sme.edited.fields.trigger, smeKeys(sme.edited), sme.edited.from],
+      undo1: sme.undo1 && [sme.undo1.fields.trigger, smeKeys(sme.undo1), sme.undo1.from],
+      undone: sme.undone && [sme.undone.fields.trigger, smeKeys(sme.undone)], toast: sme.undoToast,
+      disk: [sme.usedOnDisk, sme.editedOnDisk, sme.undo1OnDisk, sme.undoneOnDisk] }));
+  record("(sme) Use on a field that holds other text asks \"Replace what the field holds with the SME's answer?\" (OK Replace); Cancel keeps the text, Replace writes the answer",
+    !sme.err && sme.ask && sme.ask.title === "Use the SME's answer" && sme.ask.msg === "Replace what the field holds with the SME's answer?" &&
+      sme.ask.ok === "Replace" && sme.cancelKept && sme.replaced,
+    JSON.stringify({ ask: sme.ask, kept: sme.cancelKept, replaced: sme.replaced }));
+  record("(sme) Dismiss on Exceptions hides its line (annotations.sme_answers_dismissed); Ctrl+Z brings it back",
+    !sme.err && sme.dismissedOnDisk && sme.dismissed && !smeL(sme.dismissed, "exceptions") && !!smeL(sme.dismissed, "effort") &&
+      sme.backOnDisk && sme.back && !!smeL(sme.back, "exceptions"),
+    JSON.stringify({ dismissed: smeKeys(sme.dismissed), back: smeKeys(sme.back), disk: [sme.dismissedOnDisk, sme.backOnDisk] }));
+  record("(sme) at 125% zoom the SME's lines hold at " + SIZE + ": nothing overlaps, nothing is cut, no sideways scroll",
+    !sme.err && Math.abs((sme.zoom || 0) - 1.25) < 0.001 && sme.at125 && sme.at125.lines.length >= 2 &&
+      sme.at125.lines.every((l) => l.inside && !l.overlap && l.fits) && sme.at125.noPageScroll,
+    JSON.stringify({ zoom: sme.zoom, lines: sme.at125 && sme.at125.lines.map((l) => [l.key, l.inside, l.overlap, l.fits]), scroll: sme.at125 && sme.at125.noPageScroll }));
+  record("(sme) the hand-off's PDD reads the SME's Trigger, lists the two files under Attachments and says Recorded by " + SME_WHO +
+    "; the zip carries both files",
+    !sme.err && !!smeZip && sme.pddTrigger && sme.pddAttach && sme.pddWho && same(sme.zipFiles, ["Order 10900.msg", "Price list 2026.xlsx"]),
+    JSON.stringify({ zip: smeZip && smeZip.name, trigger: sme.pddTrigger, attach: sme.pddAttach, who: sme.pddWho, files: sme.zipFiles }));
+
+  // Launch 7: the same project opened again adds nothing (and writes nothing).
+  const again = {};
+  if (!sme.err) {
+    try {
+      const { page: page7, close: close7 } = await launch(SME_PROJECT, pageErrors);
+      try {
+        await smeSettled(page7, SME_PROJECT);
+        await wait(800);
+        again.count = smeOfAnno(smeAnno(SME_PROJECT)).length;
+        again.mtime = fs.statSync(smeAnnoPath(SME_PROJECT)).mtimeMs;
+        again.files = fs.readdirSync(path.join(SME_PROJECT, "attachments")).sort();
+      } finally { await close7(); }
+    } catch (e) { again.err = String(e.message).split("\n")[0]; }
+  }
+  record("(sme) opened again, nothing is added twice: the same two attachments from the SME, annotations.json not written",
+    !sme.err && !again.err && sme.countBefore === 2 && again.count === 2 && again.mtime === sme.beforeAgain &&
+      same(again.files, ["Order 10900.msg", "Price list 2026.xlsx"]),
+    JSON.stringify({ before: sme.countBefore, after: again.count, written: again.mtime !== sme.beforeAgain, files: again.files, err: again.err }));
+
+  // Launch 8: a hand-off unzipped by hand, never opened before: read only.
+  const ro = {};
+  if (!sme.err) {
+    try {
+      const before = fs.readFileSync(smeAnnoPath(SME_RO), "utf-8");
+      const { page: page8, close: close8 } = await launch(SME_RO, pageErrors);
+      try {
+        await smeSettled(page8, SME_RO);
+        ro.readOnly = await page8.evaluate(() => !!(require("./state.js").getSession() || {}).readOnly);
+        await smeOpenDoc(page8);
+        ro.view = await smeRead(page8);
+        await smeToLevel(page8, "flow");
+        await page8.click("#tp-tab-files", { timeout: T });
+        await wait(300);
+        ro.files = await page8.evaluate(() => document.querySelectorAll("#tp-files .tp-file-row").length);
+        await wait(500);
+        ro.same = fs.readFileSync(smeAnnoPath(SME_RO), "utf-8") === before;
+      } finally { await close8(); }
+    } catch (e) { ro.err = String(e.message).split("\n")[0]; }
+  }
+  record("(sme) a hand-off opened read only shows the four answers as text with no buttons, adds no file and writes nothing",
+    !sme.err && !ro.err && ro.readOnly && ro.view && same(smeKeys(ro.view), ["trigger", "result", "exceptions", "effort"]) &&
+      ro.view.lines.every((l) => l.buttons.length === 0) && / The SME answered 4 questions\.$/.test(ro.view.status) &&
+      !/each waits/.test(ro.view.status) && ro.files === 0 && ro.same,
+    JSON.stringify({ ro: ro.readOnly, keys: smeKeys(ro.view), buttons: ro.view && ro.view.lines.map((l) => l.buttons.length), status: ro.view && ro.view.status,
+      files: ro.files, same: ro.same, err: ro.err }));
+  try { fs.rmSync(SME_BASE, { recursive: true, force: true }); } catch (_) { /* temp */ }
 
   // (f) Zero page errors across the launches.
   record("(f) zero PAGE ERRORs", pageErrors.length === 0,

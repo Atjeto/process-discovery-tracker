@@ -96,7 +96,9 @@ The Python pipeline the viewer runs by itself; see
   version. The developers work from the project in the viewer and the
   Technical details, so it holds no values, controls or recorded times.
   Tool-neutral, in the reader's order: document control (the request the
-  analyst wrote, else the capture's); purpose, scope, trigger, result and
+  analyst wrote, else the capture's; who recorded in full, "Maria Keller,
+  sales assistant, Operations", from the capture profile's name, role and
+  business unit, else the Windows login); purpose, scope, trigger, result and
   contacts; the As-Is map and the reference transaction's steps (each with
   its system, screen, "in N of M transactions", "Transaction 1 at 0:19",
   "Only when" its condition, its description, the fields it entered, one
@@ -201,6 +203,20 @@ The viewer says *transaction* for one pass through the process and
   *Add to* a field; a sentence said before the recording started reads
   "0:28 before". It lists the talk outside the transactions, or all of it
   while no transaction is marked (a project with one unmarked transaction).
+- **What the SME gives at the end** (contract C24). The SME's answers to
+  the end summary's four questions wait under Trigger, Result, Exceptions
+  and Volume and effort ("The SME wrote: ...") with *Use* (writes the
+  answer into the field, and the answer does not come back once the field
+  is edited; a field that holds other text asks first; one Ctrl+Z gives
+  back the old text and the answer) and *Dismiss* (hides it; Ctrl+Z brings
+  it back), and the document's heading says how many wait ("The SME
+  answered 4 questions: each waits under its field."); a field whose text
+  is still the answer says it was written from it. A hand-off opened read
+  only shows the answers as text ("The SME answered 4 questions."). The SME's example files become
+  attachments of the whole project when the project first opens for
+  editing, marked "From the SME" in Files and in the Overview's
+  attachments; a file the SME added that did not come with the project is
+  said once on the project line.
 
 **Timeline**
 

@@ -1315,6 +1315,15 @@ textarea.ov-doc-input { min-height: 64px; }
 /* AD-29: an empty field looks empty: its question is light and italic, well
    apart from written text (about 3:1 on the field in both themes). */
 .ov-doc-input::placeholder { color: color-mix(in srgb, var(--fg-3) 60%, var(--fg-4)); font-style: italic; opacity: 1; }
+/* C24 (lane C): the SME's answer under its field, with Use and Dismiss; the
+   field and the line share the field's cell of the grid. */
+.ov-doc-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ov-sme { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 6px 8px; border-radius: 4px;
+  background: var(--bg-3); font-size: 12px; line-height: 1.5; color: var(--fg); min-width: 0; }
+.ov-sme-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.ov-sme .ov-sme-use { flex: none; padding: 2px 10px; font-size: 12px; }
+.ov-sme .link-btn { flex: none; font-size: 12px; }
+.ov-sme-from { font-size: 12px; color: var(--fg-3); }
 /* Lane B-V2: what a reader of the next version will miss, under the
    Checklist (a disclosure like the Document's), each entry a link. */
 .ov-miss-line { font-size: 13px; color: var(--fg); flex: 1; min-width: 0; }
@@ -2662,6 +2671,8 @@ button.danger:disabled {
 .ov-attach { grid-column: 1 / -1; min-width: 0; }
 .ov-attach .att-label-input { flex: 1 1 auto; min-width: 120px; font-family: var(--font-ui); font-size: 12px; }
 .ov-attach-empty { margin: 4px 0 0; font-size: 12px; color: var(--fg-3); }
+/* C24 (lane C): a file the SME added says so. */
+.att-from { flex: none; font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .project-menu-popup.shot-src-menu { position: fixed; right: auto; top: auto; min-width: 180px; }
 /* The Timeline of a session with nothing recorded and no video. */
 .tl-empty { padding: 14px 12px; font-size: 12px; color: var(--fg-2); }

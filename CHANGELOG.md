@@ -8,6 +8,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **What the SME gives at the end reaches the document** (contract C24,
+  lane C). The answers the SME gives in the capture app's end summary wait
+  under Trigger, Result, Exceptions and Volume and effort on the Overview:
+  "The SME wrote: ..." with *Use* (writes it into the field, and it does
+  not come back once the field is edited; a field that holds other text
+  asks "Replace what the field holds with the SME's answer?" first) and
+  *Dismiss* (Ctrl+Z brings it back), and the
+  document's heading says "The SME answered 4 questions: each waits under
+  its field." A hand-off opened read only shows them as text. The SME's
+  example files become attachments of the whole project when it first
+  opens for editing, marked "From the SME" in Files and on the Overview, so
+  the PDD lists them and they travel in its zip and a hand-off; a file
+  that did not come with the project is said once.
+- **The PDD names who recorded in full.** Document control's *Recorded by*
+  reads the capture profile's name, role and business unit ("Maria Keller,
+  sales assistant, Operations"); without a name, the Windows login as
+  before.
 - **The Timeline as the workspace: the timeline at the bottom, the video
   and the pane above it.** The timeline takes the full width of the window,
   always, and nothing opens over it or beside it; the video (at most 58% of

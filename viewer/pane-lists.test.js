@@ -157,6 +157,14 @@ test("files on a step or on the whole project", () => {
     { id: "f2", file: "attachments/b.xlsx", label: "", step_id: null }], (id) => steps[id] || null);
   assert.deepEqual(rows.map((r) => [r.name, r.where, r.stepId]),
     [["Order form", "On the step: Send the mail", "s"], ["attachments/b.xlsx", "On the whole project", null]]);
+  assert.deepEqual(rows.map((r) => r.fromSme), [false, false]);
+});
+
+test("the Files tab: a file the SME added says so first (C24)", () => {
+  const rows = P.fileRows([{ id: "f1", file: "Order 10900.msg", label: "Order 10900.msg", step_id: null, from: "sme" },
+    { id: "f2", file: "mine.pdf", label: "Mine", step_id: null, from: "analyst" }], () => null);
+  assert.deepEqual(rows.map((r) => [r.where, r.fromSme]),
+    [["From the SME · On the whole project", true], ["On the whole project", false]]);
 });
 
 test("a tab's label counts what it lists", () => {

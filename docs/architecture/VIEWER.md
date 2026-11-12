@@ -196,7 +196,28 @@ newProject`).
   light italics, a status that counts ten of them, all but the Request and
   the Notes, which are optional ("N of 10 written") and, once one is
   written, names the empty ones, the Attachments list, and "From the
-  transcript" while one is attached). The Request the analyst writes
+  transcript" while one is attached). C24 (lane C): the SME's answers
+  (`manifest.sme_answers`) wait under Trigger, Result, Exceptions and
+  Volume and effort while the field's text is not the answer and the key
+  is not in `annotations.sme_answers_dismissed`: "The SME wrote: <answer>"
+  with *Use* (writes the answer and dismisses the key in one undoable edit
+  under the field's own label, `sme-gives.js` `usedAnswer`, so an answer
+  used never comes back once the field is edited and one Ctrl+Z gives back
+  the old text and the line; a field holding other text asks first) and
+  *Dismiss* (one undoable edit); "Written from the SME's answer." shows only
+  while the field's text is exactly the answer; the status adds "The SME
+  answered N questions: each waits under its field."; read only, the
+  answers as text with no buttons and the status "The SME answered N
+  questions." (`sme-gives.js` `waitingAnswers`, `waitingLine`). The
+  SME's example files (`manifest.sme_files`, in `attachments/`) become
+  attachments of the whole project, `from: "sme"`, when an editable
+  project opens (`analyst-ui.js` `adoptSmeFiles`, called by `flow-view.js`
+  `loadSessionIntoView` before anything is drawn; one save with
+  `saveAnnotationsDirect`, not on the undo stack; the files taken named in
+  `annotations.sme_files_adopted`, so one removed later is neither taken
+  again nor reported missing); "From the SME" marks them in Files and the
+  Overview's attachments, and a listed file not in the folder is one
+  warning line on the project line. The viewer never writes the manifest. The Request the analyst writes
   (2.0.1) is the project's request on the project line and in its tooltip
   (`session-summary.js` `documentRequest`), else the capture's
   (`requestOf`); a transcript sentence is never added to it. The Overview
@@ -516,6 +537,7 @@ their module as `<name>.test.js`.
 | `map-view.js` | Which picture the Map shows (lane MV): the map the PDD prints (the chosen As-Is copy, else `process_map_step.bpmn`; at a sub-process the copy's plane, else the step map's) or how the transactions ran, when the Map analyzes first (the step map needed and older than the steps, no analysis running or already run for that change), the line that says why a picture does not show (`WHY`), and the words of the one header line (`line`). |
 | `map-planes.js` | The maps of one BPMN file (C19): each sub-process's plane found by its path of names (`findPlane`), the path of an element's level and of a plane's root, the `Sub<n>_` prefix (`baseId`), the PDD's map pictures (`pddMaps`, the manifest `pddManifest`) and an exported image's name (`imageName`). |
 | `system-names.js` | The one vocabulary of systems (C14) from `shared/system-names.json`: `systemName`, the site rule's `siteName` (2.0.1: a browser window on a site no rule names is named by the site its title ends with), `whereOfStep`, the systems the System field offers. |
+| `sme-gives.js` | Pure (C24, lane C): what the SME gives at the end. `waitingAnswers` (the answers that wait under their fields: an answer with text, under one of the four keys, the field's text not the answer, the key not dismissed), `waitingLine`, `withDismissed`; `filesToAdopt` (the listed files in `attachments/` and in no attachment entry nor `sme_files_adopted`, and the names of those not in the folder), `adoptFiles`, `missingLine`, `fromSme`; the words (`WORDS`). |
 | `readiness.js` | Pure (lane B-V2): what a reader of the next version will miss (`missing`): the reference transaction's visible steps at every level that are drafts, have no name of their own (`NUMBERED_STEP`, the pattern the Overview's Write the steps reads too), no description (or only the recorder's narration), no picture or no system (a `group: true` sub-process is asked for neither), the decisions that do not say when, the empty document fields and a stale As-Is map; each entry `{ key, count, text, lead }`, `lead` a step, a document field or the Map. The view passes the lookups (`overview-view.js` `missingOf`); the Overview's list (`#ov-miss`) and the Hand off... dialog show it. |
 | `step-facts.js` | What the step editor and the panel say about a step: the pointer ("Transaction 1 at 0:19"), the Recorded line ("6 actions · ends at Search", 2.0.1), the drafting's narration (never shown as the description), the panel's rows, and a length as the viewer writes it (`formatMs`, `dom.js` `formatDuration`). |
 | `library-builder.js` | The Library builder's model (C21): the steps a project's analysts named (`namedSteps`: confirmed, edited or added by hand, with their screens), one entry per name in a system (`collect`), the rows (`rows`: the library's activities ticked, the projects' names after them, clusters of rows that share screens or a name, a conflict where the same screens carry different names), the library the ticked rows make (`buildLibrary`: a name the library has adds its screens to that activity), the version (`nextVersion`: the date and a counter). |
