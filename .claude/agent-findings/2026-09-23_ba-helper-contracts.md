@@ -1158,3 +1158,33 @@ the corner icon its meaning and adds the label under the box.
 - The viewer's Steps rows and the Timeline's pane rows show nothing new; the choice and Done by are
   in the step editor (Steps and the step opened in the Timeline's pane), the readiness list
   (`readiness.js`) counts no new miss.
+
+## C26. The information a step uses (owner 2026-11-12: "just build"; plan D6)
+
+Why: a project made from a video or from nothing has no recorded fields, so the developers get no
+data list from it. The analyst now writes, per step, what the step uses or enters; a recorded step
+shows its recorded fields in the same list.
+
+- **`step.information`** *(array, optional; viewer-written)*: `[{ "name": "Customer number",
+  "example": "10482", "goes_to": "SAP, Create sales order: Sold-to party" }]`. `name` is required
+  (one line, at most 80 characters); `example` and `goes_to` are optional (one line, at most 120
+  each). Order is the analyst's. An entry whose `name` is empty is not kept. Sub-steps carry it the
+  same way. A draft that gets an entry becomes `edited` (as the flow does, C17).
+- **The step editor** (Steps, and the step opened in the Timeline's pane): a section
+  *Information* after Description: first the recorded fields of the step (read only, from the
+  step's recorded actions, as the Technical details already reads them: the field's name, the value
+  typed as its example, the system and screen as where it goes), marked "Recorded"; then the
+  analyst's entries, each a row of three fields (*Information*, *Example*, *Where it goes*) with
+  *Remove*; then *Add information*. Each add, change or remove is one undoable edit. Read only: the
+  same rows as text, no acts. A step with neither shows the section with *Add information* only.
+- **The PDD** (`pdd_export.py`), which holds no values: section 5, *Systems and information used*,
+  lists under each system the names of the information entered in it, the analyst's entries
+  included (an entry's system is its step's; a step with no system is listed under "Not in a
+  system"); an example is never printed. Under a step in 3.2, one line "Information: Customer
+  number, Order lines." (the names, the recorded and the typed, once each).
+- **The Technical details** (`tech_details.py`): a sheet *Information*, one row per entry and per
+  recorded field of the reference transaction's printed steps: Step (its number and name), Information,
+  Example, Where it goes, From ("Typed by the analyst" or "Recorded"). The workbook is written, and
+  zipped in a hand-off, whenever it holds a row: a project without a recording that has typed
+  information now gets one (plan B7's "done when").
+- The pipeline never writes `step.information` and round-trips it untouched.
