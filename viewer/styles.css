@@ -303,7 +303,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   flex: 1 1 auto; min-width: 0; margin: 0; font-family: var(--font-ui); font-size: 15px; font-weight: 600;
   letter-spacing: 0; text-transform: none; color: var(--fg); overflow-wrap: anywhere;
 }
-.sp-close { flex: none; }
+/* At the right, also on Steps, where the name is the editor's title and the
+   panel's heading is for a screen reader only (plan D2). */
+.sp-close { flex: none; margin-left: auto; }
 .sp-about p { margin: 0 0 4px; font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .sp-about .sp-system { color: var(--fg); font-weight: 600; }
 .sp-about .sp-count { color: var(--fg-3); }
@@ -1297,6 +1299,15 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 /* The request's code beside the request's name (lane FX3). */
 .ov-summary-code { color: var(--fg-2); }
 .ov-summary-warn { display: flex; flex-direction: column; gap: 6px; }
+/* Plan D5: the project's sources under its line, one row each (Video,
+   Transcript): its name, what it holds, its acts. Each row is at least 24 px
+   high, the hit area of a text act, so the acts of two rows never touch. */
+.ov-sources { align-self: flex-start; max-width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.5; color: var(--fg-2); }
+.ov-sources th, .ov-sources td { padding: 3px 14px 3px 0; text-align: left; vertical-align: baseline; }
+.ov-sources th { font-weight: 600; color: var(--fg); white-space: nowrap; }
+.ov-sources td { overflow-wrap: anywhere; }
+.ov-sources .ov-source-acts { padding-right: 0; }
+.ov-sources .ov-source-acts .link-btn { margin-right: 8px; }
 /* The one line beside a block's title that says who fills it (AD-29):
    "You write these. The PDD prints them." */
 .ov-block-who { font-size: 12px; color: var(--fg-3); }
@@ -1440,6 +1451,34 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
      followed it shows on the Timeline only), and each pane scrolls inside. */
   .session-layout-stepsphases { min-height: 0; }
   #step-list { min-height: 0; }
+}
+
+/* Plan D2: below 1440 px of window width the step panel opens on Play in
+   the place of the step list (step-panel.js _place), so the selected step's
+   editor keeps the width it has beside the list; the list and the divider
+   come back when it closes. */
+#session-layout-steps .editor-split.sp-in-list > .editor-list-pane,
+.editor-split.sp-in-list > .pane-splitter { display: none; }
+.editor-split > .step-panel {
+  grid-column: 1; grid-row: 1; min-height: 0; max-height: 100%;
+  border: 1px solid var(--rule); border-radius: var(--radius);
+}
+.editor-split.sp-in-list > .editor-detail-pane { grid-column: 3; grid-row: 1; }
+@media (max-width: 1100px) {
+  /* Stacked: the panel over the selected step, each half the height. The
+     half is wide and low, so the video takes the left of it at its whole
+     height and the rows the right, scrolling there: nothing is cut. */
+  .editor-split.sp-in-list > .editor-detail-pane { grid-column: 1; grid-row: 2; }
+  .editor-split > .step-panel:not([hidden]) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr); gap: 6px 14px; overflow: hidden;
+  }
+  .editor-split > .step-panel > .sp-video { grid-column: 1; grid-row: 1 / -1; height: 100%; max-height: none; min-height: 0; }
+  .editor-split > .step-panel > .sp-top { grid-column: 2; grid-row: 1; }
+  .editor-split > .step-panel > .sp-video-note { grid-column: 2; grid-row: 2; }
+  .editor-split > .step-panel > .sp-body { grid-column: 2; grid-row: 3; min-height: 0; overflow-y: auto; }
+  /* No video shown (the moment is past its end): the rest takes the width. */
+  .editor-split > .step-panel:has(> .sp-video[hidden]) > * { grid-column: 1 / -1; }
 }
 
 .editor-list-pane, .editor-detail-pane {

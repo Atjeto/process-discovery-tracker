@@ -77,6 +77,33 @@ test("lane PANE: the panel opens on the Map and on Steps, never on the Timeline 
   assert.equal(SP.opensOn("overview"), false);
 });
 
+test("plan D2: the panel stands beside the Steps editor from 1440 px of window width, below it opens on Play only", () => {
+  assert.equal(SP.STANDS_FROM_PX, 1440);
+  assert.equal(SP.standsBeside(1440), true, "the first width it stands at");
+  assert.equal(SP.standsBeside(1500), true, "the e2e's default window");
+  assert.equal(SP.standsBeside(1439), false, "one pixel under");
+  assert.equal(SP.standsBeside(1024), false, "the CI runner's display");
+  assert.equal(SP.standsBeside(1366), false, "a process manager's laptop");
+  // The app's zoom divides the CSS width: 1366 at 125% is 1092.8 px wide,
+  // and a 1800 px window at 125% is 1440.
+  assert.equal(SP.standsBeside(1366 / 1.25), false);
+  assert.equal(SP.standsBeside(1800 / 1.25), true);
+  assert.equal(SP.standsBeside(undefined), false, "no width known: it does not stand");
+});
+
+test("plan D2: on Steps the panel shows only the video and the rows; on the Map everything it showed", () => {
+  const steps = SP.partsOn("steps");
+  assert.deepEqual(steps, ["video", "occurrences"]);
+  for (const twice of ["name", "system", "description", "waste", "flow", "count", "screenshots", "said", "notes", "foot"]) {
+    assert.ok(!steps.includes(twice), twice + " is the editor's on Steps");
+  }
+  const map = SP.partsOn("map");
+  assert.deepEqual(map, ["name", "system", "description", "waste", "flow", "count", "video", "occurrences",
+    "screenshots", "said", "notes", "foot"], "the Map's panel stays as it was");
+  map.push("extra");
+  assert.ok(!SP.partsOn("map").includes("extra"), "each call gives its own list");
+});
+
 test("the head's fields have ids of their own, never the editor's", () => {
   const ids = Object.values(SP.HEAD_IDS);
   for (const own of ["step-name", "step-system", "step-desc", "step-activity-list", "step-system-list", "step-lib-note"]) {

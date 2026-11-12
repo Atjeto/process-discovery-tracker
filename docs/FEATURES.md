@@ -196,10 +196,17 @@ The viewer says *transaction* for one pass through the process and
   is empty, before then, or in a hand-off opened read only.
 - **The project line**: who recorded it, the request (the one written in
   the document, else the capture's), its transactions, the reference
-  transaction's steps, the video and the transcript with Attach, Replace
-  and Remove (each taken out with its files in the folder, and back with
-  Ctrl+Z; 2.0.6: *Add another* for a second video or transcript, and with
-  several, how many and *Add*), and a warning only when one is needed.
+  transaction's steps, and a warning only when one is needed. Under it
+  (plan D5) the project's sources, a row each: *Video* (the video's file
+  name, "2 videos, 1 not found" or "No video") and *Transcript* (the file
+  it was made from, "2 transcripts", "The transcript cannot be read" or "No
+  transcript"), each with its acts named with their object: *Attach a
+  video...*, *Replace the video...*, *Remove the video*, *Add a video...*;
+  *Attach a transcript...*, *Replace the transcript...*, *Remove the
+  transcript*, *Add a transcript...* (a removal takes its files out of the
+  folder, and Ctrl+Z brings them back; 2.0.6: with several, each one's acts
+  are on its Timeline lane). A project opened read only shows the rows
+  without acts.
 - **The document** ("You write these. The PDD prints them."): twelve fields
   that print in their own places in the PDD (title, request, purpose,
   scope, trigger, result, contacts, business rules, exceptions, volume and
@@ -279,7 +286,7 @@ The viewer says *transaction* for one pass through the process and
   of its own: the row plays it).
 - **Several videos on one timeline** (2.0.6, contract C23; the owner:
   "10th minute on the timeline is 10th minute on the timeline, regardless
-  if there are 1 or 7 videos"). *Add video* takes one or more files; the
+  if there are 1 or 7 videos"). *Add a video...* takes one or more files; the
   Videos lane draws each as a band named after its file. In a project made
   from videos they run back to back, as in a video editor: one added goes
   after the last, and a trim, a replace or a remove of one moves the videos
@@ -427,8 +434,10 @@ The viewer says *transaction* for one pass through the process and
   under one step, with *Add*; the Flow line; Waste); the screenshots, the
   one the PDD prints marked; *Recorded* (the actions with the control each
   acted on, the scissors to split), open or closed as you last left it; the
-  attachments and notes, and one row of adds. The step panel stays beside
-  it. Everything saves as you go, and Ctrl+Z undoes it. A hand-off opened
+  attachments and notes, and one row of adds. The step panel adds what the
+  editor lacks (plan D2): from 1440 px of window width it stands beside it;
+  below, *Play* opens it in place of the list, so the editor keeps its
+  width. Everything saves as you go, and Ctrl+Z undoes it. A hand-off opened
   read only reads it as a record.
 - **Step flow**: the Flow line reads "Always · then the next step" until
   the analyst sets *Only when...* (a condition: the map draws a decision
@@ -520,10 +529,16 @@ The viewer says *transaction* for one pass through the process and
   of the step with its moment in a small video (a moment the video does not
   cover says so; a time under a second reads "under 1s"), its screenshots,
   what was said and its notes, its flow in one line when one is set, and
-  the waste flag; its foot goes to the step in Steps, or on the Timeline.
-  On the Map its head is the step's name, system and description as
-  fields, saved as the editor saves them (lane E-1); on Steps, beside the
-  editor, and in a project open read only, it is text. A step marked on the
+  the waste flag; its foot goes to the step in Steps. On the Map its head
+  is the step's name, system and description as fields, saved as the
+  editor saves them (lane E-1); in a project open read only, it is text.
+  On Steps (plan D2) it shows only what the editor beside it lacks: the
+  video and one row per occurrence (its transaction, its moment, its play);
+  from 1440 px of window width (the app's zoom counts) it stands beside the
+  editor and follows the selected step, and below it opens only with the
+  editor's *Play* (or for a frame of the video of a step without a time),
+  in place of the step list, the focus in it; its close or Escape gives the
+  list back and the focus to *Play*. A step marked on the
   Timeline (S, *Add step*, *Add a step here*) opens in the pane beside the
   video:
   with the video paused the cursor is in its name, while it plays nothing

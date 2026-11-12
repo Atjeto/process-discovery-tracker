@@ -322,9 +322,13 @@ the folder.
   screenshots, what was said, notes. How the transactions ran fits again
   when the panel opens or closes beside it (`dfg-viewer.js` `resize`). On
   the Map its head edits the step's name, system and description with the
-  editor's own handlers (`steps-view.js` `panelFieldCallbacks`; text on
-  Steps and read only). It never opens on the Timeline (`opensOn`, lane
-  PANE): there a step opens in the pane beside the video.
+  editor's own handlers (`steps-view.js` `panelFieldCallbacks`; text read
+  only). It never opens on the Timeline (`opensOn`, lane PANE): there a
+  step opens in the pane beside the video. On Steps (plan D2) it shows only
+  what the editor lacks, the video and the occurrences (`partsOn`); from
+  1440 px of window width it stands beside the editor and follows the
+  selection, below it opens only on *Play* (`standsBeside`), in place of
+  the step list (`inList`, `.sp-in-list`), Escape giving the list back.
 - **The Timeline's pane** (lane PANE, plan section 11.2,
   `views/timeline-pane.js`, the pure rows in `pane-lists.js`): beside the
   video, five tabs (`#tp-tabs`, a real tablist): *Steps (n)*,
@@ -392,9 +396,9 @@ the folder.
   sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a
   transaction's differences (`rowMarks`), and the selected step reads in
   one column in the order of the work: name as the title, one line of
-  facts (with Play, into the step panel beside it), what you write, the
-  screenshots, Recorded, what is attached (`step-editor.js`
-  `_renderStepDetail`).
+  facts (with Play, into the step panel: beside it from 1440 px, in place
+  of the list below, plan D2), what you write, the screenshots, Recorded,
+  what is attached (`step-editor.js` `_renderStepDetail`).
 - **The map** (lane MV, `map-view.js`, `refmap-ui.js`). The Map shows the map
   the PDD prints: the As-Is copy chosen for the PDD, else
   `process_map_step.bpmn` (written by `--mine`), drawn by bpmn-js and linked

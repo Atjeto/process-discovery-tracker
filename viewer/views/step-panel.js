@@ -3,7 +3,7 @@
  * AD-23). One component with three doors, shown beside the content so the
  * map, the timeline or the Steps list stays visible:
  *   a click on a map box, a click on a timeline step band, a selected Steps
- *   row (and Watch in the step pane, which plays its step here). A task of
+ *   row (and Play in the step editor, which plays its step here). A task of
  *   the As-Is map is a map box too (asis-view.js, C18); a task no step
  *   stands for opens the panel on its name and one line saying so.
  * It names the step, its system and description, its flow in one short
@@ -20,19 +20,30 @@
  * each under a small lead. The video is cued to the row the panel opens on
  * (a map box's reference transaction, the band or the Steps row clicked),
  * and the row it is at is highlighted; a row's play moves both. At the
- * foot: "Open in Steps", or "Show on timeline" on the Steps level. The
- * occurrences of a step are the steps of the runs that share its map box
- * (process-map-levels.mapNodeLabel).
+ * foot: "Open in Steps" (plan D2: on the Map; on Steps the panel has no
+ * foot). The occurrences of a step are the steps of the runs that share its
+ * map box (process-map-levels.mapNodeLabel).
  *
  * Contract C19: the panel works at a level. A step inside a sub-process
  * opens it on that level: its occurrences are the steps of its node at that
  * level across every visit of the sub-process (sub-process-maps.js), and a
- * sub-process's panel has "Open sub-process" at its foot (its steps, or on
- * the Map its map).
+ * sub-process's panel on the Map has "Open sub-process" at its foot (its
+ * map).
  *
  * Lane PANE (plan section 11): the panel no longer opens on the Timeline (the
  * timeline door and a step marked there open the step in the pane beside the
  * video, views/timeline-pane.js); its doors are the Map's and Steps'.
+ *
+ * Plan D2 (the owner, 2026-11-12: Steps at 1366 px): on Steps the panel
+ * keeps only what the editor beside it lacks, the step's video and its rows
+ * (each its transaction, its moment, its play); the name, the system, the
+ * description, the flow, the screenshots, what was said and the notes are
+ * the editor's (`partsOn`). From 1440 px of window width up (CSS pixels, so
+ * the app's zoom counts: `standsBeside`) it stands beside the editor and
+ * follows the selection; below, it opens only on Play (the editor's line of
+ * facts, the step menu) and takes the place of the step list while open, so
+ * the editor keeps its width; Escape or its close gives the list back and
+ * the focus to Play.
  *
  * The panel is closed on the Overview and when a recording opens; its close
  * button is the inverse of every door (on Steps it then stays closed while
@@ -84,6 +95,10 @@ let _selfSeek = false;
    (a field taken off the page then saves nothing). */
 let _headStepId = null;
 let _rendering = false;
+/* Plan D2: the panel was opened on Steps by Play (or for a frame of the
+   video), not by the selection: below STANDS_FROM_PX it stays open, in the
+   place of the step list, until it is closed. */
+let _asked = false;
 
 /* The ids of the head's fields (the editor's own are step-name, step-system
    and step-desc, on the page beside it). */
@@ -112,6 +127,30 @@ function headEditable(level, readOnly) {
    Overview it is closed. Pure. */
 function opensOn(level) {
   return level === "map" || level === "steps";
+}
+
+/* Plan D2: the window width (CSS pixels) from which the panel stands beside
+   the Steps editor as a third column. */
+const STANDS_FROM_PX = 1440;
+
+/* Plan D2: whether, at a window `width` in CSS pixels (window.innerWidth,
+   which the app's zoom divides), the panel stands beside the Steps editor
+   and follows the selection; below, it opens only on Play, in the place of
+   the step list. Pure. */
+function standsBeside(width) {
+  return Number(width) >= STANDS_FROM_PX;
+}
+
+/* What the panel shows on `level`, by part. On the Map: the step's name,
+   system and description (fields there, lane E-1), the waste flag, its flow
+   line, the count, the video, the rows with their screenshots, what was
+   said and the notes, and the foot's acts. Plan D2: on Steps only what the
+   editor beside it lacks: the video and the rows (each its transaction, its
+   moment, its play). Pure. */
+const PARTS = ["name", "system", "description", "waste", "flow", "count", "video", "occurrences",
+  "screenshots", "said", "notes", "foot"];
+function partsOn(level) {
+  return level === "steps" ? ["video", "occurrences"] : PARTS.slice();
 }
 
 const $ = (id) => document.getElementById(id);
@@ -277,22 +316,24 @@ function _noTime() {
    took 9s"), its play button, then its screenshots, what was said and its
    notes, each under a small lead. `again`: an earlier row is in the same
    transaction. `offer` (lane E-1): "Use the video at 0:11", the one link of
-   the highlighted row while it shows no screenshot and a video covers it. */
-function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer) {
+   the highlighted row while it shows no screenshot and a video covers it.
+   `parts` (partsOn): plan D2, on Steps a row is its line and its play. */
+function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer, parts) {
   const st = o.step;
+  const has = (p) => !parts || parts.includes(p);
   // C16: the screenshots the step shows (recorded less the hidden ones, then
   // the ones added) and its notes (its own and those at a moment inside it).
-  const shots = AnalystUI.shotsOf(st);
-  const notes = AnalystUI.notesOf(st);
+  const shots = has("screenshots") ? AnalystUI.shotsOf(st) : [];
+  const notes = has("notes") ? AnalystUI.notesOf(st) : [];
   // 2.0.1: the step before it in its transaction bounds its window, as in
   // the step pane, so a sentence shows under one step only.
   // Lane E: what was said in a stretch put aside is not listed.
-  const said = placed && placed.synced
+  const said = has("said") && placed && placed.synced
     ? require("../left-out.js").saidOutside(TM.sentencesForStep(placed.sentences, st, o.list), (_session() || {}).annotations) : [];
   const focus = st.step_id === focusId;
   // Lane FX2: a moment the video does not cover says so, and has no play.
   const m = hasVideo ? _moment(st) : null;
-  const waste = !!(st.flags && st.flags.waste);
+  const waste = has("waste") && !!(st.flags && st.flags.waste);
   return '<li class="sp-occ' + (focus ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '"' +
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
@@ -306,7 +347,7 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer) {
       '<button type="button" class="sp-shot" data-ref="' + escapeAttr(sh.rel) + '" title="' +
         escapeAttr((sh.time ? sh.time + ": " : "") + "open it full size") + '"><img src="' + escapeAttr(sh.url) +
         '" alt="' + escapeAttr("Screenshot" + (sh.time ? " at " + sh.time : "")) + '"></button>').join("") + "</div></div>" : "") +
-    (offer && !shots.length ? '<div class="sp-sec">' + AnalystUI.useVideoButtonHtml(offer) + "</div>" : "") +
+    (offer && has("screenshots") && !shots.length ? '<div class="sp-sec">' + AnalystUI.useVideoButtonHtml(offer) + "</div>" : "") +
     (said.length ? '<div class="sp-sec"><div class="sp-lead">Said:</div><ol class="sp-said">' +
       said.map((x) => '<li class="tr-row">' + TM.sentenceRowHtml(x, origin) + "</li>").join("") + "</ol></div>" : "") +
     (notes.length ? '<div class="sp-sec"><div class="sp-lead">Notes</div><ul class="sp-notes" title="Notes stay in the app: the PDD does not print them.">' +
@@ -423,17 +464,26 @@ function render() {
   // Lane FX2 (validation pass 2, F21): the waste flag shows here too, as in
   // Steps and the PDD.
   const wasted = occ.filter((o) => o.step.flags && o.step.flags.waste).length;
-  // Lane E-1: on the Timeline and the Map the name, the system and the
-  // description are fields (_drawHead); on Steps, and read only, text.
+  // Lane E-1: on the Map the name, the system and the description are
+  // fields (_drawHead); read only, text. Plan D2: on Steps the editor beside
+  // the panel has them, the waste flag, the flow and the count, so the panel
+  // leaves them out (its heading kept for a screen reader).
+  const parts = partsOn(State.getLevel());
+  const has = (p) => parts.includes(p);
   const editable = headEditable(State.getLevel(), RO.isReadOnly(s));
   _drawHead(lead, editable, where);
-  $("sp-about").innerHTML =
-    (!editable && (where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
-    (wasted ? '<p class="sp-waste" id="sp-waste"><span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span> ' +
+  const nameEl = $("sp-name");
+  if (nameEl && !has("name")) nameEl.classList.add("sr-only");
+  const aboutHtml =
+    (has("system") && !editable && (where.system || where.screen) ? '<p class="sp-system">' + escapeHtml([where.system, where.screen].filter(Boolean).join(" · ")) + "</p>" : "") +
+    (has("waste") && wasted ? '<p class="sp-waste" id="sp-waste"><span class="step-tag-waste" title="Flagged as waste: this step should not be needed">Waste</span> ' +
       escapeHtml(wasted === occ.length ? "Flagged as waste" : "Flagged as waste in " + wasted + " of " + occ.length) + "</p>" : "") +
-    (!editable && desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
-    (flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
-    '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length, open)) + "</p>";
+    (has("description") && !editable && desc ? '<p class="sp-desc">' + escapeHtml(desc) + "</p>" : "") +
+    (has("flow") && flow ? '<p class="sp-flow" id="sp-flow" title="' + escapeAttr(flow) + '">' + escapeHtml(flow) + "</p>" : "") +
+    (has("count") ? '<p class="sp-count">' + escapeHtml(countLine(occ, runs.length, open)) + "</p>" : "");
+  const about = $("sp-about");
+  about.innerHTML = aboutHtml;
+  about.hidden = !aboutHtml;
   const video = $("sp-video");
   // Lane FX2 (validation pass 2, F7; pass 3, F14): the video shows only a
   // moment of the highlighted row: its start when the video covers it, else
@@ -460,28 +510,26 @@ function render() {
     note.textContent = text;
     note.hidden = !text;
   }
-  const onSteps = State.getLevel() === "steps";
   const placed = TM.forSession(s);
   const inRun = new Set();
   const rows = occ.map((o) => {
     const again = !!o.run && inRun.has(o.run.caseId);
     if (o.run) inRun.add(o.run.caseId);
     return _rowHtml(o, again, origin, placed, hasVideo, _state.focusId, open.has(o.step.step_id),
-      editable && o.step.step_id === _state.focusId ? AnalystUI.useVideoOffer(o.step) : "");
+      editable && o.step.step_id === _state.focusId ? AnalystUI.useVideoOffer(o.step) : "", parts);
   });
   const kinds = hasVideo ? occ.map((o) => _moment(o.step).kind) : [];
   const playable = kinds.filter((k) => k === "covered").length;
   const uncovered = kinds.filter((k) => k === "outside").length;
+  // Plan D2: on Steps the foot's acts are the editor's (Show on timeline on
+  // its line of facts, Open sub-process in the toolbar), so it has none.
   $("sp-body").innerHTML =
     '<p class="sp-explain" id="sp-explain">' + escapeHtml(StepFacts.occurrencesLine(occ, runs.length, playable, uncovered)) + "</p>" +
     '<ol class="sp-occs">' + rows.join("") + "</ol>" +
-    '<div class="sp-foot">' + (onSteps
-      ? '<button type="button" id="btn-sp-timeline" title="Open the Timeline at the start of this occurrence"' +
-        (lead.time_range && lead.time_range.start ? "" : " disabled") + '>Show on timeline</button>'
-      : '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>') +
-      (isSub ? '<button type="button" id="btn-sp-open-sub" title="' + (State.getLevel() === "map"
-        ? "Show the map of this sub-process" : "Show the steps of this sub-process") + '">▸ Open sub-process</button>' : "") +
-    "</div>";
+    (has("foot") ? '<div class="sp-foot">' +
+      '<button type="button" id="btn-sp-steps" title="Open this occurrence in Steps, in its transaction">Open in Steps</button>' +
+      (isSub ? '<button type="button" id="btn-sp-open-sub" title="Show the map of this sub-process">▸ Open sub-process</button>' : "") +
+    "</div>" : "");
   // The panel opened on this row (or its row is gone): the video goes to it.
   if (_state.focusId !== _cuedId) _cue(_state.focusId);
 }
@@ -552,6 +600,10 @@ function frameSource(stepId) {
     }
   }
   if (m.kind === "covered") return { at: m.at, src, baseMs };
+  // Plan D2: on Steps the panel may be closed (below 1440 px it opens only on
+  // Play, which a step without a time has not): it opens on the step, at the
+  // video's start, so its video can be played to the step's moment.
+  if (State.getLevel() === "steps" && !shown) _openAsked(step);
   return { why: _noTime() + (State.getLevel() === "flow"
     ? ": play the video to its moment first, then add the frame."
     : ": play the step panel's video to its moment first, then add the frame.") };
@@ -559,20 +611,91 @@ function frameSource(stepId) {
 
 function _show(open) {
   const panel = $("step-panel");
-  if (!panel || panel.hidden === !open) return;
+  if (!panel) return;
+  _place();
+  if (panel.hidden === !open) return;
   panel.hidden = !open;
   if (!open) {
     const v = $("sp-video");
     if (v && !v.paused) v.pause();
   }
+  _place();
   // The map beside it changed size.
   try { require("../dfg-viewer.js").resize(); } catch (_) { /* no map drawn */ }
+}
+
+/* Where the panel's element lives while the page runs: beside the content,
+   the last child of <main> (set when the page is wired). */
+let _home = null;
+
+/* Whether the panel, when open, takes the place of the step list (plan D2):
+   on Steps, below STANDS_FROM_PX. */
+function _inListNow() {
+  return State.getLevel() === "steps" && !standsBeside(window.innerWidth);
+}
+
+/* Plan D2: put the panel where it shows. Open on Steps below 1440 px it is
+   the first part of the Steps level's split, in the column of the step list
+   (which it hides, with the divider, styles.css .sp-in-list); else it is
+   beside the content as ever. A media element moved within one task keeps
+   playing. */
+function _place() {
+  const panel = $("step-panel");
+  const split = document.querySelector("#session-layout-steps .editor-split");
+  if (!panel || !split || !_home) return;
+  const inList = !panel.hidden && _inListNow();
+  // A move takes the focus off an element moved: it is given back.
+  const had = panel.contains(document.activeElement) ? document.activeElement : null;
+  if (inList && panel.parentElement !== split) split.insertBefore(panel, split.firstChild);
+  else if (!inList && panel.parentElement !== _home) _home.appendChild(panel);
+  split.classList.toggle("sp-in-list", inList);
+  if (had && !panel.hidden && document.activeElement !== had) had.focus({ preventScroll: true });
+}
+
+/* Whether the panel stands in the place of the step list now. */
+function inList() {
+  const panel = $("step-panel");
+  return !!(panel && !panel.hidden && panel.parentElement && panel.parentElement.classList.contains("sp-in-list"));
+}
+
+/* Plan D2: the focus goes into the panel opened on demand: its video when it
+   shows one (Space plays and pauses it there), else its close. */
+function _focusIn() {
+  const v = $("sp-video"), x = $("btn-sp-close");
+  const target = v && !v.hidden && v.getAttribute("src") ? v : x;
+  if (target) target.focus({ preventScroll: true });
+}
+
+/* Plan D2: the panel opened on Steps by the analyst (Play, a frame of the
+   video): it stays open below 1440 px, in the list's place, and takes the
+   focus there. */
+function _openAsked(step) {
+  _dismissed = false;
+  _asked = true;
+  openForStep(step);
+  if (inList()) _focusIn();
+}
+
+/* The close (its button, or Escape in the list's place): on Steps it stays
+   closed while rows are selected; closed in the list's place, the list
+   comes back and the focus goes back to the editor's Play. */
+function _closeByHand() {
+  const back = inList();
+  if (State.getLevel() === "steps") _dismissed = true;
+  close();
+  if (back) {
+    const play = document.querySelector("#step-detail #btn-step-watch");
+    if (play) play.focus({ preventScroll: true });
+  }
 }
 
 function _reset() {
   const s = _session();
   const folder = s ? s.sessionFolder : null;
-  if (folder !== _folder) { _folder = folder; _state = null; _dismissed = false; _cuedId = null; _followed = null; _headStepId = null; _show(false); }
+  if (folder !== _folder) {
+    _folder = folder; _state = null; _dismissed = false; _cuedId = null; _followed = null; _headStepId = null; _asked = false;
+    _show(false);
+  }
 }
 
 /* Open the panel on a step's map box, at the step's level (C19), with that
@@ -621,6 +744,9 @@ function followSteps(step) {
   _reset();
   if (!step || _dismissed) return;
   const panel = $("step-panel");
+  // Plan D2: below 1440 px the selection opens nothing (the editor keeps the
+  // width); a panel opened by Play follows it while it is open.
+  if (!standsBeside(window.innerWidth) && !(panel && !panel.hidden && _asked)) return;
   const hit = SPM.findStep(_steps(), step.step_id);
   if (panel && !panel.hidden && _state && _followed === step.step_id && _state.label === mapNodeLabel(step) &&
       SPM.samePath(_state.path, hit ? hit.path : [])) {
@@ -664,25 +790,54 @@ function play(stepId) {
   if (video.readyState >= 1) go(); else video.addEventListener("loadedmetadata", go, { once: true });
 }
 
-/* Watch in the step pane: the panel opens on the step and plays it. */
+/* Play on the editor's line of facts (and the step menu's Play): the panel
+   opens on the step and plays it. Plan D2: below 1440 px it opens in the
+   place of the step list, and the focus goes into it. */
 function watch(step) {
   if (!step) return;
-  _dismissed = false;
-  openForStep(step);
+  _openAsked(step);
   play(step.step_id);
+  if (inList()) _focusIn();
 }
 
 function close() {
   _state = null;
   _cuedId = null;
+  _asked = false;
   _show(false);
 }
 
 /* The level changed: closed where it does not open (the Overview, and
-   lane PANE the Timeline), else the foot follows. */
+   lane PANE the Timeline), else the foot follows. Plan D2: on Steps below
+   1440 px a panel the selection or the Map opened closes (only Play opens
+   it there); one Play opened stays, in the list's place, and on the Map it
+   stands beside the map again. */
 function onLevel(name) {
   if (!opensOn(name)) { close(); return; }
+  const panel = $("step-panel");
+  if (name === "steps" && panel && !panel.hidden && !_asked && !standsBeside(window.innerWidth)) { close(); return; }
+  _place();
   if (_state) render();
+}
+
+/* Plan D2: the window crossed STANDS_FROM_PX (a resize, or the app's zoom).
+   On Steps, going narrower closes a panel the selection opened (one Play
+   opened moves into the list's place); going wider, the panel stands beside
+   the editor again, following the selected step unless it was closed. */
+let _wide = null;
+function _onWidth() {
+  const wide = standsBeside(window.innerWidth);
+  if (wide === _wide) return;
+  _wide = wide;
+  const panel = $("step-panel");
+  if (!panel || State.getLevel() !== "steps") { _place(); return; }
+  if (!wide && !panel.hidden && !_asked) { close(); return; }
+  if (wide && panel.hidden && !_dismissed) {
+    const id = State.getSelectedStepId();
+    const step = id ? _find(id) : null;
+    if (step) { followSteps(step); return; }
+  }
+  _place();
 }
 
 /* The steps changed (an edit, an undo, an analysis): draw again. */
@@ -706,11 +861,7 @@ function refresh() {
   panel.addEventListener("click", (e) => {
     const t = e.target.closest ? e.target : null;
     if (!t) return;
-    if (t.closest("#btn-sp-close")) {
-      if (State.getLevel() === "steps") _dismissed = true;
-      close();
-      return;
-    }
+    if (t.closest("#btn-sp-close")) { _closeByHand(); return; }
     const playBtn = t.closest(".sp-play");
     if (playBtn) { play(playBtn.closest(".sp-occ").dataset.stepId); return; }
     const shot = t.closest(".sp-shot");
@@ -721,24 +872,10 @@ function refresh() {
     const step = _state && _find(_state.focusId);
     if (!step) return;
     if (t.closest("#btn-sp-open-sub")) {
-      // C19: the sub-process's level, in Steps (the Timeline's steps lane
-      // follows it there too).
-      const SV = require("./steps-view.js");   // lazy: it requires this module
-      const to = (_state.path || []).concat([_state.label]);
-      if (State.getLevel() === "flow") {
-        State.setMapPath(to);
-        State.emit("timeline");
-        return;
-      }
-      // On the Map, its map (the Map level follows the "mapPath" topic).
-      if (State.getLevel() === "map") {
-        State.setMapPath(to);
-        State.emit("mapPath");
-        return;
-      }
-      const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
-      if (State.getLevel() !== "steps" && btn) btn.click();
-      SV.goToLevel(to, { openAt: step.step_id });
+      // C19: the sub-process's map (the Map level follows the "mapPath"
+      // topic). Plan D2: the foot shows on the Map only.
+      State.setMapPath((_state.path || []).concat([_state.label]));
+      State.emit("mapPath");
       return;
     }
     if (t.closest("#btn-sp-steps")) {
@@ -747,10 +884,19 @@ function refresh() {
       State.setPendingStepReveal();
       const btn = document.querySelector('.view-mode-btn[data-level="steps"]');
       if (btn) btn.click();
-    } else if (t.closest("#btn-sp-timeline")) {
-      Video.jumpToStepInFlow(step);
     }
   });
+  // Plan D2: in the place of the step list, Escape closes the panel and
+  // gives the list back, the focus going back to the editor's Play.
+  panel.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !inList()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _closeByHand();
+  });
+  _home = panel.parentElement;
+  _wide = standsBeside(window.innerWidth);
+  window.addEventListener("resize", _onWidth);
   const video = $("sp-video");
   if (video) {
     video.addEventListener("timeupdate", () => {
@@ -776,4 +922,7 @@ function refresh() {
 module.exports = { openForStep, openForNode, openForMissing, followSteps, watch, play, close, onLevel, refresh, occurrences, countLine, frameSource,
   // Lane E-1: the head edits the step (lane PANE: a step marked on the
   // Timeline opens in the pane, by the same nameTakesFocus); where it opens.
-  nameTakesFocus, headEditable, HEAD_IDS, opensOn };
+  nameTakesFocus, headEditable, HEAD_IDS, opensOn,
+  // Plan D2: what it shows on a level, and when it stands beside the Steps
+  // editor or takes the place of the step list.
+  partsOn, standsBeside, STANDS_FROM_PX, inList };

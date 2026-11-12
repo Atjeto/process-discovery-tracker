@@ -339,14 +339,21 @@ menu's play item is *Play* (it read *Watch*).
   line `#ov-handoff` ("Version 2, handed off <date> by <name> · Read only",
   what changed in its `title`);
   `[data-summary="runs"|"steps"|"video"|"transcript"|"request"]` (the
-  request: the document's, 2.0.1, else the capture's),
-  `#btn-attach-video` (Attach, or Replace; `data-clip` names the video a
-  Replace acts on), `#btn-remove-video` (only for a video the analyst
-  attached; a `.modal-confirm` first), `#btn-add-video` (2.0.6, contract
-  C23: Add another, or Add with several videos, when the line reads "2
-  videos"), `#btn-attach-transcript`, `#btn-remove-transcript`,
-  `#btn-add-transcript` (Add another with two or more videos, or Add with
-  several transcripts), the marker fixes
+  request: the document's, 2.0.1, else the capture's; plan D5: "video" and
+  "transcript" are in their rows); under the line the sources
+  `table#ov-sources` (plan D5), a row each `tr[data-source="video"]` and
+  `tr[data-source="transcript"]` (`th` the row's name, a `td` with the
+  `[data-summary]` that says what it holds, `td.ov-source-acts` the acts,
+  left out read only):
+  `#btn-attach-video` (*Attach a video...*, or *Replace the video...*;
+  `data-clip` names the video a Replace acts on), `#btn-remove-video`
+  (*Remove the video*, only for a video the analyst attached; a
+  `.modal-confirm` first), `#btn-add-video` (*Add a video...*, 2.0.6,
+  contract C23; alone when the row reads "2 videos"),
+  `#btn-attach-transcript` (*Attach a transcript...*, or *Replace the
+  transcript...*), `#btn-remove-transcript` (*Remove the transcript*),
+  `#btn-add-transcript` (*Add a transcript...*: with two or more videos, or
+  alone with several transcripts), the marker fixes
   `.summary-fix[data-fix]`. Remove video, Replace and Remove transcript
   take their files out of the folder and Ctrl+Z brings them back (lane CC;
   a smoke waits for the reload after the undo: the video's
@@ -625,7 +632,8 @@ menu's play item is *Play* (it read *Watch*).
   (the step's chip), `#step-code` (the library activity's code, C21, when
   the step is named from one), the line of facts `#step-facts`: `#step-system`
   (with `#step-system-list`), `.step-facts-rest`, `#btn-step-watch` (Play,
-  only with a video: the step in the step panel) and `#btn-step-jump`; what
+  only with a video: the step in the step panel; plan D2: below 1440 px
+  the panel's only door on Steps) and `#btn-step-jump`; what
   you write `#step-doc`: `#step-desc` (leaving it saves), `#step-said` (the
   sentences that start in the step's window, the step before bounding its
   lead),
@@ -660,9 +668,20 @@ mean is under a second; `.sp-missing` alone for an As-Is
 task no step stands for), `#sp-video`, `#sp-body .sp-occ[data-step-id]`
 (`.sp-play`, `.sp-at`, `.sp-shot`), `#sp-video-note` (the one line when the
 video has no moment of the row: not covered, or no time; lane FX2), the
-foot `#btn-sp-steps` or
-`#btn-sp-timeline` and, for a sub-process, `#btn-sp-open-sub`, `#btn-sp-close`.
-Lane PANE: never on the Timeline. Lane E-1, on the Map only: `#sp-name-edit` holds the name
+foot `#btn-sp-steps` and, for a sub-process, `#btn-sp-open-sub` (the Map
+only), `#btn-sp-close`.
+Lane PANE: never on the Timeline. Plan D2, on Steps: only `#sp-video`,
+`#sp-video-note` and the rows (`.sp-play`, `.sp-at`, `.sp-nocover`);
+`#sp-name` is `.sr-only`, `#sp-about` hidden, no `.sp-lead`, `.sp-shot` or
+foot (`step-panel.js` `partsOn`). From 1440 px of window width
+(`standsBeside(window.innerWidth)`) it stands in `<main>` beside the level
+and follows the selected row; below, only `#btn-step-watch` (or a refused
+frame of the video of a step without a time) opens it, moved into
+`#session-layout-steps .editor-split` as its first child, the split
+`.sp-in-list` (`#steps-list-pane` and `#steps-splitter` hidden;
+`step-panel.js` `inList()`), the focus on `#sp-video` (else
+`#btn-sp-close`); Escape in it or its close gives the list back and the
+focus to `#btn-step-watch`. Lane E-1, on the Map only: `#sp-name-edit` holds the name
 field `#sp-name-input` (its picker `#sp-activity-list`, its quiet line
 `#sp-lib-note`; `#sp-name` keeps the name, `.sr-only`), and `#sp-fields`
 holds the System field `#sp-system` (in `.sp-system`, the screen

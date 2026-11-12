@@ -1115,15 +1115,18 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       if (!okKeys) await shot(page, "fail-runs-divider-keys.png");
 
       // The step panel opening beside a divider at its right end (another row
-      // selected: the panel follows the selection).
+      // selected: the panel follows the selection). Plan D2: below 1440 px
+      // the selection opens no panel, and the panes keep the whole width.
       let wide = null, squeezed = null, errPanel = null;
+      const stands = await page.evaluate(() => require("./views/step-panel.js").standsBeside(window.innerWidth));
       const divider = (g) => g.total - g.list - g.detail;
       try {
         await page.focus("#steps-splitter");
         await page.keyboard.press("End");
         wide = await geo();
         await page.locator("#step-list .run-group.open .step-row:not(.selected)").first().click({ timeout: T });
-        await page.waitForFunction(() => !document.getElementById("step-panel").hidden, null, { timeout: T });
+        if (stands) await page.waitForFunction(() => !document.getElementById("step-panel").hidden, null, { timeout: T });
+        else await wait(600);
         // Two frames: the layout and the divider's values follow the panel.
         await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
         squeezed = await geo();
@@ -1131,11 +1134,18 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         await page.keyboard.press("Enter");
         await page.waitForFunction(() => localStorage.getItem("pdt.stepsSplit") === null, null, { timeout: T });
       } catch (e) { errPanel = errText(e); }
-      const okPanel = !errPanel && !!squeezed && squeezed.panel && squeezed.total < wide.total &&
-        near(squeezed.detail, g0.minDetail, 1) && squeezed.list >= g0.minList - 1 &&
-        near(divider(squeezed), divider(g0), 1) && squeezed.aria.now === squeezed.aria.max;
-      record("Steps divider: the step panel opening beside it squeezes the panes, never below their minimums (the selected step keeps " + g0.minDetail + " px)",
-        okPanel, JSON.stringify({ err: errPanel, wide: at(wide), squeezed: at(squeezed) }));
+      const okPanel = !errPanel && !!squeezed && (stands
+        ? squeezed.panel && squeezed.total < wide.total &&
+          near(squeezed.detail, g0.minDetail, 1) && squeezed.list >= g0.minList - 1 &&
+          near(divider(squeezed), divider(g0), 1) && squeezed.aria.now === squeezed.aria.max
+        // No third column: the panes keep the level's width (a scrollbar of
+        // the level, there or gone with the row's shorter step, aside).
+        : !squeezed.panel && Math.abs(squeezed.total - wide.total) <= 20 && near(squeezed.detail, wide.detail, 1) &&
+          near(squeezed.list + squeezed.detail, wide.list + wide.detail, 1 + Math.abs(squeezed.total - wide.total)));
+      record(stands
+        ? "Steps divider: the step panel opening beside it squeezes the panes, never below their minimums (the selected step keeps " + g0.minDetail + " px)"
+        : "Steps divider, plan D2 (a " + g0.win + " px window, under 1440 px): another row selected opens no step panel, and the panes keep the whole width",
+      okPanel, JSON.stringify({ err: errPanel, stands, wide: at(wide), squeezed: at(squeezed) }));
       if (!okPanel) await shot(page, "fail-runs-divider-panel.png");
     } else {
       // Stacked: each pane takes the whole width; a share set on the split

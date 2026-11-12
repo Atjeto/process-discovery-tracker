@@ -459,19 +459,30 @@ function zipFiles(buf) {
     c.pastedId = pasted.id;
     // The step panel beside the list (the owner's review): a step added by
     // hand, in a project with no video, reads what it is, with no play.
+    // Plan D2: below 1440 px the selection opens no panel (and this project
+    // has no video, so no Play): its row is read from the panel opened in
+    // code on the same step, as the Steps level draws it.
+    c.narrow = await page.evaluate(() => !require("./views/step-panel.js").standsBeside(window.innerWidth));
+    if (c.narrow) {
+      c.closedOnRow = await page.evaluate(() => document.getElementById("step-panel").hidden);
+      await page.evaluate((id) => { const SP = require("./views/step-panel.js");
+        SP.openForStep(require("./state.js").getSession().annotations.steps.find((s) => s.step_id === id)); }, stepId(NAMES[0]));
+    }
     c.panel = await page.evaluate((id) => {
       const r = document.querySelector('#step-panel:not([hidden]) #sp-body .sp-occ[data-step-id="' + id + '"]');
       return r ? { explain: ((document.getElementById("sp-explain") || {}).textContent || "").trim(), at: ((r.querySelector(".sp-at") || {}).textContent || "").trim(),
         play: !!r.querySelector(".sp-play"), leads: [...r.querySelectorAll(".sp-lead")].map((x) => (x.textContent || "").trim()),
         shots: r.querySelectorAll(".sp-shot").length } : null;
     }, stepId(NAMES[0]));
+    if (c.narrow) await page.evaluate(() => require("./views/step-panel.js").close());
   } catch (e) { c.err = errText(e); }
-  record("(c) Add screenshot from a file and by Ctrl+V in the step pane: two analyst screenshots on the step (files in screenshots/analyst/); Use in PDD marks the pasted one; the step panel's row reads \"Transaction 1 · no time\" (lane FX3: nothing recorded) under \"This step happened once in transaction 1.\", no play, its screenshots under a Screenshots lead",
+  record("(c) Add screenshot from a file and by Ctrl+V in the step pane: two analyst screenshots on the step (files in screenshots/analyst/), shown in the editor; Use in PDD marks the pasted one; the step panel's row reads \"Transaction 1 · no time\" (lane FX3: nothing recorded) under \"This step happened once in transaction 1.\", no play, and (plan D2) no screenshot: the editor beside it shows them" +
+    (c.narrow ? "; below 1440 px the selection opened no panel" : ""),
     !c.err && c.shots.length === 2 && c.shots.every((x) => x.exists && x.onStep) &&
       JSON.stringify(c.shots.map((x) => x.source)) === '["file","paste"]' && c.cards.length === 2 && c.cards.every((x) => x.loaded) &&
       c.cards.find((x) => x.ref === c.pastedId).pdd === "In the PDD" &&
       !!c.panel && c.panel.explain === "This step happened once in transaction 1." && c.panel.at === "Transaction 1 · no time" &&
-      !c.panel.play && JSON.stringify(c.panel.leads) === '["Screenshots"]' && c.panel.shots === 2,
+      !c.panel.play && JSON.stringify(c.panel.leads) === "[]" && c.panel.shots === 0 && (!c.narrow || c.closedOnRow === true),
     JSON.stringify(c));
   await page.screenshot({ path: path.join(__dirname, "companion-smoke-steps.png") }).catch(() => {});
 
@@ -625,22 +636,45 @@ function zipFiles(buf) {
     vd.currentTime = t;
   }), secs);
   const shotCount = () => page.evaluate(() => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length);
+  const refusal = () => page.waitForFunction(() => /no time in the video: play the step panel's video/.test((document.getElementById("toast") || {}).textContent || ""),
+    null, { timeout: T });
   try {
     await level("steps");
+    // Plan D2: below 1440 px the selection opens no panel, and a step without
+    // a time has no Play: A frame of the video, refused with its reason,
+    // opens the panel on the step (in the place of the step list) at the
+    // video's start, where it can be played to the step's moment.
+    w.narrow = await page.evaluate(() => !require("./views/step-panel.js").standsBeside(window.innerWidth));
     await selectStep(stepId(NAMES[0]));
+    if (w.narrow) {
+      w.closedOnRow = await page.evaluate(() => document.getElementById("step-panel").hidden);
+      await shotMenu("video_frame");
+      await refusal();
+    }
     await page.waitForFunction(() => {
       const vd = document.querySelector("#step-panel:not([hidden]) #sp-video[src]");
       return !!(vd && vd.readyState >= 1 && !vd.seeking);
     }, null, { timeout: T });
     w.movedTo = await seekPanel(12);
+    if (w.narrow) {
+      await page.locator("#btn-sp-close").click({ timeout: T });
+      await page.evaluate(() => document.getElementById("toast").classList.remove("show"));
+    }
     await selectStep(stepId(NAMES[3]));
+    w.before = await shotCount();
+    if (w.narrow) {
+      await shotMenu("video_frame");
+      await refusal();
+      w.refused = { toast: await page.evaluate(() => document.getElementById("toast").textContent), count: await shotCount() };
+      w.inList = await page.evaluate(() => require("./views/step-panel.js").inList());
+    }
     await page.waitForFunction(() => { const vd = document.getElementById("sp-video"); return !vd.seeking && vd.currentTime === 0; }, null, { timeout: T });
     w.next = await spVideo();
-    w.before = await shotCount();
-    await shotMenu("video_frame");
-    await page.waitForFunction(() => /no time in the video: play the step panel's video/.test((document.getElementById("toast") || {}).textContent || ""),
-      null, { timeout: T });
-    w.refused = { toast: await page.evaluate(() => document.getElementById("toast").textContent), count: await shotCount() };
+    if (!w.narrow) {
+      await shotMenu("video_frame");
+      await refusal();
+      w.refused = { toast: await page.evaluate(() => document.getElementById("toast").textContent), count: await shotCount() };
+    }
     w.playedTo = await seekPanel(6);
     await shotMenu("video_frame");
     await page.waitForFunction((k) => ((require("./state.js").getSession().annotations.analyst_screenshots) || []).length === k + 1, w.before, { timeout: T });
@@ -648,9 +682,13 @@ function zipFiles(buf) {
     w.shot = { source: shot.source, onStep: shot.step_id === stepId(NAMES[3]),
       atSec: (Date.parse(shot.at) - Date.parse(readJson(path.join(BLANK, "manifest.json")).started_at)) / 1000,
       file: fs.existsSync(path.join(BLANK, "screenshots", "analyst", shot.file)) };
+    // The step list back for what follows.
+    if (w.narrow) await page.locator("#btn-sp-close").click({ timeout: T });
   } catch (x) { w.err = errText(x); }
-  record("(w) lane FX2: a step without a time, in a project with a video: the step panel shows the video's start (not 0:12, where the previous step's video was left) with one line saying the step has no time in the video (lane FX3: never in the recording, which this project has not), and no play; A frame of the video is refused, with the reason, until the video is played to the step's moment, then saves that frame",
+  record("(w) lane FX2: a step without a time, in a project with a video: the step panel shows the video's start (not 0:12, where the previous step's video was left) with one line saying the step has no time in the video (lane FX3: never in the recording, which this project has not), and no play; A frame of the video is refused, with the reason, until the video is played to the step's moment, then saves that frame" +
+    (w.narrow ? "; plan D2: below 1440 px the selection opens no panel, and the refused frame opens it on the step in the place of the step list" : ""),
     !w.err && Math.abs(w.movedTo - 12) < 0.3 && w.next.t === 0 && !w.next.hidden && w.next.note === UNTIMED && !w.next.play &&
+      (!w.narrow || (w.closedOnRow === true && w.inList === true)) &&
       /^This step has no time in the video: play the step panel's video to its moment first, then add the frame\./.test(w.refused.toast) &&
       w.refused.count === w.before && Math.abs(w.playedTo - 6) < 0.3 &&
       w.shot.source === "video_frame" && w.shot.onStep && w.shot.file && Math.abs(w.shot.atSec - 6) < 0.5,
@@ -700,7 +738,14 @@ function zipFiles(buf) {
     await stubOpen(VIDEO);
     await stubSave(VPROJ);
     // Lane FX2 (validation pass 3, F3): the step panel open on the empty
-    // project's step closes as another project opens.
+    // project's step closes as another project opens. Plan D2: below 1440 px
+    // the selection opened none: it is opened in code on the selected step
+    // (what is checked here is that it closes).
+    await page.evaluate(() => {
+      const SP = require("./views/step-panel.js"), S = require("./state.js");
+      if (!document.getElementById("step-panel").hidden || SP.standsBeside(window.innerWidth)) return;
+      SP.openForStep(S.getSession().annotations.steps.find((s) => s.step_id === S.getSelectedStepId()));
+    });
     h.panelBefore = await page.evaluate(() => !document.getElementById("step-panel").hidden);
     await newProject("#btn-new-from-video");
     await opened(VPROJ);
@@ -864,6 +909,15 @@ function zipFiles(buf) {
     const first = (await session()).anno.steps.slice().sort((x, y) => Date.parse(x.time_range.start) - Date.parse(y.time_range.start))[0];
     await page.evaluate(() => { const b = document.querySelector("#step-list .run-group:not(.open) .run-row"); if (b && !document.querySelector("#step-list .run-group.open .step-row")) b.click(); });
     await selectStep(first.step_id);
+    // Plan D2: below 1440 px the panel opens on Play only (then paused here,
+    // so the frame is the one moved to).
+    k.narrow = await page.evaluate(() => !require("./views/step-panel.js").standsBeside(window.innerWidth));
+    if (k.narrow) {
+      await page.locator("#step-detail #btn-step-watch").click({ timeout: T });
+      await page.waitForSelector("#step-panel:not([hidden]) #sp-video[src]", { timeout: T });
+      await page.waitForFunction(() => !document.getElementById("sp-video").paused, null, { timeout: T });
+      await page.evaluate(() => document.getElementById("sp-video").pause());
+    }
     await page.waitForSelector("#step-panel:not([hidden]) #sp-video[src]", { timeout: T });
     await page.evaluate(() => new Promise((res) => {
       const sp = document.getElementById("sp-video");
@@ -1166,15 +1220,24 @@ function zipFiles(buf) {
       ]),
     JSON.stringify(p));
 
-  // (q) The step panel beside the list: the selected step's flow in one line.
+  // (q) The step panel: the step's flow in one line. Plan D2: on Steps the
+  // editor beside it holds the flow (its rows, checked above), so the panel
+  // there has no flow line; on the Map a box opens the panel with it.
   let q = {};
   try {
     await selectStep(ids[FN[3]]);
+    await wait(400);
+    q.onSteps = await page.evaluate(() => ({ panel: !document.getElementById("step-panel").hidden,
+      flow: !!document.querySelector("#step-panel:not([hidden]) #sp-flow"), editor: !!document.querySelector("#step-detail .step-flow") }));
+    await level("map");
+    await showRuns();
+    await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.getClientRects().length); }, null, { timeout: T });
+    await page.evaluate((id) => { document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"); }, FN[3]);
     await page.waitForSelector("#step-panel:not([hidden]) #sp-flow", { timeout: T });
     q.line = await page.evaluate(() => document.getElementById("sp-flow").textContent.trim());
   } catch (x) { q.err = errText(x); }
-  record("(q) C17: the step panel shows the step's flow in one short line",
-    !q.err && q.line === "Goes back to step 2 when " + LOOP, JSON.stringify(q));
+  record("(q) C17: the step panel on the Map shows the step's flow in one short line; plan D2: on Steps it shows none (the editor's Flow has it)",
+    !q.err && q.line === "Goes back to step 2 when " + LOOP && !q.onSteps.flow && q.onSteps.editor, JSON.stringify(q));
 
   // (r) The live map.
   let r = {};

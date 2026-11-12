@@ -187,9 +187,13 @@ newProject`).
   only the hand-off is left, naming the last version once there is one);
   the project
   line (its name, who recorded it, the request, its transactions, the
-  reference transaction's steps, the video and the transcript with their
-  Attach, Replace and Remove (the video's Remove only for a video the
-  analyst attached), and warning lines only when a marker problem, a
+  reference transaction's steps; under it, plan D5, `#ov-sources`, a small
+  table of two rows, *Video* and *Transcript*, each saying what it holds
+  (a file's name, how many, "No video") and its acts named with their
+  object: *Attach a video...* or *Replace the video...*, *Remove the video*
+  (only for a video the analyst attached), *Add a video...*, and the same
+  for the transcript; read only, the rows without acts; and warning lines
+  only when a marker problem, a
   missing file, a check that could not run or an app recorded with less
   detail needs one); the Document ("You write these. The PDD prints them.":
   the twelve fields of contract C6, an empty one showing its question in
@@ -341,7 +345,20 @@ level on screen. It has two doors: a click on a map box and a selected
 Steps row (*Play* in the step pane opens it and plays the step); a task of
 the map the PDD prints is a map box too. Lane PANE: it never opens on the
 Timeline (`opensOn`), where a step opens in the pane beside the video
-(below). It names
+(below). Plan D2 (Steps at 1366 px): on Steps it shows only what the
+editor beside it lacks (`partsOn`: the video and the rows, each its line
+and its play; no name, system, description, flow, waste, count,
+screenshots, what was said, notes or foot), its heading kept for a screen
+reader. From 1440 px of window width (`standsBeside`, CSS pixels, so the
+app's zoom counts) it stands beside the editor and follows the selection;
+below, the selection opens nothing and it opens only on *Play* (the
+editor's line of facts, the step menu; `watch`) or for a frame of the
+video of a step without a time (`frameSource`), moved into the Steps
+split in the place of the step list (`_place`, `.sp-in-list`: the list and
+the divider hidden; stacked under 1100 px, the video left and the rows
+right), the focus in it (`inList`); its close or Escape gives the list
+back and the focus to *Play*. A resize across 1440 px closes a panel the
+selection opened or stands it again. On the Map it names
 the step, its system and screen, its description, its flow in one short
 line when one is set (contract C17: "Only when ... · Goes back to step 2
 when ...") and "In N of M transactions, about Xs each" (without "about ...
@@ -360,13 +377,13 @@ editor's own pieces (`step-editor.js` `nameFieldHtml` and `wireNameField`,
 and saved by the editor's handlers (`steps-view.js` `panelFieldCallbacks`):
 Enter and Escape leave the name, a press outside the panel leaves any of
 them, and while one has the focus the panel drawn again leaves it as it is.
-On Steps and in a project open read only the head is text. A step added on
+In a project open read only the head is text. A step added on
 the Timeline opens in the Timeline's pane; its name takes the focus
 only while the video is paused (`nameTakesFocus`, `flow-view-video.js`
 `isPlaying`). The highlighted row of a step a video covers that shows no
 screenshot offers *Use the video at m:ss* (`analyst-ui.js`
-`useVideoOffer`, `useVideoAt`), as the editor's screenshots part does. Its foot says *Open in Steps*, or *Show on timeline* on the
-Steps level, and *Open sub-process* for a sub-process. At a level below the
+`useVideoOffer`, `useVideoAt`), as the editor's screenshots part does. On the Map its foot says *Open in Steps*,
+and *Open sub-process* for a sub-process (its map). At a level below the
 main one (C19) the panel shows the occurrences of the step's node in every
 visit of that level. A task of that map that no step stands for (added or
 renamed in the editor, or its step renamed or hidden since the copy was
@@ -495,7 +512,7 @@ their module as `<name>.test.js`.
 
 | File | Owns |
 |---|---|
-| `overview-view.js` | The Overview: the Checklist (`pathState`), what a reader of the next version will miss under it (`missingOf`, `missingShown`, `goToMissing`, lane B-V2), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), and the note shown while the analysis is missing. |
+| `overview-view.js` | The Overview: the Checklist (`pathState`), what a reader of the next version will miss under it (`missingOf`, `missingShown`, `goToMissing`, lane B-V2), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the video and the transcript as rows under it with their acts (`_sourcesHtml`, `#ov-sources`, plan D5), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), and the note shown while the analysis is missing. |
 | `handoff-ui.js` | Export, Hand off... (contract C20): the dialog (its line says what the zip holds, `detailLine`; what a reader of the version will miss, `dialogOptions`, lane B-V2), the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the map files (`writeHandoffMaps`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
 | `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the timeline's first row (lane SCREEN, `syncTimelineRow`: Play, the clock, Add step, Start or End transaction, Add note, and a selected stretch's Leave out of the analysis or Not part of the process, Make it a transaction and Clear selection; Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (Go there, Add step here), the unreadable banner and its Restore the newest backup. |
 | `step-order.js` (viewer root, pure) | 2.0.5, contract C22: where a step comes in its transaction's process, apart from its time (`step.placed_after`). `processOrder` (the one order rule, pinned with the pipeline's `step_context.process_order` by `shared/step-order-golden.json`; runs-model, the live map, the sub-process maps and the differences read it), `placeMoments` (where a placed step falls among the stretches left out), `deriveOrder` (the fewest placements that give an order wanted: Move up and Move down, Place after a step..., Back to its time, + Add step), `keepOrder` (a step hidden, deleted or merged away hands its followers over), `followTransaction`, `apartOnTimeline` (Merge and Group refuse a placed step apart from the others). |
@@ -517,7 +534,7 @@ their module as `<name>.test.js`.
 | `flow-view-transcript.js` | The Transcript lane (one row per transcript, C23), each transcript's *Sync the transcript...*, *Replace the transcript...* and *Remove the transcript*, and Attach (which asks which video a transcript is of when there are several). Lane E (E3): the Transcript tab beside the video (`renderTab`, built once per change of what it lists; `tickTab`, the sentence at the playhead; a sentence's menu: Add a step here, Add to the selected step's description, Add to a document field). |
 | `flow-view-apps.js` | Per-app band colours, the system a band names, the systems' entries of the legend in the Lanes menu. |
 | `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process dialog, a pick from the library (C21: `pickActivityAction`; a name typed that is an activity of the step's system is that pick, any other name leaves the library). C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
-| `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), and the panel for an As-Is task no step stands for (`openForMissing`). |
+| `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), the panel for an As-Is task no step stands for (`openForMissing`), and plan D2's rules: what it shows on a level (`partsOn`) and when it stands beside the Steps editor or opens on *Play* in the place of the step list (`standsBeside`, `inList`). |
 | `analyst-ui.js` | What the analyst adds, on screen (C16): the System field, the screenshots (Add screenshot, Use in PDD, Remove, Ctrl+V), notes on a step or a moment, attachments on a step and on the Overview. |
 | `library-builder-ui.js` | The Library builder (C21; Help, *Build the library...*), the owner's tool: Add projects... and Add hand-off zips..., the named steps by system, a row each to tick and fix (name, code, description), the same screens named differently side by side as one conflict, and Save library... (a new version, checked as the pipeline checks a library, the app's own file offered first). |
 
@@ -1000,8 +1017,8 @@ opened in their programs). Nothing can change:
 - **No editing control.** The page carries `.app.read-only`
   (`flow-view.js loadSessionIntoView`), and the rules in `styles.css`, beside
   the unreadable-annotations page's (lane FX2), hide every control that
-  changes the project on every level: the Checklist, the project line's
-  Attach, Replace and Remove, the Steps toolbar, the ticks, Confirm
+  changes the project on every level: the Checklist, the acts of the
+  video's and the transcript's rows (left out of the page), the Steps toolbar, the ticks, Confirm
   transaction and Undo confirm, the step pane's acts, the Timeline row's Add
   step, Start or End transaction, Add note and a stretch's acts,
   Sync, the transcript lane's acts and the markers' Move and Delete, the

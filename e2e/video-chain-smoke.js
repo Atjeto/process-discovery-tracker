@@ -5,10 +5,10 @@
  * videos on the timeline"). Launches the REAL viewer on a throwaway profile,
  * the main process's file dialogs replaced, on a project made from a
  * synthetic 32 s video in a temp folder, and drives it as a person does:
- *   (a) Add another on the Overview's project line, with a 12 s video: it
+ *   (a) Add a video... in the Overview's video row, with a 12 s video: it
  *       goes after the first, back to back (offset 32 s, its length read
  *       from a file that holds none), copied into video/; the Videos lane
- *       draws two bands and the timeline runs 44 s; the line says 2 videos;
+ *       draws two bands and the timeline runs 44 s; the row says 2 videos;
  *   (b) a click on the timeline at 0:36 plays the second video at 4 s, the
  *       playhead at 0:36; played from 0:31, the first video goes on into the
  *       second;
@@ -191,7 +191,7 @@ async function makeVideo(page, out, secs, colour) {
   const PROJ = path.join(TMP, "Order call");
   let stepId = null, earlyStep = null;
 
-  // (a) Add another: back to back after the first.
+  // (a) Add a video...: back to back after the first.
   let a = {};
   try {
     await stubOpen([VIDEO_A]);
@@ -205,7 +205,8 @@ async function makeVideo(page, out, secs, colour) {
     await level("flow");
     await page.waitForFunction(() => !!require("./views/flow-view-video.js").timelineSpan(), null, { timeout: 30000 });
     await level("overview");
-    a.lineBefore = await page.evaluate(() => [...document.querySelectorAll("#ov-summary .ov-summary-line button")].map((b) => b.id + ":" + b.textContent.trim()));
+    // Plan D5: the video's row and its acts.
+    a.lineBefore = await page.evaluate(() => [...document.querySelectorAll('#ov-summary #ov-sources tr[data-source="video"] button')].map((b) => b.id + ":" + b.textContent.trim()));
     await stubOpen([VIDEO_B]);
     await page.locator("#ov-summary #btn-add-video").click({ timeout: T });
     await page.waitForFunction(() => (require("./state.js").getSession().annotations.external_videos || []).length === 2, null, { timeout: 60000 });
@@ -219,8 +220,8 @@ async function makeVideo(page, out, secs, colour) {
     a.lane = await page.evaluate(() => ({ name: !!document.querySelector('#tl-lane-names .tl-lane-name[data-lane="videos"]'),
       bands: [...document.querySelectorAll("#timeline .tl-clip")].map((b) => b.textContent.trim()) }));
   } catch (e) { a.err = errText(e); }
-  record("(a) Add another puts the 12 s video after the 32 s one, back to back (its length read from a file that holds none), copied into video/; the Videos lane draws both and the timeline runs 44 s",
-    !a.err && a.lineBefore && a.lineBefore.includes("btn-add-video:Add another") && a.chain && a.chain.length === 2 &&
+  record("(a) Add a video... (the video's row, plan D5) puts the 12 s video after the 32 s one, back to back (its length read from a file that holds none), copied into video/; the Videos lane draws both and the timeline runs 44 s",
+    !a.err && a.lineBefore && a.lineBefore.includes("btn-add-video:Add a video...") && a.chain && a.chain.length === 2 &&
       a.chain[0][0] === "v1" && a.chain[1][0] === "v2" && near(a.chain[1][1], 32, 0.4) && near(a.chain[1][4], 12, 0.4) &&
       a.copied && a.line === "2 videos" && near(a.span, 44, 0.8) && a.lane.name && a.lane.bands.length === 2,
     JSON.stringify(a));

@@ -21,8 +21,10 @@
  *      one line that opens to the entries, each leading to where it is
  *      fixed; nothing while the list is empty.
  *   2. the project line: the project (or, once written, the document title),
- *      who recorded it, its transactions, the reference transaction's steps,
- *      and the video and the transcript, each with its Attach; plus a warning
+ *      who recorded it, its transactions, the reference transaction's steps;
+ *      under it (plan D5) the video and the transcript, a row each with what
+ *      it holds and its acts (Attach a video..., Replace the transcript...,
+ *      and the rest, each named with its object); plus a warning
  *      line only when a marker problem, a missing file, a check that could
  *      not run or an app recorded with less detail needs one.
  *   3. the document: annotations.document (contract C6), the PDD's
@@ -592,71 +594,85 @@ function _refreshMissing(host, sess, state) {
 
 function _plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
-/* The video and the transcript, each with the act that attaches it (the
-   Attach video flow syncs it with two clicks, flow-view-video.attachVideo;
-   the transcript acts are delegated by id in flow-view-transcript.js).
-   C23 (2.0.6): a project holds several of each. One video: Replace, Remove
-   and Add another; several: how many, and Add (each one's acts are on the
+/* The project's sources (plan D5, the owner 2026-11-12): a small table of
+   two rows, the video and the transcript, each saying what it holds, then
+   its acts, each named with its object, so no two acts of one name stand
+   side by side (the Attach video flow syncs it with two clicks,
+   flow-view-video.attachVideo; the transcript acts are delegated by id in
+   flow-view-transcript.js). C23 (2.0.6): a project holds several of each.
+   One video: its file's name, Replace, Remove and Add; several: how many
+   (the names in the tooltip), and Add (each one's acts are on the
    Timeline's Videos lane). The same for the transcripts (each one's acts on
-   the Transcript lane). */
-function _mediaParts(sess) {
+   the Transcript lane). A project opened read only shows the rows without
+   acts. */
+function _sourcesHtml(sess) {
   const clips = VideoChain.clipsOf(sess && sess.annotations);
   const found = new Set(((sess && sess.videos) || []).filter((v) => v && v.path).map((v) => v.id));
-  const nameOf = (c) => String(c.path || "").split(/[\\/]/).filter(Boolean).pop() || "video";
-  const addTitle = "Add a video" + ((sess && (sess.events || []).length)
+  const baseName = (p) => String(p || "").split(/[\\/]/).filter(Boolean).pop() || "";
+  const nameOf = (c) => baseName(c.path) || "video";
+  const recorded = !!(sess && (sess.events || []).length);
+  const addTitle = "Add a video" + (recorded
     ? ": the first is synced with two clicks, the others go after it."
     : ": it goes after the last one, back to back.");
-  let video;
+  const btn = (id, title, label, clip) => '<button type="button" class="link-btn" id="' + id + '"' +
+    (clip ? ' data-clip="' + escapeAttr(clip) + '"' : "") + ' title="' + escapeAttr(title) + '">' + escapeHtml(label) + "</button>";
+  let video, videoActs;
   if (clips.length > 1) {
     const missing = clips.filter((c) => !found.has(c.id)).length;
     video = '<span data-summary="video" title="' + escapeAttr(clips.map((c, i) => (i + 1) + ". " + nameOf(c) +
         (found.has(c.id) ? "" : " (not found)")).join("\n")) + '">' + clips.length + " videos" +
-        (missing ? ", " + missing + " not found" : "") + "</span> " +
-      '<button type="button" class="link-btn" id="btn-add-video" title="' + escapeAttr(addTitle) + '">Add</button>';
+        (missing ? ", " + missing + " not found" : "") + "</span>";
+    videoActs = [btn("btn-add-video", addTitle, "Add a video...")];
   } else if (clips.length === 1 && found.has(clips[0].id)) {
     // Remove (lane CC), Attach's inverse: only for the video the analyst attached.
     const copy = isVideoCopy(clips[0].path);
-    video = '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" data-clip="' +
-        escapeAttr(clips[0].id) + '" title="' + escapeAttr("Put another video in place of this one" +
-        ((sess.events || []).length ? ", then sync it." : ".") + " Ctrl+Z brings this one back.") + '">Replace</button>' +
-      ' <button type="button" class="link-btn" id="btn-remove-video" data-clip="' + escapeAttr(clips[0].id) + '" title="' +
-        escapeAttr(copy ? "Take the video and its copy in the project folder out. Ctrl+Z brings both back."
-          : "Take the video out of this project. Ctrl+Z brings it back.") + '">Remove</button>' +
-      ' <button type="button" class="link-btn" id="btn-add-video" title="' + escapeAttr(addTitle) + '">Add another</button>';
+    video = '<span data-summary="video">' + escapeHtml(nameOf(clips[0])) + "</span>";
+    videoActs = [
+      btn("btn-attach-video", "Put another video in place of this one" + (recorded ? ", then sync it." : ".") +
+        " Ctrl+Z brings this one back.", "Replace the video...", clips[0].id),
+      btn("btn-remove-video", copy ? "Take the video and its copy in the project folder out. Ctrl+Z brings both back."
+        : "Take the video out of this project. Ctrl+Z brings it back.", "Remove the video", clips[0].id),
+      btn("btn-add-video", addTitle, "Add a video..."),
+    ];
   } else if (!clips.length && sess && sess.recordingAvailable) {
     // The recording's own video: another takes its place.
-    video = '<span data-summary="video">Video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
-      'title="' + escapeAttr("Attach another video in place of this one, then sync it with two clicks.") + '">Replace</button>';
+    video = '<span data-summary="video">' + escapeHtml(baseName(sess.recordingPath) || "Video") + "</span>";
+    videoActs = [btn("btn-attach-video", "Attach another video in place of this one, then sync it with two clicks.", "Replace the video...")];
   } else {
     // None, or the one video's file is not found here (Attach finds it: it keeps its place).
-    video = '<span data-summary="video">No video</span> <button type="button" class="link-btn" id="btn-attach-video" ' +
-      'title="Attach a video of the recording, then sync it with two clicks.">Attach</button>';
+    video = '<span data-summary="video">No video</span>';
+    videoActs = [btn("btn-attach-video", "Attach a video of the recording, then sync it with two clicks.", "Attach a video...")];
   }
   const parts = TM.transcriptsOf(sess);
-  let transcript;
+  let transcript, transcriptActs;
   if (parts.length > 1) {
-    transcript = '<span data-summary="transcript">' + parts.length + " transcripts</span> " +
-      '<button type="button" class="link-btn" id="btn-add-transcript" title="' + escapeAttr(TM.ADD_TITLE) + '">Add</button>';
+    transcript = '<span data-summary="transcript">' + parts.length + " transcripts</span>";
+    transcriptActs = [btn("btn-add-transcript", TM.ADD_TITLE, "Add a transcript...")];
   } else if (parts.length || (sess && sess.transcriptError)) {
-    transcript = '<span data-summary="transcript">' + (parts.length ? "Transcript" : "Transcript cannot be read") + "</span> " +
-      '<button type="button" class="link-btn" id="btn-attach-transcript" title="' + escapeAttr(TM.REPLACE_TITLE) + '">Replace</button> ' +
-      '<button type="button" class="link-btn" id="btn-remove-transcript" title="' + escapeAttr(TM.REMOVE_TITLE) + '">Remove</button>' +
-      (parts.length && clips.length > 1 ? ' <button type="button" class="link-btn" id="btn-add-transcript" title="' +
-        escapeAttr(TM.ADD_TITLE) + '">Add another</button>' : "");
+    // The file the transcript was made from, when it says so (transcript_import.py's source_file).
+    const from = parts.length ? baseName(parts[0].transcript && parts[0].transcript.source_file) : "";
+    transcript = '<span data-summary="transcript">' + escapeHtml(parts.length ? from || "Transcript" : "The transcript cannot be read") + "</span>";
+    transcriptActs = [btn("btn-attach-transcript", TM.REPLACE_TITLE, "Replace the transcript..."),
+      btn("btn-remove-transcript", TM.REMOVE_TITLE, "Remove the transcript")]
+      .concat(parts.length && clips.length > 1 ? [btn("btn-add-transcript", TM.ADD_TITLE, "Add a transcript...")] : []);
   } else {
-    transcript = '<span data-summary="transcript">No transcript</span> <button type="button" class="link-btn" id="btn-attach-transcript" ' +
-      'title="' + escapeAttr(TM.ATTACH_TITLE) + '">Attach</button>';
+    transcript = '<span data-summary="transcript">No transcript</span>';
+    transcriptActs = [btn("btn-attach-transcript", TM.ATTACH_TITLE, "Attach a transcript...")];
   }
-  return [video, transcript];
+  const readOnly = RO.isReadOnly(sess);
+  const row = (key, head, what, acts) => '<tr data-source="' + key + '"><th scope="row">' + head + "</th><td>" + what + "</td>" +
+    (readOnly ? "" : '<td class="ov-source-acts">' + acts.join(" ") + "</td>") + "</tr>";
+  return '<table class="ov-sources" id="ov-sources"><caption class="sr-only">The video and the transcript of this project</caption><tbody>' +
+    row("video", "Video", video, videoActs) + row("transcript", "Transcript", transcript, transcriptActs) + "</tbody></table>";
 }
 
 /* The project in one line: its name (the document title once written,
    P3.9), who recorded it (the SME's name when the capture app's Profile set
    one, else the Windows login), its transactions, the reference
    transaction's steps (not every transaction's: the process has that many
-   steps), and the video and the transcript with their acts. `state` is
-   pathState, or null before the project is analyzed (the parts that need the
-   runs are left out). */
+   steps). The video and the transcript are rows of their own under it
+   (_sourcesHtml, plan D5). `state` is pathState, or null before the project
+   is analyzed (the parts that need the runs are left out). */
 function _summaryLine(sess, state) {
   const s = SessionSummary.computeSummary(sess);
   const m = (sess && sess.manifest) || {};
@@ -693,7 +709,6 @@ function _summaryLine(sess, state) {
         " in " + escapeHtml(state.pattern.title.toLowerCase()) + "</span>");
     }
   }
-  parts.push(..._mediaParts(sess));
   // AD-30: the tooltip names the request (only when one was set), never as
   // the project: that word is what is opened.
   const request = reqText;
@@ -793,7 +808,7 @@ function _handoffLineHtml(sess) {
 function _summaryHtml(sess, state) {
   const line = _summaryLine(sess, state);
   const warn = state ? _summaryWarnings(sess) : "";
-  return '<div class="ov-summary" id="ov-summary">' + _handoffLineHtml(sess) + line +
+  return '<div class="ov-summary" id="ov-summary">' + _handoffLineHtml(sess) + line + _sourcesHtml(sess) +
     (warn ? '<div class="ov-summary-warn">' + warn + "</div>" : "") + "</div>";
 }
 
@@ -817,8 +832,9 @@ function _wireSummary(host) {
   _wireVideoActs(host);
 }
 
-/* The project line's video acts: Attach (Replace) and Remove. Lazy require:
-   flow-view-video.js wires DOM controls at require() time. */
+/* The video row's acts (plan D5): Attach a video (or Replace the video),
+   Remove the video and Add a video. Lazy require: flow-view-video.js wires
+   DOM controls at require() time. */
 function _wireVideoActs(host) {
   const Video = () => require("./flow-view-video.js");
   const attachVideo = host.querySelector("#ov-summary #btn-attach-video");
@@ -1248,10 +1264,13 @@ function _refreshPathInPlace() {
   const status = host.querySelector("#ov-doc-status");
   if (status) status.textContent = _documentStatusText(state.doc, RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess), _smeWaitingCount(sess),
     RO.isReadOnly(sess));
-  // P3.9: the recording line names the document title once it is written.
+  // P3.9: the recording line names the document title once it is written;
+  // plan D5: the sources under it are drawn again with it.
   const summary = host.querySelector("#ov-summary .ov-summary-line");
   if (summary) {
     summary.outerHTML = _summaryLine(sess, state);
+    const sources = host.querySelector("#ov-summary #ov-sources");
+    if (sources) sources.outerHTML = _sourcesHtml(sess);
     _wireVideoActs(host);
   }
 }

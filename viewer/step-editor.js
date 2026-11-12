@@ -314,8 +314,9 @@
          step is, how long it took (2.0.3: its start and end as fields
          when its time is the analyst's, `factsHtml`), in how many
          transactions, then Play
-         (with a video: the step in the step panel's video, the panel beside
-         the editor opening again when it was closed) and Show on timeline;
+         (with a video: the step in the step panel's video, the panel opening
+         again when it was closed; plan D2: below 1440 px it opens only so,
+         in the place of the step list) and Show on timeline;
        what you write: the Description (C7; the drafting's narration is not
          its hint: the actions are under Recorded) with what was said during
          the step under it (C8), each sentence with Add, the Flow line (C17:
@@ -328,9 +329,9 @@
          split the step after it;
        what is attached: its attachments and notes, when it has some, and
          one row of adds (views/analyst-ui.js).
-     One column of a readable width; the step panel beside it (step-panel.js)
-     shows every time the step happened, with its video, screenshots, what
-     was said and notes. Callbacks (steps-view.js stepDetailCallbacks) carry
+     One column of a readable width; the step panel (step-panel.js) adds
+     only what it lacks (plan D2): the step's video and every time the step
+     happened, each with its play. Callbacks (steps-view.js stepDetailCallbacks) carry
      the facts, the state, the code, the Recorded line, the description, the
      System field, the screenshots and what is attached, and (C21) the name
      field's picker: `picker` (library.js pickerFor) and
@@ -361,7 +362,7 @@
           <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
           ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
-        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel's video, beside the editor">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel, which lists every time it happened">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
         ${callbacks.afterFactsHtml || ""}
       </div>
       <div class="step-body">

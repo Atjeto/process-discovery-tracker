@@ -266,6 +266,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Steps gives the step editor its room on a laptop** (plan D2). On Steps
+  the step panel keeps only what the editor beside it lacks: the step's
+  video and one row per time the step happened, each with its transaction,
+  its moment and its play; the name, system, description, flow, waste,
+  screenshots, what was said and notes are the editor's alone. From 1440
+  px of window width it stands beside the editor as before; on a narrower
+  window (the app's zoom counts) selecting a step opens nothing, and
+  *Play* on the step's line opens the panel in place of the list of
+  transactions and plays the step there, so the editor keeps its width
+  (at 1366 px, 719 px where it had 524). Escape or the panel's close gives
+  the list back and the focus to *Play*. A frame of the video for a step
+  without a time opens the panel at the video's start. On the Map the
+  panel is as it was.
+- **The project's video and transcript are rows of their own** (plan D5).
+  Under the Overview's project line, *Video* and *Transcript* each read
+  what they hold (the file's name, "2 videos", "No transcript") and carry
+  their acts named with their object: *Attach a video...*, *Replace the
+  video...*, *Remove the video*, *Add a video...*, and the same for the
+  transcript, so two *Replace* never stand side by side. A project opened
+  read only shows the rows without acts.
 - **Nothing a person reads is under 12 px.** About 125 places that were 8
   to 11 px are 12 px now, the Timeline's lane names, ticks, transaction and
   system labels among them; only the clock times in the mono face (a step's

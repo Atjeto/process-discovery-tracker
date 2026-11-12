@@ -84,12 +84,16 @@ const stamp = (dir) => fs.readdirSync(dir, { recursive: true }).sort().map((f) =
     await idle();
     b.folder = await page.evaluate(() => require("./state.js").getSession().sessionFolder);
     b.line = await page.evaluate(() => ((document.getElementById("ov-summary") || {}).textContent || "").replace(/\s+/g, " ").trim());
+    // Plan D5: the video and the transcript, a row each under the line.
+    b.sources = await page.evaluate(() => ["video", "transcript"].map((k) =>
+      ((document.querySelector('#ov-sources [data-summary="' + k + '"]') || {}).textContent || "").trim()));
     b.status = await page.evaluate(() => ((document.getElementById("ov-doc-status") || {}).textContent || "").trim());
   } catch (e) { b.err = errText(e); }
-  record("(b) Open the demo project opens a fresh copy, Order to cash under PDT_DEMO_DIR, with no analysis on open: its title, request, video and transcript on the project line, its document 10 of 10 written",
+  record("(b) Open the demo project opens a fresh copy, Order to cash under PDT_DEMO_DIR, with no analysis on open: its title and request on the project line, its video and its transcript in their rows under it (plan D5), its document 10 of 10 written",
     !b.err && b.busy === false && !!b.folder && path.resolve(b.folder) === path.join(TMP, "Order to cash") &&
       /^Order to cash: enter a customer order/.test(b.line) && /Request: Order entry review \(REQ-2026-101\)/.test(b.line) &&
-      /Video/.test(b.line) && /Transcript/.test(b.line) && b.status === "10 of 10 written", JSON.stringify(b));
+      Array.isArray(b.sources) && b.sources.length === 2 && b.sources.every((x) => x && !/^No (video|transcript)$/.test(x) && !/cannot be read|not found/.test(x)) &&
+      b.status === "10 of 10 written", JSON.stringify(b));
 
   // (c) what the demo holds
   const c = {};

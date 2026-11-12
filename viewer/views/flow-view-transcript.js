@@ -13,9 +13,10 @@
  *      Escape cancels): step 1 picks a sentence from a searchable list, step
  *      2 is a click on the timeline where it was said. The offset goes to
  *      transcript.json; running Sync again is the correction.
- *   3. Attach transcript (#btn-attach-transcript, Replace once one is
- *      attached) and Remove transcript (#btn-remove-transcript), its inverse,
- *      on the Overview's recording line (overview-view.js renders them), and
+ *   3. Attach a transcript... (#btn-attach-transcript, Replace the
+ *      transcript... once one is attached) and Remove the transcript
+ *      (#btn-remove-transcript), its inverse, in the Overview's transcript
+ *      row (plan D5; overview-view.js renders them), and
  *      Replace and Remove on the lane label. The clicks are delegated, so the
  *      buttons may be rendered again at any time.
  * Cross-surface glue (loadSessionIntoView, renderTimeline) is injected by
@@ -408,7 +409,7 @@ function onSessionLoaded() {
   const err = sess && sess.transcriptError;
   const key = err ? sess.sessionFolder + "\n" + err : null;
   if (key && key !== _errorShown) {
-    toast("The transcript could not be read: " + err + ". Replace it on the Overview, on the line under the Checklist.", "error");
+    toast("The transcript could not be read: " + err + ". Replace it on the Overview, in the Transcript row.", "error");
   }
   _errorShown = key;
 }

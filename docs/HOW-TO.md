@@ -73,12 +73,13 @@ transactions* when it has two or more, *Write the document* and *Hand off*.
 On the Timeline, Steps and the Map, the top bar shows the next act, such as
 *Next: write the steps (1 of 7)*, and a click on it opens the Checklist.
 
-1. **Attach the video and the transcript.** On the Overview, click *Attach*
-   after *No video* and pick the video. PDT opens the Timeline: pause the
-   video at a moment you recognize, click *Mark frame*, then click the same
-   moment on the timeline. The video is copied into the project folder.
-   Attach the meeting transcript (a Teams .vtt or .docx) with *Attach* after
-   *No transcript*: the synced video places its sentences in time. Without a
+1. **Attach the video and the transcript.** On the Overview, click *Attach a
+   video...* in the *Video* row and pick the video. PDT opens the Timeline:
+   pause the video at a moment you recognize, click *Mark frame*, then click
+   the same moment on the timeline. The video is copied into the project
+   folder. Attach the meeting transcript (a Teams .vtt or .docx) with *Attach
+   a transcript...* in the *Transcript* row: the synced video places its
+   sentences in time. Without a
    video, *Sync the transcript...* on the Timeline's *Transcript* lane places
    it: pick a sentence, then click where it was said.
 2. **Check the transactions.** On the Timeline, each transaction is a band,
@@ -104,10 +105,11 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    as a row of the order tracking sheet (order, customer, item, quantity,
    unit price) and save the sheet.* With a
    transcript, what the SME said during the step is right under it: *Add*
-   copies a sentence into the description. The step panel on the right
-   plays the step (*Play*) and shows every time it happened, with its
-   screenshots, what was said and notes. What the recorder saw is under
-   *Recorded*.
+   copies a sentence into the description. *Play*, on the step's line, plays
+   the step in the step panel, which lists every time it happened. In a
+   window narrower than 1440 pixels the panel opens only with *Play*, in
+   place of the list; Escape gives the list back. What the recorder saw is
+   under *Recorded*.
 5. **Set the flow where it branches or loops.** In transaction 2 the SME
    printed a confirmation: that customer wants one with every order. On
    that step, *Print the order confirmation*, click *Only when...* and type
@@ -238,9 +240,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 
 ### Work with several videos
 
-1. On the Overview, click *Add another* after *Video* (*Add*, once there are
-   several) and pick one or more videos: several go in the order of their
-   names. In a project made from videos they go after the last one, back to
+1. On the Overview, click *Add a video...* in the *Video* row and pick one
+   or more videos: several go in the order of their names. In a project made from videos they go after the last one, back to
    back. In a recording you sync the first with two clicks, as when you
    attach one, and the others go after it; *Sync video...* on a video's band
    syncs that one again.
@@ -257,9 +258,9 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 4. Right-click a band to replace or remove that video (a video whose file is
    not found offers *Find the video...*). Removing a video takes what you
    marked on it with it, after asking. A transcript belongs to one video:
-   *Attach* asks which, and its sentences move with that video. *Add
-   another* after *Transcript* attaches the next transcript; each has its
-   own row on the Timeline, with *Sync the transcript...*, *Replace the
+   *Attach a transcript...* asks which, and its sentences move with that
+   video. *Add a transcript...* in the *Transcript* row attaches the next
+   transcript; each has its own row on the Timeline, with *Sync the transcript...*, *Replace the
    transcript...* and *Remove the transcript*.
 
 ### Add a step the recorder missed

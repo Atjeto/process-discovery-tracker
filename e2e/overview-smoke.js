@@ -283,7 +283,15 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       li.dataset.stage + ":" + (li.classList.contains("done") ? "done" : li.classList.contains("next") ? "next" : "-")) : [];
     const text = host.textContent || "";
     const sum = document.querySelector("#ov-summary .ov-summary-line");
+    // Plan D5: the video and the transcript, a row each under the line.
+    const src = document.getElementById("ov-sources");
+    const rows = src ? [...src.querySelectorAll("tr")].map((tr) => ({ head: ((tr.querySelector("th") || {}).textContent || "").trim(),
+      what: ((tr.querySelector("[data-summary]") || {}).textContent || "").trim(),
+      acts: [...tr.querySelectorAll("button")].map((b) => b.id + ":" + b.textContent.trim()),
+      top: Math.round(tr.getBoundingClientRect().top), h: Math.round(tr.getBoundingClientRect().height),
+      cut: [...tr.querySelectorAll("th, td, button")].some((e) => e.scrollWidth > e.clientWidth + 1) })) : null;
     return {
+      rows, rowsIn: !!(src && src.closest("#ov-summary")) && !!(sum && src && sum.getBoundingClientRect().bottom <= src.getBoundingClientRect().top + 1),
       kids,
       next: line ? line.dataset.next : null,
       buttons: line ? line.querySelectorAll("button").length : 0,
@@ -310,11 +318,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       same(home.labels, ["Mark the transactions", "Confirm the reference transaction", "Review the other transactions",
         "Write the document", "Hand off"]) && home.tips.length === 5 && home.tips.every((n) => n > 40)),
     JSON.stringify(home));
-  record("(b2) the project line: the name, who recorded it, the transactions said once and the reference transaction's 7 steps (not 30 over every one), then the video and the transcript with Attach; the removed surfaces stay gone; no run or What is left wording on the home",
+  record("(b2) the project line: the name, who recorded it, the transactions said once and the reference transaction's 7 steps (not 30 over every one); plan D5: under it the video and the transcript, a row each (Video: No video, Attach a video...; Transcript: No transcript, Attach a transcript...), each act once, the rows apart and nothing cut; the removed surfaces stay gone; no run or What is left wording on the home",
     !!(home && !home.err && home.removed === 0 && home.summaryH > 0 && home.summaryH < 40 &&
-      home.summary === "demo-order-processing · recorded by demo-worker · 4 transactions · 7 steps in transaction 1 · No video Attach · No transcript Attach" &&
+      home.summary === "demo-order-processing · recorded by demo-worker · 4 transactions · 7 steps in transaction 1" &&
+      home.rowsIn && same((home.rows || []).map((r) => [r.head, r.what, r.acts]),
+        [["Video", "No video", ["btn-attach-video:Attach a video..."]], ["Transcript", "No transcript", ["btn-attach-transcript:Attach a transcript..."]]]) &&
+      home.rows.every((r) => r.h >= 24 && !r.cut) && home.rows[1].top >= home.rows[0].top + home.rows[0].h &&
       home.runsSaid === 1 && home.casesSaid === 0 && !home.everyRunCount && home.oldWords === 0),
-    JSON.stringify(home && { removed: home.removed, summary: home.summary, summaryH: home.summaryH,
+    JSON.stringify(home && { removed: home.removed, summary: home.summary, summaryH: home.summaryH, rows: home.rows, rowsIn: home.rowsIn,
       runsSaid: home.runsSaid, everyRunCount: home.everyRunCount }));
 
   // (b3) No findings feed, no evidence, no ticks; no More menu and no Analyze
@@ -361,8 +372,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const moved = await page.evaluate(() => {
     const at = (id, sel) => { const el = document.getElementById(id); return el ? { text: (el.textContent || "").trim(), where: !!el.closest(sel) } : null; };
     return {
-      attachVideo: at("btn-attach-video", "#ov-summary"),
-      attachTranscript: at("btn-attach-transcript", "#ov-summary"),
+      attachVideo: at("btn-attach-video", "#ov-summary #ov-sources tr[data-source=\"video\"]"),
+      attachTranscript: at("btn-attach-transcript", "#ov-summary #ov-sources tr[data-source=\"transcript\"]"),
       linkRecording: at("btn-link-recording", "#video-pane #no-video"),
       syncVideo: at("btn-sync-video", "#video-pane .video-controls"),
       ignoredApps: at("btn-ignored-apps", "#session-layout-steps .editor-toolbar"),
@@ -374,9 +385,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       lanes: !!(document.getElementById("btn-lanes") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Apps outside the process... in the Steps toolbar (no Remembered step names..., contract C21), Lanes in the Timeline's row (lane LANES: no Transaction select)",
-    !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach", where: true }) &&
-      same(moved.attachTranscript, { text: "Attach", where: true }) &&
+  record("(c2) the moved controls keep their ids where they are used: Attach a video... and Attach a transcript... in their rows under the project line (plan D5), Attach video... on the video band, Sync video... in the video header, Apps outside the process... in the Steps toolbar (no Remembered step names..., contract C21), Lanes in the Timeline's row (lane LANES: no Transaction select)",
+    !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach a video...", where: true }) &&
+      same(moved.attachTranscript, { text: "Attach a transcript...", where: true }) &&
       same(moved.linkRecording, { text: "Attach video...", where: true }) &&
       same(moved.syncVideo, { text: "Sync video...", where: true }) &&
       same(moved.ignoredApps, { text: "Apps outside the process...", where: true }) &&
@@ -1012,10 +1023,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     !!(!attach.err && cp.onTimeline && /^Step 1 of 2: pause the video at a recognizable moment, then click Mark frame\./.test(cp.card) &&
       cp.prompt === 0 && cp.videoShown && cp.nothingYet && !ac.card && ac.screen && ac.noVideo && !ac.videoShown && ac.nothingWritten),
     JSON.stringify({ cancelPhase: cp, afterCancel: ac, err: attach.err }));
-  record("(h) Mark frame, then a click on the timeline, attaches the video with the offset of that moment (stored relative to the folder it sits in, V2 item 5); the recording line then says Video with Replace and the video header offers Sync video",
+  record("(h) Mark frame, then a click on the timeline, attaches the video with the offset of that moment (stored relative to the folder it sits in, V2 item 5); the video's row then names its file with Replace the video... (plan D5) and the video header offers Sync video",
     !!(!attach.err && /^Step 2 of 2: click the matching moment on the timeline/.test(attach.step2 || "") && attach.stillNothing &&
       attach.saved && attach.saved.path === path.basename(VIDEO) && Math.abs(attach.saved.offset - attach.wantOffset) <= 3000 &&
-      attach.after && attach.after.line === "Video" && attach.after.button === "Replace" && attach.after.sync),
+      attach.after && attach.after.line === path.basename(VIDEO) && attach.after.button === "Replace the video..." && attach.after.sync),
     JSON.stringify({ step2: attach.step2, saved: attach.saved, wantOffset: attach.wantOffset, at: attach.at, after: attach.after }));
 
   // (h2) Lane CC: Replace and Remove video, each with its Undo. A video from
@@ -1063,7 +1074,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await undo("video/first call.webm");
     vid.undoReplace = { stored: storedPath(), firstBack: inVideo("first call.webm"), secondGone: !inVideo("second call.webm") };
     await goOverview();
-    vid.line = await page.evaluate(() => [...document.querySelectorAll("#ov-summary .ov-summary-line button")].map((b) => b.id + ":" + b.textContent.trim()));
+    // Plan D5: the video's row and its acts.
+    vid.line = await page.evaluate(() => [...document.querySelectorAll('#ov-summary #ov-sources tr[data-source="video"] button')].map((b) => b.id + ":" + b.textContent.trim()));
     vid.header = await page.evaluate(() => {
       const b = document.getElementById("btn-video-remove");
       return { shown: !!b && !b.hidden && getComputedStyle(b).display !== "none", text: b ? b.textContent.trim() : null };
@@ -1090,13 +1102,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       vid.second.stored === "video/second call.webm" && vid.second.secondIn && vid.second.firstGone &&
       vid.undoReplace.stored === "video/first call.webm" && vid.undoReplace.firstBack && vid.undoReplace.secondGone),
     JSON.stringify({ first: vid.first, second: vid.second, undoReplace: vid.undoReplace, err: vid.err }));
-  record("(h2) Remove video (the project line's Remove, and Remove video beside Sync video) asks first, then takes out the entry and its copy in video/; Ctrl+Z brings both back",
-    !!(!vid.err && Array.isArray(vid.line) && vid.line.includes("btn-attach-video:Replace") && vid.line.includes("btn-remove-video:Remove") &&
+  record("(h2) Remove video (Remove the video in the video's row, plan D5, and Remove video beside Sync video) asks first, then takes out the entry and its copy in video/; Ctrl+Z brings both back",
+    !!(!vid.err && Array.isArray(vid.line) &&
+      JSON.stringify(vid.line) === JSON.stringify(["btn-attach-video:Replace the video...", "btn-remove-video:Remove the video", "btn-add-video:Add a video..."]) &&
       vid.header && vid.header.shown && vid.header.text === "Remove video" &&
       /Remove the video\?/.test(vid.confirm || "") && /copy in the project's video folder is deleted/.test(vid.confirm || "") &&
       /Ctrl\+Z brings it back/.test(vid.confirm || "") &&
       vid.removed && vid.removed.stored === null && vid.removed.fileGone && vid.removed.line === "No video" && !vid.removed.removeBtn &&
-      vid.undoRemove && vid.undoRemove.stored === "video/first call.webm" && vid.undoRemove.fileBack && vid.lineAfterUndo === "Video"),
+      vid.undoRemove && vid.undoRemove.stored === "video/first call.webm" && vid.undoRemove.fileBack && vid.lineAfterUndo === "first call.webm"),
     JSON.stringify({ line: vid.line, header: vid.header, confirm: vid.confirm, removed: vid.removed, undoRemove: vid.undoRemove, after: vid.lineAfterUndo }));
 
   // (k) 2.0.1: opening the Overview analyzes nothing. The rows refresh that

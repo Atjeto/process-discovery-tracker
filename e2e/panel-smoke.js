@@ -11,10 +11,14 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *   (a) Attach video copies the video into the project folder (video/) and
  *       stores its path relative to the folder;
  *   (b) the map boxes name their system under the step name, unless the name names it;
- *   (c) the step panel from each of its three doors (a map box, a timeline
- *       step band, a Steps row with Watch) opens with its own video cued to
- *       the row it highlights and plays the right occurrence there, beside
- *       the content;
+ *   (c) the step panel from each of its doors (a map box, a Steps row with
+ *       Play; a timeline step band opens the pane beside the video) opens
+ *       with its own video cued to the row it highlights and plays the right
+ *       occurrence there, beside the content; plan D2: on Steps it shows only
+ *       the video and the rows (nothing the editor shows), standing beside
+ *       the editor from 1440 px, and below opening on Play only, in the place
+ *       of the step list, the editor keeping its width, Escape giving the
+ *       list back and the focus to Play;
  *   (g) the owner's review: one line above the rows says what they are,
  *       built from them, each row reads "Transaction N · m:ss into the
  *       recording · took Ns", a second time in one transaction reads
@@ -200,6 +204,32 @@ const headState = (page) => page.evaluate(() => {
     focus: (document.activeElement || {}).id || "" };
 });
 
+/* Plan D2: the Steps level's boxes (the list, the editor, the step panel),
+   whether the panel stands in the list's place, and the focus. */
+const stepsGeo = (page) => page.evaluate(() => {
+  const box = (el) => { if (!el || !el.getClientRects().length) return null; const b = el.getBoundingClientRect();
+    return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height) }; };
+  const p = document.getElementById("step-panel");
+  return { win: window.innerWidth, list: box(document.getElementById("steps-list-pane")),
+    editor: box(document.querySelector("#session-layout-steps .editor-detail-pane")), panel: p.hidden ? null : box(p),
+    inList: require("./views/step-panel.js").inList(), focus: (document.activeElement || {}).id || "" };
+});
+
+/* Plan D2: what the step panel shows (each counted only when on screen), and
+   what the editor beside it shows of the same step. */
+const panelParts = (page) => page.evaluate(() => {
+  const p = document.getElementById("step-panel");
+  const n = (sel) => [...p.querySelectorAll(sel)].filter((e) => e.getClientRects().length).length;
+  const ed = document.getElementById("step-detail");
+  const step = require("./state.js").getSession().annotations.steps.find((s) => s.step_id === ed.dataset.stepId);
+  return { leads: n(".sp-lead"), shots: n(".sp-shot"), said: n(".sp-said"), notes: n(".sp-notes"), system: n(".sp-system, #sp-system"),
+    desc: n(".sp-desc, #sp-desc"), flow: n("#sp-flow"), count: n(".sp-count"), waste: n(".sp-waste, .sp-waste-tag"), foot: n(".sp-foot"),
+    nameShown: !document.getElementById("sp-name").classList.contains("sr-only"), video: n("#sp-video"), rows: n(".sp-occ"),
+    editor: { name: !!ed.querySelector("#step-name"), system: !!ed.querySelector("#step-system"), desc: !!ed.querySelector("#step-desc"),
+      flow: !!ed.querySelector(".step-flow"), shots: ed.querySelectorAll(".step-shot-card").length,
+      shotsOf: step ? require("./views/analyst-ui.js").shotsOf(step).length : -1 } };
+});
+
 /* Lane PANE: the step opened in place in the Timeline's pane (the Steps
    editor's own fields, in #tp-editor), what the pane offers on it, and the
    step panel, which no longer opens on the Timeline. */
@@ -347,6 +377,11 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.locator('#sp-body .sp-occ[data-step-id="' + SAVE.step_id + '"] .sp-play').click({ timeout: T });
     fromMap = Object.assign({ st, cue, head }, await played(SAVE));
     await page.screenshot({ path: path.join(__dirname, "panel-smoke-map-head.png") }).catch(() => {});
+    // Plan D2: a box whose step has screenshots: on the Map they sit in its
+    // rows, under a Screenshots lead (on Steps they are the editor's).
+    await page.evaluate((id) => { document.getElementById("session-map-dfg-host").__cy.getElementById(id).emit("tap"); }, SEARCH.name);
+    await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, SEARCH.name, { timeout: T });
+    fromMap.shotRows = (await panelState(page)).rows;
   } catch (e) { map.err = errText(e); }
   // Lane LF-PIPE (#24): a box whose step name already names its system
   // (the demo drafts "Salesforce" and a screen, a colon, the commit) leaves
@@ -357,8 +392,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       map.all.some((n) => n.label === n.id + "\n" + n.system) && map.all.some((n) => n.label === n.id) &&
       map.save.system === "Salesforce" && !map.all.some((n) => /Chrome/.test(n.system)),
     JSON.stringify(map.err || map.all.map((n) => n.system)));
-  record("(c1) V2 item 4 + AD-29: a map box opens the step panel beside the map (its name, system, transactions, one row per occurrence, Open in Steps) and plays the Transaction 1 occurrence in its video",
+  record("(c1) V2 item 4 + AD-29: a map box opens the step panel beside the map (its name, system, transactions, one row per occurrence, Open in Steps) and plays the Transaction 1 occurrence in its video; a row's screenshots sit under a Screenshots lead (plan D2: on the Map; on Steps they are the editor's)",
     !!(fromMap && fromMap.ok && fromMap.st.shown && fromMap.st.name === SAVE.name && /^Salesforce/.test(fromMap.st.system) &&
+      fromMap.shotRows.some((r) => r.shots > 0) &&
+      fromMap.st.rows.concat(fromMap.shotRows).every((r) => (r.shots > 0) === (r.leads[0] === "Screenshots")) &&
       /^In \d of 4 transactions, about \d+s each$/.test(fromMap.st.count) && fromMap.st.rows.length >= 3 &&
       /^Transaction 1 · \d+:\d{2} into the recording · took \d+s$/.test(fromMap.st.rows[0].at) &&
       JSON.stringify(fromMap.st.foot) === '["Open in Steps"]' &&
@@ -474,6 +511,16 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       S.setPendingStepReveal();
     }, again.id);
     await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+    // Plan D2: below 1440 px the row opens nothing; the editor's Play opens
+    // the panel on it (in the place of the step list), and says the video
+    // does not cover it.
+    twice.narrow = await page.evaluate(() => !require("./views/step-panel.js").standsBeside(window.innerWidth));
+    if (twice.narrow) {
+      await page.waitForFunction((id) => (document.getElementById("step-detail") || { dataset: {} }).dataset.stepId === id, again.id, { timeout: T });
+      await wait(400);
+      twice.closedOnRow = await page.evaluate(() => document.getElementById("step-panel").hidden);
+      await page.locator("#step-detail #btn-step-watch").click({ timeout: T });
+    }
     await page.waitForFunction((id) => !!document.querySelector('#sp-body .sp-occ.focus[data-step-id="' + id + '"]'), again.id, { timeout: T });
     twice.outside = await panelState(page);
     at("(g2) press the covered row's play");
@@ -486,14 +533,14 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   } catch (e) { twice.err = errText(e); }
   const tr = (twice.st && twice.st.rows) || [];
   const out = twice.outside || {};
-  record("(g2) the owner's review + lane FX2: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row; the rows past the video's end say so, with no play; opened on one of them (its row in Steps) the panel hides its video and says why; Transaction 1's play moves the highlight there, shows the video and plays it",
+  record("(g2) the owner's review + lane FX2: a step done twice in one transaction says so: \"This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers.\", its second row there reads \"Transaction 2, again\"; the video opens at Transaction 1's row; the rows past the video's end say so, with no play; opened on one of them (its row in Steps; plan D2: below 1440 px the row opens nothing and Play on its line of facts opens it) the panel hides its video and says why; Transaction 1's play moves the highlight there, shows the video and plays it",
     !!(!twice.err && twice.st.explain === "This step happened 5 times: once in transactions 1, 3 and 4, twice in transaction 2. Play the one the video covers." &&
       JSON.stringify(tr.map((r) => r.at.split(" · ")[0])) === JSON.stringify(["Transaction 1", "Transaction 2", "Transaction 2, again", "Transaction 3", "Transaction 4"]) &&
       tr[0].play && !tr[0].nocover && tr.slice(1).every((r) => !r.play && r.nocover === StepFacts.NOT_COVERED) && twice.cue.ok &&
       out.videoHidden === true && out.videoNote === StepFacts.NOT_COVERED + "." &&
       (out.rows || []).some((r) => r.id === twice.againId && r.focus && !r.play && r.nocover === StepFacts.NOT_COVERED) &&
       twice.lit.length === 1 && twice.lit[0].id === tr[0].id && twice.lit[0].focus && twice.lit[0].current &&
-      twice.back.videoHidden === false && twice.back.note === "" && twice.back.played.ok),
+      twice.back.videoHidden === false && twice.back.note === "" && twice.back.played.ok && (!twice.narrow || twice.closedOnRow === true)),
     JSON.stringify(twice.err ? twice : { explain: twice.st.explain, rows: tr.map((r) => [r.at, r.play, r.nocover]), cue: twice.cue,
       outside: { hidden: out.videoHidden, note: out.videoNote }, lit: twice.lit, back: twice.back }));
 
@@ -642,34 +689,80 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
       lanes.bar.shown && lanes.bar.part && lanes.bar.title === "The whole length of the timeline: drag the box, or click a place to go there."),
     JSON.stringify(lanes));
 
-  // (c3) A Steps row, and Watch in the step pane.
+  // (c3) A Steps row, and Play on the step editor's line of facts. Plan D2:
+  // from 1440 px the panel stands beside the editor and follows the row, its
+  // video cued there; below, the row opens nothing (the editor keeps the
+  // width it has beside the list) and Play opens the panel in the place of
+  // the step list, the focus in it; Escape gives the list back and the focus
+  // to Play. Either way the panel shows only the video and the rows: the
+  // name, system, description, flow, waste, count, screenshots, what was
+  // said, the notes and the foot's acts are the editor's.
   let fromRow = {};
   try {
     await page.locator('.view-mode-btn[data-level="steps"]').click({ timeout: T });
+    fromRow.wide = await page.evaluate(() => require("./views/step-panel.js").standsBeside(window.innerWidth));
     await page.locator('#step-list .step-row[data-step-id="' + SEARCH.step_id + '"]').click({ timeout: T });
-    await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, SEARCH.name, { timeout: T });
-    fromRow.cue = await cued(SEARCH);
+    await page.waitForFunction((id) => (document.getElementById("step-detail") || { dataset: {} }).dataset.stepId === id, SEARCH.step_id, { timeout: T });
+    if (fromRow.wide) {
+      await page.waitForFunction((n) => (document.getElementById("sp-name") || {}).textContent === n, SEARCH.name, { timeout: T });
+      fromRow.cue = await cued(SEARCH);
+    } else {
+      await wait(600);
+    }
+    fromRow.onRow = await stepsGeo(page);
+    await page.locator("#step-detail #btn-step-watch").click({ timeout: T });
+    Object.assign(fromRow, await played(SEARCH));
     fromRow.st = await panelState(page);
     fromRow.head = await headState(page);
-    await page.locator("#btn-step-watch").click({ timeout: T });
-    Object.assign(fromRow, await played(SEARCH));
+    fromRow.parts = await panelParts(page);
+    fromRow.onPlay = await stepsGeo(page);
     fromRow.level = await page.evaluate(() => require("./state.js").getLevel());
-    fromRow.listWidth = await page.evaluate(() => Math.round(document.getElementById("step-list").getBoundingClientRect().width));
+    await page.screenshot({ path: path.join(__dirname, "panel-smoke-steps.png") }).catch(() => {});
+    if (!fromRow.wide) {
+      await page.keyboard.press("Escape");
+      await wait(400);
+      fromRow.onEscape = await stepsGeo(page);
+    }
   } catch (e) { fromRow.err = errText(e); }
-  const rowShots = ((fromRow.st && fromRow.st.rows) || []);
-  record("(c3) V2 item 4: a selected Steps row opens the panel beside the list (Show on timeline), its video cued to that row, and Play in the step pane plays the step there without leaving Steps; a row's screenshots sit under a Screenshots lead",
-    !!(!fromRow.err && fromRow.ok && fromRow.cue.ok && fromRow.level === "steps" && fromRow.listWidth > 250 &&
-      JSON.stringify(fromRow.st.foot) === '["Show on timeline"]' && rowShots.some((r) => r.shots > 0) &&
-      rowShots.every((r) => (r.shots > 0) === (r.leads[0] === "Screenshots"))), JSON.stringify(fromRow));
-  record("(E1-steps) lane E-1: on Steps the panel's head stays as it was, text beside the editor (no name, system or description field in it)",
-    !!(!fromRow.err && fromRow.head && fromRow.head.input === null && !fromRow.head.system && !fromRow.head.desc &&
-      !fromRow.head.headingHidden && fromRow.head.heading === SEARCH.name && /^Salesforce/.test(fromRow.head.aboutSystem)),
-    JSON.stringify(fromRow.head || fromRow.err));
+  const g = fromRow;
+  const same = (a, b) => !!(a && b) && Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1;
+  const placeOk = g.wide
+    // Beside: the list and the editor stay, the panel right of the editor.
+    ? !!(g.cue && g.cue.ok && g.onRow.panel && g.onRow.list && g.onRow.panel.x >= g.onRow.editor.x + g.onRow.editor.w &&
+      !g.onRow.inList && same(g.onRow.editor, g.onPlay.editor) && g.onPlay.focus === "btn-step-watch")
+    // In the list's place: the row opens nothing; Play shows the panel where
+    // the list was, the editor not moved, the focus in the panel; Escape
+    // gives the list back and the focus to Play.
+    : !!(g.onRow && !g.onRow.panel && g.onRow.list && g.onPlay.inList && !g.onPlay.list && same(g.onPlay.panel, g.onRow.list) &&
+      same(g.onPlay.editor, g.onRow.editor) && /^(sp-video|btn-sp-close)$/.test(g.onPlay.focus) &&
+      g.onEscape && !g.onEscape.panel && same(g.onEscape.list, g.onRow.list) && same(g.onEscape.editor, g.onRow.editor) && g.onEscape.focus === "btn-step-watch");
+  record("(c3) V2 item 4, plan D2 (a " + (g.onRow ? g.onRow.win : "?") + " px window): " + (g.wide
+    ? "from 1440 px a selected Steps row opens the panel beside the editor, its video cued to that row, and Play plays the step there without leaving Steps"
+    : "below 1440 px a selected Steps row opens nothing, the editor keeping its width; Play on its line of facts opens the panel in the place of the step list and plays the step there, the focus in the panel; Escape gives the list back, the editor not moved, the focus back on Play"),
+    !!(!g.err && g.ok && g.level === "steps" && placeOk), JSON.stringify(g.err || { wide: g.wide, cue: g.cue, onRow: g.onRow, onPlay: g.onPlay, onEscape: g.onEscape, played: g.ok }));
+  const pp = g.parts || {};
+  const sr = (g.st && g.st.rows) || [];
+  record("(D2-parts) plan D2: on Steps nothing shows twice: the panel shows the video and one row per time the step happened (its transaction, its moment, its play), with no name, system, description, flow, waste, count, screenshot, what was said, note or foot; the editor beside it has the name, the system, the description, the flow and the step's screenshots",
+    !!(!g.err && pp.video === 1 && pp.rows >= 2 && pp.rows === sr.length && !pp.nameShown && pp.leads === 0 && pp.shots === 0 && pp.said === 0 &&
+      pp.notes === 0 && pp.system === 0 && pp.desc === 0 && pp.flow === 0 && pp.count === 0 && pp.waste === 0 && pp.foot === 0 &&
+      JSON.stringify(g.st.foot) === "[]" && sr.every((r) => /^Transaction \d(, again)? · \d+:\d{2} into the recording · took \d+s$/.test(r.at)) &&
+      sr.some((r) => r.play) && pp.editor.name && pp.editor.system && pp.editor.desc && pp.editor.flow &&
+      pp.editor.shotsOf > 0 && pp.editor.shots === pp.editor.shotsOf),
+    JSON.stringify(g.err || { parts: pp, foot: g.st && g.st.foot, rows: sr.map((r) => r.at) }));
+  record("(E1-steps) lane E-1, plan D2: on Steps the panel's head has no field and shows no name or system (the editor beside it has them); its heading names the step for a screen reader",
+    !!(!g.err && g.head && g.head.input === null && !g.head.system && !g.head.desc &&
+      g.head.headingHidden && g.head.heading === SEARCH.name && g.head.aboutSystem === ""),
+    JSON.stringify(g.head || g.err));
 
   // (d) Closed on Steps, the panel stays closed while rows are selected.
   let closed = {};
   try {
+    if (!(await panelState(page)).shown) await page.locator("#step-detail #btn-step-watch").click({ timeout: T });
+    await page.waitForSelector("#step-panel:not([hidden])", { timeout: T });
     await page.locator("#btn-sp-close").click({ timeout: T });
+    await wait(300);
+    closed.focusAfterClose = await page.evaluate(() => (document.activeElement || {}).id || "");
+    closed.inList = await page.evaluate(() => require("./views/step-panel.js").inList());
     await page.locator('#step-list .step-row[data-step-id="' + OPEN.step_id + '"]').click({ timeout: T });
     await wait(400);
     closed.afterRow = (await panelState(page)).shown;
@@ -677,9 +770,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await wait(400);
     closed.afterWatch = (await panelState(page)).shown;
   } catch (e) { closed.err = errText(e); }
-  record("(d) the panel's close is its inverse: closed on Steps it stays closed while rows are selected, and Play opens it again",
-    !closed.err && closed.afterRow === false && closed.afterWatch === true, JSON.stringify(closed));
-  await page.screenshot({ path: path.join(__dirname, "panel-smoke-steps.png") }).catch(() => {});
+  record("(d) the panel's close is its inverse: closed on Steps it stays closed while rows are selected, and Play opens it again" +
+    (fromRow.wide ? "" : "; plan D2: closed from the list's place, the focus goes back to Play"),
+    !closed.err && closed.afterRow === false && closed.afterWatch === true && closed.inList === false &&
+      (fromRow.wide || closed.focusAfterClose === "btn-step-watch"), JSON.stringify(closed));
 
   // (f) C18 + AD-32: the As-Is map is as linked as the map from the
   // transactions. A note (longer than the map shows) and a file on Save

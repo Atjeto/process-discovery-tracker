@@ -561,7 +561,8 @@ function renderStepsLevel() {
     // 2.0.1: the step's name is the editor's title.
     if (title) title.textContent = "";
     renderStepInto(detail, selected, null, interactionsById);
-    // V2 item 4: the step panel beside the editor follows the selected row.
+    // V2 item 4: the step panel beside the editor follows the selected row
+    // (plan D2: from 1440 px of window width; below, only Play opens it).
     if (State.getLevel() === "steps") StepPanel.followSteps(selected);
   } else {
     if (detail) delete detail.dataset.stepId;

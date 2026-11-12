@@ -431,17 +431,50 @@ test("the marker warnings name the transaction in the new words; a label that on
   assert.ok(numbered.includes("⚠ The transaction at 1:00 has no end."), "the capture app's own number is not repeated");
 });
 
-test("the project line carries the video and the transcript, each with its act", () => {
+/* Plan D5: the project's sources, one row each: [header, what it holds, the
+   acts' labels] per row of #ov-sources. */
+function sourceRows(html) {
+  const table = html.slice(html.indexOf('<table class="ov-sources"'), html.indexOf("</table>") + 8);
+  return [...table.matchAll(/<tr data-source="(\w+)"><th scope="row">([^<]*)<\/th><td><span data-summary="\w+"[^>]*>([^<]*)<\/span><\/td>(?:<td class="ov-source-acts">(.*?)<\/td>)?<\/tr>/g)]
+    .map((m) => ({ key: m[1], head: m[2], what: m[3], acts: [...(m[4] || "").matchAll(/id="([\w-]+)"[^>]*>([^<]*)<\/button>/g)].map((b) => b[1] + ":" + b[2]) }));
+}
+
+test("plan D5: the video and the transcript are rows of their own under the project line, each with its acts named with its object", () => {
   const none = overviewHtml(session({}));
-  assert.ok(/<span data-summary="video">No video<\/span> <button[^>]*id="btn-attach-video"[^>]*>Attach<\/button>/.test(none));
-  assert.ok(/<span data-summary="transcript">No transcript<\/span> <button[^>]*id="btn-attach-transcript"[^>]*>Attach<\/button>/.test(none));
-  assert.ok(!none.includes("btn-remove-transcript"));
-  const both = overviewHtml(session({ recordingAvailable: true, transcript: { version: 1, segments: [] } }));
-  assert.ok(/<span data-summary="video">Video<\/span> <button[^>]*id="btn-attach-video"[^>]*>Replace<\/button>/.test(both));
-  assert.ok(/id="btn-attach-transcript"[^>]*>Replace<\/button> <button[^>]*id="btn-remove-transcript"[^>]*>Remove<\/button>/.test(both));
+  const line = none.slice(none.indexOf('class="ov-summary-line"'), none.indexOf('<table class="ov-sources"'));
+  assert.ok(line.length > 0 && !/btn-attach|No video|No transcript/.test(line), "the project line says only what it says about the project");
+  assert.deepEqual(sourceRows(none), [
+    { key: "video", head: "Video", what: "No video", acts: ["btn-attach-video:Attach a video..."] },
+    { key: "transcript", head: "Transcript", what: "No transcript", acts: ["btn-attach-transcript:Attach a transcript..."] },
+  ]);
+  assert.ok(none.includes('<caption class="sr-only">'), "the table says what it holds to a screen reader");
+  // A recording's own video and a transcript made from a Teams file.
+  const both = overviewHtml(session({ recordingAvailable: true, recordingPath: "C:\\rec\\Order call.mp4",
+    transcript: { version: 1, segments: [], source_file: "transcript/Order call.vtt" } }));
+  assert.deepEqual(sourceRows(both), [
+    { key: "video", head: "Video", what: "Order call.mp4", acts: ["btn-attach-video:Replace the video..."] },
+    { key: "transcript", head: "Transcript", what: "Order call.vtt",
+      acts: ["btn-attach-transcript:Replace the transcript...", "btn-remove-transcript:Remove the transcript"] },
+  ]);
+  // One video the analyst attached: its name, Replace, Remove and Add.
+  const one = overviewHtml(session({ annotations: Object.assign(session().annotations,
+    { external_videos: [{ id: "v1", path: "video/first call.webm", offset_ms: 0 }] }),
+    videos: [{ id: "v1", path: "D:\\p\\video\\first call.webm" }], transcript: { version: 1, segments: [] } }));
+  const rows = sourceRows(one);
+  assert.deepEqual(rows[0], { key: "video", head: "Video", what: "first call.webm",
+    acts: ["btn-attach-video:Replace the video...", "btn-remove-video:Remove the video", "btn-add-video:Add a video..."] });
+  assert.equal(rows[1].what, "Transcript", "a transcript that does not say its file reads Transcript");
+  for (const r of [...sourceRows(none), ...sourceRows(both), ...rows]) {
+    const labels = r.acts.map((a) => a.split(":")[1]);
+    assert.equal(new Set(labels).size, labels.length, "no act twice in a row: " + r.key);
+    assert.ok(labels.filter((l) => /^Replace/.test(l)).length <= 1, "never two Replace in one row");
+  }
   const unreadable = overviewHtml(session({ transcriptError: "it is not valid JSON" }));
-  assert.ok(unreadable.includes('<span data-summary="transcript">Transcript cannot be read</span>'));
-  assert.ok(unreadable.includes('id="btn-remove-transcript"'));
+  assert.deepEqual(sourceRows(unreadable)[1], { key: "transcript", head: "Transcript", what: "The transcript cannot be read",
+    acts: ["btn-attach-transcript:Replace the transcript...", "btn-remove-transcript:Remove the transcript"] });
+  // Read only (a hand-off, or open in another window): the rows, no acts.
+  const ro = sourceRows(overviewHtml(session({ readOnly: true, recordingAvailable: true })));
+  assert.deepEqual(ro.map((r) => [r.what, r.acts.length]), [["Video", 0], ["No transcript", 0]]);
 });
 
 test("the fact tiles, the badge, the separate mark-runs line and the export bar are gone", () => {

@@ -1277,8 +1277,9 @@ async function unreadableAnnotationsPin() {
 
   // --- V1 (step-back review 4.2): "More" dissolved; each item is where it is
   // used, with the ids its wiring and the tests use: Attach video on the
-  // video band (#btn-link-recording) and the Overview's recording line
-  // (#btn-attach-video); Attach transcript on the recording line; Apps outside
+  // video band (#btn-link-recording) and the Overview's video row under the
+  // recording line (#btn-attach-video, plan D5); Attach a transcript... in
+  // the transcript row; Apps outside
   // the process in the Steps toolbar (Remembered step names left with contract
   // C21); Sync video in the video pane's
   // header, only while a video is attached; the timeline row's Add step with
@@ -1290,8 +1291,9 @@ async function unreadableAnnotationsPin() {
     return {
       more: document.querySelectorAll("#session-more-menu, #btn-session-more-menu, #session-more-popup").length,
       linkRecording: Object.assign(at("btn-link-recording") || {}, { inBand: inside("btn-link-recording", "#no-video") }),
-      attachVideo: Object.assign(at("btn-attach-video") || {}, { inLine: inside("btn-attach-video", "#ov-summary") }),
-      attachTranscript: Object.assign(at("btn-attach-transcript") || {}, { inLine: inside("btn-attach-transcript", "#ov-summary") }),
+      // Plan D5: each in its own row under the recording line.
+      attachVideo: Object.assign(at("btn-attach-video") || {}, { inLine: inside("btn-attach-video", '#ov-summary #ov-sources tr[data-source="video"]') }),
+      attachTranscript: Object.assign(at("btn-attach-transcript") || {}, { inLine: inside("btn-attach-transcript", '#ov-summary #ov-sources tr[data-source="transcript"]') }),
       ignoredApps: Object.assign(at("btn-ignored-apps") || {}, { inSteps: inside("btn-ignored-apps", "#session-layout-steps .editor-toolbar") }),
       savedNames: document.querySelectorAll("#btn-remembered-names, #remembered-names-dialog").length,
       syncVideo: Object.assign(at("btn-sync-video") || {}, { inHeader: inside("btn-sync-video", "#video-pane .video-controls") }),
@@ -1302,13 +1304,13 @@ async function unreadableAnnotationsPin() {
   try { noVideo = await placed(); } catch (e) { logActionError("V1 moved controls", e); noVideo = { err: String(e.message).split("\n")[0] }; }
   const movedOk = !!(noVideo && !noVideo.err && noVideo.more === 0 &&
     noVideo.linkRecording.text === "Attach video..." && noVideo.linkRecording.inBand &&
-    noVideo.attachVideo.text === "Attach" && noVideo.attachVideo.inLine &&
-    noVideo.attachTranscript.text === "Attach" && noVideo.attachTranscript.inLine &&
+    noVideo.attachVideo.text === "Attach a video..." && noVideo.attachVideo.inLine &&
+    noVideo.attachTranscript.text === "Attach a transcript..." && noVideo.attachTranscript.inLine &&
     noVideo.ignoredApps.text === "Apps outside the process..." && noVideo.ignoredApps.inSteps &&
     noVideo.savedNames === 0 &&
     noVideo.syncVideo.inHeader && noVideo.syncVideo.shown === false && noVideo.addStep === false &&
     !(await page.$("#cb-mine")));
-  record("V1: no More menu; its items are where they are used (Attach video on the video band and the recording line, Attach transcript on the recording line, Apps outside the process in the Steps toolbar and no Remembered step names (contract C21), Sync video in the video header, hidden without a video), and the Timeline has no Add step without a video",
+  record("V1: no More menu; its items are where they are used (Attach video on the video band, Attach a video... and Attach a transcript... in their rows under the recording line (plan D5), Apps outside the process in the Steps toolbar and no Remembered step names (contract C21), Sync video in the video header, hidden without a video), and the Timeline has no Add step without a video",
     movedOk, JSON.stringify(noVideo));
 
   // --- P2.10: the Raw events drawer is Flow's only ---------------------------
@@ -2155,10 +2157,10 @@ async function unreadableAnnotationsPin() {
       await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), SESSION);
       vid.after = await placed();
     } catch (e) { logActionError("P2.11 with a video", e); vid.err = String(e.message).split("\n")[0]; }
-    record("P2.11: with a video linked, the video header offers Sync video, the recording line Replace, and the Timeline Add step; without one again, they go",
+    record("P2.11: with a video linked, the video header offers Sync video, the video's row under the recording line Replace the video... (plan D5), and the Timeline Add step; without one again, they go",
       !!(!vid.err && vid.recording && vid.with.syncVideo.shown && vid.with.syncVideo.inHeader &&
-        vid.with.syncVideo.text === "Sync video..." && vid.with.addStep && vid.with.attachVideo.text === "Replace" &&
-        vid.after.syncVideo.shown === false && vid.after.addStep === false && vid.after.attachVideo.text === "Attach"),
+        vid.with.syncVideo.text === "Sync video..." && vid.with.addStep && vid.with.attachVideo.text === "Replace the video..." &&
+        vid.after.syncVideo.shown === false && vid.after.addStep === false && vid.after.attachVideo.text === "Attach a video..."),
       JSON.stringify(vid));
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
   }

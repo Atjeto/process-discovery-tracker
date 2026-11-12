@@ -668,10 +668,10 @@ async function laneE() {
       await level("flow");
       st = await surfaces();
     } catch (e) { err = errText(e); }
-    const ok = !err && st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden &&
+    const ok = !err && st.attach === "Attach a transcript..." && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden &&
       st.label === null && st.laneName === null && st.blocks.length === 0 && st.said === null && st.overview === null &&
       !(await page.$("#btn-session-more-menu, #session-more-popup"));
-    record("(a) before an import the only transcript UI is Attach on the Overview's project line (No transcript)", ok, JSON.stringify({ err, st }));
+    record("(a) before an import the only transcript UI is Attach a transcript... in the Overview's transcript row (No transcript, plan D5)", ok, JSON.stringify({ err, st }));
     if (!ok) await shot(page, "fail-transcript-before.png");
   }
 
@@ -690,8 +690,8 @@ async function laneE() {
     const ok = !err && doc && doc.version === 1 && doc.offset_ms === null && doc.source_file === "transcript/meeting-transcript.vtt" &&
       (doc.segments || []).length === 10 && doc.segments.every((s) => S[s.id] === s.text) && copied &&
       toast.text === "Transcript attached: 10 sentences, 2 speakers. Sync it on the Timeline to place it." &&
-      st.attach === "Replace" && st.lineState === "Transcript" && !st.removeHidden && !st.laneRowHidden;
-    record("(b) Attach transcript writes transcript.json (10 sentences, not synced) and the copied original; the project line offers Replace and Remove",
+      st.attach === "Replace the transcript..." && st.lineState === "meeting-transcript.vtt" && !st.removeHidden && !st.laneRowHidden;
+    record("(b) Attach transcript writes transcript.json (10 sentences, not synced) and the copied original; the transcript row (plan D5) names its file and offers Replace the transcript... and Remove the transcript",
       ok, JSON.stringify({ err, toast, copied, segments: doc && doc.segments.length, offset: doc && doc.offset_ms, menu: st && [st.attach, st.removeHidden] }));
     if (!ok) await shot(page, "fail-transcript-import.png");
   }
@@ -766,13 +766,15 @@ async function laneE() {
       }, run1.case_id);
       await openStep(SAVE.step_id);
       listed = (await surfaces()).said;
-      // The step panel beside the list shows the same sentences in the
-      // step's row, under a Said: lead (the owner's review).
-      panelSaid = await page.evaluate((id) => {
+      // Plan D2: on Steps the step panel's row shows no sentence (the editor
+      // beside it lists them); on the Map (below) its row shows them under a
+      // Said: lead (the owner's review).
+      const panelRow = () => page.evaluate((id) => {
         const r = document.querySelector('#step-panel:not([hidden]) #sp-body .sp-occ[data-step-id="' + id + '"]');
         return r ? { leads: [...r.querySelectorAll(".sp-lead")].map((l) => (l.textContent || "").trim()),
           lines: [...r.querySelectorAll(".sp-said .tr-text")].map((e) => e.textContent) } : null;
       }, SAVE.step_id);
+      panelSaid = { steps: await panelRow() };
       // Item 1: the drafting's narration is not the description's text (2.0.1:
       // nor its hint; the actions are under Recorded).
       hint = await page.$eval("#step-desc", (el) => ({ value: el.value, placeholder: el.placeholder }));
@@ -787,6 +789,15 @@ async function laneE() {
       after = (await surfaces()).said;
       await openStep(EXCEL.step_id);
       empty = (await surfaces()).said;
+      // The Map: a box opens the panel, its row with what was said.
+      await level("map");
+      await page.waitForFunction(() => !require("./refmap-ui.js").mapBusy() && !require("./views/flow-view.js").analysisBusy(), null, { timeout: 180000 });
+      const runsLink = page.locator("#btn-map-show-runs");
+      if (await runsLink.isVisible()) await runsLink.click({ timeout: T });
+      await page.waitForFunction(() => { const h = document.getElementById("session-map-dfg-host"); return !!(h && h.__cy && h.getClientRects().length); }, null, { timeout: T });
+      await page.evaluate((n) => { document.getElementById("session-map-dfg-host").__cy.getElementById(n).emit("tap"); }, SAVE.name);
+      await page.waitForFunction((id) => !!document.querySelector('#step-panel:not([hidden]) #sp-body .sp-occ[data-step-id="' + id + '"]'), SAVE.step_id, { timeout: T });
+      panelSaid.map = await panelRow();
     } catch (e) { err = errText(e); }
     const saved = ((readJson(ANNO).steps || []).find((s) => s.step_id === SAVE.step_id) || {});
     // The draft's narration is not the description, so it holds the sentence alone.
@@ -808,8 +819,9 @@ async function laneE() {
       typeof saved.description === "string" && saved.description === S.t0005 && saved.state === "edited" &&
       button(after, "t0005").text === "Added" &&
       !!empty && empty.note === "Nothing was said during this step." && empty.rows.length === 0 &&
-      !!panelSaid && JSON.stringify(panelSaid.leads) === '["Said:"]' && JSON.stringify(panelSaid.lines) === JSON.stringify([S.t0005]);
-    record("(e) the step editor lists the sentences that start in the step's window (10 s lead, not past the step before) under the resident Description (the draft's narration is not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so; the step panel's row shows them under a Said: lead; each sentence of run 1 shows under one step only, t0004 not under Save order",
+      !!panelSaid && (panelSaid.steps === null || (panelSaid.steps.leads.length === 0 && panelSaid.steps.lines.length === 0)) &&
+      !!panelSaid.map && JSON.stringify(panelSaid.map.leads) === '["Said:"]' && JSON.stringify(panelSaid.map.lines) === JSON.stringify([S.t0005]);
+    record("(e) the step editor lists the sentences that start in the step's window (10 s lead, not past the step before) under the resident Description (the draft's narration is not its text), Add fills it and saves it (no Save button), the button reads Added; a quiet step says so; the step panel's row on the Map shows them under a Said: lead (plan D2: on Steps its row shows none, the editor has them); each sentence of run 1 shows under one step only, t0004 not under Save order",
       ok, JSON.stringify({ err, resident, before, listed, panelSaid, hint, desc: desc && desc.slice(-80), saved: saved.description && saved.description.slice(-80), after: after && after.buttons, empty }));
     if (!ok) await shot(page, "fail-transcript-step.png");
   }
@@ -928,7 +940,7 @@ async function laneE() {
     } catch (e) { err = errText(e); }
     const gone = { json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY) };
     const ok = !err && !gone.json && !gone.copy &&
-      st.attach === "Attach" && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden && st.label === null && st.laneName === null &&
+      st.attach === "Attach a transcript..." && st.lineState === "No transcript" && st.removeHidden && st.laneRowHidden && st.label === null && st.laneName === null &&
       st.blocks.length === 0 && stepSaid === null && ov === null && !(await page.$("#transcript-sync-card"));
     record("(h) lane CC: Remove transcript takes out transcript.json and its original transcript/meeting-transcript.vtt, and every transcript surface is gone",
       ok, JSON.stringify({ err, gone, st, stepSaid, ov }));
@@ -944,9 +956,9 @@ async function laneE() {
       await page.waitForFunction(() => !(require("./state.js").getSession() || {}).transcript, null, { timeout: 20000 });
       redo = Object.assign({ json: fs.existsSync(TRANSCRIPT), copy: fs.existsSync(COPY) }, await surfaces());
     } catch (e) { uerr = errText(e); }
-    const uok = !uerr && undo && undo.json && undo.copy && undo.attach === "Replace" && undo.lineState === "Transcript" && !undo.removeHidden &&
-      redo && !redo.json && !redo.copy && redo.attach === "Attach" && redo.lineState === "No transcript";
-    record("(h) lane CC: Ctrl+Z brings the transcript and its original file back (the project line says Transcript again), Ctrl+Y takes them out again",
+    const uok = !uerr && undo && undo.json && undo.copy && undo.attach === "Replace the transcript..." && undo.lineState === "meeting-transcript.vtt" && !undo.removeHidden &&
+      redo && !redo.json && !redo.copy && redo.attach === "Attach a transcript..." && redo.lineState === "No transcript";
+    record("(h) lane CC: Ctrl+Z brings the transcript and its original file back (the transcript row names its file again, plan D5), Ctrl+Y takes them out again",
       uok, JSON.stringify({ uerr, undo: undo && [undo.json, undo.copy, undo.attach, undo.lineState], redo: redo && [redo.json, redo.copy, redo.attach, redo.lineState] }));
     if (!uok) await shot(page, "fail-transcript-remove-undo.png");
   }
@@ -970,10 +982,10 @@ async function laneE() {
       await waitToast(/Transcript removed/);
       after = await surfaces();
     } catch (e) { err = errText(e); }
-    const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it on the Overview, on the line under the Checklist\.$/.test(toast.text) &&
-      st.attach === "Replace" && st.lineState === "Transcript cannot be read" && !st.removeHidden && st.laneRowHidden && st.label === null &&
+    const ok = !err && toast.error && /^The transcript could not be read: it is not valid JSON \(.+\)\. Replace it on the Overview, in the Transcript row\.$/.test(toast.text) &&
+      st.attach === "Replace the transcript..." && st.lineState === "The transcript cannot be read" && !st.removeHidden && st.laneRowHidden && st.label === null &&
       st.laneName === null && st.said === null && st.overview === null && again === false &&
-      !fs.existsSync(TRANSCRIPT) && after.attach === "Attach" && after.removeHidden;
+      !fs.existsSync(TRANSCRIPT) && after.attach === "Attach a transcript..." && after.removeHidden;
     record("(j) a transcript.json that cannot be read is said once on load, shows nowhere else, and Remove transcript clears it",
       ok, JSON.stringify({ err, toast, again, st, after: after && [after.attach, after.removeHidden] }));
     if (!ok) await shot(page, "fail-transcript-unreadable.png");
