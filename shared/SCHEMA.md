@@ -22,7 +22,7 @@ sessions/<engagement_id>/<YYYYMMDD-HHMMSS>/
   config.yaml             # the session's configuration snapshot
   screenshots/            # event-triggered screenshots
   screenshots/analyst/    # screenshots the analyst added by hand (C16)
-  attachments/            # files the analyst attached (C16)
+  attachments/            # files the analyst attached (C16), and the SME's example files (C24)
   video/                  # an attached video, copied into the folder by the viewer
   obs/sync.json           # tracker to OBS clock offset, when OBS recorded
   session-integrity.json  # file manifest (name and size) written at session end
@@ -1255,6 +1255,8 @@ lists last (`isReadOnlyProject`).
   "ended_at": "ISO 8601 or null",
   "status": "active" | "closed" | "recovered",
   "label": "the name given in the capture app's end summary (optional; absent until set)",
+  "sme_answers": { "trigger": "...", "result": "...", "effort": "...", "exceptions": "..." },
+  "sme_files": [ { "file": "...", "label": "...", "added_at": "ISO 8601" } ],
   "purpose": "process",
   "config": { ...snapshot of session config... },
   "obs": {
@@ -1343,6 +1345,41 @@ end summary ("Name this recording"); absent until set. The viewer's Recent
 list names a session by its document title (`annotations.document.title`),
 else this label, else the request code and the folder name (the folder name
 alone when the capture app's default code was left, lane FX1).
+
+`sme_answers` and `sme_files` (contract C24, lane C) are what the SME gives
+in the end summary, below the name and before the zip, so both travel in
+it; both optional, both absent until given, both written only by the
+capture app (`capture/sme-answers.js`; the viewer never writes them):
+
+```json
+"sme_answers": {
+  "trigger": "An order e-mail from a customer in the shared mailbox",
+  "result": "A sales order in SAP and a confirmation sent",
+  "effort": "About 40 a day, 5 minutes each",
+  "exceptions": "A new customer: I create them first in Salesforce"
+},
+"sme_files": [
+  { "file": "Order 10900 (2).msg", "label": "Order 10900.msg", "added_at": "ISO 8601" }
+]
+```
+
+- `sme_answers` holds the answers to *What starts this work?* (`trigger`),
+  *What do you have when it is done?* (`result`), *How often do you do it,
+  and how long does one take?* (`effort`) and *What goes differently
+  sometimes, and what do you do then?* (`exceptions`), in that order. Each
+  is one line, trimmed, at most 300 characters; an empty answer leaves its
+  key out, and four empty answers the object. Saved on leaving a field,
+  before the zip, and on Done or Escape.
+- `sme_files` lists the example files: *Add an example file...* copies each
+  picked file into the recording's `attachments/` (the folder the viewer's
+  attachments use, C16), " (2)" before the extension when the name is taken
+  (compared without case). `file` is the name in that folder, `label` the
+  picked file's own name. *Remove* deletes the copy and the entry (an empty
+  `attachments/` goes too, and the last entry out leaves the key out). At
+  most 20 files, each at most 50 MB; a file refused is named on the window
+  with its reason.
+- Each change writes `session-integrity.json` again, as the name does, so
+  its list stays true.
 
 `engagement_name` is the request name of the capture configuration (AD-30:
 a `PDT_CONFIG` file, or a `userData/quick-config.yaml` that the capture

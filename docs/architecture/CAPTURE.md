@@ -70,10 +70,29 @@ folder:
   "Recording saved", the transactions and the duration in one line ("3
   transactions, 12:04", the time recorded; after a pause "(paused 0:04, not
   counted)"), a warning when no transaction was marked, an optional "Name
-  this recording" (above the zip, so the zip carries it), the folder,
+  this recording" (above the zip, so the zip carries it), the box "For the
+  analyst (optional, one line each)" with four questions, "Example files
+  (an e-mail, a sheet, a form)" with **Add an example file...**, the folder,
   **Make a zip for the analyst**, **Show the folder**, and Done. No counts of clicks, events or
   screenshots. One window per recording, so a summary still open from an
-  earlier recording keeps its unsaved name.
+  earlier recording keeps its unsaved name. The window is 480 x 850 (936
+  with the warning); on a screen whose work area cannot hold it (1366 x 768
+  with the taskbar) it is as tall as the work area and the page scrolls.
+- **What the SME gives at the end** (contract C24, lane C;
+  `sme-answers.js`): the four questions, *What starts this work?*, *What do
+  you have when it is done?*, *How often do you do it, and how long does one
+  take?* and *What goes differently sometimes, and what do you do then?*,
+  each optional and one line, saved on the manifest as `sme_answers` on
+  leaving a field, before the zip and on Done or Escape (as the name is).
+  **Add an example file...** opens the Windows file dialog (several files at
+  once) and copies each file into the recording's `attachments/`, listed in
+  the manifest's `sme_files`; each listed file has **Remove**. At most 20
+  files, each at most 50 MB: a file refused is named under the list with its
+  reason. The zip made next carries the answers and the files. Nothing asks
+  during the recording: typing then would interrupt the work recorded.
+- **The focus mark**: every control of every capture window shows a 2 px
+  outline in the accent, 2 px out, when reached by the keyboard
+  (`:focus-visible`; audit A12, A15).
 - **Toasts**, only for something the SME should act on or tell the analyst:
   clicks and typing not recorded (in one program, in a browser, or at all),
   screenshots failing, the recording could not be saved to disk, keys that
@@ -252,6 +271,7 @@ cross-cutting modules out of it.
 | `session.js` | Recording folder creation, `manifest.json` I/O (`updateManifest` is one read-modify-write), orphan recovery, the integrity file, the optional name, `isRecordingFolder` (the end summary acts only on a real recording folder), `removeSessionFolder` (the folder and its zip). |
 | `zip-folder.js` | One recording folder as one zip next to it; local only (`node:fs`, `node:zlib`). The viewer keeps a copy that must stay the same. |
 | `recording-zip.js` | Which zips are a recording's (read from the zip's first entry) and the zip's name: the recording's name, else its time stamp. |
+| `sme-answers.js` | What the SME gives at the end (C24): the answers kept (`cleanAnswers`), the example files' name rule (`uniqueName`) and limits (`refusal`), their copies in `attachments/` and their removal, and the end summary's three handlers (`smeHandlers`), each checking the folder. |
 | `browser-watchdog.js` | Pure: when to tell the SME that clicks and typing in a browser are not being recorded (below). |
 | `screenshot-gate.js` | Pure: when a screenshot trigger takes a screenshot (above). |
 | `session-storage.js` | The recordings' sizes (a zip next to a folder counts) and the delete flows under Setup (analyst). |
@@ -307,6 +327,9 @@ The main process answers these `pdt:*` channels from the windows:
 | `pdt:showFolder` | end summary | Explorer with the recording folder selected |
 | `pdt:zipFolder` | end summary | Make a zip for the analyst: `{ ok, zipName, size }` or `{ ok: false, error }` |
 | `pdt:setSessionLabel` | end summary | The optional name, on the manifest |
+| `pdt:setSmeAnswers` | end summary | The four answers, on the manifest as `sme_answers` (C24) |
+| `pdt:addSmeFiles` | end summary | Add an example file...: the file dialog, the copies in `attachments/`, `sme_files`; `{ ok, files, refused }` |
+| `pdt:removeSmeFile` | end summary | Remove: one file of `sme_files`, its copy and its entry; `{ ok, files }` |
 | `pdt:welcomeAction` | welcome | `start` (the one start), `help`, `bar` |
 | `pdt:consentDecision` | consent window | The SME's decision |
 | `pdt:obsTest` | Settings | Test OBS connection |
@@ -314,7 +337,10 @@ The main process answers these `pdt:*` channels from the windows:
 | `pdt:profileGet`, `pdt:profileSave` | Profile | Who is recording |
 
 The end summary's channels act only on a recording folder under the
-recordings folder (`session.isRecordingFolder`). Gone: `pdt:manualScreenshot`
+recordings folder (`session.isRecordingFolder`). The page never names a
+path to write to: the example files come from the main process's file
+dialog, and a removal names an entry of `sme_files`, deleted only inside
+that recording's `attachments/`. Gone: `pdt:manualScreenshot`
 (a screenshot by hand is the key or the tray item), `pdt:sessionSummary`
 (the end summary is its own window), `pdt:fireSync` (cross-machine sync
 markers are cut), and since 2.0.1 `pdt:sessionConfigGet`,

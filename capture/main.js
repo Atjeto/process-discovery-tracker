@@ -58,6 +58,7 @@ const recordingBar = require("./recording-bar.js");
 const { showEndSummaryWindow } = require("./end-summary-window.js");
 const { describeZipError } = require("./zip-folder.js");
 const { zipRecording } = require("./recording-zip.js");
+const { smeHandlers } = require("./sme-answers.js");
 const { createBrowserWatchdog } = require("./browser-watchdog.js");
 const { createScreenshotGate, isAppSwitch, isScreenChange, keepScreenshot } = require("./screenshot-gate.js");
 const { createRecordingControl } = require("./recording-control.js");
@@ -1219,6 +1220,24 @@ ipcMain.handle("pdt:setSessionLabel", (_e, sessionFolder, label) => {
     return false;
   }
 });
+
+/* What the SME gives at the end (contract C24, sme-answers.js): the four
+   answers and the example files, on the manifest and in attachments/. The
+   file dialog is this process's; the page never sends a path. */
+const sme = smeHandlers({
+  getBaseDir: () => baseDir,
+  pickFiles: async (e) => {
+    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+      title: "Add an example file",
+      properties: ["openFile", "multiSelections"],
+    });
+    return r.canceled ? [] : r.filePaths;
+  },
+  log: bootLog,
+});
+ipcMain.handle("pdt:setSmeAnswers", sme.setAnswers);
+ipcMain.handle("pdt:addSmeFiles", sme.addFiles);
+ipcMain.handle("pdt:removeSmeFile", sme.removeFile);
 
 ipcMain.handle("pdt:showFolder", (_e, sessionFolder) => {
   if (!isRecordingFolder(baseDir, sessionFolder)) return false;
