@@ -29,6 +29,8 @@ const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, rend
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
+const Screens = require("./views/flow-view-screenshots.js");
+const { stretchKey } = require("./views/flow-view.js");
 const { renderOverviewLevel, openMarkersInFlow, mapLockHtml, mapEmptyText } = require("./views/overview-view.js");
 const { createMapController } = require("./map-controller.js");
 const { buildAnnotationDfg, mapNodeLabel, flowEdges, wasteNodes } = require("./process-map-levels.js");
@@ -1070,6 +1072,9 @@ document.addEventListener("keydown", (e) => {
   // Don't intercept other shortcuts while typing in inputs
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea") return;
+  // Lane W2: the screenshot gallery owns its keys (it steps, plays and
+  // closes with them); the clock does not move behind it.
+  if (Screens.galleryOpen() && (e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Escape")) return;
 
   // Undo / redo apply to any view as long as a session is loaded.
   // Ctrl+Z = undo, Ctrl+Shift+Z (or Ctrl+Y) = redo.
@@ -1098,6 +1103,14 @@ document.addEventListener("keydown", (e) => {
       && e.key === "s" && !e.ctrlKey && !e.metaKey && !e.altKey) {
     addStepAtPlayhead();
     e.preventDefault();
+    return;
+  }
+  // Lane W2: I and O select a stretch on the Timeline (I where it starts, O
+  // where it ends), not in a field, with no dialog or menu open; neither
+  // asks anything or takes the focus.
+  if (State.getLevel() === "flow" && State.getSession() && !e.ctrlKey && !e.metaKey && !e.altKey &&
+      (e.key === "i" || e.key === "o" || e.key === "I" || e.key === "O") && tag !== "select" && !_overlayOnScreen()) {
+    if (stretchKey(e.key)) e.preventDefault();
     return;
   }
   // Step shortcuts (only on the Steps level). They act only on what the list
@@ -1155,12 +1168,15 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
     }
   } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-    // C23: a skip moves on the clock, across the videos of the chain.
+    // C23: a skip moves on the clock, across the videos of the chain; lane
+    // W2: in a recording without a video the clock moves the same, on the
+    // Timeline, and the screen from its screenshots follows. A select keeps
+    // its own arrows (the speed).
+    if (tag === "select") return;
     const video = $("#video");
-    const at = Video.playheadMs();
-    if (video && video.src && at != null) {
-      Video.seekClock(at + (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10000 : 5000));
-      e.preventDefault();
+    const delta = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10000 : 5000);
+    if ((video && video.src) || State.getLevel() === "flow") {
+      if (Video.nudgeClock(delta)) e.preventDefault();
     }
   } else if (e.key === "+" || e.key === "=") {
     if ($("#view-session").classList.contains("active")) {
@@ -1176,6 +1192,14 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+/* Lane W2: a dialog, a menu or the screenshot gallery is on screen (its
+   keys are its own). The help modal is a .modal-backdrop that stays in the
+   page, hidden: only one on screen counts. */
+function _overlayOnScreen() {
+  const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  return [...document.querySelectorAll(".modal-backdrop, .lanes-popup, .project-menu-popup, #tl-ctx-menu, #step-ctx-menu, #run-ctx-menu, #shot-src-menu, #screenshot-gallery")].some(shown);
+}
 
 /* Lane HV: the shortcuts that change a project (Undo and Redo, the Steps
    verbs, a step at the playhead), which a hand-off opened read only ignores. */

@@ -78,7 +78,10 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    from *Transaction 1* to *Transaction 4*. If one is missing, right-click the
    timeline where it starts and choose *Start a transaction here...*. If one
    starts or ends in the wrong place, type its times in Steps or drag its
-   band on the Timeline (see *Everyday tasks*).
+   band on the Timeline (see *Everyday tasks*). Without a video, the
+   screenshots show the screen where the video would be: click the
+   timeline, or press Left or Right, and the screenshot of that moment
+   shows.
 3. **Name the steps of the reference transaction, or pick them from the
    library.** In Steps, transaction 1 is the reference transaction. Where
    the recorder cut a step wrongly, split or merge it first (see *Everyday
@@ -163,7 +166,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 
 1. Play the video on the Timeline: click *Play*, at the left of the row
    above the timeline, or press Space. To go to a moment, click the clock
-   beside it (*0:00 / 1:02:00*), type a time and press Enter. Where the SME
+   beside it (*0:00 / 1:02:00*), type a time and press Enter. The speed
+   beside the clock plays the video at *1x*, *1.5x* or *2x*. Where the SME
    starts the work, click *Start transaction*. While the video plays, the
    transaction starts at once; name it afterwards with Rename, on its header
    beside the video. *Lanes*, at the right of that row, chooses the lanes the
@@ -171,7 +175,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    timeline larger, click *+*: the bar under the lanes shows the whole
    length, and dragging its box moves along it. Double-click a transaction's
    band to show only that transaction; *Show all* shows the whole length
-   again.
+   again. With the keyboard, Tab goes to each lane of the timeline, the
+   arrow keys go from mark to mark and Enter opens one.
 2. As each step starts, press S (or click *Add step*), or right-click there
    and choose *Add a step here*, on the band of the step before it too. The
    step before it ends there. The newest step is *open*, fading out on the
@@ -194,7 +199,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    *invoice*: it shows how many sentences hold it. With several speakers,
    pick one to read only theirs. The sentence the video is at is marked and
    stays in view while the video plays, unless your pointer is on the list
-   or the search holds text.
+   or the search holds text. What is said also shows under the video, at
+   the moment it is said: click it to find it in the *Transcript* tab.
 6. Click a sentence to go to that moment. *Add step here*, after the
    sentence, adds a step that starts where it is said. *Copy to...* copies
    the sentence into the description of the selected step or into a field
@@ -335,7 +341,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    it.
 4. In a project made from a video, a detour of the call, for example thirty
    minutes on another topic: hold Shift and drag across it, then click *Not
-   part of the process*. It shows hatched, playing skips it, and the
+   part of the process*. Select a stretch: I where it starts, O where it
+   ends, also while the video plays. It shows hatched, playing skips it, and the
    *Transcript* tab says *Not part of the process* in its place. Your steps
    stay as they are, and the maps and the PDD do not mention it. Seek into it
    to watch it anyway. Click it and choose *Include again* to bring it back,

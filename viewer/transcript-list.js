@@ -58,6 +58,27 @@ function currentIndex(starts, ms) {
   return lo;
 }
 
+/* The sentence the tab marks at the moment `ms` ("the sentence at this
+   moment"): currentIndex, and none while the moment is inside a stretch put
+   aside (`stretches`, left-out.js stretchesOf). The one rule of the tab and
+   of the caption under the video. */
+function sentenceIndexAt(starts, ms, stretches) {
+  const i = currentIndex(starts, ms);
+  return i >= 0 && LeftOut.inside(stretches, ms) ? -1 : i;
+}
+
+/* The sentence the caption under the video shows at `ms` (lane W2, plan
+   section 11.1): the tab's sentence at this moment (sentenceIndexAt) while
+   it is being said, so the caption is empty from its end to the next
+   sentence's start. `sentences` the tab's sentence rows, `starts` their
+   start times. -1 for none. */
+function sayingAt(sentences, starts, ms, stretches) {
+  const i = sentenceIndexAt(starts, ms, stretches);
+  const s = i >= 0 && sentences ? sentences[i] : null;
+  if (!s) return -1;
+  return Number.isFinite(s.endMs) && ms >= s.endMs ? -1 : i;
+}
+
 /* The query as the search reads it: whitespace joined, lower case. */
 function queryOf(text) {
   return TM.normalizeSpace(text).toLowerCase();
@@ -96,4 +117,4 @@ function countText(shown, total, narrowed) {
   return shown + " of " + total;
 }
 
-module.exports = { tabModel, currentIndex, queryOf, shows, markedHtml, countText };
+module.exports = { tabModel, currentIndex, sentenceIndexAt, sayingAt, queryOf, shows, markedHtml, countText };

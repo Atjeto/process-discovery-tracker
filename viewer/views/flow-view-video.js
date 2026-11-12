@@ -52,6 +52,11 @@ const LeftOut = require("../left-out.js");
    was put where no video shows (the timeline's row reads it). */
 let loadSessionIntoView = async () => {};
 let onPlayhead = () => {};
+/* Lane W2: whether the project shows its screen from screenshots where no
+   video shows (a recording with screenshots), and what follows a change of
+   what the video pane shows (the screen and the caption are drawn again). */
+let hasScreen = () => false;
+let onPane = () => {};
 
 function setVideoOverlay(text) {
   const o = $("#video-overlay");
@@ -178,17 +183,25 @@ function _sameFile(video, file) {
     _shownPath(video).toLowerCase() === String(file).replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
 }
 
-/* The video pane shows the player (`shown`) or the slim no-video band. */
+/* The video pane shows the player (`shown`), else (lane W2) in a recording
+   with screenshots the screen from them (`.on-screen`: the no-video line
+   above it, flow-view-screenshots.js syncScreen draws it), else the slim
+   no-video band. */
 function _showPane(shown) {
   const video = $("#video");
   if (video) video.style.display = shown ? "" : "none";
   const noVid = $("#no-video"), overlay = $("#video-overlay");
   if (noVid) noVid.style.display = shown ? "none" : "";
   if (overlay) overlay.style.display = shown ? "" : "none";
+  const screen = !shown && !!hasScreen();
   for (const id of ["lower-workspace", "video-pane"]) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle("no-recording", !shown);
+    if (el) {
+      el.classList.toggle("no-recording", !shown && !screen);
+      el.classList.toggle("on-screen", screen);
+    }
   }
+  onPane();
 }
 
 /* Put `clip` in the player at `sec` (in its file), playing or not. A clip
@@ -429,6 +442,23 @@ function seekClock(ms, play) {
   const last = spans[spans.length - 1];
   const out = last.endMs != null ? (last.endMs - last.fileStartMs) / 1000 - 0.05 : last.clip.in_ms / 1000;
   _loadClip(last.clip, Math.max(last.clip.in_ms / 1000, out), false);
+}
+
+/* The arrow keys (renderer.js): the clock moves `deltaMs` on the clock,
+   across the videos of the chain; lane W2, in a recording without a video
+   the clock moves the same (the screen from the screenshots follows it),
+   from the start of the timeline while it has no moment yet, kept inside
+   the timeline. Returns whether it moved. */
+function nudgeClock(deltaMs) {
+  const video = $("#video");
+  const at = playheadMs();
+  if (video && video.src && at != null) { seekClock(at + deltaMs); return true; }
+  if (video && video.src) return false;
+  const sp = timelineSpan();
+  if (!sp || !Number.isFinite(deltaMs)) return false;
+  const from = at != null ? at : sp.startMs;
+  movePlayheadToTimestamp(new Date(Math.min(sp.endMs, Math.max(sp.startMs, from + deltaMs))).toISOString());
+  return true;
 }
 
 /* Steps/Phases detail panel -> Flow view. Switches the active level
@@ -953,10 +983,13 @@ function _timelineClickToMs(clientX) {
   return first + frac * span;
 }
 
-/* deps = { loadSessionIntoView, onPlayhead }: injected by flow-view.js at boot. */
+/* deps = { loadSessionIntoView, onPlayhead, hasScreen, onPane }: injected by
+   flow-view.js at boot. */
 function initVideo(deps) {
   loadSessionIntoView = (deps && deps.loadSessionIntoView) || (async () => {});
   onPlayhead = (deps && deps.onPlayhead) || (() => {});
+  hasScreen = (deps && deps.hasScreen) || (() => false);
+  onPane = (deps && deps.onPane) || (() => {});
 }
 
 // Self-wire the require()-time listeners: the re-sync and remove buttons,
@@ -1034,6 +1067,6 @@ module.exports = {
   startVideoSync, cancelVideoSync, attachVideo, removeVideo, attachedVideoShown,
   // C23 (2.0.6): the chain.
   chainOf, addedClips, lengthOf, clipSpan, clipAtMs, currentClip, playheadMs, loadPlayer, isBackToBack, chainRange, seekClock,
-  isPlaying, playerAt,
+  isPlaying, playerAt, nudgeClock,
   fileUrl, probeLength, clipName, replaceVideo, trimVideo, syncVideo,
 };

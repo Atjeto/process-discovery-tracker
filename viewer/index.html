@@ -210,6 +210,21 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
                 <span class="nv-text">No video linked</span>
                 <button type="button" id="btn-link-recording" class="link-btn nv-link" title="Attach a video of the recording (a Teams recording or a screen video), then sync it: click a moment in the video, then the same moment on the timeline.">Attach video...</button>
               </div>
+              <!-- Lane W2 (plan section 11.1): a recording without a video shows
+                   the screen at the clock's moment from its screenshots, the
+                   line above (#no-video) keeping Attach video
+                   (flow-view-screenshots.js syncScreen, timeline-screen.js). -->
+              <div class="video-screen" id="video-screen" hidden>
+                <button type="button" class="screen-pic" id="video-screen-pic" hidden title="Opens this screenshot in the gallery, full size."><img id="video-screen-img" alt="" /></button>
+                <div class="screen-empty" id="video-screen-empty" hidden></div>
+                <div class="screen-line" id="video-screen-line"></div>
+              </div>
+              <!-- Lane W2: what is said at the clock's moment, under the picture
+                   (flow-view-transcript.js syncCaption); its height is kept
+                   while nothing is said, so the picture does not jump. -->
+              <div class="video-caption" id="video-caption" hidden>
+                <button type="button" class="cap-say" id="video-caption-say" hidden><span class="cap-lines"><b class="cap-speaker"></b><span class="cap-text"></span></span></button>
+              </div>
               <div class="video-overlay" id="video-overlay"></div>
             </div>
 
@@ -268,6 +283,13 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
               </button>
               <button type="button" class="tl-clock" id="btn-tl-clock" hidden title="The time since the start of the video. Click to type a time and go there."></button>
               <input type="text" class="tl-clock-field" id="tl-clock-field" hidden aria-label="Go to a time" placeholder="6:20" spellcheck="false" autocomplete="off" />
+              <!-- Lane W2: the speed, only with a video (timeline-row.js SPEEDS),
+                   kept on this computer and across the videos of a chain. -->
+              <select class="tl-speed" id="tl-speed" hidden aria-label="Speed" title="How fast the video plays">
+                <option value="1">1x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2x</option>
+              </select>
               <span class="tl-sep" aria-hidden="true"></span>
               <button type="button" id="btn-add-step" hidden title="Adds a step that starts at this moment of the video. The step before it ends here. Key: S">Add step</button>
               <button type="button" id="btn-tl-transaction" hidden title="Starts a new transaction at this moment of the video. A transaction is one pass through the process.">Start transaction</button>
@@ -566,7 +588,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <p>The Overview's <em>Checklist</em> lists the main acts below and ticks each one when it is done; its button takes you to the next. For a recording the acts are <em>Mark the transactions</em>, <em>Confirm the reference transaction</em>, <em>Review the other transactions</em>, <em>Write the document</em> and <em>Hand off</em>. For a project made from a video or from nothing they are <em>Add the steps</em>, <em>Write the steps</em> (a name of its own and a description for each step), <em>Review the other transactions</em> when it has two or more, <em>Write the document</em> and <em>Hand off</em>. On the Timeline, Steps and the Map, the top bar shows the next act, such as <em>Next: write the steps (1 of 7)</em>, and a click on it opens the Checklist.</p>
           <ol class="help-steps">
             <li><strong>Attach the video and the transcript.</strong> On the Overview, click <em>Attach</em> after <em>No video</em> and pick the video. PDT opens the Timeline: pause the video at a moment you recognize, click <em>Mark frame</em>, then click the same moment on the timeline. The video is copied into the project folder. Attach the meeting transcript (a Teams .vtt or .docx) with <em>Attach</em> after <em>No transcript</em>: the synced video places its sentences in time. Without a video, <em>Sync...</em> on the Timeline's <em>Transcript</em> lane places it: pick a sentence, then click where it was said.</li>
-            <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Transaction 1</em> to <em>Transaction 4</em>. If one is missing, right-click the timeline where it starts and choose <em>Start a transaction here...</em>. If one starts or ends in the wrong place, type its times in Steps or drag its band on the Timeline (see <em>Everyday tasks</em>).</li>
+            <li><strong>Check the transactions.</strong> On the Timeline, each transaction is a band, from <em>Transaction 1</em> to <em>Transaction 4</em>. If one is missing, right-click the timeline where it starts and choose <em>Start a transaction here...</em>. If one starts or ends in the wrong place, type its times in Steps or drag its band on the Timeline (see <em>Everyday tasks</em>). Without a video, the screenshots show the screen where the video would be: click the timeline, or press Left or Right, and the screenshot of that moment shows.</li>
             <li><strong>Name the steps of the reference transaction, or pick them from the library.</strong> In Steps, transaction 1 is the reference transaction. Where the recorder cut a step wrongly, split or merge it first (see <em>Everyday tasks</em>). Then click each step and type its name, the title of the selected step: the step that ends at <em>Save order</em> becomes <em>Enter the order</em>. The same drafted step in the other transactions takes the name too. Where the library has activities for the step's system, the <em>Name</em> field lists them: pick one instead of typing.</li>
             <li><strong>Write short descriptions.</strong> <em>Description</em>, under the step's name, is the text the PDD prints under the step. One or two sentences are enough, for example on <em>Add the order to the tracking sheet</em>: <em>Type the new order as a row of the order tracking sheet (order, customer, item, quantity, unit price) and save the sheet.</em> With a transcript, what the SME said during the step is right under it: <em>Add</em> copies a sentence into the description. The step panel on the right plays the step (<em>Play</em>) and shows every time it happened, with its screenshots, what was said and notes. What the recorder saw is under <em>Recorded</em>.</li>
             <li><strong>Set the flow where it branches or loops.</strong> In transaction 2 the SME printed a confirmation: that customer wants one with every order. On that step, <em>Print the order confirmation</em>, click <em>Only when...</em> and type <em>the customer asks for a printed confirmation</em>. In transaction 4 the SME started on the wrong customer, cancelled and searched again. On <em>Enter the order</em>, click <em>Decision...</em>, pick <em>Find the customer</em> under <em>Back to</em> and type when: <em>the wrong customer was selected</em>. The demo's flow also goes from <em>Find the customer</em> to <em>Create the new customer</em>, a step transaction 3 did, when <em>the search finds no account</em>, and ends early after <em>Enter the order</em> when <em>the customer's credit is blocked</em>. The map draws them all.</li>
@@ -579,11 +601,11 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Everyday tasks</h3>
           <p><strong>Mark a video as you watch it</strong></p>
           <ol class="help-steps">
-            <li>Play the video on the Timeline: click <em>Play</em>, at the left of the row above the timeline, or press Space. To go to a moment, click the clock beside it (<em>0:00 / 1:02:00</em>), type a time and press Enter. Where the SME starts the work, click <em>Start transaction</em>. While the video plays, the transaction starts at once; name it afterwards with Rename, on its header beside the video. <em>Lanes</em>, at the right of that row, chooses the lanes the timeline shows and says what their marks mean. To see a part of the timeline larger, click <em>+</em>: the bar under the lanes shows the whole length, and dragging its box moves along it. Double-click a transaction's band to show only that transaction; <em>Show all</em> shows the whole length again.</li>
+            <li>Play the video on the Timeline: click <em>Play</em>, at the left of the row above the timeline, or press Space. To go to a moment, click the clock beside it (<em>0:00 / 1:02:00</em>), type a time and press Enter. The speed beside the clock plays the video at <em>1x</em>, <em>1.5x</em> or <em>2x</em>. Where the SME starts the work, click <em>Start transaction</em>. While the video plays, the transaction starts at once; name it afterwards with Rename, on its header beside the video. <em>Lanes</em>, at the right of that row, chooses the lanes the timeline shows and says what their marks mean. To see a part of the timeline larger, click <em>+</em>: the bar under the lanes shows the whole length, and dragging its box moves along it. Double-click a transaction's band to show only that transaction; <em>Show all</em> shows the whole length again. With the keyboard, Tab goes to each lane of the timeline, the arrow keys go from mark to mark and Enter opens one.</li>
             <li>As each step starts, press S (or click <em>Add step</em>), or right-click there and choose <em>Add a step here</em>, on the band of the step before it too. The step before it ends there. The newest step is <em>open</em>, fading out on the Timeline: it ends where you add the next one.</li>
             <li>Where the transaction ends, click <em>End transaction</em> (the same button reads so while a transaction runs on): its last step ends there too. <em>Start transaction</em> for the next one ends the one before it the same way. <em>Add note</em> puts a note at that moment; notes stay out of the PDD. Right-clicking the timeline offers the same acts at the moment you click. A message about what you did reads in the same row.</li>
             <li>Each step you add opens beside the video, in the <em>Steps</em> tab, its screenshot taken from the video at that moment. Pause the video before you press S, and the cursor is in the step's name: type the name, press Enter, and play on. Its system and its description are right under the name. While the video plays, S only marks the steps: name them in the <em>Steps</em> tab or in Steps afterwards. <em>All steps</em> goes back to the list. Ctrl+Z takes back a mark put in the wrong place, with its screenshot.</li>
-            <li>The <em>Transcript</em> tab beside the video lists what was said, with its time and who said it. Type in its search to find a word, for example <em>invoice</em>: it shows how many sentences hold it. With several speakers, pick one to read only theirs. The sentence the video is at is marked and stays in view while the video plays, unless your pointer is on the list or the search holds text.</li>
+            <li>The <em>Transcript</em> tab beside the video lists what was said, with its time and who said it. Type in its search to find a word, for example <em>invoice</em>: it shows how many sentences hold it. With several speakers, pick one to read only theirs. The sentence the video is at is marked and stays in view while the video plays, unless your pointer is on the list or the search holds text. What is said also shows under the video, at the moment it is said: click it to find it in the <em>Transcript</em> tab.</li>
             <li>Click a sentence to go to that moment. <em>Add step here</em>, after the sentence, adds a step that starts where it is said. <em>Copy to...</em> copies the sentence into the description of the selected step or into a field of the document.</li>
             <li>Steps written first, from your notes, have no time: the <em>Steps</em> tab beside the video says how many, and each of them has <em>Starts here</em> on its row. Go to the moment a step starts in the video, then click <em>Starts here</em> on that step: the step starts at that moment and, without a picture, takes the video's frame there. Its place among the steps stays. Right-clicking the timeline offers the same at the moment you click, naming the step, and Ctrl+Z undoes it.</li>
           </ol>
@@ -635,7 +657,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <li>An app, for example Calculator, where the SME checks a total out of habit: in Steps, click <em>Apps outside the process...</em>, tick the app and click <em>Save</em>.</li>
             <li>A stretch, for example where the SME started on the wrong customer: on the Timeline, hold Shift and drag across it, click <em>Leave out of the analysis</em> in the row above the timeline, then <em>Leave out</em>.</li>
             <li>The steps and the map are drafted again without it. A stretch left out shows hatched: click it and choose <em>Include again</em> to bring it back. Playing skips it, and the <em>Transcript</em> tab leaves out what was said in it.</li>
-            <li>In a project made from a video, a detour of the call, for example thirty minutes on another topic: hold Shift and drag across it, then click <em>Not part of the process</em>. It shows hatched, playing skips it, and the <em>Transcript</em> tab says <em>Not part of the process</em> in its place. Your steps stay as they are, and the maps and the PDD do not mention it. Seek into it to watch it anyway. Click it and choose <em>Include again</em> to bring it back, or press Ctrl+Z.</li>
+            <li>In a project made from a video, a detour of the call, for example thirty minutes on another topic: hold Shift and drag across it, then click <em>Not part of the process</em>. Select a stretch: I where it starts, O where it ends, also while the video plays. It shows hatched, playing skips it, and the <em>Transcript</em> tab says <em>Not part of the process</em> in its place. Your steps stay as they are, and the maps and the PDD do not mention it. Seek into it to watch it anyway. Click it and choose <em>Include again</em> to bring it back, or press Ctrl+Z.</li>
           </ol>
           <p><strong>Make a sub-process</strong></p>
           <ol class="help-steps">
@@ -814,7 +836,7 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
           <h3>Keyboard shortcuts</h3>
           <table class="help-table">
             <tr><td><span class="kbd">Space</span></td><td>Play or pause the video</td></tr>
-            <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Move the video 5 seconds (hold <span class="kbd">Shift</span> for 10)</td></tr>
+            <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>Move 5 seconds along the video, or along the screenshots of a recording without one (hold <span class="kbd">Shift</span> for 10)</td></tr>
             <tr><td><span class="kbd">+</span> <span class="kbd">−</span> <span class="kbd">0</span></td><td>Zoom the timeline in, out, or back to the whole recording</td></tr>
             <tr><td><span class="kbd">←</span> <span class="kbd">→</span> (the bar under the timeline)</td><td>Move along the timeline</td></tr>
             <tr><td><span class="kbd">Ctrl+Z</span></td><td>Undo the last edit</td></tr>
@@ -824,12 +846,15 @@ try { if (localStorage.getItem("pdt.theme") === "dark")
             <tr><td><span class="kbd">S</span> / <span class="kbd">M</span> (Steps)</td><td>Split the selected step (the scissors under its Recorded say where), or merge it with the next step of its transaction</td></tr>
             <tr><td><span class="kbd">N</span> (Steps)</td><td>Add a step by hand, without a time</td></tr>
             <tr><td><span class="kbd">S</span> (Timeline, with a video)</td><td>Add a step at the video's playhead</td></tr>
+            <tr><td><span class="kbd">I</span>, <span class="kbd">O</span> (Timeline)</td><td>Select a stretch: I where it starts, O where it ends</td></tr>
+            <tr><td><span class="kbd">Tab</span> (Timeline)</td><td>Go to the next lane of the timeline that has marks</td></tr>
+            <tr><td><span class="kbd">←</span> <span class="kbd">→</span> <span class="kbd">Home</span> <span class="kbd">End</span> (a lane of the timeline)</td><td>Go to the previous, the next, the first or the last mark of the lane; <span class="kbd">Enter</span> opens it</td></tr>
             <tr><td><span class="kbd">Ctrl+Enter</span> (Steps)</td><td>Confirm the reference transaction, when it is open</td></tr>
             <tr><td><span class="kbd">Alt+↑</span> <span class="kbd">Alt+↓</span> (Steps)</td><td>Move a step without a time up or down in its transaction</td></tr>
             <tr><td><span class="kbd">Ctrl+V</span> (step pane)</td><td>Add the image on the clipboard as a screenshot of the step</td></tr>
             <tr><td><span class="kbd">?</span></td><td>Open this help</td></tr>
             <tr><td><span class="kbd">Esc</span></td><td>Close this help</td></tr>
-            <tr><td><span class="kbd">Esc</span> (Timeline)</td><td>Clear the selected stretch</td></tr>
+            <tr><td><span class="kbd">Esc</span> (Timeline)</td><td>Clear the start of a stretch, then the selected stretch</td></tr>
           </table>
           <h3>Clicks</h3>
           <ul class="help-list">

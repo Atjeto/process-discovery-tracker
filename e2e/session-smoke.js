@@ -1019,30 +1019,39 @@ async function unreadableAnnotationsPin() {
   if (!ovOk) await shot(page, "fail-overview-no-observations.png");
 
   // Item 1: no recording linked → the tall black video stage collapses to a
-  // slim band, and the freed height goes to the timeline + the side panel. On
-  // the Flow level the video pane must carry the `no-recording` class and be
-  // much shorter than the screenshots/markers panel beside it.
+  // slim band, and the freed height goes to the timeline + the side panel.
+  // Lane W2 (plan section 11.1): that is a recording with no screenshot (the
+  // pin is in the lane W2 block below, on a copy without them); this
+  // recording has screenshots, so the stage shows its screen where the video
+  // would be, at the video's size, with the line "No video in this
+  // project." and Attach video... above it.
   const flowBtn2 = await page.$('.view-mode-btn[data-level="flow"]');
   if (flowBtn2) { await flowBtn2.click().catch(() => {}); await wait(900); }
-  const videoBand = await page.evaluate(() => {
+  const videoStage = () => page.evaluate(() => {
     const pane = document.getElementById("video-pane");
     const side = document.querySelector("#session-layout-flow .annotations-pane");
     if (!pane || !side) return { present: false };
     const pr = pane.getBoundingClientRect();
     const nr = side.getBoundingClientRect();
+    const screen = document.getElementById("video-screen");
     return {
       present: true,
       collapsedClass: pane.classList.contains("no-recording"),
+      onScreen: pane.classList.contains("on-screen") && !!screen && !screen.hidden && screen.getClientRects().length > 0,
       videoHidden: getComputedStyle(document.getElementById("video")).display === "none",
+      line: ((document.querySelector("#no-video .nv-text") || {}).textContent || "").trim(),
       linkAffordance: ((document.getElementById("btn-link-recording") || {}).textContent || "").trim(),
+      linkInLine: !!(document.getElementById("btn-link-recording") || { closest: () => null }).closest("#no-video"),
       paneH: Math.round(pr.height),
+      paneW: Math.round(pr.width),
       sideH: Math.round(nr.height),
     };
   }).catch((e) => ({ err: e.message }));
+  const videoBand = await videoStage();
   const videoBandOk = !!(videoBand && !videoBand.err && videoBand.present &&
-    videoBand.collapsedClass && videoBand.videoHidden && videoBand.linkAffordance === "Attach video..." &&
-    videoBand.paneH < videoBand.sideH);
-  record("(disclosure 1) no-recording video stage collapses to a slim band (the side panel gets the space; its verb is Attach video...)",
+    !videoBand.collapsedClass && videoBand.onScreen && videoBand.videoHidden && videoBand.line === "No video in this project." &&
+    videoBand.linkAffordance === "Attach video..." && videoBand.linkInLine && videoBand.paneH >= videoBand.sideH - 2);
+  record("(disclosure 1, lane W2) a recording without a video, with screenshots: the stage shows its screen where the video would be, as tall as the pane beside it (not the slim band), under the line \"No video in this project.\" with Attach video...",
     videoBandOk, JSON.stringify(videoBand));
   if (!videoBandOk) await shot(page, "fail-video-collapse.png");
 
@@ -2031,6 +2040,262 @@ async function unreadableAnnotationsPin() {
         vid.after.syncVideo.shown === false && vid.after.addStep === false && vid.after.attachVideo.text === "Attach"),
       JSON.stringify(vid));
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
+  }
+
+  // --- Lane W2: the screen of a recording without a video, the lanes as Tab
+  // stops, screenshots close together as one mark -----------------------------
+  // Two copies of the analyzed recording, opened in the same viewer: one
+  // without its screenshot events (the slim band stays), and one with four
+  // screenshots added close together at 1:40 to 1:48 (a frame each, the
+  // recorder's own at 1:46 among them).
+  //   (a) the band: a recording with no screenshot keeps "No video linked"
+  //       with Attach video..., the stage collapsed (the pin item 1 had);
+  //   (b) item 1: three clicks on the timeline (0:10, 1:00, 3:30) show no
+  //       screenshot before the first, then the one taken last before each
+  //       moment with its line and its step; a file missing names itself in
+  //       the picture's place; the picture opens the gallery at it; Right
+  //       moves the clock 5 s and the screen follows;
+  //   (c) item 6: on the Screenshots lane at zoom 1 and zoomed in twice, no
+  //       mark covers another and the counts add up to the screenshots;
+  //   (d) item 5: from the row, Tab to the Steps lane (the mark at the
+  //       clock's moment), Right three times, Enter: that step opens in the
+  //       pane; Tab to the Screenshots lane, End, Enter: the Screenshots tab
+  //       at the last screenshot; the focus ring shows, offset from the mark,
+  //       inside the lanes; a zoom keeps the mark that had the focus; a press
+  //       of the mouse on a mark does not take the focus.
+  if (FRESH) {
+    const w2 = {};
+    const T = 20000;
+    const copyOf = (strip) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdt-e2e-w2-"));
+      for (const f of fs.readdirSync(SESSION)) {
+        const src = path.join(SESSION, f);
+        if (fs.statSync(src).isFile()) fs.copyFileSync(src, path.join(dir, f));
+      }
+      fs.mkdirSync(path.join(dir, "screenshots", "analyst"), { recursive: true });
+      for (const f of fs.readdirSync(path.join(SESSION, "screenshots"))) {
+        const src = path.join(SESSION, "screenshots", f);
+        if (fs.statSync(src).isFile()) fs.copyFileSync(src, path.join(dir, "screenshots", f));
+      }
+      if (strip) {
+        const evs = fs.readFileSync(path.join(dir, "events.jsonl"), "utf-8").split(/\r?\n/)
+          .filter((l) => l.trim() && !/"kind":\s*"screenshot/.test(l));
+        fs.writeFileSync(path.join(dir, "events.jsonl"), evs.join("\n") + "\n");
+      }
+      return dir;
+    };
+    const BAND = copyOf(true);
+    const SCREEN = copyOf(false);
+    const t0 = Date.parse(JSON.parse(fs.readFileSync(path.join(SESSION, "manifest.json"), "utf-8")).started_at);
+    {
+      const ap = path.join(SCREEN, "annotations.json");
+      const a = JSON.parse(fs.readFileSync(ap, "utf-8"));
+      a.analyst_screenshots = (a.analyst_screenshots || []).concat([100, 101, 103, 108].map((s, i) => {
+        fs.copyFileSync(path.join(SCREEN, "screenshots", "shot_01.png"), path.join(SCREEN, "screenshots", "analyst", "w2-" + i + ".png"));
+        return { id: "w2-" + i, file: "w2-" + i + ".png", at: new Date(t0 + s * 1000).toISOString(), source: "video_frame", added_at: new Date().toISOString() };
+      }));
+      fs.writeFileSync(ap, JSON.stringify(a, null, 2));
+    }
+    const open = async (dir) => {
+      await page.evaluate((f) => require("./views/flow-view.js").loadSessionIntoView(f), dir);
+      await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
+      await page.waitForFunction(() => !!require("./views/flow-view-video.js").timelineSpan(), null, { timeout: T });
+      await wait(400);
+    };
+    // A point on the timeline's own background at the moment `sec`.
+    const clickAt = async (sec) => {
+      const pt = await page.evaluate((s) => {
+        const tl = document.getElementById("timeline");
+        const sp = require("./views/flow-view-video.js").timelineSpan();
+        const r = tl.getBoundingClientRect();
+        const t = Date.parse(require("./state.js").getSession().manifest.started_at) + s * 1000;
+        const x = r.left + ((t - sp.startMs) / (sp.endMs - sp.startMs)) * r.width;
+        for (let y = r.top + 2; y < Math.min(r.bottom, innerHeight); y += 2) {
+          if (document.elementFromPoint(x, y) === tl) return { x, y };
+        }
+        return null;
+      }, sec);
+      if (!pt) throw new Error("no background point at " + sec + " s");
+      await page.mouse.click(pt.x, pt.y);
+      await wait(350);
+    };
+    const screen = () => page.evaluate(() => {
+      const pic = document.getElementById("video-screen-pic");
+      const img = document.getElementById("video-screen-img");
+      const empty = document.getElementById("video-screen-empty");
+      const line = document.getElementById("video-screen-line");
+      const box = (el) => { const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), t: Math.round(b.top), b: Math.round(b.bottom) }; };
+      return { file: pic.hidden ? null : (img.getAttribute("src") || "").split("/").pop(), line: line.hidden ? "" : line.textContent,
+        empty: empty.hidden ? "" : empty.textContent, clock: document.getElementById("btn-tl-clock").textContent.split(" / ")[0],
+        fit: getComputedStyle(img).objectFit, pane: box(document.getElementById("video-pane")), shown: pic.hidden ? null : box(pic),
+        row: box(document.getElementById("tl-row")) };
+    });
+    const stepOf = (rel) => page.evaluate((r) => {
+      const st = (require("./state.js").getSession().annotations.steps || []).find((s) => s.state !== "hidden" &&
+        ((s.evidence && s.evidence.screenshot_refs) || []).includes(r));
+      return st ? st.name : "";
+    }, rel);
+    try {
+      // (a) the band, in a recording with no screenshot.
+      await open(BAND);
+      w2.band = await videoStage();
+      // (b) item 1.
+      await open(SCREEN);
+      w2.opened = await screen();
+      await clickAt(10);
+      w2.at10 = await screen();
+      await clickAt(60);
+      w2.at60 = await screen();
+      w2.step60 = await stepOf("screenshots/shot_02.png");
+      await clickAt(210);
+      w2.at210 = await screen();
+      w2.step210 = await stepOf("screenshots/shot_04.png");
+      await shot(page, "w2-screen.png");
+      fs.renameSync(path.join(SCREEN, "screenshots", "shot_04.png"), path.join(SCREEN, "screenshots", "shot_04.png.away"));
+      await clickAt(215);
+      w2.missing = await screen();
+      fs.renameSync(path.join(SCREEN, "screenshots", "shot_04.png.away"), path.join(SCREEN, "screenshots", "shot_04.png"));
+      await clickAt(60);
+      await page.locator("#video-screen-pic").click({ timeout: T });
+      await page.waitForSelector("#screenshot-gallery", { state: "visible", timeout: T });
+      w2.gallery = await page.evaluate(() => ({ ts: document.getElementById("gallery-ts").textContent,
+        img: (document.getElementById("gallery-img").getAttribute("src") || "").split("/").pop() }));
+      await page.keyboard.press("Escape");
+      await page.waitForSelector("#screenshot-gallery", { state: "hidden", timeout: T });
+      w2.galleryClosed = true;
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+      const before = await page.evaluate(() => require("./views/flow-view-video.js").playheadMs());
+      await page.keyboard.press("ArrowRight");
+      await wait(300);
+      w2.right = await screen();
+      w2.right.moved = (await page.evaluate(() => require("./views/flow-view-video.js").playheadMs())) - before;
+      // (c) item 6: the Screenshots lane at zoom 1, then zoomed in twice (and
+      // the Steps lane, which a check above left off without its box, for (d)).
+      await page.evaluate(() => require("./views/flow-view-timeline.js").setLaneToggle("steps", true));
+      await page.locator("#btn-lanes").click({ timeout: T });
+      await page.locator('#lanes-popup input[data-lane="screenshots"]').check({ timeout: T });
+      await page.locator("#btn-lanes").click({ timeout: T });
+      await page.locator("#btn-zoom-reset").click({ timeout: T });
+      await wait(300);
+      const marks = () => page.evaluate(() => {
+        const els = [...document.querySelectorAll("#timeline .tl-screenshot")];
+        const rs = els.map((e) => e.getBoundingClientRect()).sort((a, b) => a.left - b.left);
+        let covers = 0;
+        for (let i = 1; i < rs.length; i++) if (rs[i].left < rs[i - 1].right - 0.5) covers++;
+        return { marks: els.length, sum: els.reduce((s, e) => s + Number(e.dataset.count || 0), 0), covers,
+          total: require("./views/flow-view-screenshots.js").timelineScreenshots().length,
+          groups: els.filter((e) => e.classList.contains("tl-shot-group")).map((e) => e.textContent + "|" + e.title) };
+      });
+      w2.zoom1 = await marks();
+      await shot(page, "w2-shot-groups-zoom1.png");
+      await page.locator("#btn-zoom-in").click({ timeout: T });
+      await wait(250);
+      w2.zoom2 = await marks();
+      await page.locator("#btn-zoom-in").click({ timeout: T });
+      await wait(250);
+      w2.zoom3 = await marks();
+      await page.locator("#btn-zoom-reset").click({ timeout: T });
+      await wait(250);
+      // (d) item 5, by the keyboard from the row.
+      await clickAt(31);
+      const where = () => page.evaluate(() => {
+        const a = document.activeElement;
+        const box = a && a.closest(".tl-lane-marks");
+        const r = a.getBoundingClientRect(), lanes = document.querySelector(".tl-lanes").getBoundingClientRect();
+        const cs = getComputedStyle(a);
+        return { lane: box ? box.dataset.lane : null, boxRole: box && box.getAttribute("role"), boxName: box && box.getAttribute("aria-label"),
+          role: a.getAttribute("role"), name: a.getAttribute("aria-label"), tab: a.tabIndex, step: a.dataset.stepId || null,
+          stops: box ? [...box.children].filter((m) => m.tabIndex === 0).length : null,
+          ring: { visible: a.matches(":focus-visible"), style: cs.outlineStyle, width: cs.outlineWidth, offset: cs.outlineOffset,
+            inside: r.left - 4 >= lanes.left - 1 && r.right + 4 <= lanes.right + 1 && r.top - 4 >= lanes.top - 1 && r.bottom + 4 <= lanes.bottom + 1 } };
+      });
+      const expected = await page.evaluate(() => {
+        const at = require("./views/flow-view-video.js").playheadMs();
+        const bands = [...document.querySelectorAll("#timeline .tl-step-band")]
+          .map((b) => ({ id: b.dataset.stepId, a: Number(b.dataset.startMs), b: Number(b.dataset.endMs) }))
+          .sort((x, y) => x.a - y.a);
+        const i = bands.findIndex((x) => x.a <= at && at <= x.b);
+        return { atClock: i >= 0 ? bands[i].id : null, third: i >= 0 && bands[i + 3] ? bands[i + 3].id : null };
+      });
+      await page.locator("#btn-zoom-in").focus();
+      await page.keyboard.press("Tab");
+      w2.tab1 = await where();
+      await page.keyboard.press("Tab");
+      w2.tab2 = await where();
+      for (let k = 0; k < 3; k++) await page.keyboard.press("ArrowRight");
+      w2.right3 = await where();
+      await page.keyboard.press("Enter");
+      await wait(400);
+      w2.opened3 = await page.evaluate(() => (document.getElementById("tp-editor") || { dataset: {} }).dataset.stepId || null);
+      w2.expected = expected;
+      // A zoom keeps the mark that had the focus.
+      await page.keyboard.press("+");
+      await wait(300);
+      w2.zoomKept = await where();
+      await page.keyboard.press("0");
+      await wait(300);
+      await page.keyboard.press("Tab");
+      w2.tab3 = await where();
+      await page.keyboard.press("End");
+      w2.end = await where();
+      await shot(page, "w2-lane-focus.png");
+      await page.keyboard.press("Enter");
+      await wait(400);
+      w2.shotTab = await page.evaluate(() => ({ tab: (document.querySelector("#tp-tabs .anno-tab.active") || { dataset: {} }).dataset.anno,
+        here: (document.querySelector("#screenshots-grid .thumb.tp-here-item") || { dataset: {} }).dataset.rel || null,
+        last: (() => { const s = require("./views/flow-view-screenshots.js").timelineScreenshots(); return s[s.length - 1].data.path; })() }));
+      // A press of the mouse on a mark does not give it the focus.
+      await page.locator("#timeline .tl-step-band").first().click({ timeout: T });
+      await wait(200);
+      w2.mouse = await page.evaluate(() => ({ onMark: !!(document.activeElement && document.activeElement.closest(".tl-lane-marks")) }));
+    } catch (e) { logActionError("lane W2", e); w2.err = String(e.message).split("\n")[0]; }
+    // Leave the view as found: the lanes as they were, the project of the
+    // checks after this.
+    await page.evaluate(() => {
+      const TL = require("./views/flow-view-timeline.js");
+      TL.setLaneToggle("steps", false);
+      TL.setLaneToggle("screenshots", false);
+      for (const k of ["steps", "screenshots"]) {
+        const cb = document.querySelector('#lanes-popup input[data-lane="' + k + '"]');
+        if (cb) cb.checked = false;
+      }
+    }).catch(() => {});
+    try { await open(SESSION); } catch (_) { /* the checks after this read SESSION */ }
+    const b = w2.band || {};
+    record("lane W2 (a): a recording with no screenshot keeps the slim band: \"No video linked\" with Attach video..., the stage collapsed (the side panel gets the space)",
+      !!(!w2.err && b.collapsedClass && !b.onScreen && b.videoHidden && b.line === "No video linked" && b.linkAffordance === "Attach video..." && b.paneH < b.sideH),
+      JSON.stringify(b));
+    const sc = (x) => x || {};
+    const inPane = (x) => !!(x && x.shown && x.shown.l >= x.pane.l && x.shown.r <= x.pane.r && x.shown.b <= x.pane.b && x.pane.b <= x.row.t);
+    record("lane W2 (b), item 1: the screen of a recording without a video follows the clock: before any moment it says to click the timeline, at 0:10 \"No screenshot before this moment.\", at 1:00 the screenshot taken at 0:49 with its line and its step, at 3:30 the one at 3:23, contained in the pane above the row; a missing file says \"The screenshot file is missing: shot_04.png\" in its place; the picture opens the gallery at it; Right moves the clock 5 s and the screen with it",
+      !!(!w2.err && sc(w2.opened).empty === "Click the timeline to see the screen at that moment." && sc(w2.opened).file === null &&
+        sc(w2.at10).empty === "No screenshot before this moment." && sc(w2.at10).file === null && sc(w2.at10).line === "" &&
+        sc(w2.at60).file === "shot_02.png" && sc(w2.at60).line === "Screenshot at 0:49" + (w2.step60 ? " · " + w2.step60 : "") && inPane(w2.at60) &&
+        sc(w2.at60).fit === "contain" &&
+        sc(w2.at210).file === "shot_04.png" && sc(w2.at210).line === "Screenshot at 3:23" + (w2.step210 ? " · " + w2.step210 : "") &&
+        sc(w2.missing).file === null && sc(w2.missing).empty === "The screenshot file is missing: shot_04.png" && /^Screenshot at 3:23/.test(sc(w2.missing).line) &&
+        sc(w2.gallery).ts === "0:49" && sc(w2.gallery).img === "shot_02.png" && w2.galleryClosed &&
+        sc(w2.right).moved === 5000 && sc(w2.right).file === "shot_02.png"),
+      JSON.stringify({ err: w2.err, opened: w2.opened, at10: w2.at10, at60: w2.at60, step60: w2.step60, at210: w2.at210, missing: w2.missing, gallery: w2.gallery, right: w2.right }));
+    const z = [w2.zoom1, w2.zoom2, w2.zoom3].map(sc);
+    record("lane W2 (c), item 6: on the Screenshots lane screenshots close together are one mark with their count (\"N screenshots from m:ss to m:ss. Click: show the first in the Screenshots tab.\"); at zoom 1 and zoomed in twice no mark covers another and the counts add up to the screenshots; zoomed in, a mark splits",
+      !!(!w2.err && z.every((m) => m.covers === 0 && m.sum === m.total && m.total === 10) && z[0].groups.length >= 1 &&
+        z[0].groups.every((g) => /^\d+\|\d+ screenshots from \d+:\d{2} to \d+:\d{2}\. Click: show the first in the Screenshots tab\.$/.test(g)) &&
+        z[2].marks > z[0].marks),
+      JSON.stringify({ zoom1: w2.zoom1, zoom2: w2.zoom2, zoom3: w2.zoom3 }));
+    const ring = (x) => !!(x && x.ring && x.ring.visible && x.ring.style === "solid" && x.ring.width === "2px" && x.ring.offset === "2px" && x.ring.inside);
+    record("lane W2 (d), item 5: after the row, Tab stops once on the Transactions lane, then on the Steps lane at the step at the clock's moment (a listbox named Steps, one mark in the Tab order); Right three times and Enter open the third step after it in the pane; a zoom keeps the mark that had the focus; Tab to the Screenshots lane, End, Enter: the Screenshots tab at the last screenshot; the focus ring shows (2 px, offset 2 px, inside the lanes); a press of the mouse on a mark does not take the focus",
+      !!(!w2.err && sc(w2.tab1).lane === "cases" && sc(w2.tab1).boxRole === "listbox" && sc(w2.tab1).boxName === "Transactions" &&
+        sc(w2.tab2).lane === "steps" && sc(w2.tab2).boxName === "Steps" && sc(w2.tab2).role === "option" && sc(w2.tab2).stops === 1 &&
+        !!sc(w2.tab2).name && w2.expected && w2.expected.atClock && sc(w2.tab2).step === w2.expected.atClock &&
+        sc(w2.right3).step === w2.expected.third && w2.opened3 === w2.expected.third && ring(w2.tab2) && ring(w2.right3) &&
+        sc(w2.zoomKept).step === w2.expected.third &&
+        sc(w2.tab3).lane === "screenshots" && sc(w2.end).lane === "screenshots" && ring(w2.end) &&
+        sc(w2.shotTab).tab === "screens" && sc(w2.shotTab).here === sc(w2.shotTab).last &&
+        sc(w2.mouse).onMark === false),
+      JSON.stringify({ tab1: w2.tab1, tab2: w2.tab2, right3: w2.right3, opened3: w2.opened3, expected: w2.expected, zoomKept: w2.zoomKept,
+        tab3: w2.tab3, end: w2.end, shotTab: w2.shotTab, mouse: w2.mouse }));
+    for (const d of [BAND, SCREEN]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) { /* temp */ } }
   }
 
   // --- Lane CC: a stretch left out of the analysis, on the Timeline --------

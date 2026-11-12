@@ -176,9 +176,57 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with what a right-click on the timeline offers at that moment (*Add a
   step here*, *Start a transaction here*, *Add note here...*), then the
   video's own entries under its name.
+- **The screen of a recording without a video.** Where the video would be,
+  a recording without one shows the screenshot taken last at or before the
+  clock's moment, as large as the pane allows, with one line under it
+  ("Screenshot at 1:42 · Enter the order"); before the first screenshot the
+  line says so, and a screenshot whose file is not in the project names the
+  file in its place. It follows the clock: a click on the timeline, a typed
+  time, a mark of a lane, and Left and Right (5 seconds, with Shift 10), as
+  they move a video. A click on the picture opens it in the gallery. The line
+  above it, "No video in this project.", keeps *Attach video...*; a
+  recording with no screenshot keeps the slim band.
+- **The speed.** The timeline's row has *1x*, *1.5x* and *2x* after the
+  clock while a video is attached ("How fast the video plays"). It holds
+  across the videos of a chain and the projects opened in the window, and is
+  kept on this computer.
+- **What is said, under the video.** While a transcript is placed on the
+  clock, a band under the video (or the screen of a recording without one)
+  shows the sentence being said: the speaker in bold, then the sentence, on
+  at most two lines, the whole of it in the tooltip; empty between two
+  sentences, keeping its height, and never over the picture. It is the
+  Transcript tab's sentence at this moment, so a stretch set aside shows
+  nothing. A click opens the Transcript tab at that sentence.
+- **I and O select a stretch.** On the Timeline, I puts the start of a
+  stretch at the clock's moment and O its end, also while the video plays:
+  with both, the stretch is selected as a Shift-drag selects it, the row
+  showing its times and its acts; O first, or O before the start, gives the
+  pair the right way round. Until O comes the start is a thin line on the
+  timeline, "Start of a stretch", and the row says "Stretch starts at 0:40.";
+  Escape clears it. Neither key asks anything or takes the focus. I and O at
+  one moment say "A stretch needs a start and an end at two moments."
+- **Each lane is one Tab stop.** After the row's controls, Tab stops once on
+  each lane with marks among Transactions, Steps, Transcript, Screenshots and
+  Notes, on the mark at the clock's moment (else the next one, else the
+  first). Left and Right go to the previous and the next mark, Home and End
+  to the first and the last, the timeline scrolling to show it; Enter does
+  what a click on the mark does. The mark shows the focus ring, offset from
+  it; a screen reader reads each lane as a list named after the lane and
+  each mark by its tooltip's first line. A press of the mouse on a mark does
+  not take the focus, so the arrow keys go on moving the video.
+- **Screenshots close together are one mark.** On the Screenshots lane,
+  screenshots whose marks would cover each other at this zoom are one mark
+  with their count, "3 screenshots from 1:40 to 1:46. Click: show the first
+  in the Screenshots tab."; zooming in splits it as the room allows.
 
 ### Changed
 
+- **The gallery owns its keys.** While the screenshot gallery is open,
+  Space, Left, Right and Escape are its own: the video and the clock do not
+  move behind it.
+- **Raw events open on a small window.** With *Raw events* open at 1024x720
+  the video and the pane above the timeline give way to the room left;
+  before, they lay over the timeline's row.
 - **A change to the transactions reaches the steps by itself, in a
   recording too.** A transaction added, moved, ended, renamed or deleted (on
   the timeline, in its header's *Starts at*, *Ends at*, *Rename* and *Delete

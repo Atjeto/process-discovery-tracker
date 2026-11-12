@@ -37,7 +37,8 @@ const {
   setVideoOverlay, positionPlayhead, videoStartTs, videoTimeToSessionTs,
   seekToTimestamp, jumpToStepInFlow,
 } = Video;
-const { renderScreenshots, openScreenshot } = require("./flow-view-screenshots.js");
+const Screens = require("./flow-view-screenshots.js");
+const { renderScreenshots, openScreenshot } = Screens;
 const FlowMarkers = require("./flow-view-markers.js");
 const { effectiveLabel } = FlowMarkers;
 const Timeline = require("./flow-view-timeline.js");
@@ -53,6 +54,7 @@ const { ipcErrorText } = require("../project-folder.js");
 const RO = require("../read-only.js");
 const Handoff = require("../handoff.js");
 const TimelineRow = require("../timeline-row.js");
+const StretchKeys = require("../stretch-keys.js");
 
 /* Injected by renderer.js -- cross-surface glue kept in the thin entry.
    Lazy wrappers so hoisting / load order does not matter. */
@@ -538,8 +540,9 @@ async function loadSessionIntoView(folder, opts) {
   _wireTimelineScrollPersist();
   restoreTimelineForCurrent();
   maybeAutoScrollToFirstCase();
-  // P1.1: clear any range selection from the previous session.
-  if (prevFolder !== folder) clearSelectionRange();
+  // P1.1: clear any range selection from the previous session (lane W2:
+  // and the start of a stretch I put).
+  if (prevFolder !== folder) { clearSelectionRange(); clearStretchKeys(); }
   installRangeSelection();
   // AD-22: a recording with no analysis, or one from an older version, is
   // analyzed as it opens, while the page stays readable. Once per folder in
@@ -845,6 +848,57 @@ function clearSelectionRange() {
   const ov = document.getElementById("tl-selection-overlay");
   if (ov) ov.remove();
 }
+
+/* Lane W2 (plan section 11.3 and 11.5): I and O select a stretch by the
+   keyboard, and while the video plays (renderer.js calls stretchKey on the
+   Timeline, not in a field, with no dialog or menu open): I puts its start
+   at the clock's moment, O its end; with both, the stretch is selected as a
+   Shift-drag selects it (the row shows its times and its acts). The pair is
+   stretch-keys.js's; the start alone is drawn on the timeline until O comes
+   (flow-view-timeline.js setStretchMark), Escape clears it, a click on the
+   timeline does not. Neither key asks anything or takes the focus; the
+   message area says where the stretch starts. */
+let _stretchPending = { startMs: null, endMs: null };
+function _setStretchPending(p) {
+  _stretchPending = p || { startMs: null, endMs: null };
+  Timeline.setStretchMark(_stretchPending);
+}
+function clearStretchKeys() { _setStretchPending(null); }
+
+/* The selected stretch drawn on the timeline, as a Shift-drag leaves it. */
+function _drawSelection(range) {
+  const host = document.getElementById("timeline");
+  const sp = Video.timelineSpan();
+  if (!host || !sp || !range) return;
+  let ov = document.getElementById("tl-selection-overlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.className = "tl-selection-overlay";
+    ov.id = "tl-selection-overlay";
+    host.appendChild(ov);
+  }
+  const span = Math.max(1, sp.endMs - sp.startMs);
+  ov.style.left = (((range.startMs - sp.startMs) / span) * 100) + "%";
+  ov.style.width = (((range.endMs - range.startMs) / span) * 100) + "%";
+}
+
+/* I or O at the clock's moment. Returns whether the key was the Timeline's. */
+function stretchKey(key) {
+  const sess = State.getSession();
+  if (!sess || !Video.timelineSpan() || State.getLevel() !== "flow") return false;
+  const r = StretchKeys.press(_stretchPending, key, Video.playheadMs());
+  _setStretchPending(r.pending);
+  const origin = recordingStartMs(sess);
+  if (r.range) {
+    State.setSelectionRange(r.range);
+    _drawSelection(r.range);
+  }
+  if (r.say === "starts") toast(StretchKeys.WORDS.starts(clock(r.pending.startMs - origin)), "info");
+  else if (r.say === "ends") toast(StretchKeys.WORDS.ends(clock(r.pending.endMs - origin)), "info");
+  else if (r.say === "same") toast(StretchKeys.WORDS.same, "info");
+  else if (r.say === "noMoment") toast(TimelineRow.NO_MOMENT, "info");
+  return true;
+}
 function installRangeSelection() {
   const host = document.getElementById("timeline");
   if (!host || host._pdtSelWired) return;
@@ -916,11 +970,15 @@ function installRangeSelection() {
     startX = null;
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || !State.getSelectionRange() || e.defaultPrevented) return;
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    const pending = StretchKeys.isPending(_stretchPending);
+    if (!pending && !State.getSelectionRange()) return;
     const tag = (e.target && e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select") return;
     const shown = (el) => !!el && el.getClientRects().length > 0;
-    if ([...document.querySelectorAll('.modal-backdrop, .lanes-popup, .project-menu-popup, #tl-ctx-menu')].some(shown)) return;
+    if ([...document.querySelectorAll('.modal-backdrop, .lanes-popup, .project-menu-popup, #tl-ctx-menu, #screenshot-gallery')].some(shown)) return;
+    // Lane W2: the start of a stretch I put goes first, then the stretch.
+    if (pending) { clearStretchKeys(); e.preventDefault(); return; }
     clearSelectionRange();
   });
 }
@@ -1003,6 +1061,10 @@ function syncTimelineRow() {
     if (icons[0]) icons[0].style.display = playing ? "none" : "";
     if (icons[1]) icons[1].style.display = playing ? "" : "none";
   }
+  // Lane W2: the speed, with a video only.
+  const speed = document.getElementById("tl-speed");
+  _show(speed, st.speed);
+  if (speed && speed.title !== words.speed) speed.title = words.speed;
   // The clock, or its field while a time is typed.
   const clockBtn = document.getElementById("btn-tl-clock");
   const field = document.getElementById("tl-clock-field");
@@ -1117,6 +1179,25 @@ function addNoteHere() {
   AnalystUI.addNote(null, iso);
 }
 
+/* Lane W2: the speed the video plays at (1x, 1.5x, 2x), kept on this
+   computer (localStorage, timeline-row.js SPEED_KEY). It is the player's
+   default rate too, so it holds across the videos of a chain and a project
+   opened in the same window (a file loaded takes the default rate); the
+   browser keeps the pitch. */
+function _readSpeed() {
+  try { return TimelineRow.speedOf(localStorage.getItem(TimelineRow.SPEED_KEY)); }
+  catch (_) { return 1; }
+}
+function setSpeed(rate) {
+  const r = TimelineRow.speedOf(rate);
+  const video = document.getElementById("video");
+  if (video) { video.defaultPlaybackRate = r; video.playbackRate = r; }
+  const sel = document.getElementById("tl-speed");
+  if (sel && Number(sel.value) !== r) sel.value = String(r);
+  try { localStorage.setItem(TimelineRow.SPEED_KEY, String(r)); } catch (_) { /* kept for this window only */ }
+  return r;
+}
+
 (function wireTimelineRow() {
   const row = document.getElementById("tl-row");
   if (!row) return;
@@ -1147,6 +1228,20 @@ function addNoteHere() {
   on("tl-selection-exclude", queueExcludeRange);
   on("tl-selection-case", queueCaseFromSelection);
   on("tl-selection-clear", clearSelectionRange);
+  // Lane W2: the speed. A choice made with the mouse gives the focus back
+  // (Space goes on playing); the keyboard keeps it on the select.
+  const speed = document.getElementById("tl-speed");
+  if (speed) {
+    setSpeed(_readSpeed());
+    let byPointer = false;
+    speed.addEventListener("mousedown", () => { byPointer = true; });
+    speed.addEventListener("keydown", () => { byPointer = false; });
+    speed.addEventListener("change", () => {
+      setSpeed(speed.value);
+      if (byPointer) speed.blur();
+      byPointer = false;
+    });
+  }
   // A click on the video plays or pauses it (it has no controls of its own;
   // while a sync shows them, they do).
   if (video) {
@@ -1157,6 +1252,10 @@ function addNoteHere() {
     for (const evt of ["play", "pause", "timeupdate", "seeked", "loadedmetadata", "durationchange", "emptied"]) {
       video.addEventListener(evt, syncTimelineRow);
     }
+    // A file loaded plays at the default rate, the speed chosen.
+    video.addEventListener("loadedmetadata", () => {
+      if (video.playbackRate !== video.defaultPlaybackRate) video.playbackRate = video.defaultPlaybackRate;
+    });
   }
   for (const topic of ["session", "level", "markers", "timeline", "selection"]) State.subscribe(topic, syncTimelineRow);
 })();
@@ -1641,7 +1740,12 @@ function initFlowView(deps) {
   addStepAtTimestamp     = deps.addStepAtTimestamp     || (async () => {});
   // Hand the video module the session (re)loader it calls after a re-sync,
   // injected rather than require()d to avoid a flow-view <-> video cycle.
-  Video.initVideo({ loadSessionIntoView, onPlayhead: syncTimelineRow });
+  // Lane W2: where no video shows, a recording shows its screen from its
+  // screenshots; the screen and the caption under it follow the clock.
+  Video.initVideo({ loadSessionIntoView,
+    onPlayhead: () => { syncTimelineRow(); Screens.syncScreen(); Transcript.syncCaption(); },
+    hasScreen: () => Screens.hasScreen(),
+    onPane: () => { Screens.syncScreen(); Transcript.syncCaption(); } });
   // Hand the timeline module the flow-view-resident glue its lanes call
   // (the two context menus, Include again), injected to keep the
   // timeline <-> flow-view graph acyclic.
@@ -1672,6 +1776,8 @@ module.exports = {
   showHereAt,
   // Lane SCREEN: the timeline's first row.
   syncTimelineRow,
+  // Lane W2: I and O select a stretch.
+  stretchKey,
   // The Overview's marker-problem fixes (overview-view.js).
   queueSyntheticMarker, queueMarkerDelete,
   // Lane FX3: the Raw events drawer's rule (renderer.js applyLevel), and

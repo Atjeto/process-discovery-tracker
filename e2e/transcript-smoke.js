@@ -185,7 +185,16 @@ const WANT_OFFSET = -30000;
      (n) a stretch put aside: its sentences are not listed, one row says
          "Not part of the process: 0:08 to 0:16" with Include again, which
          brings them back; read only, reading and searching work and no act
-         is offered. */
+         is offered;
+     (o) lane W2: the speed at 2x runs the clock about twice as fast as real
+         time; the caption under the video shows each sentence as it is said
+         (the speaker in bold, 14 px, two lines at most) and nothing between
+         two sentences, keeping its height; the video, the caption and the
+         row do not overlap; a click on the caption opens the Transcript tab
+         at its sentence; I at 0:05 and O at 0:12 while the video plays
+         select "0:05 to 0:12 · 7s" with its acts, the video playing on and
+         nothing asked; I and O at one moment say why, Escape clears the
+         start. */
 const LANE_E_VIDEO = path.join(os.tmpdir(), "pdt-e2e-synthetic-32s-v1.webm");
 const LANE_E_LINES = [
   [1, "Maria Keller", "So this is how an order comes in."], [3, "Maria Keller", "I open the shared mailbox first."],
@@ -439,6 +448,105 @@ async function laneE() {
     record("(n) lane E, E3 and E4: a stretch put aside is one row, \"Not part of the process: 0:08 to 0:16\", in place of its sentences, with Include again, which brings them back; read only, the list and its search stay and no act is offered",
       ok, JSON.stringify({ err, n }));
     if (!ok) await shot(page, "fail-transcript-lanee-aside.png");
+  }
+
+  // (o) Lane W2: the speed, the caption under the video, I and O.
+  {
+    const o = {};
+    let err = null;
+    const box = (id) => page.evaluate((i) => { const b = document.getElementById(i).getBoundingClientRect();
+      return { t: Math.round(b.top), b: Math.round(b.bottom), l: Math.round(b.left), r: Math.round(b.right), h: Math.round(b.height) }; }, id);
+    try {
+      await page.mouse.move(5, 5);
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+      // The speed: 2x, the clock twice as fast over a second of real time.
+      o.speedShown = await page.evaluate(() => { const s = document.getElementById("tl-speed"); return !s.hidden && s.getClientRects().length > 0; });
+      await page.selectOption("#tl-speed", "2");
+      await page.evaluate((t) => require("./views/flow-view-video.js").seekClock(t, false), LANE_E_T0 + 500);
+      await wait(400);
+      // The caption, sampled every frame while the video plays across the
+      // first sentences (1 s to 2.6 s, 3 s to 4.6 s).
+      await page.evaluate(() => {
+        window.__w2caps = [];
+        const say = document.getElementById("video-caption-say");
+        const band = document.getElementById("video-caption");
+        const tick = () => {
+          window.__w2caps.push({ text: say.hidden ? "" : say.textContent, h: Math.round(band.getBoundingClientRect().height) });
+          if (window.__w2capOn) requestAnimationFrame(tick);
+        };
+        window.__w2capOn = true;
+        requestAnimationFrame(tick);
+      });
+      await page.evaluate(() => document.getElementById("video").play());
+      await page.waitForFunction(() => require("./views/flow-view-video.js").playheadMs() > Date.parse("2026-11-10T09:00:01.200Z"), null, { timeout: T, polling: 20 });
+      const r1 = await page.evaluate(() => ({ at: require("./views/flow-view-video.js").playheadMs(), now: performance.now() }));
+      await wait(1000);
+      const r2 = await page.evaluate(() => ({ at: require("./views/flow-view-video.js").playheadMs(), now: performance.now() }));
+      o.ratio = Math.round(((r2.at - r1.at) / (r2.now - r1.now)) * 100) / 100;
+      await page.waitForFunction(() => require("./views/flow-view-video.js").playheadMs() > Date.parse("2026-11-10T09:00:05.300Z"), null, { timeout: T, polling: 20 });
+      await page.evaluate(() => { document.getElementById("video").pause(); window.__w2capOn = false; });
+      const caps = await page.evaluate(() => window.__w2caps);
+      o.caps = caps.map((c) => c.text).filter((c, i, a) => i === 0 || c !== a[i - 1]);
+      o.heights = [...new Set(caps.map((c) => c.h))];
+      await page.selectOption("#tl-speed", "1");
+      // The caption's look, and what it does: the Transcript tab at its sentence.
+      await page.evaluate((t) => require("./views/flow-view-video.js").seekClock(t, false), LANE_E_T0 + 1500);
+      await wait(400);
+      o.look = await page.evaluate(() => { const s = document.getElementById("video-caption-say");
+        return { size: getComputedStyle(s.querySelector(".cap-lines")).fontSize, bold: Number(getComputedStyle(s.querySelector(".cap-speaker")).fontWeight),
+          title: s.title, clamp: getComputedStyle(s.querySelector(".cap-lines")).webkitLineClamp }; });
+      o.geo = { video: await box("video"), caption: await box("video-caption"), row: await box("tl-row") };
+      await page.locator("#tp-tab-steps").click({ timeout: T });
+      await page.locator("#video-caption-say").click({ timeout: T });
+      await wait(300);
+      o.clicked = await page.evaluate(() => ({ tab: document.querySelector("#tp-tabs .anno-tab.active").dataset.anno,
+        current: (document.querySelector(".trt-row.current .tr-text") || {}).textContent }));
+      // I and O while the video plays: I at 0:05, O at 0:12.
+      await page.evaluate((t) => require("./views/flow-view-video.js").seekClock(t, false), LANE_E_T0 + 4500);
+      await page.mouse.move(5, 5);
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); document.getElementById("video").play(); });
+      await page.waitForFunction(() => require("./views/flow-view-video.js").playheadMs() >= Date.parse("2026-11-10T09:00:05.050Z"), null, { timeout: T, polling: 10 });
+      await page.keyboard.press("i");
+      await wait(120);
+      o.afterI = await page.evaluate(() => ({ message: ((document.querySelector("#toast .toast-text") || document.getElementById("toast") || {}).textContent || "").trim(),
+        mark: ((document.getElementById("tl-stretch-mark") || {}).textContent || ""), playing: !document.getElementById("video").paused,
+        focus: document.activeElement === document.body, asked: [...document.querySelectorAll(".modal-backdrop")].some((m) => getComputedStyle(m).display !== "none") }));
+      await page.waitForFunction(() => require("./views/flow-view-video.js").playheadMs() >= Date.parse("2026-11-10T09:00:12.050Z"), null, { timeout: T, polling: 10 });
+      await page.keyboard.press("o");
+      await wait(150);
+      o.afterO = await page.evaluate(() => ({ times: document.getElementById("tl-selection-times").textContent,
+        acts: [...document.querySelectorAll("#tl-selection button")].filter((b) => !b.hidden).map((b) => b.textContent.trim()),
+        playing: !document.getElementById("video").paused, mark: !!document.getElementById("tl-stretch-mark"),
+        focus: document.activeElement === document.body }));
+      await page.evaluate(() => document.getElementById("video").pause());
+      await shot(page, "w2-transcript-io.png");
+      // I and O at one moment: no stretch, and why; Escape clears the start.
+      await page.click("#tl-selection-clear");
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+      await page.keyboard.press("i");
+      await page.keyboard.press("o");
+      await wait(120);
+      o.same = await page.evaluate(() => ({ message: ((document.querySelector("#toast .toast-text") || document.getElementById("toast") || {}).textContent || "").trim(),
+        selected: !!require("./state.js").getSelectionRange(), mark: !!document.getElementById("tl-stretch-mark") }));
+      await page.keyboard.press("Escape");
+      o.escaped = await page.evaluate(() => !document.getElementById("tl-stretch-mark"));
+    } catch (e) { err = errText(e); }
+    const g = o.geo || {};
+    const ok = !err && o.speedShown && o.ratio >= 1.7 && o.ratio <= 2.3 &&
+      JSON.stringify(o.caps).includes(JSON.stringify(["Maria Keller So this is how an order comes in.", "", "Maria Keller I open the shared mailbox first."]).slice(1, -1)) &&
+      o.heights.length === 1 && o.heights[0] > 0 &&
+      o.look.size === "14px" && o.look.bold >= 600 && o.look.clamp === "2" &&
+      o.look.title === "Maria Keller: So this is how an order comes in.\nClick: show it in the Transcript tab." &&
+      g.video.b <= g.caption.t && g.caption.b <= g.row.t && g.caption.h > 0 &&
+      o.clicked.tab === "transcript" && o.clicked.current === "So this is how an order comes in." &&
+      o.afterI.message === "Stretch starts at 0:05." && o.afterI.mark === "Start of a stretch" && o.afterI.playing && o.afterI.focus && !o.afterI.asked &&
+      o.afterO.times === "0:05 to 0:12 · 7s" &&
+      JSON.stringify(o.afterO.acts) === JSON.stringify(["Not part of the process", "Make it a transaction", "Clear selection"]) &&
+      o.afterO.playing && !o.afterO.mark && o.afterO.focus &&
+      o.same.message === "A stretch needs a start and an end at two moments." && !o.same.selected && o.same.mark && o.escaped;
+    record("(o) lane W2: the speed at 2x runs the clock about twice as fast; the caption under the video shows each sentence in turn, the speaker in bold, 14 px, on two lines at most, and is empty between them, its height kept; video, caption and row do not overlap; a click on it opens the Transcript tab at its sentence; I at 0:05 and O at 0:12, playing, select \"0:05 to 0:12 · 7s\" with its acts, the video playing on, nothing asked and no focus taken; I and O at one moment say why, and Escape clears the start",
+      ok, JSON.stringify({ err, o }));
+    if (!ok) await shot(page, "fail-transcript-w2.png");
   }
 
   record("lane E: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));

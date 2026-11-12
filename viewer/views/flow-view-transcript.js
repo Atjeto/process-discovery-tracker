@@ -90,6 +90,12 @@ function transcriptLane(env) {
       rail.style.top = top + "px";
       rail.style.height = ctx.slot.height + "px";
       host.appendChild(rail);
+      // Lane W2: the sentences are the lane's marks, one Tab stop
+      // (flow-view-timeline.js gives the box its role and its keys).
+      const box = document.createElement("div");
+      box.className = "tl-lane-marks";
+      box.dataset.lane = "transcript";
+      host.appendChild(box);
       for (const part of parts) {
         for (const s of part.synced ? part.sentences : []) {
           // Only what was said while the recording ran is drawn.
@@ -104,6 +110,9 @@ function transcriptLane(env) {
           block.style.top = (top + LABEL_ROW_H) + "px";
           block.style.height = BLOCK_H + "px";
           block.title = _sentenceTitle(s, recordingStartMs(State.getSession()));
+          block.dataset.startMs = String(s.startMs);
+          if (Number.isFinite(s.endMs)) block.dataset.endMs = String(s.endMs);
+          block.dataset.mark = "t:" + part.file + "|" + s.id;
           block.addEventListener("click", (e) => {
             e.stopPropagation();
             Video.seekToTimestamp(new Date(s.startMs).toISOString());
@@ -111,7 +120,7 @@ function transcriptLane(env) {
             // (it follows the clock; lazy: the pane requires this module).
             require("./timeline-pane.js").showTab("transcript");
           });
-          host.appendChild(block);
+          box.appendChild(block);
         }
         const label = document.createElement("div");
         label.className = "tl-tr-label";
@@ -425,8 +434,53 @@ function onSessionLoaded() {
 let addStepAt = async () => {};
 let includeAgain = async () => {};
 
-const _tab = { key: null, rows: [], starts: [], byStart: [], cur: -1, hover: false,
+const _tab = { key: null, rows: [], starts: [], sentences: [], byStart: [], cur: -1, hover: false,
   query: "", speaker: "", marked: new Set(), stretches: [] };
+
+/* ---- The caption under the video (lane W2, plan section 11.1) ----------------
+   While a transcript is placed on the clock, a band under the picture (the
+   video, or the screen of a recording without one) shows what is said at the
+   clock's moment: the speaker in bold, then the sentence, on at most two
+   lines, the whole of it in the tooltip. It is the Transcript tab's sentence
+   at this moment while it is being said (transcript-list.js sayingAt, over
+   the tab's own rows: a sentence in a stretch put aside is not there), so
+   the band is empty between two sentences, keeping its height. It follows
+   the clock, every frame while the video plays. A click opens the Transcript
+   tab at that sentence. */
+const _cap = { cur: null, raf: 0 };
+const CAPTION_CLICK = "Click: show it in the Transcript tab.";
+
+function syncCaption() {
+  const band = document.getElementById("video-caption");
+  const say = document.getElementById("video-caption-say");
+  const pane = document.getElementById("video-pane");
+  if (!band || !say || !pane) return;
+  const video = document.getElementById("video");
+  const player = !!video && !!video.src && video.style.display !== "none";
+  const shown = _tab.starts.length > 0 && (player || pane.classList.contains("on-screen"));
+  if (band.hidden !== !shown) band.hidden = !shown;
+  const i = shown ? TL.sayingAt(_tab.sentences, _tab.starts, Video.playheadMs(), _tab.stretches) : -1;
+  const s = i >= 0 ? _tab.sentences[i] : null;
+  if (s === _cap.cur) return;
+  _cap.cur = s;
+  say.hidden = !s;
+  const who = say.querySelector(".cap-speaker"), text = say.querySelector(".cap-text");
+  if (!s) { who.textContent = ""; text.textContent = ""; say.removeAttribute("title"); return; }
+  const line = TM.normalizeSpace(s.text);
+  who.textContent = s.speaker ? s.speaker + " " : "";
+  who.hidden = !s.speaker;
+  text.textContent = line;
+  say.title = (s.speaker ? s.speaker + ": " : "") + line + "\n" + CAPTION_CLICK;
+}
+
+/* Every frame while the video plays: a sentence of a second shows its whole
+   second, and the band empties as it ends. */
+function _captionLoop() {
+  _cap.raf = 0;
+  syncCaption();
+  const video = document.getElementById("video");
+  if (video && !video.paused && !video.ended) _cap.raf = requestAnimationFrame(_captionLoop);
+}
 
 function _tabHost() { return document.getElementById("transcript-tab"); }
 function _tabShown() {
@@ -464,9 +518,12 @@ function renderTab(force) {
   _tab.key = key;
   _tab.rows = [];
   _tab.starts = [];
+  _tab.sentences = [];
   _tab.cur = -1;
+  _cap.cur = null;
   _tab.marked = new Set();
   _closeTabMenu();
+  syncCaption();
   if (!sess) { host.innerHTML = ""; return; }
   const editable = !RO.isReadOnly(sess);
   const origin = recordingStartMs(sess);
@@ -533,10 +590,12 @@ function renderTab(force) {
   _tab.rows = sentences.map((s, i) => ({ s, el: els[i], text: els[i].querySelector(".tr-text"),
     low: TM.normalizeSpace(s.text).toLowerCase(), shown: true }));
   _tab.starts = sentences.map((s) => s.startMs);
+  _tab.sentences = sentences;
   _tab.total = model.total;
   _wireTabList(host, list, editable);
   _applyFilter();
   tickTab(true);
+  syncCaption();
 }
 
 function _wireTabNotes(host) {
@@ -602,8 +661,7 @@ function _applyFilter() {
 function tickTab(jump) {
   if (!_tab.rows.length || !_tabShown()) return;
   const ms = Video.playheadMs();
-  let i = TL.currentIndex(_tab.starts, ms);
-  if (i >= 0 && LeftOut.inside(_tab.stretches, ms)) i = -1;
+  const i = TL.sentenceIndexAt(_tab.starts, ms, _tab.stretches);
   if (i !== _tab.cur) {
     const old = _tab.rows[_tab.cur];
     if (old) { old.el.classList.remove("current"); old.el.removeAttribute("aria-current"); }
@@ -722,12 +780,21 @@ if ($("#btn-sync-video")) $("#btn-sync-video").addEventListener("click", () => c
   if (video) {
     video.addEventListener("timeupdate", () => tickTab());
     video.addEventListener("seeked", () => tickTab());
+    // Lane W2: the caption follows the clock.
+    for (const ev of ["timeupdate", "seeked", "pause", "emptied", "loadedmetadata"]) video.addEventListener(ev, syncCaption);
+    video.addEventListener("play", () => { if (!_cap.raf) _cap.raf = requestAnimationFrame(_captionLoop); });
   }
   State.subscribe("timeline", () => renderTab());
+  // A click on the caption: the Transcript tab at that sentence (the tab
+  // marks the sentence at this moment and puts it in view).
+  const say = document.getElementById("video-caption-say");
+  if (say) say.addEventListener("click", () => require("./timeline-pane.js").showTab("transcript"));
 })();
 
 module.exports = {
   initTranscript, onSessionLoaded, transcriptLane, startTranscriptSync, cancelTranscriptSync,
   // Lane E (E3): the Transcript tab beside the video.
   renderTab, refreshTab: () => renderTab(), tickTab,
+  // Lane W2: the caption under the video.
+  syncCaption,
 };

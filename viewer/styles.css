@@ -538,6 +538,55 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   text-align: left; background-image: none; color: var(--fg-3);
 }
 .video-pane.no-recording .nv-icon { font-size: 14px; }
+/* Lane W2 (plan section 11.1): a recording without a video, with
+   screenshots, shows its screen at the clock's moment where the video would
+   be (flow-view-screenshots.js syncScreen): the line "No video in this
+   project." with Attach video... above, the screenshot as large as the pane
+   allows (contained, never cropped or stretched), one line under it. The
+   pane keeps the video's size and the stage stays side by side. */
+.video-pane.on-screen .no-video {
+  flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; gap: 10px; padding: 6px 12px;
+  justify-content: flex-start; align-items: center; text-align: left; background-image: none;
+  font-size: 12px; background: rgba(0, 0, 0, 0.35); }
+.video-pane.on-screen .nv-icon { display: none; }
+/* The stage may be shorter than the video's and the pane's least heights
+   (Raw events open at 1024x720, lane W2's measure): on the Timeline both
+   give way to the stage, the picture shrinking and the pane's list
+   scrolling, never over the timeline's row. */
+.view.on-timeline .lower-workspace:not(.no-recording) .video-pane,
+.view.on-timeline .lower-workspace:not(.no-recording) .annotations-pane { min-height: 0; }
+.video-pane.on-screen .nv-text { color: #c0c4d0; }
+.video-pane.on-screen .nv-link { color: #9ec1ff; font-size: 12px; }
+.video-screen { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.video-screen[hidden] { display: none; }
+.screen-pic { flex: 1 1 auto; min-height: 0; padding: 0; margin: 0; border: 0; border-radius: 0;
+  background: #000; cursor: zoom-in; display: flex; align-items: center; justify-content: center; }
+.screen-pic:hover:not(:disabled) { background: #000; border-color: transparent; }
+.screen-pic:active:not(:disabled) { transform: none; }
+.screen-pic:focus-visible { outline-offset: -3px; }
+.screen-pic[hidden] { display: none; }
+.screen-pic img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.screen-empty { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px; text-align: center; font-size: 12px; color: #c0c4d0; }
+.screen-empty[hidden] { display: none; }
+.screen-line { flex: 0 0 auto; padding: 5px 12px; font-size: 12px; color: #c0c4d0; background: rgba(0, 0, 0, 0.35);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen-line[hidden] { display: none; }
+/* Lane W2: what is said, under the picture (never over it): the speaker in
+   bold, then the sentence, on at most two lines of 14 px text cut with an
+   ellipsis. Its height stays while nothing is said, so the picture does not
+   jump; the picture gives way to it. */
+.video-caption { flex: 0 0 auto; height: 52px; padding: 6px 12px; box-sizing: border-box;
+  background: #000; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.video-caption[hidden], .video-pane.no-recording .video-caption { display: none; }
+.cap-say { display: block; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; border-radius: 0;
+  background: transparent; color: #f2f3f7; text-align: left; font-size: 14px; line-height: 20px; cursor: pointer; }
+.cap-say:hover:not(:disabled) { background: transparent; border-color: transparent; color: #fff; }
+.cap-say:active:not(:disabled) { transform: none; }
+.cap-say[hidden] { display: none; }
+.cap-lines { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.cap-speaker { font-weight: 700; }
+.cap-speaker[hidden] { display: none; }
 /* Under the video's header bar: at the bottom it covered the player's own
    controls (V2 item 8). */
 .video-overlay { position: absolute; top: 46px; left: 8px; padding: 4px 10px;
@@ -592,6 +641,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   text-align: center; background: transparent; border-color: transparent; }
 .tl-clock:hover:not(:disabled) { background: var(--bg-3); }
 .tl-clock-field { width: 104px; font-family: var(--font-mono); font-size: 12px; padding: 5px 8px; }
+/* Lane W2: the speed, a field's edge and the row's text size. */
+.tl-speed { height: 28px; background: var(--bg-3); color: var(--fg); border: 1px solid var(--field-border);
+  border-radius: var(--radius-sm); padding: 0 4px; font-family: inherit; font-size: 12px; cursor: pointer; }
 .tl-sep { width: 1px; height: 22px; background: var(--rule); margin: 0 4px; }
 .tl-selection { display: inline-flex; align-items: center; gap: 6px; }
 .tl-selection-times { font-family: var(--font-mono); font-size: 12px; color: var(--fg); padding: 0 4px; }
@@ -2059,6 +2111,11 @@ button.danger:disabled {
   transition: transform 0.12s, box-shadow 0.12s;
 }
 .tl-screenshot svg { width: 10px; height: 10px; }
+/* Lane W2: screenshots too close to tell apart, one mark with their count
+   (flow-view-timeline.js _drawShotMarks, shot-groups.js: as wide as the
+   count needs). */
+.tl-screenshot.tl-shot-group { font-size: 12px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+  box-sizing: border-box; padding: 0 2px; }
 /* Lane FX2: a screenshot the analyst added (a frame of the video on a step). */
 .tl-screenshot.tl-screenshot-added { background: var(--accent); color: var(--accent-text); }
 .tl-screenshot:hover {
@@ -2243,6 +2300,22 @@ button.danger:disabled {
 .tl-step-band.tl-step-selected {
   outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 600;
 }
+/* Lane W2: a lane is one Tab stop (flow-view-timeline.js _wireLaneMarks). Its
+   box of marks takes no room of its own, so the pointer reaches the
+   timeline around the marks; the mark the keyboard is on shows the app's
+   focus ring, offset from the mark (never a colour alone), above its
+   neighbours. */
+.tl-lane-marks { position: absolute; left: 0; top: 0; width: 100%; height: 0; }
+.tl-lane-marks > [role="option"]:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; z-index: 7; }
+/* Lane W2: the start of a stretch I put, until O (or its end, for an O
+   first): a thin line through the lanes with its words at the top; the
+   pointer goes through it. */
+.tl-stretch-mark { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed var(--accent);
+  pointer-events: none; z-index: 6; }
+.tl-stretch-mark-label { position: absolute; top: 2px; left: 4px; padding: 0 4px; white-space: nowrap;
+  font-size: 12px; line-height: 16px; color: var(--fg); background: var(--bg-2); border: 1px solid var(--accent);
+  border-radius: 3px; }
+.tl-stretch-mark.end .tl-stretch-mark-label { left: auto; right: 4px; }
 
 /* ===== Range selection on timeline (P1.1) ========================= */
 .tl-selection-overlay {

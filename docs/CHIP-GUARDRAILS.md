@@ -350,7 +350,10 @@ the focus with `document.activeElement` against it. A menu's button carries
 - The first row `#tl-row` (`.timeline-header`), in Tab order: `#btn-tl-play`
   (only with a video; `aria-label` "Play" or "Pause"), the clock
   `#btn-tl-clock` ("0:05 / 0:31"; a click shows the field `#tl-clock-field`,
-  wait for its focus), `#btn-add-step` (Add step, only with a video;
+  wait for its focus), lane W2: the speed `select#tl-speed` (only with a
+  video; values `1`, `1.5`, `2`, `page.selectOption`; kept in
+  `localStorage["pdt.playbackRate"]`, the video's `defaultPlaybackRate`
+  too), `#btn-add-step` (Add step, only with a video;
   `.primary` in a project without a recording), `#btn-tl-transaction`
   (Start transaction or End transaction, `data-kind`), `#btn-tl-note` (Add
   note); these three carry `aria-disabled="true"` without a moment (click
@@ -449,7 +452,21 @@ the focus with `document.activeElement` against it. A menu's button carries
   stretch left out "Include again", "Go to its start"). A Shift-drag
   range shows in the row (`#tl-selection`, above). A
   Shift-drag starts only on the timeline's own background: find a point
-  where `document.elementFromPoint(x, y) === #timeline`.
+  where `document.elementFromPoint(x, y) === #timeline`. Lane W2: the keys
+  I and O select a stretch too (`page.keyboard.press("i")` with the focus
+  on the page's body; `flow-view.js` `stretchKey`); a start alone is
+  `#tl-stretch-mark` ("Start of a stretch") until O, Escape clears it.
+- Lane W2, a lane is one Tab stop: the Transactions, Steps, Transcript,
+  Screenshots and Notes lanes draw their marks into
+  `#timeline .tl-lane-marks[data-lane="cases"|"steps"|"transcript"|"screenshots"|"notes"]`
+  (`role="listbox"`, `aria-label` the lane's name; no height of its own),
+  each mark `role="option"` with `aria-label` (its tooltip's first line),
+  `data-mark` (its key) and `data-start-ms`, one of them `tabindex="0"`.
+  Reach a lane with Tab from `#btn-zoom-in`; Left, Right, Home and End
+  move, Enter clicks. A mouse press on a mark does not focus it. Screenshots
+  close together are one `.tl-screenshot.tl-shot-group` (its count as its
+  text); every screenshot mark carries `data-count` (sum them for the
+  number of screenshots).
 - The stretches left out of the analysis (lane CC): `.tl-left-out` (lane
   LANES: through every lane from the Transactions lane down, first in
   `#timeline`, under the marks; `data-start`, `data-end` the
@@ -465,7 +482,17 @@ the focus with `document.activeElement` against it. A menu's button carries
   `#btn-sync-video` (only with a video), `#btn-video-remove` (Remove video,
   only for a video the analyst attached), the sync card `#video-sync-card`
   (`.vs-mark`, `.vs-cancel`; the transcript's is `#transcript-sync-card`),
-  `#btn-video-expand`, `#btn-video-fullscreen`.
+  `#btn-video-expand`, `#btn-video-fullscreen`. Lane W2: a recording
+  without a video, with screenshots, shows its screen (`#video-pane.on-screen`,
+  not `.no-recording`; `#no-video .nv-text` "No video in this project."):
+  `#video-screen` with `#video-screen-pic` (a button; `data-rel` the file,
+  its `img#video-screen-img`; hidden when there is no picture),
+  `#video-screen-empty` (the line in the picture's place) and
+  `#video-screen-line` ("Screenshot at 1:42 · <step>"); a click on the
+  picture opens `#screenshot-gallery`. With no screenshot it is the slim
+  band as before. While a transcript is placed, `#video-caption` (under the
+  picture) holds `#video-caption-say` (hidden while nothing is said;
+  `.cap-speaker`, `.cap-text`; a click opens the Transcript tab).
 - The pane beside the video (lane PANE, `#timeline-pane`,
   `views/timeline-pane.js`): the tablist `#tp-tabs` (`.short` when the
   counts drop) of `.anno-tab[role=tab]` `#tp-tab-steps|transcript|screens|notes|files`

@@ -47,6 +47,35 @@ test("currentIndex: the last sentence started at or before the moment, by binary
   assert.equal(TL.currentIndex([], 10), -1);
 });
 
+test("sentenceIndexAt: the tab's sentence at this moment, none inside a stretch put aside", () => {
+  const starts = [10, 20, 35];
+  const aside = [{ startMs: 30, endMs: 40 }];
+  // A positive control: outside the stretch, the tab's currentIndex.
+  assert.equal(TL.sentenceIndexAt(starts, 25, aside), 1);
+  assert.equal(TL.sentenceIndexAt(starts, 32, aside), -1);
+  assert.equal(TL.sentenceIndexAt(starts, 41, aside), 2);
+  assert.equal(TL.sentenceIndexAt(starts, 5, []), -1);
+});
+
+test("sayingAt: the caption shows the tab's sentence while it is said, and nothing between two sentences", () => {
+  const sentences = [say("a", 1, "Ana", "So this is how"), say("b", 5, "Ben", "Which mailbox?")];
+  const starts = sentences.map((x) => x.startMs);
+  // A positive control: inside the first sentence (1 s to 3 s).
+  assert.equal(TL.sayingAt(sentences, starts, T0 + 2000, []), 0);
+  // Between them (3 s to 5 s): none, though the tab still marks the first.
+  assert.equal(TL.sayingAt(sentences, starts, T0 + 4000, []), -1);
+  assert.equal(TL.sentenceIndexAt(starts, T0 + 4000, []), 0);
+  // At a sentence's end: over; at the next one's start: that one.
+  assert.equal(TL.sayingAt(sentences, starts, T0 + 3000, []), -1);
+  assert.equal(TL.sayingAt(sentences, starts, T0 + 5000, []), 1);
+  // Before the first, and inside a stretch put aside: none.
+  assert.equal(TL.sayingAt(sentences, starts, T0, []), -1);
+  assert.equal(TL.sayingAt(sentences, starts, T0 + 2000, [{ startMs: T0 + 1500, endMs: T0 + 2500 }]), -1);
+  // A sentence without an end shows until the next one starts.
+  const open = [Object.assign({}, sentences[0], { endMs: null }), sentences[1]];
+  assert.equal(TL.sayingAt(open, starts, T0 + 4000, []), 0);
+});
+
 test("shows, markedHtml and countText: the search and the speaker", () => {
   const s = { speaker: "Ana", text: "Check  the INVOICE, then the invoice <total>" };
   const q = TL.queryOf("  Invoice ");

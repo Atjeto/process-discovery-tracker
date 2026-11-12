@@ -45,6 +45,9 @@ const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.j
 const { videoLane: makeVideoLane } = require("./video-lane.js");
 const { moveMarker, insertMarker } = require("./flow-view-markers.js");
 const { SNAP_PX, MIN_SPAN_MS, snapMs, markerDragBounds, stepSide, stepSideChanges, markerMoments, isOpen } = require("../time-edits.js");
+const LaneKeys = require("../lane-keys.js");
+const ShotGroups = require("../shot-groups.js");
+const StretchKeys = require("../stretch-keys.js");
 
 /* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
    bands pack into ~1500px and their left-anchored labels overlap into
@@ -1027,8 +1030,253 @@ function layoutStepBands() {
     if (Math.abs(scroll.clientWidth - w) < 1) return;
     w = scroll.clientWidth;
     layoutStepBands();
+    // Lane W2: the screenshots close together at the new width.
+    _drawShotMarks();
   }).observe(scroll);
 })();
+
+/* ============ Lane W2: a lane is one Tab stop ======================
+   Plan section 11.5: after the row's controls, Tab stops once on each lane
+   drawn among Transactions, Steps, Transcript, Screenshots and Notes (their
+   order on screen; a lane with no mark is no stop). Each such lane draws its
+   marks into a box of its own (.tl-lane-marks, no height of its own, so the
+   pointer reaches the timeline's background around the marks as before), a
+   listbox named after the lane whose marks are its options, one of them in
+   the Tab order (a roving tabindex). The lane takes the focus on the mark at
+   the clock's moment, else the nearest after it, else the first
+   (lane-keys.js startAt); Left and Right go to the previous and the next
+   mark of the lane (the video does not move), Home and End to the first and
+   the last, and the timeline scrolls so the mark is in view (the bar's box
+   follows); Enter does what a click on the mark does. A mark is named by
+   its tooltip's first line, and shows the app's focus ring offset from it.
+   A press of the mouse on a mark does not give it the focus (the arrow
+   keys go on moving the video). A lane drawn again keeps the mark that had
+   the focus. */
+const KEY_LANES = ["cases", "steps", "transcript", "screenshots", "notes"];
+
+/* A lane's box of marks, appended to the timeline (`name`: the lane's name
+   when it says more than its kind, C19's "Steps in Save order"). */
+function _marksBox(host, key, name) {
+  const box = document.createElement("div");
+  box.className = "tl-lane-marks";
+  box.dataset.lane = key;
+  if (name) box.dataset.name = name;
+  host.appendChild(box);
+  return box;
+}
+
+/* A mark's time, as lane-keys.js reads it. */
+function _markSpan(el) {
+  const a = Number(el.dataset.startMs), b = el.dataset.endMs != null ? Number(el.dataset.endMs) : null;
+  return { startMs: a, endMs: Number.isFinite(b) ? b : null };
+}
+/* A box's marks in time order. */
+function _ordered(box) {
+  const els = [...box.children];
+  return LaneKeys.timeOrder(els.map(_markSpan)).map((i) => els[i]);
+}
+/* The mark a lane takes the focus on at the clock's moment. */
+function _startMark(box) {
+  const ordered = _ordered(box);
+  const i = LaneKeys.startAt(ordered.map(_markSpan), playheadMs());
+  return i >= 0 ? ordered[i] : null;
+}
+/* The one mark of the lane in the Tab order. */
+function _setRoving(box, el) {
+  for (const m of box.children) {
+    const on = m === el;
+    m.tabIndex = on ? 0 : -1;
+    m.setAttribute("aria-selected", on ? "true" : "false");
+  }
+}
+/* The timeline scrolled so `el` is in view, sideways and up and down (the
+   page itself never scrolls on this level). */
+function _scrollToMark(el) {
+  const scroll = document.getElementById("timeline-scroll");
+  if (!scroll) return;
+  const r = el.getBoundingClientRect(), sr = scroll.getBoundingClientRect();
+  const m = 24;
+  if (r.left < sr.left + 4 || r.width > sr.width - 2 * m) scroll.scrollLeft += r.left - (sr.left + m);
+  else if (r.right > sr.right - 4) scroll.scrollLeft += r.right - (sr.right - m);
+  // Up and down with the room of the focus ring (2 px, 2 px off the mark).
+  const lanes = scroll.closest(".tl-lanes") || scroll;
+  const lr = lanes.getBoundingClientRect();
+  const ring = 6;
+  if (r.top - ring < lr.top) lanes.scrollTop += r.top - ring - lr.top;
+  else if (r.bottom + ring > lr.bottom) lanes.scrollTop += r.bottom + ring - lr.bottom;
+}
+let _refocusing = false;
+function _focusMark(box, el, opts) {
+  _setRoving(box, el);
+  el.focus({ preventScroll: true });
+  if (!(opts && opts.stay)) _scrollToMark(el);
+}
+
+/* The lanes' boxes after a render: their roles and names, each mark's name,
+   the mark in the Tab order, and their keys. An empty box is taken out. */
+function _wireLaneMarks(host) {
+  for (const box of host.querySelectorAll(".tl-lane-marks")) {
+    const marks = [...box.children];
+    if (!marks.length) { box.remove(); continue; }
+    const n = LANE_NAMES[box.dataset.lane];
+    box.setAttribute("role", "listbox");
+    box.setAttribute("aria-orientation", "horizontal");
+    box.setAttribute("aria-label", box.dataset.name || (n ? n.name : box.dataset.lane));
+    for (const m of marks) {
+      m.setAttribute("role", "option");
+      m.setAttribute("aria-label", LaneKeys.markName(m.title));
+    }
+    _setRoving(box, _startMark(box));
+    box.addEventListener("keydown", (e) => {
+      const opt = e.target.closest && e.target.closest('[role="option"]');
+      if (!opt || opt.parentElement !== box || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); opt.click(); return; }
+      const ordered = _ordered(box);
+      const j = LaneKeys.stepTo(ordered.length, ordered.indexOf(opt), e.key);
+      if (j < 0) return;
+      // The lane's own keys: the arrows go from mark to mark, not the video.
+      e.preventDefault();
+      e.stopPropagation();
+      _focusMark(box, ordered[j]);
+    });
+    // Tab into the lane (either way): the mark at the clock's moment.
+    box.addEventListener("focusin", (e) => {
+      if (_refocusing || (e.relatedTarget && box.contains(e.relatedTarget))) return;
+      const want = _startMark(box);
+      if (want && want !== e.target) _focusMark(box, want);
+      else if (want) { _setRoving(box, want); _scrollToMark(want); }
+    });
+  }
+  // A press on a mark keeps the focus off it, and leaves the control that
+  // had it, as a press on the timeline always did.
+  if (!host._pdtMarkPress) {
+    host._pdtMarkPress = true;
+    host.addEventListener("mousedown", (e) => {
+      if (!(e.target.closest && e.target.closest('.tl-lane-marks > [role="option"]'))) return;
+      e.preventDefault();
+      const a = document.activeElement;
+      if (a && a !== document.body && typeof a.blur === "function") a.blur();
+    }, true);
+  }
+}
+
+/* The mark with the focus, as a render finds it again: its lane, its key
+   and its moment; null when the focus is not on a mark. */
+function _focusedMark() {
+  const a = document.activeElement;
+  const box = a && a.closest && a.closest("#timeline .tl-lane-marks");
+  if (!box || a.parentElement !== box) return null;
+  return { lane: box.dataset.lane, key: a.dataset.mark || null, ms: Number(a.dataset.startMs) };
+}
+/* The focus back on that mark (else the one of its lane nearest its moment). */
+function _refocus(keep) {
+  if (!keep) return;
+  const box = document.querySelector('#timeline .tl-lane-marks[data-lane="' + keep.lane + '"]');
+  if (!box) return;
+  const marks = [...box.children];
+  let el = keep.key ? marks.find((m) => m.dataset.mark === keep.key) : null;
+  if (!el && Number.isFinite(keep.ms)) {
+    let best = Infinity;
+    for (const m of marks) {
+      const d = Math.abs(Number(m.dataset.startMs) - keep.ms);
+      if (d < best) { best = d; el = m; }
+    }
+  }
+  if (!el) return;
+  _refocusing = true;
+  try { _focusMark(box, el, { stay: true }); } finally { _refocusing = false; }
+}
+
+/* ============ Lane W2: screenshots close together are one mark =====
+   The Screenshots lane groups the screenshots whose marks would be drawn on
+   each other at this zoom (shot-groups.js groupShots) into one mark with
+   their count; a click on it shows the first in the Screenshots tab and
+   puts the clock at its moment. Drawn after each render, and again when the
+   lanes change width (the grouping reads px). */
+let _shotGeo = null;   // { shots, first, span, origin, top }
+function _drawShotMarks() {
+  const box = document.querySelector('#timeline .tl-lane-marks[data-lane="screenshots"]');
+  const host = document.getElementById("timeline");
+  if (!_shotGeo || !box || !host) return;
+  const keep = _focusedMark();
+  const hostW = host.clientWidth || 800;
+  const g = _shotGeo;
+  const shots = g.shots.filter((ev) => { const t = Date.parse(ev.timestamp); return t >= g.first && t <= g.last; });
+  const xs = shots.map((ev) => ((Date.parse(ev.timestamp) - g.first) / g.span) * hostW);
+  box.innerHTML = "";
+  for (const grp of ShotGroups.groupShots(xs)) {
+    const ev = shots[grp.from], lastEv = shots[grp.to];
+    const n = grp.to - grp.from + 1;
+    const t = Date.parse(ev.timestamp);
+    const x = ((t - g.first) / g.span) * 100;
+    const added = n === 1 && ev.data.kind === "screenshot_added";
+    const dot = document.createElement("div");
+    dot.className = "tl-screenshot" + (added ? " tl-screenshot-added" : "") + (n > 1 ? " tl-shot-group" : "");
+    dot.style.left = "calc(" + x + "% - " + (ShotGroups.MARK_PX / 2) + "px)";
+    dot.style.top = g.top + "px";
+    if (n > 1) {
+      dot.style.width = ShotGroups.markWidth(n) + "px";
+      dot.textContent = String(n);
+      dot.title = ShotGroups.groupTitle(n, sinceStart(ev.timestamp, g.origin), sinceStart(lastEv.timestamp, g.origin));
+    } else {
+      dot.innerHTML = SCREENSHOT_ICON;
+      dot.title = (added ? screenshotTitle(ev, g.origin) : "Screenshot at " + sinceStart(ev.timestamp, g.origin) + "\n" + (ev.data.path || "")) +
+        "\nClick: show it in the Screenshots tab beside the video, and go to its moment.";
+    }
+    dot.dataset.count = String(n);
+    dot.dataset.startMs = String(t);
+    dot.dataset.mark = "p:" + ev.data.path;
+    // Lane PANE: the Screenshots tab at this screenshot (of several, the
+    // first), the clock at its moment (the tab's own click opens it full
+    // size).
+    dot.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const Pane = require("./timeline-pane.js");   // lazy: it requires this module's neighbours
+      Pane.showScreenshot(ev.data.path);
+      Pane.seekTo(t);
+    });
+    box.appendChild(dot);
+  }
+  if (box.children.length) {
+    for (const m of box.children) {
+      m.setAttribute("role", "option");
+      m.setAttribute("aria-label", LaneKeys.markName(m.title));
+    }
+    _setRoving(box, _startMark(box));
+  }
+  _refocus(keep);
+}
+
+/* ============ Lane W2: the start of a stretch (I and O) ============
+   I puts the start of a stretch at the clock's moment (flow-view.js holds
+   what is pressed, stretch-keys.js pairs it): until O comes it is drawn as
+   a thin line through the lanes, "Start of a stretch" ("End of a stretch"
+   for an O before any I). A click on the timeline goes through it. */
+let _stretchMark = null;   // { startMs, endMs }, one of them set
+function setStretchMark(pending) {
+  _stretchMark = StretchKeys.isPending(pending) ? { startMs: pending.startMs, endMs: pending.endMs } : null;
+  _drawStretchMark();
+}
+function _drawStretchMark() {
+  const host = document.getElementById("timeline");
+  if (!host) return;
+  const old = document.getElementById("tl-stretch-mark");
+  if (old) old.remove();
+  const sp = timelineSpan();
+  if (!_stretchMark || !sp) return;
+  const end = !Number.isFinite(_stretchMark.startMs);
+  const ms = end ? _stretchMark.endMs : _stretchMark.startMs;
+  const mark = document.createElement("div");
+  mark.id = "tl-stretch-mark";
+  mark.className = "tl-stretch-mark" + (end ? " end" : "");
+  mark.style.left = (((ms - sp.startMs) / Math.max(1, sp.endMs - sp.startMs)) * 100) + "%";
+  mark.dataset.ms = String(ms);
+  const label = document.createElement("span");
+  label.className = "tl-stretch-mark-label";
+  label.textContent = end ? StretchKeys.WORDS.endMark : StretchKeys.WORDS.startMark;
+  mark.appendChild(label);
+  host.appendChild(mark);
+}
 
 /* The numbers the step bands carry: the pane's Steps tab's at the main level
    (pane-lists.js stepGroups), inside a sub-process the step's place among the
@@ -1055,7 +1303,10 @@ function _stepNumbers(level, anno) {
 
 function renderTimeline() {
   const host = $("#timeline");
+  // Lane W2: the mark with the focus keeps it through the render.
+  const keepFocus = _focusedMark();
   host.innerHTML = "";
+  _shotGeo = null;
   const evs = State.getSession().events;
   _syncHeaderControls(timelineDrawable(State.getSession()));
   // C16: the notes pinned to a moment; the Lanes menu lists their lane only
@@ -1283,6 +1534,7 @@ function renderTimeline() {
       // (renderLaneStack sets it first), so clientWidth reflects the
       // on-screen px width.
       const hostW = host.clientWidth || 800;
+      const box = _marksBox(host, "cases");
       for (const c of (lanes.cases ? caseLanes.cases : [])) {
         const x = ((c.startMs - first) / span) * 100;
         const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
@@ -1331,7 +1583,8 @@ function renderTimeline() {
           // What marks at the moment right-clicked, then the band's jumps.
           showCaseContextMenu(e.clientX, e.clientY, c, timeAtClientX(e.clientX, host.getBoundingClientRect(), first, last));
         });
-        host.appendChild(band);
+        band.dataset.mark = "c:" + (c.startKey || c.startMs);
+        box.appendChild(band);
         // NAV-AUDIT §J/§9: only label a band wide enough to read it; the rest
         // stay pure stripes (label still in the band's title on hover). The
         // label is also clipped to the band width so a kept label can never
@@ -1477,29 +1730,10 @@ function renderTimeline() {
       rail.style.height = screenshotsH + "px";
       host.appendChild(rail);
       // (Its name, Screenshots, is at the left with the other lanes'.)
-      const markY = screenshotsTop + (screenshotsH - 16) / 2;
-      for (const ev of shotMarks) {
-        const t = new Date(ev.timestamp).getTime();
-        if (!(t >= first && t <= last)) continue;
-        const x = ((t - first) / span) * 100;
-        const added = ev.data.kind === "screenshot_added";
-        const dot = document.createElement("div");
-        dot.className = "tl-screenshot" + (added ? " tl-screenshot-added" : "");
-        dot.style.left = "calc(" + x + "% - 8px)";
-        dot.style.top = markY + "px";
-        dot.innerHTML = SCREENSHOT_ICON;
-        dot.title = (added ? screenshotTitle(ev, origin) : "Screenshot at " + sinceStart(ev.timestamp, origin) + "\n" + (ev.data.path || "")) +
-          "\nClick: show it in the Screenshots tab beside the video, and go to its moment.";
-        // Lane PANE: the Screenshots tab at this screenshot, the clock at its
-        // moment (the tab's own click opens it full size).
-        dot.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const Pane = require("./timeline-pane.js");   // lazy: it requires this module's neighbours
-          Pane.showScreenshot(ev.data.path);
-          Pane.seekTo(Date.parse(ev.timestamp));
-        });
-        host.appendChild(dot);
-      }
+      // Lane W2: its marks are drawn once the lanes are stacked
+      // (_drawShotMarks: screenshots close together are one mark).
+      _marksBox(host, "screenshots");
+      _shotGeo = { shots: shotMarks, first, last, span, origin, top: screenshotsTop + (screenshotsH - 16) / 2 };
     },
   };
 
@@ -1559,6 +1793,7 @@ function renderTimeline() {
     render(host, ctx) {
       const stepsLaneTop = ctx.slot.top + STEP_BAND_INSET;
       const bandH = ctx.slot.height - 2 * STEP_BAND_INSET;
+      const box = _marksBox(host, "steps", _level.name ? "Steps in " + _level.name : "");
       for (const s of (lanes.steps ? _stepsForLane : [])) {
         const bandSpan = stepBandSpan(s);
         if (!bandSpan) continue;
@@ -1644,7 +1879,8 @@ function renderTimeline() {
           _showStepBandMenu(e.clientX, e.clientY, s.step_id, s.time_range && s.time_range.start,
             timeAtClientX(e.clientX, host.getBoundingClientRect(), first, last), lbl);
         });
-        host.appendChild(band);
+        band.dataset.mark = "s:" + (s.step_id || "");
+        box.appendChild(band);
       }
     },
   };
@@ -1656,10 +1892,13 @@ function renderTimeline() {
     height: notesH,
     gapBefore: 4,
     render(host, ctx) {
+      const box = _marksBox(host, "notes");
       for (const n of notes) {
         const pin = document.createElement("div");
         pin.className = "tl-note";
         pin.dataset.noteId = n.id;
+        pin.dataset.startMs = String(Date.parse(n.at));
+        pin.dataset.mark = "n:" + n.id;
         pin.style.left = "calc(" + (((Date.parse(n.at) - first) / span) * 100) + "% - 7px)";
         pin.style.top = (ctx.slot.top + 2) + "px";
         pin.textContent = "✎";
@@ -1679,7 +1918,7 @@ function renderTimeline() {
           const UI = require("./analyst-ui.js");   // lazy: it requires this module
           _menu(e.clientX, e.clientY, [["Edit note…", () => UI.editNote(n.id)], ["Delete note", () => UI.deleteNote(n.id)]]);
         });
-        host.appendChild(pin);
+        box.appendChild(pin);
       }
     },
   };
@@ -1701,6 +1940,10 @@ function renderTimeline() {
   _drawThroughLanes(host, stack, layout, { first, last, span, origin, leftOut });
   _stepGeo = { first, span };
   layoutStepBands();
+  // Lane W2: the screenshots' marks (grouped where close), then each lane
+  // with marks one Tab stop.
+  _drawShotMarks();
+  _wireLaneMarks(host);
 
   // What the marks mean (the Lanes menu): the systems observed while the
   // activity lane rendered, and only the marks the timeline draws: an entry
@@ -1723,6 +1966,10 @@ function renderTimeline() {
   ph.style.display = "none";
   host.appendChild(ph);
   _watchPlayhead(ph);
+  // Lane W2: the start of a stretch I put (until O), and the focus back on
+  // the mark that had it.
+  _drawStretchMark();
+  _refocus(keepFocus);
 
   // Click->seek on background. P2.9: snap to nearest event when one
   // is within ~250ms / span × pixel-tolerance of the click; else seek
@@ -1918,4 +2165,7 @@ module.exports = {
   timelineDrawable,
   // 2.0.3: the moment a right-click's new transaction or step snaps to.
   snapMoment,
+  // Lane W2: the start of a stretch I put, drawn until O; the lanes that
+  // are Tab stops.
+  setStretchMark, KEY_LANES,
 };

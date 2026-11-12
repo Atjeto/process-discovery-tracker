@@ -3,7 +3,8 @@
  * plan section 11.3; the owner: "The timeline is the core, the center of
  * edit"). The row holds how to play and how to mark, in the process
  * manager's words, left to right: Play (only with a video), the clock (a
- * click types a time), Add step (only with a video), Start transaction or End
+ * click types a time), the speed (only with a video, lane W2), Add step
+ * (only with a video), Start transaction or End
  * transaction (one button in one place), Add note, the message area, Lanes,
  * zoom out, Show all, zoom in. While a stretch is
  * selected, the stretch's times and its acts take the place of the three
@@ -40,7 +41,20 @@ const LABELS = {
   showAll: "Show all",
   zoomIn: "Zoom in",
   clockField: "Go to a time",
+  speed: "Speed",
 };
+
+/* Lane W2 (plan section 11.4): how fast the video plays, its choices in
+   their order, the label each reads, and the key it is kept under on this
+   computer. */
+const SPEEDS = [1, 1.5, 2];
+const SPEED_KEY = "pdt.playbackRate";
+function speedLabel(rate) { return rate + "x"; }
+/* The speed kept (a value read from storage), else 1x. */
+function speedOf(value) {
+  const n = Number(value);
+  return SPEEDS.includes(n) ? n : 1;
+}
 
 /* What the row's moment is called: the video, or, in a recording without a
    video attached, the recording. */
@@ -55,6 +69,7 @@ function titles(noun) {
   return {
     play: "Plays or pauses " + n + ". Key: Space",
     clock: "The time since the start of " + n + ". Click to type a time and go there.",
+    speed: "How fast the video plays",
     addStep: "Adds a step that starts at this moment of " + n + ". The step before it ends here. Key: S",
     start: "Starts a new transaction at this moment of " + n + ". A transaction is one pass through the process.",
     end: "Ends the transaction at this moment of " + n + ".",
@@ -129,9 +144,10 @@ function stretchText(startMs, endMs, originMs) {
      stretch: { startMs, endMs } selected, or null,
      aside: what a stretch is set aside as: "not-part" (a project without a
        recording), "leave-out" (a recording with events), or null (none),
-   }. Returns { play, clock, addStep, tx, addNote, stretch, filled } where each
-   marking button is { shown, enabled } (tx also { kind: "start" | "end" }),
-   play and clock are booleans, and stretch is null or { acts: [...], filled }
+   }. Returns { play, clock, speed, addStep, tx, addNote, stretch, filled }
+   where each marking button is { shown, enabled } (tx also { kind: "start" |
+   "end" }), play, clock and speed (lane W2: with a video, as Play) are
+   booleans, and stretch is null or { acts: [...], filled }
    (acts in their order: "aside" when offered, "makeTx", "clear"). The filled
    button: Add step in a project without a recording ("addStep"), the
    stretch's first act while one is selected, else none (null). */
@@ -145,6 +161,7 @@ function rowState(o) {
   const out = {
     play: drawable && !!s.hasVideo,
     clock: drawable,
+    speed: drawable && !!s.hasVideo,
     addStep: { shown: marking && !!s.hasVideo, enabled: moment },
     tx: { shown: marking, enabled: moment, kind: transactionSlot(s.runs, s.atMs) },
     addNote: { shown: marking, enabled: moment },
@@ -164,4 +181,5 @@ function rowState(o) {
   return out;
 }
 
-module.exports = { LABELS, nounOf, titles, NO_MOMENT, BAD_TIME, transactionSlot, clockText, clockTarget, stretchText, rowState };
+module.exports = { LABELS, SPEEDS, SPEED_KEY, speedLabel, speedOf, nounOf, titles, NO_MOMENT, BAD_TIME, transactionSlot,
+  clockText, clockTarget, stretchText, rowState };

@@ -20,9 +20,10 @@ const fs = require("node:fs");
 const State = require("../state.js");
 const { $, toast, recordingStartMs, sinceStart } = require("../dom.js");
 const Ipc = require("../ipc.js");
-const { seekToTimestamp } = require("./flow-view-video.js");
+const { seekToTimestamp, playheadMs } = require("./flow-view-video.js");
 const AC = require("../analyst-content.js");
 const SPM = require("../sub-process-maps.js");
+const Screen = require("../timeline-screen.js");
 
 /* P2.7 gallery state. _allScreenshots is stashed by renderScreenshots so
    the gallery can step through the same set the grid shows. */
@@ -56,6 +57,81 @@ function screenshotTitle(s, origin) {
   if (s.data.kind !== "screenshot_added") return "Taken at " + when + "\n" + s.data.path;
   const on = _stepName(s.stepId);
   return "Added by you, a frame at " + when + (on ? ", on " + on : "");
+}
+
+/* ---- The screen from the screenshots (lane W2, plan section 11.1) ----------
+   A recording without a video shows, where the video would be, the
+   screenshot taken last at or before the clock's moment
+   (timeline-screen.js screenAt), as large as the pane allows, with one line
+   under it ("Screenshot at 1:42 · <step>"); before the first, a line saying
+   so; a file not in the project, a line naming it in the picture's place. A
+   click on the picture opens it in the gallery. The line above it keeps
+   Attach video (#no-video). A recording with no screenshot keeps the slim
+   no-video band. flow-view-video.js decides which the pane shows
+   (_showPane, `.on-screen`); this draws the screen, after every move of the
+   clock (flow-view.js onPlayhead). */
+
+/* Whether the project shows its screen from screenshots where no video
+   shows it: a recording with a screenshot. */
+function hasScreen(sess) {
+  const s = sess || State.getSession();
+  return !!s && (s.events || []).length > 0 && timelineScreenshots(s).length > 0;
+}
+
+/* The step a screenshot is on: the one it was added to, else (a recorded
+   one) the visible step of the main level holding it, else "". */
+function _shotStepName(shot) {
+  if (shot.stepId) return _stepName(shot.stepId);
+  const s = State.getSession();
+  const steps = (s && s.annotations && s.annotations.steps) || [];
+  const hit = steps.find((st) => st && st.state !== "hidden" &&
+    AC.stepShots(st, null).some((x) => x.rel === shot.data.path));
+  return hit && typeof hit.name === "string" ? hit.name.trim() : "";
+}
+
+let _screenRel = null;
+function syncScreen() {
+  const pane = document.getElementById("video-pane");
+  const box = document.getElementById("video-screen");
+  if (!pane || !box) return;
+  const on = pane.classList.contains("on-screen");
+  const nvText = pane.querySelector("#no-video .nv-text");
+  // A video the project holds whose file is not found here keeps the
+  // band's words: the project has a video, Attach video finds it.
+  const held = on && require("./flow-view-video.js").addedClips().length > 0;
+  const text = on && !held ? Screen.WORDS.noVideo : "No video linked";
+  if (nvText && nvText.textContent !== text) nvText.textContent = text;
+  if (box.hidden !== !on) box.hidden = !on;
+  const sess = State.getSession();
+  if (!on || !sess) { _screenRel = null; return; }
+  const pic = document.getElementById("video-screen-pic");
+  const img = document.getElementById("video-screen-img");
+  const empty = document.getElementById("video-screen-empty");
+  const line = document.getElementById("video-screen-line");
+  const shots = timelineScreenshots(sess);
+  const ms = playheadMs();
+  const i = Screen.screenAt(shots, ms);
+  const shot = i >= 0 ? shots[i] : null;
+  const full = shot ? path.join(sess.sessionFolder, shot.data.path) : null;
+  const there = !!full && fs.existsSync(full);
+  const lineText = shot ? Screen.shotLine(sinceStart(shot.timestamp, recordingStartMs(sess)), _shotStepName(shot)) : "";
+  const emptyText = !shot ? (Number.isFinite(ms) ? Screen.WORDS.before : Screen.WORDS.noMoment)
+    : there ? "" : Screen.missingLine(Screen.fileName(shot.data.path));
+  pic.hidden = !there;
+  if (there) {
+    const src = "file:///" + full.replace(/\\/g, "/");
+    if (_screenRel !== shot.data.path || img.getAttribute("src") !== src) img.src = src;
+    pic.dataset.rel = shot.data.path;
+    pic.setAttribute("aria-label", lineText);
+  } else {
+    img.removeAttribute("src");
+    delete pic.dataset.rel;
+  }
+  _screenRel = there ? shot.data.path : null;
+  empty.hidden = !emptyText;
+  if (empty.textContent !== emptyText) empty.textContent = emptyText;
+  if (line.textContent !== lineText) line.textContent = lineText;
+  line.hidden = !lineText;
 }
 
 function renderScreenshots() {
@@ -168,7 +244,25 @@ function _galleryView() {
   }
   return view;
 }
-function openScreenshotGallery() {
+/* The gallery's place of the screenshot `rel`: its entry, unfolding the
+   near-identical frames it is folded into. -1 when it is not listed. */
+function _galleryIndexOf(rel) {
+  const at = () => _galleryView().findIndex((e) => e.shot.data.path === rel);
+  let i = at();
+  if (i >= 0 || !rel) return i;
+  for (const e of _galleryView()) {
+    if (!e.similar) continue;
+    _galleryState.expanded.add(e.groupKey);
+    i = at();
+    if (i >= 0) return i;
+    _galleryState.expanded.delete(e.groupKey);
+  }
+  return -1;
+}
+
+/* Open the gallery, at the screenshot `rel` when one is named (lane W2: a
+   click on the screen of a recording without a video). */
+function openScreenshotGallery(rel) {
   if (!_allScreenshots.length) { toast("No screenshots in this project.", ""); return; }
   let overlay = document.getElementById("screenshot-gallery");
   if (!overlay) {
@@ -212,7 +306,9 @@ function openScreenshotGallery() {
   }
   _galleryState = { idx: 0, filterReason: "all", playing: false, playTimer: null, expanded: new Set() };
   document.getElementById("gallery-filter").value = "all";
+  if (typeof rel === "string" && rel) _galleryState.idx = Math.max(0, _galleryIndexOf(rel));
   _galleryRenderFrame();
+  document.removeEventListener("keydown", _galleryKey);
   document.addEventListener("keydown", _galleryKey);
 }
 function closeScreenshotGallery() {
@@ -319,11 +415,25 @@ function openScreenshot(relPath) {
 // original IIFE in flow-view.js).
 (function wireScreenshotGallery() {
   const btn = document.getElementById("btn-open-gallery");
-  if (btn) btn.addEventListener("click", openScreenshotGallery);
+  if (btn) btn.addEventListener("click", () => openScreenshotGallery());
+  // Lane W2: the screen's picture opens it in the gallery.
+  const pic = document.getElementById("video-screen-pic");
+  if (pic) pic.addEventListener("click", () => { if (pic.dataset.rel) openScreenshotGallery(pic.dataset.rel); });
 })();
 // Lane FX2: a screenshot the analyst adds or removes shows (or leaves) at once.
-State.subscribe("timeline", () => { if (State.getSession() && document.getElementById("screenshots-grid")) renderScreenshots(); });
+State.subscribe("timeline", () => {
+  if (State.getSession() && document.getElementById("screenshots-grid")) renderScreenshots();
+  syncScreen();
+});
+
+/* Whether the gallery is open (it owns the arrow keys, Space and Escape). */
+function galleryOpen() {
+  const g = document.getElementById("screenshot-gallery");
+  return !!g && g.style.display !== "none" && !!_galleryState;
+}
 
 module.exports = {
   renderScreenshots, openScreenshot, timelineScreenshots, screenshotTitle,
+  // Lane W2: the screen from the screenshots, and the gallery at one.
+  hasScreen, syncScreen, openScreenshotGallery, galleryOpen,
 };

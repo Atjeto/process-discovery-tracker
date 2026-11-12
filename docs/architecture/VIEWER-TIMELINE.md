@@ -19,10 +19,13 @@ its first row. The timeline is 272 px high unless its divider was dragged
 the video takes at most 58% of the stage's width and no more than the
 stage's height at 16:9 (container units of the stage), less when its
 divider was dragged. At 1366x768 that is a video 778 wide, a pane 552 x
-440 and a timeline 1366 x 272. A recording without a video shows the line
-*No video linked* with *Attach video...*, then the pane at the stage's full
-width. A project with no recording and no video shows its pane and, under
-the row, the one line that says so; no divider.
+440 and a timeline 1366 x 272. Lane W2: a recording without a video, with
+screenshots, shows its screen at the clock's moment where the video would
+be, at the video's size (*The screen of a recording without a video*,
+below); one with no screenshot shows the line *No video linked* with
+*Attach video...*, then the pane at the stage's full width. A project with
+no recording and no video shows its pane and, under the row, the one line
+that says so; no divider.
 
 ## Where it lives
 
@@ -43,7 +46,11 @@ the row, the one line that says so; no divider.
 | [`views/flow-view-markers.js`](../../viewer/views/flow-view-markers.js) | The marker edits: `moveMarker` (the move a dragged transaction side makes), `renameMarker` and `deleteMarker` (a transaction's header in the pane). |
 | [`views/timeline-pane.js`](../../viewer/views/timeline-pane.js) | Lane PANE: the pane beside the video (five tabs; the Steps tab's list, the step opened in place, the transactions' headers; Notes; Files). |
 | [`pane-lists.js`](../../viewer/pane-lists.js) | Pure (lane PANE): the pane's groups and rows, the hint line, the acts above the list, Previous and Next, the notes and files rows. Unit-tested. |
-| [`timeline-row.js`](../../viewer/timeline-row.js) | Pure (lane SCREEN): the timeline's first row: its words (`LABELS`, `titles`, "the video" or "the recording"), what shows and what can be clicked (`rowState`), the transaction button (`transactionSlot`), the clock (`clockText`, `clockTarget`) and a selected stretch (`stretchText`). Unit-tested. |
+| [`timeline-row.js`](../../viewer/timeline-row.js) | Pure (lane SCREEN): the timeline's first row: its words (`LABELS`, `titles`, "the video" or "the recording"), what shows and what can be clicked (`rowState`), the transaction button (`transactionSlot`), the clock (`clockText`, `clockTarget`) and a selected stretch (`stretchText`); lane W2: the speed's choices and the one kept (`SPEEDS`, `speedOf`, `SPEED_KEY`). Unit-tested. |
+| [`timeline-screen.js`](../../viewer/timeline-screen.js) | Pure (lane W2): which screenshot a recording without a video shows at a moment (`screenAt`) and the lines around it. Unit-tested. |
+| [`stretch-keys.js`](../../viewer/stretch-keys.js) | Pure (lane W2): I and O, the pair they make (`press`) and the words they say. Unit-tested. |
+| [`lane-keys.js`](../../viewer/lane-keys.js) | Pure (lane W2): a lane as one Tab stop: its marks in time order (`timeOrder`), the mark the lane takes the focus on (`startAt`), where Left, Right, Home and End go (`stepTo`), a mark's name (`markName`). Unit-tested. |
+| [`shot-groups.js`](../../viewer/shot-groups.js) | Pure (lane W2): the screenshots close together drawn as one mark (`groupShots`, `markWidth`) and its tooltip. Unit-tested. |
 | [`layout-controls.js`](../../viewer/layout-controls.js) | The two dividers and the video modes. |
 
 ## The one clock
@@ -67,7 +74,12 @@ Tab goes: **Play** (`#btn-tl-play`, only with a video, its `aria-label`
 "Play" or "Pause"), **the clock** (`#btn-tl-clock`, "6:20 / 1:02:00"; a
 click makes it the field `#tl-clock-field`: Enter goes there, kept inside
 the timeline, Escape or leaving it keeps it as it was, a time that cannot be
-read says "Type a time such as 6:20." in the message area), **Add step**
+read says "Type a time such as 6:20." in the message area), lane W2: **the
+speed** (`#tl-speed`, only with a video: *1x*, *1.5x*, *2x*, its tooltip "How
+fast the video plays"; the player's default rate too, so it holds across
+the videos of a chain and a project opened in the window, the browser
+keeping the pitch; kept on this computer in `pdt.playbackRate`; a choice
+made with the mouse gives the focus back), **Add step**
 (`#btn-add-step`, only with a video, the row's filled button in a project
 without a recording), **Start transaction** or **End transaction** (one
 button, `#btn-tl-transaction`, `data-kind`: *End transaction* while the
@@ -138,9 +150,28 @@ media), each drawn only when the project has such things:
 | Systems | A recording only (a toggle of its own, *Systems*): one band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. A band of an app among the Apps outside the process is hatched too, its tooltip saying so (lane FX2, `.tl-app-left-out`). A video project has no Systems lane and no low row in its place: a right-click anywhere on the timeline marks there. | Click: go there. Right-click: the timeline menu at that moment. |
 | Transcript | Only while a transcript is attached: one row per transcript (C23: one per video, its row named "Transcript 2 · its video" when there are several), the sentences said while the recording ran, at their times, once the transcript is placed (its own video, else its own sync, else the first video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
 | Videos | Only while the project has a video the analyst added (C23, 2.0.6): one band per video where it is on the clock, named after its file; a trimmed side is drawn thicker, a video whose file is not found here hatched. | Click: go there (the player shows that video at that moment). Drag a side: trim it. Right-click: the moment's marking entries (the timeline's own menu), then under the video's name Trim the start here, Trim the end here, Give its start back, Give its end back, Sync video (in a recording), Replace video (Find the video for one not found), Remove video, Add a video. |
-| Screenshots | A rail of the recorder's screenshots, and of the ones the analyst added at a moment (a video frame; lane FX2, `.tl-screenshot-added`, the step it is on in its tooltip). Off until chosen. | Click: the Screenshots tab beside the video at it, the clock at its moment. |
+| Screenshots | A rail of the recorder's screenshots, and of the ones the analyst added at a moment (a video frame; lane FX2, `.tl-screenshot-added`, the step it is on in its tooltip). Off until chosen. Lane W2: screenshots whose marks would cover each other at this zoom are one mark with their count (`.tl-shot-group`, `data-count`; `shot-groups.js`: a screenshot joins the mark before it while it is closer to that mark's first than the mark is wide, the mark as wide as its count needs), "3 screenshots from 1:40 to 1:46. Click: show the first in the Screenshots tab."; drawn again at each render and when the lanes change width, so zooming in splits it. | Click: the Screenshots tab beside the video at it (of several, the first), the clock at its moment. |
 | Notes | Only while a note is pinned to a moment (`annotations.analyst_notes`, C16): one pin per note. | Click: the Notes tab at it, the clock at its moment. Right-click: Edit note, Delete note. |
 | Idle | A recording only, off until chosen (`LANE_DEFAULTS.idle` false; a choice saved before still wins): its idle stretches (`idleStretches`), an "at desk" idle, where the recorder still saw input, hatched apart from "away". | |
+
+**A lane is one Tab stop** (lane W2, plan section 11.5, `_wireLaneMarks`,
+the rule `lane-keys.js`). The Transactions, Steps, Transcript, Screenshots
+and Notes lanes draw their marks into a box of their own
+(`.tl-lane-marks[data-lane]`, no height, so the pointer reaches the
+timeline's background around the marks): `role="listbox"` named after the
+lane ("Steps in <name>" inside a sub-process), each mark `role="option"`
+named by its tooltip's first line, one mark of the lane in the Tab order (a
+roving `tabindex`). After the row's controls Tab stops once on each such
+lane with marks, in their order on screen, on the mark at the clock's
+moment, else the next one after it, else the first; Left and Right go to
+the previous and the next mark (stopping at the ends, the video not
+moving), Home and End to the first and the last, and the lanes scroll so
+the mark and its focus ring show (the bar's box follows); Enter does what a
+click on the mark does. The focus ring is the app's (2 px of `--accent-2`,
+2 px off the mark). A press of the mouse on a mark does not give it the
+focus (a capture `mousedown` on `#timeline`), so the arrow keys go on
+moving the video. A render keeps the mark that had the focus (`_focusedMark`,
+`_refocus`: by its `data-mark`, else the nearest in time).
 
 **The header column** (`#tl-lane-names`, `renderLaneNames`), drawn like a
 video editor's track headers (the owner's reviews): a column of its own
@@ -315,6 +346,23 @@ selection* only. Esc clears it once a menu, a dialog or a field had the
 Escape. The card that counted events, markers, screenshots and systems is
 gone.
 
+**I and O** (lane W2, plan section 11.3 and 11.5; `flow-view.js`
+`stretchKey`, the pair `stretch-keys.js`, called by `renderer.js` on the
+Timeline, not in a field or a select, with no dialog, menu or gallery
+open): I puts the start of a stretch at the clock's moment, O its end, also
+while the video plays. With both the stretch is selected
+(`State.setSelectionRange`, drawn as a Shift-drag leaves it), the row
+showing its times and its acts; O first, or O at a moment before the start,
+gives the pair the right way round, and a second I moves the start. Until O
+comes the start is a thin dashed line through the lanes, "Start of a
+stretch" (`#tl-stretch-mark`; "End of a stretch" for an O before any I),
+drawn again at each render; a click on the timeline goes through it, Escape
+clears it (before the selected stretch). I says "Stretch starts at 0:40."
+in the message area (an O first, "Stretch ends at 0:40."), O nothing; I and O
+at one moment make no stretch and say "A stretch needs a start and an end at
+two moments.", the first kept. Neither key asks anything or takes the
+focus. A project opened read only selects too.
+
 **The stretches left out of the analysis** (lane CC; lane LANES: through
 every lane) are drawn as a quiet hatch from the top of the Transactions
 lane to the foot of the last lane (`.tl-left-out`, its `data-start` and
@@ -398,13 +446,30 @@ neither seeks nor starts the video (`flow-view-timeline.js`, the
 background click returns on `shiftKey`). In a project without a recording
 the row shows the stretch's times and length.
 
+**What is said, under the video** (lane W2, plan section 11.1;
+`flow-view-transcript.js` `syncCaption`). While a transcript is placed on
+the clock, a band under the picture (`#video-caption`, inside the video
+pane: under the video, or under the screen of a recording without one;
+never over it) shows the sentence at the clock's moment: the speaker in
+bold, then the sentence, 14 px on at most two lines cut with an ellipsis,
+the whole of it and "Click: show it in the Transcript tab." in its tooltip
+(`#video-caption-say`, a button). The sentence is the tab's sentence at
+this moment (`transcript-list.js` `sentenceIndexAt`, the rule `tickTab`
+marks it by) while it is being said (`sayingAt`: up to its end), over the
+tab's own rows, so a stretch set aside shows nothing; between two sentences
+the band is empty and keeps its height, so the picture does not jump; the
+picture gives way to it. It follows the clock: every frame while the video
+plays, and each seek or move of the clock. A click opens the Transcript tab,
+which marks that sentence and puts it in view.
+
 ## The video above it
 
 The video pane above the timeline plays the project's videos: the ones the
 analyst added (copied into the folder's `video/`, contract C16 and
 `video-path.js`; a chain on the clock, contract C23), else the OBS
 recording. Without one the pane collapses to a slim band with *Attach
-video...*. The player shows one video at a time: a seek (a click on the
+video...* (lane W2: in a recording with screenshots, the screen below
+instead). The player shows one video at a time: a seek (a click on the
 timeline, a band, a step) shows the video that covers that moment, at that
 moment; played on past a video's end it goes on with the next one when that
 starts there; a trimmed part is never shown. Every time it gives (the
@@ -483,7 +548,30 @@ is known and nothing after: the video's own time no longer shows there.
 - The playback bar at the foot of the window is gone (lane SCREEN): it
   showed on every level and drove a video only the Timeline shows. Its keys
   stay: Space plays or pauses, Left and Right move 5 s (with Shift 10 s),
-  across the videos.
+  across the videos (lane W2: on the Timeline of a recording without a
+  video too; a select keeps its own arrows).
+- **The screen of a recording without a video** (lane W2, plan section
+  11.1; `flow-view-screenshots.js` `syncScreen`, the rule
+  `timeline-screen.js` `screenAt`). Where no video shows, a recording with
+  a screenshot shows its screen at the clock's moment (`flow-view-video.js`
+  `_showPane`: `.on-screen` on `#video-pane` and `#lower-workspace`, never
+  `.no-recording`): the screenshot taken last at or before the moment (of
+  two at one moment, the later in the Screenshots tab's order; one taken in
+  a stretch set aside still shows) in `#video-screen-pic`, contained, as
+  large as the pane allows, and one line under it, `#video-screen-line`,
+  "Screenshot at 1:42" and, when it is on a step (added to it, or among a
+  visible step's recorded screenshots), " · <step>". Before the first,
+  `#video-screen-empty` reads "No screenshot before this moment."; with no
+  moment yet, "Click the timeline to see the screen at that moment."; a file
+  that is not in the project, "The screenshot file is missing: <file>" in
+  the picture's place. Above it the band's line reads "No video in this
+  project." with *Attach video...* ("No video linked" when the project holds
+  a video whose file is not found here). It follows the clock (the
+  `onPlayhead` of `flow-view.js`: a click on the timeline, a typed time, a
+  mark of a lane, the Left and Right keys, which move the clock 5 s, 10 s
+  with Shift, `flow-view-video.js` `nudgeClock`, kept inside the timeline).
+  A click on the picture opens it in the gallery (`openScreenshotGallery`
+  with its file; the gallery then owns Space, the arrows and Escape).
 - **Expand** (`#btn-video-expand`) gives the video 70% of the stage's width,
   the pane the rest; **fullscreen** (`#btn-video-fullscreen`, Esc leaves it)
   gives the video the whole window above the timeline's row, which stays in
@@ -535,7 +623,9 @@ is known and nothing after: the video's own time no longer shows there.
 - **Raw events** (`.event-table-host`, only with events): one line under the
   timeline; opened, its table shows above that line (at most a third of the
   window high), the line staying where it was, the stage and then the
-  timeline giving way; the row stays in view.
+  timeline giving way; the row stays in view. Lane W2: the video (or the
+  screen) and the pane then give way to the stage below their usual least
+  heights, so neither lies over the row at 1024x720.
 
 ## Render triggers
 

@@ -12,6 +12,8 @@
  *   (b) a click on the timeline at 0:36 plays the second video at 4 s, the
  *       playhead at 0:36; played from 0:31, the first video goes on into the
  *       second;
+ *   (b2) lane W2: the speed chosen in the row (2x) holds across the chain:
+ *       the second video plays at 2x, the clock twice as fast as real time;
  *   (c) a transaction started at 0:34 and a step marked at 0:38 (both on
  *       the second video); the first video's end trimmed at 0:28 (its band's
  *       right-click): the second video, the transaction's start and the step
@@ -244,6 +246,32 @@ async function makeVideo(page, out, secs, colour) {
   record("(b) a click at 0:36 plays the second video at 4 s (the playhead at 0:36); played from 0:31, the first video goes on into the second",
     !b.err && b.at36 && b.at36.clip === "v2" && near(b.at36.t, 4, 0.8) && near(b.at36.clock, 36, 0.8) &&
       b.after && b.after.clip === "v2" && b.after.clock > 31.5, JSON.stringify(b));
+
+  // (b2) Lane W2: the speed, chosen in the row, holds across the videos of
+  // the chain: played at 2x from 0:30, the second video plays at 2x too, the
+  // clock running twice as fast there (two readings over a second of real
+  // time); kept on this computer.
+  let sp = {};
+  try {
+    await page.selectOption("#tl-speed", "2");
+    await page.evaluate((t) => { const v = document.getElementById("video"); v.muted = true;
+      require("./views/flow-view-video.js").seekClock(t, true); }, at(30));
+    await page.waitForFunction(() => /12s/.test(decodeURIComponent(document.getElementById("video").currentSrc || "")) &&
+      !document.getElementById("video").paused && document.getElementById("video").currentTime > 0.5, null, { timeout: 15000 });
+    const r1 = await page.evaluate(() => ({ at: require("./views/flow-view-video.js").playheadMs(), now: performance.now() }));
+    await wait(1000);
+    const r2 = await page.evaluate(() => ({ at: require("./views/flow-view-video.js").playheadMs(), now: performance.now(),
+      rate: document.getElementById("video").playbackRate, clip: (require("./views/flow-view-video.js").currentClip() || {}).id }));
+    await page.evaluate(() => document.getElementById("video").pause());
+    sp = { ratio: Math.round(((r2.at - r1.at) / (r2.now - r1.now)) * 100) / 100, rate: r2.rate, clip: r2.clip,
+      kept: await page.evaluate(() => localStorage.getItem("pdt.playbackRate")),
+      choices: await page.evaluate(() => [...document.querySelectorAll("#tl-speed option")].map((o) => o.textContent)),
+      title: await page.evaluate(() => document.getElementById("tl-speed").title) };
+    await page.selectOption("#tl-speed", "1");
+  } catch (e) { sp.err = errText(e); }
+  record("(b2) lane W2: the speed (1x, 1.5x, 2x, \"How fast the video plays\") holds across the chain: played at 2x from 0:30, the second video plays at 2x, the clock running about twice as fast as real time, and the choice is kept on this computer",
+    !sp.err && sp.clip === "v2" && sp.rate === 2 && sp.ratio >= 1.7 && sp.ratio <= 2.3 && sp.kept === "2" &&
+      JSON.stringify(sp.choices) === '["1x","1.5x","2x"]' && sp.title === "How fast the video plays", JSON.stringify(sp));
 
   // (c) A trim of the first video's end, back to back: what follows moves up.
   let c = {};

@@ -962,10 +962,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     }));
     attach.cancelPhase.nothingYet = noExternal();
     await page.locator("#video-sync-card .vs-cancel").click({ timeout: T });
+    // Lane W2: this recording has screenshots (its files are not copied
+    // here), so where no video shows the stage shows its screen from them,
+    // under the no-video line with Attach video.
     attach.afterCancel = await page.evaluate(() => ({
       card: !!document.getElementById("video-sync-card"),
-      band: document.getElementById("video-pane").classList.contains("no-recording"),
+      screen: document.getElementById("video-pane").classList.contains("on-screen") && !document.getElementById("video-screen").hidden,
       noVideo: getComputedStyle(document.getElementById("no-video")).display !== "none",
+      videoShown: getComputedStyle(document.getElementById("video")).display !== "none",
     }));
     attach.afterCancel.nothingWritten = noExternal();
     // Then the real one.
@@ -1000,9 +1004,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     attach.err = String(e.message).split("\n")[0];
   }
   const cp = attach.cancelPhase || {}, ac = attach.afterCancel || {};
-  record("(h) Attach video opens the Timeline with the chosen video and the two-click sync card, never a typed offset; Cancel writes nothing and brings the no-video band back",
+  record("(h) Attach video opens the Timeline with the chosen video and the two-click sync card, never a typed offset; Cancel writes nothing and brings back what showed without a video (lane W2: the screen from the screenshots, under the no-video line)",
     !!(!attach.err && cp.onTimeline && /^Step 1 of 2: pause the video at a recognizable moment, then click Mark frame\./.test(cp.card) &&
-      cp.prompt === 0 && cp.videoShown && cp.nothingYet && !ac.card && ac.band && ac.noVideo && ac.nothingWritten),
+      cp.prompt === 0 && cp.videoShown && cp.nothingYet && !ac.card && ac.screen && ac.noVideo && !ac.videoShown && ac.nothingWritten),
     JSON.stringify({ cancelPhase: cp, afterCancel: ac, err: attach.err }));
   record("(h) Mark frame, then a click on the timeline, attaches the video with the offset of that moment (stored relative to the folder it sits in, V2 item 5); the recording line then says Video with Replace and the video header offers Sync video",
     !!(!attach.err && /^Step 2 of 2: click the matching moment on the timeline/.test(attach.step2 || "") && attach.stillNothing &&

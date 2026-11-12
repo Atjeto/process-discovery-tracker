@@ -85,6 +85,8 @@ test("the row in a video project: Play, the clock, Add step (the filled one), St
   assert.deepEqual(st.addNote, { shown: true, enabled: true });
   assert.equal(st.stretch, null);
   assert.equal(st.filled, "addStep");
+  // Lane W2: the speed, with a video only.
+  assert.equal(st.speed, true);
   // Inside an open transaction the slot reads End transaction.
   assert.equal(R.rowState({ ...VIDEO, runs: [{ startMs: s(5), endMs: s(31), dangling: true }] }).tx.kind, "end");
 });
@@ -107,6 +109,7 @@ test("a recording without a video: no Play and no Add step; with no moment yet t
   const rec = { drawable: true, hasVideo: false, recording: true, readOnly: false, atMs: null, runs: [], stretch: null, aside: "leave-out" };
   const st = R.rowState(rec);
   assert.equal(st.play, false);
+  assert.equal(st.speed, false, "no video, no speed");
   assert.equal(st.addStep.shown, false);
   assert.deepEqual(st.tx, { shown: true, enabled: false, kind: "start" });
   assert.deepEqual(st.addNote, { shown: true, enabled: false });
@@ -126,6 +129,19 @@ test("a stretch selected: its acts take the place of the marking buttons, the fi
   const none = R.rowState({ ...VIDEO, recording: true, aside: null, stretch: { startMs: s(8), endMs: s(16) } });
   assert.deepEqual(none.stretch, { acts: ["makeTx", "clear"] });
   assert.equal(none.filled, "makeTx");
+});
+
+test("lane W2: the speed's choices, their words, and the one kept on this computer", () => {
+  assert.deepEqual(R.SPEEDS.map(R.speedLabel), ["1x", "1.5x", "2x"]);
+  assert.equal(R.titles(R.nounOf(true)).speed, "How fast the video plays");
+  // A positive control: a kept choice is read back.
+  assert.equal(R.speedOf("2"), 2);
+  assert.equal(R.speedOf("1.5"), 1.5);
+  // Nothing kept, or a value that is not a choice: 1x.
+  assert.equal(R.speedOf(null), 1);
+  assert.equal(R.speedOf("3"), 1);
+  assert.equal(R.speedOf("fast"), 1);
+  assert.equal(R.SPEED_KEY, "pdt.playbackRate");
 });
 
 test("no timeline drawn (a project with no video and no recording): the row offers nothing to play or mark", () => {

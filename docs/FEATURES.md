@@ -225,6 +225,13 @@ The viewer says *transaction* for one pass through the process and
   the page does not scroll. The video takes at most 58% of the width; two
   dividers share the height and the width. Expand gives the video 70% of
   the width, fullscreen the whole window above the timeline's row.
+  Lane W2: a recording without a video shows its screen there, the
+  screenshot taken last before the clock's moment with one line under it
+  (its time and its step), following the clock (a click, a typed time, a
+  mark, Left and Right); a click opens it in the gallery. While a
+  transcript is placed, what is said shows under the picture, the speaker
+  in bold, empty between two sentences; a click opens the Transcript tab at
+  it.
 - **The timeline's first row**, in the process manager's words: *Play*, the
   clock ("6:20 / 1:02:00"; a click types a time to go to), *Add step*,
   *Start transaction* or *End transaction* (one button, at the clock's
@@ -235,7 +242,12 @@ The viewer says *transaction* for one pass through the process and
   and a drag) shows its times and length there with *Leave out of the
   analysis* or *Not part of the process*, *Make it a transaction* and *Clear
   selection*. Every control is reached with Tab and worked with Enter or
-  Space.
+  Space. Lane W2: the speed (*1x*, *1.5x*, *2x*) after the clock with a
+  video, kept on this computer; I and O select a stretch by the keyboard,
+  also while the video plays; after the row, Tab stops once on each lane
+  with marks (Transactions, Steps, Transcript, Screenshots, Notes), the
+  arrows go from mark to mark and Enter opens one; screenshots close
+  together are one mark with their count.
 - **The video above it**, attached and synced with two clicks and copied
   into the folder so it travels with it; *Remove video* takes it out with
   its copy, *Replace* takes out the copy it replaces, and Ctrl+Z brings

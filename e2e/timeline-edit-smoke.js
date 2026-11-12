@@ -615,8 +615,8 @@ async function laneScreen(TMP) {
     await wait(300);
     s4.enterPauses = await ev(() => document.getElementById("video").paused);
   } catch (e) { s4.err = errText(e); }
-  record("(s4) Tab reaches the row in its order (Play, the clock, Add step, the transaction, Add note, Lanes, Zoom out, Show all, Zoom in; lane LANES: no Transaction select), each named and with a focus ring; Space and Enter work a focused button",
-    !s4.err && JSON.stringify(s4.order.map((o) => o.id)) === JSON.stringify(["btn-tl-play", "btn-tl-clock", "btn-add-step", "btn-tl-transaction", "btn-tl-note",
+  record("(s4) Tab reaches the row in its order (Play, the clock, the speed (lane W2), Add step, the transaction, Add note, Lanes, Zoom out, Show all, Zoom in; lane LANES: no Transaction select), each named and with a focus ring; Space and Enter work a focused button",
+    !s4.err && JSON.stringify(s4.order.map((o) => o.id)) === JSON.stringify(["btn-tl-play", "btn-tl-clock", "tl-speed", "btn-add-step", "btn-tl-transaction", "btn-tl-note",
       "btn-lanes", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"]) && s4.order.every((o) => o.name && o.ring) &&
       s4.spacePlays && s4.enterPauses, JSON.stringify(s4));
   record("lane SCREEN: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));

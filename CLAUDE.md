@@ -344,9 +344,16 @@ the folder.
   window below, and the page does not scroll there
   (`#view-session.on-timeline`); the dividers store
   `pdt.stage.timelineHeight` and `pdt.stage.videoWidth`
-  (`layout-controls.js`). The row `#tl-row`: Play, the clock (a click types
-  a time), Add step, Start transaction or End transaction (one button), Add
-  note, the message area `#tl-message` (`dom.js` `placeToast` moves
+  (`layout-controls.js`). Lane W2: a recording without a video, with
+  screenshots, shows its screen there (`.on-screen`: the screenshot taken
+  last before the clock's moment, `timeline-screen.js` `screenAt`, drawn by
+  `flow-view-screenshots.js` `syncScreen`, under "No video in this
+  project."); a placed transcript's sentence at the moment shows under the
+  picture (`#video-caption`, `flow-view-transcript.js` `syncCaption`,
+  `transcript-list.js` `sayingAt`). The row `#tl-row`: Play, the clock (a
+  click types a time), the speed (`#tl-speed`, with a video,
+  `pdt.playbackRate`), Add step, Start transaction or End transaction (one
+  button), Add note, the message area `#tl-message` (`dom.js` `placeToast` moves
   `#toast` there while the Timeline shows; at rest `#timeline-summary`),
   Lanes, the zoom; a selected stretch shows there with its acts (the
   selection card is gone). The rules are `timeline-row.js`, drawn by
@@ -367,7 +374,11 @@ the folder.
   menu (`#lanes-legend`, "What the marks mean"). The Transaction select is
   gone (and `case-scope.js`): a double-click on a transaction's band shows
   only it (`zoomToTransaction`, `TimelineCore.zoomToSpan`), *Show all* comes
-  back.
+  back. Lane W2: the Transactions, Steps, Transcript, Screenshots and Notes
+  lanes are one Tab stop each (`.tl-lane-marks`, a listbox; the arrows,
+  Home, End and Enter; `lane-keys.js`), screenshots close together one
+  mark with their count (`shot-groups.js`), and I and O select a stretch
+  (`stretch-keys.js`, `flow-view.js` `stretchKey`).
 - **The Steps page is an editor** (2.0.1, the owner's review): the toolbar
   acts on the selected step (Split..., Merge with next, Hide step, the
   sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a
