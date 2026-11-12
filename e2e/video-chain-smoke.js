@@ -31,6 +31,10 @@
  *       transaction's start at 0:02); Ctrl+Z brings it all back;
  *   (h) the second video's end dragged on its band to 0:40 trims it there;
  *       Ctrl+Z gives it back;
+ *   (i) lane LANES: a right-click on a video's band marks there too: the
+ *       Timeline's own entries first (Add a step here among them), then,
+ *       under the video's name, the video's own entries; Add a step here
+ *       adds a step at that moment;
  *   zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -337,6 +341,10 @@ async function makeVideo(page, out, secs, colour) {
     e2.line = await page.evaluate(() => ((document.querySelector('#ov-summary [data-summary="transcript"]') || {}).textContent || "").trim());
     await level("flow");
     e2.rows = await page.evaluate(() => [...document.querySelectorAll("#timeline .tl-tr-label")].map((l) => l.dataset.file));
+    // Lane LANES: the Videos lane is under the Steps and the Transcript
+    // lanes now; with two transcripts the lanes scroll, so its bands are
+    // brought into view before the pointer goes there.
+    await page.evaluate(() => document.querySelector("#timeline .tl-clip").scrollIntoView({ block: "nearest" }));
     const g = await geo();
     await rightClickItem(xOf(g, atClick(30)), g.clipY, "Trim the end here");
     await page.waitForFunction(() => { const v = require("./state.js").getSession().annotations.external_videos || [];
@@ -387,6 +395,10 @@ async function makeVideo(page, out, secs, colour) {
   let gg = {};
   try {
     await level("flow");
+    // Lane LANES: the Videos lane is under the Steps and the Transcript
+    // lanes now; with two transcripts the lanes scroll, so its bands are
+    // brought into view before the pointer goes there.
+    await page.evaluate(() => document.querySelector("#timeline .tl-clip").scrollIntoView({ block: "nearest" }));
     const g = await geo();
     await rightClickItem(xOf(g, atClick(12)), g.clipY, "Remove video");
     await page.waitForSelector(".modal-confirm", { state: "visible", timeout: T });
@@ -417,6 +429,10 @@ async function makeVideo(page, out, secs, colour) {
   let hh = {};
   try {
     await level("flow");
+    // Lane LANES: the Videos lane is under the Steps and the Transcript
+    // lanes now; with two transcripts the lanes scroll, so its bands are
+    // brought into view before the pointer goes there.
+    await page.evaluate(() => document.querySelector("#timeline .tl-clip").scrollIntoView({ block: "nearest" }));
     const g = await geo();
     const band = await page.evaluate(() => { const b = document.querySelectorAll("#timeline .tl-clip")[1].getBoundingClientRect();
       return { right: b.right, y: b.top + b.height / 2 }; });
@@ -440,6 +456,36 @@ async function makeVideo(page, out, secs, colour) {
   record("(h) the second video's end dragged on its band (the side lit under the pointer) to 0:40 trims it there, the timeline then running 40 s; Ctrl+Z gives it back",
     !hh.err && hh.hot && hh.chain && near(hh.chain[1][3], 40 - hh.chain[1][1], 0.6) && near(hh.span, 40, 0.8) &&
       hh.undone && hh.undone[1][3] === null, JSON.stringify(hh));
+
+  // (i) Lane LANES ("every Timeline right-click marks there, on a band
+  // too"): a right-click on the first video's band at 0:24 offers the
+  // Timeline's own entries first, then the video's under its name; Add a
+  // step here adds a step that starts there.
+  let ii = {};
+  try {
+    await level("flow");
+    await page.evaluate(() => document.querySelector("#timeline .tl-clip").scrollIntoView({ block: "nearest" }));
+    const g = await geo();
+    const before = (await anno()).steps.length;
+    await page.mouse.click(xOf(g, atClick(24)), g.clipY, { button: "right" });
+    await page.waitForSelector("#tl-ctx-menu", { timeout: T });
+    ii.menu = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > *")].map((e) =>
+      e.tagName === "HR" ? "|" : e.classList.contains("tl-ctx-head") ? "head: " + e.textContent : (e.textContent || "").trim()));
+    await menuItem("Add a step here");
+    await page.waitForFunction((n) => (require("./state.js").getSession().annotations.steps || []).length === n + 1, before, { timeout: T });
+    const now = await anno();
+    ii.starts = now.steps.filter((s) => s.time_range).map((s) => relOf(s.time_range.start));
+    ii.count = [before, now.steps.length];
+    await undo();
+    await page.waitForFunction((n) => (require("./state.js").getSession().annotations.steps || []).length === n, before, { timeout: 60000 });
+  } catch (e) { ii.err = errText(e); }
+  const iMenu = ii.menu || [];
+  const iRule = iMenu.indexOf("|"), iStep = iMenu.indexOf("Add a step here"), iTrim = iMenu.indexOf("Trim the start here");
+  record("(i) lane LANES: a right-click on a video's band offers the Timeline's own entries first (Add a step here among them), then, under the video's name, its own entries (Trim the start here, Remove video); Add a step here adds a step that starts at 0:24",
+    !ii.err && iStep >= 0 && iRule > iStep && /^head: pdt-e2e-synthetic-32s/.test(iMenu[iRule + 1] || "") && iTrim > iRule &&
+      iMenu.includes("Remove video") && iMenu.indexOf("Start a transaction here…") === 0 &&
+      ii.count[1] === ii.count[0] + 1 && ii.starts.some((s) => near(s, 24, 0.6)),
+    JSON.stringify(ii));
 
   const pageErrs = errs.filter((x) => !/Failed to load resource|ERR_FILE_NOT_FOUND|Autofill/.test(x));
   record("zero page errors", pageErrs.length === 0, pageErrs.slice(0, 3).join(" | "));

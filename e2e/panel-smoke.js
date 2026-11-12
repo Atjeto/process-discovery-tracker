@@ -22,7 +22,8 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *       FX2: a row whose moment the 32 s video does not cover says so, with
  *       no play, and the panel opened on one hides its video and says why;
  *   (L) the Timeline's lanes show their names at the left, each with a
- *       tooltip, and the minimap's tooltip says what it is;
+ *       tooltip, in the order of the work (lane LANES), and the bar of the
+ *       whole length's tooltip says what it is;
  *   (d) closed on Steps, it stays closed while rows are selected;
  *   (f) the As-Is map (C18, AD-32), with a note and a file on a step: Export,
  *       Process map (image), with no As-Is copy saves the step BPMN drawn by
@@ -573,8 +574,10 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
   // centred on what the lane draws, in the type of the small section labels
   // (uppercase), with a tooltip saying what it shows; the dividers between
   // the cells run on across the timeline as the lanes' separators; pointing
-  // at a cell lights its lane up. The minimap says what it is. The default
-  // lanes, then Screenshots turned on (and off again).
+  // at a cell lights its lane up. Lane LANES: the lanes in the order of the
+  // work (Transactions, Steps, Systems, then the media), and the bar of the
+  // whole length under them says what it is. The default lanes, then
+  // Screenshots turned on (and off again).
   const lanes = {};
   const laneNames = () => page.evaluate(() => {
     const mid = (el) => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; };
@@ -623,19 +626,20 @@ const lineFromRows = (st, runCount) => StepFacts.occurrencesLine(st.rows.map((r)
     await page.locator('#lanes-popup input[data-lane="screenshots"]').uncheck({ timeout: T });
     await page.locator("#btn-lanes").click({ timeout: T });
     await page.locator("#btn-zoom-in").click({ timeout: T });
-    lanes.minimap = await page.evaluate(() => { const m = document.getElementById("timeline-minimap"); return { shown: getComputedStyle(m).display !== "none", title: m.title }; });
+    lanes.bar = await page.evaluate(() => { const m = document.getElementById("tl-bar"), b = document.getElementById("tl-bar-box");
+      return { shown: m.checkVisibility(), part: b.getBoundingClientRect().width < m.getBoundingClientRect().width - 2, title: m.title }; });
     await page.locator("#btn-zoom-reset").click({ timeout: T });
   } catch (e) { lanes.err = errText(e); }
   const said = (list) => (list || []).map((n) => n.text);
   const eachOk = (list) => (list || []).every((n) => n.title.startsWith(n.text + ": ") && n.inLane === true && n.whole &&
     n.off !== null && n.off <= 1.5 && n.upper && n.key);
   const sepsOk = (x) => !!(x && x.seps.column && x.seps.column === x.seps.timeline);
-  record("(L) the owner's reviews: the Timeline's lanes have a header column (Transactions, Systems, Videos, Steps; Screenshots once turned on): a cell per lane with its key and its name centred on the lane's marks, in uppercase like the section labels, with a tooltip saying what it shows; the dividers run on across the timeline; pointing at a cell lights its lane; the minimap's tooltip says it is the whole recording",
-    !!(!lanes.err && lanes.def.leftOfTimeline && JSON.stringify(said(lanes.def.names)) === '["Transactions","Systems","Videos","Steps"]' && eachOk(lanes.def.names) &&
+  record("(L) the owner's reviews: the Timeline's lanes have a header column (lane LANES: Transactions, Steps, Systems, Videos; Screenshots once turned on): a cell per lane with its key and its name centred on the lane's marks, in uppercase like the section labels, with a tooltip saying what it shows; the dividers run on across the timeline; pointing at a cell lights its lane; the bar of the whole length's tooltip says what it is, its box the part shown while zoomed in",
+    !!(!lanes.err && lanes.def.leftOfTimeline && JSON.stringify(said(lanes.def.names)) === '["Transactions","Steps","Systems","Videos"]' && eachOk(lanes.def.names) &&
       sepsOk(lanes.def) && sepsOk(lanes.shots) && lanes.lit === true && lanes.unlit === true &&
-      JSON.stringify(said(lanes.shots.names)) === '["Transactions","Systems","Videos","Screenshots","Steps"]' && eachOk(lanes.shots.names) &&
-      lanes.def.names.find((n) => n.lane === "steps").title === "Steps: each step of each transaction; click one to see all its moments." &&
-      lanes.minimap.shown && /^The whole recording/.test(lanes.minimap.title)),
+      JSON.stringify(said(lanes.shots.names)) === '["Transactions","Steps","Systems","Videos","Screenshots"]' && eachOk(lanes.shots.names) &&
+      lanes.def.names.find((n) => n.lane === "steps").title === "Steps: each step in the order of the process; click one to open it beside the video." &&
+      lanes.bar.shown && lanes.bar.part && lanes.bar.title === "The whole length of the timeline. Drag the box to move along it, or click a place to go there."),
     JSON.stringify(lanes));
 
   // (c3) A Steps row, and Watch in the step pane.

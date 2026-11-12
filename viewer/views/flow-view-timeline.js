@@ -2,20 +2,21 @@
  * flow-view-timeline.js -- the Flow timeline subsystem.
  *
  * Extracted from flow-view.js (god-file split). Owns renderTimeline (the lane
- * stack: ticks / runs / activity+idle+markers / transcript / screenshots /
- * steps, via TimelineCore.renderLaneStack, and the lanes' names at its left,
- * renderLaneNames), the lane plugins' helpers
- * (layoutCaseLanes, monitorBadgeFor), the minimap, the lane-visibility
- * toggles, per-session zoom/scroll persistence, the timeline summary line,
- * and the zoom / middle-drag-pan / scroll-persist wiring. Self-wires its DOM
- * controls at require() time.
+ * stack, lane LANES: time / transactions / steps / systems / transcript /
+ * videos / screenshots / notes / idle, via TimelineCore.renderLaneStack, and
+ * the lanes' names at its left, renderLaneNames; the stretches set aside
+ * hatched through every lane), the lane plugins' helpers
+ * (layoutCaseLanes, monitorBadgeFor), the bar of the whole length under the
+ * lanes, the Lanes menu with what the marks mean, per-session zoom/scroll
+ * persistence, the timeline summary line, and the zoom / middle-drag-pan /
+ * scroll-persist wiring. Self-wires its DOM controls at require() time.
  *
  * Requires the sibling Flow modules one-way (apps / video / screenshots) and
  * marker-edits.js (the markers with the analyst's changes laid over them) for
  * the values the lanes render. The cross-surface glue that lives back in
- * flow-view.js (currentScopeRange for the case scope, showMarkerInsertMenu
- * and showCaseContextMenu for the timeline context menus) is injected via
- * initTimeline(), so this module never require()s flow-view.js.
+ * flow-view.js (showMarkerInsertMenu and showCaseContextMenu for the timeline
+ * context menus, includeAgain) is injected via initTimeline(), so this
+ * module never require()s flow-view.js.
  * flow-view.js re-exports renderTimeline on its own surface, so renderer.js
  * sees no change.
  */
@@ -26,7 +27,10 @@ const TimelineCore = require("../timeline/timeline-core.js");
 const State = require("../state.js");
 const { $, formatDuration, placeMenu, recordingStartMs, sinceStart, toast } = require("../dom.js");
 const { appColor, appLabel, renderLegend } = require("./flow-view-apps.js");
-const { seekToTimestamp, timelineSpan, attachVideo } = require("./flow-view-video.js");
+const { seekToTimestamp, timelineSpan, attachVideo, playheadMs } = require("./flow-view-video.js");
+const BandLabel = require("../step-band-label.js");
+const BandWidth = require("../step-band-width.js");
+const PaneLists = require("../pane-lists.js");
 const AC = require("../analyst-content.js");
 const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
@@ -222,7 +226,6 @@ function _dragEdge(e0, band, g, d) {
 
 /* Injected by flow-view.js via initTimeline() -- kept out of a require() to
    avoid a flow-view <-> timeline cycle. */
-let currentScopeRange = () => null;
 let showMarkerInsertMenu = () => {};
 let showCaseContextMenu = () => {};
 let includeAgain = async () => {};
@@ -329,7 +332,6 @@ function _wireTimelineScrollPersist() {
   if (!scroll || scroll._pdtPersistWired) return;
   scroll._pdtPersistWired = true;
   scroll.addEventListener("scroll", () => {
-    syncMinimapViewport();
     if (_tlScrollPersistTimer) return;
     _tlScrollPersistTimer = setTimeout(() => {
       _tlScrollPersistTimer = null;
@@ -369,98 +371,99 @@ $("#btn-zoom-in").addEventListener("click", () => { State.setZoomFactor(State.ge
 $("#btn-zoom-out").addEventListener("click", () => { State.setZoomFactor(Math.max(1, State.getZoomFactor() / 1.5)); renderTimeline(); persistTimelineForCurrent(); });
 $("#btn-zoom-reset").addEventListener("click", () => { State.setZoomFactor(1); renderTimeline(); persistTimelineForCurrent(); });
 
-/* P1.3: minimap overview above the timeline. A 30px strip showing the
-   whole session compressed; the highlighted rectangle marks the
-   currently-visible region in the scroll container. Click anywhere to
-   jump; drag the rectangle to scroll. Shown only while the timeline is
-   zoomed in: at zoom 1 the timeline itself is the whole session. */
-function renderMinimap() {
-  const mm = document.getElementById("timeline-minimap");
-  const scroll = document.getElementById("timeline-scroll");
-  if (!mm || !scroll || !State.getSession() || !State.getSession().events) return;
-  const evs = State.getSession().events;
-  const sp = timelineSpan();
-  if (!sp || !(State.getZoomFactor() > 1)) { mm.style.display = "none"; mm.innerHTML = ""; return; }
-  mm.style.display = "";
-  const first = sp.startMs;
-  const span  = Math.max(1, sp.endMs - first);
-  // Build / reset content.
-  mm.innerHTML = "";
-  // Activity bands (compressed). Skip very short ones for clarity.
-  for (const ev of evs) {
-    if (ev.type !== "activity") continue;
-    const dur = ev.data.duration_ms || 0;
-    if (dur < span * 0.0005) continue;
-    const t = new Date(ev.timestamp).getTime();
-    const x = ((t - first) / span) * 100;
-    const w = Math.max(0.1, (dur / span) * 100);
-    const b = document.createElement("div");
-    b.className = "tl-mm-band";
-    b.style.left = x + "%";
-    b.style.width = w + "%";
-    b.style.background = appColor(ev.data.app);
-    mm.appendChild(b);
-  }
-  // Viewport rectangle.
-  const vp = document.createElement("div");
-  vp.className = "tl-mm-viewport";
-  vp.id = "tl-mm-viewport";
-  mm.appendChild(vp);
-  syncMinimapViewport();
+/* Lane LANES (plan section 11.3): one bar of the whole length under the
+   lanes (#tl-bar), the one way to move along the timeline besides the wheel
+   and the zoom, always in the same place. The part the lanes show now is a
+   box on it (#tl-bar-box): drag the box to move, press elsewhere on the bar
+   to centre the view there (and drag on from there); Left and Right move the
+   box while the bar has the focus. When the lanes show the whole length the
+   box fills the bar. The playhead shows on it as a thin line
+   (#tl-bar-playhead). It replaces the minimap that showed above the lanes
+   while zoomed in, and the lanes' own horizontal scrollbar (hidden,
+   styles.css .timeline-scroll). The geometry is TimelineCore's barBox,
+   barCentreOn, barDragTo, barStep and barValue. */
+function _barParts() {
+  return {
+    bar: document.getElementById("tl-bar"),
+    box: document.getElementById("tl-bar-box"),
+    line: document.getElementById("tl-bar-playhead"),
+    scroll: document.getElementById("timeline-scroll"),
+  };
 }
-function syncMinimapViewport() {
-  const mm = document.getElementById("timeline-minimap");
-  const scroll = document.getElementById("timeline-scroll");
-  const vp = document.getElementById("tl-mm-viewport");
-  if (!mm || !scroll || !vp) return;
-  const inner = scroll.scrollWidth || 1;
-  const outer = scroll.clientWidth || 1;
-  const visibleFrac = Math.min(1, outer / inner);
-  const startFrac   = scroll.scrollLeft / inner;
-  vp.style.left  = (startFrac * 100) + "%";
-  vp.style.width = (visibleFrac * 100) + "%";
+function syncBar() {
+  const { bar, box, scroll } = _barParts();
+  if (!bar || !box || !scroll) return;
+  const b = TimelineCore.barBox(scroll.scrollLeft, scroll.clientWidth, scroll.scrollWidth);
+  box.style.left = b.leftPct + "%";
+  box.style.width = b.widthPct + "%";
+  bar.classList.toggle("whole", b.widthPct >= 100);
+  const v = String(TimelineCore.barValue(scroll.scrollLeft, scroll.clientWidth, scroll.scrollWidth));
+  if (bar.getAttribute("aria-valuenow") !== v) bar.setAttribute("aria-valuenow", v);
 }
-(function wireMinimap() {
-  const mm = document.getElementById("timeline-minimap");
-  if (!mm || mm._pdtWired) return;
-  mm._pdtWired = true;
-  mm.addEventListener("click", (e) => {
-    // Click outside the viewport rect → jump there.
-    if (e.target.id === "tl-mm-viewport") return;
-    const scroll = document.getElementById("timeline-scroll");
-    if (!scroll) return;
-    const rect = mm.getBoundingClientRect();
-    const frac = (e.clientX - rect.left) / Math.max(1, rect.width);
-    const inner = scroll.scrollWidth || 1;
-    const outer = scroll.clientWidth || 1;
-    scroll.scrollLeft = Math.max(0, frac * inner - outer / 2);
-    syncMinimapViewport();
+/* The playhead's line on the bar follows #tl-playhead, whose left is a
+   percent of the whole length, the bar's own scale. */
+function _syncBarPlayhead() {
+  const { line } = _barParts();
+  const ph = document.getElementById("tl-playhead");
+  if (!line) return;
+  const shown = !!ph && ph.style.display !== "none";
+  line.style.display = shown ? "" : "none";
+  if (shown) line.style.left = ph.style.left;
+}
+let _barPlayheadObserver = null;
+function _watchPlayhead(ph) {
+  if (typeof MutationObserver !== "function") return;
+  if (_barPlayheadObserver) _barPlayheadObserver.disconnect();
+  _barPlayheadObserver = new MutationObserver(_syncBarPlayhead);
+  _barPlayheadObserver.observe(ph, { attributes: true, attributeFilter: ["style"] });
+  _syncBarPlayhead();
+}
+(function wireBar() {
+  const { bar, box, scroll } = _barParts();
+  if (!bar || !box || !scroll || bar._pdtWired) return;
+  bar._pdtWired = true;
+  scroll.addEventListener("scroll", syncBar);
+  if (typeof ResizeObserver === "function") new ResizeObserver(syncBar).observe(scroll);
+  let drag = null;
+  const onMove = (e) => {
+    if (!drag) return;
+    scroll.scrollLeft = TimelineCore.barDragTo(drag.fromScroll, e.clientX - drag.fromX, drag.barPx,
+      scroll.clientWidth, scroll.scrollWidth);
+    syncBar();
+  };
+  const onUp = () => {
+    if (!drag) return;
+    drag = null;
+    bar.classList.remove("dragging");
+    document.removeEventListener("mousemove", onMove, true);
+    document.removeEventListener("mouseup", onUp, true);
     persistTimelineForCurrent();
-  });
-  // Drag the viewport.
-  let dragging = null;
-  mm.addEventListener("mousedown", (e) => {
-    if (e.target.id !== "tl-mm-viewport") return;
+  };
+  bar.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
     e.preventDefault();
-    const vp = e.target;
-    vp.classList.add("dragging");
-    const scroll = document.getElementById("timeline-scroll");
-    const rect = mm.getBoundingClientRect();
-    dragging = { startX: e.clientX, startScrollLeft: scroll.scrollLeft, mmW: rect.width, scroll };
+    bar.focus({ preventScroll: true });
+    const r = bar.getBoundingClientRect();
+    // A press beside the box centres the view there; then, as on the box,
+    // the pointer drags it on.
+    if (e.target !== box) {
+      scroll.scrollLeft = TimelineCore.barCentreOn((e.clientX - r.left) / Math.max(1, r.width),
+        scroll.clientWidth, scroll.scrollWidth);
+      syncBar();
+    }
+    drag = { fromX: e.clientX, fromScroll: scroll.scrollLeft, barPx: r.width };
+    bar.classList.add("dragging");
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("mouseup", onUp, true);
   });
-  document.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
-    const dxPx = e.clientX - dragging.startX;
-    const inner = dragging.scroll.scrollWidth || 1;
-    const dxScroll = (dxPx / Math.max(1, dragging.mmW)) * inner;
-    dragging.scroll.scrollLeft = Math.max(0, dragging.startScrollLeft + dxScroll);
-    syncMinimapViewport();
-  });
-  document.addEventListener("mouseup", () => {
-    if (!dragging) return;
-    const vp = document.getElementById("tl-mm-viewport");
-    if (vp) vp.classList.remove("dragging");
-    dragging = null;
+  bar.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    // The bar's own keys: the arrows move the box, not the video.
+    e.preventDefault();
+    e.stopPropagation();
+    scroll.scrollLeft = TimelineCore.barStep(scroll.scrollLeft, e.key === "ArrowLeft" ? -1 : 1,
+      scroll.clientWidth, scroll.scrollWidth);
+    syncBar();
     persistTimelineForCurrent();
   });
 })();
@@ -487,7 +490,6 @@ function syncMinimapViewport() {
   document.addEventListener("mousemove", (e) => {
     if (!pan) return;
     scroll.scrollLeft = Math.max(0, pan.startScrollLeft - (e.clientX - pan.startX));
-    syncMinimapViewport();
   });
   document.addEventListener("mouseup", () => {
     if (!pan) return;
@@ -625,7 +627,10 @@ const LANE_KEY = "pdt.timelineLanes";
 const LANE_DEFAULTS = {
   // V2 item 8: the Steps lane is on by default (the Timeline's link to Steps
   // and to the step panel).
-  idle: true, screenshots: false, cases: true, steps: true,
+  screenshots: false, cases: true, steps: true,
+  // Lane LANES: the Systems lane (a recording) has a toggle of its own; the
+  // Idle lane, under Notes, is off until chosen (plan section 11.3).
+  activity: true, idle: false,
   // C8: exists only while a transcript is attached; on when it does.
   transcript: true,
   // C23: exists only while a video is added; on when one is.
@@ -633,6 +638,37 @@ const LANE_DEFAULTS = {
   // C16: exists only while a note is pinned to a moment; on when one is.
   notes: true,
 };
+
+/* The Lanes menu opens under its button when it fits there, else above it
+   where there is more room, and scrolls inside the window when it is taller
+   than that room (at 1024x720 the timeline's row is near the foot of the
+   window). */
+function placeLanesMenu() {
+  const btn = document.getElementById("btn-lanes");
+  const popup = document.getElementById("lanes-popup");
+  if (!btn || !popup || popup.style.display === "none") return;
+  const m = 8;
+  const r = btn.getBoundingClientRect();
+  popup.style.position = "fixed";
+  popup.style.maxHeight = "";
+  popup.style.top = "0px";
+  popup.style.left = "0px";
+  popup.style.right = "auto";
+  popup.style.bottom = "auto";
+  const h = popup.offsetHeight, w = popup.offsetWidth;
+  const below = window.innerHeight - r.bottom - 4 - m, above = r.top - 4 - m;
+  let top;
+  if (h <= below) top = r.bottom + 4;
+  else if (above > below) {
+    popup.style.maxHeight = Math.max(80, above) + "px";
+    top = r.top - 4 - Math.min(h, Math.max(80, above));
+  } else {
+    popup.style.maxHeight = Math.max(80, below) + "px";
+    top = r.bottom + 4;
+  }
+  popup.style.top = Math.max(m, Math.round(top)) + "px";
+  popup.style.left = Math.round(Math.max(m, Math.min(r.right - w, window.innerWidth - w - m))) + "px";
+}
 function getLaneToggles() {
   try {
     const saved = JSON.parse(localStorage.getItem(LANE_KEY)) || {};
@@ -660,10 +696,12 @@ function setLaneToggle(key, on) {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     popup.style.display = popup.style.display === "none" ? "" : "none";
+    placeLanesMenu();
   });
   document.addEventListener("click", (e) => {
     if (!popup.contains(e.target) && e.target !== btn) popup.style.display = "none";
   });
+  window.addEventListener("resize", placeLanesMenu);
 })();
 
 /* The lanes' names at the left of the timeline (the owner's review: "the
@@ -684,7 +722,8 @@ const LANE_NAMES = {
   transcript: { name: "Transcript", title: "Transcript: what was said, one block per sentence at the moment it was said, once the transcript is synced; click one to go there." },
   notes: { name: "Notes", title: "Notes: your notes pinned to a moment; click one to go there, right-click to edit or delete it." },
   screenshots: { name: "Screenshots", title: "Screenshots: one mark per screenshot taken during the recording, and one per frame of the video you added to a step; click one to see it full size." },
-  steps: { name: "Steps", title: "Steps: each step of each transaction; click one to see all its moments." },
+  steps: { name: "Steps", title: "Steps: each step in the order of the process; click one to open it beside the video." },
+  idle: { name: "Idle", title: "Idle: the stretches when the keyboard and the mouse were not used; hatched where the recorder still saw work at the desk." },
 };
 
 /* A lane's key in its header: a small copy of the lane's own marks (a
@@ -826,11 +865,10 @@ function stepsForLevel(session) {
 }
 
 /* Lane FX3 (validation pass 3, F16): the header's controls act on a drawn
-   timeline (the Transaction select dims transactions on it, Lanes picks its
-   lanes, the zoom zooms it). A project with no recording and no video has
-   none, so they are not offered there; the line in its place says how to
-   get one (Attach video). */
-const HEADER_CONTROLS = ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"];
+   timeline (Lanes picks its lanes, the zoom zooms it). A project with no
+   recording and no video has none, so they are not offered there; the line
+   in its place says how to get one (Attach video). */
+const HEADER_CONTROLS = ["lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"];
 function timelineDrawable(sess) {
   return !!sess && (((sess.events || []).length > 0) || !!sess.recordingAvailable);
 }
@@ -839,6 +877,180 @@ function _syncHeaderControls(drawable) {
     const el = document.getElementById(id);
     if (el) el.style.display = drawable ? "" : "none";
   }
+}
+
+/* Lane LANES: the heights of the Steps lane (its names on up to two lines)
+   and of the Idle lane. */
+const STEPS_LANE_H = 44;
+const STEP_BAND_INSET = 3;
+const IDLE_LANE_H = 16;
+
+/* The idle stretches of a recording, in time order: [{ startMs, endMs,
+   atDesk }] from its idle_start and idle_end system events (I23: at_desk, the
+   recorder still saw work at the desk). */
+function idleStretches(evs) {
+  const out = [];
+  let open = null;
+  for (const ev of Array.isArray(evs) ? evs : []) {
+    if (!ev || ev.type !== "system" || !ev.data) continue;
+    const t = Date.parse(ev.timestamp);
+    if (ev.data.kind === "idle_start" && Number.isFinite(t)) open = { startMs: t, atDesk: !!ev.data.at_desk };
+    else if (ev.data.kind === "idle_end" && open && Number.isFinite(t) && t >= open.startMs) {
+      out.push({ startMs: open.startMs, endMs: t, atDesk: open.atDesk });
+      open = null;
+    }
+  }
+  return out;
+}
+
+/* Lane LANES, item 5: a double-click on a transaction's band shows only that
+   transaction (Show all comes back to the whole length) and keeps the clock
+   where it is. A click on a band goes to its start, so that click waits
+   TX_CLICK_WAIT_MS for a second one; a slower double-click, whose first
+   click already went, puts the clock back where it was. */
+const ZOOM_TO_TX_LINE = "Double-click: show only this transaction.";
+const TX_CLICK_WAIT_MS = 250;
+let _txClick = null;
+function _cancelTxClick() {
+  if (_txClick && _txClick.timer) clearTimeout(_txClick.timer);
+  if (_txClick) _txClick.timer = null;
+}
+function _txClickLater(startMs) {
+  _cancelTxClick();
+  const t = { before: playheadMs(), fired: 0, timer: null };
+  t.timer = setTimeout(() => {
+    t.timer = null;
+    t.fired = Date.now();
+    seekToTimestamp(new Date(startMs).toISOString());
+  }, TX_CLICK_WAIT_MS);
+  _txClick = t;
+}
+function zoomToTransaction(startMs, endMs) {
+  const t = _txClick;
+  _cancelTxClick();
+  _txClick = null;
+  if (t && t.fired && Date.now() - t.fired < 1000 && Number.isFinite(t.before)) {
+    seekToTimestamp(new Date(t.before).toISOString());
+  }
+  const sp = timelineSpan();
+  const z = sp ? TimelineCore.zoomToSpan(sp.startMs, sp.endMs, startMs, endMs) : null;
+  if (!z) return;
+  State.setZoomFactor(z.zoom);
+  renderTimeline();
+  const scroll = document.getElementById("timeline-scroll");
+  if (scroll) scroll.scrollLeft = z.leftFrac * scroll.scrollWidth;
+  syncBar();
+  persistTimelineForCurrent();
+}
+
+/* Lane LANES, item 4: what the marks mean, in the Lanes menu under the
+   lanes' checkboxes (the legend row under the timeline is gone). An entry
+   shows only while its mark is drawn (`shows`, by the entry's class); the
+   heading only while an entry shows. `shows` null: none (no timeline). */
+function _syncLegend(shows, observedApps) {
+  const host = document.getElementById("lanes-legend");
+  if (!host) return;
+  renderLegend(shows ? observedApps : null);
+  let any = !!(shows && observedApps && observedApps.size);
+  for (const el of host.querySelectorAll(":scope > span:not(.legend-apps)")) {
+    const cls = [...el.classList].find((c) => c.startsWith("lg-"));
+    const on = !!shows && !!shows["." + cls];
+    el.style.display = on ? "" : "none";
+    any = any || on;
+  }
+  host.hidden = !any;
+  const title = document.getElementById("lanes-legend-title");
+  if (title) title.hidden = !any;
+  // Lane E (E4): the hatch in this project's words.
+  const lgOut = host.querySelector(".lg-left-out");
+  const sess = State.getSession();
+  if (lgOut && sess) {
+    const recorded = AC.hasRecording(sess);
+    lgOut.textContent = LeftOut.wordsFor(recorded).legend;
+    lgOut.title = recorded
+      ? "Hatched: left out of the analysis (a stretch, or an app outside the process). Playing skips a stretch left out, " +
+        "and the Transcript tab leaves out what was said in it. Click a stretch to include it again."
+      : "A stretch you marked as not part of the process. It is skipped when playing and left out of the Transcript tab.";
+  }
+  placeLanesMenu();
+}
+
+/* Lane LANES, item 1: how wide each step band is drawn (step-band-width.js:
+   its time, at least 2 px, never past the start of the next band of its
+   transaction, so no band covers another) and what it shows at that width
+   (step-band-label.js: the name on up to two lines where it reads, else the
+   number the pane's Steps tab shows, else nothing): after a render, and
+   again when the lanes change width. The width is the rule's, never the
+   width the band happens to render at, so the choice is the same each time. */
+let _measureCtx = null;
+function _nameWidth(text, el) {
+  try {
+    if (!_measureCtx) _measureCtx = document.createElement("canvas").getContext("2d");
+    const cs = getComputedStyle(el);
+    _measureCtx.font = cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+    return _measureCtx.measureText(text).width;
+  } catch (_) { return NaN; }
+}
+/* The span the last render laid out, { first, span } (ms). */
+let _stepGeo = null;
+function layoutStepBands() {
+  const host = document.getElementById("timeline");
+  const hostW = host ? host.clientWidth : 0;
+  const bands = [...document.querySelectorAll("#timeline .tl-step-band")];
+  if (!_stepGeo || !(hostW > 0) || !bands.length) return;
+  const px = (ms) => ((ms - _stepGeo.first) / _stepGeo.span) * hostW;
+  const drawn = BandWidth.drawnBands(bands.map((b, i) => ({
+    id: i, key: b.dataset.key || null, startPx: px(Number(b.dataset.startMs)), endPx: px(Number(b.dataset.endMs)),
+  })));
+  bands.forEach((band, i) => {
+    const d = drawn.get(i);
+    if (!d) return;
+    band.style.left = ((d.leftPx / hostW) * 100) + "%";
+    band.style.width = ((d.widthPx / hostW) * 100) + "%";
+    band.classList.toggle("slim", d.slim);
+    const nameEl = band.querySelector(".tl-step-name");
+    const numEl = band.querySelector(".tl-step-num");
+    if (!nameEl || !numEl) return;
+    const name = band.dataset.name || "";
+    const num = band.dataset.num ? Number(band.dataset.num) : null;
+    const r = BandLabel.bandLabel(d.widthPx, name, _nameWidth(name, nameEl), num);
+    band.dataset.shows = r.kind;
+    nameEl.hidden = r.kind !== "name";
+    numEl.hidden = r.kind !== "number";
+  });
+}
+(function wireStepRelabel() {
+  const scroll = document.getElementById("timeline-scroll");
+  if (!scroll || typeof ResizeObserver !== "function") return;
+  let w = 0;
+  new ResizeObserver(() => {
+    if (Math.abs(scroll.clientWidth - w) < 1) return;
+    w = scroll.clientWidth;
+    layoutStepBands();
+  }).observe(scroll);
+})();
+
+/* The numbers the step bands carry: the pane's Steps tab's at the main level
+   (pane-lists.js stepGroups), inside a sub-process the step's place among the
+   visible steps of its level in its transaction (as the pane counts it). */
+function _stepNumbers(level, anno) {
+  if (!level.name) {
+    try {
+      const P = require("./steps-view.js").paneProject();   // lazy: steps-view requires this module's neighbours
+      return BandLabel.stepNumbers(PaneLists.stepGroups(P.model, P.refCaseId, P.implicitId));
+    } catch (_) { return new Map(); }
+  }
+  const out = new Map();
+  for (const s of level.steps) {
+    if (!s || out.has(s.step_id)) continue;
+    const hit = SPM.findStep((anno && anno.steps) || [], s.step_id);
+    if (!hit) continue;
+    const key = (x) => (x && typeof x.case_id === "string" && x.case_id ? x.case_id : null);
+    const list = hit.list.filter((x) => x && x.state !== "hidden" && (hit.depth || key(x) === key(hit.step)));
+    const i = StepOrder.processOrder(list).findIndex((x) => x.step_id === s.step_id);
+    if (i >= 0) out.set(s.step_id, i + 1);
+  }
+  return out;
 }
 
 function renderTimeline() {
@@ -852,13 +1064,18 @@ function renderTimeline() {
   const notesRow = document.getElementById("lane-notes-row");
   if (notesRow) notesRow.hidden = !allNotes.length;
   const sp = timelineSpan();
-  // The legend explains marks; with nothing drawn there is nothing to explain.
-  const legend = document.getElementById("timeline-legend");
-  if (legend) legend.style.display = sp ? "" : "none";
+  // The bar of the whole length moves along a drawn timeline only.
+  const barRow = document.getElementById("tl-bar-row");
+  if (barRow) barRow.hidden = !sp;
+  // Lane LANES: the lanes the Lanes menu lists are the lanes this project
+  // can draw (Systems and Idle need a recording's events).
+  for (const id of ["lane-activity-row", "lane-idle-row"]) {
+    const row = document.getElementById(id);
+    if (row) row.hidden = !evs.length;
+  }
   if (!sp) {
-    const mm = document.getElementById("timeline-minimap");
-    if (mm) mm.style.display = "none";
     renderLaneNames([], null);
+    _syncLegend(null);
     // A session with nothing recorded and no video says so, in one line.
     if (!evs.length && !State.getSession().recordingAvailable) {
       host.style.width = "";
@@ -881,19 +1098,27 @@ function renderTimeline() {
   const transcriptLane = makeTranscriptLane({ first, last, span, on: !!lanes.transcript });
   // C23: the Videos lane exists only while the project has a video added
   // (video-lane.js; its row in the Lanes menu follows it).
-  const videosLane = makeVideoLane({ first, last, span, on: !!lanes.videos, menu: _menu });
+  // Lane LANES: a right-click on a video's band marks there too, then offers
+  // the video's own acts (the Timeline's menu, as a step's band joins it).
+  const videosLane = makeVideoLane({ first, last, span, on: !!lanes.videos,
+    bandMenu: (x, y, at, title, items) => showMarkerInsertMenu(x, y, at, { title, items }) });
   const videosRow = document.getElementById("lane-videos-row");
   if (videosRow) videosRow.hidden = !require("./flow-view-video.js").addedClips().length;
 
-  /* Lane stack (top to bottom):
+  /* Lane stack (top to bottom, lane LANES: the order a process manager
+     reads the process as it is built: when, which transaction, which step,
+     in which system, what was said, then the media):
        ticks:        m:ss labels (the time since the recording started)
-       cases:        one labelled band per run (header)
-       activity:     per-app coloured bands (the hero lane)
-       videos:       the videos of the project (C23), when one is added
+       cases:        one labelled band per transaction
+       steps:        one band per step, the tall lane, its name readable
+       activity:     per-app coloured bands, the systems (a recording)
        transcript:   the meeting transcript, when one is attached
+       videos:       the videos of the project (C23), when one is added
        screenshots:  dedicated capture rail
-       steps:        optional per-step bands
-       playhead overlays all lanes.
+       notes:        the notes pinned to a moment, when there are some
+       idle:         the idle stretches (a recording, off until chosen)
+       the stretches set aside are hatched through every lane under the
+       ticks, and the playhead overlays all lanes.
      Each lane below is a { key, height, gapBefore, render } plugin; the
      shared timeline core (TimelineCore.renderLaneStack) stacks them, drives
      the zoom width + minHeight, and calls each lane's render(host, ctx).
@@ -982,50 +1207,54 @@ function renderTimeline() {
   // render and (with gapBefore) collapses the spacing. These mirror the
   // pre-core geometry; gapBefore values below reproduce the lane cascade.
   const casesH = lanes.cases ? caseLanes.lanesNeeded * caseRowH : 0;
-  // A video project (C16) has no activity bands: a low lane keeps the
-  // pending marker bars and a place to right-click.
-  const activityH = evs.length ? 60 : 28;
+  // Lane LANES: the Systems lane is a recording's (a video project has no
+  // windows to draw; a right-click anywhere on the timeline marks there).
+  const activityH = evs.length && lanes.activity ? 60 : 0;
   const screenshotsH = lanes.screenshots ? 26 : 0;
   // The recording's screenshots and (lane FX2) the ones the analyst added
   // with a moment.
   const shotMarks = timelineScreenshots(State.getSession());
-  const stepsLaneH = (lanes.steps && _stepsForLane.length) ? 16 : 0;
+  // Lane LANES: the tall lane, 44 px, a band's name on up to two lines.
+  const stepsLaneH = (lanes.steps && _stepsForLane.length) ? STEPS_LANE_H : 0;
   const notes = allNotes.filter((n) => { const t = Date.parse(n.at); return t >= first && t <= last; });
   const notesH = (lanes.notes && notes.length) ? 18 : 0;
+  // The idle stretches of a recording, a lane of their own under Notes.
+  const idleSpans = idleStretches(evs);
+  const idleH = lanes.idle && idleSpans.length ? IDLE_LANE_H : 0;
 
   // The systems drawn on the activity lane feed the legend (each with the
-  // application its bands came from, for the colour); the case scope range
-  // dims out-of-scope activity bands. Both computed once.
+  // application its bands came from, for the colour).
   const observedApps = new Map();
   const appNames = ((State.getSession().stats || {}).meta || {}).app_names || {};
-  const scopeRange = currentScopeRange();
-  // The stretches left out of the analysis, drawn over the Systems lane where
-  // they are made (a Shift-drag range, Leave out of the analysis).
+  // The stretches set aside (a Shift-drag range: Leave out of the analysis,
+  // or Not part of the process), hatched through every lane once the lanes
+  // are stacked (lane LANES).
   const leftOut = leftOutBands(_anno.excluded_ranges).filter((b) => b.endMs > first && b.startMs < last);
   // Lane FX2: the apps outside the process, drawn hatched too.
   const ignoredApps = ((_anno.step_filters || {}).ignored_processes) || [];
   let appsLeftOut = 0;
+  // Lane LANES: how many drafts the Steps lane draws (the legend's dashed).
+  let draftsDrawn = 0;
 
   // ===== Time-axis ticks =====
   // Tick positions, intervals, and labels come from the shared timeline
-  // core (chooseTicks). The tick lines (`.tl-flow-tick`) reach down to the
-  // bottom of the activity lane.
+  // core (chooseTicks). The tick lines (`.tl-flow-tick`) reach down through
+  // every lane.
   const ticksLane = {
     key: "ticks",
     height: ticksH,
     gapBefore: 4,
     render(host, ctx) {
       const ticksTop = ctx.slot.top;
-      const act = ctx.slots.get("activity");
-      const activityTop = act.top;
-      const activityH = act.height;
+      let bottom = ticksTop + ctx.slot.height;
+      for (const s of ctx.slots.values()) if (s.height > 0) bottom = Math.max(bottom, s.top + s.height);
       for (const tk of TimelineCore.chooseTicks(first, last, 12, origin)) {
         const x = tk.xPct;
         const tick = document.createElement("div");
         tick.className = "tl-flow-tick";
         tick.style.left = x + "%";
         tick.style.top = ticksTop + "px";
-        tick.style.height = (activityTop + activityH - ticksTop) + "px";
+        tick.style.height = (bottom - ticksTop) + "px";
         host.appendChild(tick);
         const lbl = document.createElement("div");
         lbl.className = "tl-flow-tick-label";
@@ -1074,7 +1303,8 @@ function renderTimeline() {
         band.title = c.title + (c.label ? " · " + c.label : "") +
           (c.dangling ? " · open: no end marked yet" : "\n" + formatDuration(c.endMs - c.startMs)) +
           (c.pending ? "\nNot applied yet: Apply marker changes, in the top bar, updates the transactions and their steps." : "") +
-          (editable ? "\nDrag its start or its end to move it" + (c.endKey ? "." : ", or right-click where it ends: End the transaction here.") : "");
+          (editable ? "\nDrag its start or its end to move it" + (c.endKey ? "." : ", or right-click where it ends: End the transaction here.") : "") +
+          "\n" + ZOOM_TO_TX_LINE;
         // 2.0.3: its start and its end drag (the marker there moves; a start
         // that ends the transaction before moves that end too; one running to
         // the end gets its End).
@@ -1085,11 +1315,19 @@ function renderTimeline() {
               : markerDrag(host, edge === "start" ? c.startKey : c.endKey) });
         }
         // Click anywhere on a case band -- closed OR dangling -- seeks
-        // the video to the case start. Right-click opens the scope/jump
-        // menu below.
+        // the video to the case start. Right-click opens the jump menu
+        // below. Lane LANES: a double-click shows only this transaction and
+        // keeps the clock where it is, so the click's seek waits a moment
+        // and the second click of a double-click takes it back.
         band.addEventListener("click", (e) => {
           e.stopPropagation();
-          seekToTimestamp(new Date(c.startMs).toISOString());
+          if (e.detail > 1) { _cancelTxClick(); return; }
+          _txClickLater(c.startMs);
+        });
+        band.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          zoomToTransaction(c.startMs, c.endMs);
         });
         band.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -1115,35 +1353,39 @@ function renderTimeline() {
     },
   };
 
-  // ===== Activity lane (the hero lane) =====
+  // ===== Activity lane: the Systems (a recording) =====
   // Per-app coloured bands with inline title + duration labels so analysts
-  // can read the timeline without hovering. Out-of-scope bands (case scope
-  // active and this band's midpoint outside the case range) are dimmed via
-  // .out-of-scope so context survives. Idle bands and marker bars share the
-  // activity lane's row.
+  // can read the timeline without hovering. Lane LANES: the idle stretches
+  // are a lane of their own (under Notes), and the marker changes not applied
+  // yet and the stretches set aside are drawn through every lane.
   const activityLane = {
     key: "activity",
     height: activityH,
-    gapBefore: casesH ? 6 : 4,
-    // A video project's low lane shows no system: it has no name.
-    unnamed: !evs.length,
+    gapBefore: 6,
     // Its key in the header: the colours of the first systems drawn.
     keyColours: () => [...observedApps.values()].map((app) => appColor(app)),
     render(host, ctx) {
       const activityTop = ctx.slot.top;
       const activityH = ctx.slot.height;
+      // Lane LANES ("data is not overlapping"): a window's band stops where
+      // the next window's starts (the recorder's duration can run a little
+      // past it), as a step's band stops at the next step's.
+      const starts = evs.filter((e) => e.type === "activity").map((e) => Date.parse(e.timestamp));
+      let k = -1;
       for (const ev of evs) {
         if (ev.type !== "activity") continue;
+        k++;
         const t = new Date(ev.timestamp).getTime();
         const dur = ev.data.duration_ms || 0;
         const x = ((t - first) / span) * 100;
-        const w = Math.max(0.15, (dur / span) * 100);
-        const inScope = !scopeRange ||
-          (t + dur / 2 >= scopeRange.startMs && t + dur / 2 <= scopeRange.endMs);
+        let n = k + 1;
+        while (n < starts.length && !(starts[n] > t)) n++;
+        const room = n < starts.length ? starts[n] - t : Infinity;
+        const w = Math.max(0.15, (Math.min(dur, room) / span) * 100);
         const band = document.createElement("div");
         const outApp = appLeftOut(ev.data.app, ignoredApps);
         if (outApp) appsLeftOut++;
-        band.className = "tl-band tl-activity" + (inScope ? "" : " out-of-scope") + (outApp ? " tl-app-left-out" : "");
+        band.className = "tl-band tl-activity" + (outApp ? " tl-app-left-out" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = activityTop + "px";
@@ -1195,107 +1437,28 @@ function renderTimeline() {
         });
         host.appendChild(band);
       }
+    },
+  };
 
-      // Idle bands. I23: an idle stretch tagged at_desk (the recorder
-      // still saw activity, e.g. inside a Citrix session the OS idle
-      // timer cannot observe) renders distinctly from a genuine "away".
-      let idleStart = null;
-      let idleAtDesk = false;
-      for (const ev of (lanes.idle ? evs : [])) {
-        if (ev.type !== "system") continue;
-        if (ev.data.kind === "idle_start") {
-          idleStart = new Date(ev.timestamp).getTime();
-          idleAtDesk = !!ev.data.at_desk;
-        } else if (ev.data.kind === "idle_end" && idleStart) {
-          const endT = new Date(ev.timestamp).getTime();
-          const x = ((idleStart - first) / span) * 100;
-          const w = Math.max(0.15, ((endT - idleStart) / span) * 100);
-          const band = document.createElement("div");
-          band.className = "tl-band tl-idle" + (idleAtDesk ? " tl-idle-atdesk" : "");
-          band.style.left = x + "%";
-          band.style.width = w + "%";
-          band.style.top = activityTop + "px";
-          band.style.height = activityH + "px";
-          band.title = (idleAtDesk
-            ? "Idle (still at desk: recent mouse/keyboard activity), "
-            : "Idle (away), ") + formatDuration(endT - idleStart);
-          host.appendChild(band);
-          idleStart = null;
-          idleAtDesk = false;
-        }
-      }
-
-      // Pending marker bars (rendered above bands): a marker change that
-      // waits for Apply marker changes (marker-edits.js) is drawn, dashed and
-      // labelled pending. 2.0.3: the Transactions lane draws a marker added,
-      // moved or renamed (its band, pending), so a bar says only what that
-      // lane cannot: a marker deleted, or any change while the lane is off.
-      // Applied markers are not drawn here: the Transactions lane and the
-      // Markers tab show them.
-      for (const m of markerRows) {
-        if (!m.pending || (lanes.cases && !m.deleted)) continue;
-        const t = new Date(m.timestamp).getTime();
-        if (!isFinite(t)) continue;
-        const x = ((t - first) / span) * 100;
-        const bar = document.createElement("div");
-        bar.className = "tl-marker" + (m.pending ? " tl-marker-pending" : "") +
-          (m.pending && m.deleted ? " tl-marker-pending-delete" : "");
-        bar.dataset.markerKey = m.key;
-        bar.style.left = x + "%";
-        bar.style.height = activityH + "px";
-        bar.style.top = activityTop + "px";
-        bar.title = m.markerType + ": " + (m.label || "") + (m.reason ? " (" + m.reason + ")" : "") +
-          (m.pending ? "\nPending: " + (m.deleted ? "deleted" : m.inserted ? "added" : "changed") +
-            ", not applied yet. Click Apply marker changes to update the transactions." : "");
-        host.appendChild(bar);
-        if (m.markerType === "start" && m.label && !m.deleted) {
-          const lbl = document.createElement("div");
-          lbl.className = "tl-marker-label" + (m.pending ? " tl-marker-label-pending" : "");
-          lbl.style.left = "calc(" + x + "% + 4px)";
-          lbl.style.top = (activityTop + 2) + "px";
-          lbl.textContent = m.label + (m.pending ? " (pending)" : "");
-          host.appendChild(lbl);
-        }
-      }
-
-      // The stretches left out of the analysis: a quiet hatch over the lane,
-      // its label where it fits; a click (or a right-click) offers Include
-      // again, the inverse of Leave out of the analysis.
-      const hostW = host.clientWidth || 800;
-      // Lane E (E4): in a project without a recording the same mark is not
-      // part of the process, and says so.
-      const recorded = AC.hasRecording(State.getSession());
-      for (const b of leftOut) {
-        const s = Math.max(b.startMs, first), e = Math.min(b.endMs, last);
-        const x = ((s - first) / span) * 100;
-        const w = Math.max(0.15, ((e - s) / span) * 100);
+  // ===== Idle lane (a recording, off until chosen) =====
+  // I23: an idle stretch tagged at_desk (the recorder still saw activity,
+  // e.g. inside a Citrix session the OS idle timer cannot observe) renders
+  // distinctly from a genuine "away".
+  const idleLane = {
+    key: "idle",
+    height: idleH,
+    gapBefore: 4,
+    render(host, ctx) {
+      for (const i of idleSpans) {
         const band = document.createElement("div");
-        band.className = "tl-left-out";
-        band.dataset.start = b.range.start;
-        band.dataset.end = b.range.end;
-        band.style.left = x + "%";
-        band.style.width = w + "%";
-        band.style.top = activityTop + "px";
-        band.style.height = activityH + "px";
-        band.title = leftOutTitle(sinceStart(b.range.start, origin), sinceStart(b.range.end, origin), recorded);
-        const text = leftOutLabel((w / 100) * hostW, recorded);
-        if (text) {
-          const lbl = document.createElement("span");
-          lbl.className = "tl-left-out-label";
-          lbl.textContent = text;
-          band.appendChild(lbl);
-        }
-        const menu = (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          // Lane HV: a hand-off opened read only keeps its stretches as they are.
-          _menu(ev.clientX, ev.clientY, [
-            ...(RO.isReadOnly(State.getSession()) ? [] : [["Include again", () => includeAgain(b.range)]]),
-            ["Go to its start", () => seekToTimestamp(new Date(b.startMs).toISOString())],
-          ]);
-        };
-        band.addEventListener("click", menu);
-        band.addEventListener("contextmenu", menu);
+        band.className = "tl-band tl-idle" + (i.atDesk ? " tl-idle-atdesk" : "");
+        band.style.left = (((i.startMs - first) / span) * 100) + "%";
+        band.style.width = Math.max(0.15, ((i.endMs - i.startMs) / span) * 100) + "%";
+        band.style.top = (ctx.slot.top + 2) + "px";
+        band.style.height = (ctx.slot.height - 4) + "px";
+        band.title = (i.atDesk
+          ? "Idle (still at desk: recent mouse/keyboard activity), "
+          : "Idle (away), ") + formatDuration(i.endMs - i.startMs);
         host.appendChild(band);
       }
     },
@@ -1377,26 +1540,29 @@ function renderTimeline() {
     if (link) skip.push("s:" + link.id + (edge === "start" ? ":end" : ":start"));
     return {
       fromMs, lo, hi, targets: _snapTargets("step", skip, first, span),
-      preview: move, restore: () => move(fromMs),
+      // Put back, the bands are drawn by the lane's width rule again.
+      preview: move, restore: () => { move(fromMs); layoutStepBands(); },
       commit: async (ms) => {
-        if (!(await require("./steps-view.js").setStepTimes(stepSideChanges(s.step_id, own, edge, link, ms)))) move(fromMs);
+        if (!(await require("./steps-view.js").setStepTimes(stepSideChanges(s.step_id, own, edge, link, ms)))) { move(fromMs); layoutStepBands(); }
       },
     };
   };
 
-  // ===== Per-step lane (P1.4) =====
-  // Renders a single row of step bands beneath the screenshot rail when steps
-  // exist. Click to select the step + seek; right-click opens it in Steps.
+  // ===== Steps lane (lane LANES: the tall one, under the transactions) =====
+  // One band per step with a time, its name on up to two lines inside it (a
+  // band too narrow shows the step's number only; no band draws over the
+  // next one of its transaction: layoutStepBands). Click to open the step
+  // beside the video; right-click for its menu.
+  const numbers = _stepNumbers(_level, _anno);
   const stepsLane = {
     key: "steps",
     height: stepsLaneH,
     gapBefore: 6,
-    // Its bands are 14 px high at the top of the lane (.tl-step-band).
-    nameH: 14,
     name: _level.name ? "Steps in " + _level.name : "",
-    title: _level.name ? "Steps in " + _level.name + ": the steps of this sub-process, each time a transaction goes through it; click one to see all its moments." : "",
+    title: _level.name ? "Steps in " + _level.name + ": the steps of this sub-process, each time a transaction goes through it; click one to open it beside the video." : "",
     render(host, ctx) {
-      const stepsLaneTop = ctx.slot.top;
+      const stepsLaneTop = ctx.slot.top + STEP_BAND_INSET;
+      const bandH = ctx.slot.height - 2 * STEP_BAND_INSET;
       for (const s of (lanes.steps ? _stepsForLane : [])) {
         const bandSpan = stepBandSpan(s);
         if (!bandSpan) continue;
@@ -1408,15 +1574,35 @@ function renderTimeline() {
         // C22: a step placed elsewhere in the process than its time puts it.
         const placed = placedLine(s.step);
         if (placed) placedDrawn++;
-        band.className = "tl-step-band" + (open ? " open" : "") + (placed ? " placed" : "");
+        // Lane LANES: a draft (the recorder's, nobody confirmed it) is dashed.
+        const draft = !!s.step && s.step.state === "auto_suggested";
+        if (draft) draftsDrawn++;
+        band.className = "tl-step-band" + (open ? " open" : "") + (placed ? " placed" : "") + (draft ? " draft" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = stepsLaneTop + "px";
+        band.style.height = bandH + "px";
+        // What layoutStepBands draws it from: its time and its transaction.
+        band.dataset.startMs = String(sStart);
+        band.dataset.endMs = String(sEnd);
+        if (s.step && typeof s.step.case_id === "string" && s.step.case_id) band.dataset.key = s.step.case_id;
         const lbl = s.label || s.step_id || "";
-        band.textContent = lbl;
+        const num = numbers.get(s.step_id);
+        band.dataset.name = lbl;
+        if (num) band.dataset.num = String(num);
+        const nameEl = document.createElement("span");
+        nameEl.className = "tl-step-name";
+        nameEl.textContent = lbl;
+        const numEl = document.createElement("span");
+        numEl.className = "tl-step-num";
+        numEl.textContent = num ? String(num) : "";
+        numEl.hidden = true;
+        band.appendChild(nameEl);
+        band.appendChild(numEl);
         const movable = editable && AC.stepTimeMovable(s.step);
         band.title = lbl + " · " + (open ? "open: it ends where you add the next step, or where its transaction ends"
           : formatDuration(sEnd - sStart)) +
+          (draft ? "\nA draft: the recorder drafted it, and nobody has confirmed it yet." : "") +
           (placed ? "\n" + placed : "") +
           "\nClick: open this step beside the video, and go to its start · Right-click: add the next step here, or Open in Steps, Place after a step, Hide or Delete" +
           (movable ? "\nDrag its " + (open ? "start" : "start or its end") + " to change its time." : "");
@@ -1504,52 +1690,47 @@ function renderTimeline() {
 
   // Stack and render every lane through the shared timeline core. The core
   // owns the vertical layout maths, the zoom width, and the minHeight; each
-  // lane plugin owns its own DOM. tailPx (14) + the 120 floor reproduce the
-  // pre-core host.style.minHeight.
-  const stack = [ticksLane, casesLane, activityLane, videosLane, transcriptLane, notesLane, screenshotsLane, stepsLane];
+  // lane plugin owns its own DOM. Lane LANES: the order of the work (the
+  // comment at the top of this function); a little room under the last lane,
+  // and the bar of the whole length under the lanes.
+  const stack = [ticksLane, casesLane, stepsLane, activityLane, transcriptLane, videosLane, screenshotsLane, notesLane, idleLane];
   const layout = TimelineCore.renderLaneStack(host, {
     lanes: stack,
     span: { startMs: first, endMs: last },
     zoom: State.getZoomFactor(),
-    tailPx: 14,
+    tailPx: 6,
     minHeightFloor: 120,
   });
   renderLaneNames(stack, layout, host);
+  _drawThroughLanes(host, stack, layout, {
+    first, last, span, origin, leftOut, markerRows, casesOn: !!lanes.cases,
+  });
+  _stepGeo = { first, span };
+  layoutStepBands();
 
-  // Legend mirrors the apps observed while the activity lane rendered, and
-  // explains only the marks the timeline draws: an entry whose lane is off is
-  // hidden (a pending marker is drawn whatever its lane says).
-  renderLegend(observedApps);
-  const legendShows = {
-    ".lg-idle": !!lanes.idle && evs.length > 0,
+  // What the marks mean (the Lanes menu): the systems observed while the
+  // activity lane rendered, and only the marks the timeline draws: an entry
+  // whose lane is off is hidden (a marker change is drawn whatever its lane
+  // says).
+  _syncLegend({
+    ".lg-idle": idleH > 0,
+    ".lg-draft": draftsDrawn > 0,
     ".lg-marker": markerRows.some((m) => m.pending),
-    ".lg-screenshot": !!lanes.screenshots && shotMarks.length > 0,
+    ".lg-screenshot": screenshotsH > 0 && shotMarks.length > 0,
     ".lg-note": notesH > 0,
     ".lg-left-out": leftOut.length > 0 || appsLeftOut > 0,
     ".lg-placed": placedDrawn > 0,
-  };
-  for (const [sel, on] of Object.entries(legendShows)) {
-    const el = document.querySelector("#timeline-legend " + sel);
-    if (el) el.style.display = on ? "" : "none";
-  }
-  // Lane E (E4): the hatch in this project's words.
-  const lgOut = document.querySelector("#timeline-legend .lg-left-out");
-  if (lgOut) {
-    const recorded = AC.hasRecording(State.getSession());
-    lgOut.textContent = LeftOut.wordsFor(recorded).legend;
-    lgOut.title = recorded
-      ? "Hatched: left out of the analysis (a stretch, or an app outside the process). Playing skips a stretch left out, " +
-        "and the Transcript tab leaves out what was said in it. Click a stretch to include it again."
-      : "A stretch you marked as not part of the process. It is skipped when playing and left out of the Transcript tab.";
-  }
+  }, observedApps);
 
-  // Playhead overlays all lanes; appended last so it paints on top.
+  // Playhead overlays all lanes; appended last so it paints on top. The bar
+  // of the whole length shows it too.
   const ph = document.createElement("div");
   ph.className = "tl-playhead";
   ph.id = "tl-playhead";
   ph.style.left = "0%";
   ph.style.display = "none";
   host.appendChild(ph);
+  _watchPlayhead(ph);
 
   // Click->seek on background. P2.9: snap to nearest event when one
   // is within ~250ms / span × pixel-tolerance of the click; else seek
@@ -1580,8 +1761,108 @@ function renderTimeline() {
     seekToTimestamp(new Date(seekT).toISOString());
   });
 
-  // P1.3: refresh minimap to mirror the new timeline content + viewport.
-  renderMinimap();
+  // The bar of the whole length follows the new width and the scroll.
+  syncBar();
+}
+
+/* Lane LANES, item 2: what is drawn through every lane, from the top of the
+   first lane under the time ticks to the bottom of the last lane drawn:
+   - the stretches set aside (annotations.excluded_ranges): a hatch under
+     the marks, so the steps and the transactions on it stay clickable; a
+     click or a right-click on it where no mark is offers Include again and
+     Go to its start; its label once, at its top, where it fits. Over the
+     lanes whose marks fill their row (the Systems, the Videos) the same
+     hatch lies over the marks, letting the pointer through to them
+     (.tl-left-out-over), so the stretch reads as set aside there too;
+   - a marker change not applied yet that the Transactions lane cannot show
+     (a marker deleted, or any change while that lane is off): a dashed line
+     through the lanes, labelled on a Start. */
+function _drawThroughLanes(host, stack, layout, g) {
+  const drawn = stack.filter((l) => l.height > 0 && l.key !== "ticks" && layout.slots.get(l.key));
+  if (!drawn.length) return;
+  const top = layout.slots.get(drawn[0].key).top;
+  const bottom = Math.max(...drawn.map((l) => { const s = layout.slots.get(l.key); return s.top + s.height; }));
+  const hostW = host.clientWidth || 800;
+  // Lane E (E4): in a project without a recording the same mark is not part
+  // of the process, and says so.
+  const recorded = AC.hasRecording(State.getSession());
+  const under = [];
+  for (const b of g.leftOut) {
+    const s = Math.max(b.startMs, g.first), e = Math.min(b.endMs, g.last);
+    const x = ((s - g.first) / g.span) * 100;
+    const w = Math.max(0.15, ((e - s) / g.span) * 100);
+    const band = document.createElement("div");
+    band.className = "tl-left-out";
+    band.dataset.start = b.range.start;
+    band.dataset.end = b.range.end;
+    band.style.left = x + "%";
+    band.style.width = w + "%";
+    band.style.top = top + "px";
+    band.style.height = (bottom - top) + "px";
+    band.title = leftOutTitle(sinceStart(b.range.start, g.origin), sinceStart(b.range.end, g.origin), recorded);
+    const menu = (ev) => {
+      // A Shift-drag that starts here selects a stretch (flow-view.js).
+      if (ev.type === "click" && ev.shiftKey) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      // Lane HV: a hand-off opened read only keeps its stretches as they are.
+      _menu(ev.clientX, ev.clientY, [
+        ...(RO.isReadOnly(State.getSession()) ? [] : [["Include again", () => includeAgain(b.range)]]),
+        ["Go to its start", () => seekToTimestamp(new Date(b.startMs).toISOString())],
+      ]);
+    };
+    band.addEventListener("click", menu);
+    band.addEventListener("contextmenu", menu);
+    const text = leftOutLabel((w / 100) * hostW, recorded);
+    if (text) {
+      const lbl = document.createElement("span");
+      lbl.className = "tl-left-out-label";
+      lbl.textContent = text;
+      lbl.title = band.title;
+      band.appendChild(lbl);
+    }
+    under.push(band);
+    for (const key of ["activity", "videos"]) {
+      const lane = drawn.find((l) => l.key === key);
+      if (!lane) continue;
+      const slot = layout.slots.get(key);
+      const over = document.createElement("div");
+      over.className = "tl-left-out-over";
+      over.style.left = x + "%";
+      over.style.width = w + "%";
+      over.style.top = slot.top + "px";
+      over.style.height = slot.height + "px";
+      host.appendChild(over);
+    }
+  }
+  // Under every mark: before the first child (the lanes' separators and the
+  // marks come after it).
+  for (const band of under.reverse()) host.insertBefore(band, host.firstChild);
+
+  for (const m of g.markerRows) {
+    if (!m.pending || (g.casesOn && !m.deleted)) continue;
+    const t = new Date(m.timestamp).getTime();
+    if (!isFinite(t)) continue;
+    const x = ((t - g.first) / g.span) * 100;
+    const bar = document.createElement("div");
+    bar.className = "tl-marker tl-marker-pending" + (m.deleted ? " tl-marker-pending-delete" : "");
+    bar.dataset.markerKey = m.key;
+    bar.style.left = x + "%";
+    bar.style.top = top + "px";
+    bar.style.height = (bottom - top) + "px";
+    bar.title = m.markerType + ": " + (m.label || "") + (m.reason ? " (" + m.reason + ")" : "") +
+      "\nPending: " + (m.deleted ? "deleted" : m.inserted ? "added" : "changed") +
+      ", not applied yet. Click Apply marker changes to update the transactions.";
+    host.appendChild(bar);
+    if (m.markerType === "start" && m.label && !m.deleted) {
+      const lbl = document.createElement("div");
+      lbl.className = "tl-marker-label tl-marker-label-pending";
+      lbl.style.left = "calc(" + x + "% + 4px)";
+      lbl.style.top = (top + 2) + "px";
+      lbl.textContent = m.label + " (pending)";
+      host.appendChild(lbl);
+    }
+  }
 }
 
 /* ============ Timeline helpers (lane layout)
@@ -1654,11 +1935,10 @@ function monitorBadgeFor(bounds) {
   return null;
 }
 
-/* deps = { currentScopeRange, showMarkerInsertMenu, showCaseContextMenu,
-   includeAgain }: the flow-view-resident glue, injected at boot
-   (includeAgain(range): Include again on a band left out of the analysis). */
+/* deps = { showMarkerInsertMenu, showCaseContextMenu, includeAgain }: the
+   flow-view-resident glue, injected at boot (includeAgain(range): Include
+   again on a stretch left out of the analysis). */
 function initTimeline(deps) {
-  currentScopeRange    = (deps && deps.currentScopeRange)    || (() => null);
   showMarkerInsertMenu = (deps && deps.showMarkerInsertMenu) || (() => {});
   showCaseContextMenu  = (deps && deps.showCaseContextMenu)  || (() => {});
   includeAgain         = (deps && deps.includeAgain)         || (async () => {});
@@ -1666,7 +1946,7 @@ function initTimeline(deps) {
 
 module.exports = {
   initTimeline,
-  renderTimeline, renderTimelineSummary, renderMinimap, syncMinimapViewport,
+  renderTimeline, renderTimelineSummary, syncBar, zoomToTransaction,
   restoreTimelineForCurrent, persistTimelineForCurrent, maybeAutoScrollToFirstCase,
   _wireTimelineScrollPersist, getLaneToggles, setLaneToggle,
   caseLabelFits, CASE_LABEL_MIN_PX, timeAtClientX, layoutCaseLanes, LANE_NAMES, stepsForLevel,

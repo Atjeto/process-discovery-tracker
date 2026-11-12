@@ -204,17 +204,22 @@ The viewer says *transaction* for one pass through the process and
 
 **Timeline**
 
-- **One timeline** of the recording: transactions, activity by system (an
-  app among the apps outside the process hatched), idle, screenshots (the
-  recording's and the ones added at a moment), the steps (a one-click step
-  too), the transcript and notes, on one clock (the time since the
-  recording started), each lane named in a header column at its left (a key
-  that looks like its marks, its name, a tooltip saying what it shows). A
-  video project's timeline runs on its videos; a project with neither a
-  recording nor a video says so, with *Attach video*. The Transaction select
-  dims the other transactions, *Lanes* picks the lanes, and the zoom has a
-  minimap. Under it, the *Raw events* drawer lists every event on the same
-  clock, with *+ step* at an event's time.
+- **One timeline** of the recording, its lanes in the order a process
+  manager builds the process (lane LANES): the transactions, the steps (the
+  tall lane: each name readable on its band on up to two lines, a band too
+  narrow showing the step's number, a draft dashed, a one-click step too),
+  the systems (an app among the apps outside the process hatched), the
+  transcript, the videos, the screenshots (the recording's and the ones
+  added at a moment), the notes and the idle stretches (off until chosen),
+  on one clock (the time since the recording started), each lane named in a
+  header column at its left (a key that looks like its marks, its name, a
+  tooltip saying what it shows). A video project's timeline runs on its
+  videos; a project with neither a recording nor a video says so, with
+  *Attach video*. *Lanes* picks the lanes and says what the marks mean; one
+  bar under the lanes shows the whole length, its box the part shown (drag
+  it, or click a place); a double-click on a transaction shows only that
+  transaction and *Show all* the whole length again. Under it, the *Raw
+  events* drawer lists every event on the same clock.
 - **The screen** (lane SCREEN): the video and the pane above, the timeline
   at the full width of the window below, always; nothing opens over it, and
   the page does not scroll. The video takes at most 58% of the width; two
@@ -225,8 +230,8 @@ The viewer says *transaction* for one pass through the process and
   *Start transaction* or *End transaction* (one button, at the clock's
   moment), *Add note*, a message area (every message reads there while the
   Timeline shows, cut to one line, its whole text in its tooltip; at rest
-  when the project was recorded and how long it is), the Transaction
-  select, *Lanes*, zoom out, *Show all*, zoom in. A selected stretch (Shift
+  when the project was recorded and how long it is), *Lanes*, zoom out,
+  *Show all*, zoom in. A selected stretch (Shift
   and a drag) shows its times and length there with *Leave out of the
   analysis* or *Not part of the process*, *Make it a transaction* and *Clear
   selection*. Every control is reached with Tab and worked with Enter or
@@ -275,11 +280,12 @@ The viewer says *transaction* for one pass through the process and
   step comes right after the one chosen, in that one's transaction, while
   its band, its video and its time stay where it was shown; the band then
   carries an accent edge and a dotted foot, its tooltip saying where it is
-  in the process, and the legend explains the mark. *Back to its time* is
+  in the process, and the legend in *Lanes* explains the mark. *Back to its time* is
   the inverse.
 - **Leave out of the analysis**: a selected stretch (a break, a detour)
-  drafts no step and counts no time. The timeline shows it hatched, and a
-  click on it offers *Include again*; Ctrl+Z undoes either. A transaction
+  drafts no step and counts no time. The timeline shows it hatched through
+  every lane (under the marks, which stay clickable), and a click on it
+  where no mark is offers *Include again*; Ctrl+Z undoes either. A transaction
   with a stretch left out says so, in Steps and in the PDD, and the steps
   done in it are not read as skipped.
 - **Not part of the process** (lane E): in a project made from a video or

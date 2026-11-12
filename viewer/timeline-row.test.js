@@ -61,7 +61,7 @@ test("the words: the video, or the recording in a recording without a video; the
   assert.equal(v.notPart, "Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back.");
   assert.equal(v.leaveOut, "Drafts the steps and the map again without what was recorded in this stretch. Playing skips it, and the Transcript tab leaves out what was said in it.");
   assert.equal(v.makeTx, "Makes a transaction that starts and ends where the selection does.");
-  assert.equal(v.lanes, "Choose which lanes the timeline shows");
+  assert.equal(v.lanes, "Choose which lanes the timeline shows, and see what its marks mean");
   assert.equal(v.zoomOut, "Shows more of the timeline. Key: -");
   assert.equal(v.showAll, "Shows the whole length of the timeline. Key: 0");
   assert.equal(v.zoomIn, "Shows less of the timeline, larger. Key: +");

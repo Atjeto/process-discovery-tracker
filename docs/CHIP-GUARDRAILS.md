@@ -358,30 +358,51 @@ the focus with `document.activeElement` against it. A menu's button carries
   with a `.modal-confirm`, or "Not part of the process", `.primary`;
   `#tl-selection-case` "Make it a transaction", `#tl-selection-clear`); the
   message area `#tl-message` (`#timeline-summary` at rest, `#toast` with
-  `.in-row` while the Timeline shows); `.timeline-controls`: the Transaction
-  select `#case-scope-select`, `#btn-lanes` opening `#lanes-popup`
-  (`input[data-lane="idle"|"screenshots"|"cases"|"steps"|"videos"|"transcript"|"notes"]`),
-  `#btn-zoom-out`, `#btn-zoom-reset` (Show all), `#btn-zoom-in`. Lane FX3: a
-  project with no recording and no video draws no timeline, so the row's
-  Play, clock and marking buttons, `#case-scope`, `#lanes-menu` and the zoom
-  buttons are not shown there, nor the video band
+  `.in-row` while the Timeline shows); `.timeline-controls`: `#btn-lanes`
+  opening `#lanes-popup` (position fixed, placed by `placeLanesMenu` under
+  or above its button, inside the window; its rows in the timeline's order
+  `input[data-lane="cases"|"steps"|"activity"|"transcript"|"videos"|"screenshots"|"notes"|"idle"]`,
+  `#lane-activity-row` and `#lane-idle-row` only with a recording's events;
+  then `#lanes-legend-title` "What the marks mean" and the legend
+  `#lanes-legend`: `#legend-apps` (`.legend-app`), `.lg-idle`, `.lg-draft`,
+  `.lg-marker`, `.lg-screenshot`, `.lg-note`, `.lg-left-out`, `.lg-placed`,
+  each `display: none` while its mark is not drawn; the menu is hidden, so
+  test an entry with `getComputedStyle(el).display` or open the menu before
+  `checkVisibility()`), `#btn-zoom-out`, `#btn-zoom-reset` (Show all),
+  `#btn-zoom-in`. Lane LANES: no Transaction select (`#case-scope`,
+  `#case-scope-select` and `case-scope.js` are gone). Lane FX3: a project
+  with no recording and no video draws no timeline, so the row's Play, clock
+  and marking buttons, `#lanes-menu`, the zoom buttons and the bar
+  `#tl-bar-row` are not shown there, nor the video band
   (`#lower-workspace.no-timeline`): `#tl-empty` carries Attach video.
-- The lanes `.tl-lanes` (they scroll under the row): the timeline
-  `#timeline` inside `#timeline-scroll`; `#timeline-minimap` (only while
-  zoomed); the legend `#timeline-legend` (`#legend-apps`).
+- The lanes `.tl-lanes` (they scroll up and down under the row): the
+  timeline `#timeline` inside `#timeline-scroll` (no scrollbar of its own).
+  Lane LANES: under them `#tl-bar-row` holds the bar of the whole length
+  `#tl-bar` (`role="scrollbar"`, `aria-controls="timeline-scroll"`,
+  `aria-valuenow` 0 to 100, `.whole` at the whole length) with its box
+  `#tl-bar-box` (its left and width the part shown) and `#tl-bar-playhead`;
+  press its box and move to drag it, press beside it to centre the view
+  there; with its focus, Left and Right move the box. The minimap
+  (`#timeline-minimap`) and the legend row (`#timeline-legend`) are gone.
 - The lanes' header column `#tl-lane-names` (hidden when nothing is drawn):
   a cell per lane `.tl-lane-name[data-lane]` (its tooltip the lane's `title`;
   inside it the key `.tl-lane-key` and the name `.tl-lane-label`, whose box
   is centred on the lane's marks); the dividers `.tl-lane-sep`, in the
   column and at the same heights in `#timeline`; while the pointer is on a
   cell, its lane lit in `#timeline` as `.tl-lane-hover`.
-- Lanes: `.tl-case-band` (runs; 2.0.3: drawn from the markers as they now
+- Lanes (lane LANES, top to bottom: `cases`, `steps`, `activity`,
+  `transcript`, `videos`, `screenshots`, `notes`, `idle`): `.tl-case-band`
+  (runs; 2.0.3: drawn from the markers as they now
   are, `.pending` while the last analysis has not seen it, `data-start-key`
   and `data-end-key` the markers at its sides, `data-start-ms` and
-  `data-end-ms` its span), `.tl-activity` (`.tl-act-app` names the
+  `data-end-ms` its span; a click goes to its start 250 ms later, a
+  `dblclick` shows only it: `page.locator(band).dblclick()`), `.tl-activity`
+  (a recording only; `.tl-act-app` names the
   system; `.tl-app-left-out`, hatched, for an app among the Apps outside
-  the process, lane FX2), `.tl-idle`, `.tl-marker.tl-marker-pending` (2.0.3:
-  only a marker deleted, or any change while the Transactions lane is off), the videos
+  the process, lane FX2), `.tl-idle` (the Idle lane, off by default),
+  `.tl-marker.tl-marker-pending` (2.0.3:
+  only a marker deleted, or any change while the Transactions lane is off;
+  lane LANES: drawn through every lane), the videos
   `.tl-clip[data-clip]` (C23, 2.0.6: `.trimmed-start`, `.trimmed-end`,
   `.missing`; a side within 6 px of the pointer shows `.tl-edge-hot`, a real
   mouse drag trims it on release; its right-click opens `#tl-ctx-menu`), the
@@ -389,7 +410,10 @@ the focus with `document.activeElement` against it. A menu's button carries
   `.tl-tr-label[data-file]` (one per transcript; `.tl-tr-name` with several;
   `.tl-tr-sync`, `.tl-tr-replace`, `.tl-tr-remove`), notes `.tl-note[data-note-id]`,
   screenshots `.tl-screenshot` (`.tl-screenshot-added` for one the analyst
-  added at a moment, lane FX2), steps `.tl-step-band[data-step-id]` (a
+  added at a moment, lane FX2), steps `.tl-step-band[data-step-id]` (lane
+  LANES: 38 px high in the 44 px lane; its name `.tl-step-name` and its
+  number `.tl-step-num`, one of them shown: `data-shows="name"|"number"|"none"`,
+  `data-name`, `data-num` the pane's number, `data-start-ms`, `data-end-ms` and `data-key` (its transaction) what its width is drawn from; never past the next band of its transaction, `.slim` under 12 px; `.draft` dashed for a draft; a
   one-click step too, at the lane's smallest width; `.placed` on a step
   placed elsewhere in the process, contract C22, with the legend's
   `.lg-placed`; the
@@ -428,10 +452,15 @@ the focus with `document.activeElement` against it. A menu's button carries
   range shows in the row (`#tl-selection`, above). A
   Shift-drag starts only on the timeline's own background: find a point
   where `document.elementFromPoint(x, y) === #timeline`.
-- The stretches left out of the analysis (lane CC): `.tl-left-out` over the
-  Systems lane (`data-start`, `data-end` the `excluded_ranges` entry's; a
-  click or a right-click opens its menu), its label `.tl-left-out-label`
-  where it fits, the legend's `#timeline-legend .lg-left-out`. Leave out,
+- The stretches left out of the analysis (lane CC): `.tl-left-out` (lane
+  LANES: through every lane from the Transactions lane down, first in
+  `#timeline`, under the marks; `data-start`, `data-end` the
+  `excluded_ranges` entry's; a click or a right-click where no mark is opens
+  its menu: find a point where `document.elementFromPoint(x, y)` is the
+  hatch, its centre may lie on a mark), its label `.tl-left-out-label` at
+  its top where it fits (above the marks, a click opens the same menu),
+  `.tl-left-out-over` (no pointer) over the Systems and Videos lanes, the
+  Lanes menu's `#lanes-legend .lg-left-out`. Leave out,
   Include again and an undo or a redo of either each run an analysis: wait
   for `require("./views/flow-view.js").analysisBusy()` to be false.
 - Video: `#video`, `#no-video` with `#btn-link-recording` (Attach video),

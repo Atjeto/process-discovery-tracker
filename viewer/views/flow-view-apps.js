@@ -1,6 +1,7 @@
 /*
  * flow-view-apps.js: per-app colour, the system a timeline band names, and
- * the timeline legend for the Flow level. Extracted from flow-view.js
+ * the systems' entries of the legend (lane LANES: in the Lanes menu, under
+ * What the marks mean) for the Flow level. Extracted from flow-view.js
  * (god-file split): pure presentation helpers with no back-references into
  * the Flow view.
  *
@@ -36,8 +37,9 @@ function appLabel(app, title, names) {
   return systemName(app, title, names) || String(app || "unknown").replace(/\.exe$/i, "");
 }
 
-/* The legend: one entry per system the timeline draws, with its band's
-   colour. `observed` maps a system to the application its bands came from. */
+/* The legend's systems: one entry per system the timeline draws, with its
+   band's colour. `observed` maps a system to the application its bands came
+   from; null (no timeline) lists none. */
 function renderLegend(observed) {
   const host = document.getElementById("legend-apps");
   if (!host) return;

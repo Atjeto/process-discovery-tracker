@@ -3,7 +3,10 @@
  * per video of the project, where it is on the one clock, named after its
  * file, as in a video editor: a click goes to that moment; a side dragged
  * trims it (the time in its file follows the pointer, kept within the file);
- * a right-click trims the start or the end at that moment, gives a trimmed
+ * a right-click (lane LANES: "every Timeline right-click marks there, on a
+ * band too") first offers what a right-click on the timeline offers at that
+ * moment (the Timeline's own menu, as a step's band does), then, under the
+ * video's name, trims the start or the end at that moment, gives a trimmed
  * side back, syncs it (in a recording), replaces it, removes it, or adds a
  * video. Every act is flow-view-video.js's (one undoable edit each), so a
  * project made from videos moves what follows a video whose length changes,
@@ -42,8 +45,10 @@ function _title(clip, sp, origin, editable) {
   return lines.join("\n");
 }
 
-/* The lane plugin. env = { first, last, span, on, menu(x, y, items) }: the
-   timeline's span, the lane toggle, and the Timeline's context menu. */
+/* The lane plugin. env = { first, last, span, on, bandMenu(x, y, at, title,
+   items) }: the timeline's span, the lane toggle, and the Timeline's menu at
+   the moment `at` (an ISO time) with a band's own `items` ([label, act])
+   under its `title` (flow-view.js showMarkerInsertMenu). */
 function videoLane(env) {
   const sess = State.getSession();
   const clips = Video.addedClips(sess);
@@ -137,7 +142,9 @@ function videoLane(env) {
           items.push([clip.file ? "Replace video..." : "Find the video...", () => Video.replaceVideo(clip.id)]);
           items.push(["Remove video", () => Video.removeVideo(clip.id)]);
           items.push(["Add a video...", () => Video.attachVideo()]);
-          env.menu(e.clientX, e.clientY, items);
+          // The moment's marks first (Add a step here, a transaction, a
+          // note), then the video's own acts under its name.
+          env.bandMenu(e.clientX, e.clientY, new Date(ms).toISOString(), Video.clipName(clip), items);
         });
         host.appendChild(band);
       });

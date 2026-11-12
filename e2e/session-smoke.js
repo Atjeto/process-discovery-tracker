@@ -18,8 +18,9 @@
  *     BPMN, the image drawn by bpmn-js as the PDD draws it),
  *   - the chrome: one top bar (New, Open, the four levels, the status line,
  *     Export, Help, theme; no actions bar, no Analyze button, no More menu),
- *     New and Open two menus, the Transaction select on the Timeline only
- *     ("Transaction 1 · <label>"), the version in Help, the active level
+ *     New and Open two menus, no Transaction select (lane LANES: a
+ *     transaction's band says "Transaction 1 · <label>" and that a
+ *     double-click shows only it), the version in Help, the active level
  *     legible under the mouse,
  *   - Help opens on Getting started, the process managers' guide, which says
  *     what docs/HOW-TO.md says in the same words (lane HT),
@@ -506,31 +507,30 @@ async function unreadableAnnotationsPin() {
       cut.entryPoints === 0 && cut.sessionViewShown && cut.exportItems.every(Boolean)),
     JSON.stringify(cut));
 
-  // P1.2: the run select dims the other runs on the Flow timeline and changes
-  // nothing elsewhere, so it shows on Flow only; "Scope to playhead" is gone
-  // on every level. Checked on each level in turn.
+  // P1.2, lane LANES: the Transaction select is gone from every level (a
+  // double-click on a transaction's band shows only it, Show all comes back);
+  // "Scope to playhead" is gone too. Checked on each level in turn.
   const runSelect = {};
   for (const lvl of ["overview", "flow", "steps", "map"]) {
     await page.click('.view-mode-btn[data-level="' + lvl + '"]').catch(() => {});
     await wait(400);
-    runSelect[lvl] = await page.evaluate(() => {
-      const el = document.getElementById("case-scope");
-      return !!(el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0);
-    }).catch(() => null);
+    runSelect[lvl] = await page.evaluate(() => !!document.getElementById("case-scope") || !!document.getElementById("case-scope-select"))
+      .catch(() => null);
   }
+  await page.click('.view-mode-btn[data-level="flow"]').catch(() => {});
+  await wait(400);
   const runSelectText = await page.evaluate(() => ({
-    label: ((document.querySelector("#case-scope .case-scope-label") || {}).textContent || "").trim(),
-    options: [...document.querySelectorAll("#case-scope-select option")].map((o) => (o.textContent || "").trim()),
+    // AD-29: each transaction's band reads the way Steps names it, then its
+    // marker label (the demo's "Order #..."), and says what a double-click does.
+    bands: [...document.querySelectorAll("#timeline .tl-case-band")].map((b) => b.title.split("\n")),
     playhead: document.querySelectorAll("#btn-scope-to-playhead").length,
   })).catch((e) => ({ err: e.message }));
-  const opts = runSelectText.options || [];
-  // AD-29: each transaction reads the way Steps names it, then its marker
-  // label (the demo's "Order #...").
-  record("P1.2 + AD-29: the Transaction select shows on the Timeline only (All transactions, then Transaction N · its label), in its header; Scope to playhead is gone",
-    runSelect.flow === true && runSelect.overview === false && runSelect.steps === false && runSelect.map === false &&
-      runSelectText.label === "Transaction:" && opts[0] === "All transactions" && opts.length === 5 &&
-      opts.slice(1).every((o, i) => new RegExp("^Transaction " + (i + 1) + "( · \\S.*)?$").test(o)) &&
-      opts.some((o) => / · Order #\d+$/.test(o)) && runSelectText.playhead === 0,
+  const bandsT = runSelectText.bands || [];
+  record("P1.2 + AD-29, lane LANES: no Transaction select on any level; each transaction's band on the Timeline is named Transaction N · its label and says Double-click: show only this transaction.; Scope to playhead is gone",
+    runSelect.flow === false && runSelect.overview === false && runSelect.steps === false && runSelect.map === false &&
+      bandsT.length === 4 && bandsT.every((t, i) => new RegExp("^Transaction " + (i + 1) + "( · \\S.*)?$").test(t[0])) &&
+      bandsT.some((t) => / · Order #\d+$/.test(t[0])) && bandsT.every((t) => t[t.length - 1] === "Double-click: show only this transaction.") &&
+      runSelectText.playhead === 0,
     JSON.stringify({ runSelect, runSelectText }));
 
   // P1.2 / P3.1 / P3.2 / P2.2: the chrome says each thing once. No VIEW label,
@@ -903,7 +903,10 @@ async function unreadableAnnotationsPin() {
     const oneClick = steps.filter((st) => Date.parse(st.time_range.end) === Date.parse(st.time_range.start));
     return {
       steps: steps.length, bands: bands.length,
-      named: bands.every((b) => byId[b.dataset.stepId] && (b.textContent || "") === byId[b.dataset.stepId].name),
+      // Lane LANES: the name is the band's .tl-step-name (shown where it reads,
+      // the step's number in its place on a narrow band) and its tooltip's start.
+      named: bands.every((b) => byId[b.dataset.stepId] && ((b.querySelector(".tl-step-name") || {}).textContent || "") === byId[b.dataset.stepId].name &&
+        (b.title || "").startsWith(byId[b.dataset.stepId].name + " · ")),
       folded: bands.filter((b) => / steps\)/.test(b.title || "")).length,
       oneClick: oneClick.length,
       oneClickDrawn: oneClick.filter((st) => { const b = bands.find((x) => x.dataset.stepId === st.step_id); return !!b && b.getBoundingClientRect().width > 0; }).length,
@@ -2046,7 +2049,7 @@ async function unreadableAnnotationsPin() {
       const runs = RM.buildRuns(s.stats, (s.annotations || {}).steps || []).runs;
       const run = runs.find((x) => x.caseId === cid);
       const band = document.querySelector("#timeline .tl-left-out");
-      const lg = document.querySelector("#timeline-legend .lg-left-out");
+      const lg = document.querySelector("#lanes-legend .lg-left-out");
       return {
         ranges: ((s.annotations || {}).excluded_ranges || []).map((r) => [r.start, r.end]),
         run2: run ? { start: run.startMs, end: run.endMs, steps: run.visible.length,
@@ -2138,9 +2141,15 @@ async function unreadableAnnotationsPin() {
       });
       lo.bpmnStarts = bpmnFirstTasks(path.join(SESSION, "process_map_step.bpmn"));
       await shot(page, "fx1-left-out-live-map.png");
-      // Include again, from the band's own menu.
+      // Include again, from the band's own menu (lane LANES: the hatch runs
+      // through every lane under the marks; a click where no mark is).
       await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
-      await page.locator("#timeline .tl-left-out").click({ timeout: T });
+      await page.waitForSelector("#timeline .tl-left-out", { timeout: T });
+      await page.mouse.click(...(await page.evaluate(() => {
+        const h = document.querySelector("#timeline .tl-left-out"), r = h.getBoundingClientRect(), x = r.left + r.width / 2;
+        for (let y = r.bottom - 2; y > r.top; y -= 2) if (document.elementFromPoint(x, y) === h) return [x, y];
+        return [x, r.bottom - 2];
+      })));
       lo.menu = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => d.textContent));
       await page.locator("#tl-ctx-menu div", { hasText: "Include again" }).click({ timeout: T });
       await page.waitForFunction(() => !document.querySelector("#timeline .tl-left-out"), null, { timeout: T });
@@ -2230,7 +2239,7 @@ async function unreadableAnnotationsPin() {
     };
     const bands = () => page.evaluate(() => {
       const all = [...document.querySelectorAll("#timeline .tl-activity")];
-      const lg = document.querySelector("#timeline-legend .lg-left-out");
+      const lg = document.querySelector("#lanes-legend .lg-left-out");
       const notepad = all.filter((b) => /^notepad/i.test(b.dataset.app || ""));
       return { notepad: notepad.length, hatched: notepad.filter((b) => b.classList.contains("tl-app-left-out")).length,
         others: all.filter((b) => !/^notepad/i.test(b.dataset.app || "") && b.classList.contains("tl-app-left-out")).length,

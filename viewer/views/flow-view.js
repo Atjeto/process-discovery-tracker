@@ -2,9 +2,9 @@
  * flow-view.js: the Timeline level of the Session view (data-level "flow").
  *
  * Owns session load + analysis (loadSessionIntoView / openSessionFlow / the
- * automatic analysis and its status line), the timeline and every lane, the minimap,
+ * automatic analysis and its status line), the timeline and every lane,
  * range selection, the video <-> timeline sync, the event table, the
- * marker inserts, and case scope. The pane beside the video (its tabs, the
+ * marker inserts. The pane beside the video (its tabs, the
  * step opened in place) is views/timeline-pane.js (lane PANE). The module wires its own controls at require()
  * time (the DOM is already parsed when renderer.js pulls this in).
  * Cross-surface glue that stays in the entry (rerenderActiveLevel,
@@ -24,7 +24,6 @@ const SaveState = require("../save-state.js");
 const MarkerEdits = require("../marker-edits.js");
 const RunsModel = require("../runs-model.js");
 const { isVideoCopy } = require("../analyst-files.js");
-const { caseScopeOptionsHtml } = require("../case-scope.js");
 const AC = require("../analyst-content.js");
 const { pushRecent } = require("../recent.js");
 const { analysisNeed } = require("../normalize-result.js");
@@ -33,7 +32,6 @@ const Steps = require("./steps-view.js");
 const { renderStepsLevel } = Steps;
 const ShowHere = require("../show-here.js");
 const { renderOverviewLevel, hasAnalysisBlocks } = require("./overview-view.js");
-const { appColor, renderLegend } = require("./flow-view-apps.js");
 const Video = require("./flow-view-video.js");
 const {
   setVideoOverlay, positionPlayhead, videoStartTs, videoTimeToSessionTs,
@@ -72,98 +70,6 @@ function activateAnnoTab(name, caseId) {
   if (name === "markers") Pane.showTransaction(caseId || null);
   else Pane.showTab(name);
 }
-
-/* ============ Case scope ========================================== */
-
-function getSpan() {
-  const evs = (State.getSession() && State.getSession().events) || [];
-  if (!evs.length) return null;
-  return {
-    startMs: new Date(evs[0].timestamp).getTime(),
-    endMs:   new Date(evs[evs.length - 1].timestamp).getTime(),
-  };
-}
-
-/* Build the canonical list of cases for the loaded session. Pairs
-   step.case_id ranges (the data-side source of truth) with marker
-   labels (the user-recognizable name) so the dropdown shows e.g.
-   "Order #12345" instead of "c001". */
-function deriveCases(session) {
-  if (!session) return [];
-  const steps = (session.annotations && session.annotations.steps) || [];
-  // The markers the last analysis used (renames applied), in time order.
-  const markers = MarkerEdits.appliedMarkerEvents(MarkerEdits.sessionMarkerView(session));
-
-  const byCase = new Map();
-  for (const s of steps) {
-    if (!s.case_id || !s.time_range) continue;
-    const startMs = new Date(s.time_range.start).getTime();
-    const endMs = new Date(s.time_range.end).getTime();
-    if (!byCase.has(s.case_id)) {
-      byCase.set(s.case_id, { id: s.case_id, label: s.case_id, startMs, endMs });
-    } else {
-      const c = byCase.get(s.case_id);
-      c.startMs = Math.min(c.startMs, startMs);
-      c.endMs = Math.max(c.endMs, endMs);
-    }
-  }
-
-  // Best-effort marker-label enrichment: match a case whose range begins
-  // within 5s of a start marker, adopt the marker's label. Runs never nest
-  // (the pipeline's rule, case_assignment.py): every Start opens a run, ended
-  // by its End or by the next Start, so each Start names its own run.
-  for (const ev of markers) {
-    if (ev.data.marker_type !== "start" || !ev.data.label) continue;
-    const t = new Date(ev.timestamp).getTime();
-    for (const c of byCase.values()) {
-      if (Math.abs(c.startMs - t) < 5000) c.label = ev.data.label;
-    }
-  }
-
-  return Array.from(byCase.values()).sort((a, b) => a.startMs - b.startMs);
-}
-
-function currentScopeRange() {
-  if (!State.getCaseScope() || !State.getSession()) return null;
-  const cases = deriveCases(State.getSession());
-  return cases.find(c => c.id === State.getCaseScope()) || null;
-}
-
-function populateCaseScope() {
-  const sel = document.getElementById("case-scope-select");
-  if (!sel) return;
-  const sess = State.getSession();
-  const cases = sess ? deriveCases(sess) : [];
-  const evs = (sess && sess.events) || [];
-  // AD-29: each option carries the Steps level's title for its run
-  // ("Transaction 1 · Order #10900"). P2.8 duplicate-label suffixes + RP-34
-  // escaping: case-scope.js (pure).
-  const runs = sess ? RunsModel.buildRuns(sess.stats, (sess.annotations && sess.annotations.steps) || []).runs : [];
-  const titled = cases.map((c) => {
-    const run = runs.find((r) => r.caseId === c.id);
-    return run ? Object.assign({}, c, { title: run.title }) : c;
-  });
-  // Lane FX2: a project whose one transaction is implicit says so, in the
-  // Checklist's words.
-  const implicit = sess && AC.implicitRunId(sess.stats) ? AC.IMPLICIT_TRANSACTION : "";
-  sel.innerHTML = caseScopeOptionsHtml(titled, State.getCaseScope(),
-    evs.length ? new Date(evs[0].timestamp).getTime() : NaN, implicit);
-  // Wrapper picks up the visual cue that scoping is active.
-  const wrap = sel.closest(".case-scope");
-  if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
-}
-
-(function wireCaseScope() {
-  const sel = document.getElementById("case-scope-select");
-  if (!sel) return;
-  sel.addEventListener("change", () => {
-    State.setCaseScope(sel.value || "");
-    const wrap = sel.closest(".case-scope");
-    if (wrap) wrap.classList.toggle("scoped", !!State.getCaseScope());
-    // Re-render whatever's currently on screen
-    rerenderActiveLevel();
-  });
-})();
 
 /* The marker-edit resolution lives in flow-view-markers.js (god-file
    split). effectiveLabel is destructured at the top here; the marker-INSERT
@@ -592,14 +498,6 @@ async function loadSessionIntoView(folder, opts) {
   // analysis.json, so drawing it here covers the Checklist, the project line
   // and the document.
   renderOverviewLevel();
-  // Refresh case-scope dropdown -- clear scope if the new session no
-  // longer contains the previously-selected case.
-  populateCaseScope();
-  const cases = deriveCases(State.getSession()).map(c => c.id);
-  if (State.getCaseScope() && !cases.includes(State.getCaseScope())) {
-    State.setCaseScope("");
-    populateCaseScope();
-  }
   // P1.10: restore persisted timeline zoom + scroll for this session.
   _wireTimelineScrollPersist();
   restoreTimelineForCurrent();
@@ -821,9 +719,10 @@ async function queueMarkerDelete(eventId) {
 /* ============ Timeline ============================================ */
 
 /* appColor / appLabel / renderLegend live in flow-view-apps.js (god-file
-   split) and are destructured at the top of this module. */
+   split); the timeline module reads them, this one does not. */
 
-/* Timeline zoom/scroll persistence, the minimap, the lane toggles, the
+/* Timeline zoom/scroll persistence, the bar of the whole length, the lane
+   toggles, the
    timeline summary, and renderTimeline itself live in flow-view-timeline.js
    (god-file split). The entry points flow-view drives (renderTimeline,
    renderTimelineSummary, restoreTimelineForCurrent, maybeAutoScrollToFirstCase,
@@ -936,8 +835,10 @@ function installRangeSelection() {
   }
   host.addEventListener("mousedown", (e) => {
     // Only pure-background drag starts a selection — clicks on bands /
-    // markers / dots / labels stay normal click-to-seek.
-    if (e.target !== host) return;
+    // markers / dots / labels stay normal click-to-seek. Lane LANES: a
+    // stretch set aside is hatched through every lane, under the marks; a
+    // Shift-drag may start on it as on the background.
+    if (e.target !== host && !(e.target.classList && e.target.classList.contains("tl-left-out"))) return;
     if (e.button !== 0) return;
     if (!e.shiftKey) return;  // require Shift so plain click-to-seek is unaffected
     e.preventDefault();
@@ -999,7 +900,7 @@ function installRangeSelection() {
 
 /* The row holds how to play and how to mark, left to right (plan section
    11.3): Play, the clock, Add step, Start transaction or End transaction,
-   Add note, the message area, the Transaction select, Lanes and the zoom.
+   Add note, the message area, Lanes and the zoom.
    The marking buttons act at the clock's moment (the player's, or the
    moment a click on the timeline or a typed time put it at); without one
    they are there but cannot be clicked, their tooltip saying why. A project
@@ -1112,7 +1013,8 @@ function syncTimelineRow() {
     _button(document.getElementById("tl-selection-case"), acts.includes("makeTx"), true, words.makeTx, st.filled === "makeTx");
   }
   _show(row.querySelector(".tl-sep"), st.clock && (st.addStep.shown || st.tx.shown || st.addNote.shown || !!st.stretch));
-  // Lanes and the zoom: their words follow the copy table.
+  // Lanes and the zoom: their words follow the copy table (lane LANES: the
+  // Lanes menu also says what the marks mean, and its button says so).
   const lanes = document.getElementById("btn-lanes");
   if (lanes && lanes.title !== words.lanes) lanes.title = words.lanes;
 }
@@ -1235,8 +1137,8 @@ function addNoteHere() {
 /* The screenshot surfaces (hover thumb, grid, gallery, openScreenshot)
    live in flow-view-screenshots.js (god-file split). */
 
-/* renderMinimap / syncMinimapViewport / the minimap + middle-drag-pan
-   wiring and renderTimelineSummary live in flow-view-timeline.js. */
+/* The bar of the whole length (syncBar), the middle-drag-pan wiring and
+   renderTimelineSummary live in flow-view-timeline.js. */
 
 /* Pop a tiny context menu at (x, y) offering to queue a synthetic marker
    insert into annotations.json.marker_edits at timestamp `ts`. The edit
@@ -1571,11 +1473,12 @@ async function includeRangeAgain(range) {
 
 /* The timeline lane toggles, renderTimeline (the lane stack), its lane
    helpers (layoutCaseLanes / isUserActivityEvent / monitorBadgeFor), and
-   the minimap all live in flow-view-timeline.js (god-file split). */
+   the bar of the whole length all live in flow-view-timeline.js (god-file
+   split). */
 
-/* Right-click on a run band: jump to its start or end (the Run select in the
-   timeline header dims the other runs). Uses the same context-menu
-   construction pattern as showMarkerInsertMenu. */
+/* Right-click on a run band: jump to its start or end (lane LANES: a
+   double-click on it shows only that transaction). Uses the same
+   context-menu construction pattern as showMarkerInsertMenu. */
 /* A transaction's band right-clicked at `ts`: what marks there (Start a
    transaction, End the transaction, Add a step: an open transaction's band
    runs on to the end, over where its next marks go), then its own jumps. */
@@ -1715,10 +1618,10 @@ function initFlowView(deps) {
   // injected rather than require()d to avoid a flow-view <-> video cycle.
   Video.initVideo({ loadSessionIntoView, onPlayhead: syncTimelineRow });
   // Hand the timeline module the flow-view-resident glue its lanes call
-  // (case-scope dimming + the two context menus), injected to keep the
+  // (the two context menus, Include again), injected to keep the
   // timeline <-> flow-view graph acyclic.
   Timeline.initTimeline({
-    currentScopeRange, showMarkerInsertMenu, showCaseContextMenu,
+    showMarkerInsertMenu, showCaseContextMenu,
     includeAgain: (range) => includeRangeAgain(range),
   });
   // The transcript's menu actions reload the session; its sync redraws the lane.
@@ -1739,7 +1642,7 @@ module.exports = {
   // 2.0.3: marker changes that apply themselves (a project without a recording).
   scheduleAutoApply, yieldAutoApply,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
-  activateAnnoTab, addStepAtPlayhead, deriveCases,
+  activateAnnoTab, addStepAtPlayhead,
   // Lane PANE: Starts here on a row of the pane's Steps tab.
   showHereAt,
   // Lane SCREEN: the timeline's first row.

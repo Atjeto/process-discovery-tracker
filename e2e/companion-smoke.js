@@ -298,8 +298,8 @@ function zipFiles(buf) {
 
   // (a3) Lane FX3 (validation pass 3, F16, F22): a project with no recording
   // and no video, before its first step. The Timeline offers no control that
-  // needs a drawn timeline (the Transaction select, Lanes, the zoom, the video
-  // band with a second Attach video, the gallery, Raw events), and (lane
+  // needs a drawn timeline (Lanes, the zoom, the bar of the whole length, the
+  // video band with a second Attach video, the gallery, Raw events), and (lane
   // PANE) the pane beside it has no Markers tab: its Steps tab says, word for
   // word, how the first step comes in; the Overview has the document and no
   // Observations (2.0.1); Apps outside the process is not offered; Edit as the As-Is map is
@@ -312,7 +312,7 @@ function zipFiles(buf) {
       const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
       return {
         // Lane SCREEN: nor the row's Play, clock and marking buttons.
-        controls: ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in", "video-pane", "btn-open-gallery",
+        controls: ["lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in", "tl-bar-row", "video-pane", "btn-open-gallery",
           "btn-tl-play", "btn-tl-clock", "btn-add-step", "btn-tl-transaction", "btn-tl-note"]
           .filter((id) => shown(document.getElementById(id))),
         raw: shown(document.querySelector(".event-table-host")),
@@ -741,7 +741,7 @@ function zipFiles(buf) {
     h3.state = await page.evaluate(() => {
       const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
       return {
-        controls: ["case-scope", "lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"].filter((id) => shown(document.getElementById(id))).length,
+        controls: ["lanes-menu", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in", "tl-bar-row"].filter((id) => shown(document.getElementById(id))).length,
         raw: shown(document.querySelector(".event-table-host")),
         overlay: (document.getElementById("video-overlay").textContent || "").trim(),
       };
@@ -904,7 +904,7 @@ function zipFiles(buf) {
     await page.waitForSelector("#timeline .tl-screenshot-added", { timeout: T });
     z.lane = await page.evaluate(() => [...document.querySelectorAll("#timeline .tl-screenshot")].map((d) => ({
       added: d.classList.contains("tl-screenshot-added"), title: d.title })));
-    z.legend = await page.evaluate(() => getComputedStyle(document.querySelector("#timeline-legend .lg-screenshot")).display);
+    z.legend = await page.evaluate(() => getComputedStyle(document.querySelector("#lanes-legend .lg-screenshot")).display);
     z.grid = await page.evaluate(() => [...document.querySelectorAll("#screenshots-grid .thumb")].map((c) => ({
       badge: ((c.querySelector(".badge") || {}).textContent || ""), title: c.title, img: !!c.querySelector("img"),
       shown: c.getClientRects().length > 0 })));
@@ -948,7 +948,7 @@ function zipFiles(buf) {
       const pin = document.querySelector("#timeline .tl-note");
       const nr = name && name.getBoundingClientRect(), pr = pin && pin.getBoundingClientRect();
       return { pins: document.querySelectorAll("#timeline .tl-note").length,
-        row: !document.getElementById("lane-notes-row").hidden, legend: getComputedStyle(document.querySelector("#timeline-legend .lg-note")).display,
+        row: !document.getElementById("lane-notes-row").hidden, legend: getComputedStyle(document.querySelector("#lanes-legend .lg-note")).display,
         name: name ? (name.textContent || "").trim() : null, title: name ? name.title : null,
         inRow: !!(nr && pr && (nr.top + nr.bottom) / 2 >= pr.top && (nr.top + nr.bottom) / 2 <= pr.bottom) };
     });

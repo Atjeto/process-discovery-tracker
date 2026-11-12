@@ -342,10 +342,26 @@ the folder.
   a time), Add step, Start transaction or End transaction (one button), Add
   note, the message area `#tl-message` (`dom.js` `placeToast` moves
   `#toast` there while the Timeline shows; at rest `#timeline-summary`),
-  the Transaction select, Lanes, the zoom; a selected stretch shows there
-  with its acts (the selection card is gone). The rules are
-  `timeline-row.js`, drawn by `flow-view.js` `syncTimelineRow`. No playback
-  bar, and `#video` has no controls (only during a sync's first step).
+  Lanes, the zoom; a selected stretch shows there with its acts (the
+  selection card is gone). The rules are `timeline-row.js`, drawn by
+  `flow-view.js` `syncTimelineRow`. No playback bar, and `#video` has no
+  controls (only during a sync's first step).
+- **The Timeline's lanes** (lane LANES, plan section 11.3,
+  `flow-view-timeline.js` `renderTimeline`): top to bottom, each only when
+  the project has such things, Time, Transactions, Steps (44 px, a band's
+  name on up to two lines, a band too narrow its number, the pane's:
+  `step-band-label.js`; no band past the next one of its transaction:
+  `step-band-width.js`; a draft dashed), Systems (a recording), Transcript,
+  Videos, Screenshots, Notes, Idle (a recording, off until chosen). A
+  stretch set aside is hatched through every lane under the marks
+  (`_drawThroughLanes`; `.tl-left-out-over` over the Systems and Videos).
+  One bar of the whole length under the lanes (`#tl-bar`, `role="scrollbar"`,
+  its box the part shown; `TimelineCore.barBox`) is the way along it: the
+  minimap and the lanes' own scrollbar are gone. The legend is in the Lanes
+  menu (`#lanes-legend`, "What the marks mean"). The Transaction select is
+  gone (and `case-scope.js`): a double-click on a transaction's band shows
+  only it (`zoomToTransaction`, `TimelineCore.zoomToSpan`), *Show all* comes
+  back.
 - **The Steps page is an editor** (2.0.1, the owner's review): the toolbar
   acts on the selected step (Split..., Merge with next, Hide step, the
   sub-process verbs, Delete; `_syncStepVerbs`), the rows carry a

@@ -57,6 +57,13 @@
  *   (s1) to (s4) the screen's order and the timeline's first row: Play, the
  *       clock, Start transaction and End transaction, Add step, Add note,
  *       the messages in the row, the keyboard.
+ * Lane LANES, on a fourth project made from the video, then on the recording
+ * the smokes use (the demo session, a stretch left out of the analysis):
+ *   (t1) to (t8) the lanes in the order of the work, the Steps lane readable
+ *       (names on up to two lines, numbers on narrow bands), a stretch set
+ *       aside hatched through every lane (a step on it still opens), the bar
+ *       of the whole length under the lanes, the legend in the Lanes menu,
+ *       a double-click on a transaction showing only it.
  *   Zero page errors. Exits 0 when every check passed, 1 on a failed check,
  *   2 when it could not run.
  */
@@ -103,6 +110,311 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf-8"));
          a band, each took the video's frame; then no row offers it; Ctrl+Z gives the
          last one back its no time and takes its frame; the right-click menu
          offers the same act under Add a step here. */
+/* Lane LANES (plan section 11.3): the lanes of the timeline. In a project
+   made from a video, then in the recording the smokes use (the demo session,
+   a stretch left out of the analysis): the lanes in the order of the work,
+   the Steps lane 44 px tall with the names readable on its bands (a band too
+   narrow shows its number, the pane's), a stretch set aside hatched through
+   every lane under the marks (a step on it still opens), the one bar of the
+   whole length under the lanes (zoom in twice, drag its box to the end,
+   press near its start: the lanes follow; at Show all the box fills it), the
+   legend in the Lanes menu, and a double-click on a transaction showing only
+   it (Show all comes back). */
+async function laneLanes(TMP) {
+  const T0 = Date.parse("2026-11-10T09:00:00.000Z");
+  const dir = path.join(TMP, "Lanes call");
+  fs.mkdirSync(path.join(dir, "video"), { recursive: true });
+  fs.copyFileSync(VIDEO, path.join(dir, "video", "call.webm"));
+  const started = new Date(T0).toISOString();
+  const iso = (s) => new Date(T0 + s * 1000).toISOString();
+  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ session_id: "lane-lanes", source: "video", started_at: started, label: "Lanes call" }));
+  fs.writeFileSync(path.join(dir, "events.jsonl"), "");
+  const st = (id, name, a, b) => ({ step_id: id, name, state: "manually_authored", case_id: null, time_range: { start: iso(a), end: iso(b) },
+    description: "", evidence: { interaction_event_ids: [], screenshot_refs: [] }, flags: { waste: false } });
+  const LONG = "Take the order from the e-mail with the order form attached";
+  fs.writeFileSync(path.join(dir, "annotations.json"), JSON.stringify({ version: 1, session_id: "lane-lanes",
+    steps: [st("s1", LONG, 1, 7), st("s2", "Find the customer", 7, 7.6), st("s3", "Enter the order lines", 9, 15),
+      st("s4", "Look at the weather", 17, 20), st("s5", "Send the confirmation to the customer", 22, 30)],
+    analyst_notes: [{ id: "n1", at: iso(25), text: "Ask about the weekly limit." }],
+    excluded_ranges: [{ start: iso(15.5), end: iso(21.5), reason: "manual" }],
+    external_videos: [{ id: "v1", path: "video/call.webm", offset_ms: 0, in_ms: 0, out_ms: null, attached_at: started }] }, null, 2));
+  const errs = [];
+  let v, page;
+  try {
+    v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + dir], cwd: VIEWER });
+    page = await v.app.firstWindow();
+    page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+    page.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
+    await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(); return !!(s && s.stats) && !require("./views/flow-view.js").analysisBusy(); }, null, { timeout: 60000 });
+    await page.click('.view-mode-btn[data-level="flow"]');
+    await page.waitForFunction(() => !!require("./views/flow-view-video.js").timelineSpan() &&
+      document.querySelectorAll("#timeline .tl-step-band").length === 5, null, { timeout: T });
+  } catch (e) {
+    record("lane LANES: the project made from a video with five steps, a note and a stretch not part of the process opens", false, errText(e));
+    if (v) await v.close();
+    return;
+  }
+  // The lanes, their order, the Steps lane's bands, the hatch.
+  const lanesNow = () => page.evaluate(() => {
+    const tl = document.getElementById("timeline").getBoundingClientRect();
+    const box = (el) => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top - tl.top), h: Math.round(b.height), l: Math.round(b.left), r: Math.round(b.right) }; };
+    const hatch = document.querySelector("#timeline .tl-left-out");
+    const bands = [...document.querySelectorAll("#timeline .tl-step-band")].map((b) => {
+      const name = b.querySelector(".tl-step-name"), num = b.querySelector(".tl-step-num");
+      const nb = name.getBoundingClientRect();
+      return { id: b.dataset.stepId, shows: b.dataset.shows, num: b.dataset.num, box: box(b), font: parseFloat(getComputedStyle(b).fontSize),
+        name: !name.hidden ? name.textContent : null, numText: !num.hidden ? num.textContent : null,
+        lines: !name.hidden ? Math.round(nb.height / parseFloat(getComputedStyle(name).lineHeight)) : 0,
+        inside: !name.hidden ? nb.top >= b.getBoundingClientRect().top - 0.5 && nb.bottom <= b.getBoundingClientRect().bottom + 0.5 : true,
+        title: b.title.split("\n")[0] };
+    });
+    const cells = [...document.querySelectorAll("#tl-lane-names .tl-lane-name")].map((c) => ({ lane: c.dataset.lane, name: c.textContent.trim(), title: c.title }));
+    const slots = {};
+    for (const c of document.querySelectorAll("#tl-lane-names .tl-lane-name")) slots[c.dataset.lane] = box(c);
+    const rows = [...document.querySelectorAll('#tp-steps .tp-item[data-step-id]')].map((li) => ({ id: li.dataset.stepId, num: (li.querySelector(".tp-num") || {}).textContent }));
+    return { cells, slots, bands, rows, hatch: hatch ? Object.assign(box(hatch), { label: (hatch.querySelector(".tl-left-out-label") || {}).textContent || "" }) : null,
+      lastBottom: Math.max(...[...document.querySelectorAll("#tl-lane-names .tl-lane-name")].map((c) => { const b = c.getBoundingClientRect(); return b.bottom - tl.top; })),
+      under: [...document.getElementById("timeline-section").children].filter((c) => c.getClientRects().length).map((c) => c.id),
+      gone: ["timeline-legend", "timeline-minimap", "case-scope", "case-scope-select"].filter((id) => document.getElementById(id)) };
+  });
+  const a = {};
+  try {
+    a.l = await lanesNow();
+  } catch (e) { a.err = errText(e); }
+  const L = a.l || { cells: [], bands: [], rows: [], slots: {} };
+  const byId = (id) => L.bands.find((b) => b.id === id) || {};
+  const rowNum = (id) => (L.rows.find((r) => r.id === id) || {}).num;
+  record("(t1) lane LANES: in a project made from a video the lanes read top to bottom Transactions, Steps, Videos, Notes (no Systems lane, no low row in its place); the Steps lane is 44 px tall, its bands 12 px text; a wide band shows its name on up to two lines inside it, a narrow one only its number, the number the pane's Steps tab shows; the tooltip starts with the name",
+    !a.err && JSON.stringify(L.cells.map((c) => c.lane)) === '["cases","steps","videos","notes"]' &&
+      L.cells.find((c) => c.lane === "steps").title === "Steps: each step in the order of the process; click one to open it beside the video." &&
+      L.bands.every((b) => b.font >= 12 && b.title.startsWith(b.name || "") && b.box.h === 38) &&
+      byId("s1").shows === "name" && byId("s1").lines === 2 && byId("s1").inside && byId("s1").name === LONG &&
+      byId("s2").shows === "number" && byId("s2").numText === rowNum("s2") && byId("s2").title.startsWith("Find the customer") &&
+      byId("s5").shows === "name" && byId("s5").lines >= 1 && byId("s5").lines <= 2,
+    JSON.stringify(a.err || { cells: L.cells.map((c) => c.lane), bands: L.bands, rows: L.rows }));
+  const steps = L.slots.steps || {};
+  record("(t2) the stretch not part of the process is hatched through every lane, from the Transactions lane's top to the last lane's foot, under the marks, with its label once at its top; nothing is left under the timeline but the bar (no legend row, no minimap, no Transaction select)",
+    !!L.hatch && Math.abs(L.hatch.top - L.slots.cases.top) <= 3 && Math.abs(L.hatch.top + L.hatch.h - L.lastBottom) <= 4 &&
+      L.hatch.label === "Not part of the process" && JSON.stringify(L.under) === '["tl-row","tl-lanes","tl-bar-row"]' && L.gone.length === 0,
+    JSON.stringify({ hatch: L.hatch, slots: L.slots, lastBottom: L.lastBottom, under: L.under, gone: L.gone, steps }));
+
+  // A step band inside the hatch still opens on a click; the hatch where no
+  // mark is opens its menu.
+  const b = {};
+  try {
+    const box4 = await page.locator('#timeline .tl-step-band[data-step-id="s4"]').boundingBox();
+    b.top = await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return el && (el.closest(".tl-step-band") || el).dataset.stepId || el.className; },
+      [box4.x + box4.width / 2, box4.y + box4.height / 2]);
+    await page.mouse.click(box4.x + box4.width / 2, box4.y + box4.height / 2);
+    await page.waitForFunction(() => { const ed = document.getElementById("tp-editor"); return ed && ed.dataset.stepId === "s4"; }, null, { timeout: T });
+    b.opened = await page.evaluate(() => ({ step: document.getElementById("tp-editor").dataset.stepId, name: (document.getElementById("step-name") || {}).value }));
+    // The hatch below the step, on the Notes lane, where no mark is: its menu.
+    const h = await page.locator("#timeline .tl-left-out").boundingBox();
+    const y = h.y + h.height - 6;
+    b.under = await page.evaluate(([x, yy]) => (document.elementFromPoint(x, yy) || {}).className, [h.x + h.width / 2, y]);
+    await page.mouse.click(h.x + h.width / 2, y);
+    await page.waitForSelector("#tl-ctx-menu", { timeout: T });
+    b.menu = await page.evaluate(() => [...document.querySelectorAll("#tl-ctx-menu > div")].map((d) => d.textContent));
+    await page.keyboard.press("Escape");
+    await page.locator("#tp-panel-steps .tp-back").click({ timeout: T }).catch(() => {});
+  } catch (e) { b.err = errText(e); }
+  record("(t3) a step band inside the hatch is on top there and opens on a click (beside the video); a click on the hatch where no mark is offers Include again and Go to its start",
+    !b.err && b.top === "s4" && b.opened.step === "s4" && b.opened.name === "Look at the weather" && b.under === "tl-left-out" &&
+      JSON.stringify(b.menu) === '["Include again","Go to its start"]', JSON.stringify(b));
+
+  // The bar of the whole length.
+  const view = () => page.evaluate(() => {
+    const sc = document.getElementById("timeline-scroll"), bar = document.getElementById("tl-bar"), box = document.getElementById("tl-bar-box");
+    const br = bar.getBoundingClientRect(), xr = box.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+    return { left: sc.scrollLeft, shown: sc.clientWidth, whole: sc.scrollWidth, boxL: (xr.left - br.left) / br.width, boxW: xr.width / br.width,
+      now: Number(bar.getAttribute("aria-valuenow")), barL: Math.round(br.left), barR: Math.round(br.right), lanesL: Math.round(sr.left), lanesR: Math.round(sr.right),
+      hBar: sc.offsetHeight - sc.clientHeight, zoom: require("./state.js").getZoomFactor() };
+  });
+  const c = {};
+  try {
+    c.at1 = await view();
+    await page.click("#btn-zoom-in");
+    await page.click("#btn-zoom-in");
+    await wait(200);
+    c.zoomed = await view();
+    // Drag the box to the end of the bar.
+    const bx = await page.locator("#tl-bar-box").boundingBox();
+    const bar = await page.locator("#tl-bar").boundingBox();
+    await page.mouse.move(bx.x + bx.width / 2, bx.y + bx.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bx.x + bx.width / 2 + 40, bx.y + bx.height / 2, { steps: 4 });
+    await page.mouse.move(bar.x + bar.width + 60, bx.y + bx.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await wait(150);
+    c.end = await view();
+    // Press near the start of the bar: the view centres there (at the start).
+    await page.mouse.click(bar.x + bar.width * 0.03, bar.y + bar.height / 2);
+    await wait(150);
+    c.start = await view();
+    // Near the middle: centred on it.
+    await page.mouse.click(bar.x + bar.width * 0.5, bar.y + bar.height / 2);
+    await wait(150);
+    c.mid = await view();
+    // Right, with the bar focused, moves the box (not the video).
+    const clock = await page.evaluate(() => require("./views/flow-view-video.js").playheadMs());
+    await page.focus("#tl-bar");
+    await page.keyboard.press("ArrowRight");
+    await wait(100);
+    c.key = Object.assign(await view(), { clockKept: (await page.evaluate(() => require("./views/flow-view-video.js").playheadMs())) === clock });
+    await page.click("#btn-zoom-reset");
+    await wait(200);
+    c.all = await view();
+    c.attrs = await page.evaluate(() => { const bar = document.getElementById("tl-bar"); return { role: bar.getAttribute("role"), controls: bar.getAttribute("aria-controls"),
+      orient: bar.getAttribute("aria-orientation"), tab: bar.tabIndex, title: bar.title, h: Math.round(bar.getBoundingClientRect().height),
+      track: Math.round(bar.querySelector(".tl-bar-track").getBoundingClientRect().height) }; });
+  } catch (e) { c.err = errText(e); }
+  const near = (x, y, tol) => Math.abs(x - y) <= (tol || 1.5);
+  record("(t4) the bar of the whole length under the lanes, as wide as them (14 px in a 24 px target, a scrollbar to a screen reader with its tooltip): at the whole length its box fills it; zoomed in twice the box is the part shown; dragged to the end the lanes show their end; a press near its start shows the start, one at its middle centres the middle; Right moves the box and not the video; Show all fills it again; the lanes have no scrollbar of their own",
+    !c.err && c.at1.boxW > 0.99 && c.at1.boxL < 0.01 && c.at1.hBar === 0 && near(c.at1.barL, c.at1.lanesL, 2) && near(c.at1.barR, c.at1.lanesR, 2) &&
+      near(c.zoomed.zoom, 2.25, 0.01) && near(c.zoomed.boxW, c.zoomed.shown / c.zoomed.whole, 0.01) &&
+      near(c.end.left, c.end.whole - c.end.shown, 2) && near(c.end.boxL + c.end.boxW, 1, 0.01) && c.end.now === 100 &&
+      c.start.left === 0 && c.start.boxL < 0.01 && c.start.now === 0 &&
+      near(c.mid.left + c.mid.shown / 2, c.mid.whole / 2, 3) &&
+      c.key.left > c.mid.left && c.key.clockKept &&
+      c.all.boxW > 0.99 && c.all.left === 0 && c.all.zoom === 1 &&
+      c.attrs.role === "scrollbar" && c.attrs.controls === "timeline-scroll" && c.attrs.orient === "horizontal" && c.attrs.tab === 0 && c.attrs.h >= 24 && c.attrs.track === 14 &&
+      c.attrs.title === "The whole length of the timeline. Drag the box to move along it, or click a place to go there.",
+    JSON.stringify(c));
+
+  // The Lanes menu: the lanes in the timeline's order, then what the marks mean.
+  const m = {};
+  try {
+    await page.click("#btn-lanes");
+    await page.waitForSelector("#lanes-popup", { state: "visible", timeout: T });
+    m.menu = await page.evaluate(() => {
+      const p = document.getElementById("lanes-popup"), r = p.getBoundingClientRect();
+      return { title: document.getElementById("btn-lanes").title, rows: [...p.querySelectorAll("label.cb")].filter((l) => l.checkVisibility()).map((l) => l.textContent.trim()),
+        heads: [...p.querySelectorAll(".lanes-popup-title")].filter((h) => h.checkVisibility()).map((h) => h.textContent),
+        legend: [...p.querySelectorAll("#lanes-legend > span")].filter((s) => s.checkVisibility()).map((s) => s.textContent.trim()),
+        inside: r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth };
+    });
+    await page.click("#btn-lanes");
+  } catch (e) { m.err = errText(e); }
+  record("(t5) Lanes: its tooltip says it also shows what the marks mean; its menu lists the lanes in the timeline's order under Show lanes, then What the marks mean with the marks drawn (a note, the stretch in this project's words), inside the window",
+    !m.err && m.menu.title === "Choose which lanes the timeline shows, and see what its marks mean" &&
+      JSON.stringify(m.menu.rows) === '["Transactions","Steps","Videos","Screenshots","Notes"]' &&
+      JSON.stringify(m.menu.heads) === '["Show lanes","What the marks mean"]' &&
+      JSON.stringify(m.menu.legend) === '["note","not part of the process"]' && m.menu.inside, JSON.stringify(m));
+  record("lane LANES (a project made from a video): zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
+  await v.close();
+  await laneLanesRecording(TMP);
+}
+
+/* The recording the smokes use (the demo session), with a stretch left out of
+   the analysis: the lanes, the hatch through them, the double-click on a
+   transaction, the menu at the window's size. */
+async function laneLanesRecording(TMP) {
+  const SRC = path.join(REPO, "sessions", "example-aggregate", "sess-2026-0514-0900");
+  const dir = path.join(TMP, "Lanes recording");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const f of ["events.jsonl", "manifest.json", "annotations.json"]) fs.copyFileSync(path.join(SRC, f), path.join(dir, f));
+  const anno = JSON.parse(fs.readFileSync(path.join(dir, "annotations.json"), "utf-8"));
+  anno.excluded_ranges = [{ start: "2026-05-14T09:02:40Z", end: "2026-05-14T09:03:05Z", reason: "manual" }];
+  fs.writeFileSync(path.join(dir, "annotations.json"), JSON.stringify(anno, null, 2));
+  const errs = [];
+  let v, page;
+  try {
+    v = await launchViewer(electron, { executablePath: electronPath, args: [".", "--session=" + dir], cwd: VIEWER });
+    page = await v.app.firstWindow();
+    page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+    page.on("pageerror", (e) => errs.push(String(e && e.message ? e.message : e)));
+    await page.waitForSelector("#session-loaded", { state: "visible", timeout: T });
+    // It opens without an analysis: the viewer analyzes it by itself.
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(); return !!(s && s.stats && (s.stats.case_stats || []).length) &&
+      !require("./views/flow-view.js").analysisBusy(); }, null, { timeout: 180000 });
+    await page.click('.view-mode-btn[data-level="flow"]');
+    await page.waitForFunction(() => document.querySelectorAll("#timeline .tl-case-band").length === 4 &&
+      document.querySelectorAll("#timeline .tl-step-band").length > 0, null, { timeout: T });
+  } catch (e) {
+    record("lane LANES: the recording the smokes use opens on the Timeline", false, errText(e));
+    if (v) await v.close();
+    return;
+  }
+  const r = {};
+  try {
+    r.l = await page.evaluate(() => {
+      const tl = document.getElementById("timeline").getBoundingClientRect();
+      const cells = [...document.querySelectorAll("#tl-lane-names .tl-lane-name")];
+      const h = document.querySelector("#timeline .tl-left-out");
+      const hb = h.getBoundingClientRect();
+      const tx = document.querySelector("#timeline .tl-case-band").getBoundingClientRect();
+      return { lanes: cells.map((c) => c.dataset.lane),
+        hatchTop: Math.round(hb.top - tl.top), hatchBottom: Math.round(hb.bottom - tl.top),
+        casesTop: Math.round(tx.top - tl.top), lastBottom: Math.round(Math.max(...cells.map((c) => c.getBoundingClientRect().bottom)) - tl.top),
+        over: document.querySelectorAll("#timeline .tl-left-out-over").length, drafts: document.querySelectorAll("#timeline .tl-step-band.draft").length,
+        dashed: getComputedStyle(document.querySelector("#timeline .tl-step-band.draft")).borderTopStyle };
+    });
+  } catch (e) { r.err = errText(e); }
+  const RL = r.l || {};
+  record("(t6) lane LANES: in the recording the lanes read Transactions, Steps, Systems (Idle off until chosen); its drafts are dashed; the stretch left out of the analysis is hatched from the Transactions lane down through the Systems lane",
+    !r.err && JSON.stringify(RL.lanes) === '["cases","steps","activity"]' && RL.drafts > 0 && RL.dashed === "dashed" &&
+      Math.abs(RL.hatchTop - RL.casesTop) <= 3 && Math.abs(RL.hatchBottom - RL.lastBottom) <= 4 && RL.over === 1, JSON.stringify(r));
+
+  // A double-click on Transaction 2 shows only it, the clock where it was.
+  const d = {};
+  try {
+    const span = () => page.evaluate(() => {
+      const sp = require("./views/flow-view-video.js").timelineSpan();
+      const sc = document.getElementById("timeline-scroll");
+      const whole = sp.endMs - sp.startMs;
+      return { from: sp.startMs + (sc.scrollLeft / sc.scrollWidth) * whole, to: sp.startMs + ((sc.scrollLeft + sc.clientWidth) / sc.scrollWidth) * whole,
+        clock: require("./views/flow-view-video.js").playheadMs(), zoom: require("./state.js").getZoomFactor() };
+    });
+    // The clock at a moment of Transaction 4 first (no video: the
+    // timeline's own moment), so keeping it means something.
+    await page.evaluate(() => require("./views/flow-view-video.js").movePlayheadToTimestamp("2026-05-14T09:04:40.000Z"));
+    await wait(700);
+    d.before = await span();
+    const tx2 = page.locator("#timeline .tl-case-band").nth(1);
+    d.tx = await tx2.evaluate((b) => ({ start: Number(b.dataset.startMs), end: Number(b.dataset.endMs), title: b.title }));
+    await tx2.dblclick({ position: { x: 30, y: 6 } });
+    await wait(500);
+    d.after = await span();
+    await page.click("#btn-zoom-reset");
+    await wait(200);
+    d.all = await span();
+    // A single click still goes to the transaction's start (a moment later).
+    await tx2.click({ position: { x: 30, y: 6 } });
+    await wait(600);
+    d.single = await span();
+  } catch (e) { d.err = errText(e); }
+  const len = d.tx ? d.tx.end - d.tx.start : 0;
+  record("(t7) a double-click on Transaction 2 shows only it, filling the width with a little room on each side, and the clock stays where it was; its tooltip says so; Show all comes back to the whole length; a single click still goes to its start",
+    !d.err && /\nDouble-click: show only this transaction\.$/.test(d.tx.title) && d.after.zoom > 2 &&
+      d.after.from <= d.tx.start && d.tx.start - d.after.from <= len * 0.08 && d.after.to >= d.tx.end && d.after.to - d.tx.end <= len * 0.08 &&
+      d.before.clock === Date.parse("2026-05-14T09:04:40.000Z") && d.after.clock === d.before.clock && d.all.zoom === 1 && d.all.from === d.before.from &&
+      d.single.clock === d.tx.start && d.single.zoom === 1,
+    JSON.stringify(d));
+
+  const n = {};
+  try {
+    await page.click("#btn-lanes");
+    await page.waitForSelector("#lanes-popup", { state: "visible", timeout: T });
+    n.menu = await page.evaluate(() => {
+      const p = document.getElementById("lanes-popup"), r = p.getBoundingClientRect();
+      return { rows: [...p.querySelectorAll("label.cb")].filter((l) => l.checkVisibility()).map((l) => l.textContent.trim()),
+        legend: [...p.querySelectorAll("#lanes-legend > span:not(.legend-apps)")].filter((s) => s.checkVisibility()).map((s) => s.textContent.trim()),
+        systems: p.querySelectorAll("#legend-apps .legend-app").length, inside: r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth };
+    });
+    await page.click("#btn-lanes");
+    // The row at this size: nothing cut (the select is gone).
+    n.row = await page.evaluate(() => [...document.querySelectorAll("#tl-row button, #tl-row .tl-message")].filter((e) => e.getClientRects().length)
+      .map((e) => ({ id: e.id, w: Math.round(e.getBoundingClientRect().width), cut: e.tagName === "BUTTON" && e.scrollWidth > e.clientWidth + 1 })));
+  } catch (e) { n.err = errText(e); }
+  record("(t8) in the recording the Lanes menu lists Transactions, Steps, Systems, Screenshots, Idle, then what the marks mean (the systems' colours, dashed: a draft step, the stretch left out), inside the window; the row cuts no button",
+    !n.err && JSON.stringify(n.menu.rows) === '["Transactions","Steps","Systems","Screenshots","Idle"]' &&
+      JSON.stringify(n.menu.legend) === '["dashed: a draft step","left out of the analysis"]' && n.menu.systems >= 3 && n.menu.inside &&
+      n.row.every((x) => !x.cut), JSON.stringify(n));
+  record("lane LANES (the recording): zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
+  await v.close();
+}
+
 /* ---- Lane SCREEN: the timeline's first row (plan section 11.3) -----------
    A project made from the synthetic video, no step, in a viewer of its own:
      (s1) the screen's order: the stage (the video and the pane) above the
@@ -303,9 +615,9 @@ async function laneScreen(TMP) {
     await wait(300);
     s4.enterPauses = await ev(() => document.getElementById("video").paused);
   } catch (e) { s4.err = errText(e); }
-  record("(s4) Tab reaches the row in its order (Play, the clock, Add step, the transaction, Add note, the Transaction select, Lanes, Zoom out, Show all, Zoom in), each named and with a focus ring; Space and Enter work a focused button",
+  record("(s4) Tab reaches the row in its order (Play, the clock, Add step, the transaction, Add note, Lanes, Zoom out, Show all, Zoom in; lane LANES: no Transaction select), each named and with a focus ring; Space and Enter work a focused button",
     !s4.err && JSON.stringify(s4.order.map((o) => o.id)) === JSON.stringify(["btn-tl-play", "btn-tl-clock", "btn-add-step", "btn-tl-transaction", "btn-tl-note",
-      "case-scope-select", "btn-lanes", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"]) && s4.order.every((o) => o.name && o.ring) &&
+      "btn-lanes", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"]) && s4.order.every((o) => o.name && o.ring) &&
       s4.spacePlays && s4.enterPauses, JSON.stringify(s4));
   record("lane SCREEN: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();
@@ -391,12 +703,15 @@ async function laneE(TMP) {
     o.busy = await busy();
     const r = (await anno()).excluded_ranges[0];
     o.range = [sec(Date.parse(r.start)), sec(Date.parse(r.end))];
+    // Lane LANES: what the marks mean is in the Lanes menu.
+    await page.click("#btn-lanes");
     o.drawn = await page.evaluate(() => {
       const b = document.querySelector("#timeline .tl-left-out");
-      const lg = document.querySelector("#timeline-legend .lg-left-out");
+      const lg = document.querySelector("#lanes-legend .lg-left-out");
       return { title: b && b.title, label: (document.querySelector(".tl-left-out-label") || {}).textContent,
         legend: lg && lg.textContent, legendTip: lg && lg.title, legendShown: !!lg && lg.checkVisibility() };
     });
+    await page.click("#btn-lanes");
     await page.click('.view-mode-btn[data-level="steps"]');
     await wait(400);
     o.steps = await page.evaluate(() => ({ notes: document.querySelectorAll('.run-notes li[data-kind="left_out"]').length,
@@ -441,7 +756,13 @@ async function laneE(TMP) {
   // (q) Include again, Ctrl+Z, Ctrl+Y.
   const q = {};
   try {
-    await page.locator("#timeline .tl-left-out").click({ timeout: T });
+    // Lane LANES: the hatch runs through every lane under the marks; a click
+    // where no mark is.
+    await page.mouse.click(...(await page.evaluate(() => {
+        const h = document.querySelector("#timeline .tl-left-out"), r = h.getBoundingClientRect(), x = r.left + r.width / 2;
+        for (let y = r.bottom - 2; y > r.top; y -= 2) if (document.elementFromPoint(x, y) === h) return [x, y];
+        return [x, r.bottom - 2];
+      })));
     await page.locator("#tl-ctx-menu div", { hasText: "Include again" }).click({ timeout: T });
     await page.waitForFunction(() => (require("./state.js").getSession().annotations.excluded_ranges || []).length === 0, null, { timeout: T });
     await wait(300);
@@ -1155,6 +1476,7 @@ async function laneE(TMP) {
   await v.close();
   await laneE(TMP);
   await laneScreen(TMP);
+  await laneLanes(TMP);
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* temp */ }
   const pass = results.filter((r) => r.ok).length;
   console.log("\n[timeline-edit-e2e] " + pass + "/" + results.length + " checks passed, " + (results.length - pass) + " failed");

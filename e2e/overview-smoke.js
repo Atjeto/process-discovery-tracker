@@ -362,16 +362,19 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       ignoredApps: at("btn-ignored-apps", "#session-layout-steps .editor-toolbar"),
       // C21: the Remembered step names dialog is gone (the activity library names steps).
       savedNames: !!document.getElementById("btn-remembered-names"),
-      runSelect: !!(document.getElementById("case-scope") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
+      // Lane LANES: the Transaction select is gone (a double-click on a
+      // transaction shows only it); Lanes is where it was, in the row.
+      runSelect: !document.getElementById("case-scope") && !document.getElementById("case-scope-select"),
+      lanes: !!(document.getElementById("btn-lanes") || { closest: () => null }).closest("#session-layout-flow .timeline-header"),
     };
   }).catch((e) => ({ err: e.message }));
-  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Apps outside the process... in the Steps toolbar (no Remembered step names..., contract C21), the Transaction select in the Timeline's header",
+  record("(c2) the moved controls keep their ids where they are used: Attach video and Attach transcript on the project line, Attach video... on the video band, Sync video... in the video header, Apps outside the process... in the Steps toolbar (no Remembered step names..., contract C21), Lanes in the Timeline's row (lane LANES: no Transaction select)",
     !!(moved && !moved.err && same(moved.attachVideo, { text: "Attach", where: true }) &&
       same(moved.attachTranscript, { text: "Attach", where: true }) &&
       same(moved.linkRecording, { text: "Attach video...", where: true }) &&
       same(moved.syncVideo, { text: "Sync video...", where: true }) &&
       same(moved.ignoredApps, { text: "Apps outside the process...", where: true }) &&
-      moved.savedNames === false && moved.runSelect),
+      moved.savedNames === false && moved.runSelect && moved.lanes),
     JSON.stringify(moved));
 
   // (c3) "Apply N marker changes" (the one manual analysis act) and its

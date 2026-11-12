@@ -573,10 +573,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 /* The timeline's first row (lane SCREEN, plan section 11.3): one line, in
    the order the Tab key goes: Play, the clock, Add step, Start or End
    transaction, Add note (or, while a stretch is selected, its times and its
-   acts), the message area taking the room that is left, the Transaction
-   select, Lanes and the zoom. The message area gives way first; then the
-   select's label. Every control has a visible focus ring (:focus-visible)
-   and text of 12 px. */
+   acts), the message area taking the room that is left, Lanes and the zoom.
+   The message area gives way first. Every control has a visible focus ring
+   (:focus-visible) and text of 12 px. */
 .timeline-header { display: flex; align-items: center; gap: 6px; height: 44px;
   flex: 0 0 auto; min-width: 0; white-space: nowrap; }
 .timeline-header > * { flex: 0 0 auto; }
@@ -610,22 +609,14 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 }
 .tl-message > #timeline-summary { font-size: 12px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tl-message:has(> .toast.show) > #timeline-summary { display: none; }
-.timeline-controls { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; }
-/* After the message area, the Transaction select gives way (its list keeps
-   every name; the field shows what fits). */
-.timeline-controls > .case-scope { flex: 0 1 auto; min-width: 0; }
-.timeline-controls > .case-scope select { min-width: 72px; flex: 0 1 auto; }
-.timeline-controls > :not(.case-scope) { flex: 0 0 auto; }
+.timeline-controls { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; min-width: 0; }
+.timeline-controls > * { flex: 0 0 auto; }
 /* A narrow window (CI's 1024 px): the row keeps one line with every label
-   of the copy table whole; the buttons are a little narrower and the
-   select's "Transaction:" is read by a screen reader only (the label still
-   names the select). */
+   of the copy table whole; the buttons are a little narrower. */
 @media (max-width: 1180px) {
   .timeline-header { gap: 4px; }
   .timeline-header button { padding: 5px 8px; }
   .tl-sep { margin: 0 2px; }
-  .timeline-controls > .case-scope .case-scope-label {
-    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 .timeline-controls .icon-btn { min-width: 30px; padding: 5px 8px; font-family: var(--font-ui); font-size: 14px; line-height: 1; }
 /* The Flow timeline sizes to fit its lane stack: `min-height` (not a fixed
@@ -674,15 +665,19 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   font-size: 8px; color: var(--bg); background: var(--accent); border-radius: 3px; }
 .tl-lane-key-screenshots svg { width: 12px; height: 12px; padding: 1.5px; box-sizing: border-box;
   color: #fff; background: var(--accent-2); border-radius: var(--radius-x); }
-.tl-lane-key-steps::before { content: ""; width: 14px; height: 7px; border-radius: 2px; background: var(--accent-2); opacity: 0.55; }
+.tl-lane-key-steps::before { content: ""; width: 14px; height: 10px; box-sizing: border-box; border-radius: 2px;
+  background: var(--tl-step-bg); border: 1px solid var(--tl-step-line); }
+.tl-lane-key-idle::before { content: ""; width: 14px; height: 8px; border-radius: 2px; background: var(--fg-4); opacity: 0.6; }
 .tl-lane-key-videos::before { content: ""; width: 14px; height: 9px; box-sizing: border-box; border-radius: 2px;
   background: color-mix(in srgb, var(--accent) 24%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
 /* The lane a header cell stands for, lit across the timeline while the
    pointer is on the cell (under the marks). */
 .tl-lane-hover { position: absolute; left: 0; right: 0; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 11%, transparent); }
-/* The lanes' track: the timeline scrolls inside it. */
-.timeline-scroll { flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: auto; }
+/* The lanes' track: the timeline scrolls inside it. Lane LANES: without a
+   scrollbar of its own; the bar of the whole length under the lanes moves
+   along it, and the wheel, Shift and the wheel, and the zoom keys still do. */
+.timeline-scroll { flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: auto; scrollbar-width: none; }
 /* Middle-button drag-to-pan feedback (flow-view.js wireTimelinePan). */
 .timeline-scroll.panning { cursor: grabbing; }
 .timeline { position: relative; height: 100%; min-height: 80px;
@@ -784,17 +779,6 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
 .tl-playhead::before { content: ""; position: absolute; top: -3px; left: -2.5px;
   width: 6px; height: 6px; background: var(--fg); border-radius: 50%; }
 
-.legend { margin-top: 4px; display: flex; gap: 12px; font-size: 10px;
-  color: var(--fg-3); align-items: center; flex-wrap: wrap; }
-.legend > span { display: inline-flex; align-items: center; gap: 5px; }
-.legend > span:not(.legend-apps)::before {
-  content: ""; width: 9px; height: 9px; border-radius: 2px; }
-.lg-marker::before { background: transparent; border: 1px dashed var(--warn); box-sizing: border-box; }
-.lg-idle::before { background: var(--fg-4); opacity: 0.6; }
-.lg-screenshot::before { background: var(--accent-2); border-radius: 50% !important; width: 7px !important; height: 7px !important; }
-.legend-apps { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.legend-app { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-3); }
-.legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; opacity: 0.7; }
 
 /* ===== Annotations pane ===== */
 .annotations-pane { background: var(--bg-2); border-radius: var(--radius);
@@ -1396,27 +1380,6 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
   .session-layout-stepsphases { min-height: 0; }
   #step-list { min-height: 0; }
 }
-/* The run select in the Timeline's header: it dims the other runs on the
-   timeline. */
-.case-scope {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--fg-3);
-}
-.case-scope-label {
-  font-family: var(--font-mono); letter-spacing: 0.5px;
-  text-transform: uppercase; font-size: 10px; color: var(--fg-3);
-}
-.case-scope select {
-  background: var(--bg-3); color: var(--fg);
-  border: 1px solid var(--field-border); border-radius: 3px;
-  padding: 4px 8px; font-size: 11px; font-family: inherit;
-  max-width: 220px;
-}
-.case-scope select:hover { border-color: var(--fg-3); }
-.case-scope.scoped select { border-color: var(--accent); color: var(--fg); }
-
-/* Flow timeline activity bands dimmed when out of the scoped case. */
-.tl-activity.out-of-scope { opacity: 0.15; filter: grayscale(0.4); }
 
 .editor-list-pane, .editor-detail-pane {
   background: var(--bg-2); border: 1px solid var(--rule);
@@ -2077,7 +2040,8 @@ button.danger:disabled {
 .tl-band.tl-activity:hover { filter: brightness(1.12); }
 .tl-band.tl-idle {
   background: var(--fg-4);
-  opacity: 0.2;
+  /* Lane LANES: in a lane of its own, under Notes. */
+  opacity: 0.55;
   border-radius: 2px;
 }
 
@@ -2146,22 +2110,6 @@ button.danger:disabled {
 .tl-marker-label.tl-marker-label-pending {
   background: var(--bg); color: var(--fg);
   box-shadow: none; outline: 1px dashed var(--warn);
-}
-/* Legend: per-app swatches + element entries */
-.legend { display: flex; gap: 12px; padding: 6px 4px 0;
-  font-size: 10px; color: var(--fg-3); letter-spacing: 0.3px;
-  align-items: center; flex-wrap: wrap; }
-.legend > span { display: inline-flex; align-items: center; gap: 5px; }
-.legend > span:not(.legend-apps)::before {
-  content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px;
-}
-.legend .lg-idle::before {
-  background: var(--fg-4); opacity: 0.5;
-}
-.legend .lg-marker::before { background: transparent; border: 1px dashed var(--warn); box-sizing: border-box; }
-.legend .lg-screenshot::before {
-  background: var(--accent-2); border-radius: 50% !important; width: 7px !important; height: 7px !important;
-  border: 1px solid var(--bg);
 }
 
 /* ===== Dropdown menus (Open, Export) =============================== */
@@ -2236,55 +2184,101 @@ button.danger:disabled {
 }
 .recent-menu-newwin:hover, .recent-menu-newwin:focus-visible { background: var(--bg-3); color: var(--fg); }
 
-/* Lanes toggle menu (timeline header) */
+/* Lanes toggle menu (timeline header). Lane LANES: the lanes in the
+   timeline's order, then what the marks mean; it opens under its button or
+   above it, inside the window, and scrolls when taller than the room there
+   (flow-view-timeline.js placeLanesMenu sets its place). Its headings are
+   text, as the Export menu's are. */
 .lanes-menu { position: relative; display: inline-block; }
 #btn-lanes { font-size: 12px; font-family: inherit; }
 .lanes-popup {
   position: absolute; right: 0; top: calc(100% + 4px);
-  min-width: 180px; background: var(--bg-2); border: 1px solid var(--rule);
+  min-width: 220px; background: var(--bg-2); border: 1px solid var(--rule);
   border-radius: 5px; padding: 6px; box-shadow: var(--shadow); z-index: 200;
+  overflow-y: auto; box-sizing: border-box;
 }
 .lanes-popup-title {
-  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--fg-3); font-family: var(--font-mono); padding: 2px 6px 6px;
+  font-size: 12px; color: var(--fg-3); padding: 2px 6px 4px;
+  cursor: default; user-select: none;
 }
+.lanes-popup-title[hidden] { display: none; }
+.lanes-legend-title { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--rule); }
 .lanes-popup label.cb {
   display: flex; align-items: center; gap: 7px;
   padding: 4px 6px; font-size: 12px; color: var(--fg-2);
   cursor: pointer; border-radius: 3px;
 }
 .lanes-popup label.cb:hover { background: var(--bg-3); color: var(--fg); }
-
-/* ===== Timeline minimap (P1.3) ==================================== */
-.timeline-minimap {
-  position: relative; height: 30px;
-  background: var(--bg-2); border: 1px solid var(--rule);
-  border-radius: 3px; margin-bottom: 4px; overflow: hidden;
-  cursor: pointer; user-select: none;
-  /* Over the timeline, right of the lanes' names. */
-  margin-left: var(--tl-names-w, 0px);
+/* What the marks mean: one entry a line, its key before it. */
+.legend { display: flex; flex-direction: column; gap: 4px; padding: 2px 6px 4px;
+  font-size: 12px; color: var(--fg-2); }
+.legend[hidden] { display: none; }
+.legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.legend > span:not(.legend-apps)::before {
+  content: ""; display: inline-block; flex: none; width: 12px; height: 10px; border-radius: 2px; box-sizing: border-box;
 }
-.tl-mm-band { position: absolute; top: 6px; height: 18px; background: var(--accent); opacity: 0.45; }
-.tl-mm-viewport {
-  position: absolute; top: 0; bottom: 0;
-  background: var(--accent-muted);
-  border-left: 1px solid var(--accent);
-  border-right: 1px solid var(--accent);
-  cursor: grab;
+.legend .lg-idle::before { background: var(--fg-4); opacity: 0.5; }
+.legend .lg-draft::before { background: var(--tl-step-bg); border: 1.5px dashed var(--tl-step-line); }
+.legend .lg-marker::before { background: transparent; border: 1px dashed var(--warn); }
+.legend .lg-screenshot::before {
+  background: var(--accent-2); border-radius: 50% !important; width: 8px !important; height: 8px !important;
+  border: 1px solid var(--bg);
 }
-.tl-mm-viewport.dragging { cursor: grabbing; }
+.legend > .legend-apps { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.legend > .legend-apps:empty { display: none; }
+.legend-app { display: inline-flex; align-items: center; gap: 7px; color: var(--fg-2); }
+.legend-swatch { width: 12px; height: 10px; border-radius: 2px; flex-shrink: 0; opacity: 0.85; }
 
-/* ===== Per-step timeline lane (P1.4) ============================== */
+/* ===== The bar of the whole length (lane LANES) ====================
+   Under the lanes, as wide as the lanes' track (right of their names): a
+   14 px bar in a 24 px target, the box the part the lanes show, the
+   playhead a thin line. At the whole length the box fills the bar. */
+.tl-bar-row { flex: 0 0 auto; padding: 2px 1px 0 calc(var(--tl-names-w) + 2px); }
+.tl-bar-row[hidden] { display: none; }
+.session-layout.video-fullscreen .tl-bar-row { display: none; }
+.tl-bar { position: relative; height: 24px; cursor: pointer; user-select: none; border-radius: 7px; }
+.tl-bar:focus { outline: none; }
+.tl-bar:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.tl-bar-track { position: absolute; left: 0; right: 0; top: 5px; height: 14px; border-radius: 7px;
+  background: var(--bg-3); border: 1px solid var(--rule); box-sizing: border-box; }
+.tl-bar-box { position: absolute; top: 5px; height: 14px; min-width: 10px; box-sizing: border-box;
+  border: 2px solid var(--accent); border-radius: 7px; background: var(--accent-muted); cursor: grab; }
+.tl-bar.dragging, .tl-bar.dragging .tl-bar-box { cursor: grabbing; }
+.tl-bar.whole .tl-bar-box { cursor: default; }
+.tl-bar-playhead { position: absolute; top: 3px; height: 18px; width: 2px; margin-left: -1px;
+  background: var(--fg); pointer-events: none; }
+
+/* ===== The Steps lane (lane LANES: the tall one) ===================
+   A band holds the step's name on up to two lines of 12 px text, cut with
+   an ellipsis, or its number when the band is too narrow for the name
+   (step-band-label.js); a draft is dashed, the open step fades out, a
+   placed step has an accent edge and a dotted foot, the selected one an
+   outline: none by colour alone. */
+:root {
+  --tl-step-bg: color-mix(in srgb, var(--accent-2) 20%, var(--bg-2));
+  --tl-step-line: color-mix(in srgb, var(--accent-2) 70%, var(--fg-3));
+}
 .tl-step-band {
-  position: absolute; height: 14px;
-  background: var(--accent-2); opacity: 0.55;
-  border-radius: 2px;
-  font-size: 10px; color: var(--bg);
-  padding: 0 4px; line-height: 14px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  position: absolute; box-sizing: border-box; display: flex; align-items: center; overflow: hidden;
+  background: var(--tl-step-bg); border: 1px solid var(--tl-step-line); border-radius: 4px;
+  color: var(--fg); font-size: 12px; line-height: 15px; padding: 0 5px;
   cursor: pointer;
 }
-.tl-step-band:hover { opacity: 0.8; }
+.tl-step-band:hover { background: color-mix(in srgb, var(--accent-2) 32%, var(--bg-2)); }
+.tl-step-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; overflow-wrap: break-word; min-width: 0; pointer-events: none; }
+/* The number may use the band's padding (it is short and centred); the
+   band keeps its width whatever it shows, so the rule that chose the number
+   reads the same width the next time. */
+.tl-step-num { flex: 1 1 auto; margin: 0 -4px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600;
+  pointer-events: none; }
+.tl-step-name[hidden], .tl-step-num[hidden] { display: none; }
+/* A band drawn narrower than its padding (step-band-width.js: never past the
+   next band of its transaction, at least 2 px) has none, and a draft's dashed
+   edge is 1 px there, so the band is as wide as drawn and covers no other. */
+.tl-step-band.slim { padding: 0; }
+.tl-step-band.slim.draft { border-width: 1px; }
+.tl-step-band.draft { border-style: dashed; border-width: 1.5px; }
 /* The owner, after 2.0.3: "you always add steps sequentially". The step
    being marked has nothing after it yet: open, it fades out after its start
    instead of running solid to the end of the video (time-edits.js isOpen). */
@@ -2294,8 +2288,7 @@ button.danger:disabled {
 }
 /* NAV-AUDIT §A3: the selected steps-lane band (plain click = select + seek). */
 .tl-step-band.tl-step-selected {
-  opacity: 1; outline: 1.5px solid var(--accent); outline-offset: -1px;
-  box-shadow: 0 0 0 1px var(--accent);
+  outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 600;
 }
 
 /* ===== Range selection on timeline (P1.1) ========================= */
@@ -2631,20 +2624,31 @@ button.danger:disabled {
   font-size: 10px; color: var(--bg); background: var(--accent); border-radius: 3px; cursor: pointer; z-index: 3; }
 .tl-note:hover { transform: scale(1.2); }
 .lg-note::before { background: var(--accent); border-radius: 2px !important; }
-/* A stretch left out of the analysis (annotations.excluded_ranges, lane CC):
-   a quiet hatch over the Systems lane where the stretch was left out, the
-   bands under it muted, its label where it fits; a click offers Include
-   again. The legend's key is the same hatch. */
-.tl-left-out { position: absolute; z-index: 3; cursor: pointer; box-sizing: border-box; overflow: hidden;
+/* A stretch set aside (annotations.excluded_ranges, lane CC; lane LANES:
+   through every lane): a quiet hatch from the top of the first lane under
+   the time ticks to the foot of the last one, under the marks (no z-index,
+   first in #timeline), so the steps and the transactions on it stay
+   clickable; a click on it where no mark is offers Include again. Its
+   label once, at its top, above the marks, where it fits (a click on it
+   opens the same menu). Over the lanes whose marks fill their row (the
+   Systems, the Videos) the same hatch lies over the marks and lets the
+   pointer through (.tl-left-out-over). The legend's key is the same hatch. */
+.tl-left-out { position: absolute; cursor: pointer; box-sizing: border-box; overflow: hidden;
   background: repeating-linear-gradient(135deg,
     color-mix(in srgb, var(--bg-2) 78%, transparent) 0 5px,
     color-mix(in srgb, var(--fg-3) 32%, var(--bg-2)) 5px 7px);
   border-left: 1px dashed var(--fg-3); border-right: 1px dashed var(--fg-3); }
 .tl-left-out:hover { border-color: var(--accent); }
-.tl-left-out-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
-  max-width: calc(100% - 12px); box-sizing: border-box; padding: 1px 6px; border-radius: 2px;
-  font-size: 10px; font-weight: 600; color: var(--fg-2); background: var(--bg-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.tl-left-out-over { position: absolute; pointer-events: none; box-sizing: border-box;
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--bg-2) 70%, transparent) 0 5px,
+    color-mix(in srgb, var(--fg-3) 40%, var(--bg-2)) 5px 7px);
+  border-left: 1px dashed var(--fg-3); border-right: 1px dashed var(--fg-3); }
+.tl-left-out-label { position: absolute; left: 6px; top: 2px; z-index: 4; cursor: pointer;
+  max-width: calc(100% - 12px); box-sizing: border-box; padding: 0 6px; border-radius: 2px;
+  font-size: 12px; line-height: 16px; font-weight: 600; color: var(--fg); background: var(--bg-2);
+  border: 1px dashed var(--fg-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Lane FX2: a band of an app outside the process, left out of the analysis
    too: the same hatch over its colour, its name still readable. */
 .tl-activity.tl-app-left-out { border-left: 1px dashed var(--fg-3); border-right: 1px dashed var(--fg-3); }
@@ -2675,8 +2679,9 @@ button.danger:disabled {
 .flow-placed { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 6px 0 0;
   font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
 .flow-placed .link-btn { font-size: 12px; }
-.tl-step-band.placed { box-shadow: inset 4px 0 0 var(--accent); border-bottom: 2px dotted var(--accent); box-sizing: border-box; }
-.tl-step-band.placed.tl-step-selected { box-shadow: inset 4px 0 0 var(--accent), 0 0 0 1px var(--accent); }
+.tl-step-band.placed { box-shadow: inset 4px 0 0 var(--accent); }
+.tl-step-band.placed::after { content: ""; position: absolute; left: 4px; right: 0; bottom: 1px;
+  border-bottom: 2px dotted var(--accent); pointer-events: none; }
 .legend .lg-placed::before, .lg-placed::before { background: var(--accent-2); box-shadow: inset 3px 0 0 var(--accent);
   border-bottom: 2px dotted var(--accent); box-sizing: border-box; }
 /* The list a choice is made from (modals.js chooseModal). */

@@ -298,7 +298,7 @@ function bpmnChain(file) {
     c.toast = await toastText();
     await level("flow");
     c.bandAfter = await bandOf(correction);
-    c.legend = await page.evaluate(() => { const el = document.querySelector("#timeline-legend .lg-placed"); return el ? el.style.display !== "none" : false; });
+    c.legend = await page.evaluate(() => { const el = document.querySelector("#lanes-legend .lg-placed"); return el ? el.style.display !== "none" : false; });
     await openTransaction();
     c.rows = (await rows()).map((r) => r.name + "@" + r.time + (r.placed ? "*" : ""));
     c.title = ((await rows()).find((r) => r.id === correction) || {}).placedTitle;

@@ -190,21 +190,27 @@ test("lane FX3: the Timeline's header controls act on a drawn timeline: a record
 
 test("every lane the timeline stacks but the ticks has a name at the left, with a tooltip that starts with it and says what the lane shows", () => {
   const { LANE_NAMES } = Timeline;
-  assert.deepEqual(Object.keys(LANE_NAMES).sort(), ["activity", "cases", "notes", "screenshots", "steps", "transcript", "videos"]);
+  assert.deepEqual(Object.keys(LANE_NAMES).sort(), ["activity", "cases", "idle", "notes", "screenshots", "steps", "transcript", "videos"]);
   for (const [key, n] of Object.entries(LANE_NAMES)) {
     assert.ok(typeof n.name === "string" && n.name.length > 0, key);
     assert.ok(n.title.startsWith(n.name + ": ") && n.title.length > n.name.length + 20, key + ": " + n.title);
   }
   assert.equal(LANE_NAMES.activity.name, "Systems");
-  assert.equal(LANE_NAMES.steps.title, "Steps: each step of each transaction; click one to see all its moments.");
+  // Lane LANES: a click on a step opens it in the pane beside the video.
+  assert.equal(LANE_NAMES.steps.title, "Steps: each step in the order of the process; click one to open it beside the video.");
+  assert.equal(LANE_NAMES.cases.name, "Transactions");
+  assert.equal(LANE_NAMES.idle.name, "Idle");
 });
 
-test("a lane the Lanes menu lists has the same name there as at the timeline's left", () => {
+test("a lane the Lanes menu lists has the same name there as at the timeline's left, in the timeline's order", () => {
   const html = require("fs").readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8");
   const menu = [...html.matchAll(/<input type="checkbox" data-lane="([a-z]+)" \/>\s*([^<]+?)\s*<\/label>/g)].map((m) => [m[1], m[2]]);
   assert.ok(menu.length >= 6, "the Lanes menu rows were found");
   const named = menu.filter(([key]) => Timeline.LANE_NAMES[key]);
-  assert.deepEqual(named.map(([key]) => key).sort(), ["cases", "notes", "screenshots", "steps", "transcript", "videos"]);
+  // Lane LANES: every lane but the ticks, top to bottom as the timeline
+  // stacks them (Systems and Idle too).
+  assert.deepEqual(named.map(([key]) => key), ["cases", "steps", "activity", "transcript", "videos", "screenshots", "notes", "idle"]);
+  assert.equal(named.length, menu.length, "every row of the menu is a lane with a name");
   for (const [key, word] of named) assert.equal(word, Timeline.LANE_NAMES[key].name, key);
 });
 

@@ -12,8 +12,7 @@
  * changes);
  * applied edits read as ordinary markers. The timeline's case lane draws the
  * markers as they are now (2.0.3), a transaction the last analysis has not
- * seen drawn pending; the steps and the Transaction select follow what the
- * last analysis used.
+ * seen drawn pending; the steps follow what the last analysis used.
  *
  * Mirrors the pipeline's replay: last write wins per marker and field, a
  * delete drops the marker, and an insert becomes a marker whose event id is

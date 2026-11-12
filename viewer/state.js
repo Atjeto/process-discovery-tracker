@@ -48,7 +48,6 @@
  * @property {Level} currentLevel       Active session sub-view.
  * @property {string|null} selectedStepId
  * @property {Set<string>} multiSelectedStepIds
- * @property {string} currentCaseScope  Session-wide case filter; "" = all cases.
  * @property {number} zoomFactor        Flow timeline zoom.
  * @property {*} selectionRange         Flow timeline drag-selected range, or null.
  * @property {UndoEntry[]} undoStack
@@ -63,7 +62,6 @@ const _s = {
   currentLevel: "overview",
   selectedStepId: null,
   multiSelectedStepIds: new Set(),
-  currentCaseScope: "",
   zoomFactor: 1,
   selectionRange: null,
   undoStack: [],
@@ -231,11 +229,6 @@ function getMultiSelectedStepIds() { return _s.multiSelectedStepIds; }
 /** @param {Set<string>} v */
 function setMultiSelectedStepIds(v) { _s.multiSelectedStepIds = v; }
 
-/* Case scope */
-function getCaseScope() { return _s.currentCaseScope; }
-/** @param {string} v */
-function setCaseScope(v) { _s.currentCaseScope = v; }
-
 /* Cross-view step-jump request: a Flow seek (band click, marker click,
    right-click "Jump to step here", ...) parks the requested timestamp
    here; the next Steps view render consumes it once to focus on the
@@ -293,7 +286,6 @@ module.exports = {
   getSelectedStepId, setSelectedStepId,
   getMultiSelectedStepIds, setMultiSelectedStepIds,
   // case scope
-  getCaseScope, setCaseScope,
   // cross-view step-jump request
   setPendingStepJump, consumePendingStepJump,
   setPendingStepReveal, consumePendingStepReveal,

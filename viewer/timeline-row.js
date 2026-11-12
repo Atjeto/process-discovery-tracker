@@ -4,8 +4,8 @@
  * edit"). The row holds how to play and how to mark, in the process
  * manager's words, left to right: Play (only with a video), the clock (a
  * click types a time), Add step (only with a video), Start transaction or End
- * transaction (one button in one place), Add note, the message area, the
- * Transaction select, Lanes, zoom out, Show all, zoom in. While a stretch is
+ * transaction (one button in one place), Add note, the message area, Lanes,
+ * zoom out, Show all, zoom in. While a stretch is
  * selected, the stretch's times and its acts take the place of the three
  * marking buttons.
  *
@@ -62,7 +62,8 @@ function titles(noun) {
     notPart: "Marks the selected stretch as not part of the process. It is skipped when playing and left out of the Transcript tab. Include again brings it back.",
     leaveOut: "Drafts the steps and the map again without what was recorded in this stretch. Playing skips it, and the Transcript tab leaves out what was said in it.",
     makeTx: "Makes a transaction that starts and ends where the selection does.",
-    lanes: "Choose which lanes the timeline shows",
+    // Lane LANES: the legend is in the Lanes menu.
+    lanes: "Choose which lanes the timeline shows, and see what its marks mean",
     zoomOut: "Shows more of the timeline. Key: -",
     showAll: "Shows the whole length of the timeline. Key: 0",
     zoomIn: "Shows less of the timeline, larger. Key: +",

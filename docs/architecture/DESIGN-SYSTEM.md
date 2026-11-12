@@ -189,9 +189,19 @@ byte-copies) by hand in the same commit.
   in the mono type, the marking buttons in 12px text (the filled one in
   `--accent-fill`: Add step in a project without a recording, a selected
   stretch's first act), the message area (a message reads there, one line
-  with an ellipsis, an error in `--bad`), the Transaction select, Lanes and
-  the zoom. Below 1180px the buttons are 8px narrower and the select's
-  label is read by a screen reader only, so the row keeps one line.
+  with an ellipsis, an error in `--bad`), Lanes and the zoom. Below 1180px
+  the buttons are 8px narrower, so the row keeps one line.
+- **The timeline's lanes** (lane LANES): the Steps lane is the tall one
+  (44px), a band `--tl-step-bg` with a `--tl-step-line` border and its name
+  in 12px `--fg` on up to two lines; no state by colour alone: a draft is
+  dashed, the open step fades out, a placed step has an accent edge and a
+  dotted foot, the selected one a 2px accent outline. A stretch set aside is
+  the same hatch through every lane, its label 12px on `--bg-2` with a
+  dashed edge. The bar of the whole length under the lanes is a 14px
+  `--bg-3` track in a 24px target, its box a 2px `--accent` outline on
+  `--accent-muted`, the playhead a 2px `--fg` line. The Lanes menu's two
+  headings are 12px `--fg-3` text, as the Export menu's are; what the marks
+  mean is listed one entry a line in 12px `--fg-2`, its key before it.
 - **Video pane**: stays dark (`#0a0908` under a radial glow) whatever the
   theme; video is dark by nature, and its overlay controls use light on
   dark. Without a video it collapses to a slim band.

@@ -206,9 +206,11 @@ newProject`).
 - **Timeline**: lane SCREEN: the stage (the video and the pane with its five
   tabs) above, the timeline at the full width of the window below, its first
   row holding Play, the clock, Add step, Start or End transaction, Add note,
-  the message area, the Transaction select, Lanes and the zoom; its lanes and
-  their header column (a key and a name per lane, like a video editor's
-  track headers); the Raw events drawer under it, on this level only. The
+  the message area, Lanes and the zoom; its lanes in the order of the work
+  (lane LANES: Transactions, Steps, Systems, Transcript, Videos,
+  Screenshots, Notes, Idle) and their header column (a key and a name per
+  lane, like a video editor's track headers); the bar of the whole length
+  under the lanes; the Raw events drawer under it, on this level only. The
   page does not scroll there. Detail: [VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md).
 - **Steps**: the transactions in time order, one open at a time, under one
   line that says what a transaction is (the reference transaction with
@@ -471,10 +473,12 @@ their module as `<name>.test.js`.
 |---|---|
 | `overview-view.js` | The Overview: the Checklist (`pathState`), what a reader of the next version will miss under it (`missingOf`, `missingShown`, `goToMissing`, lane B-V2), the project line (in a hand-off opened read only its first line, the version, `#ov-handoff`), the Document fields, their saves and status, "From the transcript", the Map's lock and empty messages (`mapLockHtml`, `mapEmptyText`), and the note shown while the analysis is missing. |
 | `handoff-ui.js` | Export, Hand off... (contract C20): the dialog (its line says what the zip holds, `detailLine`; what a reader of the version will miss, `dialogOptions`, lane B-V2), the version entry (one undoable edit, taken back when the hand-off does not finish), the PDD and the Technical details of the version (`writeDocuments`, renderer.js), the map files (`writeHandoffMaps`, renderer.js), the zip; and in a hand-off opened read only, its PDD and workbook opened in their programs. |
-| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the Transaction select, the timeline's first row (lane SCREEN, `syncTimelineRow`: Play, the clock, Add step, Start or End transaction, Add note, and a selected stretch's Leave out of the analysis or Not part of the process, Make it a transaction and Clear selection; Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
+| `flow-view.js` | The Timeline hub: project load (`loadSessionIntoView`, which also tells the save state and draws the Map again when it shows), the automatic analysis and the status line (section 8; `analysisBusy` while a run is queued or running), New project from a video and New empty project, the timeline's first row (lane SCREEN, `syncTimelineRow`: Play, the clock, Add step, Start or End transaction, Add note, and a selected stretch's Leave out of the analysis or Not part of the process, Make it a transaction and Clear selection; Include again on a band left out: lane CC), the timeline menus (start or end a transaction, add a note, jump to a step), the Raw events table (jump, + step), the unreadable banner and its Restore the newest backup. |
 | `step-order.js` (viewer root, pure) | 2.0.5, contract C22: where a step comes in its transaction's process, apart from its time (`step.placed_after`). `processOrder` (the one order rule, pinned with the pipeline's `step_context.process_order` by `shared/step-order-golden.json`; runs-model, the live map, the sub-process maps and the differences read it), `placeMoments` (where a placed step falls among the stretches left out), `deriveOrder` (the fewest placements that give an order wanted: Move up and Move down, Place after a step..., Back to its time, + Add step), `keepOrder` (a step hidden, deleted or merged away hands its followers over), `followTransaction`, `apartOnTimeline` (Merge and Group refuse a placed step apart from the others). |
 | `time-edits.js` (viewer root, pure) | 2.0.3: the times the analyst gives a transaction or a step, one rule set for a drag on the Timeline and a time typed in Steps: snapping, a marker's and a step side's range, a step back to back giving way, a step without a time given one, a transaction's markers (`runSides`), the time fields' format and parse ("0:09.6"). |
-| `flow-view-timeline.js` | The timeline: the lane stack, the stretches left out of the analysis drawn hatched over the Systems lane (`leftOutBands`; lane E: "Not part of the process" in a project without a recording, on its low lane), the minimap, the lanes menu, zoom and scroll persistence, the summary line; dragging a transaction's or a step's side and snapping (2.0.3, `wireEdgeDrag`, `snapMoment`). |
+| `flow-view-timeline.js` | The timeline: the lane stack in the order of the work (lane LANES), the Steps lane's bands (`layoutStepBands`: their width by `step-band-width.js`, so no band covers another, then the name or the number by `step-band-label.js`), the stretches set aside drawn hatched through every lane under the marks (`leftOutBands`, `_drawThroughLanes`; lane E: "Not part of the process" in a project without a recording), the bar of the whole length (`syncBar`), the Lanes menu with what the marks mean (`placeLanesMenu`, `_syncLegend`), a double-click on a transaction (`zoomToTransaction`), zoom and scroll persistence, the summary line; dragging a transaction's or a step's side and snapping (2.0.3, `wireEdgeDrag`, `snapMoment`). |
+| `step-band-width.js` (viewer root, pure) | Lane LANES: how wide a step's band is drawn: its time, at least 2 px, never past the start of the next band of its transaction (`drawnBands`). |
+| `step-band-label.js` (viewer root, pure) | Lane LANES: what a step's band on the Steps lane says: its name where it reads, else its number (the pane's Steps tab's, `stepNumbers` over `pane-lists.js` `stepGroups`), else nothing (`bandLabel`). |
 | `flow-view-video.js` | The videos and the timeline (contract C23, 2.0.6): the chain on the clock (`chainOf`, `clipAtMs`, `clipSpan`), the span a video project runs on, the player (one video at a time, playing on into the next; `loadPlayer`, `seekClock`), the playhead as a moment on the clock (`playheadMs`), seeking, playing past a stretch put aside (lane E, `_skipLeftOut`), and the edits of the chain: Add video (several files; back to back, or synced with two clicks in a recording), Sync, Replace, Trim and Remove video, each one undoable edit of `external_videos` (`_commitChain`, which first ties the transcripts placed without a video to theirs; lane CC). |
 | `video-chain.js` (viewer root, pure) | 2.0.6, contract C23: the clips of `external_videos` (`clipsOf`, the old `external_video` read as one), where each is on the clock (`spanOf`, `clipAtRel`, `chainEndRel`), and the edits back to back: `planTrim` and `applyTrim`, `applyRemove`, `applyReplace`, `applyAppend`, with `shiftMarks` (what moves with them: steps at every level, inserted markers, notes and screenshots at a moment, stretches left out) and `cutBlocks` (a cut that would take a mark away, in one sentence). |
 | `views/video-lane.js` | 2.0.6: the Timeline's Videos lane: one band per video, a side dragged trims it, its right-click menu (trim, give a side back, sync, replace, remove, add). |
@@ -483,7 +487,7 @@ their module as `<name>.test.js`.
 | `timeline-row.js` (viewer root, pure) | Lane SCREEN: the Timeline's first row: its words (the copy table, "the video" or "the recording"), `rowState` (what shows, what can be clicked, which button is filled), `transactionSlot` (Start transaction or End transaction), the clock (`clockText`, `clockTarget`), `stretchText`. |
 | `timeline-pane.js` | Lane PANE: the pane beside the video on the Timeline, its five tabs, the Steps tab's list and the step opened in place, Notes and Files (section 2). |
 | `flow-view-transcript.js` | The Transcript lane (one row per transcript, C23), each transcript's Sync, Replace and Remove, and Attach (which asks which video a transcript is of when there are several). Lane E (E3): the Transcript tab beside the video (`renderTab`, built once per change of what it lists; `tickTab`, the sentence at the playhead; a sentence's menu: Add a step here, Add to the selected step's description, Add to a document field). |
-| `flow-view-apps.js` | Per-app band colours, the system a band names, the legend. |
+| `flow-view-apps.js` | Per-app band colours, the system a band names, the systems' entries of the legend in the Lanes menu. |
 | `steps-view.js` | The Steps level: the transactions and their steps, the line that says what a transaction is, every step verb (rename, split, merge, hide, delete an added step, add, move an untimed step, waste, the flow of contract C17: one undoable edit each, and the links to a step dropped or moved when it is hidden, deleted, merged or split), Confirm transaction and Undo confirm (a link beside the Confirmed badge), Use as reference transaction, the Apps outside the process dialog, a pick from the library (C21: `pickActivityAction`; a name typed that is an activity of the step's system is that pick, any other name leaves the library). C19: the level shown (`goToLevel`, the breadcrumb, one block per visit) and the sub-process verbs (Open as a sub-process, Group into a sub-process, Dissolve sub-process), every verb working at the level shown. |
 | `step-panel.js` | The step panel (section 2), its flow line, the panel at a level below the main one and its *Open sub-process* (C19), and the panel for an As-Is task no step stands for (`openForMissing`). |
 | `analyst-ui.js` | What the analyst adds, on screen (C16): the System field, the screenshots (Add screenshot, Use in PDD, Remove, Ctrl+V), notes on a step or a moment, attachments on a step and on the Overview. |
@@ -515,10 +519,9 @@ their module as `<name>.test.js`.
 | `session-summary.js` | The project line's facts, the request (the document's, `documentRequest`, 2.0.1, else the capture's, `requestOf`, AD-30), the name in Recents, the name an export is offered under (`exportBaseName`, lane FX3), the marker problems. |
 | `reference-maps.js` | The edited maps store (ADR-0019): `annotations.reference_maps[]` plus `derived_maps/<id>.bpmn`; a new copy's row with nothing written (`forkEntry`, lane MV) or written at once (`fork`), keeping the signature of the maps its steps drew (`forked_from_steps`, lane FX2); for a copy made before that was kept, whether it is out of date (`isStale`: the signature of the process it was made from, `processSignature`, against the current one; a byte hash for a copy made before signatures); `predatesRichMap` tells a copy made before the map had its systems, notes and attachments (C18: none of a user or manual task, the legend, a colour or, since 2.0.1, a system label). |
 | `asis-freshness.js` | Whether an edited copy was made from the steps as they are now (lane FX2): `stepsMapSignature` (every map of the project, its boxes and lines, each box's notes, files, system, hand marker, sub-process and waste mark, and the Trigger and the Result), `copyStale` (the signature a copy kept, else `reference-maps.js` `isStale`), `chosenAsIsStale` for the Map's line and the Checklist. |
-| `case-scope.js` | The Transaction select's options ("Transaction 1 · Order #10900"), escaped. |
 | `recognition.js` | Platform recognition of an interaction (ADR-0011), for the step pane's list of recorded actions. |
 | `identity-line.js` | The one readable line per captured control in that list (no marker on it: a project is recorded once, lane CC). |
-| `timeline/timeline-core.js` | Ticks, lane packing and the lane stack ([VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md)). |
+| `timeline/timeline-core.js` | Ticks, lane packing and the lane stack; lane LANES: the bar of the whole length's geometry (`barBox`, `barCentreOn`, `barDragTo`, `barStep`, `barValue`) and a double-click's view of one transaction (`zoomToSpan`) ([VIEWER-TIMELINE.md](./VIEWER-TIMELINE.md)). |
 
 **Widgets**
 
@@ -553,8 +556,8 @@ renderer.js
 
 The same pattern repeats inside the Timeline: `flow-view.js` requires its
 `flow-view-*` helpers and hands them what lives back in the hub
-(`initVideo({ loadSessionIntoView })`, `initTimeline({ currentScopeRange,
-showMarkerInsertMenu, showCaseContextMenu })`,
+(`initVideo({ loadSessionIntoView })`, `initTimeline({ showMarkerInsertMenu,
+showCaseContextMenu, includeAgain })`,
 `initTranscript({ loadSessionIntoView, renderTimeline })`). The helpers
 require each other one way only. Where a later module needs an earlier one
 back, it requires it lazily at the call (the timeline's step band opens
@@ -657,7 +660,6 @@ a topic bus; there is no framework.
 | `session` | The loaded session (section 5). |
 | `level` | `overview`, `flow`, `steps` or `map`. |
 | `selectedStepId`, `multiSelectedStepIds` | The step selection on the Steps level. |
-| `caseScope` | The Transaction select: a run id, or `""` for all transactions (it dims the other transactions on the timeline only). |
 | `zoomFactor` | The Timeline's zoom. |
 | `selectionRange` | A Shift-drag range on the timeline. |
 | `pendingStepJump`, `pendingStepReveal` | A moment or a step the Steps level should show on arrival (at the step's own level, C19). |
@@ -701,7 +703,7 @@ Ipc.loadSession(folder) -> State.setSession(...)
   -> the video (or the slim no-video band), Sync video only with a video
   -> the timeline's first row (Play and Add step only with a video)
   -> renderTimeline, the Raw events table, the Screenshots tab (the pane follows the topics),
-     the timeline summary, renderStepsLevel, renderOverviewLevel, the Transaction select
+     the timeline summary, renderStepsLevel, renderOverviewLevel
   -> the remembered timeline zoom and scroll
   -> the automatic analysis when the session needs one (section 8)
 ```

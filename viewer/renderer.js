@@ -442,7 +442,7 @@ State.subscribe("mapPath",  () => setMapLevel(State.getMapPath()));
 /* Re-render whichever session sub-view is on screen. The single
    dispatch point for "the active level's data changed" -- it replaces
    an `if (currentLevel === ...)` triplet that was copied verbatim
-   across the case-scope handlers (issue S5). */
+   across the level handlers (issue S5). */
 function rerenderActiveLevel() {
   const fn = LEVEL_RENDERERS[State.getLevel()];
   if (fn) fn();

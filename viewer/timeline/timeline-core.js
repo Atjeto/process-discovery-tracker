@@ -185,7 +185,8 @@ function packLanes(items, opts) {
  * optional lanes); this resolves that stack.
  * @param {{ key: string, height: number, gapBefore: number }[]} lanes
  *        Lanes in top-to-bottom order. A height of 0 keeps the lane in the
- *        stack (its gapBefore still applies) but contributes no height.
+ *        stack (a slot at the cursor, 0 high) but adds neither its gapBefore
+ *        nor any height.
  * @param {{ tailPx?: number }} [opts]  tailPx is added below the last lane.
  * @returns {LaneStackLayout}
  */
@@ -194,6 +195,9 @@ function layoutLaneStack(lanes, opts) {
   const slots = new Map();
   let cursor = 0;
   for (const lane of lanes) {
+    // Lane LANES: a lane of height 0 is not drawn and adds no gap either,
+    // so no room is left under the last lane drawn.
+    if (!(lane.height > 0)) { slots.set(lane.key, { top: cursor, height: 0 }); continue; }
     const top = cursor + lane.gapBefore;
     slots.set(lane.key, { top, height: lane.height });
     cursor = top + lane.height;
@@ -239,6 +243,142 @@ function renderLaneStack(host, opts) {
   return layout;
 }
 
+/* ============ The bar of the whole length (lane LANES) ==============
+   One thin bar under the lanes always shows the whole length of the
+   timeline; the part the lanes show now is a box on it. Drag the box to move
+   along the timeline, click elsewhere on the bar to centre the view there,
+   Left and Right move the box. The geometry is the lanes' scroll box:
+   `scrollLeft`, `clientWidth` (what shows) and `scrollWidth` (the whole
+   zoomed width), all in px. */
+
+/**
+ * The furthest the lanes can scroll: the whole width less what shows.
+ * @param {number} clientWidth
+ * @param {number} scrollWidth
+ * @returns {number}
+ */
+function _maxScroll(clientWidth, scrollWidth) {
+  return Math.max(0, (Number(scrollWidth) || 0) - Math.max(0, Number(clientWidth) || 0));
+}
+
+/**
+ * Where the box lies on the bar, in percent of the bar: { leftPct, widthPct }.
+ * When the lanes show the whole length (nothing to scroll) the box fills the
+ * bar: { 0, 100 }.
+ * @param {number} scrollLeft
+ * @param {number} clientWidth
+ * @param {number} scrollWidth
+ * @returns {{ leftPct: number, widthPct: number }}
+ */
+function barBox(scrollLeft, clientWidth, scrollWidth) {
+  const whole = Number(scrollWidth) || 0;
+  const shown = Math.max(0, Number(clientWidth) || 0);
+  if (!(whole > 0) || !(shown > 0) || _maxScroll(shown, whole) < 1) return { leftPct: 0, widthPct: 100 };
+  const left = Math.max(0, Math.min(_maxScroll(shown, whole), Number(scrollLeft) || 0));
+  return { leftPct: (left / whole) * 100, widthPct: (Math.min(shown, whole) / whole) * 100 };
+}
+
+/**
+ * The scrollLeft that centres the view on the place `frac` (0 to 1 along the
+ * bar, a click on it), kept inside the timeline.
+ * @param {number} frac
+ * @param {number} clientWidth
+ * @param {number} scrollWidth
+ * @returns {number}
+ */
+function barCentreOn(frac, clientWidth, scrollWidth) {
+  const f = Math.max(0, Math.min(1, Number(frac) || 0));
+  const whole = Number(scrollWidth) || 0;
+  const shown = Math.max(0, Number(clientWidth) || 0);
+  return Math.max(0, Math.min(_maxScroll(shown, whole), f * whole - shown / 2));
+}
+
+/**
+ * The scrollLeft after the box, taken at `startScrollLeft`, is dragged
+ * `dxPx` along a bar `barPx` wide (a px of the bar is scrollWidth / barPx
+ * px of the lanes), kept inside the timeline.
+ * @param {number} startScrollLeft
+ * @param {number} dxPx
+ * @param {number} barPx
+ * @param {number} clientWidth
+ * @param {number} scrollWidth
+ * @returns {number}
+ */
+function barDragTo(startScrollLeft, dxPx, barPx, clientWidth, scrollWidth) {
+  const whole = Number(scrollWidth) || 0;
+  const per = whole / Math.max(1, Number(barPx) || 0);
+  const to = (Number(startScrollLeft) || 0) + (Number(dxPx) || 0) * per;
+  return Math.max(0, Math.min(_maxScroll(clientWidth, whole), to));
+}
+
+/**
+ * What a press of Left (`dir` -1) or Right (+1) does on the bar: the box
+ * moves a tenth of what shows, kept inside the timeline.
+ * @param {number} scrollLeft
+ * @param {number} dir
+ * @param {number} clientWidth
+ * @param {number} scrollWidth
+ * @returns {number}
+ */
+function barStep(scrollLeft, dir, clientWidth, scrollWidth) {
+  const shown = Math.max(0, Number(clientWidth) || 0);
+  const to = (Number(scrollLeft) || 0) + Math.sign(Number(dir) || 0) * shown / 10;
+  return Math.max(0, Math.min(_maxScroll(shown, scrollWidth), to));
+}
+
+/**
+ * The bar's value for a screen reader (aria-valuenow): how far along the
+ * timeline the view is, 0 at its start and 100 at its end, a whole number;
+ * 0 when the whole length shows.
+ * @param {number} scrollLeft
+ * @param {number} clientWidth
+ * @param {number} scrollWidth
+ * @returns {number}
+ */
+function barValue(scrollLeft, clientWidth, scrollWidth) {
+  const max = _maxScroll(clientWidth, scrollWidth);
+  if (max < 1) return 0;
+  return Math.round((Math.max(0, Math.min(max, Number(scrollLeft) || 0)) / max) * 100);
+}
+
+/* The most a double-click on a transaction zooms in: a transaction of a
+   few seconds in a recording of hours would otherwise make the lanes
+   millions of px wide. */
+const MAX_ZOOM = 400;
+/* The room shown on each side of a transaction zoomed to, as a share of its
+   length. */
+const ZOOM_ROOM = 0.05;
+
+/**
+ * The view a double-click on a transaction's band gives: the zoom that shows
+ * [startMs, endMs] with a little room on each side filling the width, and
+ * where the view then starts, as a share (0 to 1) of the whole length
+ * [spanStartMs, spanEndMs]. A transaction that, with its room, covers the
+ * whole length gives the whole length: { zoom: 1, leftFrac: 0 }. The zoom is
+ * at most MAX_ZOOM; the start is kept inside the timeline.
+ * @param {number} spanStartMs
+ * @param {number} spanEndMs
+ * @param {number} startMs
+ * @param {number} endMs
+ * @param {number} [room]  share of the transaction's length on each side (ZOOM_ROOM)
+ * @returns {{ zoom: number, leftFrac: number } | null}  null when the times cannot be read
+ */
+function zoomToSpan(spanStartMs, spanEndMs, startMs, endMs, room) {
+  const whole = spanEndMs - spanStartMs;
+  const len = endMs - startMs;
+  if (!Number.isFinite(whole) || !Number.isFinite(len) || !(whole > 0) || !(len > 0)) return null;
+  const pad = len * (Number.isFinite(room) && room >= 0 ? room : ZOOM_ROOM);
+  const shown = len + 2 * pad;
+  if (shown >= whole) return { zoom: 1, leftFrac: 0 };
+  const zoom = Math.min(MAX_ZOOM, whole / shown);
+  // What shows at that zoom, centred on the transaction when the zoom is
+  // capped, kept inside the timeline.
+  const view = whole / zoom;
+  const from = startMs - spanStartMs + len / 2 - view / 2;
+  const leftFrac = Math.max(0, Math.min(1 - 1 / zoom, from / whole));
+  return { zoom, leftFrac };
+}
+
 module.exports = {
   timeToXPct,
   formatAxisLabel,
@@ -246,4 +386,12 @@ module.exports = {
   packLanes,
   layoutLaneStack,
   renderLaneStack,
+  barBox,
+  barCentreOn,
+  barDragTo,
+  barStep,
+  barValue,
+  zoomToSpan,
+  MAX_ZOOM,
+  ZOOM_ROOM,
 };

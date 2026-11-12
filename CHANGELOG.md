@@ -21,8 +21,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   *Play*, the clock ("6:20 / 1:02:00": a click types a time and goes there),
   *Add step*, *Start transaction* or *End transaction* (one button: it reads
   *End transaction* while the moment is inside a transaction whose end is
-  not marked yet), *Add note*, a message area, the Transaction select,
-  *Lanes*, zoom out, *Show all*, zoom in. The marking buttons act at the
+  not marked yet), *Add note*, a message area, *Lanes*, zoom out, *Show
+  all*, zoom in. The marking buttons act at the
   clock's moment, as the right-click's acts do there; without a moment they
   say why they cannot be clicked, and a project opened read only does not
   show them. While the video plays, *Start transaction* (and the
@@ -145,8 +145,63 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the next step without a time is selected, so steps written first each get
   their moment in two acts. The Timeline's right-click menu offers the same
   at the moment clicked. One undoable edit.
+- **The timeline's lanes in the order of the work, the steps readable.**
+  From the top, each lane only when the project has such things: the time,
+  *Transactions*, *Steps*, *Systems* (a recording), *Transcript*, *Videos*,
+  *Screenshots*, *Notes* and *Idle* (a recording; a lane of its own now, off
+  until chosen in *Lanes*). The Steps lane is the tall one: a step's band
+  shows its name inside it on up to two lines in 12 px text, cut with an
+  ellipsis; a band too narrow for its name shows the step's number, the one
+  the Steps tab beside the video shows, and its tooltip the name. No band
+  covers another: a band is drawn at most up to the start of the next step
+  of its transaction, and at least 2 px wide; one left too narrow for its
+  number is named by its tooltip and listed beside the video. A draft is
+  drawn dashed; the open step still fades out, a placed step keeps its mark
+  and the selected one its outline. *Lanes* lists the lanes in the same
+  order, *Systems* among them. The Steps lane's name says what a click does
+  now: "Steps: each step in the order of the process; click one to open it
+  beside the video."
+- **One bar of the whole length under the lanes.** It always shows the whole
+  timeline, and the part the lanes show is a box on it: drag the box to move
+  along the timeline, click elsewhere on the bar to go there, or, with the
+  bar focused, press Left or Right. At *Show all* the box fills the bar. The
+  playhead shows on it as a thin line. A screen reader reads it as a
+  scrollbar of the lanes, with how far along the view is.
+- **A double-click on a transaction shows only that transaction.** The
+  lanes zoom to its span with a little room on each side, and the clock
+  stays where it is; *Show all* shows the whole length again. A single click
+  still goes to its start, and its tooltip says "Double-click: show only
+  this transaction."
+- **A right-click on a video's band marks there too.** Its menu starts
+  with what a right-click on the timeline offers at that moment (*Add a
+  step here*, *Start a transaction here*, *Add note here...*), then the
+  video's own entries under its name.
 
 ### Changed
+
+- **A stretch set aside is hatched through every lane.** A stretch left out
+  of the analysis, or not part of the process, is hatched from the
+  Transactions lane down to the last lane, under the marks, so a step or a
+  transaction on it still opens on a click; its label shows once, at its
+  top. A click on the hatch where no mark is still offers *Include again*
+  and *Go to its start*. An app outside the process stays hatched on the
+  Systems lane only.
+- **What the marks mean is in the Lanes menu.** The legend row under the
+  timeline is gone: *Lanes* lists, under the lanes, "What the marks mean"
+  for the marks drawn now (the systems' colours, idle, "dashed: a draft
+  step", "a change not applied yet", a screenshot, a note, the hatch in the
+  project's words, a step placed elsewhere in the process). The menu opens
+  above its button when there is more room there and stays inside the
+  window. Its button's tooltip: "Choose which lanes the timeline shows, and
+  see what its marks mean".
+- **Gone from the Timeline:** the *Transaction:* select (it dimmed the other
+  transactions and changed nothing else; a double-click on a transaction
+  shows only it), the minimap above the lanes and the lanes' own horizontal
+  scrollbar (the bar of the whole length takes their place; the wheel,
+  Shift and the wheel, and the zoom keys still move and zoom), and the
+  legend row. A marker change not applied yet that the Transactions lane
+  cannot show is drawn through the lanes, and a project made from a video
+  no longer has an empty low row where a recording has its Systems.
 
 - **One set of play controls.** The playback bar at the foot of the window
   is gone (it showed on every level and played a video only the Timeline

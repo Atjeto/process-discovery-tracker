@@ -167,7 +167,12 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    beside it (*0:00 / 1:02:00*), type a time and press Enter. Where the SME
    starts the work, click *Start transaction*. While the video plays, the
    transaction starts at once; name it afterwards with Rename, on its header
-   beside the video.
+   beside the video. *Lanes*, at the right of that row, chooses the lanes the
+   timeline shows and says what their marks mean. To see a part of the
+   timeline larger, click *+*: the bar under the lanes shows the whole
+   length, and dragging its box moves along it. Double-click a transaction's
+   band to show only that transaction; *Show all* shows the whole length
+   again.
 2. As each step starts, press S (or click *Add step*), or right-click there
    and choose *Add a step here*, on the band of the step before it too. The
    step before it ends there. The newest step is *open*, fading out on the
