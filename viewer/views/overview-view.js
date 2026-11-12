@@ -83,7 +83,7 @@ const REANALYZE_WHERE = "Help, Troubleshooting has Re-analyze";
    cannot drift apart. */
 const NO_RUNS_MARKED = "This recording has no transactions marked.";
 const MARK_RUNS_INSTRUCTION = "On the Timeline, right-click where each transaction starts and " +
-  "choose Start a transaction here, then click Apply marker changes.";
+  "choose Start a transaction here.";
 const MARK_RUNS_BUTTON = "Mark the transactions on the Timeline";
 
 /* Switch to the Timeline level and show its Markers panel, scrolled on screen
@@ -732,13 +732,13 @@ function _summaryWarnings(sess) {
     const named = p.label && !RunsModel.numberOnlyLabel(p.label) ? ' "' + escapeHtml(p.label) + '"' : "";
     let text = "", fix = "";
     if (p.kind === "dangling_start") {
-      text = "The transaction" + named + " at " + time + " has no end marker.";
+      text = "The transaction" + named + " at " + time + " has no end.";
       fix = '<button class="summary-fix" data-fix="close-start">End it where the recording ends</button>';
     } else if (p.kind === "orphan_end") {
-      text = "The end marker at " + time + " has no open transaction to end.";
+      text = "The end at " + time + " has no open transaction to end.";
       if (p.eventId) {
         fix = '<button class="summary-fix" data-fix="delete-end" data-event-id="' +
-          escapeAttr(p.eventId) + '">Remove this marker</button>';
+          escapeAttr(p.eventId) + '">Remove this end</button>';
       }
     } else if (p.kind === "short_case") {
       text = "The transaction" + named + " at " + time + " is only " + Math.round((p.durationMs || 0) / 1000) +
@@ -808,7 +808,7 @@ function _wireSummary(host) {
       } else if (btn.dataset.fix === "delete-end") {
         saved = await Flow.queueMarkerDelete(btn.dataset.eventId);
       }
-      if (saved) btn.textContent = "Done (pending)";
+      if (saved) btn.textContent = "Done";
       else btn.disabled = false;
     });
   });

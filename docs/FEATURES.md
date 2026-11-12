@@ -260,11 +260,12 @@ The viewer says *transaction* for one pass through the process and
 - **Transaction repair**: *Start a transaction here* and *End the
   transaction here* from a right-click; move, rename and delete them
   (lane PANE: on each transaction's header in the pane's Steps tab, *Starts
-  at*, *Ends at*, *Rename*, *Delete transaction*; the Markers tab is gone),
-  shown at once as pending until *Apply marker changes*; insert a
-  transaction from a selected range. A transaction's band is drawn where its
-  markers now are, dashed until applied, and its start and its end drag
-  (2.0.3).
+  at*, *Ends at*, *Rename*, *Delete transaction*; the Markers tab is gone);
+  insert a transaction from a selected range. A transaction's band is drawn
+  where its markers now are, and its start and its end drag (2.0.3). Every
+  change applies by itself a moment later, in a recording too (D4): no
+  button and no question; after a cancelled or failed run the top bar
+  offers *Update the steps*.
 - **Steps move on it** (2.0.3): the start and the end of a step whose time
   is the analyst's (one added on a video's timeline, or where nothing was
   recorded) drag, a step back to back with it giving way, and the step
@@ -335,8 +336,8 @@ The viewer says *transaction* for one pass through the process and
 - **Times typed** (2.0.3): an open transaction shows *Starts at* and *Ends
   at* under its name, fields on the one clock to a tenth of a second where
   a time has one ("0:09.6"); a time typed moves its marker (an *Ends at*
-  typed where it has none adds its End, emptied takes it out), dashed with
-  *Apply marker changes* beside it until applied. A step whose time is the
+  typed where it has none adds its End, emptied takes it out), and the
+  steps follow it a moment later (D4). A step whose time is the
   analyst's shows its start and end as fields on its line of facts, and one
   added without a time a start field (its end waiting for it); the rules
   are the Timeline's drag's. Up and Down change a time by a second; a text

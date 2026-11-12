@@ -1181,8 +1181,9 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
   // transaction, each with its tooltip) and offers Confirm transaction; a
   // drafted step opened from its band says in which other transactions it
   // happens, Go there opens it there; Rename makes the name a field (Escape
-  // leaves it as it was, Enter saves it as a marker change, pending until
-  // applied); Delete transaction asks first, and Cancel changes nothing.
+  // leaves it as it was, Enter saves it as a marker change, which applies by
+  // itself a moment later, D4); Delete transaction asks first, and Cancel
+  // changes nothing.
   {
     let err = null;
     const P = {};
@@ -1227,9 +1228,20 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       await page.keyboard.type("Order 20000");
       await page.keyboard.press("Enter");
       const edit = await waitDisk(A2, (x) => (x.marker_edits || []).some((e) => e && e.field === "label" && e.value === "Order 20000"));
-      P.renamed = { onDisk: !!edit, cta: await page.evaluate(() => ((document.getElementById("btn-apply-marker-edits") || {}).textContent || "").trim()) };
+      P.renamed = { onDisk: !!edit, asked: false, button: await page.evaluate(() => !!document.getElementById("btn-update-steps") ||
+        /Apply/.test((document.getElementById("session-pills") || {}).textContent || "")) };
       await page.waitForFunction((r) => /Order 20000/.test((document.querySelector('#tp-steps .tp-tx-head[data-case-id="' + r + '"] .tp-tx-name') || {}).textContent || ""), R2, { timeout: T });
       P.renamed.name = await r2.locator(".tp-tx-name").textContent();
+      // D4: the rename applies by itself, with no click and no question.
+      P.renamed.ran = await page.waitForSelector("#run-status", { timeout: T }).then(() => true, () => false);
+      await page.waitForFunction(() => {
+        const s = require("./state.js").getSession(), ME = require("./marker-edits.js");
+        return !document.getElementById("run-status") && !require("./views/flow-view.js").analysisBusy() &&
+          ME.pendingEditCount(s.annotations.marker_edits, ME.lastAnalysisMs(s)) === 0;
+      }, null, { timeout: 120000 });
+      P.renamed.asked = !!(await page.$(".modal-confirm"));
+      P.renamed.analyzed = await page.evaluate((r) => ((require("./state.js").getSession().stats.case_stats || []).find((c) => c.case_id === r) || {}).label || null, R2);
+      P.renamed.after = await page.locator('#tp-steps .tp-tx-head[data-case-id="' + R2 + '"] .tp-tx-name').textContent({ timeout: T });
       // Delete transaction asks first; Cancel changes nothing.
       const n0 = (readJson(A2).marker_edits || []).length;
       await page.locator('#tp-steps .tp-tx-head[data-case-id="' + R4 + '"] .tp-tx-delete').click({ timeout: T });
@@ -1252,9 +1264,11 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
         P.also.go.every((g) => g.startsWith("Go there|Opens this step in that transaction.|")) &&
         !!P.went && P.went.sel === P.target && P.went.caseId !== R1,
       JSON.stringify({ err, also: P.also, went: P.went }));
-    record("lane PANE item 5: Rename makes the name a field; Escape leaves it as it was (no change saved); Enter saves the new name as a marker change (Apply 1 marker change offered), and the header shows it; Delete transaction asks first (the Markers tab's own question) and Cancel changes nothing",
-      !err && !!P.escaped && P.escaped.field === 0 && P.renamed && P.renamed.onDisk && /^Apply \d+ marker changes?$/.test(P.renamed.cta) &&
-        /Order 20000/.test(P.renamed.name || "") && /Delete transaction\?/.test(P.ask || "") && P.cancelled,
+    record("lane PANE item 5, D4: Rename makes the name a field; Escape leaves it as it was (no change saved); Enter saves the new name as a marker change, the header shows it, no Apply button, and a moment later it applies by itself with no question (the analysis has the name); Delete transaction asks first and Cancel changes nothing",
+      !err && !!P.escaped && P.escaped.field === 0 && P.renamed && P.renamed.onDisk && P.renamed.button === false &&
+        /Order 20000/.test(P.renamed.name || "") && P.renamed.ran && !P.renamed.asked && P.renamed.analyzed === "Order 20000" &&
+        /Order 20000/.test(P.renamed.after || "") &&
+        /Delete transaction\?/.test(P.ask || "") && !/Apply/.test(P.ask || "") && P.cancelled,
       JSON.stringify({ err, escaped: P.escaped, renamed: P.renamed, ask: P.ask, cancelled: P.cancelled }));
   }
 

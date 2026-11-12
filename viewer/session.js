@@ -36,6 +36,7 @@ let renderSessionPills = () => {};
 let reloadSession = async () => {};
 let analyzeSession = async () => {};
 let beforeWrite = async () => {};
+let markersReverted = () => {};
 
 function resetUndoStack() { State.resetUndo(); }
 function canUndo() {
@@ -93,7 +94,7 @@ function _surfacedError(message) {
    ALREADY been shown to the analyst as an error toast. `what` names the edit
    in that message. */
 async function writeAnnotations(sessionFolder, annotations, what) {
-  // 2.0.3: an automatic Apply of marker changes under way gives way to the
+  // 2.0.3: an automatic run for marker changes under way gives way to the
   // save (flow-view.js yieldAutoApply); main refuses a save meanwhile.
   await beforeWrite();
   // Lane HV: a hand-off opened read only is never written (main.js refuses it
@@ -291,9 +292,8 @@ function revertFollowUp(before, after, recorded) {
   const same = (k) => JSON.stringify((before && before[k]) || null) === JSON.stringify((after && after[k]) || null);
   const ranges = (a) => JSON.stringify((a && Array.isArray(a.excluded_ranges) && a.excluded_ranges.length) ? a.excluded_ranges : []);
   if (recorded !== false && ranges(before) !== ranges(after)) return "analyze";
-  // 2.0.3: the markers changed; a project that applies its marker changes
-  // itself (one without a recording) analyzes again, a recording waits for
-  // Apply marker changes (applyRevertedAnnotations).
+  // 2.0.3, D4: the markers changed; the steps follow them a moment later,
+  // as after the change itself (applyRevertedAnnotations).
   const marks = (a) => JSON.stringify((a && Array.isArray(a.marker_edits) && a.marker_edits.length) ? a.marker_edits : []);
   const markers = marks(before) !== marks(after);
   // C23 (2.0.6): the videos of the chain too. An edit of the chain that moved
@@ -307,11 +307,15 @@ function revertFollowUp(before, after, recorded) {
 /* Swap a reverted annotations blob into the loaded session and refresh
    every annotation-derived surface -- the in-place alternative to a
    full session reload. An undo that changes what the analysis reads, or the
-   video, then analyzes or reloads (revertFollowUp). */
+   video, then analyzes or reloads (revertFollowUp); one that changes the
+   markers only (D4, in every project) runs the analysis a moment later, as
+   the change did: the markers are marked changed (flow-view.js
+   markersReverted) before the "markers" topic schedules the run. */
 function applyRevertedAnnotations(annotations) {
   const sess = State.getSession();
   const follow = revertFollowUp(sess.annotations, annotations, AC.hasRecording(sess));
   sess.annotations = ensureAnnoShape(annotations);
+  if (follow === "markers") markersReverted();
   State.batch(() => {
     State.emit("steps");
     State.emit("timeline");
@@ -321,8 +325,7 @@ function applyRevertedAnnotations(annotations) {
   renderSessionPills();
   // Not awaited: the write chain this runs in must not wait for an analysis
   // (which reloads the project when it ends).
-  const analyzes = follow === "analyze" || (follow === "markers" && !AC.hasRecording(sess));
-  if (analyzes) Promise.resolve(analyzeSession()).catch((e) => console.error("[session] the analysis after the undo failed:", e));
+  if (follow === "analyze") Promise.resolve(analyzeSession()).catch((e) => console.error("[session] the analysis after the undo failed:", e));
   else if (follow === "reload") Promise.resolve(reloadSession(sess.sessionFolder)).catch((e) => console.error("[session] the reload after the undo failed:", e));
 }
 
@@ -385,13 +388,14 @@ if (typeof window !== "undefined" && window && typeof window.addEventListener ==
   });
 }
 
-/* deps = { renderSessionPills, reloadSession(folder), analyzeSession() }.
-   Call once at boot. */
+/* deps = { renderSessionPills, reloadSession(folder), analyzeSession(),
+   beforeWrite(), markersReverted() }. Call once at boot. */
 function initSession(deps) {
   renderSessionPills = deps.renderSessionPills || (() => {});
   reloadSession = deps.reloadSession || (async () => {});
   analyzeSession = deps.analyzeSession || (async () => {});
   beforeWrite = deps.beforeWrite || (async () => {});
+  markersReverted = deps.markersReverted || (() => {});
 }
 
 module.exports = {

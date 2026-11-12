@@ -423,8 +423,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   font-size: 12px; font-style: italic; }
 
 /* ===== The status line (top bar) ===== */
-/* While the analysis runs: one line with Cancel; else the call to action that
-   applies pending marker changes (flow-view.js renderSessionPills). */
+/* While the analysis runs: one line with Cancel; else, after a cancelled or
+   failed run while changes wait, Update the steps (flow-view.js
+   renderSessionPills). */
 .session-pills { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .run-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px;
   color: var(--fg-2); white-space: nowrap; }
@@ -698,8 +699,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
   opacity: 0; pointer-events: none; transition: opacity 0.15s;
 }
 .tl-activity:hover::after { opacity: 0.7; }
-.tl-marker { cursor: context-menu; }
-.tl-marker-label { cursor: context-menu; }
 
 /* Inline labels inside activity bands -- two-line stack: app + title,
    plus duration pinned to bottom-right. Children clip if there's no
@@ -753,11 +752,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .tl-case-band.dangling { background: color-mix(in srgb, var(--warn) 22%, transparent);
   border-top-color: var(--warn); border-bottom-color: var(--warn);
   border-top-style: dashed; }
-/* 2.0.3: a transaction the last analysis has not seen (a marker added, moved
-   or renamed, not applied yet): dashed all round until Apply marker changes. */
-.tl-case-band.pending { background: color-mix(in srgb, var(--warn) 10%, transparent);
-  border: 1px dashed var(--warn); border-top-width: 2px; }
-.tl-case-label.pending { background: var(--bg); color: var(--fg); outline: 1px dashed var(--warn); outline-offset: -1px; }
 /* 2.0.3: a side that drags (a transaction's start or end, a step's whose
    time is the analyst's) shows the resize cursor; while one is dragged the
    whole page does, nothing is selected, the transactions' labels step aside
@@ -807,13 +801,13 @@ body.tl-edge-dragging .tl-case-label { visibility: hidden; }
   background: var(--accent-fill); color: var(--accent-text); font-size: 8px; font-weight: 600;
   padding: 1px 4px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* Item 6: the one call to action that applies pending marker changes (the
-   top bar's status line, #session-pills). */
-.pending-cta {
+/* D4: Update the steps, the top bar's status line (#session-pills) while
+   changes to the transactions wait after a cancelled or failed run. */
+.update-cta {
   border: 1px solid var(--warn); color: var(--fg); font-weight: 600;
   background: color-mix(in srgb, var(--warn) 16%, transparent);
 }
-.pending-cta:hover { background: color-mix(in srgb, var(--warn) 28%, transparent); }
+.update-cta:hover { background: color-mix(in srgb, var(--warn) 28%, transparent); }
 
 .icon-btn.xs { width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 1; }
 
@@ -1634,8 +1628,7 @@ button.tool-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg-2)
 .step-facts-rest { overflow-wrap: anywhere; }
 /* 2.0.3: a time typed in Steps (a step's start and end on its line of facts,
    an open transaction's Starts at and Ends at): a field that shows it is one,
-   sized to its time, its digits in columns; dashed while the marker change
-   it made waits for Apply marker changes. */
+   sized to its time, its digits in columns. */
 input.time-field {
   field-sizing: content; min-width: 5ch; max-width: 12ch; margin: 0; padding: 0 4px;
   font-family: inherit; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg);
@@ -1644,12 +1637,9 @@ input.time-field {
 input.time-field::placeholder { color: var(--fg-2); opacity: 1; font-style: italic; }
 input.time-field:hover { background: var(--bg-2); }
 input.time-field:focus { background: var(--bg-2); outline: 2px solid var(--accent-2); outline-offset: 1px; }
-input.time-field.pending { border-style: dashed; border-color: var(--warn); }
 input.time-field:disabled { border-style: dotted; background: transparent; cursor: not-allowed; }
 .run-times { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--fg-2); }
 .run-times label { display: inline-flex; align-items: center; gap: 5px; }
-.run-times-note { color: var(--fg); }
-.run-times .run-times-apply { font-size: 12px; }
 .step-facts .step-system-inline + datalist + .step-facts-rest::before { content: "\00B7\00A0"; }
 .step-facts .link-btn { font-size: 12px; }
 /* The body: one column, its groups parted by space. */
@@ -2076,42 +2066,6 @@ button.danger:disabled {
   box-shadow: var(--shadow-lg);
 }
 
-/* A marker's bar on the timeline (only a pending one is drawn: the
-   transaction bands show the applied markers). A high-contrast --fg line and
-   pill, each with a --bg halo, so they stay legible over any colored
-   activity bar instead of melting into it. Adapts to both themes. */
-.tl-marker {
-  position: absolute;
-  width: 2px;
-  background: var(--fg);
-  box-shadow: 0 0 0 1px var(--bg);
-  z-index: 4;
-  pointer-events: none;
-}
-.tl-marker-label {
-  position: absolute;
-  background: var(--fg); color: var(--bg);
-  padding: 1px 5px; border-radius: 2px;
-  box-shadow: 0 0 0 1px var(--bg);
-  font-size: 9px; font-weight: 600;
-  white-space: nowrap; z-index: 6;
-  font-family: var(--font-mono); letter-spacing: 0.3px;
-  pointer-events: none;
-}
-/* Item 6: a marker change that waits for Apply marker changes
-   (marker-edits.js): dashed, in the warning colour (a pending delete in the
-   error colour), drawn on the activity row whatever lanes are shown. The
-   label keeps the high-contrast fg-on-bg pair and gains a dashed outline. */
-.tl-marker.tl-marker-pending {
-  width: 0; background: transparent; box-shadow: none;
-  border-left: 2px dashed var(--warn);
-}
-.tl-marker.tl-marker-pending-delete { border-left-color: var(--bad); }
-.tl-marker-label.tl-marker-label-pending {
-  background: var(--bg); color: var(--fg);
-  box-shadow: none; outline: 1px dashed var(--warn);
-}
-
 /* ===== Dropdown menus (Open, Export) =============================== */
 .project-menu { position: relative; display: inline-block; }
 .project-btn {
@@ -2219,7 +2173,6 @@ button.danger:disabled {
 }
 .legend .lg-idle::before { background: var(--fg-4); opacity: 0.5; }
 .legend .lg-draft::before { background: var(--tl-step-bg); border: 1.5px dashed var(--tl-step-line); }
-.legend .lg-marker::before { background: transparent; border: 1px dashed var(--warn); }
 .legend .lg-screenshot::before {
   background: var(--accent-2); border-radius: 50% !important; width: 8px !important; height: 8px !important;
   border: 1px solid var(--bg);

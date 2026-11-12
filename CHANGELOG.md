@@ -179,6 +179,27 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A change to the transactions reaches the steps by itself, in a
+  recording too.** A transaction added, moved, ended, renamed or deleted (on
+  the timeline, in its header's *Starts at*, *Ends at*, *Rename* and *Delete
+  transaction*, or in Steps) is in Steps a moment later, as in a project
+  made from a video: nothing to click, no question, and no message when it
+  worked; the top bar says "Updating steps and map..." with *Cancel* while
+  it runs. It waits while a dialog is open, a key was pressed a moment ago,
+  a side is dragged or a field holds unsaved typing, and a change made while
+  it runs is saved and runs it again. The confirmed, edited, added and hidden
+  steps are kept, a renamed or described draft too; the step selected, the
+  step opened beside the video, the transaction open in Steps, the pane's
+  scroll and the clock stay where they were. After *Cancel*, or a run that
+  failed, the top bar offers *Update the steps* ("Updates the transactions,
+  their steps and the map with your latest changes."), and the next change
+  runs it again too. Ctrl+Z of a change that was already applied runs it
+  again by itself. The messages say what happened: "Transaction started at
+  0:05.", "Transaction ended at 0:20.", "Transaction made from 0:40 to 1:10
+  · 30s.", "Transaction moved to 0:05." ("Transaction's end moved to
+  0:20."), "Transaction renamed.", "Transaction deleted."; the Overview's
+  fixes read *Remove this end* and "Done", and its lines "has no end" and
+  "The end at 0:30 has no open transaction to end."
 - **A stretch set aside is hatched through every lane.** A stretch left out
   of the analysis, or not part of the process, is hatched from the
   Transactions lane down to the last lane, under the marks, so a step or a
@@ -189,8 +210,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **What the marks mean is in the Lanes menu.** The legend row under the
   timeline is gone: *Lanes* lists, under the lanes, "What the marks mean"
   for the marks drawn now (the systems' colours, idle, "dashed: a draft
-  step", "a change not applied yet", a screenshot, a note, the hatch in the
-  project's words, a step placed elsewhere in the process). The menu opens
+  step", a screenshot, a note, the hatch in the project's words, a step
+  placed elsewhere in the process). The menu opens
   above its button when there is more room there and stays inside the
   window. Its button's tooltip: "Choose which lanes the timeline shows, and
   see what its marks mean".
@@ -284,6 +305,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Dialogs keep the keyboard.** The prompts (*+ Add step*, *Hand off...*), the confirmations, *Place after a step...*, Help and the library builder are announced as dialogs; Tab and Shift+Tab stay inside them, and closing one gives the focus back to the button that opened it. Help takes the focus when it opens, on its section shown.
 - **Messages are announced and an error stays while you read it.** The message line at the bottom is read out by a screen reader (an error at once). An error stays until you dismiss it (its cross, or Escape), a newer message replaces it, or you click or press a key elsewhere once it has been up 3.5 s; other messages keep their timing. A message never blocks a click on the page under it.
 - **Names and state.** The glyph buttons say what they do (*Help*, *Close*, *Zoom in*, *Switch to the dark theme*), the New, Open, Export and Lanes buttons say whether their menu is open, the level shown is marked as the current page, and every page of the viewer and the capture app says it is in English. The recording bar tells a screen reader its state and transaction when they change (never its clock each second), and its problem line is an alert; the capture windows' text fields have a visible edge.
+
+### Removed
+
+- ***Apply N marker changes*** in the top bar, its question ("Update the
+  drafts of the changed transactions?"), and *Apply marker changes* with
+  "Not applied yet" (or "Updates in a moment") beside a transaction's
+  *Starts at* and *Ends at*: a change applies by itself.
+- **The dashed band and the "(pending)" line of a change not applied yet**
+  on the timeline, the dashed time field in Steps, and the Lanes menu's
+  entry "a change not applied yet": a transaction is drawn as it is.
 
 ## [2.0.6] (2026-11-04): several videos on one timeline
 

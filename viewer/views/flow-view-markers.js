@@ -6,9 +6,8 @@
  *     and renameMarker and deleteMarker the acts of a transaction's header
  *     in the Timeline's pane (views/timeline-pane.js; lane PANE: the
  *     Markers tab that listed the markers is gone). Every change shows at
- *     once, on the timeline, and waits for Apply marker changes in a
- *     recording (the call to action lives in the top bar's status line,
- *     flow-view.js).
+ *     once, on the timeline, and the steps follow it a moment later, in
+ *     every project (D4, flow-view.js scheduleAutoApply).
  *
  * Extracted from flow-view.js (god-file split). Requires flow-view-video.js
  * for timelineSpan (one-way), and never require()s
@@ -38,22 +37,6 @@ function effectiveLabel(markerEvent) {
 }
 
 /* ============ Per-marker edits ===================================== */
-
-const APPLY_NOTE = "it applies to the transactions when you click Apply marker changes";
-
-/* 2.0.3: marker changes apply by themselves in a project made from a video
-   or from nothing (flow-view.js scheduleAutoApply): it has no drafts that an
-   analysis would draft again, so nothing there asks to be applied. In a
-   recording, Apply marker changes stays the analyst's act. */
-function appliesItself(sess) {
-  return !!sess && !AC.hasRecording(sess);
-}
-
-/* What a message about a marker change adds on how it reaches the
-   transactions: nothing where it applies itself. */
-function applyNote(sess) {
-  return appliesItself(sess) ? "" : "; " + APPLY_NOTE;
-}
 
 /* The steps of the analyst's follow a marker change, in the same edit, read
    on the markers as they are with it (time-edits.js): a transaction's end,
@@ -148,8 +131,8 @@ function sinceStartToIso(originMs, text) {
    2.0.3, a transaction's side dragged on the
    timeline or typed in Steps. An inserted marker IS its insert edit, which
    moves itself; a captured marker gets a timestamp edit, or, while an earlier
-   move of it still waits for Apply marker changes, that edit takes the new
-   time (a marker dragged three times is one change to apply). One undoable
+   move of it still waits for the analysis, that edit takes the new time (a
+   marker dragged three times is one change to apply). One undoable
    edit; `topics` the views drawn again (the markers and the timeline by
    default). Resolves true when saved. */
 async function moveMarker(m, newTs, topics) {
@@ -183,7 +166,7 @@ async function moveMarker(m, newTs, topics) {
 
 /* Markers added (2.0.3: an End or a Start typed in Steps, an end dragged
    on the Timeline), with no question asked: `adds` [{ type, ts, label }],
-   insert edits, pending until they are applied. One undoable edit. Resolves
+   insert edits the next analysis applies. One undoable edit. Resolves
    true when saved. */
 async function insertMarkers(adds, topics) {
   if (!State.getSession() || !(adds || []).length) return false;
@@ -216,9 +199,10 @@ async function removeMarker(m, topics) {
     const e = _insertEdit(anno, m);
     if (!e) { toast("This added marker could not be found in the project's changes.", "error"); return false; }
     anno.marker_edits = anno.marker_edits.filter((x) => x !== e);
-    // An insert the last analysis already applied needs one more Analyze to
-    // take it out again: a delete of its marker id keeps that change pending
-    // (the pipeline ignores a delete whose marker no longer exists).
+    // An insert the last analysis already applied needs one more analysis to
+    // take it out again: a delete of its marker id is that change, newer
+    // than the analysis (the pipeline ignores a delete whose marker no longer
+    // exists).
     if (_insertApplied(e, MarkerEdits.lastAnalysisMs(State.getSession()))) {
       anno.marker_edits.push({ id: cryptoRandomId(), event_id: m.key, op: "delete", ts: now });
     }
@@ -230,29 +214,21 @@ async function removeMarker(m, topics) {
   return true;
 }
 
-/* What the header's act on a transaction says once it is saved (lane PANE:
-   the header reads Rename and Delete transaction, so the messages name the
-   transaction, not its marker). */
-function _txDone(what) {
-  return what + (appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the steps and the map.");
-}
-
+/* Delete transaction, on a transaction's header in the Timeline's pane (lane
+   PANE): `m` is its Start (the marker view's row). Asks first; the steps
+   follow a moment later (D4). The messages name the transaction, not its
+   marker. */
 async function deleteMarker(m) {
-  if (!State.getSession()) return;
-  const start = m.markerType === "start";
+  if (!State.getSession() || !m) return;
   const ok = await confirmModal({
-    title: start ? "Delete transaction?" : "Delete marker?",
-    message: start ? "Its stretch of the timeline will no longer be a transaction of its own."
-      : m.inserted
-      ? `Remove this added ${m.markerType} marker?`
-      : `Delete this ${m.markerType} marker from the analysis?`,
-    detail: "The recording itself is not changed; the change is saved with the project" +
-      (appliesItself(State.getSession()) ? " and the transactions follow it" : " and " + APPLY_NOTE) + ". Ctrl+Z restores it.",
+    title: "Delete transaction?",
+    message: "Its stretch of the timeline will no longer be a transaction of its own.",
+    detail: "The recording itself is not changed; the change is saved with the project and the transactions follow it. Ctrl+Z restores it.",
     okLabel: "Delete",
     danger: true,
   });
   if (!ok) return;
-  if (await removeMarker(m)) toast(start ? _txDone("Transaction deleted") : "Marker deleted" + applyNote(State.getSession()) + ".", "success");
+  if (await removeMarker(m)) toast("Transaction deleted.", "success");
 }
 
 async function renameMarker(m, newLabel) {
@@ -278,12 +254,12 @@ async function renameMarker(m, newLabel) {
   // The "markers"/"timeline" topics re-render the side panel and the
   // marker labels on the timeline.
   await persistAnnotations(anno, 'rename marker', ["markers", "timeline"]);
-  toast(_txDone("Transaction renamed"), "success");
+  toast("Transaction renamed.", "success");
 }
 
 module.exports = {
   effectiveLabel, sinceStartToIso, markerReasonText, moveMarker, insertMarker, insertMarkers, removeMarker,
   // Lane PANE: a transaction's header in the Timeline's pane.
   renameMarker, deleteMarker,
-  keepApplied, clipStepsToTransactions, appliesItself, applyNote, APPLY_NOTE,
+  keepApplied, clipStepsToTransactions,
 };

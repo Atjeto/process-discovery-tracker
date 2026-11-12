@@ -74,8 +74,10 @@ attachments, edited maps) lives in it too. No AI ships inside the product.
    the analysis or included again, on the Map when the steps are newer
    than its map,
    inside Edit as the As-Is map, before a PDD export, a map export or a
-   hand-off), with one status line and Cancel. *Apply N marker changes*
-   stays deliberate; Help, Troubleshooting has Re-analyze.
+   hand-off, and a moment after a change to the transactions, in a
+   recording too, D4), with one status line and Cancel; after a cancelled
+   or failed run the status line offers *Update the steps*. Help,
+   Troubleshooting has Re-analyze.
 2. **Attach** a video (copied into the folder, synced with two clicks) and a
    transcript, if any.
 3. **Confirm the reference run** (run 1 unless another is picked): fix and
@@ -234,8 +236,8 @@ the folder.
   the clock only, never a video time.
 - **Moving on the Timeline** (2.0.3, a PM's report; `flow-view-timeline.js`
   *Dragging a side*): a transaction's band drags its start and its end (a
-  marker change, pending until Apply marker changes; the Transactions lane
-  draws the markers as they now are, a band not yet applied dashed); a step
+  marker change; the Transactions lane draws the markers as they now are);
+  a step
   whose time is the analyst's (`AC.stepTimeMovable`: no recorded actions)
   drags its sides, a step back to back giving way, and joins the transaction
   its start is in at once (`steps-view.js` `setStepTimes`). A side dragged
@@ -243,8 +245,8 @@ the folder.
   start or the playhead (a step's side to any side); a marker never comes
   to a step's end, which would part its last action from it. The same
   times are typed in Steps: an open transaction's *Starts at* and *Ends at*
-  (`steps-view.js` `_runTimesEl`, with Apply marker changes beside a
-  change), the selected step's start and end on its line of facts (a step
+  (`steps-view.js` `_runTimesEl`), the selected step's start and end on its
+  line of facts (a step
   without a time gets a start field); one rule set, `time-edits.js`. An
   insert edit the last analysis used keeps `applied_timestamp` and
   `applied_label` while a change to it waits (`keepApplied`). Steps are
@@ -254,9 +256,13 @@ the folder.
   newest is open (`time-edits.js` `isOpen`: "open", no length, fading out
   on the Timeline). Joined sides move together (`followMarker`,
   `followRemoval`, `handBack`), and every Timeline right-click marks
-  there, on a band too. A project without a recording applies its marker
-  changes itself (`flow-view.js` `scheduleAutoApply`, giving way to a
-  save); a recording keeps Apply marker changes.
+  there, on a band too. Every project applies its marker changes itself a
+  moment later (D4, the owner 2026-11-10: in a recording too;
+  `flow-view.js` `scheduleAutoApply`, giving way to a save; `auto-apply.js`
+  `runDue`): no button, no question, nothing said when it worked; a run
+  cancelled or failed leaves *Update the steps* in the status line until
+  it or the next change runs it, and an undo of a marker change runs it
+  too (`markersReverted`).
 - **What the analyst adds** (C16), inside the folder: screenshots in
   `screenshots/analyst/` (a video frame, a pasted image or a file;
   `step.pdd_screenshot` picks the one the PDD prints), notes in

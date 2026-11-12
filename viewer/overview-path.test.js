@@ -341,7 +341,8 @@ test("with no transactions, the Checklist carries the mark-transactions instruct
   const html = overviewHtml(sess);
   assert.ok(html.includes('data-next="runs"'));
   assert.ok(html.includes("This recording has no transactions marked."));
-  assert.ok(html.includes("choose Start a transaction here, then click Apply marker changes."));
+  assert.ok(html.includes("choose Start a transaction here."));
+  assert.ok(!html.includes("Apply marker changes"), "D4: the transactions marked reach the steps by themselves");
   assert.ok(html.includes(">Mark the transactions on the Timeline</button>"));
 });
 
@@ -421,13 +422,13 @@ test("the marker warnings name the transaction in the new words; a label that on
     marker(60, "start", "Run 2"), marker(62, "end"), marker(300, "start", "Order entry")] });
   const html = overviewHtml(sess);
   const warn = html.slice(html.indexOf('class="ov-summary-warn"'), html.indexOf('id="ov-doc"'));
-  assert.ok(warn.includes("⚠ The end marker at 0:30 has no open transaction to end."), warn);
+  assert.ok(warn.includes("⚠ The end at 0:30 has no open transaction to end."), warn);
   assert.ok(warn.includes("⚠ The transaction at 1:00 is only 2s long (accidental?)"), warn);
-  assert.ok(warn.includes('⚠ The transaction "Order entry" at 5:00 has no end marker.'), warn);
+  assert.ok(warn.includes('⚠ The transaction "Order entry" at 5:00 has no end.'), warn);
   assert.ok(warn.includes('data-fix="close-start">End it where the recording ends</button>'), "the fix stays");
   assert.ok(!/\bRun\b|unlabeled|matching End|open Start/.test(warn), warn);
   const numbered = overviewHtml(session({ events: [{ type: "activity", timestamp: at(0) }, marker(60, "start", "Transaction 2")] }));
-  assert.ok(numbered.includes("⚠ The transaction at 1:00 has no end marker."), "the capture app's own number is not repeated");
+  assert.ok(numbered.includes("⚠ The transaction at 1:00 has no end."), "the capture app's own number is not repeated");
 });
 
 test("the project line carries the video and the transcript, each with its act", () => {

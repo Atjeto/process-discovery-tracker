@@ -1099,7 +1099,7 @@ const GUIDE_FIRST_STEP = "Add the first step with + Add step.";
 // 2.0.3: how a step comes in, when its transaction starts just after it.
 const GUIDE_OUTSIDE =
   "These steps start outside every marked transaction. To bring one in, open its transaction and type an " +
-  "earlier start at Starts at (in a recording, then click Apply marker changes), or select a step you added " +
+  "earlier start at Starts at, or select a step you added " +
   "and type a start inside the transaction. On the Timeline you can drag either instead. Where no transaction " +
   "is marked yet, right-click the Timeline where it starts and choose Start a transaction here.";
 /* Lane HV: the guides of a hand-off opened read only, which say what shows
@@ -2255,7 +2255,7 @@ function _timelineSpan(sess) {
 /* A time field: its time on the one clock, what it is for, what typing does. */
 function _timeFieldHtml(id, valueText, label, title, extra) {
   const o = extra || {};
-  return '<input type="text" class="time-field' + (o.pending ? " pending" : "") + '"' + (id ? ' id="' + id + '"' : "") +
+  return '<input type="text" class="time-field"' + (id ? ' id="' + id + '"' : "") +
     (o.side ? ' data-side="' + o.side + '"' : "") + ' value="' + escapeAttr(valueText) + '"' +
     (o.placeholder ? ' placeholder="' + escapeAttr(o.placeholder) + '"' : "") + (o.disabled ? " disabled" : "") +
     ' aria-label="' + escapeAttr(label) + '" title="' + escapeAttr(title) + '" spellcheck="false" autocomplete="off">';
@@ -2411,9 +2411,8 @@ async function commitStepTime(stepId, edge, ms) {
 /* An open transaction's times, first among its acts: "Starts at [0:09.7]
    Ends at [0:31.9]". Its start is its Start marker; its end its own End, or,
    greyed, where the next transaction starts or the timeline ends (typing one
-   adds its End). A change shows dashed until it is applied: by itself in a
-   project without a recording (2.0.3, flow-view.js scheduleAutoApply), else
-   with Apply marker changes beside it. The transaction no marker starts yet
+   adds its End). A change shows as typed and the steps follow it a moment
+   later (D4, flow-view.js scheduleAutoApply). The transaction no marker starts yet
    (the one of a project without a recording) shows both fields too, as the
    markers now are: typing its start marks it, typing its end marks it from
    the start of the video. Read only: the times as text. null without a
@@ -2450,33 +2449,17 @@ function _runTimesEl(run) {
       (sides.end ? "ends at " + fmt(endMs) : sides.next ? "ends at " + fmt(untilMs) : "open, no end marked");
     return el;
   }
-  // What waits to be applied: a start or an end that is not where the last
-  // analysis had it (moved, added or taken out).
-  const count = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess));
-  const nowEndMs = sides.end ? endMs : sides.next ? Date.parse(sides.next.timestamp) : null;
-  const startChanged = implicit ? !!sides.start : sides.start.pending || startMs !== run.startMs;
-  const endChanged = implicit ? !!sides.end : nowEndMs !== (run.endMs != null ? run.endMs : null);
-  const pending = startChanged || endChanged;
-  // It applies itself where there are no drafts, unless that failed.
-  const runState = State.getAnalysisRun();
-  const itself = FlowMarkers.appliesItself(sess) && !(runState && runState.status === "failed");
   el.innerHTML =
     "<label>Starts at " + (sides.start
-      ? _timeFieldHtml(null, fmt(startMs), "Start of " + run.title, "Its start marker. " + TIME_TYPING, { side: "start", pending: startChanged })
+      ? _timeFieldHtml(null, fmt(startMs), "Start of " + run.title, "Its start marker. " + TIME_TYPING, { side: "start" })
       : _timeFieldHtml(null, "", "Start of " + run.title, "No marker starts it yet: it is the whole project. Type where it starts to mark it. " +
         TIME_TYPING, { side: "start", placeholder: fmt(line.startMs) })) + "</label>" +
     "<label>Ends at " + (sides.end
       ? _timeFieldHtml(null, fmt(endMs), "End of " + run.title, "Its end marker. " + TIME_TYPING +
-        " Empty the field to take the end marker out.", { side: "end", pending: endChanged })
+        " Empty the field to take the end marker out.", { side: "end" })
       : _timeFieldHtml(null, "", "End of " + run.title, untilWhat + ". Type an earlier time to end it there" +
         (sides.next ? "" : ", and its last step ends there too") + ". " + TIME_TYPING,
-        { side: "end", pending: endChanged, placeholder: sides.next ? fmt(untilMs) : "open" })) + "</label>" +
-    (pending && count
-      ? (itself ? '<span class="run-times-note">Updates in a moment</span>'
-        : '<span class="run-times-note">Not applied yet</span><button type="button" class="pending-cta run-times-apply" ' +
-          'title="The transactions, their steps and the map take your marker changes (the same as in the top bar)">Apply ' +
-          count + " marker change" + (count === 1 ? "" : "s") + "</button>")
-      : "");
+        { side: "end", placeholder: sides.next ? fmt(untilMs) : "open" })) + "</label>";
   const times = sides.now.map((r) => Date.parse(r.timestamp));
   const topics = ["markers", "timeline", "steps"];
   const iso = (ms) => new Date(ms).toISOString();
@@ -2518,8 +2501,6 @@ function _runTimesEl(run) {
       return FlowMarkers.insertMarker("end", iso(at), null, topics);
     });
   }
-  const apply = el.querySelector(".run-times-apply");
-  if (apply) apply.addEventListener("click", () => analyze({ confirm: "markers" }));
   return el;
 }
 

@@ -85,8 +85,8 @@ is paused; while it plays the start is added at once with no name and no
 question, the right-click's *Start a transaction here* too
 (`queueSyntheticMarker`, the rule of `step-panel.js` `nameTakesFocus`), and
 *Rename* on the transaction's header names it afterwards; its message
-reads "Transaction started at 0:05." (in a recording, with "Apply marker
-changes, in the top bar, updates its steps."). A click on a button of the
+reads "Transaction started at 0:05." (D4: the steps follow a moment later
+by themselves, in a recording too). A click on a button of the
 row leaves the focus where it was, so Space goes on playing; Tab reaches
 each control, Space or Enter works it. `flow-view.js` `syncTimelineRow`
 draws it after every change of the clock, the transactions, the selection
@@ -133,7 +133,7 @@ media), each drawn only when the project has such things:
 | Lane | Shows | Clicks |
 |---|---|---|
 | Time | The time since the recording started; the tick lines run down through every lane. No name. | |
-| Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest). The bands show the markers as they now are (2.0.3, `MarkerEdits.currentMarkerEvents`): a band no band of the last analysis matches (a marker added, moved or renamed, not applied yet) is dashed all round, `.pending`, its tooltip saying so. The tooltip ends "Double-click: show only this transaction." | Click: go to the transaction's start (a moment later: `TX_CLICK_WAIT_MS`, so a double-click can take it back). Double-click: show only this transaction (see *Zoom and the bar of the whole length*). Right-click: Jump to start, Jump to end. Drag its start, or its end when a marker ends it: that marker moves (see *Dragging a side*). |
+| Transactions | One band per transaction (a run in the code), labelled with its Start marker's label (else "Transaction N"; a label that only numbers it, such as an older recording's "Run 2", is not shown) when the band is wide enough; a transaction with no end runs to the end with a dashed edge. The transactions are paired the way the pipeline pairs them: a Start while one is open ends it (they never nest). The bands show the markers as they now are (2.0.3, `MarkerEdits.currentMarkerEvents`), drawn the same before and after the analysis that applies a change (D4: it runs a moment later by itself). The tooltip ends "Double-click: show only this transaction." | Click: go to the transaction's start (a moment later: `TX_CLICK_WAIT_MS`, so a double-click can take it back). Double-click: show only this transaction (see *Zoom and the bar of the whole length*). Right-click: Jump to start, Jump to end. Drag its start, or its end when a marker ends it: that marker moves (see *Dragging a side*). |
 | Steps | The tall lane, 44 px: one band per visible step with a time of the level the Steps list shows, its name inside it on up to two lines of 12 px text, cut with an ellipsis; a band too narrow for its name (`step-band-label.js` `bandLabel`: less than `NAME_MIN_PX` inside its padding, unless the whole name fits on one line) shows the step's number in its transaction, the number the pane's Steps tab shows (`stepNumbers` over `pane-lists.js` `stepGroups`; inside a sub-process its place among the visible steps of its level), and nothing when even that does not fit; the tooltip always starts with the name. No band covers another: a band is drawn as wide as its time, at least 2 px, and never past the start of the next band of its transaction (`step-band-width.js` `drawnBands`; under 12 px it is drawn without its padding, `.slim`), and the label rule reads that width. A step left with no label is named by its tooltip, listed in the pane's Steps tab and widened by the zoom. `layoutStepBands` decides after each render and when the lanes change width. A draft (`auto_suggested`) is dashed (`.draft`), the open step fades out, a placed step has its accent edge and dotted foot, the selected one a 2 px outline. A one-click step is drawn at the lane's smallest width (lane FX2). Its name tooltip: "Steps: each step in the order of the process; click one to open it beside the video." | Click: open the step beside the video, the clock at its start. Right-click: the moment's items, then Open in Steps, Select + seek here, Place after a step..., Hide or Delete. Drag the start or the end of a step whose time is the analyst's (see *Dragging a side*). |
 | Systems | A recording only (a toggle of its own, *Systems*): one band per foreground window, coloured by application and named by its system (the one vocabulary, C14: a Chrome window on Salesforce reads "Salesforce"), with the window title and the duration when there is room; a monitor badge on multi-display recordings. A band of an app among the Apps outside the process is hatched too, its tooltip saying so (lane FX2, `.tl-app-left-out`). A video project has no Systems lane and no low row in its place: a right-click anywhere on the timeline marks there. | Click: go there. Right-click: the timeline menu at that moment. |
 | Transcript | Only while a transcript is attached: one row per transcript (C23: one per video, its row named "Transcript 2 · its video" when there are several), the sentences said while the recording ran, at their times, once the transcript is placed (its own video, else its own sync, else the first video's). Its label says "Not synced" until then and carries Sync, Replace and Remove. | Click a sentence: go there. |
@@ -162,17 +162,27 @@ the whole length shows it too.
 
 **Drawn through every lane** (`_drawThroughLanes`), from the top of the
 first lane under the ticks to the foot of the last one: the stretches set
-aside (below) and a marker change waiting for *Apply marker changes* that
-the Transactions lane cannot show (a marker deleted, or any change while
-that lane is off): a dashed line, labelled "(pending)" on a Start. A marker
-added, moved or renamed is drawn by its transaction's band, dashed (2.0.3).
-The steps follow the last analysis until then. In a project made from a
-video or from nothing (no drafts to draft again) marker changes apply by
-themselves (`flow-view.js` `scheduleAutoApply`): 1.2 s after the change,
-once no dialog is open, no key was pressed for as long, no side is being
-dragged and no field holds unsaved typing; a save while it runs stops it
-first (`yieldAutoApply`, through `session.js` `writeAnnotations`) and it
-runs again after. An undo that changes the markers there analyzes again.
+aside (below).
+
+**A change to the transactions applies by itself** (2.0.3 in a project made
+from a video or from nothing; D4, the owner 2026-11-10, in a recording too):
+a transaction added, moved, ended, renamed or deleted is drawn at once where
+it was put, and the steps follow the last analysis until the next one runs,
+by itself (`flow-view.js` `scheduleAutoApply`, `auto-apply.js` `runDue`):
+1.2 s after the change, once no dialog is open, no key was pressed for as
+long, no side is being dragged and no field holds unsaved typing; a save
+while it runs stops it first (`yieldAutoApply`, through `session.js`
+`writeAnnotations`) and it runs again after. Nothing asks first, and a run
+that worked says nothing; the top bar's status line says "Updating steps
+and map..." with Cancel while it runs. A run cancelled or failed holds the
+changes: the top bar offers *Update the steps* ("Updates the transactions,
+their steps and the map with your latest changes."), and the next change
+runs it again too. An undo or a redo that changes the markers runs it again
+as well (`markersReverted`). In a recording the run drafts the drafts again;
+the confirmed, edited, added and hidden steps are kept (a renamed or
+described draft is edited), a draft keeps its id where it covers the same
+actions, and the step selected, the step opened in the pane, the Steps
+level's open transaction, the pane's scroll and the clock's moment stay.
 
 **The Lanes menu** (`#btn-lanes`, its tooltip "Choose which lanes the
 timeline shows, and see what its marks mean") lists, under *Show lanes*,
@@ -184,7 +194,7 @@ Transcript, Videos, Screenshots, Notes, Idle. A fresh profile shows all but
 Screenshots and Idle. The choice persists in `pdt.timelineLanes`. Under
 them, *What the marks mean* (`#lanes-legend`, `_syncLegend`) lists only the
 marks the timeline draws now, each with its tooltip: the systems' colours,
-idle, "dashed: a draft step", "a change not applied yet", a screenshot, a
+idle, "dashed: a draft step", a screenshot, a
 note, the hatch in the project's words (`LeftOut.wordsFor`), "placed
 elsewhere in the process"; the heading hides when none is drawn. The menu
 opens under its button when it fits there, else above it where there is
@@ -197,9 +207,9 @@ A right-click on the activity row or on the timeline's background opens one
 menu at the moment clicked:
 
 - *Start a transaction here...* and *End the transaction here*: a marker
-  edit, shown at once as pending; *Apply N marker changes* in the top bar
-  updates the transactions, the steps and the map. It asks first only while
-  a step is a draft (a project made from a video or from nothing has none).
+  edit, drawn at once; the transactions, the steps and the map follow a
+  moment later by themselves (D4). Its message: "Transaction started at
+  0:05." or "Transaction ended at 0:20.".
 - *Add note here...*: a note pinned to that moment (the Notes lane turns on).
 - *Add a step here*: a step at that moment, as *Add step* adds one at the
   playhead.
@@ -229,9 +239,10 @@ not a click on the band. Ctrl+Z undoes a move (`wireEdgeDrag`).
   The marker moves between its neighbours, 100 ms from each, so the
   transactions keep their order (`markerDragBounds`); it snaps to a step's
   start or the playhead. The move is a marker change (`moveMarker`: an
-  inserted marker's insert edit moves itself; a captured marker's pending
-  move takes the new time, so dragging it again adds no change), shown
-  pending until *Apply marker changes*.
+  inserted marker's insert edit moves itself; a captured marker's move not
+  yet analyzed takes the new time, so dragging it again adds no change);
+  its message reads "Transaction moved to 0:05." ("Transaction's end moved
+  to 0:20." for an end), and the steps follow a moment later.
 - **A step's side** drags when its time is the analyst's
   (`AC.stepTimeMovable`: no recorded actions and no sub-steps; a recorded
   step keeps its actions' time, which Split and Merge change). It moves

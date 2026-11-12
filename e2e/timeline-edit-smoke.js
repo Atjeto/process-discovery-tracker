@@ -9,16 +9,16 @@
  * On the Timeline:
  *   (a) the report's clicks: Add a step here, then Start a transaction here
  *       6 px after the step's start: the transaction starts at the step's
- *       start (it snaps), drawn at once where it was put, pending (no bar
- *       under it); in a project made from a video it applies itself a moment
- *       later, with no click and no question, and the step is in the
+ *       start (it snaps), drawn at once where it was put as any transaction
+ *       (no bar under it, nothing about applying, D4); it applies itself a
+ *       moment later, with no click and no question, and the step is in the
  *       transaction;
  *   (b) a step's start dragged out of the transaction: the step leaves it at
  *       once (Outside the transactions), its time the one dropped, the time
  *       shown while dragging; Ctrl+Z puts it back, Ctrl+Y again;
  *   (c) the transaction's start dragged to the step's (it snaps): the band
- *       stands there, pending, one change to apply however often it is
- *       dragged; applied, the step is in the transaction again;
+ *       stands there, drawn as any transaction; applied by itself, the step
+ *       is in the transaction again;
  *   (d) Esc during a drag puts the side back and saves nothing;
  *   (e) two steps back to back: dragging the side they share moves both,
  *       one undoable edit;
@@ -31,9 +31,9 @@
  *       it, Ctrl+Z brings it back), Up adds a second and Escape puts the
  *       field back, a text that is no time and a start after the end are
  *       refused, each saying why;
- *   (h) an open transaction's Starts at typed: the field dashed, "Updates
- *       in a moment" and no Apply button beside it; it applies itself, and
- *       the transaction starts there;
+ *   (h) an open transaction's Starts at typed: the field shows it as any
+ *       time, with no note and no Apply button beside it (D4); it applies
+ *       itself, and the transaction starts there;
  *   (i) its Ends at ("open" while it runs to the end) typed adds its End,
  *       applied there; emptied, the End goes and it runs to the end again;
  *   (j) a step added with + Add step has no time: "no time yet", its start
@@ -990,30 +990,31 @@ async function laneE(TMP) {
     g = await geo();
     await rightClickItem(xOf(g, Date.parse(step.time_range.start)) + 6, g.lowY, "Start a transaction here");
     await prompt("Order 1");
-    await page.waitForSelector("#timeline .tl-case-band.pending", { timeout: T });
+    await page.waitForSelector("#timeline .tl-case-band", { timeout: T });
     g = await geo();
     const ins = (await anno()).marker_edits.find((e) => e.op === "insert");
     a.snapped = ins && ins.timestamp === step.time_range.start;
-    a.pending = await page.evaluate(() => {
-      const b = document.querySelector("#timeline .tl-case-band.pending");
+    a.drawn = await page.evaluate(() => {
+      const b = document.querySelector("#timeline .tl-case-band");
       const r = b.getBoundingClientRect();
-      return { left: r.left, bars: document.querySelectorAll("#timeline .tl-marker-pending").length,
-        cta: ((document.getElementById("btn-apply-marker-edits") || {}).textContent || "").trim(), title: b.title };
+      return { left: r.left, cls: b.className, bars: document.querySelectorAll("#timeline .tl-marker").length,
+        update: !!document.getElementById("btn-update-steps"), title: b.title };
     });
-    a.bandAtStep = Math.abs(a.pending.left - xOf(g, Date.parse(step.time_range.start))) <= 1.5;
+    a.bandAtStep = Math.abs(a.drawn.left - xOf(g, Date.parse(step.time_range.start))) <= 1.5;
     a.asked = await apply();
     const rs = await runs();
     a.runs = rs.map((r) => ({ label: r.label, start: r.start_ts }));
     a.inRun = (await stepById(stepId)).case_id === (rs[0] && rs[0].case_id);
     a.groups = await stepsGroups();
-    a.applied = await page.evaluate(() => ({ pending: document.querySelectorAll("#timeline .tl-case-band.pending").length,
+    a.applied = await page.evaluate(() => ({ cls: [...document.querySelectorAll("#timeline .tl-case-band")].map((b) => b.className),
       bands: document.querySelectorAll("#timeline .tl-case-band").length }));
   } catch (e) { a.err = errText(e); }
-  record("(a) the report's clicks: Start a transaction here 6 px after a step's start starts it at the step's start (it snaps); the transaction is drawn at once where it was put, pending, with no bar under it; it applies itself with no click and no question (a project made from a video) and the step is in the transaction",
-    !a.err && a.snapped && a.bandAtStep && a.pending.bars === 0 &&
-      /Not applied yet: Apply marker changes/.test(a.pending.title) && /open: no end marked yet/.test(a.pending.title) && /Drag its start or its end to move it, or right-click where it ends: End the transaction here[.]/.test(a.pending.title) &&
+  record("(a) the report's clicks: Start a transaction here 6 px after a step's start starts it at the step's start (it snaps); the transaction is drawn at once where it was put, as any transaction (D4: no dashed state, nothing about applying), with no bar under it and no button; it applies itself with no click and no question and the step is in the transaction",
+    !a.err && a.snapped && a.bandAtStep && a.drawn.bars === 0 && a.drawn.update === false &&
+      /^tl-case-band( dangling)?$/.test(a.drawn.cls) && !/appl|pending/i.test(a.drawn.title) &&
+      /open: no end marked yet/.test(a.drawn.title) && /Drag its start or its end to move it, or right-click where it ends: End the transaction here[.]/.test(a.drawn.title) &&
       a.asked === false && a.runs.length === 1 && a.runs[0].label === "Order 1" && a.inRun &&
-      JSON.stringify(a.groups) === '["Transaction 1: 1 step"]' && a.applied.pending === 0 && a.applied.bands === 1,
+      JSON.stringify(a.groups) === '["Transaction 1: 1 step"]' && a.applied.bands === 1 && a.applied.cls.every((c) => /^tl-case-band( dangling)?$/.test(c)),
     JSON.stringify(a));
 
   // (b) The step's start dragged out of the transaction, then back by Ctrl+Z.
@@ -1058,14 +1059,13 @@ async function laneE(TMP) {
     const target = xOf(g, Date.parse(st.time_range.start));
     // Twice: first well past it, then to 4 px from the step's start.
     await drag("#timeline .tl-case-band", "start", target - 30);
-    await page.waitForSelector("#timeline .tl-case-band.pending", { timeout: T });
+    await page.waitForFunction((x) => Math.abs(document.querySelector("#timeline .tl-case-band").getBoundingClientRect().left - x) <= 8, target - 30, { timeout: T });
     await drag("#timeline .tl-case-band", "start", target + 4);
     await wait(300);
     g = await geo();
     c.band = await page.evaluate(() => {
       const el = document.querySelector("#timeline .tl-case-band");
-      return { pending: el.classList.contains("pending"), left: el.getBoundingClientRect().left,
-        cta: ((document.getElementById("btn-apply-marker-edits") || {}).textContent || "").trim() };
+      return { cls: el.className, left: el.getBoundingClientRect().left, update: !!document.getElementById("btn-update-steps") };
     });
     c.bandAtStep = Math.abs(c.band.left - xOf(g, Date.parse(st.time_range.start))) <= 1.5;
     c.asked = await apply();
@@ -1075,8 +1075,8 @@ async function laneE(TMP) {
     c.inRun = (await stepById(stepId)).case_id === (rs[0] && rs[0].case_id);
     c.groups = await stepsGroups();
   } catch (e) { c.err = errText(e); }
-  record("(c) the transaction's start dragged twice, the second time to 4 px from the step's start: it snaps there, the band stands there pending; applied by itself, the transaction starts at the step and holds it",
-    !c.err && c.band.pending && c.bandAtStep && c.asked === false && c.snapped && c.inRun &&
+  record("(c) the transaction's start dragged twice, the second time to 4 px from the step's start: it snaps there, the band stands there drawn as any transaction (D4), no button; applied by itself, the transaction starts at the step and holds it",
+    !c.err && /^tl-case-band( dangling)?$/.test(c.band.cls) && !c.band.update && c.bandAtStep && c.asked === false && c.snapped && c.inRun &&
       JSON.stringify(c.groups) === '["Transaction 1: 1 step"]',
     JSON.stringify(c));
 
@@ -1089,7 +1089,7 @@ async function laneE(TMP) {
     const r1 = await page.locator("#timeline .tl-case-band").first().boundingBox();
     d.same = JSON.stringify(await anno()) === before;
     d.back = Math.abs(r1.x - r0.x) <= 1;
-    d.cta = await page.$("#btn-apply-marker-edits");
+    d.cta = await page.$("#btn-update-steps");
   } catch (e) { d.err = errText(e); }
   record("(d) Esc during a drag puts the transaction's side back and saves nothing",
     !d.err && d.during.dragging && d.same && d.back && !d.cta, JSON.stringify({ same: d.same, back: d.back, err: d.err }));
@@ -1240,7 +1240,7 @@ async function laneE(TMP) {
       /^The start of this step can be from .+ to .+: a step does not run over the steps beside it[.]$/.test(gT.afterEnd) && gT.unchanged,
     JSON.stringify(gT));
 
-  // (h) The transaction's Starts at, typed, then applied from beside it.
+  // (h) The transaction's Starts at, typed: it applies by itself.
   let hT = {};
   const txField = (side) => page.locator('#step-list .run-group.open .run-times [data-side="' + side + '"]');
   try {
@@ -1249,18 +1249,21 @@ async function laneE(TMP) {
     const earlierText = clockOf(new Date(Date.parse(run0.start_ts) - 1000).toISOString());
     const earlier = typedIso(earlierText);
     await typeIn(txField("start"), earlierText);
-    await page.waitForSelector('#step-list .run-group.open .run-times [data-side="start"].pending', { timeout: T });
-    hT.pending = await page.evaluate(() => {
+    // Saved: a change waits for its run, or the run is under way.
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(), ME = require("./marker-edits.js");
+      return ME.pendingEditCount(s.annotations.marker_edits, ME.lastAnalysisMs(s)) > 0 || !!document.getElementById("run-status"); }, null, { timeout: T });
+    hT.beside = await page.evaluate(() => {
       const t = document.querySelector("#step-list .run-group.open .run-times");
-      return { note: ((t.querySelector(".run-times-note") || {}).textContent || "").trim(),
-        apply: !!t.querySelector(".run-times-apply") };
+      return { text: (t.textContent || "").replace(/\s+/g, " ").trim(), buttons: t.querySelectorAll("button").length,
+        fields: [...t.querySelectorAll("input.time-field")].map((f) => f.className) };
     });
     hT.asked = await apply();
     hT.start = (await runs())[0].start_ts;
     hT.startOk = Date.parse(hT.start) === Date.parse(earlier);
   } catch (e) { hT.err = errText(e); }
-  record("(h) an open transaction's Starts at typed: the field dashed, Updates in a moment and no Apply button beside it; it applies itself with no question (a project made from a video): the transaction starts there",
-    !hT.err && hT.pending.note === "Updates in a moment" && hT.pending.apply === false && hT.asked === false && hT.startOk,
+  record("(h) an open transaction's Starts at typed: the field shows the time as any field (D4: no dashed state, no note, no Apply button beside it); it applies itself with no question: the transaction starts there",
+    !hT.err && hT.beside.text === "Starts at Ends at" && hT.beside.buttons === 0 && hT.beside.fields.every((c) => c === "time-field") &&
+      hT.asked === false && hT.startOk,
     JSON.stringify(hT));
 
   // (i) Its Ends at: typed adds its End; emptied takes it out.
@@ -1273,7 +1276,8 @@ async function laneE(TMP) {
     const atText = clockOf(new Date(Date.parse(run0.start_ts) + 20000).toISOString());
     const at = typedIso(atText);
     await typeIn(txField("end"), atText);
-    await page.waitForSelector('#step-list .run-group.open .run-times [data-side="end"].pending', { timeout: T });
+    await page.waitForFunction(() => { const s = require("./state.js").getSession(), ME = require("./marker-edits.js");
+      return ME.pendingEditCount(s.annotations.marker_edits, ME.lastAnalysisMs(s)) > 0 || !!document.getElementById("run-status"); }, null, { timeout: T });
     await apply();
     iT.end = (await runs())[0].end_ts;
     iT.endOk = !!iT.end && Date.parse(iT.end) === Date.parse(at);
@@ -1433,7 +1437,7 @@ async function laneE(TMP) {
     await openTransaction();
     await typeIn(txField("start"), "0:03");
     mT.note = await page.evaluate(() => { const t = document.querySelector("#step-list .run-group.open .run-times");
-      return { note: ((t.querySelector(".run-times-note") || {}).textContent || "").trim(), apply: !!t.querySelector(".run-times-apply") }; });
+      return { text: (t.textContent || "").replace(/\s+/g, " ").trim(), buttons: t.querySelectorAll("button").length }; });
     mT.asked = await apply();
     await openTransaction();
     await typeIn(txField("end"), "0:27");
@@ -1443,8 +1447,8 @@ async function laneE(TMP) {
     mT.start = ms(r[0].start_ts) === at2("0:03") && ms(first.time_range.start) === at2("0:03") && first.case_id === r[0].case_id;
     mT.end = ms(r[0].end_ts) === at2("0:27") && ms(last.time_range.end) === at2("0:27");
   } catch (e) { mT.err = errText(e); }
-  record("(m) a mark corrected keeps what is joined to it: the transaction's Starts at typed later takes its first step's start along, so the step stays in it; its Ends at typed later takes its last step's end along (Updates in a moment, no Apply button, no question)",
-    !mT.err && mT.note.note === "Updates in a moment" && !mT.note.apply && mT.asked === false && mT.start && mT.end, JSON.stringify(mT));
+  record("(m) a mark corrected keeps what is joined to it: the transaction's Starts at typed later takes its first step's start along, so the step stays in it; its Ends at typed later takes its last step's end along (D4: no note, no Apply button, no question)",
+    !mT.err && mT.note.text === "Starts at Ends at" && mT.note.buttons === 0 && mT.asked === false && mT.start && mT.end, JSON.stringify(mT));
 
   // (n) The inverses: the last step deleted gives its time back to the step
   // before it; a step's end typed earlier, then emptied, runs on again.

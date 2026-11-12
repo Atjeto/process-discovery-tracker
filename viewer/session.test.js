@@ -234,7 +234,7 @@ test("revertFollowUp: a change of the stretches left out analyzes again; a chang
     "a remove that moved the transactions with the videos undone: analyzed again (which reads the project back)");
   assert.equal(Session.revertFollowUp({ excluded_ranges: [], steps: [1] }, { steps: [2] }), null, "a step edit: refreshed in place");
   assert.equal(Session.revertFollowUp({ marker_edits: [{ id: "m" }] }, { marker_edits: [] }), "markers",
-    "2.0.3: a marker change undone (analyzed again where marker changes apply themselves)");
+    "2.0.3, D4: a marker change undone (the steps follow it a moment later, in every project)");
   // Lane E (E4): without a recording a stretch put aside is not part of the
   // process, which nothing analyzes.
   assert.equal(Session.revertFollowUp({ excluded_ranges: [R] }, {}, false), null, "Not part of the process undone");
@@ -263,6 +263,29 @@ test("an undo of Leave out of the analysis analyzes again; an undo of Remove vid
   await Session.performUndo();
   assert.deepEqual(calls, ["reload CC2"]);
   assert.deepEqual(State.getSession().annotations.external_video, { path: "video/a.mp4", offset_ms: 0 });
+  Session.initSession({ renderSessionPills: () => {} });
+});
+
+test("D4: an undo of a marker change in a recording marks the markers changed (the run a moment later), and analyzes nothing at once", async () => {
+  const calls = [];
+  Session.initSession({ renderSessionPills: () => {}, analyzeSession: async () => { calls.push("analyze"); },
+    markersReverted: () => { calls.push("markers changed"); } });
+  loadFakeSession("D4a", [{ step_id: "a", name: "x" }]);
+  State.getSession().events = [{ type: "marker", event_id: "m1", timestamp: "2026-05-14T09:00:10Z", data: { marker_type: "start" } }];
+  const anno = Session.ensureAnnoShape(State.getSession().annotations);
+  anno.marker_edits.push({ id: "e1", op: "insert", marker_type: "start", label: null, timestamp: "2026-05-14T09:01:00Z", ts: new Date().toISOString() });
+  await Session.saveAnnotationsWithUndo(anno, "insert start marker");
+  await Session.performUndo();
+  assert.deepEqual(calls, ["markers changed"], "the undo hands the change to the run a moment later");
+  assert.deepEqual(State.getSession().annotations.marker_edits, []);
+  // Control: an undo of a step edit marks nothing.
+  calls.length = 0;
+  loadFakeSession("D4b", [{ step_id: "a", name: "x" }]);
+  const a2 = Session.ensureAnnoShape(State.getSession().annotations);
+  a2.steps[0].name = "y";
+  await Session.saveAnnotationsWithUndo(a2, "rename step");
+  await Session.performUndo();
+  assert.deepEqual(calls, []);
   Session.initSession({ renderSessionPills: () => {} });
 });
 

@@ -76,10 +76,9 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    sentence, then click where it was said.
 2. **Check the transactions.** On the Timeline, each transaction is a band,
    from *Transaction 1* to *Transaction 4*. If one is missing, right-click the
-   timeline where it starts, choose *Start a transaction here...*, then
-   click *Apply marker changes* in the top bar. If one starts or ends in the
-   wrong place, type its times in Steps or drag its band on the Timeline (see
-   *Everyday tasks*).
+   timeline where it starts and choose *Start a transaction here...*. If one
+   starts or ends in the wrong place, type its times in Steps or drag its
+   band on the Timeline (see *Everyday tasks*).
 3. **Name the steps of the reference transaction, or pick them from the
    library.** In Steps, transaction 1 is the reference transaction. Where
    the recorder cut a step wrongly, split or merge it first (see *Everyday
@@ -274,10 +273,7 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
 1. In Steps, open the transaction: *Starts at* and *Ends at* are under its
    name. Type a time the way the timeline shows it, for example *0:09* or
    *1:05.5*, and press Enter. Up and Down change it by a second. An empty
-   *Ends at* runs until the next transaction starts, or to the end. In a
-   project made from a video or from nothing, the change applies by itself a
-   moment later; in a recording it shows dashed until you click *Apply
-   marker changes*, right beside it.
+   *Ends at* runs until the next transaction starts, or to the end.
 2. What you marked together moves together: a step that starts or ends
    where the transaction does moves with its *Starts at* or *Ends at*. A
    step you delete gives its time back to the step before it.
@@ -465,12 +461,11 @@ app.
   to.
 - **"This recording has no transactions marked."** The SME did not press the
   transaction key. On the Timeline, right-click where each transaction
-  starts, choose *Start a transaction here...*, then click *Apply marker
-  changes*.
+  starts and choose *Start a transaction here...*.
 - **A step is listed under Outside the transactions.** It starts before or
   after every transaction. In Steps, open the transaction and type an
-  earlier *Starts at*; in a recording, then click *Apply marker changes*. A
-  step you added can instead be given a start inside the transaction.
+  earlier *Starts at*. A step you added can instead be given a start inside
+  the transaction.
 - **"The analysis failed, so the steps and the map are not drafted."** The
   log at the top says why. Choose Help, *Troubleshooting*, *Re-analyze*:
   your confirmed, edited, added and hidden steps are kept.

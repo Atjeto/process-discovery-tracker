@@ -64,12 +64,13 @@ every push.
    byte: a change that writes it must be stopped in review.
 5. **Suggest, don't mutate.** The app proposes; the analyst accepts; the
    source stays intact. Drafts are replaced only while they are drafts; a
-   marker change shows as pending until *Apply marker changes*; an edited
+   marker change shows at once and the analysis applies it a moment later
+   (D4), keeping the confirmed, edited, added and hidden steps; an edited
    As-Is or To-Be map is a one-way copy the analysis never touches.
-   *Guards:* `e2e/session-smoke.js` ("a Start marker inserted ... shows at
-   once as pending", "the step-level BPMN it was forked from is untouched
-   (one-way leaf)"), `e2e/runs-smoke.js` (Re-analyze keeps the confirmed and
-   edited steps), the pytest survival tests above.
+   *Guards:* `e2e/session-smoke.js` ("a Start marker inserted ... is drawn
+   at once where it was put", "the step-level BPMN it was forked from is
+   untouched (one-way leaf)"), `e2e/runs-smoke.js` (Re-analyze keeps the
+   confirmed and edited steps), the pytest survival tests above.
 6. **One rule, two languages.** The value-free labels, the system names and
    the run differences are one rule set in `shared/`, read by Python and by
    the viewer; the step flow's edges (contract C17: the live map and the
@@ -195,8 +196,9 @@ others):
   (the Timeline is `flow`); each shows `#session-layout-<level>`. The
   Overview is the default on load.
 - Status line `#session-pills`: while the pipeline runs `#run-status` and
-  `#btn-cancel-normalize`; else `#btn-apply-marker-edits` when marker
-  changes wait.
+  `#btn-cancel-normalize`; else `#btn-update-steps` ("Update the steps",
+  `.update-cta`, D4) while marker changes wait after a cancelled or failed
+  run.
 - Lane W0, before the save state: `#btn-next-act`, the Checklist's next act
   ("Next: write the steps (1 of 7)"; a click shows the Overview with the
   focus on `#btn-ov-next`), hidden on the Overview, in a read-only page,
@@ -365,7 +367,7 @@ the focus with `document.activeElement` against it. A menu's button carries
   `#lane-activity-row` and `#lane-idle-row` only with a recording's events;
   then `#lanes-legend-title` "What the marks mean" and the legend
   `#lanes-legend`: `#legend-apps` (`.legend-app`), `.lg-idle`, `.lg-draft`,
-  `.lg-marker`, `.lg-screenshot`, `.lg-note`, `.lg-left-out`, `.lg-placed`,
+  `.lg-screenshot`, `.lg-note`, `.lg-left-out`, `.lg-placed`,
   each `display: none` while its mark is not drawn; the menu is hidden, so
   test an entry with `getComputedStyle(el).display` or open the menu before
   `checkVisibility()`), `#btn-zoom-out`, `#btn-zoom-reset` (Show all),
@@ -393,16 +395,13 @@ the focus with `document.activeElement` against it. A menu's button carries
 - Lanes (lane LANES, top to bottom: `cases`, `steps`, `activity`,
   `transcript`, `videos`, `screenshots`, `notes`, `idle`): `.tl-case-band`
   (runs; 2.0.3: drawn from the markers as they now
-  are, `.pending` while the last analysis has not seen it, `data-start-key`
+  are, D4: the same before and after their analysis, `data-start-key`
   and `data-end-key` the markers at its sides, `data-start-ms` and
   `data-end-ms` its span; a click goes to its start 250 ms later, a
   `dblclick` shows only it: `page.locator(band).dblclick()`), `.tl-activity`
   (a recording only; `.tl-act-app` names the
   system; `.tl-app-left-out`, hatched, for an app among the Apps outside
-  the process, lane FX2), `.tl-idle` (the Idle lane, off by default),
-  `.tl-marker.tl-marker-pending` (2.0.3:
-  only a marker deleted, or any change while the Transactions lane is off;
-  lane LANES: drawn through every lane), the videos
+  the process, lane FX2), `.tl-idle` (the Idle lane, off by default), the videos
   `.tl-clip[data-clip]` (C23, 2.0.6: `.trimmed-start`, `.trimmed-end`,
   `.missing`; a side within 6 px of the pointer shows `.tl-edge-hot`, a real
   mouse drag trims it on release; its right-click opens `#tl-ctx-menu`), the
@@ -427,20 +426,19 @@ the focus with `document.activeElement` against it. A menu's button carries
   `move` in steps, `up`); the side under the pointer shows `.tl-edge-hot`,
   the page `body.tl-edge-dragging` while one is dragged, the time
   `.tl-drag-time` in `#timeline`. Esc during the drag puts it back. A
-  transaction's move is a marker change (pending until
-  `#btn-apply-marker-edits`); a step's saves at once.
+  transaction's move is a marker change (the steps follow a moment later,
+  D4); a step's saves at once.
 - Times typed in Steps (2.0.3): an open transaction's
   `.run-group.open .run-times` holds `input.time-field[data-side="start"]`
-  and `[data-side="end"]` (`.pending` while its change waits, then
-  `.run-times-note` "Not applied yet" and `.run-times-apply`); the selected
+  and `[data-side="end"]` (nothing beside them, D4); the selected
   step's `#step-start` and `#step-end` in `#step-facts .step-facts-rest`
   (a step without a time: `#step-start`, and `#step-end` disabled until a
   start is typed; the step being marked, nothing after it yet: `#step-end`
   empty with the placeholder "open", its band `.tl-step-band.open`). A field saves on Enter or when left; set it with a
-  click, Ctrl+A, Backspace, the text, Enter. In a project made from a video
-  or from nothing a marker change applies itself about 1.2 s after the
-  analyst stops (no Apply button there): wait for no pending change, no
-  `#run-status` and `analysisBusy()` false instead of clicking.
+  click, Ctrl+A, Backspace, the text, Enter. A marker change applies itself
+  about 1.2 s after the analyst stops, in every project (D4, no button and
+  no question): wait for no pending change (`MarkerEdits.pendingEditCount`
+  0), no `#run-status` and `analysisBusy()` false instead of clicking.
 - Menus: every timeline right-click menu is `#tl-ctx-menu` (items by their
   text: "Start a transaction here…", "End the transaction here", "Add note
   here…", "Add a step here", "Jump to step here"; the transaction and step

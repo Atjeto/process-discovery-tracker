@@ -22,7 +22,7 @@ const { promptModal, confirmModal } = require("../modals.js");
 const { resetUndoStack, captureBaseline, saveAnnotationsWithUndo, persistAnnotations } = require("../session.js");
 const SaveState = require("../save-state.js");
 const MarkerEdits = require("../marker-edits.js");
-const RunsModel = require("../runs-model.js");
+const AutoApply = require("../auto-apply.js");
 const { isVideoCopy } = require("../analyst-files.js");
 const AC = require("../analyst-content.js");
 const { pushRecent } = require("../recent.js");
@@ -159,8 +159,8 @@ if ($("#btn-new-blank-hero")) $("#btn-new-blank-hero").addEventListener("click",
 /* ============ Analysis: it runs by itself (AD-22) ===================
    The pipeline runs on open when the recording has no analysis or one from an
    older version, after Apps outside the process and after a range is left out, inside
-   Edit as the As-Is map and inside the PDD export. The one manual act is
-   Apply N marker changes (it redrafts the changed runs, so it asks first);
+   Edit as the As-Is map and inside the PDD export, and a moment after a
+   change to the transactions (D4: in every project, scheduleAutoApply).
    Help, Troubleshooting has Re-analyze for a stuck state. While a run lasts
    the top bar says so in one line with Cancel and the page stays as it is
    (main refuses annotation writes meanwhile, so no edit is lost to the run);
@@ -246,15 +246,9 @@ function runPipeline(opts, label) {
   return job;
 }
 
-/* What the two deliberate analyses ask first: Re-analyze when the recording
-   has steps, Apply marker changes while one of them is a draft. */
+/* What the one deliberate analysis asks first: Re-analyze, when the
+   recording has steps. */
 const CONFIRMS = {
-  markers: (n) => ({
-    title: "Apply " + n + " marker change" + (n === 1 ? "" : "s"),
-    message: "Update the drafts of the changed transactions?",
-    detail: "Your confirmed, edited, added and hidden steps are kept.",
-    okLabel: "Apply",
-  }),
   reanalyze: () => ({
     title: "Re-analyze",
     message: "Draft the steps and the map again from the recording?",
@@ -266,60 +260,82 @@ const CONFIRMS = {
 /* Analyze the recording on screen: run the pipeline (always writing the
    process map's BPMN file, the file the Map's edit act copies) and reload the
    recording. Resolves true when it ran and the recording was reloaded.
-   opts.confirm: "markers" (Apply N marker changes) or "reanalyze" (Help's
-   Re-analyze) asks first when the recording has steps; the automatic runs
-   (on open, Apps outside the process, a range left out, the Map's edit act)
-   never ask. */
+   opts.confirm: "reanalyze" (Help's Re-analyze) asks first when the
+   recording has steps; the automatic runs (on open, Apps outside the
+   process, a range left out, the Map's edit act, a change to the
+   transactions) never ask. opts.auto: the run a change to the transactions
+   makes (scheduleAutoApply), which says nothing when it worked. */
 async function analyzeSession(opts) {
   const sess = State.getSession();
   // Lane HV: nothing is analyzed in a hand-off opened read only.
   if (!sess || RO.isReadOnly(sess)) return false;
   const auto = !!(opts && opts.auto);
   const kind = opts && opts.confirm;
-  // Apply marker changes drafts the changed transactions again: it asks only
-  // while a step is a draft (2.0.3: a project made from a video or from
-  // nothing has none, so nothing is drafted again and nothing asks there).
   const steps = (sess.annotations && sess.annotations.steps) || [];
-  const asks = kind === "markers" ? RunsModel.holdsDraft(steps) : steps.length > 0;
-  if (kind && CONFIRMS[kind] && asks) {
-    const n = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess));
-    const ok = await confirmModal(CONFIRMS[kind](n));
+  if (kind && CONFIRMS[kind] && steps.length > 0) {
+    const ok = await confirmModal(CONFIRMS[kind]());
     if (!ok) return false;
   }
   const folder = sess.sessionFolder;
   const r = await runPipeline({ sessionFolder: folder, mine: true }, UPDATING);
   const onScreen = !!(State.getSession() && State.getSession().sessionFolder === folder);
   if (!onScreen) return false;
+  // D4: a run cancelled or failed leaves the changes to the transactions
+  // waiting, with Update the steps in the top bar, until the next change.
+  _held = AutoApply.holdAfter(r, auto && _autoYielding);
   if (r.cancelled) {
-    // An automatic Apply that gave way to a change says nothing: it runs
+    // An automatic run that gave way to a change says nothing: it runs
     // again once the change is saved.
     if (!(auto && _autoYielding)) toast("Update cancelled: the steps and the map are as they were.");
+    renderSessionPills();
     return false;
   }
-  if (!r.ok) { toast(r.error, "error"); return false; }
-  toast("Steps and map updated.", "success");
+  if (!r.ok) { toast(r.error, "error"); renderSessionPills(); return false; }
+  // D4: the run a change makes says nothing when it worked (the steps show
+  // it); the other runs say so.
+  if (!auto) toast("Steps and map updated.", "success");
   await loadSessionIntoView(folder, { afterAnalysis: true });
   return true;
 }
 
 /* 2.0.3 (the owner: a new project's transaction had no end to type until
-   its marker change was applied): marker changes apply by themselves in a
-   project made from a video or from nothing. Apply marker changes stays a
-   deliberate act in a recording, because it drafts the recorder's steps
-   again; such a project has no drafts, so a transaction added, moved or
-   ended there is applied once the analyst pauses: AUTO_APPLY_MS after the
-   change, with no dialog open, no key pressed for that long and no field
-   holding typing not saved yet (else it waits again). A save while it runs stops it first (a stopped run leaves the
-   project as it was; main refuses a save while a project is analyzed) and
-   it runs again after, so it never refuses the analyst a change. */
+   its marker change was applied), and D4 (the owner, 2026-11-10: "apply by
+   itself", in a recording too): a transaction added, moved, ended, renamed
+   or deleted reaches the steps by itself, in every project open for editing
+   (auto-apply.js). It is applied once the analyst pauses: AUTO_APPLY_MS
+   after the change, with no dialog open, no key pressed for that long, no
+   side being dragged and no field holding typing not saved yet (else it
+   waits again). A save while it runs stops it first (a stopped run leaves
+   the project as it was; main refuses a save while a project is analyzed)
+   and it runs again after, so it never refuses the analyst a change. In a
+   recording the run drafts the drafts again; the analyst's confirmed,
+   edited, added and hidden steps are kept, and a draft keeps its step id
+   where it covers the same actions (step_suggest._merge_steps).
+   A run the analyst cancels, or one that fails, holds the changes
+   (`_held`): the top bar offers Update the steps, and the next change runs
+   it again too. An undo or a redo of a change the last analysis had used
+   leaves no edit newer than it, so it marks the markers `_stale`
+   (markersReverted, from session.js). */
 const AUTO_APPLY_MS = 1200;
 let _autoTimer = null;
 let _autoRunning = false;
 let _autoYielding = false;
+let _held = false;
+let _staleMarkers = false;
 
+function _waiting(sess) {
+  return { applies: AutoApply.appliesItself(sess, RO.isReadOnly(sess)),
+    pending: sess ? MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess)) : 0,
+    stale: _staleMarkers, held: _held, running: !!_running };
+}
 function _autoApplies(sess) {
-  return !!sess && !RO.isReadOnly(sess) && !sess.annotationsError && FlowMarkers.appliesItself(sess) &&
-    MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits, MarkerEdits.lastAnalysisMs(sess)) > 0;
+  return AutoApply.runDue(_waiting(sess));
+}
+
+/* An undo or a redo changed the markers (session.js applyRevertedAnnotations):
+   the steps follow, as after the change itself. */
+function markersReverted() {
+  _staleMarkers = true;
 }
 
 /* The analyst is in the middle of something: a dialog is open, a side is
@@ -338,12 +354,23 @@ function _analystBusy() {
     typeof a.defaultValue === "string" && a.value !== a.defaultValue;
 }
 
-/* Apply the marker changes of a project that applies them itself, once the
-   analyst pauses (see above). Called after every marker change and as a
-   project opens; nothing happens where nothing waits. */
-function scheduleAutoApply() {
+/* Apply the marker changes once the analyst pauses (see above). Called after
+   every change (opts.changed: it releases a hold, so the next change runs it
+   again), as a project opens and after a run gave way to a save; nothing
+   happens where nothing waits. */
+function scheduleAutoApply(opts) {
+  if (opts && opts.changed) _held = false;
   if (_autoTimer) clearTimeout(_autoTimer);
   _autoTimer = _autoApplies(State.getSession()) ? setTimeout(_autoApplyNow, AUTO_APPLY_MS) : null;
+}
+/* Update the steps (the top bar, after a cancelled or failed run): the same
+   run, at once. */
+function updateStepsNow() {
+  _held = false;
+  if (_autoTimer) clearTimeout(_autoTimer);
+  _autoTimer = null;
+  renderSessionPills();
+  return _autoApplyNow();
 }
 async function _autoApplyNow() {
   _autoTimer = null;
@@ -353,7 +380,7 @@ async function _autoApplyNow() {
   try { await analyzeSession({ auto: true }); } finally { _autoRunning = false; }
 }
 
-/* Before anything is saved: an automatic Apply under way stops, so the save
+/* Before anything is saved: an automatic run under way stops, so the save
    goes through, and runs again after it (session.js writeAnnotations). */
 async function yieldAutoApply() {
   if (!_autoRunning || !_running) return;
@@ -366,8 +393,8 @@ async function yieldAutoApply() {
 }
 
 /* The status line in the top bar (#session-pills): while a run lasts, what it
-   does and Cancel; else the one call to action that applies pending marker
-   changes. Delegated once, since each render replaces the buttons. */
+   does and Cancel; else, after a cancelled or failed run while changes wait,
+   Update the steps. Delegated once, since each render replaces the buttons. */
 (function wireStatusLine() {
   const host = $("#session-pills");
   if (!host) return;
@@ -376,8 +403,8 @@ async function yieldAutoApply() {
       e.preventDefault();
       await Ipc.cancelNormalize();
       toast("Cancelling the update...");
-    } else if (e.target.closest("#btn-apply-marker-edits")) {
-      analyzeSession({ confirm: "markers" });
+    } else if (e.target.closest("#btn-update-steps")) {
+      updateStepsNow();
     }
   });
 })();
@@ -460,6 +487,10 @@ async function loadSessionIntoView(folder, opts) {
   document.title = Handoff.projectName(State.getSession()) +
     (RO.isReadOnly(State.getSession()) ? " (read only)" : "") + " · Process Discovery Viewer";
 
+  // D4: a project opened (not one read back after its run) starts with
+  // nothing held; what an undo left for the analysis waits until it ran.
+  if (!(opts && opts.afterAnalysis)) _held = false;
+  if (prevFolder !== folder || (opts && opts.afterAnalysis)) _staleMarkers = false;
   renderSessionPills();
   // C8: the transcript's menu items follow the loaded file.
   Transcript.onSessionLoaded();
@@ -472,6 +503,10 @@ async function loadSessionIntoView(folder, opts) {
   // the video band (a second Attach video) is not shown.
   const workspace = document.getElementById("lower-workspace");
   if (workspace) workspace.classList.toggle("no-timeline", !timelineDrawable(State.getSession()));
+  // D4: the run a change makes reads the project back; a moment the clock
+  // was at that no video shows (a recording without a video) is kept, so
+  // End transaction, after Start transaction, still has its moment.
+  const keptMoment = opts && opts.afterAnalysis && prevFolder === folder ? Video.playheadMs() : null;
   // C23 (2.0.6): the player shows the video of the chain at the playhead
   // (the first one's start for a project just opened), else the band.
   Video.loadPlayer();
@@ -484,6 +519,7 @@ async function loadSessionIntoView(folder, opts) {
   setVideoOverlay(State.getSession().recordingAvailable ? "loading…" : "");
 
   renderTimeline();
+  if (keptMoment != null && Video.playheadMs() == null) Video.movePlayheadToTimestamp(new Date(keptMoment).toISOString());
   renderEventTable();
   syncRawEventsShown();
   renderScreenshots();
@@ -521,7 +557,7 @@ async function loadSessionIntoView(folder, opts) {
   // an analysis, while the Map is on screen is drawn again (after the
   // analysis above is asked for, so the Map does not ask for another).
   if (State.getLevel() === "map") rerenderActiveLevel();
-  // 2.0.3: marker changes left waiting in a project that applies them itself.
+  // 2.0.3, D4: marker changes left waiting run a moment later.
   scheduleAutoApply();
   syncTimelineRow();
 }
@@ -664,9 +700,10 @@ function restoredFilesLine(listed, screenshots) {
 })();
 
 /* The top bar's status line (#session-pills): while the pipeline runs, one
-   line saying so with Cancel; else, when marker changes wait (item 6), the
-   ONE call to action that applies them, visible from every level. It goes
-   once an analysis applied them. The clicks are delegated (wireStatusLine). */
+   line saying so with Cancel; else, while changes to the transactions wait
+   after a cancelled or failed run (D4, auto-apply.js updateShows), Update
+   the steps, visible from every level. The clicks are delegated
+   (wireStatusLine). */
 function renderSessionPills() {
   const host = $("#session-pills");
   if (!host) return;
@@ -679,24 +716,16 @@ function renderSessionPills() {
   }
   const sess = State.getSession();
   // Lane HV: nothing is applied in a hand-off opened read only.
-  if (!sess || RO.isReadOnly(sess)) { host.innerHTML = ""; return; }
-  // Marker changes that wait for an analysis (marker-edits.js). They already
-  // show on the timeline as pending.
-  const pending = MarkerEdits.pendingEditCount((sess.annotations || {}).marker_edits,
-    MarkerEdits.lastAnalysisMs(sess));
-  host.innerHTML = pending > 0
-    ? '<button type="button" class="pending-cta" id="btn-apply-marker-edits" title="' +
-      escapeHtml("Your marker changes already show on the timeline. " +
-        "The transactions, the steps and the map use them once you apply them.") + '">' +
-      escapeHtml("Apply " + pending + " marker change" + (pending === 1 ? "" : "s")) +
-      "</button>"
+  host.innerHTML = sess && AutoApply.updateShows(_waiting(sess))
+    ? '<button type="button" class="update-cta" id="btn-update-steps" title="' + escapeHtml(AutoApply.UPDATE_TITLE) + '">' +
+      escapeHtml(AutoApply.UPDATE_LABEL) + "</button>"
     : "";
 }
 
-/* Queue a marker deletion into annotations.json.marker_edits. Mirrors
-   queueSyntheticMarker; the edit applies on the next normalization, and
-   shows at once as pending (item 6). Resolves true when it was saved (a
-   failed save has already been shown to the analyst by session.js). */
+/* Queue a marker deletion into annotations.json.marker_edits (the Overview's
+   Remove this end). Mirrors queueSyntheticMarker; the steps follow a moment
+   later (scheduleAutoApply). Resolves true when it was saved (a failed save
+   has already been shown to the analyst by session.js). */
 async function queueMarkerDelete(eventId) {
   if (!State.getSession() || !eventId) return false;
   const a = State.getSession().annotations || {};
@@ -712,7 +741,7 @@ async function queueMarkerDelete(eventId) {
   } catch (_) {
     return false;
   }
-  toast("Marker deleted" + (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
+  toast("End removed.", "success");
   return true;
 }
 
@@ -1076,10 +1105,8 @@ async function startOrEndTransactionHere() {
   const ok = await queueSyntheticMarker(iso, kind, {
     title: TimelineRow.LABELS.start, okLabel: TimelineRow.LABELS.start,
     message: "The name of the new transaction (you can leave it empty)",
-    detail: FlowMarkers.appliesItself(sess) ? "It starts at " + clock(Date.parse(iso) - origin) + "."
-      : "It starts at " + clock(Date.parse(iso) - origin) + ". Apply marker changes, in the top bar, then updates its steps.",
-    said: (kind === "start" ? "Transaction started at " : "Transaction ended at ") + clock(Date.parse(iso) - origin) + "." +
-      (FlowMarkers.appliesItself(sess) ? "" : " Apply marker changes, in the top bar, updates its steps."),
+    detail: "It starts at " + clock(Date.parse(iso) - origin) + ".",
+    said: (kind === "start" ? "Transaction started at " : "Transaction ended at ") + clock(Date.parse(iso) - origin) + ".",
   });
   if (ok) syncTimelineRow();
 }
@@ -1252,7 +1279,7 @@ function showMarkerInsertMenu(x, y, ts, band) {
 document.addEventListener("contextmenu", (e) => {
   const tl = document.getElementById("timeline");
   if (!tl || !tl.contains(e.target)) return;
-  if (e.target.closest(".tl-activity, .tl-case-band, .tl-marker, .tl-screenshot, .tl-note")) return;
+  if (e.target.closest(".tl-activity, .tl-case-band, .tl-screenshot, .tl-note")) return;
   if (!State.getSession()) return;
   const sp = Video.timelineSpan();
   if (!sp) return;
@@ -1267,10 +1294,10 @@ document.addEventListener("contextmenu", (e) => {
   showMarkerInsertMenu(e.clientX, e.clientY, new Date(ts).toISOString());
 });
 
-/* Item 6: an inserted marker shows AT ONCE, marked pending, in the Markers
-   list (brought forward) and on the timeline, and the top bar offers the one
-   call to action that applies it (Apply marker changes). Resolves true when
-   saved. `words` (lane SCREEN: the timeline row's Start transaction and End
+/* Item 6: an inserted marker shows AT ONCE on the timeline, the pane's Steps
+   tab brought forward, and (D4) the steps follow it a moment later
+   (scheduleAutoApply). Resolves true when saved. `words` (lane SCREEN: the
+   timeline row's Start transaction and End
    transaction, whose question and message are in the button's words):
    { title, message, detail, okLabel, said }. A start asks for the
    transaction's name only while the video is paused (the rule Add step
@@ -1281,15 +1308,16 @@ document.addEventListener("contextmenu", (e) => {
 async function queueSyntheticMarker(ts, markerType, words) {
   if (!State.getSession()) return false;
   let label = null;
+  // The moment in the words of the one clock: "Transaction started at 0:05."
+  const at = clock(Date.parse(ts) - recordingStartMs(State.getSession()));
   const asks = StepPanel.nameTakesFocus({ playing: Video.isPlaying(), readOnly: RO.isReadOnly(State.getSession()) });
   if (markerType === "start" && asks) {
     label = await promptModal({
       title: (words && words.title) || "Start a transaction here",
-      message: (words && words.message) || "Label for the new transaction (its Start marker)",
-      detail: (words && words.detail) || (FlowMarkers.appliesItself(State.getSession()) ? "The transactions follow it at once."
-        : "It shows at once as pending, and applies to the transactions when you click Apply marker changes."),
+      message: (words && words.message) || "The name of the new transaction (you can leave it empty)",
+      detail: (words && words.detail) || "It starts at " + at + ".",
       placeholder: "For example: Order #10900",
-      okLabel: (words && words.okLabel) || "Insert",
+      okLabel: (words && words.okLabel) || TimelineRow.LABELS.start,
     });
     if (label === null) return false;     // cancelled
     label = (label || "").trim();
@@ -1313,8 +1341,7 @@ async function queueSyntheticMarker(ts, markerType, words) {
     return false;
   }
   activateAnnoTab("markers");
-  toast(words && words.said ? words.said : (markerType === "start" ? "Start" : "End") + " marker added" +
-    (FlowMarkers.appliesItself(State.getSession()) ? "." : ". Click Apply marker changes to update the transactions."), "success");
+  toast(words && words.said ? words.said : (markerType === "start" ? "Transaction started at " : "Transaction ended at ") + at + ".", "success");
   return true;
 }
 
@@ -1330,8 +1357,7 @@ async function queueCaseFromSelection() {
   let label = await promptModal({
     title: "Make it a transaction",
     message: "The name of the new transaction (you can leave it empty)",
-    detail: "It starts and ends where the selection does: " + TimelineRow.stretchText(range.startMs, range.endMs, origin) + "." +
-      (FlowMarkers.appliesItself(State.getSession()) ? "" : " Apply marker changes, in the top bar, then updates its steps."),
+    detail: "It starts and ends where the selection does: " + TimelineRow.stretchText(range.startMs, range.endMs, origin) + ".",
     placeholder: "For example: Order #10900",
     okLabel: "Make it a transaction",
   });
@@ -1367,8 +1393,7 @@ async function queueCaseFromSelection() {
   }
   clearSelectionRange();
   activateAnnoTab("markers");
-  toast("Transaction made from " + TimelineRow.stretchText(range.startMs, range.endMs, origin) + "." +
-    (FlowMarkers.appliesItself(State.getSession()) ? "" : " Apply marker changes, in the top bar, updates its steps."), "success");
+  toast("Transaction made from " + TimelineRow.stretchText(range.startMs, range.endMs, origin) + ".", "success");
 }
 
 /* H6: Leave out of the analysis: the current timeline range goes into
@@ -1639,8 +1664,8 @@ module.exports = {
   // The analysis: automatic runs, the deliberate ones (confirm), and the
   // pipeline runner the exports share (one status line, one log).
   renderSessionPills, analyzeSession, analysisBusy, runPipeline, UPDATING,
-  // 2.0.3: marker changes that apply themselves (a project without a recording).
-  scheduleAutoApply, yieldAutoApply,
+  // 2.0.3, D4: marker changes that apply themselves, in every project.
+  scheduleAutoApply, yieldAutoApply, markersReverted,
   seekToTimestamp, videoTimeToSessionTs, jumpToStepInFlow,
   activateAnnoTab, addStepAtPlayhead,
   // Lane PANE: Starts here on a row of the pane's Steps tab.

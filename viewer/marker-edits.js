@@ -7,12 +7,10 @@
  * pipeline replays on every analysis (normalization/marker_edits.py) and keeps.
  * So an edit is PENDING until an analysis has run after it: it was made
  * (edit.ts) later than the last analysis (stats.meta.normalization_run_at),
- * or the session was never analyzed. Pending edits show at once in the
- * Markers list and on the timeline, with one call to action (Apply marker
- * changes);
- * applied edits read as ordinary markers. The timeline's case lane draws the
- * markers as they are now (2.0.3), a transaction the last analysis has not
- * seen drawn pending; the steps follow what the last analysis used.
+ * or the session was never analyzed. Every edit shows at once on the
+ * timeline: its Transactions lane draws the markers as they are now (2.0.3),
+ * and the steps follow what the last analysis used until the next one runs,
+ * a moment after the change (D4, flow-view.js scheduleAutoApply).
  *
  * Mirrors the pipeline's replay: last write wins per marker and field, a
  * delete drops the marker, and an insert becomes a marker whose event id is
@@ -114,28 +112,17 @@ function markerView(events, markerEdits, analyzedMs) {
   return rows.sort((a, b) => t(a) - t(b));
 }
 
-/* How many marker edits wait for an analysis (the call to action's count). */
+/* How many marker edits wait for an analysis (D4: a run is due while one
+   does, auto-apply.js runDue). */
 function pendingEditCount(markerEdits, analyzedMs) {
   return _validEdits(markerEdits).filter((e) => isPendingEdit(e, analyzedMs)).length;
-}
-
-/* The marker events the last analysis used (captured markers with the
-   applied edits, plus applied inserts), shaped like captured marker events
-   and sorted by time: the input of the timeline's case lane, so a case the
-   analysis found is drawn, and one it has not seen yet is not. */
-function appliedMarkerEvents(view) {
-  return (view || [])
-    .filter((m) => m.applied)
-    .map((m) => ({ type: "marker", event_id: m.key, timestamp: m.appliedTimestamp,
-      data: { marker_type: m.markerType, label: m.appliedLabel } }))
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 }
 
 /* The markers as they are now (2.0.3): every edit laid over them, applied or
    pending, a deleted one left out; shaped like captured marker events (the
    view's key as the event id) and sorted by time. The timeline's
    Transactions lane draws these, so a transaction the analyst adds or moves
-   stands where it was put, drawn pending until Apply marker changes. */
+   stands where it was put. */
 function currentMarkerEvents(view) {
   return (view || [])
     .filter((m) => !m.deleted)
@@ -151,6 +138,6 @@ function sessionMarkerView(session) {
 }
 
 module.exports = {
-  lastAnalysisMs, isPendingEdit, markerView, pendingEditCount, appliedMarkerEvents, currentMarkerEvents,
+  lastAnalysisMs, isPendingEdit, markerView, pendingEditCount, currentMarkerEvents,
   sessionMarkerView,
 };

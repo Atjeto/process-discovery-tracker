@@ -43,7 +43,7 @@ const RO = require("../read-only.js");
 const { timelineScreenshots, screenshotTitle } = require("./flow-view-screenshots.js");
 const { transcriptLane: makeTranscriptLane } = require("./flow-view-transcript.js");
 const { videoLane: makeVideoLane } = require("./video-lane.js");
-const { moveMarker, insertMarker, applyNote } = require("./flow-view-markers.js");
+const { moveMarker, insertMarker } = require("./flow-view-markers.js");
 const { SNAP_PX, MIN_SPAN_MS, snapMs, markerDragBounds, stepSide, stepSideChanges, markerMoments, isOpen } = require("../time-edits.js");
 
 /* NAV-AUDIT §J/§9: case-label density. At a multi-hour span dozens of case
@@ -1142,16 +1142,11 @@ function renderTimeline() {
   // layoutCaseLanes pairs the markers into runs the way the pipeline does.
   // 2.0.3: the bands follow the markers as they are now (every marker change,
   // marker-edits.js), so a transaction added or moved stands where it was
-  // put; one the last analysis has not seen (no band of that analysis has
-  // its span and label) is drawn pending until Apply marker changes.
+  // put; D4: the steps follow a moment later, so a band is drawn the same
+  // before and after.
   const markerRows = MarkerEdits.sessionMarkerView(State.getSession());
   const markersNow = MarkerEdits.currentMarkerEvents(markerRows);
   const caseLanes = layoutCaseLanes(markersNow, first, last);
-  const analyzedCases = layoutCaseLanes(MarkerEdits.appliedMarkerEvents(markerRows), first, last).cases;
-  for (const c of caseLanes.cases) {
-    c.pending = !analyzedCases.some((a) => a.startMs === c.startMs && a.endMs === c.endMs &&
-      a.dangling === c.dangling && (a.label || null) === (c.label || null));
-  }
   // The sides a moment snaps to: the transactions' and the steps' drawn.
   _edgeTargets = [];
   for (const c of (lanes.cases ? caseLanes.cases : [])) {
@@ -1173,8 +1168,8 @@ function renderTimeline() {
       fromMs: c.endMs, lo: c.startMs + MIN_SPAN_MS, hi: last, targets: _snapTargets("marker", [], first, span),
       preview: move, restore: () => move(c.endMs),
       commit: async (ms) => {
-        const note = applyNote(State.getSession());
-        if (await insertMarker("end", new Date(ms).toISOString()) && note) toast("Ended" + note + ".", "success");
+        const iso = new Date(ms).toISOString();
+        if (await insertMarker("end", iso)) toast("Transaction ended at " + sinceStart(iso, origin) + ".", "success");
       },
     };
   };
@@ -1197,8 +1192,10 @@ function renderTimeline() {
       preview: move, restore: () => move(fromMs),
       commit: async (ms) => {
         const m = MarkerEdits.sessionMarkerView(State.getSession()).find((x) => x.key === key);
-        const note = applyNote(State.getSession());
-        if (m && await moveMarker(m, new Date(ms).toISOString()) && note) toast("Moved" + note + ".", "success");
+        const iso = new Date(ms).toISOString();
+        if (m && await moveMarker(m, iso)) {
+          toast((m.markerType === "start" ? "Transaction moved to " : "Transaction's end moved to ") + sinceStart(iso, origin) + ".", "success");
+        }
       },
     };
   };
@@ -1291,7 +1288,7 @@ function renderTimeline() {
         const w = Math.max(0.15, ((c.endMs - c.startMs) / span) * 100);
         const top = casesTop + c.lane * caseRowH;
         const band = document.createElement("div");
-        band.className = "tl-case-band" + (c.dangling ? " dangling" : "") + (c.pending ? " pending" : "");
+        band.className = "tl-case-band" + (c.dangling ? " dangling" : "");
         band.style.left = x + "%";
         band.style.width = w + "%";
         band.style.top = top + "px";
@@ -1302,7 +1299,6 @@ function renderTimeline() {
         if (c.endKey) band.dataset.endKey = c.endKey;
         band.title = c.title + (c.label ? " · " + c.label : "") +
           (c.dangling ? " · open: no end marked yet" : "\n" + formatDuration(c.endMs - c.startMs)) +
-          (c.pending ? "\nNot applied yet: Apply marker changes, in the top bar, updates the transactions and their steps." : "") +
           (editable ? "\nDrag its start or its end to move it" + (c.endKey ? "." : ", or right-click where it ends: End the transaction here.") : "") +
           "\n" + ZOOM_TO_TX_LINE;
         // 2.0.3: its start and its end drag (the marker there moves; a start
@@ -1342,7 +1338,7 @@ function renderTimeline() {
         // spill into its neighbour.
         if (caseLabelFits(w, hostW)) {
           const lbl = document.createElement("div");
-          lbl.className = "tl-case-label" + (c.pending ? " pending" : "");
+          lbl.className = "tl-case-label";
           lbl.style.left = "calc(" + x + "% + 4px)";
           lbl.style.top = (top + 3) + "px";
           lbl.style.maxWidth = "calc(" + w + "% - 4px)";
@@ -1356,8 +1352,8 @@ function renderTimeline() {
   // ===== Activity lane: the Systems (a recording) =====
   // Per-app coloured bands with inline title + duration labels so analysts
   // can read the timeline without hovering. Lane LANES: the idle stretches
-  // are a lane of their own (under Notes), and the marker changes not applied
-  // yet and the stretches set aside are drawn through every lane.
+  // are a lane of their own (under Notes), and the stretches set aside are
+  // drawn through every lane.
   const activityLane = {
     key: "activity",
     height: activityH,
@@ -1702,20 +1698,16 @@ function renderTimeline() {
     minHeightFloor: 120,
   });
   renderLaneNames(stack, layout, host);
-  _drawThroughLanes(host, stack, layout, {
-    first, last, span, origin, leftOut, markerRows, casesOn: !!lanes.cases,
-  });
+  _drawThroughLanes(host, stack, layout, { first, last, span, origin, leftOut });
   _stepGeo = { first, span };
   layoutStepBands();
 
   // What the marks mean (the Lanes menu): the systems observed while the
   // activity lane rendered, and only the marks the timeline draws: an entry
-  // whose lane is off is hidden (a marker change is drawn whatever its lane
-  // says).
+  // whose lane is off is hidden.
   _syncLegend({
     ".lg-idle": idleH > 0,
     ".lg-draft": draftsDrawn > 0,
-    ".lg-marker": markerRows.some((m) => m.pending),
     ".lg-screenshot": screenshotsH > 0 && shotMarks.length > 0,
     ".lg-note": notesH > 0,
     ".lg-left-out": leftOut.length > 0 || appsLeftOut > 0,
@@ -1773,10 +1765,7 @@ function renderTimeline() {
      Go to its start; its label once, at its top, where it fits. Over the
      lanes whose marks fill their row (the Systems, the Videos) the same
      hatch lies over the marks, letting the pointer through to them
-     (.tl-left-out-over), so the stretch reads as set aside there too;
-   - a marker change not applied yet that the Transactions lane cannot show
-     (a marker deleted, or any change while that lane is off): a dashed line
-     through the lanes, labelled on a Start. */
+     (.tl-left-out-over), so the stretch reads as set aside there too. */
 function _drawThroughLanes(host, stack, layout, g) {
   const drawn = stack.filter((l) => l.height > 0 && l.key !== "ticks" && layout.slots.get(l.key));
   if (!drawn.length) return;
@@ -1838,31 +1827,6 @@ function _drawThroughLanes(host, stack, layout, g) {
   // Under every mark: before the first child (the lanes' separators and the
   // marks come after it).
   for (const band of under.reverse()) host.insertBefore(band, host.firstChild);
-
-  for (const m of g.markerRows) {
-    if (!m.pending || (g.casesOn && !m.deleted)) continue;
-    const t = new Date(m.timestamp).getTime();
-    if (!isFinite(t)) continue;
-    const x = ((t - g.first) / g.span) * 100;
-    const bar = document.createElement("div");
-    bar.className = "tl-marker tl-marker-pending" + (m.deleted ? " tl-marker-pending-delete" : "");
-    bar.dataset.markerKey = m.key;
-    bar.style.left = x + "%";
-    bar.style.top = top + "px";
-    bar.style.height = (bottom - top) + "px";
-    bar.title = m.markerType + ": " + (m.label || "") + (m.reason ? " (" + m.reason + ")" : "") +
-      "\nPending: " + (m.deleted ? "deleted" : m.inserted ? "added" : "changed") +
-      ", not applied yet. Click Apply marker changes to update the transactions.";
-    host.appendChild(bar);
-    if (m.markerType === "start" && m.label && !m.deleted) {
-      const lbl = document.createElement("div");
-      lbl.className = "tl-marker-label tl-marker-label-pending";
-      lbl.style.left = "calc(" + x + "% + 4px)";
-      lbl.style.top = (top + 2) + "px";
-      lbl.textContent = m.label + " (pending)";
-      host.appendChild(lbl);
-    }
-  }
 }
 
 /* ============ Timeline helpers (lane layout)

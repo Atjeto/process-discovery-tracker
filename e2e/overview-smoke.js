@@ -20,7 +20,9 @@ const firstVideo = (a) => (a && Array.isArray(a.external_videos) && a.external_v
  *   (c) 2.0.1: no Observations on the Overview, and analysis.json (format
  *       5) without the PDD's rows (pdd_data, pdd_time, steps_signature);
  *   (c2) the moved controls are where they are used (ids kept);
- *   (c3) "Apply 1 marker change" and its confirmation; Cancel and Ctrl+Z;
+ *   (c3) D4: a marker change applies by itself, with no question; Cancel
+ *       leaves Update the steps, whose click applies; Ctrl+Z after it runs
+ *       the analysis again by itself;
  *   (d) the analyst path, walked on the demo: every next act lands where it
  *       says (the reference run open in Steps, each other run that differs
  *       open in Steps, one that does not differ never asked for, the
@@ -377,14 +379,30 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       moved.savedNames === false && moved.runSelect && moved.lanes),
     JSON.stringify(moved));
 
-  // (c3) "Apply N marker changes" (the one manual analysis act) and its
-  // confirmation; Cancel runs nothing, Ctrl+Z takes the marker back.
+  // (c3) D4: a marker change in a recording applies by itself a moment
+  // later, with no question; Cancel stops that run and leaves Update the
+  // steps in the top bar (nothing runs by itself after it); its click
+  // applies; Ctrl+Z then takes the marker back and the steps follow it by
+  // themselves again (premise check 2: the undo leaves no newer edit, so it
+  // marks the markers changed).
   const apply = {};
+  const tx = () => page.evaluate(() => (require("./state.js").getSession().stats.case_stats || []).filter((c) => !c.parent_case_id).length);
+  const settled = () => page.waitForFunction(() => {
+    const s = require("./state.js").getSession(), ME = require("./marker-edits.js");
+    return !document.getElementById("run-status") && !require("./views/flow-view.js").analysisBusy() &&
+      ME.pendingEditCount(s.annotations.marker_edits, ME.lastAnalysisMs(s)) === 0;
+  }, null, { timeout: 120000 });
   try {
     await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
     await page.waitForSelector("#timeline .tl-band", { state: "visible", timeout: T });
     await page.locator("#timeline").scrollIntoViewIfNeeded({ timeout: T });
     apply.before = readAnno().marker_edits || [];
+    apply.txBefore = await tx();
+    await page.evaluate(() => {
+      window.__c3 = { confirms: 0 };
+      new MutationObserver(() => { if (document.querySelector(".modal-confirm")) window.__c3.confirms++; })
+        .observe(document.body, { childList: true, subtree: true });
+    });
     await page.evaluate(() => {
       const tl = document.getElementById("timeline");
       const r = tl.getBoundingClientRect();
@@ -394,24 +412,37 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await page.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
     await page.locator(".modal-prompt .modal-input").fill("E2E apply check", { timeout: T });
     await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
-    await page.waitForSelector("#btn-apply-marker-edits", { state: "visible", timeout: T });
-    apply.cta = ((await page.locator("#btn-apply-marker-edits").textContent({ timeout: T })) || "").trim();
-    apply.inBar = await page.evaluate(() => !!document.getElementById("btn-apply-marker-edits").closest("header.topbar"));
-    await page.locator("#btn-apply-marker-edits").click({ timeout: T });
-    apply.confirm = ((await page.locator(".modal-confirm").textContent({ timeout: T })) || "").replace(/\s+/g, " ").trim();
-    await page.locator(".modal-confirm .modal-cancel").click({ timeout: T });
-    await wait(500);
-    apply.runAfterCancel = ((await page.locator("#session-pills").textContent({ timeout: T })) || "").trim();
+    apply.noButtonAtOnce = await page.evaluate(() => !document.getElementById("btn-update-steps") &&
+      !/Apply/.test((document.getElementById("session-pills") || {}).textContent || ""));
+    // The run starts by itself; Cancel stops it.
+    await page.waitForSelector("#btn-cancel-normalize", { state: "visible", timeout: T });
+    await page.locator("#btn-cancel-normalize").click({ timeout: T });
+    await page.waitForSelector("#btn-update-steps", { state: "visible", timeout: 60000 });
+    await wait(2500);
+    apply.cta = await page.evaluate(() => { const b = document.getElementById("btn-update-steps");
+      return b && { text: (b.textContent || "").trim(), title: b.title, inBar: !!b.closest("header.topbar"),
+        running: !!document.getElementById("run-status") }; });
+    apply.txCancelled = await tx();
+    await page.locator("#btn-update-steps").click({ timeout: T });
+    await settled();
+    apply.txApplied = await tx();
+    apply.goneAfter = !(await page.$("#btn-update-steps"));
     await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
     await page.keyboard.press("Control+z");
-    await page.waitForFunction(() => !document.getElementById("btn-apply-marker-edits"), null, { timeout: T });
+    apply.undoRan = await page.waitForSelector("#run-status", { timeout: T }).then(() => true, () => false);
+    await settled();
+    apply.txUndone = await tx();
     apply.after = readAnno().marker_edits || [];
-  } catch (e) { logActionError("(c3) Apply marker changes", e); apply.err = String(e.message).split("\n")[0]; }
-  record("(c3) a marker change shows 'Apply 1 marker change' in the top bar; it asks 'Update the drafts of the changed transactions?'; Cancel runs nothing and Ctrl+Z takes the marker back",
-    !!(!apply.err && apply.cta === "Apply 1 marker change" && apply.inBar &&
-      /^Apply 1 marker change.*Update the drafts of the changed transactions\?.*Your confirmed, edited, added and hidden steps are kept\./.test(apply.confirm) &&
-      apply.runAfterCancel === "Apply 1 marker change" && same(apply.after, apply.before)),
+    apply.confirms = await page.evaluate(() => window.__c3.confirms);
+  } catch (e) { logActionError("(c3) a marker change applied by itself", e); apply.err = String(e.message).split("\n")[0]; }
+  record("(c3) D4: a marker change in a recording asks nothing and shows no button; Cancel of its run leaves Update the steps in the top bar (\"Updates the transactions, their steps and the map with your latest changes.\") and nothing runs by itself; its click applies (one transaction more)",
+    !!(!apply.err && apply.noButtonAtOnce && apply.cta && apply.cta.text === "Update the steps" &&
+      apply.cta.title === "Updates the transactions, their steps and the map with your latest changes." && apply.cta.inBar && !apply.cta.running &&
+      apply.txCancelled === apply.txBefore && apply.txApplied === apply.txBefore + 1 && apply.goneAfter && apply.confirms === 0),
     JSON.stringify(apply));
+  record("(c3) D4, premise check 2: Ctrl+Z of the marker change after it applied takes the marker back and the steps follow by themselves (the analysis runs again: one transaction fewer)",
+    !!(!apply.err && apply.undoRan && apply.txUndone === apply.txBefore && same(apply.after, apply.before)),
+    JSON.stringify({ undoRan: apply.undoRan, txBefore: apply.txBefore, txUndone: apply.txUndone, err: apply.err }));
   await page.locator('.view-mode-btn[data-level="overview"]').click({ timeout: T }).catch(() => {});
   await wait(400);
 
@@ -1129,9 +1160,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       badges: document.querySelectorAll("#overview-content .ov-badge, #ov-mark-runs").length,
     };
   }).catch((e) => ({ err: e.message }));
-  record("(e) marker-stripped session: the Checklist says no transactions are marked, with the instruction and 'Mark the transactions on the Timeline'",
+  record("(e) marker-stripped session: the Checklist says no transactions are marked, with the instruction (D4: nothing to apply after it) and 'Mark the transactions on the Timeline'",
     !!(markRuns && !markRuns.err && markRuns.next === "runs" && /no transactions marked/i.test(markRuns.lineText || "") &&
-      /Start a transaction here/.test(markRuns.lineText || "") && /Apply marker changes/.test(markRuns.lineText || "") &&
+      /Start a transaction here[.]/.test(markRuns.lineText || "") && !/Apply/.test(markRuns.lineText || "") &&
       markRuns.button === "Mark the transactions on the Timeline" && markRuns.badges === 0),
     JSON.stringify(markRuns));
   if (!(markRuns && markRuns.next === "runs")) await shot(page2, "fail-overview-mark-runs.png");

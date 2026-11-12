@@ -25,7 +25,7 @@ const { $, $$, escapeHtml, escapeAttr, formatDuration, fillTable, cryptoRandomId
 const { initRecent, getRecent, renderRecent } = require("./recent.js");
 const { initStepsView, renderStepsLevel, addManualStep, splitStep, mergeStepWithNext, mergeSelectedSteps, addStepAtTimestamp, visibleSelectedStepId, moveSelection, renameSelectedStep, confirmOpenRun, moveSelectedStep } = require("./views/steps-view.js");
 const { initSession, resetUndoStack, canUndo, canRedo, saveAnnotationsWithUndo, performUndo, performRedo, ensureAnnoShape, persistAnnotations } = require("./session.js");
-const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, runPipeline, UPDATING, syncRawEventsShown, scheduleAutoApply, yieldAutoApply } = require("./views/flow-view.js");
+const { initFlowView, loadSessionIntoView, openInNewWindow, renderTimeline, renderSessionPills, seekToTimestamp, jumpToStepInFlow, addStepAtPlayhead, analyzeSession, analysisBusy, runPipeline, UPDATING, syncRawEventsShown, scheduleAutoApply, yieldAutoApply, markersReverted } = require("./views/flow-view.js");
 // V2 item 4: the step panel beside the map, the timeline and the Steps list.
 const StepPanel = require("./views/step-panel.js");
 const Video = require("./views/flow-view-video.js");
@@ -73,8 +73,10 @@ initSession({
   // analyzes again; one that changes the video reloads the project.
   reloadSession: (folder) => loadSessionIntoView(folder),
   analyzeSession: () => analyzeSession(),
-  // 2.0.3: an automatic Apply of marker changes gives way to a save.
+  // 2.0.3: an automatic run for marker changes gives way to a save.
   beforeWrite: () => yieldAutoApply(),
+  // D4: an undo or a redo of a marker change runs the analysis a moment later.
+  markersReverted: () => markersReverted(),
 });
 
 /* ============ Recent sessions ===================================== */
@@ -424,10 +426,11 @@ State.subscribe("steps",    renderStepsLevel);
 State.subscribe("timeline", renderTimeline);
 // Lane PANE: the pane beside the video follows the topics itself
 // (views/timeline-pane.js; the Markers tab is gone).
-// Item 6: the top bar's "Apply N marker changes" call to action.
+// D4: the top bar's Update the steps, after a cancelled or failed run.
 State.subscribe("markers",  renderSessionPills);
-// 2.0.3: a project without a recording applies its marker changes itself.
-State.subscribe("markers",  () => scheduleAutoApply());
+// 2.0.3, D4: every project applies its marker changes itself; a change
+// releases a hold a cancelled or failed run left.
+State.subscribe("markers",  () => scheduleAutoApply({ changed: true }));
 // The Overview renders the Checklist, the project line (its warnings read
 // analysis.json) and the document, so it follows markers, analysis and
 // steps.
@@ -535,7 +538,7 @@ initStepsView({
   jumpToStepInFlow: (s) => jumpToStepInFlow(s),
   // Watch plays the step in the step panel, beside the steps (V2 item 4).
   watchStep: (s) => StepPanel.watch(s),
-  // 2.0.3: an open transaction's Apply marker changes asks as the top bar's does.
+  // Apps outside the process analyzes again once saved.
   analyze: (opts) => analyzeSession(opts),
 });
 
@@ -1250,7 +1253,7 @@ if ($("#btn-build-library")) {
 }
 /* Help, Troubleshooting: Re-analyze, the one way to run the analysis by hand
    (AD-22: it runs by itself otherwise). It asks first when the recording has
-   steps, like Apply marker changes. */
+   steps. */
 if ($("#btn-help-reanalyze")) {
   $("#btn-help-reanalyze").addEventListener("click", () => {
     if (!State.getSession()) { toast("Open a project first.", "error"); return; }

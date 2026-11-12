@@ -119,8 +119,9 @@ closes the others.
 - **The status line** (`#session-pills`): "Updating steps and map..." with
   Cancel while the pipeline runs (an export's own run says what it writes:
   "Writing the PDD...", "Writing the Technical details...", "Handing off
-  version N..."); else, when marker changes wait, the one call to action
-  *Apply N marker changes*; else nothing.
+  version N..."); else, while marker changes wait after a cancelled or
+  failed run, *Update the steps* (D4, `auto-apply.js` `updateShows`); else
+  nothing.
 - **The next act** (`#btn-next-act`, lane W0, plan 11.1): on the Timeline,
   Steps and the Map, the Checklist's next act, "Next: " and the stage's
   label with its first letter in lower case, with the Checklist's own
@@ -501,7 +502,8 @@ their module as `<name>.test.js`.
 | `sub-process-maps.js` | The maps a project holds (C19): `mapTree` (one map per sub-process, its traces, its number; one rule with the pipeline's `sub_process_maps.py`, pinned by `shared/sub-process-maps-golden.json`), the tree finder `findStep` (a step at any depth, its list, parent and level), a level's places (`levelVisits`, one per visit), the visits of a node, `validPath`, `nodeName`, `mainMapName`. |
 | `sub-process-verbs.js` | The pure half of the sub-process verbs (C19): the sub-steps drafted from a step's recorded actions (`draftSubSteps`, `action_key`; 2.0.1: the cells of one sheet filled one after another folded into one, "Fill in columns A to F", `cellOf`), Open as a sub-process, Group into a sub-process with its link repairs, Dissolve (and what it takes away), the rename of a sub-process's every occurrence. |
 | `run-differences.js` | How a run differs from its reference; one rule with the PDD, pinned by `shared/run-differences-golden.json`. After the merge folding, a step whose own align key the reference lacks but whose name is a reference step's (whitespace collapsed, case ignored) is that step (`namedAlike`, 2.0.1). The Steps level passes its words (`REFERENCE_RUN`, `RUN_UNIT`: "transaction"). |
-| `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are pending until the next analysis. |
+| `marker-edits.js` | The markers with `annotations.marker_edits` laid over them; which edits are newer than the last analysis (`pendingEditCount`, the run a moment later applies them). |
+| `auto-apply.js` | D4: when a change to the transactions reaches the steps by itself (`appliesItself`: every project open for editing whose annotations can be read), when its run is due (`runDue`), when the top bar offers *Update the steps* (`updateShows`) and when a run holds the changes (`holdAfter`: a cancel or a failure). |
 | `process-map-levels.js` | The process map as a directly-follows graph from the runs' steps, with the Start and End events and the step flow of contract C17 (`buildAnnotationDfg`, `flowEdges`, `stepLinks`, `mapNodeLabel`, where a drafted step or sub-step, with a `draft_key` or an `action_key`, is its name; one rule with the step BPMN, pinned by `shared/flow-links-golden.json`), and the value-free `processLabel` and `screenType` from the shared rule files. |
 | `step-flow.js` | The pure half of the step flow (C17): what the Flow line and the step panel say (`linkReading`, `panelLine`, `inheritedLine`), the steps a link can go to, the edits, and the repairs when a target step is hidden, removed, merged or split. |
 | `asis-links.js` | What a click on the map the PDD prints does (C18): a task names its step's map box, a data object its attachment (`DataObjectReference_<id>`), a text annotation its note; a system label (`isSystemLabel`: `TextAnnotation_system_<k>`, or a map's one `TextAnnotation_system`), the legend of a copy made before 2.0.1, the flows, the events and the gateways do nothing. C19: a task and a collapsed sub-process carry their level (the names of the sub-processes around them), `projectPath` reads those names as the project's own sub-processes, and the ids in a plane are read without its `Sub<n>_` prefix. |
@@ -743,6 +745,20 @@ itself:
 - **After a change the drafts depend on**: *Apps outside the process*, a
   stretch left out of the analysis and *Include again*, and an undo or a
   redo of either of those two (`session.js` `revertFollowUp`).
+- **A moment after a change to the transactions** (D4, in every project
+  open for editing; 2.0.3 had it only without a recording): a transaction
+  added, moved, ended, renamed or deleted, and an undo or a redo of one
+  (`session.js` `revertFollowUp` "markers", which marks the markers changed,
+  `flow-view.js` `markersReverted`). `flow-view.js` `scheduleAutoApply` runs
+  it `AUTO_APPLY_MS` (1.2 s) after the change, once no dialog is open, no
+  key was pressed for as long, no side is dragged and no field holds unsaved
+  typing; a save while it runs stops it (`yieldAutoApply`) and it runs again
+  after. It asks nothing and says nothing when it worked. A run the analyst
+  cancels, or one that fails, holds the changes: the status line offers
+  *Update the steps*, and the next change runs it again too
+  (`auto-apply.js`: `runDue`, `updateShows`, `holdAfter`). The step
+  selected, the step opened in the Timeline's pane, the Steps level's open
+  transaction, the pane's scroll and the clock's moment stay as they were.
 - **Inside the acts that need a current map file**: *Edit as the As-Is map*,
   the PDD export and the two map exports, when `process_map_step.bpmn` is
   missing or older than the steps.
@@ -758,8 +774,8 @@ itself:
   saves and the PDD's run rewrite `annotations.json` without changing a step,
   so a step map current before them stays current.
 
-Two runs are deliberate and ask first when the session has steps: *Apply N
-marker changes* (the status line) and *Re-analyze* (Help, Troubleshooting).
+One run is deliberate and asks first when the session has steps:
+*Re-analyze* (Help, Troubleshooting).
 Every analysis passes `--mine` (the PDD export's own run does not); every
 run passes `--library` with the app's library file when it exists (contract
 C21: a project's first analysis copies it into the folder as

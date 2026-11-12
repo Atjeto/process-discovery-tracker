@@ -241,7 +241,7 @@ const EDITING = [
   "#btn-step-add-note", "[data-note-act]", "#btn-step-attach", "#btn-step-split", "#btn-step-merge",
   "#btn-step-merge-selected", "#btn-step-delete", ".si-split-btn",
   "#btn-fork-refmap", "#btn-toggle-refmaps", "#refmap-panel", "#btn-map-asis-edit", "#btn-map-asis-recopy",
-  "#btn-apply-marker-edits", "#btn-help-reanalyze", "#btn-restore-annotations",
+  "#btn-update-steps", "#btn-help-reanalyze", "#btn-restore-annotations",
 ];
 const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
   Array.from(document.querySelectorAll(s)).some((el) => el.getClientRects().length > 0 &&

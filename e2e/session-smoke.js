@@ -1852,19 +1852,20 @@ async function unreadableAnnotationsPin() {
     edgeOk, JSON.stringify(edgeMenu));
   if (!edgeOk) await shot(page, "fail-edge-menu.png");
 
-  // --- Item 6: an inserted marker shows at once as pending, with one call to
-  // action, Apply marker changes; after it the marker is a real one and the
-  // case count follows. Analyzes into the session folder, so FRESH only.
+  // --- Item 6, D4: an inserted marker shows at once where it was put, and a
+  // moment later it applies by itself in a recording too (no Apply button,
+  // no question, no message when it worked): the marker is a real one and
+  // the case count follows. Analyzes into the session folder, so FRESH only.
   if (!FRESH) {
-    record("item 6: pending marker insert (skipped: session not re-normalized)", true,
-      "Analyze would write into the committed demo folder");
+    record("item 6: marker insert applied by itself (skipped: session not re-normalized)", true,
+      "the analysis would write into the committed demo folder");
   } else {
     await markerInsertPin();
   }
 
   async function markerInsertPin() {
     const T = 20000;
-    const LABEL = "E2E pending run";
+    const LABEL = "E2E new run";
     const INSERT_AT = "2026-05-14T09:01:20.000Z";   // the gap between the demo's first two runs
     const cases = () => page.evaluate(() => ({
       analyzed: ((require("./state.js").getSession().analysis || {}).case_quality || {}).case_count,
@@ -1877,20 +1878,30 @@ async function unreadableAnnotationsPin() {
     const pinState = () => page.evaluate((label) => {
       const head = [...document.querySelectorAll("#tp-steps .tp-tx-name")].find((r) => (r.textContent || "").includes(label));
       const panel = document.querySelector('.anno-panel[data-panel="steps"]');
-      const cta = document.getElementById("btn-apply-marker-edits");
+      const band = [...document.querySelectorAll("#timeline .tl-case-band")].find((b) => (b.title || "").includes(label)) || null;
       return {
         row: head ? { text: (head.textContent || "").replace(/\s+/g, " ").trim() } : null,
         markersPanelShown: !!(panel && getComputedStyle(panel).display !== "none") &&
           document.getElementById("tp-tab-steps").getAttribute("aria-selected") === "true",
-        pendingBars: document.querySelectorAll("#timeline .tl-marker-pending").length,
-        // 2.0.3: the Transactions lane draws the marker as it now is: a band
-        // of its own, pending, until Apply marker changes.
-        pendingBand: [...document.querySelectorAll("#timeline .tl-case-band.pending")]
-          .map((b) => b.title || "").find((t) => t.includes(label)) || null,
-        cta: cta ? (cta.textContent || "").trim() : null,
+        // D4: no line through the lanes and no state of its own: the band
+        // stands where it was put, drawn as any transaction is.
+        bars: document.querySelectorAll("#timeline .tl-marker").length,
+        band: band ? { cls: band.className, title: band.title } : null,
+        update: !!document.getElementById("btn-update-steps"),
+        statusText: ((document.getElementById("session-pills") || {}).textContent || "").trim(),
       };
     }, LABEL);
-    let before = null, pending = null, applied = null, onDisk = false, err = null;
+    // Every question and message from the insert on: none asks, and the run
+    // says nothing when it worked.
+    const watchSaid = () => page.evaluate(() => {
+      window.__d4 = { confirms: 0, toasts: [] };
+      const t = document.getElementById("toast");
+      new MutationObserver(() => { const x = (t.textContent || "").trim(); if (x && window.__d4.toasts[window.__d4.toasts.length - 1] !== x) window.__d4.toasts.push(x); })
+        .observe(t, { childList: true, subtree: true, characterData: true });
+      new MutationObserver(() => { if (document.querySelector(".modal-confirm")) window.__d4.confirms++; })
+        .observe(document.body, { childList: true, subtree: true });
+    });
+    let before = null, drawn = null, applied = null, onDisk = false, err = null;
     try {
       await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: T });
       await page.waitForSelector("#timeline .tl-band", { state: "visible", timeout: T });
@@ -1919,43 +1930,42 @@ async function unreadableAnnotationsPin() {
       if (!at.onScreen) throw new Error("the timeline point to right-click is off screen: " + JSON.stringify(at));
       await page.locator("#tl-ctx-menu div", { hasText: "Start a transaction here" }).click({ timeout: T });
       await page.locator(".modal-prompt .modal-input").fill(LABEL, { timeout: T });
+      await watchSaid();
       await page.locator(".modal-prompt .modal-ok").click({ timeout: T });
-      await page.waitForFunction((label) => [...document.querySelectorAll("#timeline .tl-case-band.pending")]
+      await page.waitForFunction((label) => [...document.querySelectorAll("#timeline .tl-case-band")]
         .some((b) => (b.title || "").includes(label)), LABEL, { timeout: T });
-      pending = Object.assign(await pinState(), { cases: await cases() });
+      drawn = Object.assign(await pinState(), { cases: await cases() });
       // Saved as an insert edit near INSERT_AT (the right-click x maps to a
       // time through the timeline's pixel width, so allow 2 s either way).
       const a = JSON.parse(fs.readFileSync(path.join(SESSION, "annotations.json"), "utf-8"));
       onDisk = (a.marker_edits || []).some((e) => e && e.op === "insert" && e.marker_type === "start" &&
         e.label === LABEL && Math.abs(Date.parse(e.timestamp) - Date.parse(INSERT_AT)) <= 2000);
-    } catch (e) { logActionError("item 6 pending marker insert", e); err = String(e.message).split("\n")[0]; }
-    const pendingOk = !!(pending && !pending.row &&
-      pending.markersPanelShown && pending.pendingBars === 0 &&
-      /Not applied yet: Apply marker changes/.test(pending.pendingBand || "") &&
-      pending.cta === "Apply 1 marker change" && onDisk &&
-      pending.cases.analyzed === before.analyzed && pending.cases.bands === before.bands + 1);
-    record("item 6, lane PANE: a Start marker inserted from the timeline menu shows at once as pending (one call to action + 2.0.3 its own transaction band, pending, where it was put, and no bar; the pane's Steps tab shown, no header yet), before any Analyze",
-      pendingOk, JSON.stringify({ before, pending, onDisk, err }));
-    if (!pendingOk) await shot(page, "fail-marker-pending.png");
+    } catch (e) { logActionError("item 6 marker insert", e); err = String(e.message).split("\n")[0]; }
+    const drawnOk = !!(drawn && !drawn.row &&
+      drawn.markersPanelShown && drawn.bars === 0 && drawn.band &&
+      drawn.band.cls === "tl-case-band" && !/applied|Apply|pending/i.test(drawn.band.title) &&
+      !drawn.update && !/Apply/.test(drawn.statusText) && onDisk &&
+      drawn.cases.analyzed === before.analyzed && drawn.cases.bands === before.bands + 1);
+    record("item 6, lane PANE, D4: a Start marker inserted from the timeline menu is drawn at once where it was put, as any transaction band (no dashed state, no line, nothing about applying in its tooltip), with no Apply button; the pane's Steps tab shown, no header yet, before its analysis",
+      drawnOk, JSON.stringify({ before, drawn, onDisk, err }));
+    if (!drawnOk) await shot(page, "fail-marker-drawn.png");
 
-    // The call to action applies them, with its confirmation ("Update the
-    // drafts of the changed runs?"); meanwhile the top bar says "Updating
-    // steps and map..." with Cancel, and no log shows.
-    let confirmText = null, statusLine = null;
+    // D4: it applies by itself a moment later, with no click and no
+    // question; meanwhile the top bar says "Updating steps and map..." with
+    // Cancel, no log shows, and nothing is said when it worked.
+    let statusLine = null, said = null;
     try {
-      await page.locator("#btn-apply-marker-edits").click({ timeout: T });
-      confirmText = await page.locator(".modal-confirm").textContent({ timeout: T });
-      await page.locator(".modal-confirm .modal-ok").click({ timeout: T });
       statusLine = await page.waitForFunction(() => {
         const line = document.getElementById("run-status"), cancel = document.getElementById("btn-cancel-normalize");
         const t = line && cancel ? (line.textContent || "").trim() + " | " + (cancel.textContent || "").trim() : "";
         return t === "Updating steps and map... | Cancel" && !!line.closest("#session-pills") ? t : false;
       }, null, { timeout: T }).then((h) => h.jsonValue(), () => null);
       statusLine = { text: statusLine, logShown: await page.$eval("#log-host", (el) => getComputedStyle(el).display !== "none") };
-      await page.waitForFunction((label) => !document.getElementById("btn-apply-marker-edits") &&
+      await page.waitForFunction((label) => !document.getElementById("run-status") &&
         [...document.querySelectorAll("#tp-steps .tp-tx-name")].some((r) => (r.textContent || "").includes(label)),
       LABEL, { timeout: 120000 });
       applied = Object.assign(await pinState(), { cases: await cases() });
+      said = await page.evaluate(() => window.__d4);
       // Runs never nest (the pipeline's rule, case_assignment.py): the new run
       // has no End of its own, so the next run's Start ends it. Its band on
       // the Flow timeline ends where the next band starts, not at the end of
@@ -1970,18 +1980,18 @@ async function unreadableAnnotationsPin() {
         return { dangling: bands[i].dangling, top: Math.round(bands[i].r.top), right: Math.round(bands[i].r.right),
           nextLeft: next ? Math.round(next.r.left) : null, nextTop: next ? Math.round(next.r.top) : null };
       }, LABEL);
-    } catch (e) { logActionError("item 6 Apply marker changes", e); err = String(e.message).split("\n")[0]; }
+    } catch (e) { logActionError("item 6 applied by itself", e); err = String(e.message).split("\n")[0]; }
     const appliedOk = !!(applied && before && applied.row &&
-      applied.pendingBars === 0 && applied.cta === null &&
+      applied.bars === 0 && !applied.update &&
       applied.cases.analyzed === before.analyzed + 1 && applied.cases.bands === before.bands + 1 &&
       // The Overview names the runs the Steps level lists; both follow the new
       // analysis.
       applied.cases.runsLine === applied.cases.stepsRuns + " transactions" &&
       before.runsLine === before.stepsRuns + " transactions");
-    record("item 6: Apply 1 marker change asks \"Update the drafts of the changed transactions?\", the top bar says Updating steps and map... with Cancel (no log), and the marker becomes a real one: the case count goes up by one, and its transaction has its header in the pane's Steps tab",
-      appliedOk && /Update the drafts of the changed transactions\?/.test(confirmText || "") && !!statusLine &&
-        statusLine.text === "Updating steps and map... | Cancel" && statusLine.logShown === false,
-      JSON.stringify({ before: before && before.analyzed, applied, confirmText, statusLine, err }));
+    record("item 6, D4: with no click and no question the insert applies by itself in a recording: the top bar says Updating steps and map... with Cancel (no log), nothing is said when it worked (\"Transaction started at m:ss.\" the only message), and the marker becomes a real one: the case count goes up by one, and its transaction has its header in the pane's Steps tab",
+      appliedOk && !!statusLine && statusLine.text === "Updating steps and map... | Cancel" && statusLine.logShown === false &&
+        !!said && said.confirms === 0 && said.toasts.length === 1 && /^Transaction started at \d+:\d\d[.]$/.test(said.toasts[0]),
+      JSON.stringify({ before: before && before.analyzed, applied, said, statusLine, err }));
     const rb = applied && applied.runBand;
     record("runs never nest on the timeline: the inserted run's band ends where the next run starts, on the same row (the pipeline's rule)",
       !!(rb && !rb.dangling && rb.nextLeft != null && Math.abs(rb.right - rb.nextLeft) <= 2 && rb.top === rb.nextTop),
