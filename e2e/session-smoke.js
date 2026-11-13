@@ -591,7 +591,7 @@ async function unreadableAnnotationsPin() {
       JSON.stringify(chrome.levels) === JSON.stringify(["◈ Overview", "≡ Timeline", "▣ Steps", "◯ Map"]) &&
       JSON.stringify(chrome.titles) === JSON.stringify(["The checklist, the project and the document",
         "The recording: video, screenshots, transactions and what was said",
-        "Each transaction's steps: confirm transaction 1, then review the others",
+        "Each transaction's steps",
         "The process map, and your As-Is and To-Be maps"]) &&
       chrome.barHeight > 0 && chrome.barHeight < 60 &&
       chrome.orangeOnOverview.length === 1 && chrome.orangeOnOverview[0] === "Confirm transaction 1 in Steps"),

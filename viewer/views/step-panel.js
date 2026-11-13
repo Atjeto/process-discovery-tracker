@@ -358,7 +358,7 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer, part
     (offer && has("screenshots") && !shots.length ? '<div class="sp-sec">' + AnalystUI.useVideoButtonHtml(offer) + "</div>" : "") +
     (said.length ? '<div class="sp-sec"><div class="sp-lead">Said:</div><ol class="sp-said">' +
       said.map((x) => '<li class="tr-row">' + TM.sentenceRowHtml(x, origin) + "</li>").join("") + "</ol></div>" : "") +
-    (notes.length ? '<div class="sp-sec"><div class="sp-lead">Notes</div><ul class="sp-notes" title="Notes stay in the app: the PDD does not print them.">' +
+    (notes.length ? '<div class="sp-sec"><div class="sp-lead">Notes</div><ul class="sp-notes">' +
       notes.map((n) => '<li class="sp-note">' + (n.at ? '<span class="sp-note-at">' + escapeHtml(sinceStart(n.at, origin)) + "</span> " : "") +
       escapeHtml(n.text) + "</li>").join("") + "</ul></div>" : "") +
     "</li>";
@@ -414,8 +414,7 @@ function _drawHead(lead, editable, where) {
     fields.innerHTML = '<p class="sp-system">' +
         AnalystUI.systemFieldHtml(lead, cb.derived, { input: HEAD_IDS.system, list: HEAD_IDS.systemList }) +
         (where && where.screen ? '<span class="sp-screen">' + escapeHtml(where.screen) + "</span>" : "") + "</p>" +
-      '<label class="sp-field">Description <textarea id="' + HEAD_IDS.desc + '" placeholder="' + escapeAttr(StepEditor.DESC_HINT) +
-        '" title="The text the PDD prints under this step. Saved when you leave the field">' + escapeHtml(desc) + "</textarea></label>";
+      '<label class="sp-field">Description <textarea id="' + HEAD_IDS.desc + '" placeholder="' + escapeAttr(StepEditor.DESC_HINT) + '">' + escapeHtml(desc) + "</textarea></label>";
   } finally { _rendering = false; }
   edit.hidden = false;
   fields.hidden = false;

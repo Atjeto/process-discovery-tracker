@@ -304,12 +304,12 @@ function xlsxRows(files, sheetName) {
       title: ((document.querySelector("#session-layout-steps .editor-list-pane .editor-pane-title") || {}).textContent || "").replace(/\s+/g, " ").trim(),
       note: ((document.getElementById("runs-pane-note") || {}).textContent || "").trim() }));
   } catch (e) { a.err = errText(e); }
-  record("(a) New empty project: manifest (session_id, source blank, started_at, label), an empty events.jsonl and annotations.json; one implicit run after the analysis; the Timeline says in one line there is no recording or video, with Attach video; the Steps list says the whole project is one transaction (AD-29) and, with no video to mark them on, to attach one first (lane FX4)",
+  record("(a) New empty project: manifest (session_id, source blank, started_at, label), an empty events.jsonl and annotations.json; one implicit run after the analysis; the Timeline says in one line there is no recording or video, with Attach video; the Steps list holds no line explaining what a transaction is (lane no-narration)",
     !a.err && JSON.stringify(Object.keys(a.manifest)) === '["session_id","source","started_at","label"]' &&
       a.manifest.source === "blank" && a.manifest.label === "Order intake" && a.events === "" && a.annoExists &&
       a.runs.length === 1 && a.runs[0].implicit === true && /^No recording and no video in this project\. /.test(a.timeline.text) && a.timeline.attach &&
       a.steps.title === "Transactions · 1" &&
-      a.steps.note === "The whole project is one transaction. To mark where each one starts, attach a video first: the Timeline then follows it.",
+      a.steps.note === "",
     JSON.stringify(a));
   const implicitId = a.runs && a.runs[0] && a.runs[0].id;
 
@@ -638,14 +638,14 @@ function xlsxRows(files, sheetName) {
     n.video = firstVideo(readJson(path.join(BLANK, "annotations.json")));
     n.copied = fs.existsSync(path.join(BLANK, "video", path.basename(VIDEO)));
     n.tl = await page.evaluate(() => ({ empty: !!document.getElementById("tl-empty"), sync: document.getElementById("btn-sync-video").hidden }));
-    // Lane FX4: with the video the Timeline can mark the transactions, and
-    // the Steps list says so again.
+    // Lane FX4: with the video the Timeline can mark the transactions; the
+    // Steps list holds no line explaining it (lane no-narration).
     await level("steps");
     n.note = await page.evaluate(() => ((document.getElementById("runs-pane-note") || {}).textContent || "").trim());
   } catch (x) { n.err = errText(x); }
-  record("(n) Attach video on a blank project's Timeline: the video is copied in, starts with the session (offset 0, no sync to do) and the Timeline follows it; the Steps list then says the transactions are marked on the Timeline (lane FX4)",
+  record("(n) Attach video on a blank project's Timeline: the video is copied in, starts with the session (offset 0, no sync to do) and the Timeline follows it; the Steps list holds no line explaining the transactions (lane no-narration)",
     !n.err && n.video.path === "video/" + path.basename(VIDEO) && n.video.offset_ms === 0 && n.copied && !n.tl.empty && n.tl.sync &&
-      n.note === "The whole project is one transaction until you mark where each one starts on the Timeline.",
+      n.note === "",
     JSON.stringify(n));
 
   // (w) Lane FX2 (validation pass 3, F14): a step without a time, in a
@@ -1421,12 +1421,12 @@ function xlsxRows(files, sheetName) {
   const during = errs.splice(errsBefore);
   o.expectedErrors = during.filter((t) => /\[session\] annotations\.json not saved/.test(t)).length;
   errs.push(...during.filter((t) => !/\[session\] annotations\.json not saved/.test(t)));
-  const wantFolder = "Every change saves itself to the project folder: " + path.resolve(VPROJ) + ".";
+  const wantFolder = "Saved to " + path.resolve(VPROJ) + ".";
   record("(u) the save state in the top bar (role status, polite, focusable): the project opened again says Saved and names its folder; an edit shows Saved with the time; " +
     "annotations.json read-only, an edit shows Not saved in the error colour with the reason (the error toast as before), and it stays; writable again, the next edit saves both changes and shows Saved",
     !o.err && o.opened.text === "Saved" && o.opened.title === wantFolder && o.opened.state === "saved" && o.opened.inBar && o.opened.shown &&
       o.opened.role === "status" && o.opened.live === "polite" && o.opened.focusable && o.opened.color !== o.opened.bad &&
-      o.saved.text === "Saved" && o.saved.title.endsWith(" " + wantFolder) && o.savedOnDisk === DOC.purpose &&
+      o.saved.text === "Saved" && o.saved.title.endsWith(" to " + path.resolve(VPROJ) + ".") && o.savedOnDisk === DOC.purpose &&
       o.failed.text === "Not saved" && o.failed.state === "failed" && o.failed.color === o.failed.bad &&
       /^Your change was not saved: a file in the project folder is read-only, or another program holds it \(EPERM: /.test(o.failed.title) &&
       /It stays on screen and is saved with your next change once the problem is fixed\.$/.test(o.failed.title) &&
@@ -1799,17 +1799,17 @@ function xlsxRows(files, sheetName) {
       !G.err && G.down === (TT.rows[1] || {}).id && o2.id === G.down && o2.pos === "Step 2 of 5" && o2.prev === null && o2.next === null && o2.panel && o2.video &&
         f1.pos === "Step 1 of 5" && f1.prev === "true" && f1.prevTitle === "Opens the step before this one." && f1.nextTitle === "Opens the step after this one." &&
         la.pos === "Step 5 of 5" && la.next === "true" && la.steps === "Open in Steps" &&
-        la.stepsTitle === "Opens this step in Steps, where its flow and its sub-process are edited." &&
+        la.stepsTitle === "Opens this step in Steps." &&
         JSON.stringify(o2.verbs.slice(0, 3).map((v) => v.replace(" (off)", ""))) === '["Split…","Merge with next","Hide step"]' &&
         G.escaped.focus === o2.id && !!G.inSteps && G.inSteps.sel === la.id,
       JSON.stringify(G.err ? G : { open2: o2, first: f1, last: la, escaped: G.escaped && G.escaped.focus, inSteps: G.inSteps }));
-    record("(G4) lane PANE item 4: Notes says what a note is while there is none, Add note adds one at the clock's moment (its row: the moment, the text, At a moment, on no step; the tab counts it), Delete takes it out and Ctrl+Z brings it back; Files says what an attached file is, with Attach file...",
-      !G.err && G.notesEmpty.text.endsWith("No notes yet. A note sits on a step or at a moment, and stays out of the PDD.") &&
-        G.notesEmpty.add === "Adds a note at this moment. Notes stay out of the PDD." &&
+    record("(G4) lane PANE item 4: Notes says No notes yet while there is none, Add note adds one at the clock's moment (its row: the moment, the text, At a moment, on no step; the tab counts it), Delete takes it out and Ctrl+Z brings it back; Files says No files attached yet, with Attach file...",
+      !G.err && G.notesEmpty.text.endsWith("No notes yet.") &&
+        G.notesEmpty.add === "Adds a note at this moment." &&
         /^\d:\d{2} Ask about orders by phone At a moment, on no step Edit Delete$/.test(G.note.row) && G.note.tab === "Notes (1)" &&
         G.noteGone === "Notes (0)" && G.noteBack &&
-        G.files.text.endsWith("No files attached yet. An attached file is copied into the project and listed in the PDD.") &&
-        G.files.attach === "Copies a file into the project and lists it in the PDD.",
+        G.files.text.endsWith("No files attached yet.") &&
+        G.files.attach === "Copies a file into the project.",
       JSON.stringify(G.err ? G : { notesEmpty: G.notesEmpty, note: G.note, gone: G.noteGone, files: G.files }));
   }
 

@@ -61,7 +61,7 @@ function resultFromRunnerError(err) {
   }
   if (err && err.signal) {
     return { ok: false, code: null, pipelineError: pipelineErrorLine(err.stderr),
-      error: "Analysis stopped before it finished (" + err.signal + "). Re-analyze from Help, Troubleshooting." };
+      error: "Analysis stopped before it finished (" + err.signal + ")." };
   }
   return { ok: false, code: null, pipelineError: null,
     error: "Analysis could not start: " + ((err && err.message) || String(err)) };

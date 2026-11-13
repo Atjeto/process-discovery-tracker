@@ -29,8 +29,6 @@ const SmeGives = require("../sme-gives.js");
 // Lazy: the Overview's unit tests load this module without a page.
 const Video = () => require("./flow-view-video.js");
 
-const NOT_PRINTED = "Notes stay in the app: the PDD does not print them.";
-
 function _sess() { return State.getSession(); }
 function _anno() { return ensureAnnoShape(_sess().annotations); }
 function _list(anno, key) {
@@ -197,11 +195,11 @@ function stepAttachedHtml(step) {
     '<button type="button" class="link-btn" data-att-act="open">Open</button>' +
     '<button type="button" class="link-btn" data-att-act="remove">Remove</button></li>').join("");
   return (atts ? '<div class="step-sect" id="step-atts-sect">' + _lead("Attachments") + '<ul class="att-list">' + atts + "</ul></div>" : "") +
-    (notes ? '<div class="step-sect" id="step-notes-sect">' + _lead("Notes", NOT_PRINTED) + '<ul class="step-notes">' + notes + "</ul></div>" : "") +
+    (notes ? '<div class="step-sect" id="step-notes-sect">' + _lead("Notes") + '<ul class="step-notes">' + notes + "</ul></div>" : "") +
     '<div class="step-adds">' +
       '<button type="button" class="link-btn" id="btn-step-add-shot" title="Add a screenshot to this step: a frame of the video, a pasted image or a file">Add screenshot ▾</button>' +
-      '<button type="button" class="link-btn" id="btn-step-add-note" title="Add a note to this step. ' + escapeAttr(NOT_PRINTED) + '">Add note</button>' +
-      '<button type="button" class="link-btn" id="btn-step-attach" title="Attach a file to this step, such as an example email: the PDD lists it.">Attach file…</button>' +
+      '<button type="button" class="link-btn" id="btn-step-add-note" title="Add a note to this step.">Add note</button>' +
+      '<button type="button" class="link-btn" id="btn-step-attach" title="Attach a file to this step.">Attach file…</button>' +
     "</div>";
 }
 
@@ -605,7 +603,7 @@ if (typeof document !== "undefined") document.addEventListener("paste", (e) => {
 async function addNote(stepId, at) {
   if (!_sess()) return;
   const text = await promptModal({ title: "Add note", message: stepId ? "A note on this step" : "A note at this moment",
-    detail: NOT_PRINTED, multiline: true, okLabel: "Add note" });
+    multiline: true, okLabel: "Add note" });
   if (text == null || !String(text).trim() || !_sess()) return;
   const anno = _anno();
   _list(anno, "analyst_notes").push({ id: cryptoRandomId(), text: String(text).trim(), step_id: stepId || null,
@@ -625,7 +623,7 @@ async function editNote(id) {
   const anno = _anno();
   const n = _list(anno, "analyst_notes").find((x) => x && x.id === id);
   if (!n) return;
-  const text = await promptModal({ title: "Edit note", detail: NOT_PRINTED, multiline: true, defaultValue: n.text, okLabel: "Save" });
+  const text = await promptModal({ title: "Edit note", multiline: true, defaultValue: n.text, okLabel: "Save" });
   if (text == null || !String(text).trim() || String(text).trim() === n.text) return;
   n.text = String(text).trim();
   if (await _save(anno, "edit a note")) toast("Note saved.", "success");
@@ -717,7 +715,7 @@ function overviewAttachmentsHtml(anno) {
     const st = x.step_id ? _step(a, x.step_id) : null;
     return '<li class="att-row" data-att-id="' + escapeAttr(x.id) + '">' +
       '<input type="text" class="att-label-input" value="' + escapeAttr(x.label || "") + '" placeholder="' + escapeAttr(x.file) +
-        '" aria-label="Label" title="The label the PDD prints for this file">' +
+        '" aria-label="Label">' +
       // C24 (lane C): a file the SME added at the end of the recording.
       (SmeGives.fromSme(x) ? '<span class="att-from">' + escapeHtml(SmeGives.WORDS.fromSme) + "</span>" : "") +
       '<span class="att-file" title="' + escapeAttr(x.file) + '">' + escapeHtml(x.file) + "</span>" +
@@ -727,8 +725,8 @@ function overviewAttachmentsHtml(anno) {
   }).join("");
   return '<div class="ov-attach" id="ov-attach">' +
     '<div class="step-sect-head"><span class="ov-doc-label">Attachments</span>' +
-      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project, such as an input spreadsheet: the PDD lists it.">Add file...</button></div>' +
-    (rows ? '<ul class="att-list">' + rows + "</ul>" : '<p class="ov-attach-empty">No files attached. The PDD lists the files you attach here.</p>') +
+      '<button type="button" class="link-btn" id="btn-ov-attach" title="Attach a file to this project.">Add file...</button></div>' +
+    (rows ? '<ul class="att-list">' + rows + "</ul>" : '<p class="ov-attach-empty">No files attached.</p>') +
     "</div>";
 }
 

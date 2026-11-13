@@ -1159,6 +1159,8 @@ the corner icon its meaning and adds the label under the box.
   in the step editor (Steps and the step opened in the Timeline's pane), the readiness list
   (`readiness.js`) counts no new miss.
 
+- **Amended 2026-11-13** (the owner: "process manager does not decide the automation scope. the developer does."): `step.automation` is CUT. The step editor keeps one tick, *No longer needed* (`flags.waste`); a stored `automation: "not_needed"` still reads as ticked, other values are ignored and round-trip untouched; the step map's task kinds, the PDD's section 7 and the Technical details go back to what they were before D7. `step.done_by` stays as above.
+
 ## C26. The information a step uses (owner 2026-11-12: "just build"; plan D6)
 
 Why: a project made from a video or from nothing has no recorded fields, so the developers get no

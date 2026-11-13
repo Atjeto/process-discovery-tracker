@@ -267,7 +267,7 @@ test("2.0.1: renderInteractionList marks where two merged steps met, and every a
   const html = renderInteractionList(events, 3, { splittable: true, mergedAfter: 0 });
   assert.equal((html.match(/was-boundary/g) || []).length, 1);
   assert.ok(html.includes("The two merged steps met here"));
-  assert.ok(html.includes("The scissors after an action split the step there."), "the scissors say what they do");
+  assert.ok(!html.includes("si-split-hint"), "no line explains the scissors");
   assert.equal((html.match(/class="si-split-btn"/g) || []).length, 2);
   assert.ok(!renderInteractionList(events, 3, { splittable: true }).includes("was-boundary"));
 });

@@ -120,8 +120,8 @@ function missing(project, lookups) {
     if (list.length) out.push({ key, count: list.length, text, lead: { kind: "step", stepId: list[0].step_id } });
   };
   const n = (list, one, many) => _plural(list.length, one, many);
-  stepEntry("drafts", drafts, drafts.length === 1 ? "1 step is still a draft, and the PDD says so."
-    : drafts.length + " steps are still drafts, and the PDD says so.");
+  stepEntry("drafts", drafts, drafts.length === 1 ? "1 step is still a draft."
+    : drafts.length + " steps are still drafts.");
   stepEntry("names", names, n(names, "step has no name of its own", "steps have no name of their own") + ": " + _names(names) + ".");
   stepEntry("descriptions", descriptions, n(descriptions, "step has", "steps have") + " no description: " + _names(descriptions) + ".");
   stepEntry("pictures", pictures, n(pictures, "step has", "steps have") + " no picture: " + _names(pictures) + ".");

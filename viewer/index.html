@@ -39,7 +39,7 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
       </button>
       <div class="project-menu-popup" id="new-menu-popup" style="display:none; min-width: 240px;">
         <button class="project-menu-item" id="btn-new-from-video" type="button" title="Start a project from videos of the process and their transcripts.">New project from a video...</button>
-        <button class="project-menu-item" id="btn-new-blank" type="button" title="Start an empty project: you add its steps by hand in Steps.">New empty project...</button>
+        <button class="project-menu-item" id="btn-new-blank" type="button" title="Start an empty project.">New empty project...</button>
       </div>
     </div>
     <div class="project-menu" id="recent-menu">
@@ -68,7 +68,7 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
       <button class="view-mode-btn" data-level="flow" title="The recording: video, screenshots, transactions and what was said">
         <span class="view-mode-icon">≡</span> Timeline
       </button>
-      <button class="view-mode-btn" data-level="steps" title="Each transaction's steps: confirm transaction 1, then review the others">
+      <button class="view-mode-btn" data-level="steps" title="Each transaction's steps">
         <span class="view-mode-icon">▣</span> Steps
       </button>
       <button class="view-mode-btn" data-level="map" title="The process map, and your As-Is and To-Be maps">
@@ -95,15 +95,15 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
          project folder. Saved (the time and the folder in the tooltip),
          Saving... while a write lasts, Not saved (the reason in the tooltip)
          until a later save succeeds. Focusable, so a keyboard reaches it. -->
-    <span class="save-state session-only" id="save-state" role="status" aria-live="polite" tabindex="0" data-state="saved" title="Every change saves itself to the project folder.">Saved</span>
+    <span class="save-state session-only" id="save-state" role="status" aria-live="polite" tabindex="0" data-state="saved">Saved</span>
     <div class="project-menu session-only" id="session-export-menu">
-      <button class="project-btn" id="btn-session-export-menu" aria-haspopup="true" aria-expanded="false" title="Export this project: each export opens its folder with the file selected">
+      <button class="project-btn" id="btn-session-export-menu" aria-haspopup="true" aria-expanded="false" title="Export this project">
         <span>Export</span><span class="project-menu-caret">▾</span>
       </button>
       <div class="project-menu-popup" id="session-export-popup" style="display:none">
         <!-- Lane HV (contract C20): a hand-off opened read only opens the two
              files it came with (views/handoff-ui.js); shown only there. -->
-        <button class="project-menu-item" id="btn-handoff-open-pdd" title="Open the PDD this version came with. It says which version it is.">PDD of this version</button>
+        <button class="project-menu-item" id="btn-handoff-open-pdd" title="Open the PDD this version came with.">PDD of this version</button>
         <button class="project-menu-item" id="btn-handoff-open-tech" title="Open the Technical details this version came with.">Technical details of this version</button>
         <!-- The deliverable first (the headings are text: not focusable, no
              act; a hand-off opened read only shows none, styles.css). -->
@@ -149,15 +149,14 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
           </div>
           <div class="hero-row">
             <button id="btn-new-video-hero" type="button" title="Start a project from videos of the process and their transcripts.">New project from a video...</button>
-            <button id="btn-new-blank-hero" type="button" title="Start an empty project: you add its steps by hand in Steps.">New empty project...</button>
+            <button id="btn-new-blank-hero" type="button" title="Start an empty project.">New empty project...</button>
           </div>
         </div>
         <!-- Lane B4c: the page takes the same files dropped on it
              (renderer.js wireStartDrop); while files are dragged over it the
              line says it will take them. -->
         <p class="hero-drop" id="session-drop-line" data-idle="Or drop a project folder, a zip, or a video with its transcript here." data-ready="Let go to open it here.">Or drop a project folder, a zip, or a video with its transcript here.</p>
-        <p class="hero-demo"><button type="button" class="link-btn" id="btn-open-demo-hero" title="Open a finished example project, a fresh copy each time.">Open the demo project</button> to see every part of PDT on a finished example.</p>
-        <p class="help-cta">Press <span class="kbd">?</span> for a how-to-use guide</p>
+        <p class="hero-demo"><button type="button" class="link-btn" id="btn-open-demo-hero" title="Open a finished example project, a fresh copy each time.">Open the demo project</button></p>
         <div class="recent-sessions">
           <div class="recent-header">
             <h3>Recent projects</h3>
@@ -295,7 +294,7 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
               <span class="tl-sep" aria-hidden="true"></span>
               <button type="button" id="btn-add-step" hidden title="Adds a step at this moment of the video. The step before it ends here. Key: S">Add step</button>
               <button type="button" id="btn-tl-transaction" hidden title="Starts a new transaction at this moment of the video.">Start transaction</button>
-              <button type="button" id="btn-tl-note" hidden title="Adds a note at this moment of the video. Notes stay out of the PDD.">Add note</button>
+              <button type="button" id="btn-tl-note" hidden title="Adds a note at this moment of the video.">Add note</button>
               <span class="tl-selection" id="tl-selection" hidden>
                 <span class="tl-selection-times" id="tl-selection-times"></span>
                 <button type="button" id="tl-selection-exclude" hidden></button>
@@ -391,7 +390,7 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
             <!-- Bulk actions appear only when 2+ steps are ticked (clutter pass);
                  syncMultiSelectButtons() toggles `hidden`. -->
             <button id="btn-delete-selected-steps" hidden title="Hide the ticked drafted steps and delete the ticked steps you added">Hide selected</button>
-            <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step (the inverse of Split)">Merge selected</button>
+            <button id="btn-merge-selected" hidden title="Merge the ticked steps into a single step">Merge selected</button>
             <!-- C19: the ticked steps, one after the other, into a new sub-process (in every transaction). -->
             <button id="btn-group-selected" hidden title="Move the ticked steps into a new sub-process, in every transaction.">Group into a sub-process...</button>
             <span class="flex-spacer"></span>
@@ -403,10 +402,6 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
           <div class="editor-split">
             <div class="editor-list-pane" id="steps-list-pane">
               <div class="editor-pane-title">Transactions · <span id="runs-pane-count">0</span></div>
-              <!-- What a transaction is, in one line (steps-view.js renderStepsLevel):
-                   the SME's key in a recording, one transaction in a project
-                   without one until the Timeline marks more. -->
-              <p class="editor-pane-note" id="runs-pane-note"></p>
               <!-- C19: inside a sub-process, the way down (each crumb goes up) and
                    Dissolve sub-process (steps-view.js _renderCrumbs). -->
               <nav class="steps-crumbs" id="steps-crumbs" aria-label="Where these steps are" hidden></nav>
@@ -441,7 +436,7 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
                    (renderer.js _renderMapPicker): the main process and every
                    sub-process, depth first, each with its number. -->
               <div class="project-menu map-picker" id="map-picker" hidden>
-                <button type="button" class="project-btn" id="btn-map-picker" aria-expanded="false" aria-controls="map-picker-popup" title="Choose the main process or one of its sub-processes; Steps shows the same level.">
+                <button type="button" class="project-btn" id="btn-map-picker" aria-expanded="false" aria-controls="map-picker-popup" title="Choose the main process or one of its sub-processes.">
                   <span class="map-picker-label">Map: <span class="map-picker-name" id="map-picker-name">Main process</span></span><span class="project-menu-caret">▾</span>
                 </button>
                 <div class="project-menu-popup map-picker-popup" id="map-picker-popup" role="group" aria-label="Maps" style="display:none"></div>
@@ -466,14 +461,13 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
                  Hidden while the live map says why it draws no map. -->
             <div class="map-view-bar" id="map-view-bar" hidden>
               <span class="map-view-title" id="map-view-title">Process map</span>
-              <span class="map-view-note" id="map-view-note">(the PDD prints this map)</span>
               <button type="button" id="btn-map-asis-edit" hidden title="Open this map in the editor">Edit</button>
               <!-- Lane FX2: the As-Is copy shown was made before the steps
                    changed (asis-freshness.js): said here, with Copy again. -->
               <span class="map-view-stale" id="map-view-stale" hidden></span>
               <button type="button" class="link-btn" id="btn-map-asis-recopy" hidden title="Make a new copy of the process map as it is now.">Copy again</button>
               <button type="button" class="link-btn" id="btn-map-show-runs" title="Show the map drawn from the transactions as they ran.">Show how the transactions ran</button>
-              <button type="button" class="link-btn" id="btn-map-show-map" hidden title="Show the process map, the map the PDD prints">Show the process map</button>
+              <button type="button" class="link-btn" id="btn-map-show-map" hidden>Show the process map</button>
             </div>
             <!-- Why the map the PDD prints does not show, when it does not (not
                  drawn yet, being drawn, or C19: no map for the sub-process
@@ -907,7 +901,7 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
         </select>
       </label>
       <span class="refmap-editor-spacer"></span>
-      <button class="icon-btn" id="btn-refmap-editor-close" title="Close the editor. Your edits are saved as you make them.">Close ✕</button>
+      <button class="icon-btn" id="btn-refmap-editor-close" title="Close the editor.">Close ✕</button>
     </div>
     <div class="refmap-editor-host" id="refmap-editor-host"></div>
   </div>

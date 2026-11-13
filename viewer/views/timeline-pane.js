@@ -67,22 +67,21 @@ const TEXT = {
   next: "Next",
   nextTitle: "Opens the step after this one.",
   openInSteps: "Open in Steps",
-  openInStepsTitle: "Opens this step in Steps, where its flow and its sub-process are edited.",
+  openInStepsTitle: "Opens this step in Steps.",
   alsoIn: "Also happens in",
   goThere: "Go there",
   goThereTitle: "Opens this step in that transaction.",
   addNote: "Add note",
-  addNoteTitle: "Adds a note at this moment. Notes stay out of the PDD.",
-  noNotes: "No notes yet. A note sits on a step or at a moment, and stays out of the PDD.",
+  addNoteTitle: "Adds a note at this moment.",
+  noNotes: "No notes yet.",
   attach: "Attach file...",
-  attachTitle: "Copies a file into the project and lists it in the PDD.",
-  noFiles: "No files attached yet. An attached file is copied into the project and listed in the PDD.",
+  attachTitle: "Copies a file into the project.",
+  noFiles: "No files attached yet.",
   rename: "Rename",
   renameTitle: "Changes the name of this transaction.",
   deleteTx: "Delete transaction",
   deleteTxTitle: "Deletes this transaction: its stretch is no longer one of its own. Ctrl+Z brings it back.",
   reference: "Reference",
-  referenceTitle: "The reference transaction: you confirm it, and the others are compared with it.",
   outside: "Outside the transactions",
   now: "now",
   goToMoment: "Goes to this moment.",
@@ -284,7 +283,7 @@ function _headerEl(g, sess) {
   el.innerHTML =
     '<div class="tp-tx-line">' +
       '<span class="tp-tx-name" role="heading" aria-level="3">' + escapeHtml(_txName(run, label)) + "</span>" +
-      (g.isRef ? '<span class="run-pattern-badge" title="' + escapeAttr(TEXT.referenceTitle) + '">' + escapeHtml(TEXT.reference) + "</span>" : "") +
+      (g.isRef ? '<span class="run-pattern-badge">' + escapeHtml(TEXT.reference) + "</span>" : "") +
       (editable ? _btn("link-btn tp-tx-rename", TEXT.rename, TEXT.renameTitle) + _btn("link-btn tp-tx-delete", TEXT.deleteTx, TEXT.deleteTxTitle) : "") +
     "</div>" +
     (why ? '<p class="tp-tx-why">' + escapeHtml("Ended by itself: " + why + ".") + "</p>" : "");
@@ -307,7 +306,6 @@ function _beginRename(head, start) {
   input.className = "tp-tx-input";
   input.value = start.label || "";
   input.setAttribute("aria-label", "Name of this transaction");
-  input.title = "The name of this transaction. Saved when you press Enter or leave the field";
   name.replaceWith(input);
   let done = false;
   const finish = (save) => {

@@ -193,8 +193,7 @@ function view(state, fmtTime) {
   }
   return {
     kind: "saved", text: "Saved",
-    title: (state.savedAt ? "Saved at " + fmt(state.savedAt) + ". " : "") +
-      "Every change saves itself to the project folder" + where + ".",
+    title: (state.savedAt ? "Saved at " + fmt(state.savedAt) : "Saved") + (state.folder ? " to " + state.folder : "") + ".",
   };
 }
 

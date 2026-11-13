@@ -20,8 +20,8 @@ test("which answers wait: all four, in the order of the Overview's fields (posit
   const w = G.waitingAnswers({ sme_answers: ALL }, { document: {} });
   assert.deepEqual(w.map((x) => x.key), ["trigger", "result", "exceptions", "effort"]);
   assert.equal(w[0].answer, ALL.trigger);
-  assert.equal(G.waitingLine(w.length), "The SME answered 4 questions: each waits under its field.");
-  assert.equal(G.waitingLine(1), "The SME answered 1 question: it waits under its field.");
+  assert.equal(G.waitingLine(w.length), "The SME answered 4 questions.");
+  assert.equal(G.waitingLine(1), "The SME answered 1 question.");
 });
 
 test("which answers wait: a field that holds the answer has none waiting; other text keeps it", () => {
@@ -59,10 +59,9 @@ test("Use writes the answer and dismisses its key in one edit: an edit after it 
   assert.deepEqual(G.usedAnswer({}, "result", "x"), { document: { result: "x" }, sme_answers_dismissed: ["result"] });
 });
 
-test("the document's line read only says only how many", () => {
-  assert.equal(G.waitingLine(4, true), "The SME answered 4 questions.");
-  assert.equal(G.waitingLine(1, true), "The SME answered 1 question.");
-  assert.equal(G.waitingLine(0, true), "");
+test("the document's line says only how many, and no line says where a field's text came from", () => {
+  assert.equal(G.waitingLine(0), "");
+  assert.equal(G.WRITTEN_FROM, undefined);
 });
 
 test("which answers wait: an empty answer is none, unknown keys are ignored", () => {

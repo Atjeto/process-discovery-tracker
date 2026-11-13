@@ -73,7 +73,7 @@ function titles(noun) {
     addStep: "Adds a step at this moment of " + n + ". The step before it ends here. Key: S",
     start: "Starts a new transaction at this moment of " + n + ".",
     end: "Ends the transaction at this moment of " + n + ".",
-    addNote: "Adds a note at this moment of " + n + ". Notes stay out of the PDD.",
+    addNote: "Adds a note at this moment of " + n + ".",
     notPart: "Marks the selected stretch as not part of the process: playing skips it.",
     leaveOut: "Drafts the steps and the map again without this stretch: playing skips it.",
     makeTx: "Makes a transaction that starts and ends where the selection does.",

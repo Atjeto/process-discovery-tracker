@@ -126,7 +126,7 @@ async function openDemoFlow() {
   catch (e) { r = { ok: false, error: ipcErrorText(e) }; }
   if (!r || !r.ok) { toast("The demo project did not open: " + ((r && r.error) || "no reason was given"), "error"); return; }
   await loadSessionIntoView(r.folder);
-  toast("The demo project, a fresh copy in " + r.folder + ". Change anything: the next Open the demo project starts from the same demo again.", "success");
+  toast("The demo project, a fresh copy in " + r.folder + ".", "success");
 }
 if ($("#btn-open-demo-hero")) $("#btn-open-demo-hero").addEventListener("click", openDemoFlow);
 if ($("#btn-open-demo")) $("#btn-open-demo").addEventListener("click", openDemoFlow);

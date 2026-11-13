@@ -12,11 +12,11 @@ const LIVE = { locked: false, drawable: true };
 const FRESH = { exists: true, stale: false, plane: true };
 const base = (o) => Object.assign({ want: "map", live: LIVE, copy: null, step: FRESH, busy: false, tried: false }, o);
 
-test("the Map shows the process map (process_map_step.bpmn) by default, and the PDD prints it", () => {
+test("the Map shows the process map (process_map_step.bpmn) by default", () => {
   const p = MV.pick(base());
   assert.deepEqual(p, { view: "bpmn", source: "step", why: null, analyze: false, back: false });
   assert.deepEqual(MV.line(p, null, ""), {
-    title: "Process map", note: "(the PDD prints this map)", edit: false, stale: "",
+    title: "Process map", edit: false, stale: "",
     toRuns: "Show how the transactions ran", toMap: "",
   });
 });
@@ -26,7 +26,6 @@ test("an As-Is copy chosen for the PDD shows instead, with its Edit, and needs n
   assert.deepEqual(p, { view: "bpmn", source: "copy", why: null, analyze: false, back: false });
   const l = MV.line(p, { plane: true }, "Order entry As-Is");
   assert.equal(l.title, "Order entry As-Is");
-  assert.equal(l.note, "(edited; the PDD prints this map)");
   assert.equal(l.edit, true);
   assert.equal(MV.line(p, { plane: true }, "  ").title, "As-Is map");
   assert.equal(l.stale, "", "a copy made from the steps as they are says nothing more");
@@ -61,8 +60,6 @@ test("how the transactions ran is the analyst's second view, with the way back n
   assert.deepEqual(p, { view: "runs", source: null, why: null, analyze: false, back: true });
   const l = MV.line(p, null, "");
   assert.equal(l.title, "How the transactions ran");
-  assert.match(l.note, /how often it was taken/);
-  assert.match(l.note, /a dashed line is a path no transaction took/);
   assert.equal(l.toRuns, "");
   assert.equal(l.toMap, "Show the process map");
   assert.equal(MV.line(p, { plane: true }, "As-Is map").toMap, "Show the As-Is map");
@@ -79,7 +76,7 @@ test("a step map older than the steps is analyzed once, and the previous picture
   const after = MV.pick(base({ step: stale, tried: true }));
   assert.deepEqual(after, { view: "runs", source: null, why: MV.WHY.NOT_UPDATED, analyze: false, back: false });
   assert.deepEqual(MV.line(after, null, ""), {
-    title: "How the transactions ran", note: MV.NOTE.RUNS, edit: false, stale: "", toRuns: "", toMap: "",
+    title: "How the transactions ran", edit: false, stale: "", toRuns: "", toMap: "",
   });
 });
 
@@ -116,10 +113,19 @@ test("the analyst's live view never analyzes", () => {
 });
 
 test("the Map's words carry no dash between clauses", () => {
-  const texts = [].concat(Object.values(MV.WHY), Object.values(MV.TITLE), Object.values(MV.NOTE),
+  const texts = [].concat(Object.values(MV.WHY), Object.values(MV.TITLE),
     [MV.TO_RUNS, MV.TO_STEP, MV.TO_COPY, MV.STALE, MV.STALE_LABELS, MV.RECOPY]);
   const dash = new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]| - |--");
   for (const t of texts) assert.doesNotMatch(t, dash, t);
+});
+
+test("no narration: the header line holds no note on what the PDD prints or how to read the map", () => {
+  for (const l of [MV.line({ view: "bpmn", source: "step" }, null, ""), MV.line({ view: "bpmn", source: "copy" }, { plane: true }, "As-Is map"),
+    MV.line({ view: "runs", back: true }, null, "")]) {
+    assert.equal(l.note, undefined);
+  }
+  assert.equal(MV.NOTE, undefined);
+  for (const t of Object.values(MV.WHY)) assert.doesNotMatch(t, /Help|Troubleshooting/, t);
 });
 
 test("2.0.1: a copy drawn in colours, before the system labels, says so before Copy again", () => {

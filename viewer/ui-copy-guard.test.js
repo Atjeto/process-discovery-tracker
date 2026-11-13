@@ -406,4 +406,157 @@ test("lane A-2: the word guard reads copy, not code (positive controls)", () => 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+/* ---- Lane no-narration: the screens never explain the tool --------------
+   The owner (2026-11-13): a line on a screen is the PM's content, an act
+   (with a tooltip that says what the click does), or a fact the PM acts on.
+   A line that explains how PDT works, who fills what, what the PDD or the
+   analysis does with something, or points at Help, was cut; these are the
+   retired lines, word for word or by a phrase only they held, so none comes
+   back. Help keeps its prose: the viewer's Help (#help-modal in index.html)
+   and the capture app's How to record window are not read. */
+const RETIRED_NARRATION = [
+  // Overview
+  "You write these. The PDD prints them.",
+  "The analyst wrote these. The PDD prints them.",
+  "the PDD prints what you write in place of its placeholders",
+  "The PDD prints each field you write",
+  "Written from the SME's answer.",
+  "waits under its field",
+  "In the PDD: ",
+  "ticked once",
+  "Steps opens with the first step that has no name",
+  "What the PDD of the next version leaves out",
+  "Help, Troubleshooting",
+  "The process map is not shown because it draws how the transactions flow",
+  "if it fails again, the analysis log names",
+  // Map
+  "(the PDD prints this map)",
+  "(edited; the PDD prints this map)",
+  "hover a line for how often it was taken",
+  "it shows here when the update is done",
+  "and the Map says why",
+  "the As-Is map the PDD prints stays as it is",
+  "so the copy carries your latest step names",
+  ", the map the PDD prints",
+  "for example to start the To-Be map from it",
+  "with a chapter of its own in the PDD",
+  "so the PDD has no chapter for it",
+  "Steps shows the same level",
+  // Notes, files, fields
+  "Notes stay in the app: the PDD does not print them.",
+  "Notes stay out of the PDD",
+  "stays out of the PDD",
+  "lists it in the PDD",
+  "listed in the PDD",
+  "the PDD lists it",
+  "The PDD lists the files you attach here.",
+  "The label the PDD prints for this file",
+  "The text the PDD prints under this step",
+  "Saved when you press Enter or leave the field",
+  "Saved when you leave the field",
+  "Your edits are saved as you make them",
+  "Every change saves itself to the project folder",
+  "and the PDD says so",
+  // Steps
+  "The reference transaction: you confirm it, and the others are compared with it.",
+  "A merge carries to the same drafted steps in the other transactions",
+  "the PDD prints its steps, and the other transactions are compared with it",
+  "It is not confirmed: the reference transaction is.",
+  "confirmed: the other transactions are compared with it",
+  "its differences are listed on the left",
+  "fix and name them as at the main level",
+  "Confirm transaction accepts them with the rest of the transaction.",
+  "One block per time a transaction goes through this sub-process.",
+  "The whole project is one transaction",
+  "Steps appear once the recording is analyzed",
+  "the recorder drafted this step, and nobody has checked it yet",
+  "you accepted the drafted step as it is",
+  "Edited: you changed this step",
+  "Added: you added this step by hand.",
+  "Hidden: you took this step out.",
+  "The code of the library activity this step is named from",
+  "which lists every time it happened",
+  "Read from the actions recorded in this step.",
+  "empty, the recording's role",
+  "(from the recording)",
+  ", the recording's role.",
+  "You can edit it there.",
+  "The scissors after an action split the step there.",
+  "(the inverse of Split)",
+  // Timeline and its pane
+  "where its flow and its sub-process are edited",
+  "A note sits on a step or at a moment",
+  "An attached file is copied into the project",
+  "open: it ends where you add the next step, or where its transaction ends",
+  "the Timeline then follows it",
+  "Its sentences are placed from that video's start, and move with it.",
+  "The recording itself is not changed; the change is saved with the project and the transactions follow it.",
+  // The library builder
+  "the steps their analysts named are listed by system",
+  "its screens are added to that activity",
+  "a step named from it takes it when it has none",
+  "their annotations.json and manifest.json are read",
+  "each is read where it is, not unzipped",
+  "the app's own library file is offered first",
+  // The top bar and the page shown while no project is open
+  "you add its steps by hand in Steps",
+  "confirm transaction 1, then review the others",
+  "each export opens its folder with the file selected",
+  "It says which version it is.",
+  "to see every part of PDT on a finished example",
+  "the next Open the demo project starts from the same demo again",
+  "for a how-to-use guide",
+  // The capture app
+  "Who is recording. Saved with every recording",
+  "Shown in the viewer so people can tell recordings apart",
+  "Helps the analyst when several people record the same process.",
+  "Kept on this computer for every recording.",
+  "menu shows the size of all recordings and flags it above this limit",
+  "Edit a field, then click Save.",
+  "The zip holds the recording, your answers and the example files.",
+];
+
+/* What a person reads in `file`: the JS string literals, or the HTML's
+   text, script literals and styles; Help is left out. [{ text, line }] */
+function readableWithoutHelp(file) {
+  const src = fs.readFileSync(file, "utf8");
+  if (!file.endsWith(".html")) return jsStringLiterals(src);
+  const blank = (m) => m.replace(/[^\n]/g, " ");
+  const noHelp = src.replace(/<div class="modal-backdrop" id="help-modal"[\s\S]*?<!-- ADR-0019: Reference Maps editor overlay/, blank);
+  return htmlReadable(noHelp);
+}
+
+function narrationOffenders(files) {
+  const out = [];
+  for (const file of files) {
+    const rel = path.relative(REPO, file).replace(/\\/g, "/");
+    if (rel === "capture/ui/help-window.html") continue;   // the capture app's Help
+    for (const p of readableWithoutHelp(file)) {
+      for (const line of RETIRED_NARRATION) {
+        if (p.text.includes(line)) out.push(rel + ":" + p.line + ": " + JSON.stringify(line));
+      }
+    }
+  }
+  return out;
+}
+
+test("lane no-narration: no retired line that explains the tool is back on a screen", () => {
+  const files = appFiles(VIEWER, [".js", ".html"]).concat(appFiles(path.join(REPO, "capture"), [".js", ".html"]));
+  const bad = narrationOffenders(files);
+  assert.deepStrictEqual(bad, [], "A line that explains the tool, cut by the no-narration lane, is back:\n  " + bad.join("\n  "));
+});
+
+test("lane no-narration: the guard reads screens and leaves Help out (positive controls)", () => {
+  const dir = fs.mkdtempSync(path.join(require("os").tmpdir(), "narration-guard-"));
+  try {
+    const js = path.join(dir, "x.js");
+    fs.writeFileSync(js, "// You write these. The PDD prints them. (a comment)\nconst t = \"You write these. The PDD prints them.\";\n");
+    const html = path.join(dir, "x.html");
+    fs.writeFileSync(html, '<p>Notes stay out of the PDD</p>\n<div class="modal-backdrop" id="help-modal">Notes stay out of the PDD</div>\n' +
+      "<!-- ADR-0019: Reference Maps editor overlay -->\n");
+    const got = narrationOffenders([js, html]).map((o) => o.replace(/^.*[\\/]/, ""));
+    assert.deepStrictEqual(got, ['x.js:2: "You write these. The PDD prints them."', 'x.html:1: "Notes stay out of the PDD"']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 module.exports = { BANNED_COPY, BANNED_CAPTURE_ONLY, DASH_RE, jsStringLiterals, RETIRED_NAMES, PM_WORDS, isCodeLiteral };

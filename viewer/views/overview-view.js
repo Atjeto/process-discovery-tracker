@@ -75,9 +75,6 @@ function _technicalDetail(err) {
     : "";
 }
 
-/* Where a stuck analysis is run again (no global Analyze button, AD-22). */
-const REANALYZE_WHERE = "Help, Troubleshooting has Re-analyze";
-
 /* ---- The mark-transactions sentence and verb ------------------------------ */
 
 /* AD-14: with no run markers there are no runs (transactions, AD-29). One
@@ -109,12 +106,10 @@ function openMarkersInFlow() {
 function waitingSentence(run, stale) {
   const status = run && run.status;
   if (status === "running") return "The steps and the map are being drafted from the recording.";
-  if (status === "failed") return "The analysis failed, so the steps and the map are not drafted. The log at the top says why; " +
-    REANALYZE_WHERE + ".";
-  if (status === "cancelled") return "The analysis was cancelled, so the steps and the map are not drafted. " +
-    REANALYZE_WHERE + ".";
-  return (stale ? "This project was analyzed by an older version, so the steps and the map are not up to date. "
-    : "This project is not analyzed yet. ") + REANALYZE_WHERE + ".";
+  if (status === "failed") return "The analysis failed, so the steps and the map are not drafted. The log at the top says why.";
+  if (status === "cancelled") return "The analysis was cancelled, so the steps and the map are not drafted.";
+  return stale ? "This project was analyzed by an older version, so the steps and the map are not up to date."
+    : "This project is not analyzed yet.";
 }
 
 /* The run state of `sess` (null when the last run was for another recording). */
@@ -133,20 +128,18 @@ function _runOf(sess) {
    an older version, the run check failed, or no runs marked. `run` is the
    recording's analysis run state (waitingSentence). */
 function mapLockHtml(analysis, run) {
-  const lead = "The process map is not shown because it draws how the transactions flow. ";
-  if (!analysis) return escapeHtml(lead + waitingSentence(run, false));
+  if (!analysis) return escapeHtml(waitingSentence(run, false));
   const cq = analysis.case_quality;
   if (!cq) {
     const err = _stageError(analysis, "case_quality");
     if (err) {
-      return escapeHtml(lead + "The transaction check could not run on this recording, so the " +
-        "transactions are not known. " + REANALYZE_WHERE + "; if it fails again, the analysis log names " +
-        "the problem.") + _technicalDetail(err);
+      return escapeHtml("The transaction check could not run on this recording, so the " +
+        "transactions are not known.") + _technicalDetail(err);
     }
-    return escapeHtml(lead + waitingSentence(run, true));
+    return escapeHtml(waitingSentence(run, true));
   }
   if (cq.mode !== "unsegmented" && (cq.case_count || 0) >= 1) return null;
-  return escapeHtml(lead + NO_RUNS_MARKED + " " + MARK_RUNS_INSTRUCTION) +
+  return escapeHtml(NO_RUNS_MARKED + " " + MARK_RUNS_INSTRUCTION) +
     ' <button type="button" class="link-btn" data-map-cta="mark-runs">' +
     escapeHtml(MARK_RUNS_BUTTON) + "</button>";
 }
@@ -168,23 +161,22 @@ function mapEmptyText(steps) {
 
 /* The document fields (contract C6, with trigger, result and improvement as
    the pipeline lane defines them) in the order the PDD reads them, each with
-   where it appears (the field's tooltip) and the short question an empty
-   field asks (its placeholder). `optional`: an empty field leaves no gap in
+   the short question an empty field asks (its placeholder). `optional`: an empty field leaves no gap in
    the PDD (its section is simply left out), so it does not count as left to
    do. */
 const DOC_FIELDS = [
-  { key: "title", label: "Title", where: "the title and Document control", ask: "What is the process called?", line: true },
-  { key: "request", label: "Request", where: "Document control: Request", ask: "Which request is this for? Its name and code", line: true, optional: true },
-  { key: "purpose", label: "Purpose", where: "Purpose", ask: "Why is the process done, and for whom?" },
-  { key: "scope", label: "Scope", where: "Scope", ask: "Where does it start and end, and what is left out?" },
-  { key: "trigger", label: "Trigger", where: "Trigger: what starts the process", ask: "What starts the process?" },
-  { key: "result", label: "Result", where: "Result: what the process ends with", ask: "What does the process end with?" },
-  { key: "contacts", label: "Key contacts", where: "Key contacts", ask: "Who owns the process, and who can answer questions?" },
-  { key: "business_rules", label: "Business rules", where: "Business rules and exceptions", ask: "Which rules decide what happens?" },
-  { key: "exceptions", label: "Exceptions", where: "Business rules and exceptions", ask: "What goes differently, and how is it handled?" },
-  { key: "effort", label: "Volume and effort", where: "Volume and effort", ask: "How often is the process done, and how long does one take?" },
-  { key: "improvement", label: "Improvement and automation scope", where: "Improvement and automation scope", ask: "What could be improved or automated?" },
-  { key: "notes", label: "Notes", where: "the last section, printed only when written", ask: "Anything else the PDD should say?", optional: true },
+  { key: "title", label: "Title", ask: "What is the process called?", line: true },
+  { key: "request", label: "Request", ask: "Which request is this for? Its name and code", line: true, optional: true },
+  { key: "purpose", label: "Purpose", ask: "Why is the process done, and for whom?" },
+  { key: "scope", label: "Scope", ask: "Where does it start and end, and what is left out?" },
+  { key: "trigger", label: "Trigger", ask: "What starts the process?" },
+  { key: "result", label: "Result", ask: "What does the process end with?" },
+  { key: "contacts", label: "Key contacts", ask: "Who owns the process, and who can answer questions?" },
+  { key: "business_rules", label: "Business rules", ask: "Which rules decide what happens?" },
+  { key: "exceptions", label: "Exceptions", ask: "What goes differently, and how is it handled?" },
+  { key: "effort", label: "Volume and effort", ask: "How often is the process done, and how long does one take?" },
+  { key: "improvement", label: "Improvement and automation scope", ask: "What could be improved or automated?" },
+  { key: "notes", label: "Notes", ask: "Anything else the PDD should say?", optional: true },
 ];
 
 function _docValue(doc, key) {
@@ -205,32 +197,32 @@ function documentStatus(doc) {
 }
 
 /* The Checklist's acts, in the analyst path's order: each item names the act
-   and its tooltip says what it means and when it is ticked (AD-29). The acts
+   and its tooltip says what it asks (AD-29). The acts
    fit the project: `recording` true lists an act only for a recording (its
    steps are drafted), false only for a project made from a video or from
    nothing (its steps are added by hand), absent for both. */
 const PATH_STAGES = [
   { key: "runs", label: "Mark the transactions", recording: true,
-    title: "Mark where each transaction starts and ends: ticked once there is one." },
+    title: "Mark where each transaction starts and ends." },
   { key: "steps", label: "Add the steps", recording: false,
-    title: "Add the steps on the Timeline (Add step, or S) or in Steps: ticked once there is one." },
+    title: "Add the steps on the Timeline (Add step, or S) or in Steps." },
   { key: "written", label: "Write the steps", recording: false,
-    title: "Give each step a name of its own and a description: ticked once every step has both." },
+    title: "Give each step a name of its own and a description." },
   { key: "pattern", label: "Confirm the reference transaction", recording: true,
-    title: "Confirm the reference transaction's steps in Steps: ticked once none is a draft." },
+    title: "Confirm the reference transaction's steps in Steps." },
   // Without a recording, listed only when the project has two or more
   // transactions: one has no other to review.
   { key: "review", label: "Review the other transactions",
-    title: "Open each transaction that differs from the reference one: ticked once each is opened." },
+    title: "Open each transaction that differs from the reference one." },
   { key: "document", label: "Write the document",
-    title: "Write the document fields on this page: ticked once every field but Notes is written." },
+    title: "Write the document fields on this page." },
   // Lane FX2: listed only while the As-Is map the PDD prints was made
   // before the steps changed (asis-freshness.js); not an act otherwise
   // (AD-28: the As-Is map is not a stage).
   { key: "asis", label: "Check the As-Is map", onlyWhenDue: true,
     title: "The As-Is map is older than the steps: check it on the Map, or Copy again." },
   { key: "handoff", label: "Hand off",
-    title: "Hand a numbered version to the developers: ticked once a version was handed off." },
+    title: "Hand a numbered version to the developers." },
 ];
 
 /* Lane FX2: the Checklist's line while the As-Is map is older than the steps. */
@@ -347,7 +339,6 @@ function _nextAct(state) {
     case "written": {
       const n = state.unwritten.length;
       return { button: "Write the steps in Steps",
-        title: "Steps opens with the first step that has no name of its own or no description selected.",
         say: n + " of " + _plural(state.refStepCount, "step", "steps") + " " +
           (n === 1 ? "has no name of its own" : "have no name of their own") + " or no description." };
     }
@@ -362,7 +353,7 @@ function _nextAct(state) {
         say: _plural(state.differing, "transaction differs", "transactions differ") + " from the reference transaction." };
     case "document":
       return { button: "Write the document",
-        title: "Opens the document fields: the PDD prints what you write in place of its placeholders." };
+        title: "Opens the document fields." };
     case "asis":
       return { button: "Check the As-Is map", say: ASIS_STALE,
         title: "Opens the Map: edit the As-Is map to match the steps, or Copy again." };
@@ -543,7 +534,7 @@ function _missingHtml(sess, state, entries) {
   const items = entries.map((e, i) => '<li><button type="button" class="link-btn ov-miss-go" data-miss="' + escapeAttr(e.key) +
     '" data-miss-i="' + i + '">' + escapeHtml(e.text) + "</button></li>").join("");
   return '<details class="analysis-section analysis-module ov-miss" id="ov-miss"' + (_missOpen ? " open" : "") + ">" +
-    '<summary class="analysis-module-head" title="What the PDD of the next version leaves out: each line opens where it is written.">' +
+    '<summary class="analysis-module-head">' +
       '<span class="ov-miss-line" id="ov-miss-line">' + escapeHtml(Readiness.overviewLine(entries)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
@@ -764,8 +755,7 @@ function _summaryWarnings(sess) {
     const err = _stageError(analysis, "case_quality");
     if (err) {
       out.push('<div class="analysis-note ov-stage-not-run">' + escapeHtml("The transaction check could not run " +
-        "on this recording, so the transactions are not compared and the Map is not shown. " + REANALYZE_WHERE +
-        "; if it fails again, the analysis log names the problem.") + "</div>" + _technicalDetail(err));
+        "on this recording, so the transactions are not compared and the Map is not shown.") + "</div>" + _technicalDetail(err));
     }
   }
   // C24 (lane C): a file the SME added that did not come with the project.
@@ -859,21 +849,14 @@ let _docFolder = null;
    scope": the count, and the empty fields by name while some are written
    (with none written, every field is still to write). Commas only: a label
    can hold "and". */
-function _documentStatusText(st, readOnly, smeWaiting, smeReadOnly) {
+function _documentStatusText(st, readOnly, smeWaiting) {
   const count = st.filled + " of " + st.total + " written";
   // Lane HV: a hand-off opened read only names the empty fields, not a to-do.
   const base = st.filled > 0 && st.missing.length ? count + (readOnly ? ". Not written: " : ". To write: ") + st.missing.join(", ") : count;
-  // C24 (lane C): while one of the SME's answers waits under its field; a
-  // project opened read only (a hand-off, or open in another window) only
-  // says how many.
-  const sme = SmeGives.waitingLine(smeWaiting || 0, !!smeReadOnly);
+  // C24 (lane C): how many of the SME's answers wait under their fields.
+  const sme = SmeGives.waitingLine(smeWaiting || 0);
   return sme ? base + ". " + sme : base;
 }
-
-/* Who fills the document, in the summary beside its title (AD-29); in a
-   hand-off opened read only (lane HV), who wrote it. */
-const DOC_WHO = "You write these. The PDD prints them.";
-const DOC_WHO_READ_ONLY = "The analyst wrote these. The PDD prints them.";
 
 /* ---- 3b. From the transcript (contract C8) -------------------------------- */
 
@@ -1087,24 +1070,18 @@ function _wireTranscript(host) {
 /* The line under the document field `key`: while the SME's answer waits
    (`waiting`, sme-gives.js waitingAnswers), "The SME wrote: <answer>" with
    Use and Dismiss (a project opened read only: the answer as text, no
-   buttons); once the field's text is the SME's answer, one quiet line that
-   says so (the design); else nothing. */
-function _smeLineHtml(key, waiting, answer, value, readOnly) {
+   buttons); else nothing. */
+function _smeLineHtml(key, waiting, readOnly) {
   const W = SmeGives.WORDS;
-  if (waiting) {
-    return '<div class="ov-sme" data-sme="' + escapeAttr(key) + '">' +
-      '<span class="ov-sme-text"><strong>' + escapeHtml(W.wrote) + "</strong> " + escapeHtml(waiting) + "</span>" +
-      (readOnly ? "" :
-        '<button type="button" class="primary ov-sme-use" data-sme-act="use" title="' + escapeAttr(W.useTitle) + '">' +
-          escapeHtml(W.use) + "</button>" +
-        '<button type="button" class="link-btn ov-sme-dismiss" data-sme-act="dismiss" title="' + escapeAttr(W.dismissTitle) + '">' +
-          escapeHtml(W.dismiss) + "</button>") +
-      "</div>";
-  }
-  if (answer && SmeGives.holdsAnswer(value, answer)) {
-    return '<div class="ov-sme-from" data-sme-from="' + escapeAttr(key) + '">' + escapeHtml(SmeGives.WRITTEN_FROM) + "</div>";
-  }
-  return "";
+  if (!waiting) return "";
+  return '<div class="ov-sme" data-sme="' + escapeAttr(key) + '">' +
+    '<span class="ov-sme-text"><strong>' + escapeHtml(W.wrote) + "</strong> " + escapeHtml(waiting) + "</span>" +
+    (readOnly ? "" :
+      '<button type="button" class="primary ov-sme-use" data-sme-act="use" title="' + escapeAttr(W.useTitle) + '">' +
+        escapeHtml(W.use) + "</button>" +
+      '<button type="button" class="link-btn ov-sme-dismiss" data-sme-act="dismiss" title="' + escapeAttr(W.dismissTitle) + '">' +
+        escapeHtml(W.dismiss) + "</button>") +
+    "</div>";
 }
 
 /* How many of the SME's answers wait under their fields in `sess`. */
@@ -1164,37 +1141,33 @@ async function _dismissSmeAnswer(key) {
 function _documentHtml(anno, sess, open) {
   const doc = (anno && anno.document) || null;
   const st = documentStatus(doc);
-  // Lane HV: a hand-off says who wrote the fields; lane MW: a project open
-  // for editing in another window is the analyst's own, still to write there.
+  // Lane HV: a hand-off names the empty fields, not a to-do; lane MW: a
+  // project open for editing in another window is still to write there.
   const handedOff = RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess);
   // C24 (lane C): the SME's answers that wait under their fields.
   const manifest = (sess && sess.manifest) || null;
   const waiting = new Map(SmeGives.waitingAnswers(manifest, anno).map((w) => [w.key, w.answer]));
-  const answers = SmeGives.answersOf(manifest);
   const fields = DOC_FIELDS.map((f) => {
     const value = _docValue(doc, f.key);
-    // P3.6: where the field lands is its tooltip, not a line. AD-29: an
-    // empty field asks its short question (a light italic placeholder), so
-    // it looks empty.
-    const where = "In the PDD: " + f.where;
-    const attrs = ' data-doc="' + f.key + '" placeholder="' + escapeAttr(f.ask) + '" title="' + escapeAttr(where) + '"';
+    // AD-29: an empty field asks its short question (a light italic
+    // placeholder), so it looks empty.
+    const attrs = ' data-doc="' + f.key + '" placeholder="' + escapeAttr(f.ask) + '"';
     const input = f.line
       ? '<input type="text" class="ov-doc-input"' + attrs + ' value="' + escapeAttr(value) + '" />'
       : '<textarea class="ov-doc-input"' + attrs + ' rows="3">' + escapeHtml(value) + "</textarea>";
     const field = '<label class="ov-doc-field">' +
       '<span class="ov-doc-label">' + escapeHtml(f.label) + (f.optional ? ' <span class="ov-doc-optional">optional</span>' : "") + "</span>" +
       input + "</label>";
-    const sme = _smeLineHtml(f.key, waiting.get(f.key), answers[f.key], value, RO.isReadOnly(sess));
+    const sme = _smeLineHtml(f.key, waiting.get(f.key), RO.isReadOnly(sess));
     // The SME's line sits under its field, in the field's cell of the grid.
     return sme ? '<div class="ov-doc-cell" data-doc-cell="' + f.key + '">' + field + sme + "</div>" : field;
   }).join("");
-  // A disclosure (.analysis-module): a title, who fills it, a one-line status
-  // that shows while it is closed, and a chevron.
+  // A disclosure (.analysis-module): a title, a one-line status that shows
+  // while it is closed, and a chevron.
   return '<details class="analysis-section analysis-module ov-doc" id="ov-doc"' + (open ? " open" : "") + ">" +
-    '<summary class="analysis-module-head" title="The PDD prints each field you write, in this and every later export.">' +
+    '<summary class="analysis-module-head">' +
       '<span class="analysis-module-title">Document</span>' +
-      '<span class="ov-block-who" id="ov-doc-who">' + escapeHtml(handedOff ? DOC_WHO_READ_ONLY : DOC_WHO) + "</span>" +
-      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, handedOff, waiting.size, RO.isReadOnly(sess))) + "</span>" +
+      '<span class="analysis-module-takeaway" id="ov-doc-status">' + escapeHtml(_documentStatusText(st, handedOff, waiting.size)) + "</span>" +
       '<span class="analysis-module-chevron" aria-hidden="true"></span>' +
     "</summary>" +
     '<div class="analysis-module-body ov-doc-body">' + fields + AnalystUI.overviewAttachmentsHtml(anno) +
@@ -1235,16 +1208,14 @@ async function _saveDocField(key, value) {
 
 /* C24 (lane C): the SME's line under field `key` after its text was saved,
    in place (the rest of the panel stays as it is, as typing needs): a field
-   edited away from the answer drops "Written from the SME's answer.", and
-   one whose text became the answer drops its waiting line. */
+   whose text became the answer drops its waiting line. */
 function _refreshSmeLineInPlace(sess, key) {
   const cell = document.querySelector('#ov-doc [data-doc-cell="' + key + '"]');
   if (!cell) return;
   const anno = sess.annotations || {};
   const waiting = SmeGives.waitingAnswers(sess.manifest, anno).find((w) => w.key === key);
-  const html = _smeLineHtml(key, waiting && waiting.answer, SmeGives.answersOf(sess.manifest)[key],
-    _docValue(anno.document, key), RO.isReadOnly(sess));
-  cell.querySelectorAll(".ov-sme, .ov-sme-from").forEach((el) => el.remove());
+  const html = _smeLineHtml(key, waiting && waiting.answer, RO.isReadOnly(sess));
+  cell.querySelectorAll(".ov-sme").forEach((el) => el.remove());
   if (html) cell.insertAdjacentHTML("beforeend", html);
 }
 
@@ -1262,8 +1233,7 @@ function _refreshPathInPlace() {
     _refreshMissing(host, sess, state);
   }
   const status = host.querySelector("#ov-doc-status");
-  if (status) status.textContent = _documentStatusText(state.doc, RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess), _smeWaitingCount(sess),
-    RO.isReadOnly(sess));
+  if (status) status.textContent = _documentStatusText(state.doc, RO.isReadOnly(sess) && !RO.isOpenElsewhere(sess), _smeWaitingCount(sess));
   // P3.9: the recording line names the document title once it is written;
   // plan D5: the sources under it are drawn again with it.
   const summary = host.querySelector("#ov-summary .ov-summary-line");

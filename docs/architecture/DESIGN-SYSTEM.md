@@ -159,9 +159,10 @@ byte-copies) by hand in the same commit.
   the step panel is a white column with a hairline on its left. The
   Overview's Checklist is the exception: an amber wash (`--accent-muted`)
   inside an `--accent` border.
-- **Who fills a block**: one short line beside an Overview block's title
-  (`.ov-block-who`, 12px `--fg-3`): "You write these. The PDD prints them."
-  for the Document.
+- **No narration** (2026-11-13): a screen holds the PM's content, the acts
+  and the facts the PM acts on; no line explains how the tool works, who
+  fills what or what the PDD does with it (`ui-copy-guard.test.js` keeps
+  the retired lines out). Help holds the explanations.
 - **An empty field looks empty**: a document field's placeholder (its
   question) is light and italic (a mix of `--fg-3` and `--fg-4`, about 3:1
   on the field), well apart from written text.

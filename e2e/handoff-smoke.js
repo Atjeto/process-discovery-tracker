@@ -495,8 +495,7 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     record("(a2) C25: Ctrl+Z puts the last choice back (and the waste flag), Ctrl+Y makes it again", !!undone && !!redone,
       JSON.stringify({ undone: undone && [undone.automation, undone.flags], redone: redone && redone.automation }));
     record("(a2) C25: Done by, after the system, shows the recording's role as its placeholder, saves a typed value on Enter, and the editor fits the pane",
-      Object.values(editor).every((e) => e.placeholder === "Order processor (from the recording)" &&
-        e.doneByTitle === "A role or a person; empty, the recording's role.") &&
+      Object.values(editor).every((e) => e.placeholder === "Order processor" && e.doneByTitle === "") &&
         onDisk(s1.id).done_by === "Order desk clerk" && onDisk(s3.id).done_by === "Credit control" && !("done_by" in onDisk(s2.id)) &&
         shown.value === "automated" && shown.doneBy === "Order desk clerk" && shown.fits,
       JSON.stringify(shown));
@@ -790,8 +789,8 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       top.line === expectLine && top.title === "What changed in this version: The credit check added", JSON.stringify(top.line));
     record("(d) the top bar's save state reads Read only, with the version in its tooltip",
       top.save === "Read only" && top.saveTitle.startsWith(expectLine.replace(" · Read only", "")), top.saveTitle);
-    record("(d) the document's fields are read, not typed in", top.shell && top.docLocked && top.docCount === 12 &&
-      top.who === "The analyst wrote these. The PDD prints them.", JSON.stringify(top));
+    record("(d) the document's fields are read, not typed in, and no line says who wrote them", top.shell && top.docLocked && top.docCount === 12 &&
+      top.who === "", JSON.stringify(top));
     await shotsBothThemes(dev, "readonly-line", size);
     const bad = {};
     bad.overview = await visibleEditing(dev);

@@ -277,7 +277,7 @@ test("the Overview leads with the Checklist and its one button; each act is word
   assert.ok(/<li class="ov-next-stage next" data-stage="pattern" title="[^"]+">Confirm the reference transaction<\/li>/.test(html));
   assert.ok(html.includes(">Confirm transaction 1 in Steps</button>"));
   const items = [...html.matchAll(/<li class="ov-next-stage[^"]*" data-stage="(\w+)" title="([^"]+)">(?:<span[^>]*>✓<\/span>)?([^<]+)<\/li>/g)]
-    .map((m) => [m[1], m[3], m[2].length > 40]);
+    .map((m) => [m[1], m[3], m[2].length > 20]);
   assert.deepEqual(items, [
     ["runs", "Mark the transactions", true], ["pattern", "Confirm the reference transaction", true],
     ["review", "Review the other transactions", true], ["document", "Write the document", true],
@@ -484,29 +484,26 @@ test("the fact tiles, the badge, the separate mark-runs line and the export bar 
   }
 });
 
-test("the document is collapsed while acts are left, says who writes it, how many fields are written and which are empty, and names where each lands", () => {
+test("the document is collapsed while acts are left, says how many fields are written and which are empty, and narrates nothing", () => {
   const sess = session({});
   sess.annotations.document = { title: "Order intake", purpose: "Why", trigger: "An order e-mail" };
   const html = overviewHtml(sess);
   assert.ok(html.includes('<details class="analysis-section analysis-module ov-doc" id="ov-doc">'), "closed by default");
-  assert.ok(html.includes('<span class="analysis-module-title">Document</span>' +
-    '<span class="ov-block-who" id="ov-doc-who">You write these. The PDD prints them.</span>'));
-  assert.ok(html.includes('<span class="analysis-module-takeaway" id="ov-doc-status">3 of 10 written. To write: ' +
+  assert.ok(html.includes('<summary class="analysis-module-head"><span class="analysis-module-title">Document</span>' +
+    '<span class="analysis-module-takeaway" id="ov-doc-status">3 of 10 written. To write: ' +
     "Scope, Result, Key contacts, Business rules, Exceptions, Volume and effort, Improvement and automation scope</span>"));
-  // AD-29: an empty field asks its short question; where it lands is its
-  // tooltip only (P3.6: never a resident line), never "In the PDD" inside it.
-  assert.equal((html.match(/placeholder="In the PDD/g) || []).length, 0);
-  assert.equal((html.match(/title="In the PDD: /g) || []).length, 12);
-  assert.ok(!html.includes("ov-doc-where"));
+  // AD-29: an empty field asks its short question. This lane: no line or
+  // tooltip says who writes the fields or where the PDD prints them.
+  assert.ok(!/In the PDD|The PDD prints|ov-doc-who|ov-block-who|ov-doc-where/.test(html));
   assert.ok(html.includes('<textarea class="ov-doc-input" data-doc="purpose" placeholder="Why is the process done, and for whom?" ' +
-    'title="In the PDD: Purpose" rows="3">Why</textarea>'));
+    'rows="3">Why</textarea>'));
   assert.ok(/data-doc="title"[^>]*value="Order intake"/.test(html));
   for (const [key, label] of [["trigger", "Trigger"], ["result", "Result"], ["effort", "Volume and effort"],
     ["improvement", "Improvement and automation scope"]]) {
     assert.ok(html.includes('<span class="ov-doc-label">' + label + "</span>"), label);
     assert.ok(html.includes('data-doc="' + key + '"'), key);
   }
-  assert.ok(html.includes('data-doc="trigger" placeholder="What starts the process?" title="In the PDD: Trigger: what starts the process"'));
+  assert.ok(html.includes('data-doc="trigger" placeholder="What starts the process?" rows="3">'));
   assert.ok(html.includes('data-doc="result" placeholder="What does the process end with?"'));
   assert.ok(html.includes('data-doc="effort" placeholder="How often is the process done, and how long does one take?"'));
   assert.ok(html.includes('data-doc="improvement" placeholder="What could be improved or automated?"'));
@@ -571,9 +568,9 @@ test("a project from a video: the acts are Add the steps, Write the steps, Write
   const html = overviewHtml(sess);
   assert.deepEqual(stagesOf(html), [["steps", "Add the steps"], ["written", "Write the steps"],
     ["document", "Write the document"], ["handoff", "Hand off"]]);
-  assert.ok(html.includes('data-stage="steps" title="Add the steps on the Timeline (Add step, or S) or in Steps: ticked once there is one."'));
-  assert.ok(html.includes('data-stage="written" title="Give each step a name of its own and a description: ticked once every step has both."'));
-  assert.ok(html.includes('data-stage="handoff" title="Hand a numbered version to the developers: ticked once a version was handed off."'));
+  assert.ok(html.includes('data-stage="steps" title="Add the steps on the Timeline (Add step, or S) or in Steps."'));
+  assert.ok(html.includes('data-stage="written" title="Give each step a name of its own and a description."'));
+  assert.ok(html.includes('data-stage="handoff" title="Hand a numbered version to the developers."'));
   assert.deepEqual(buttonOf(html), ["steps-timeline", "Mark the steps on the Timeline"]);
   assert.equal(sayOf(html), "Play the video and press S, or click Add step, where each step starts.");
   assert.ok(!/Confirm|Mark the transactions|Export the PDD/.test(checklistOf(html)), "no act with nothing behind it");
@@ -820,7 +817,7 @@ test("C24: each SME answer waits under its field with Use and Dismiss; the docum
   assert.ok(html.includes('title="Writes the SME&#39;s answer into this field."'));
   assert.ok(html.includes('title="Hides the SME&#39;s answer for this field. Ctrl+Z brings it back."'));
   assert.match(html, /<div class="ov-doc-cell" data-doc-cell="trigger"><label class="ov-doc-field">[\s\S]*?data-doc="trigger"/);
-  assert.ok(html.includes("0 of 10 written. The SME answered 4 questions: each waits under its field."), html);
+  assert.ok(html.includes("0 of 10 written. The SME answered 4 questions.</span>"), html);
 });
 
 test("C24: a field that holds the answer, or a dismissed key, has no line waiting (positive control above)", () => {
@@ -829,9 +826,8 @@ test("C24: a field that holds the answer, or a dismissed key, has no line waitin
   sess.annotations.sme_answers_dismissed = ["exceptions"];
   const html = overviewHtml(sess);
   assert.deepEqual(smeLines(html).map((l) => l.key), ["result", "effort"]);
-  assert.ok(html.includes('<div class="ov-sme-from" data-sme-from="trigger">Written from the SME&#39;s answer.</div>'),
-    "the field written from it says so");
-  assert.ok(html.includes("The SME answered 2 questions: each waits under its field."));
+  assert.ok(!html.includes("Written from") && !html.includes("data-sme-from"), "no line says where a field's text came from");
+  assert.ok(html.includes("The SME answered 2 questions.</span>"));
   sess.annotations.sme_answers_dismissed = ["exceptions", "result", "effort"];
   const none = overviewHtml(sess);
   assert.deepEqual(smeLines(none), []);
@@ -844,19 +840,18 @@ test("C24: a project opened read only shows the answers as text, with no buttons
   assert.equal(lines.length, 4);
   assert.ok(lines.every((l) => !l.body.includes("<button")), "no Use, no Dismiss");
   const html = overviewHtml(sess);
-  assert.ok(html.includes("0 of 10 written. The SME answered 4 questions.</span>"), "read only: how many, nothing waits");
-  assert.ok(!html.includes("each waits"));
+  assert.ok(html.includes("0 of 10 written. The SME answered 4 questions.</span>"), "read only: how many");
 });
 
-test("C24: an answer used and then edited has no line under its field, and no Written from line", () => {
+test("C24: an answer used, edited or not, has no line under its field", () => {
   const sess = session({ manifest: { sme_answers: SME } });
   sess.annotations.document = { trigger: SME.trigger + " or a call" };
   sess.annotations.sme_answers_dismissed = ["trigger"];
   const html = overviewHtml(sess);
   assert.deepEqual(smeLines(html).map((l) => l.key), ["result", "exceptions", "effort"]);
-  assert.ok(!html.includes('data-sme-from="trigger"'));
+  assert.ok(!html.includes('data-doc-cell="trigger"'));
   sess.annotations.document = { trigger: SME.trigger };
-  assert.ok(overviewHtml(sess).includes('data-sme-from="trigger"'), "while the text is exactly the answer");
+  assert.ok(!overviewHtml(sess).includes('data-doc-cell="trigger"'), "nor while the text is exactly the answer");
 });
 
 test("C24: a file the SME added that is not in the folder is said once on the project line's warnings", () => {

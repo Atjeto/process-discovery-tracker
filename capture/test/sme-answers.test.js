@@ -221,8 +221,7 @@ test("the end summary takes example files: the words, the alert, the channels", 
     '<button id="btn-add-file" title="Copies a file into the recording, for the analyst.">Add an example file...</button>',
     'remove.title = "Takes this file out of the recording.";',
     'id="files-error" role="alert"',
-    "The zip holds the recording, your answers and the example files. It is saved next to the folder, " +
-      "for you to send to the analyst. Nothing is sent from here.",
+    '<div class="note" id="note"></div>',
     'ipcRenderer.invoke("pdt:addSmeFiles", S.folder)',
     'ipcRenderer.invoke("pdt:removeSmeFile", S.folder, file)',
   ]) {

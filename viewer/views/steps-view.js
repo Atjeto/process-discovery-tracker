@@ -541,8 +541,6 @@ function renderStepsLevel() {
 
   const pc = $("#runs-pane-count");
   if (pc) pc.textContent = String(model.runs.length);
-  const pn = $("#runs-pane-note");
-  if (pn) pn.textContent = path.length ? NOTE_LEVEL : transactionNote(session);
   _renderCrumbs(model, pattern, path);
 
   if (path.length) renderLevelList($("#step-list"), model, pattern, containers, open, visible);
@@ -640,9 +638,6 @@ function _renderCrumbs(model, pattern, path) {
   nav.appendChild(dissolve);
 }
 
-/* The one line under the list's title inside a sub-process. */
-const NOTE_LEVEL = "One block per time a transaction goes through this sub-process.";
-
 /* The list inside a sub-process (C19): one block per visit, in transaction
    order, the reference transaction's first visit marked and compared with
    the others. */
@@ -714,18 +709,14 @@ function _visitGroupEl(c, pattern, refVisit, open, visible) {
 }
 
 /* The detail pane inside a sub-process when no step is selected. */
-const GUIDE_LEVEL = "The steps of this sub-process in this transaction: fix and name them as at the main level. + Add step adds one here.";
-const GUIDE_LEVEL_REF = "Confirm transaction accepts them with the rest of the transaction.";
+const GUIDE_LEVEL = "The steps of this sub-process in this transaction. + Add step adds one here.";
 function renderLevelGuide(host, model, pattern, containers, open, path) {
   if (!host) return;
   const title = $("#step-detail-title");
   const c = containers.find((x) => x.key === open) || null;
-  const isRef = !!(c && c === _refVisit(containers, pattern));
   const head = c ? c.run.title + (c.index ? ", again" : "") : _levelName(model, pattern, path);
   const ro = RO.isReadOnly(State.getSession());
-  const paras = c ? (ro ? [GUIDE_READ_ONLY[GUIDE_LEVEL]]
-    : [GUIDE_LEVEL].concat(isRef && !RunsModel.patternConfirmed(pattern.record, c.run) &&
-      RunsModel.holdsDraft(c.run.members) ? [GUIDE_LEVEL_REF] : []))
+  const paras = c ? [ro ? GUIDE_READ_ONLY[GUIDE_LEVEL] : GUIDE_LEVEL]
     : ["Pick a transaction on the left to see its steps in this sub-process."];
   if (title) title.textContent = head;
   host.innerHTML = '<div class="empty-pane run-guide">' + paras.map((p, i) =>
@@ -776,23 +767,6 @@ function goToLevel(path, opts) {
   State.emit("timeline");
 }
 
-/* The one line under the list's title while a project without a recording
-   (C16, manifest.source video or blank) is one transaction: what to do to
-   mark more. An empty project without a video has no timeline to mark them
-   on (the Timeline says to attach a video, flow-view-timeline.js
-   timelineDrawable), so its line says that first (lane FX4). 2.0.1 (the
-   owner's review): no line otherwise; Help says what a transaction is.
-   Pure. */
-const NOTE_UNRECORDED = "The whole project is one transaction until you mark where each one starts on the Timeline.";
-const NOTE_UNRECORDED_NO_VIDEO = "The whole project is one transaction. To mark where each one starts, attach a video first: the Timeline then follows it.";
-function transactionNote(session) {
-  const m = (session && session.manifest) || {};
-  const recorded = ((session && session.events) || []).length > 0 || !["video", "blank"].includes(m.source);
-  if (recorded) return "";
-  if (!(AC.implicitRunId(session && session.stats) || !((session && session.stats) || {}).case_stats)) return "";
-  return session && session.recordingAvailable ? NOTE_UNRECORDED : NOTE_UNRECORDED_NO_VIDEO;
-}
-
 /* The list pane: the runs (the open one with its steps), then the steps
    outside runs. */
 function renderRunsList(host, model, pattern, visible, stats, ref) {
@@ -802,7 +776,6 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
     host.innerHTML =
       '<div class="empty-pane">' +
         "<p><strong>No steps yet.</strong></p>" +
-        "<p>Steps appear once the recording is analyzed: the app drafts each transaction's steps from it.</p>" +
       "</div>";
     return;
   }
@@ -819,7 +792,6 @@ function renderRunsList(host, model, pattern, visible, stats, ref) {
   if (model.outside.length) host.appendChild(_outsideGroupEl(model, visible));
 }
 
-const PATTERN_TITLE = "The reference transaction: you confirm it, and the others are compared with it.";
 const OTHER_RUN_TITLE = "Right-click to use this transaction as the reference transaction";
 // Undo confirm, the inverse of Confirm transaction (it read Reopen
 // transaction until the owner's review).
@@ -833,7 +805,7 @@ const UNDO_CONFIRM_LEVEL_TITLE = "Turn the confirmed steps back into drafts at e
 function _badges(isRef, status) {
   if (!isRef && !status) return "";
   return '<span class="run-badges">' +
-    (isRef ? '<span class="run-pattern-badge" title="' + escapeAttr(PATTERN_TITLE) + '">Reference</span>' : "") +
+    (isRef ? '<span class="run-pattern-badge">Reference</span>' : "") +
     (status ? '<span class="run-status run-status-' + status + '">' + escapeHtml(RunsModel.STATUS_LABELS[status]) + "</span>" : "") +
     "</span>";
 }
@@ -1057,7 +1029,7 @@ function _showProbeMenu(p, x, y) {
     ? "Drafted steps: how many steps the analysis drafted for this transaction."
     : p.source === "designation"
       ? "Drafted steps: the steps it had when it became the reference transaction."
-      : "The drafted step count is not recorded; Re-analyze in Help, Troubleshooting records it.";
+      : "The drafted step count is not recorded.";
   // Lane A-2: what a boundary fix is, the P1 runbook says
   // (docs/To-Do/P1-DRAFT-PROBE-RUNBOOK.md); the tooltip says what the count is.
   _runMenu([{ act: "copy-probe", label: "Copy: " + p.text, title: why,
@@ -1079,12 +1051,10 @@ function _copyText(text) {
 const GUIDE_PATTERN =
   "This is the reference transaction. Check its steps against the video or the screenshots, fix the boundaries " +
   "(merge, split, add, hide) and name the steps, then click Confirm transaction.";
-const GUIDE_CARRY =
-  "A merge carries to the same drafted steps in the other transactions, and every name you give is saved.";
-const GUIDE_PATTERN_DONE = "This transaction is confirmed: the other transactions are compared with it.";
+const GUIDE_PATTERN_DONE = "This transaction is confirmed.";
 // A reference transaction with no drafted step: nothing to confirm.
-const GUIDE_PATTERN_OWN = "This is the reference transaction: the PDD prints its steps, and the other transactions are compared with it.";
-const GUIDE_OTHER = "Check how this transaction differs from the reference transaction, and fix a step where needed. It is not confirmed: the reference transaction is.";
+const GUIDE_PATTERN_OWN = "This is the reference transaction.";
+const GUIDE_OTHER = "Check how this transaction differs from the reference transaction, and fix a step where needed.";
 // A transaction with no step that nothing compares it with: an empty
 // project's one transaction before its first step (C16), or an empty
 // reference transaction.
@@ -1099,8 +1069,7 @@ const GUIDE_OUTSIDE =
    and never what to change. */
 const GUIDE_READ_ONLY = {
   [GUIDE_PATTERN]: "This is the reference transaction. It was not confirmed when this version was handed off.",
-  [GUIDE_CARRY]: "",
-  [GUIDE_OTHER]: "This transaction is compared with the reference transaction: its differences are listed on the left.",
+  [GUIDE_OTHER]: "",
   [GUIDE_FIRST_STEP]: "This transaction has no steps.",
   [GUIDE_OUTSIDE]: "These steps start outside every marked transaction.",
   [GUIDE_LEVEL]: "The steps of this sub-process in this transaction.",
@@ -1129,7 +1098,7 @@ function renderRunGuide(host, model, pattern, ref) {
     const firstStep = !!(run && !run.members.length && (!pattern.run || isPattern));
     paras = firstStep ? [GUIDE_FIRST_STEP]
       : isPattern ? (done ? [GUIDE_PATTERN_DONE] : !RunsModel.holdsDraft(run.members) ? [GUIDE_PATTERN_OWN]
-        : [GUIDE_PATTERN, GUIDE_CARRY]) : [GUIDE_OTHER];
+        : [GUIDE_PATTERN]) : [GUIDE_OTHER];
     const diffs = run && !firstStep && !isPattern ? _runDiffs(ref, run) : null;
     if (diffs && !RunDiff.differenceCount(diffs)) {
       paras.unshift("It has no differences from " + RunDiff.REFERENCE_RUN + ".");
@@ -1722,7 +1691,7 @@ async function setDoneByAction(stepId, text) {
   try {
     await persistAnnotations(anno, "set who does the step");
     toast(step.done_by ? "Done by: " + step.done_by + "."
-      : role ? "Done by: " + role + ", the recording's role." : "Nobody is named for this step.", "success");
+      : role ? "Done by: " + role + "." : "Nobody is named for this step.", "success");
   } catch (_) { /* already shown */ }
 }
 

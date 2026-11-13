@@ -81,19 +81,12 @@ function waitingAnswers(manifest, annotations) {
     .map((k) => ({ key: k, answer: answers[k] }));
 }
 
-/* The document's line while answers wait (n of them), "" while none does.
-   `readOnly`: a project opened read only, where nothing waits on the
-   reader, says only how many ("The SME answered 2 questions."). */
-function waitingLine(n, readOnly) {
+/* The document's line while answers wait (n of them), "" while none does:
+   how many ("The SME answered 2 questions."). */
+function waitingLine(n) {
   if (!(n > 0)) return "";
-  if (readOnly) return n === 1 ? "The SME answered 1 question." : "The SME answered " + n + " questions.";
-  return n === 1 ? "The SME answered 1 question: it waits under its field."
-    : "The SME answered " + n + " questions: each waits under its field.";
+  return n === 1 ? "The SME answered 1 question." : "The SME answered " + n + " questions.";
 }
-
-/* The line under a field whose text is still exactly the SME's answer (the
-   design); once the text is edited it goes. */
-const WRITTEN_FROM = "Written from the SME's answer.";
 
 /* annotations with `key` dismissed: a new array, the key once. */
 function withDismissed(annotations, key) {
@@ -177,6 +170,6 @@ function fromSme(att) {
 }
 
 module.exports = {
-  ANSWER_KEYS, WORDS, WRITTEN_FROM, answersOf, dismissedOf, holdsAnswer, waitingAnswers, waitingLine, withDismissed, usedAnswer,
+  ANSWER_KEYS, WORDS, answersOf, dismissedOf, holdsAnswer, waitingAnswers, waitingLine, withDismissed, usedAnswer,
   plainName, filesToAdopt, adoptFiles, missingLine, fromSme,
 };

@@ -162,7 +162,7 @@ const FORK_AGAIN = "Edit a new copy";
    failed check), or no transaction has a step, there is no map to copy: the
    act is disabled with the reason in its title, and says it at once if it is
    reached, with no analysis. */
-const WITHHELD_TO_EDIT = "No map to edit yet: the process map is not shown for this project, and the Map says why.";
+const WITHHELD_TO_EDIT = "No map to edit yet: the process map is not shown for this project.";
 const NO_STEPS_TO_EDIT = "No map to edit yet: add steps in Steps to build the map.";
 function _hasSteps() {
   return !_deps.hasSteps || !!_deps.hasSteps();
@@ -184,7 +184,7 @@ function syncForkButton() {
   btn.textContent = done ? FORK_AGAIN : FORK_ASIS;
   btn.classList.toggle("primary", !done);
   btn.title = why ? why : done
-    ? "Copy the process map into the editor again; the As-Is map the PDD prints stays as it is."
+    ? "Copy the process map into the editor again."
     : "Copy the process map into the editor as the PDD's As-Is map.";
 }
 function _setForkBusy() {
@@ -193,7 +193,7 @@ function _setForkBusy() {
   btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
   btn.textContent = "Updating the map...";
-  btn.title = "Analyzing the project first, so the copy carries your latest step names";
+  btn.title = "Analyzing the project first";
 }
 
 /* ---- the Map level's picture (lane MV; C18, C19) --------------------------- */
@@ -262,7 +262,6 @@ function _setBar(p, copy, copyName) {
   const l = MapView.line(p, copy, copyName);
   const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
   set("map-view-title", l.title);
-  set("map-view-note", l.note);
   const edit = $("btn-map-asis-edit");
   if (edit) edit.hidden = !l.edit;
   const stale = $("map-view-stale");
@@ -274,10 +273,7 @@ function _setBar(p, copy, copyName) {
   const toMap = $("btn-map-show-map");
   if (toMap) {
     toMap.hidden = !l.toMap;
-    if (l.toMap) {
-      toMap.textContent = l.toMap;
-      toMap.title = l.toMap === MapView.TO_COPY ? "Show your As-Is map, the map the PDD prints" : "Show the process map, the map the PDD prints";
-    }
+    if (l.toMap) toMap.textContent = l.toMap;
   }
 }
 
@@ -425,7 +421,7 @@ function rowHtml(m, s) {
       '<button type="button" class="tool-btn" data-rm-act="edit" data-rm-id="' + esc(m.map_id) + '">Edit</button>' +
       (stale ? '<button type="button" class="tool-btn" data-rm-act="refork" data-rm-id="' + esc(m.map_id) +
         '" title="' + esc(RECOPY_TITLE) + '">Copy again</button>' : "") +
-      '<button type="button" class="tool-btn" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '" title="Copy this map, for example to start the To-Be map from it">Duplicate</button>' +
+      '<button type="button" class="tool-btn" data-rm-act="dup" data-rm-id="' + esc(m.map_id) + '" title="Copy this map">Duplicate</button>' +
       '<button type="button" class="tool-btn danger" data-rm-act="del" data-rm-id="' + esc(m.map_id) + '">Delete</button>'
     );
   return (

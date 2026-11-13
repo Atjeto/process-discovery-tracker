@@ -156,7 +156,6 @@ const SAVE = "Salesforce" + " " + String.fromCharCode(45) + " " + "Order: Save o
 const ACTIONS = ["Enter Product code", "Enter Quantity", "Enter Unit price", "Enter Shipping address", "Enter Delivery method", "Click Save order"];
 const RENAMED = "Type the quantity";
 const GROUP = "Create the sales order in SAP";
-const NOTE_LEVEL = "One block per time a transaction goes through this sub-process.";
 
 /* Every step at every level of a list of steps. */
 function tree(steps) {
@@ -253,7 +252,7 @@ const groups = (anno) => (anno.steps || []).filter((s) => s.group === true);
     record("Open as a sub-process: every transaction's Save order gets one drafted sub-step per recorded action, named without the values typed, and is edited, on disk",
       !err && okDisk, JSON.stringify({ err, occurrences: occ.map((s) => [s.state, s.sub_steps.map((x) => x.name).join(" / ")]), valueFree }));
     const okLevel = !err && lv && JSON.stringify(lv.crumbs) === JSON.stringify(["Main process", SAVE]) && lv.dissolve &&
-      lv.note === NOTE_LEVEL && lv.blocks.length === 4 &&
+      lv.note === "" && lv.blocks.length === 4 &&
       lv.blocks.map((b) => b.title).join() === "Transaction 1,Transaction 2,Transaction 3,Transaction 4" &&
       lv.blocks[0].open && lv.blocks[0].badge === "Reference" && lv.blocks[0].status === "Draft" &&
       JSON.stringify(lv.blocks[0].rows) === JSON.stringify(ACTIONS) &&

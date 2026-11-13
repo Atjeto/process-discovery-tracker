@@ -224,7 +224,7 @@ async function deleteMarker(m) {
   const ok = await confirmModal({
     title: "Delete transaction?",
     message: "Its stretch of the timeline will no longer be a transaction of its own.",
-    detail: "The recording itself is not changed; the change is saved with the project and the transactions follow it. Ctrl+Z restores it.",
+    detail: "Ctrl+Z restores it.",
     okLabel: "Delete",
     danger: true,
   });

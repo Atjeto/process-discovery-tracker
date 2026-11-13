@@ -1335,7 +1335,7 @@ function renderTimeline() {
       host.style.width = "";
       host.style.minHeight = "";
       host.innerHTML = '<div class="tl-empty" id="tl-empty">No recording and no video in this project. ' +
-        '<button type="button" class="link-btn" id="btn-tl-attach-video" title="Attach a video of the process: the Timeline then follows it.">Attach video...</button></div>';
+        '<button type="button" class="link-btn" id="btn-tl-attach-video" title="Attach a video of the process.">Attach video...</button></div>';
       host.querySelector("#btn-tl-attach-video").addEventListener("click", () => attachVideo());
     }
     return;
@@ -1834,7 +1834,7 @@ function renderTimeline() {
         band.appendChild(nameEl);
         band.appendChild(numEl);
         const movable = editable && AC.stepTimeMovable(s.step);
-        band.title = lbl + " · " + (open ? "open: it ends where you add the next step, or where its transaction ends"
+        band.title = lbl + " · " + (open ? "open"
           : formatDuration(sEnd - sStart)) +
           (draft ? "\nA draft: nobody has confirmed it yet." : "") +
           (placed ? "\n" + placed : "") +

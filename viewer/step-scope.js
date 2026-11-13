@@ -85,11 +85,11 @@ function doneByOf(step, manifest) {
   return cleanDoneBy(step && step.done_by) || recordingRole(manifest);
 }
 
-/* What the Done by field shows while it is empty: the recording's role, said
-   as the default ("Sales assistant (from the recording)"), else a hint. */
+/* What the Done by field shows while it is empty: the recording's role
+   ("Sales assistant"), else a hint. */
 function doneByPlaceholder(manifest) {
   const role = recordingRole(manifest);
-  return role ? role + " (from the recording)" : "A role or a person";
+  return role || "A role or a person";
 }
 
 /* Set Done by on `step` (mutated): the cleaned text, or the key taken away

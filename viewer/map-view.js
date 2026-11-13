@@ -21,9 +21,9 @@
 
 /* The one line over the map when the picture the PDD prints does not show. */
 const WHY = {
-  DRAWING: "The process map is being drawn: it shows here when the update is done.",
-  NOT_DRAWN: "The process map could not be drawn. Help, Troubleshooting has Re-analyze.",
-  NOT_UPDATED: "The process map could not be updated with your latest changes. Help, Troubleshooting has Re-analyze.",
+  DRAWING: "The process map is being drawn.",
+  NOT_DRAWN: "The process map could not be drawn.",
+  NOT_UPDATED: "The process map could not be updated with your latest changes.",
   NO_PLANE: "The process map has no map for this sub-process.",
   COPY_LACKS: "Your As-Is map has no map for this sub-process.",
   COPY_LACKS_STEP: "Your As-Is map has no map for this sub-process, so this is the process map's.",
@@ -31,11 +31,6 @@ const WHY = {
 
 /* The header line's words. */
 const TITLE = { STEP: "Process map", COPY: "As-Is map", RUNS: "How the transactions ran" };
-const NOTE = {
-  STEP: "(the PDD prints this map)",
-  COPY: "(edited; the PDD prints this map)",
-  RUNS: "(hover a line for how often it was taken; a dashed line is a path no transaction took)",
-};
 const TO_RUNS = "Show how the transactions ran";
 const TO_STEP = "Show the process map";
 const TO_COPY = "Show the As-Is map";
@@ -90,8 +85,8 @@ function pick(o) {
   return { view: "runs", source: null, why: copy ? WHY.COPY_LACKS + " " + stepWhy : stepWhy, analyze, back: false };
 }
 
-/* The Map's one header line for a pick: { title, note, edit (the copy's
-   Edit shows), stale (lane FX2: the words before Copy again while the copy
+/* The Map's one header line for a pick: { title, edit (the copy's Edit
+   shows), stale (lane FX2: the words before Copy again while the copy
    shown was made before the steps changed, "" otherwise), toRuns (the link
    to the live map, "" for none), toMap (the way back, "" for none) }.
    `copy` and `copyName` as for pick: the chosen copy ({ plane, stale }) and
@@ -99,12 +94,12 @@ function pick(o) {
 function line(p, copy, copyName) {
   const r = p || {};
   if (r.view === "bpmn" && r.source === "copy") {
-    return { title: String(copyName || "").trim() || TITLE.COPY, note: NOTE.COPY, edit: true,
+    return { title: String(copyName || "").trim() || TITLE.COPY, edit: true,
       stale: copy && copy.stale ? (copy.stale === "labels" ? STALE_LABELS : STALE) : "", toRuns: TO_RUNS, toMap: "" };
   }
-  if (r.view === "bpmn") return { title: TITLE.STEP, note: NOTE.STEP, edit: false, stale: "", toRuns: TO_RUNS, toMap: "" };
+  if (r.view === "bpmn") return { title: TITLE.STEP, edit: false, stale: "", toRuns: TO_RUNS, toMap: "" };
   const toMap = !r.back ? "" : copy && copy.plane !== false ? TO_COPY : TO_STEP;
-  return { title: TITLE.RUNS, note: NOTE.RUNS, edit: false, stale: "", toRuns: "", toMap };
+  return { title: TITLE.RUNS, edit: false, stale: "", toRuns: "", toMap };
 }
 
-module.exports = { WHY, TITLE, NOTE, TO_RUNS, TO_STEP, TO_COPY, STALE, STALE_LABELS, RECOPY, pick, line };
+module.exports = { WHY, TITLE, TO_RUNS, TO_STEP, TO_COPY, STALE, STALE_LABELS, RECOPY, pick, line };

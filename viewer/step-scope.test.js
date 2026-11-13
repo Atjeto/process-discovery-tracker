@@ -55,7 +55,7 @@ test("who does a step: its own Done by (one line, at most 80 characters), else t
   assert.equal(S.doneByOf({ done_by: "  " }, manifest), "Sales assistant");
   assert.equal(S.doneByOf({}, {}), "");
   assert.equal(S.cleanDoneBy("x".repeat(120)).length, S.DONE_BY_MAX);
-  assert.equal(S.doneByPlaceholder(manifest), "Sales assistant (from the recording)");
+  assert.equal(S.doneByPlaceholder(manifest), "Sales assistant");
   assert.equal(S.doneByPlaceholder({}), "A role or a person");
 });
 

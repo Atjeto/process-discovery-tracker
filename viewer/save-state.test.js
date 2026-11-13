@@ -23,16 +23,16 @@ function after(reports, state) {
   return s;
 }
 
-test("a project just opened says Saved, and the tooltip says every change saves itself to its folder", () => {
+test("a project just opened says Saved, and the tooltip names its folder", () => {
   const v = S.view(S.initialState(FOLDER), fmt);
   assert.deepStrictEqual(v, { kind: "saved", text: "Saved",
-    title: "Every change saves itself to the project folder: D:\\Projects\\Order call." });
+    title: "Saved to D:\\Projects\\Order call." });
 });
 
 test("a save that reached the folder says Saved with its time; one still under way changes nothing until Saving... is shown", () => {
   const s = after([start("annotations"), ok("annotations")]);
   assert.deepStrictEqual(S.view(s, fmt), { kind: "saved", text: "Saved",
-    title: "Saved at 10:15:31. Every change saves itself to the project folder: D:\\Projects\\Order call." });
+    title: "Saved at 10:15:31 to D:\\Projects\\Order call." });
   const running = after([start("annotations")]);
   assert.strictEqual(running.inFlight, 1);
   assert.strictEqual(S.view(running, fmt).text, "Saved", "no Saving... before the delay has passed");
@@ -200,7 +200,7 @@ test("mounted: the subscription is taken, the element says Saved, and opening a 
   assert.strictEqual(m.el.textContent, "Saved");
   assert.strictEqual(m.el.dataset.state, "saved");
   S.projectOpened({ sessionFolder: FOLDER });
-  assert.strictEqual(m.el.title, "Every change saves itself to the project folder: D:\\Projects\\Order call.");
+  assert.strictEqual(m.el.title, "Saved to D:\\Projects\\Order call.");
 });
 
 test("mounted: a quick save never shows Saving..., fades Saved in again and puts its time in the tooltip", () => {
@@ -217,7 +217,7 @@ test("mounted: a quick save never shows Saving..., fades Saved in again and puts
   assert.strictEqual(m.el.textContent, "Saved");
   assert.strictEqual(m.el.writes, writes, "the word itself was never rewritten");
   assert.strictEqual(m.el.fades, fades + 1, "one fade for the save");
-  assert.strictEqual(m.el.title, "Saved at 10:15:30. Every change saves itself to the project folder: D:\\Projects\\Order call.");
+  assert.strictEqual(m.el.title, "Saved at 10:15:30 to D:\\Projects\\Order call.");
 });
 
 test("mounted: a slow write shows Saving... once the delay has passed, then Saved", () => {
@@ -235,7 +235,7 @@ test("mounted: a slow write shows Saving... once the delay has passed, then Save
   m.report(ok("video"));
   assert.strictEqual(m.el.textContent, "Saved");
   assert.strictEqual(m.el.dataset.state, "saved");
-  assert.match(m.el.title, /^Saved at 10:15:35\. /);
+  assert.match(m.el.title, /^Saved at 10:15:35 to /);
 });
 
 test("mounted: Not saved in the failed state until the next annotations save; another project starts over", () => {

@@ -65,15 +65,6 @@
     row._pdtBeginRename();
   });
 
-  /* What each step chip means, on hover. */
-  const CHIP_TITLES = {
-    draft: "Draft: the recorder drafted this step, and nobody has checked it yet.",
-    confirmed: "Confirmed: you accepted the drafted step as it is.",
-    edited: "Edited: you changed this step (its name, its boundaries or its flags).",
-    added: "Added: you added this step by hand.",
-    hidden: "Hidden: you took this step out. Unhide it from its menu.",
-  };
-
   /* The step rows of one run (steps-view.js renders the runs around them).
      A row: the multi-select tick (shown on hover or once ticked), the name
      (double-click to rename, with the shared name suggestions), the waste
@@ -119,7 +110,6 @@
       host.innerHTML = o.emptyHtml || `
         <div class="empty-pane">
           <p><strong>No steps yet.</strong></p>
-          <p>Steps appear once the recording is analyzed.</p>
         </div>`;
       return;
     }
@@ -145,7 +135,7 @@
         ? `<span class="step-tag-waste" title="${escapeAttr(NOT_NEEDED_TITLE)}">${escapeHtml(StepScope.labelOf("not_needed"))}</span>` : "";
       const chip = stepChip(s.state);
       const chipHtml = (o.baseline && chip.cls === o.baseline) ? ""
-        : `<span class="step-chip step-chip-${escapeAttr(chip.cls)}" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>`;
+        : `<span class="step-chip step-chip-${escapeAttr(chip.cls)}">${escapeHtml(chip.label)}</span>`;
       // R1 (Steps chrome diet): a truncated name (the list ellipsizes) must be
       // readable on hover, so the title shows the FULL name; the rename hint
       // rides after it. There are no per-row reorder buttons: the list is in
@@ -373,15 +363,15 @@
       <div class="step-head">
         <div class="step-title-row">
           ${nameFieldHtml(step, callbacks.picker)}
-          <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state" title="${escapeAttr(CHIP_TITLES[chip.cls] || "")}">${escapeHtml(chip.label)}</span>
-          ${callbacks.code ? `<span class="step-code" id="step-code" title="The code of the library activity this step is named from">${escapeHtml(callbacks.code)}</span>` : ""}
+          <span class="step-chip step-chip-${escapeAttr(chip.cls)} step-state">${escapeHtml(chip.label)}</span>
+          ${callbacks.code ? `<span class="step-code" id="step-code">${escapeHtml(callbacks.code)}</span>` : ""}
         </div>
-        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${doneByHtml(step, callbacks)}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${occurrencesHtml(callbacks)}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel, which lists every time it happened">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
+        <p class="step-facts" id="step-facts">${callbacks.systemHtml || ""}${doneByHtml(step, callbacks)}${callbacks.factsHtml ? `<span class="step-facts-rest">${callbacks.factsHtml}</span>` : facts.length ? `<span class="step-facts-rest">${escapeHtml(facts.join(" · "))}</span>` : ""}${occurrencesHtml(callbacks)}${callbacks.recordingAvailable ? `<button type="button" class="link-btn" id="btn-step-watch" title="Play this step in the step panel">▶ Play</button>` : ""}${callbacks.onTimeline ? "" : `<button type="button" class="link-btn" id="btn-step-jump" title="Open the Timeline at the start of this step (the video too, when one is attached)">Show on timeline</button>`}</p>
         ${callbacks.afterFactsHtml || ""}
       </div>
       <div class="step-body">
         <div class="step-write" id="step-doc">
-          <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}" title="The text the PDD prints under this step. Saved when you leave the field">${escapeHtml(desc)}</textarea></label>
+          <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}">${escapeHtml(desc)}</textarea></label>
           ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
           ${informationHtml(step, callbacks)}
           ${flowSectionHtml(step, callbacks.flow)}
@@ -494,14 +484,13 @@
     }
     return _infoOpen;
   }
-  const INFO_RECORDED_TITLE = "Read from the actions recorded in this step.";
   const INFO_IDS = { name: "info-name", example: "info-example", goes_to: "info-where" };
   const INFO_COLS = { name: "info-col-name", example: "info-col-example", goes_to: "info-col-where" };
 
   function _infoTextRow(e, recorded) {
     const cell = (v) => `<span class="info-cell" title="${escapeAttr(v || "")}">${escapeHtml(v || "")}</span>`;
     return `<li class="info-row${recorded ? " info-recorded" : " info-typed"}">` + cell(e.name) + cell(e.example) + cell(e.goes_to) +
-      (recorded ? `<span class="info-from" title="${escapeAttr(INFO_RECORDED_TITLE)}">${escapeHtml(StepInfo.WORDS.recorded)}</span>` : `<span class="info-from"></span>`) +
+      (recorded ? `<span class="info-from">${escapeHtml(StepInfo.WORDS.recorded)}</span>` : `<span class="info-from"></span>`) +
       `</li>`;
   }
   function _infoEditRow(key, e) {
@@ -648,10 +637,9 @@
   }
 
   /* C25: who does the step, on the line of facts after the system: a field
-     whose placeholder is the recording's role ("Sales assistant (from the
-     recording)"), a typed value winning; in a project opened read only the
-     value or the role as text, nothing when nobody is named. */
-  const DONE_BY_TITLE = "A role or a person; empty, the recording's role.";
+     whose placeholder is the recording's role ("Sales assistant"), a typed
+     value winning; in a project opened read only the value or the role as
+     text, nothing when nobody is named. */
   function doneByHtml(step, callbacks) {
     const d = callbacks.doneBy || {};
     const own = StepScope.cleanDoneBy(step.done_by);
@@ -659,7 +647,7 @@
       const who = own || d.role || "";
       return who ? `<span class="step-doneby" id="step-done-by-text">Done by ${escapeHtml(who)}</span>` : "";
     }
-    return `<label class="step-doneby" title="${escapeAttr(DONE_BY_TITLE)}">Done by ` +
+    return `<label class="step-doneby">Done by ` +
       `<input type="text" id="step-done-by" class="step-doneby-input" maxlength="${StepScope.DONE_BY_MAX}" value="${escapeAttr(own)}"` +
       ` placeholder="${escapeAttr(d.placeholder || "A role or a person")}"></label>`;
   }
@@ -697,13 +685,13 @@
     const acts = picker && Array.isArray(picker.activities) ? picker.activities : [];
     const note = picker && picker.note ? `<span class="step-lib-note" id="${escapeAttr(id.note)}">${escapeHtml(picker.note)}</span>` : "";
     const title = acts.length
-      ? "The name of this step: pick an activity of " + picker.system + " from the library, or type any name."
-      : "The name of this step. Saved when you press Enter or leave the field";
+      ? ` title="${escapeAttr("The name of this step: pick an activity of " + picker.system + " from the library, or type any name.")}"`
+      : "";
     const combo = acts.length ? ` role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${escapeAttr(id.list)}"` : "";
     // 2.0.1: the name is the editor's title; its label is for a screen reader.
     return `<div class="step-name-field">` +
       `<label class="sr-only" for="${escapeAttr(id.input)}">Name</label>` +
-      `<input type="text" id="${escapeAttr(id.input)}" class="step-title-input" value="${escapeAttr(step.name)}" autocomplete="off"${combo} title="${escapeAttr(title)}">` +
+      `<input type="text" id="${escapeAttr(id.input)}" class="step-title-input" value="${escapeAttr(step.name)}" autocomplete="off"${combo}${title}>` +
       note +
       (acts.length ? `<ul class="step-activity-list" id="${escapeAttr(id.list)}" role="listbox" aria-label="${escapeAttr("Activities of " + picker.system)}" hidden></ul>` : "") +
       `</div>`;
@@ -867,10 +855,10 @@
   const FLOW_TITLES = {
     onlyWhen: "For a step some transactions skip: say when it is done.",
     goTo: "A decision after this step: when a condition holds, the process goes elsewhere.",
-    condition: "When this step happens. Saved when you press Enter or leave the field.",
+    condition: "When this step happens.",
     removeCondition: "Remove the condition: the step always happens",
     target: "Where the process goes after this step",
-    when: "When the process goes there. Saved when you press Enter or leave the field.",
+    when: "When the process goes there.",
     removeLink: "Remove this link: the next step follows",
     inherited: "A condition set on another step holds here in every transaction: change it there.",
     // C22 (2.0.5): its place in the process, apart from its time.
@@ -1085,7 +1073,7 @@
      start). Add puts a sentence's text in the Description box and saves it. */
   function _addTitle(added) {
     return added ? "The description already holds this sentence"
-      : "Add this sentence to the description. You can edit it there.";
+      : "Add this sentence to the description.";
   }
   function saidDuringStepHtml(said, description) {
     if (!said) return "";
@@ -1225,8 +1213,7 @@
         `<span class="si-text meta">${missing === 1 ? "1 recorded action is" : missing + " recorded actions are"} not in this project</span>` +
         `</li>`);
     }
-    return (splittable ? `<p class="si-split-hint">The scissors after an action split the step there.</p>` : "") +
-      `<ol class="step-interaction-list">${rows.join("")}</ol>`;
+    return `<ol class="step-interaction-list">${rows.join("")}</ol>`;
   }
 
   module.exports = {

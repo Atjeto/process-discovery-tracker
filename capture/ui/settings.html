@@ -29,7 +29,6 @@
   }
   body { padding: 18px 22px 16px; display: flex; flex-direction: column; gap: 12px; }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; }
-  header .sub { color: var(--fg-3); font-size: 12px; margin-top: 2px; }
   .scroll {
     flex: 1; overflow-y: auto; padding-right: 4px; margin-right: -4px;
     display: flex; flex-direction: column; gap: 12px;
@@ -105,7 +104,6 @@
 
 <header>
   <h1>Settings</h1>
-  <div class="sub">Kept on this computer for every recording.</div>
 </header>
 
 <div class="scroll">
@@ -177,7 +175,6 @@
   <legend>Storage &amp; recording limits</legend>
   <label class="fld" for="store-warn">Flag the recordings on this computer above (GB)</label>
   <input type="number" id="store-warn" min="1" max="10000" step="1" />
-  <div class="help-hint">The tray's <strong>Setup (analyst)</strong> menu shows the size of all recordings and flags it above this limit, next to <strong>Delete recordings older than</strong>.</div>
   <label class="fld" for="store-idle">End the open transaction after inactivity (minutes)</label>
   <input type="number" id="store-idle" min="1" max="480" step="1" />
   <label class="check"><input type="checkbox" id="store-autoend" /><span>End the open transaction after this long without activity (uncheck for all-day recordings; the inactivity is noted either way)</span></label>
@@ -185,7 +182,7 @@
 
 </div>
 
-<div class="status" id="status">Edit a field, then click Save.</div>
+<div class="status" id="status"></div>
 
 <div class="actions">
   <button id="btn-test" class="left">Test OBS connection</button>

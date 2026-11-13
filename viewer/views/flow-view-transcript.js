@@ -313,7 +313,6 @@ async function _videoFor(sess, current) {
   });
   return chooseModal({
     title: "Which video is this transcript of?",
-    message: "Its sentences are placed from that video's start, and move with it.",
     groups: [{ label: "The videos of this project", items }],
     value: current || clips[0].id,
     okLabel: "Attach",

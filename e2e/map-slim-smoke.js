@@ -6,7 +6,7 @@
  * demo and asserts:
  *   (m1) lane MV: the Map opens on the map the PDD prints,
  *       process_map_step.bpmn drawn by bpmn-js (the live map hidden), under
- *       one header line ("Process map (the PDD prints this map)", "Show how
+ *       one header line ("Process map", "Show how
  *       the transactions ran"), with no participant, lane or frame around
  *       it, and each exclusive gateway with its marker as the editor draws
  *       it; the link shows how the transactions ran and its way back the
@@ -312,8 +312,8 @@ const lockProbe = () => {
     m1.back = await page.evaluate(pictureProbe);
   } catch (e) { m1.err = String(e.message).split("\n")[0]; }
   const p1 = m1.pic || {};
-  record("(m1) lane MV: the Map opens on the map the PDD prints (process_map_step.bpmn drawn by bpmn-js, the live map hidden) under one header line, Process map (the PDD prints this map), with Show how the transactions ran",
-    !!(!m1.err && p1.shown && !p1.live && p1.bar && p1.title === "Process map" && p1.note === "(the PDD prints this map)" &&
+  record("(m1) lane MV: the Map opens on the map the PDD prints (process_map_step.bpmn drawn by bpmn-js, the live map hidden) under one header line, Process map (no note on what the PDD prints), with Show how the transactions ran",
+    !!(!m1.err && p1.shown && !p1.live && p1.bar && p1.title === "Process map" && p1.note === "" &&
       p1.toRuns === "Show how the transactions ran" && !p1.toMap && !p1.edit && !p1.why && p1.rootId === m1.fileProcess && p1.names.length >= 7),
     JSON.stringify({ err: m1.err, pic: m1.pic && Object.assign({}, p1, { names: p1.names.length }), fileProcess: m1.fileProcess }));
   record("(m1) lane MV: no participant, lane or frame around the map (the file has none, the canvas root is the process, the canvas has no border or outline); each exclusive gateway shows its marker, as the editor and the PDD draw it",
@@ -323,7 +323,7 @@ const lockProbe = () => {
     JSON.stringify({ err: m1.err, fileHasPool: m1.fileHasPool, pools: p1.pools, root: p1.root, border: p1.border, outline: p1.outline, gateways: p1.gateways }));
   const r1 = m1.runs || {}, b1 = m1.back || {};
   record("(m1) lane MV: Show how the transactions ran shows the live map under its own line (How the transactions ran), and Show the process map brings the map back",
-    !!(!m1.err && !r1.shown && r1.live && r1.bar && r1.title === "How the transactions ran" && /how often it was taken/.test(r1.note) &&
+    !!(!m1.err && !r1.shown && r1.live && r1.bar && r1.title === "How the transactions ran" && r1.note === "" &&
       r1.toMap === "Show the process map" && !r1.toRuns && b1.shown && !b1.live && b1.title === "Process map"),
     JSON.stringify({ err: m1.err, runs: { shown: r1.shown, live: r1.live, title: r1.title, note: r1.note, toMap: r1.toMap }, back: { shown: b1.shown, title: b1.title } }));
 
@@ -615,10 +615,10 @@ const lockProbe = () => {
   } catch (e) { m4.err = String(e.message).split("\n")[0]; }
   await shot(page, "map-slim-edit-changed.png");
   const p4 = m4.pic || {};
-  record("(m4) lane MV: Edit with a change keeps the copy (one reference_maps entry, the PDD's As-Is map, its one file in derived_maps/ carrying the change), and the Map shows it: As-Is map (edited; the PDD prints this map), with its Edit",
+  record("(m4) lane MV: Edit with a change keeps the copy (one reference_maps entry, the PDD's As-Is map, its one file in derived_maps/ carrying the change), and the Map shows it: As-Is map, with its Edit",
     !!(!m4.err && JSON.stringify(m4.onDisk.map((m) => [m.name, m.role])) === '[["As-Is map","as_is"]]' && m4.files.length === 1 &&
       m4.onDisk[0].file === "derived_maps/" + m4.files[0] && m4.fileHasEdit &&
-      p4.shown && p4.title === "As-Is map" && p4.note === "(edited; the PDD prints this map)" && p4.edit && p4.names.includes(EDITED)),
+      p4.shown && p4.title === "As-Is map" && p4.note === "" && p4.edit && p4.names.includes(EDITED)),
     JSON.stringify({ err: m4.err, onDisk: m4.onDisk, files: m4.files, fileHasEdit: m4.fileHasEdit, pic: { shown: p4.shown, title: p4.title, note: p4.note, edit: p4.edit } }));
 
   // (m5) Lane MV: the map editor's own keys. On the kept As-Is copy, an
@@ -783,10 +783,9 @@ const lockProbe = () => {
   }
   await openMapLevel(page2);
   const locked = await page2.evaluate(lockProbe).catch((e) => ({ err: e.message }));
-  record("(f) no transactions marked: the map is withheld with the lock message (why + the mark-transactions instruction + its button), and no picture or header line shows",
+  record("(f) no transactions marked: the map is withheld with the lock message (the mark-transactions instruction + its button), and no picture or header line shows",
     !!(locked && !locked.err && !locked.drawn && locked.zoomHidden && !locked.picture && !locked.bar &&
-      /^The process map is not shown because it draws how the transactions flow\./.test(locked.text || "") &&
-      /This recording has no transactions marked\./.test(locked.text || "") &&
+      /^This recording has no transactions marked\./.test(locked.text || "") &&
       /right-click where each transaction starts and choose Start a transaction here/i.test(locked.text || "") && locked.cta),
     JSON.stringify(locked));
   if (!(locked && locked.cta)) await shot(page2, "fail-map-slim-locked.png");
@@ -808,7 +807,7 @@ const lockProbe = () => {
   })).catch((e) => ({ err: e.message })));
   record("(f2) the edit act on a withheld map makes no copy and says why (lane FX3: disabled, the reason in its title)",
     !!(forkLocked && !forkLocked.err && forkLocked.disabled &&
-      forkLocked.title === "No map to edit yet: the process map is not shown for this project, and the Map says why." &&
+      forkLocked.title === "No map to edit yet: the process map is not shown for this project." &&
       forkLocked.maps === 0 && !forkLocked.editor), JSON.stringify(forkLocked));
 
   // The lock's call to action lands on Flow with (lane PANE: the Markers

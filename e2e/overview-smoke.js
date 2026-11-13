@@ -316,7 +316,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       home.next === "pattern" && home.buttons === 1 && home.button === "Confirm transaction 1 in Steps" &&
       home.stages.join(",") === "runs:done,pattern:next,review:-,document:-,handoff:-" &&
       same(home.labels, ["Mark the transactions", "Confirm the reference transaction", "Review the other transactions",
-        "Write the document", "Hand off"]) && home.tips.length === 5 && home.tips.every((n) => n > 40)),
+        "Write the document", "Hand off"]) && home.tips.length === 5 && home.tips.every((n) => n > 20)),
     JSON.stringify(home));
   record("(b2) the project line: the name, who recorded it, the transactions said once and the reference transaction's 7 steps (not 30 over every one); plan D5: under it the video and the transcript, a row each (Video: No video, Attach a video...; Transcript: No transcript, Attach a transcript...), each act once, the rows apart and nothing cut; the removed surfaces stay gone; no run or What is left wording on the home",
     !!(home && !home.err && home.removed === 0 && home.summaryH > 0 && home.summaryH < 40 &&
@@ -1901,16 +1901,16 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       smeL(sme.first, "trigger").text === "The SME wrote: " + SME_ANSWERS.trigger &&
       sme.first.lines.every((l) => same(l.buttons, [["Use", "Writes the SME's answer into this field."],
         ["Dismiss", "Hides the SME's answer for this field. Ctrl+Z brings it back."]]) && l.inside && !l.overlap && l.fits) &&
-      sme.first.noPageScroll && / The SME answered 4 questions: each waits under its field\.$/.test(sme.first.status),
+      sme.first.noPageScroll && / The SME answered 4 questions\.$/.test(sme.first.status),
     JSON.stringify(sme.first && { lines: sme.first.lines, status: sme.first.status, noPageScroll: sme.first.noPageScroll }));
   record("(sme) Use on an empty Trigger writes the answer without a question and dismisses its key (the field and annotations.json), " +
-    "the line says it was written from it; the field edited, the answer's line stays gone and so does Written from; " +
+    "no line says where the text came from (lane no-narration); the field edited, the answer's line stays gone; " +
     "Ctrl+Z takes the edit back, a second Ctrl+Z takes Use back (Undone: edit document field Trigger): the old text and the line return",
     !sme.err && sme.usedOnDisk && sme.noAsk && sme.used && sme.used.fields.trigger === SME_ANSWERS.trigger && !smeL(sme.used, "trigger") &&
-      same(sme.used.from, [["trigger", "Written from the SME's answer."]]) && /The SME answered 3 questions/.test(sme.used.status) &&
+      same(sme.used.from, []) && /The SME answered 3 questions/.test(sme.used.status) &&
       sme.editedOnDisk && sme.edited && !smeL(sme.edited, "trigger") && same(sme.edited.from, []) &&
       sme.undo1OnDisk && sme.undo1 && sme.undo1.fields.trigger === SME_ANSWERS.trigger && !smeL(sme.undo1, "trigger") &&
-      same(sme.undo1.from, [["trigger", "Written from the SME's answer."]]) &&
+      same(sme.undo1.from, []) &&
       sme.undoneOnDisk && sme.undone && sme.undone.fields.trigger === "" && !!smeL(sme.undone, "trigger") && same(sme.undone.from, []) &&
       /Undone: edit document field Trigger/.test(sme.undoToast || ""),
     JSON.stringify({ used: sme.used && [sme.used.fields.trigger, smeKeys(sme.used), sme.used.from, sme.used.status],

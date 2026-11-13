@@ -363,7 +363,7 @@ menu's play item is *Play* (it read *Watch*).
   `external_video`, read as one clip): read the first with
   `(a.external_videos || [])[0] || a.external_video`.
 - The document `#ov-doc` (a `<details>`): the fields `[data-doc="title"|"request"|"purpose"|"scope"|"trigger"|"result"|"contacts"|"business_rules"|"exceptions"|"effort"|"improvement"|"notes"]`
-  (saved on change), who fills it `#ov-doc-who`, `#ov-doc-status` (the
+  (saved on change), `#ov-doc-status` (the
   count, "N of 10 written": `request` and `notes` are optional and not
   counted; and the empty fields by name); the attachments `#ov-attach`
   (`#btn-ov-attach`, `.att-row[data-att-id]` with `.att-label-input` and
@@ -372,9 +372,8 @@ menu's play item is *Play* (it read *Watch*).
   sits in `.ov-doc-cell[data-doc-cell="<key>"]` with its line
   `.ov-sme[data-sme="trigger"|"result"|"exceptions"|"effort"]`
   (`.ov-sme-text`, `[data-sme-act="use"]` `.ov-sme-use`,
-  `[data-sme-act="dismiss"]` `.ov-sme-dismiss`; no buttons read only), a
-  field written from it `.ov-sme-from[data-sme-from]`, and a file the SME
-  added that is not in the folder `#ov-summary .ov-sme-missing`; the
+  `[data-sme-act="dismiss"]` `.ov-sme-dismiss`; no buttons read only),
+  and a file the SME added that is not in the folder `#ov-summary .ov-sme-missing`; the
   transcript `#ov-tr` (`#ov-tr-list`,
   `.tr-add-to[data-seg]` opens `#ov-tr-add-menu [data-doc-target]`).
 - No Observations since 2.0.1: the PDD's sections are the document's
@@ -572,9 +571,8 @@ menu's play item is *Play* (it read *Watch*).
   `#btn-ignored-apps` (the dialog: `#ia-list`, `#ia-save`, `#ia-cancel`;
   lane FX3: not shown in a project without a recording, disabled with its
   reason in a recording without a click or a field typed).
-- The list's title `#runs-pane-count` and the line under it that says what
-  a transaction is, `#runs-pane-note` (inside a sub-process, what a block
-  is).
+- The list's title `#runs-pane-count` (no line under it: the
+  no-narration lane cut `#runs-pane-note`).
 - The level shown (contract C19, `State.getMapPath()`, `[]` the main
   level): inside a sub-process the breadcrumb `#steps-crumbs` (hidden at the
   main level) holds the crumbs `button.crumb[data-depth]` (each goes up), the
@@ -714,8 +712,7 @@ video at m:ss* is `.step-use-video` in `#sp-body .sp-occ.focus`, and
 the transactions ran one click away):
 - The one header line `#map-view-bar` (hidden while the live map says why
   it draws nothing): `#map-view-title` ("Process map", the As-Is copy's
-  name, or "How the transactions ran"), `#map-view-note` ("(the PDD prints
-  this map)", "(edited; the PDD prints this map)"), `#btn-map-asis-edit`
+  name, or "How the transactions ran"), `#btn-map-asis-edit`
   (the chosen copy's Edit), `#map-view-stale` and `#btn-map-asis-recopy`
   (lane FX2: shown while the chosen As-Is copy was made before the steps
   changed, the line and *Copy again*), `#btn-map-show-runs` (Show how the

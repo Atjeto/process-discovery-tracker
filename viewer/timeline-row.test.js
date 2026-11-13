@@ -57,7 +57,7 @@ test("the words: the video, or the recording in a recording without a video; the
   assert.equal(v.addStep, "Adds a step at this moment of the video. The step before it ends here. Key: S");
   assert.equal(v.start, "Starts a new transaction at this moment of the video.");
   assert.equal(v.end, "Ends the transaction at this moment of the video.");
-  assert.equal(v.addNote, "Adds a note at this moment of the video. Notes stay out of the PDD.");
+  assert.equal(v.addNote, "Adds a note at this moment of the video.");
   assert.equal(v.notPart, "Marks the selected stretch as not part of the process: playing skips it.");
   assert.equal(v.leaveOut, "Drafts the steps and the map again without this stretch: playing skips it.");
   assert.equal(v.makeTx, "Makes a transaction that starts and ends where the selection does.");

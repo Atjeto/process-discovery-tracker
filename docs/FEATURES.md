@@ -193,7 +193,7 @@ The viewer says *transaction* for one pass through the process and
 **Overview**
 
 - **The Checklist**: the acts that fit the project, each ticked once done
-  and explained in its tooltip, with one button for the next act. A
+  and its tooltip saying what it asks, with one button for the next act. A
   recording: mark the transactions, confirm the reference transaction
   (ticked without a click when none of its steps is a draft), review the
   other transactions (only those that differ), write the document, hand
@@ -226,7 +226,7 @@ The viewer says *transaction* for one pass through the process and
   folder, and Ctrl+Z brings them back; 2.0.6: with several, each one's acts
   are on its Timeline lane). A project opened read only shows the rows
   without acts.
-- **The document** ("You write these. The PDD prints them."): twelve fields
+- **The document**: twelve fields
   that print in their own places in the PDD (title, request, purpose,
   scope, trigger, result, contacts, business rules, exceptions, volume and
   effort, improvement and automation scope, notes). An empty field looks
@@ -244,9 +244,8 @@ The viewer says *transaction* for one pass through the process and
   is edited; a field that holds other text asks first; one Ctrl+Z gives
   back the old text and the answer) and *Dismiss* (hides it; Ctrl+Z brings
   it back), and the document's heading says how many wait ("The SME
-  answered 4 questions: each waits under its field."); a field whose text
-  is still the answer says it was written from it. A hand-off opened read
-  only shows the answers as text ("The SME answered 4 questions."). The SME's example files become
+  answered 4 questions."). A hand-off opened read
+  only shows the answers as text. The SME's example files become
   attachments of the whole project when the project first opens for
   editing, marked "From the SME" in Files and in the Overview's
   attachments; a file the SME added that did not come with the project is
@@ -516,8 +515,7 @@ The viewer says *transaction* for one pass through the process and
   said once when every task is done in one system; the decisions as
   gateways whose paths part at their corners; the notes and files under
   their steps), or the edited As-Is map once there is one, under one line
-  that says which ("Process map (the PDD prints this map)", "As-Is map
-  (edited; the PDD prints this map)"). It is linked: a task opens the step
+  that says which ("Process map", or the As-Is map's name). It is linked: a task opens the step
   panel on its step, a file opens its attachment, a note shows its whole
   text; a system label is part of the picture and takes no click. After a
   change to the steps the Map updates the process map first, once, keeping

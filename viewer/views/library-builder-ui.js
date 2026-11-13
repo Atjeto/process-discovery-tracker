@@ -41,8 +41,7 @@ function _intro(base) {
     ? "It starts from the app's library (" + Library.summaryLine(base) + ")."
     : base.status === "absent" ? "The app has no library yet: it starts from an empty one."
       : "The app's library cannot be read (" + (base.error || "no reason was given") + "): it starts from an empty one.";
-  return from + " Add projects or hand-off zips: the steps their analysts named are listed by system. " +
-    "Tick what goes in the library, fix the names, codes and descriptions, then save it as a new version.";
+  return from + " Tick what goes in the library, fix the names, codes and descriptions, then save it as a new version.";
 }
 
 /* A row's line under its fields: where it comes from, its screens, and how
@@ -50,7 +49,7 @@ function _intro(base) {
 function _metaText(row) {
   const parts = [];
   if (row.source === "library") parts.push("In the library");
-  if (row.inLibrary) parts.push("Named as in the library: ticked, its screens are added to that activity");
+  if (row.inLibrary) parts.push("Named as in the library");
   parts.push(row.runs.length ? "Screens: " + Builder.screensText(row.runs) : "No screens: added by hand");
   const uses = Builder.usesText(row);
   if (uses) parts.push(uses);
@@ -63,7 +62,7 @@ function _rowHtml(row) {
     '<input type="checkbox" class="lb-tick" aria-label="' + escapeAttr(label) + '" title="' + escapeAttr(label) + '"' + (row.ticked ? " checked" : "") + ">" +
     '<input type="text" class="lb-name" value="' + escapeAttr(row.name) + '" aria-label="Name" title="The activity\'s name">' +
     '<input type="text" class="lb-code" value="' + escapeAttr(row.code) + '" placeholder="Code" aria-label="Code" title="The activity\'s code (optional)">' +
-    '<input type="text" class="lb-desc" value="' + escapeAttr(row.description) + '" placeholder="Description" aria-label="Description" title="The activity\'s description (optional): a step named from it takes it when it has none">' +
+    '<input type="text" class="lb-desc" value="' + escapeAttr(row.description) + '" placeholder="Description" aria-label="Description" title="The activity\'s description (optional)">' +
     '<p class="lb-meta">' + escapeHtml(_metaText(row)) + "</p>" +
     "</div>";
 }
@@ -120,8 +119,8 @@ async function openLibraryBuilder(opts) {
       '<div class="modal-body">' +
         '<p class="meta lb-intro" id="lb-intro"></p>' +
         '<div class="lb-sources">' +
-          '<button type="button" id="btn-lb-add-projects" title="Pick project folders: their annotations.json and manifest.json are read">Add projects...</button>' +
-          '<button type="button" id="btn-lb-add-zips" title="Pick hand-off zips: each is read where it is, not unzipped">Add hand-off zips...</button>' +
+          '<button type="button" id="btn-lb-add-projects" title="Pick project folders">Add projects...</button>' +
+          '<button type="button" id="btn-lb-add-zips" title="Pick hand-off zips">Add hand-off zips...</button>' +
         "</div>" +
         '<p class="lb-read" id="lb-read"></p>' +
         '<div id="lb-list"></div>' +
@@ -130,7 +129,7 @@ async function openLibraryBuilder(opts) {
       '<div class="modal-footer">' +
         '<span class="lb-count" id="lb-count"></span>' +
         '<button type="button" data-act="close">Cancel</button>' +
-        '<button type="button" class="primary" id="btn-lb-save" title="Save the ticked activities as a new library file; the app\'s own library file is offered first">Save library...</button>' +
+        '<button type="button" class="primary" id="btn-lb-save" title="Save the ticked activities as a new library file">Save library...</button>' +
       "</div>" +
     "</div>";
   document.body.appendChild(backdrop);

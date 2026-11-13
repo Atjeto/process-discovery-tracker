@@ -370,13 +370,11 @@ function _renderMapPicker(lv) {
   const nameEl = document.getElementById("map-picker-name");
   if (nameEl) nameEl.textContent = name;
   const btn = document.getElementById("btn-map-picker");
-  if (btn) btn.title = "Choose the main process or one of its sub-processes; Steps shows the same level.";
+  if (btn) btn.title = "Choose the main process or one of its sub-processes.";
   popup.innerHTML = lv.tree.map((m) => {
     const here = SPM.samePath(m.path, lv.path);
     const nm = _mapName(lv, m.path);
-    const tip = !m.path.length ? ""
-      : m.number != null ? "Sub-process " + m.number + ", with a chapter of its own in the PDD"
-        : "Not in the reference transaction, so the PDD has no chapter for it";
+    const tip = m.path.length && m.number == null ? "Not in the reference transaction" : "";
     return '<button type="button" class="project-menu-item map-pick' + (here ? " current" : "") + '"' +
       (here ? ' aria-current="true"' : "") + ' data-map="' + escapeAttr(JSON.stringify(m.path)) + '"' +
       ' style="--map-depth:' + m.path.length + '"' + (tip ? ' title="' + escapeAttr(tip) + '"' : "") + ">" +

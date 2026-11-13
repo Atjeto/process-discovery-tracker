@@ -51,10 +51,10 @@ test("a project with nothing missing has no entry", () => {
 test("drafts: plural and singular, the step a draft leads to the first of them", () => {
   const two = miss([step("a", "c1", 1, { state: "auto_suggested" }), step("b", "c1", 3, { state: "auto_matched" }),
     step("c", "c1", 5)]);
-  assert.deepEqual(two, [{ key: "drafts", count: 2, text: "2 steps are still drafts, and the PDD says so.",
+  assert.deepEqual(two, [{ key: "drafts", count: 2, text: "2 steps are still drafts.",
     lead: { kind: "step", stepId: "a" } }]);
   const one = miss([step("a", "c1", 1), step("b", "c1", 3, { state: "auto_suggested" })]);
-  assert.equal(one[0].text, "1 step is still a draft, and the PDD says so.");
+  assert.equal(one[0].text, "1 step is still a draft.");
   assert.deepEqual(one[0].lead, { kind: "step", stepId: "b" });
 });
 
