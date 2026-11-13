@@ -79,18 +79,6 @@ function _topics(topics, cut) {
   return cut && !t.includes("steps") ? t.concat("steps") : t;
 }
 
-/* Why the capture app ended a transaction by itself, in plain words (lane
-   FX3, validation pass 3, F20): the next transaction started (the SME's key
-   or Next transaction ends the open one first), or a long idle stretch
-   ended it. A reason the app does not know is not shown: never a raw code. */
-const END_REASONS = {
-  auto_close_for_sibling: "the next transaction started",
-  auto_end_idle: "after a long idle stretch",
-};
-function markerReasonText(reason) {
-  return (typeof reason === "string" && END_REASONS[reason]) || "";
-}
-
 function _annotations() {
   const anno = State.getSession().annotations || { notes: [], marker_edits: [] };
   anno.marker_edits = anno.marker_edits || [];
@@ -259,7 +247,7 @@ async function renameMarker(m, newLabel) {
 }
 
 module.exports = {
-  effectiveLabel, sinceStartToIso, markerReasonText, moveMarker, insertMarker, insertMarkers, removeMarker,
+  effectiveLabel, sinceStartToIso, moveMarker, insertMarker, insertMarkers, removeMarker,
   // Lane PANE: a transaction's header in the Timeline's pane.
   renameMarker, deleteMarker,
   keepApplied, clipStepsToTransactions,

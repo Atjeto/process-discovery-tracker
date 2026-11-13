@@ -71,7 +71,7 @@ test("what the map does not draw changes nothing: confirming, a description, a s
   assert.equal(sig(p), before);
 });
 
-test("what the step map draws changes it: a flow, a condition, a note, a file, a system, the waste flag, the automation's choice, Done by, a hidden step, the Trigger and the Result", () => {
+test("what the step map draws changes it: a flow, a condition, a note, a file, a system, the waste flag, Done by, a hidden step, the Trigger and the Result", () => {
   const cases = {
     link: (p) => { find(p, "c").links = [{ to: "a", when: "a price is missing" }]; },
     condition: (p) => { find(p, "b").only_when = "the customer is new"; },
@@ -79,8 +79,6 @@ test("what the step map draws changes it: a flow, a condition, a note, a file, a
     file: (p) => { p.annotations.attachments = [{ id: "f1", file: "form.pdf", label: "Order form", step_id: "b" }]; },
     system: (p) => { find(p, "a").system = "SAP"; },
     waste: (p) => { find(p, "b").flags.waste = true; },
-    automation: (p) => { find(p, "a").automation = "automated"; },
-    person: (p) => { find(p, "a").automation = "person"; },
     doneBy: (p) => { find(p, "c").done_by = "Finance clerk"; },
     hidden: (p) => { find(p, "c2").state = "hidden"; },
     trigger: (p) => { p.annotations.document.trigger = "A phone call"; },
@@ -96,17 +94,37 @@ test("what the step map draws changes it: a flow, a condition, a note, a file, a
   const p = project();
   p.annotations.analyst_notes = [{ id: "n2", text: "The phone rang", step_id: null, at: t(2) }];
   assert.equal(sig(p), base);
-  // C25: "Not decided yet" and an empty Done by draw nothing, so a copy made
-  // before C25 keeps its signature.
+  // C25 as amended: a stored Automation choice draws nothing, nor does an
+  // empty Done by, so a copy made before C25 keeps its signature.
   const q = project();
-  find(q, "a").automation = "undecided";
+  find(q, "a").automation = "automated";
+  find(q, "b").automation = "person";
   find(q, "c").done_by = "  ";
   assert.equal(sig(q), base);
-  // Two choices that draw different kinds of task differ.
-  const auto = project(), person = project();
-  find(auto, "a").automation = "automated";
-  find(person, "a").automation = "person";
-  assert.notEqual(sig(auto), sig(person));
+  // Positive control: the legacy form still reads the choices.
+  assert.notEqual(F.stepsMapSignature(q.annotations, q.stats, true), F.stepsMapSignature(q.annotations, q.stats));
+});
+
+test("C25 as amended: a copy made while the Automation choice existed is not stale for the cut alone", () => {
+  // A copy kept the legacy signature: a choice, a waste flag read as
+  // No longer needed, and a Done by.
+  const p = project();
+  find(p, "a").automation = "automated";
+  find(p, "b").flags.waste = true;
+  find(p, "c").done_by = "Finance clerk";
+  const legacy = F.stepsMapSignature(p.annotations, p.stats, true);
+  assert.notEqual(legacy, sig(p), "the two forms differ here");
+  const entry = RM.buildEntry({ file: "derived_maps/x.bpmn", source: { level: "step" }, forked_from_steps: legacy });
+  assert.equal(F.copyStale(p, entry), false);
+  // A change the map draws still makes it stale.
+  find(p, "a").name = "Look up the customer";
+  assert.equal(F.copyStale(p, entry), true);
+  // A copy made before C25 (no choice, no Done by, a waste flag) keeps its
+  // signature in the current form, as it did before C25.
+  const old = project();
+  find(old, "b").flags.waste = true;
+  const before = sig(old);
+  assert.equal(F.copyStale(old, RM.buildEntry({ file: "derived_maps/y.bpmn", source: { level: "step" }, forked_from_steps: before })), false);
 });
 
 test("C19: a sub-process's map counts too: a sub-step renamed changes it", () => {

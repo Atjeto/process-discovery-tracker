@@ -551,7 +551,7 @@ menu's play item is *Play* (it read *Watch*).
   Steps `#tp-steps`: `.tp-tools` (`.tp-paste`, `.tp-add`, `.tp-confirm`,
   `.tp-undo-confirm`), `.tp-hint`, per transaction `.tp-tx-head[data-case-id]`
   (`.tp-tx-name`, `.run-pattern-badge`, `.tp-tx-rename` making the field
-  `.tp-tx-input`, `.tp-tx-delete`, `.tp-tx-why`, `.run-times` with
+  `.tp-tx-input`, `.tp-tx-delete`, `.run-times` with
   `input.time-field[data-side]`), the rows `.tp-item[data-step-id]` with
   `.tp-row` (`.tp-num`, `.tp-name`, `.tp-meta`, `.tp-draft`, `.tp-when`,
   `.tp-now` shown on `.tp-row.now`, `aria-current` on the selected one) and
@@ -665,9 +665,9 @@ menu's play item is *Play* (it read *Watch*).
   `.flow-link-text`, the dropdown `select.flow-link-to`
   (`#flow-link-to-<i>`, its options the transaction's steps and `end`),
   `input.flow-link-when` (`#flow-link-when-<i>`) and `.flow-link-remove`),
-  the Automation choice `select#step-automation` (C25: `undecided`,
-  `automated`, `person`, `not_needed`; read only, the text
-  `#step-automation-text`, "Automation: <choice>"); on the line of facts
+  the tick No longer needed `input#flag-waste` in `label.step-waste` (C25:
+  `flags.waste`; read only, the text `#step-not-needed-text`, "No longer
+  needed", only when ticked); on the line of facts
   after the System field, Done by `input#step-done-by` (its placeholder the
   recording's role; read only, the text `#step-done-by-text`, "Done by
   <who>");
@@ -872,12 +872,14 @@ capture app's Recording setup (`session-config-window.js`,
 Setup (analyst)'s *Recording setup...*) and its named transactions (the
 bar's caret, `pdt:namedRunMenu`, the tray's *Start a named transaction*);
 and the Steps row's duration (the row's `.step-time` is when the step
-starts). Gone since contract C25 (2026-11-12): the step editor's Waste tick
-`#flag-waste` (now the Automation choice's *No longer needed*,
-`#step-automation`), the step menu's *Flag as waste* and *Clear waste flag*
-(now *Mark as no longer needed* and *Mark as not decided yet*), and the
-step map's manual task for a step added by hand with no system (the hand
-now means only *Stays with a person*).
+starts). Gone since contract C25 (2026-11-12): the step editor's words
+*Waste: this step should not be needed* (the tick `#flag-waste` now reads
+*No longer needed*), and the step menu's *Flag as waste* and *Clear waste
+flag* (now *Mark as no longer needed* and *Mark as needed*). Gone since C25
+was amended (2026-11-13): the Automation choice `#step-automation`, the
+step map's service task (the gear), the PDD's section 7 headings by choice
+and the Technical details' Automation column; and the Timeline pane's
+`.tp-tx-why` line ("Ended by itself: ...").
 
 **Clipping check** (labels have drifted before): a visible element with
 `scrollWidth > clientWidth + 2` and text is clipped, **unless** it has

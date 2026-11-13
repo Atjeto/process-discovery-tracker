@@ -37,7 +37,7 @@ _BPMNDI = "{http://www.omg.org/spec/BPMN/20100524/DI}"
 _DC = "{http://www.omg.org/spec/DD/20100524/DC}"
 _DI = "{http://www.omg.org/spec/DD/20100524/DI}"
 _BIOC = "{http://bpmn.io/schema/bpmn/biocolor/1.0}"
-_TASKS = ("task", "userTask", "manualTask", "serviceTask", "subProcess")
+_TASKS = ("task", "userTask", "manualTask", "subProcess")
 _NOT_NODES = ("sequenceFlow", "dataObject", "dataObjectReference", "textAnnotation",
               "association")
 
@@ -319,28 +319,27 @@ def test_notes_and_files_on_sub_steps_are_drawn_on_their_plane():
     assert {_tag(el) for el in check if _tag(el) in _TASKS} == {"task", "subProcess"}
 
 
-def test_a_sub_steps_kind_follows_what_the_automation_does_with_it_on_its_plane():
-    """Contract C25 on every plane: sub-steps carry `automation` as steps
-    do. A sub-step added by hand with no system and no choice is a plain
-    task with no system label; one that stays with a person is a manual
-    task (the hand), one the automation does a service task (the gear)."""
+def test_a_sub_step_done_outside_the_systems_is_a_manual_task_on_its_plane():
+    """C18 as lane CL amended it, on every plane: a sub-step added by hand
+    with no system is a manual task, with its hand and no system label. A
+    stored `automation` (contract C25 as amended 2026-11-13) changes no
+    kind."""
     anno = _anno()
     check_a = next(s for s in anno["steps"] if s["step_id"] == "A-c")
     check_a["sub_steps"].append({"step_id": "A-hand", "case_id": "A", "name": "Phone the warehouse",
                                  "state": "manually_authored", "time_range": None, "order": 1,
                                  "evidence": {"interaction_event_ids": [], "screenshot_refs": []}})
     root = _written(anno)
-    check = _child(_main(root), "Check the order")
+    main = _main(root)
+    check = _child(main, "Check the order")
     kinds = {el.get("name"): _tag(el) for el in check if _tag(el) in _TASKS}
     assert kinds == {"Enter customer": "task", "Look up price": "subProcess", "Click Save": "task",
-                     "Phone the warehouse": "task"}
+                     "Phone the warehouse": "manualTask"}
     assert "Phone the warehouse" not in _labels(check)
     check_a["sub_steps"][0]["automation"] = "automated"            # Enter customer
-    check_a["sub_steps"][-1]["automation"] = "person"              # Phone the warehouse
+    check_a["sub_steps"][-1]["automation"] = "automated"           # Phone the warehouse
     check = _child(_main(_written(anno)), "Check the order")
-    kinds = {el.get("name"): _tag(el) for el in check if _tag(el) in _TASKS}
-    assert kinds == {"Enter customer": "serviceTask", "Look up price": "subProcess", "Click Save": "task",
-                     "Phone the warehouse": "manualTask"}
+    assert {el.get("name"): _tag(el) for el in check if _tag(el) in _TASKS} == kinds
 
 
 def test_a_sub_process_without_steps_is_a_start_joined_to_an_end():

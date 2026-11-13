@@ -117,12 +117,9 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    adds a line: the information, an example and where it goes, such as
    *Customer number*, *10482*, *SAP, Sold-to party*. The PDD names the
    information, never an example; the Technical details give the developers
-   the examples too. *Automation*, under the Flow line, says what the
-   automation will do with the step: *The automation does it*, *Stays with
-   a person*, *No longer needed* or *Not decided yet*; the PDD lists the
-   steps by it under its improvement and automation scope. Choose *No
-   longer needed* for a step that should not be needed (rework, duplicate
-   effort): Steps and the step panel tag it *No longer needed*. *Done by*, after
+   the examples too. Tick *No longer needed*, under the Flow line, on a
+   step that should not be needed (rework, duplicate effort): Steps and the
+   step panel tag it *No longer needed*. *Done by*, after
    the system on the step's line, names who does the step, a role or a
    person; left empty, it is the role the recording was made under.
 5. **Set the flow where it branches or loops.** In transaction 2 the SME
@@ -168,9 +165,8 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    (here, the product from Order Desk in the tracking sheet in Excel), the
    PDD says so under the improvement scope.
 9. **Check the Map.** The Map shows the map the PDD prints: a box per step
-   with the system it is done in above it and who does it under it, a gear
-   in its corner when the automation does it and a hand when it stays with
-   a person, and the decisions from the flow you set. The demo's map starts at the trigger and ends at the result you
+   with the system it is done in above it and who does it under it, and the
+   decisions from the flow you set. The demo's map starts at the trigger and ends at the result you
    wrote, with a decision before each step only some orders need, such as
    *Create the new customer*. Click a
    box to see each time the step happened, with its moment in the video and

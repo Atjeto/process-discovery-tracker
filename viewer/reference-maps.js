@@ -294,8 +294,10 @@ function predatesLabels(xml) {
     !/\sid="(?:Sub\d+_)?TextAnnotation_system(?:_\d+)?"/.test(s);
 }
 
-/* C25 adds its marks: a service task (the gear) and a Done by label
-   (TextAnnotation_doneby, TextAnnotation_doneby_<k>). */
+/* C25 adds its marks: a Done by label (TextAnnotation_doneby,
+   TextAnnotation_doneby_<k>), and a service task (the gear), which the step
+   map drew only while the Automation choice existed (2026-11-12 to 13): a
+   copy made then is no copy from before the rich map. */
 function predatesRichMap(xml) {
   const s = String(xml || "");
   return !/<(?:[\w.-]+:)?(?:userTask|manualTask|serviceTask)[\s/>]/.test(s) &&

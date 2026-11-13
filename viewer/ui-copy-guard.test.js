@@ -491,6 +491,8 @@ const RETIRED_NARRATION = [
   "the Timeline then follows it",
   "Its sentences are placed from that video's start, and move with it.",
   "The recording itself is not changed; the change is saved with the project and the transactions follow it.",
+  "Ended by itself",
+  "the next transaction started",
   // The library builder
   "the steps their analysts named are listed by system",
   "its screens are added to that activity",

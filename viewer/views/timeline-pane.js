@@ -268,14 +268,12 @@ function _rowHtml(row, current) {
 }
 
 /* A transaction's header: its name, Reference, its times (Steps' own
-   fields, steps-view.js _runTimesEl), Rename and Delete transaction, and why
-   the capture app ended it when it did so by itself. */
+   fields, steps-view.js _runTimesEl), Rename and Delete transaction. */
 function _headerEl(g, sess) {
   const run = g.run;
   const sides = TE.runSides(run, MarkerEdits.sessionMarkerView(sess));
   const start = sides.start;
   const label = start && start.pending ? (start.label || "") : run.label;
-  const why = sides.end ? FlowMarkers.markerReasonText(sides.end.reason) : "";
   const el = document.createElement("div");
   el.className = "tp-tx-head";
   el.dataset.caseId = run.caseId;
@@ -285,8 +283,7 @@ function _headerEl(g, sess) {
       '<span class="tp-tx-name" role="heading" aria-level="3">' + escapeHtml(_txName(run, label)) + "</span>" +
       (g.isRef ? '<span class="run-pattern-badge">' + escapeHtml(TEXT.reference) + "</span>" : "") +
       (editable ? _btn("link-btn tp-tx-rename", TEXT.rename, TEXT.renameTitle) + _btn("link-btn tp-tx-delete", TEXT.deleteTx, TEXT.deleteTxTitle) : "") +
-    "</div>" +
-    (why ? '<p class="tp-tx-why">' + escapeHtml("Ended by itself: " + why + ".") + "</p>" : "");
+    "</div>";
   const times = Steps().runTimesEl(run);
   if (times) el.appendChild(times);
   if (editable) {

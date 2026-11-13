@@ -71,11 +71,11 @@ const MarkerEdits = require("../marker-edits.js");
 const TE = require("../time-edits.js");
 const RO = require("../read-only.js");
 const StepEditor = require("../step-editor.js");
-// C25: a step no longer needed (the waste flag) says so in the Automation
-// choice's words.
+// C25: a step no longer needed (the waste flag) says so in the step editor's
+// words.
 const StepScope = require("../step-scope.js");
 const NOT_NEEDED_TAG = (cls) => '<span class="' + cls + '" title="' + escapeAttr(StepScope.NOT_NEEDED_TITLE) + '">' +
-  escapeHtml(StepScope.labelOf("not_needed")) + "</span>";
+  escapeHtml(StepScope.NOT_NEEDED_LABEL) + "</span>";
 
 /* { label, path, focusId }: the map box shown, the level it is at (C19, []
    the main level) and the occurrence the foot's act and a play act on; null
@@ -341,7 +341,7 @@ function _rowHtml(o, again, origin, placed, hasVideo, focusId, open, offer, part
   const focus = st.step_id === focusId;
   // Lane FX2: a moment the video does not cover says so, and has no play.
   const m = hasVideo ? _moment(st) : null;
-  const waste = has("waste") && StepScope.automationOf(st) === "not_needed";
+  const waste = has("waste") && StepScope.isNotNeeded(st);
   return '<li class="sp-occ' + (focus ? " focus" : "") + '" data-step-id="' + escapeAttr(st.step_id) + '"' +
       (focus ? ' aria-current="true"' : "") + ">" +
     '<div class="sp-occ-head">' +
@@ -469,8 +469,8 @@ function render() {
     new Map(SPM.allSteps((s.annotations && s.annotations.steps) || []).map((x) => [x.step_id, x.name])));
   const isSub = SPM.isSubProcessNode(txs, path, _state.label);
   // Lane FX2 (validation pass 2, F21): the waste flag shows here too, as in
-  // Steps and the PDD; C25: in the Automation choice's words.
-  const wasted = occ.filter((o) => StepScope.automationOf(o.step) === "not_needed").length;
+  // Steps and the PDD; C25: in the step editor's words.
+  const wasted = occ.filter((o) => StepScope.isNotNeeded(o.step)).length;
   // Lane E-1: on the Map the name, the system and the description are
   // fields (_drawHead); read only, text. Plan D2: on Steps the editor beside
   // the panel has them, the waste flag, the flow and the count, so the panel

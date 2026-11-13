@@ -398,32 +398,26 @@ def declares_place(step: Any) -> bool:
     return isinstance(a, str) and bool(a.strip())
 
 
-# ---- contract C25: what the automation does with a step, and who does it ----------
+# ---- contract C25: whether a step is no longer needed, and who does it -------------
 
-# The choices of `step.automation`, in the step editor's order, with the
-# words the viewer and the PDD read them as (viewer/step-scope.js CHOICES).
-AUTOMATION_WORDS = {
-    "undecided": "Not decided yet",
-    "automated": "The automation does it",
-    "person": "Stays with a person",
-    "not_needed": "No longer needed",
-}
 DONE_BY_MAX = 80
 
 
-def step_automation(step: Any) -> str:
-    """What the automation does with a step (contract C25): its
-    `automation` when it is one of AUTOMATION_WORDS; "not_needed" for a step
-    flagged as waste (`flags.waste: true`) that carries none (an older
-    project, a vocabulary's default); else "undecided" (an unknown value
-    too)."""
+def step_not_needed(step: Any) -> bool:
+    """True when the step should not be needed (contract C25 as amended
+    2026-11-13, the step editor's *No longer needed* tick): `flags.waste` is
+    true. A step whose `flags.waste` is not a boolean and that carries
+    `automation: "not_needed"` (the choice a project saved on 2026-11-12
+    holds) reads as ticked too; any other `automation` is ignored, and the
+    key round-trips untouched (C10). The viewer reads it the same way
+    (viewer/step-scope.js isNotNeeded)."""
     if not isinstance(step, dict):
-        return "undecided"
-    value = step.get("automation")
-    if value is None:
-        flags = step.get("flags")
-        return "not_needed" if isinstance(flags, dict) and flags.get("waste") is True else "undecided"
-    return value if isinstance(value, str) and value in AUTOMATION_WORDS else "undecided"
+        return False
+    flags = step.get("flags")
+    waste = flags.get("waste") if isinstance(flags, dict) else None
+    if isinstance(waste, bool):
+        return waste
+    return step.get("automation") == "not_needed"
 
 
 def _one_line(value: Any) -> str:
@@ -448,12 +442,12 @@ def step_done_by(step: Any, role: str = "") -> str:
 
 
 def declares_scope(step: Any) -> bool:
-    """True when the analyst chose what the automation does with the step or
-    who does it (contract C25): it carries an `automation`, or a `done_by`
-    that is not empty. A draft that does is the analyst's (kept `edited`)."""
+    """True when the analyst named who does the step (contract C25): it
+    carries a `done_by` that is not empty. A draft that does is the
+    analyst's (kept `edited`)."""
     if not isinstance(step, dict):
         return False
-    return isinstance(step.get("automation"), str) or bool(_one_line(step.get("done_by")))
+    return bool(_one_line(step.get("done_by")))
 
 
 # ---- contract C26: the information a step uses or enters -------------------------

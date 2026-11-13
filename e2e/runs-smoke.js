@@ -445,9 +445,9 @@ const isCarried = (s) => s.state === "edited" && !s.draft_key && s.name === MERG
       ok, JSON.stringify({ err, merged, pattern_run: pr, fixes: g.fixes }));
     if (!ok) await shot(page, "fail-runs-merge.png");
     // L12b item 6: the step menu offers no automation-candidate flag (ADR-0027);
-    // waste is its one flag, since C25 the Automation choice's No longer
-    // needed (Mark as no longer needed), and its take-out item for a draft
-    // reads Hide step.
+    // waste is its one flag, since C25 the step editor's No longer needed
+    // (Mark as no longer needed), and its take-out item for a draft reads
+    // Hide step.
     const okMenu = !!menuItems && !menuItems.some((t) => /automation|waste/i.test(t)) &&
       menuItems.includes("Mark as no longer needed") && menuItems.includes("Hide step") && menuItems.includes("Merge with next");
     record("L12b item 6: the step menu has no automation-candidate item; Mark as no longer needed (C25: the waste flag) is its one flag and a draft's take-out item reads Hide step",

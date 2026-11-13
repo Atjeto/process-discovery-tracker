@@ -32,28 +32,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   1440 pixels in place of the list (Escape gives the list back and the
   focus to the link), from 1440 pixels beside the editor. A project without
   a video has no *Play*, so this was the step panel's missing door there.
-- **Say what the automation does with each step, and who does it**
-  (contract C25, plan D7 and D8). The step editor's *Automation* choice,
-  under the Flow line where the Waste tick was: *Not decided yet*, *The automation does it*,
-  *Stays with a person* or *No longer needed* (what the waste flag was:
-  Steps and the step panel tag such a step *No longer needed*, and the
-  maps still mark it *Waste*).
-  *Done by*, after the system on the step's line, names a role or a
-  person; left empty, it is the role the recording was made under. The
-  process map puts a gear in the corner of a box the automation does and
-  a hand in the corner of a box that stays with a person, and writes who
-  does each step under its box (once for the map when one role does every
-  step). The PDD's context line says who does the step ("done by Sales
-  assistant"), its improvement and automation scope lists the steps under
-  the four choices, and the Technical details have an Automation and a
-  Done by column. A hand-off opened read only shows both as text. The step
-  menu's *Flag as waste* reads *Mark as no longer needed*. The PDD lists
-  the steps under the four choices in its improvement and automation
-  scope only once a choice is made, and a step of 3.2 no longer needed
-  carries no second mark under it (*Flagged as waste* is gone; a sub-step
-  of a chapter, which that list does not hold, says *No longer needed.*).
-  The Steps toolbar's *Flagged: N waste* count is gone: the rows carry
-  the tag and the PDD lists the steps.
+- **Say who does each step** (contract C25, plan D8). *Done by*, after the
+  system on the step's line, names a role or a person; left empty, it is
+  the role the recording was made under. The process map writes who does
+  each step under its box (once for the map when one role does every
+  step), the PDD's context line says it ("done by Sales assistant"), and
+  the Technical details have a Done by column. A hand-off opened read only
+  shows it as text.
+- **No longer needed, in place of Waste.** The step editor's tick reads
+  *No longer needed* (it read *Waste: this step should not be needed*), and
+  Steps and the step panel tag such a step *No longer needed*; the maps
+  still mark it *Waste* and the PDD still prints the flag. The step menu's
+  *Flag as waste* and *Clear waste flag* read *Mark as no longer needed*
+  and *Mark as needed*. The Steps toolbar's *Flagged: N waste* count is
+  gone: the rows carry the tag.
 - **The SME answers four short questions and adds example files when a
   recording stops** (contract C24, lane C). The capture app's end summary
   asks, each optional and in one line: what starts this work, what you
@@ -140,8 +132,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   note*; Files every attached file with *Open* and *Remove*, and *Attach
   file...*. A click on a screenshot or a note on the timeline opens its tab
   at it. A transaction's header carries its name, *Reference*, *Starts at*
-  and *Ends at*, *Rename* and *Delete transaction*, and why the capture app
-  ended it when it did so by itself: the **Markers tab is gone**. The step
+  and *Ends at*, *Rename* and *Delete transaction*: the **Markers tab is
+  gone**. The step
   panel no longer opens on the Timeline, so the timeline keeps its width
   with a step open; on the Map and on Steps it opens as before.
 - **The next act and Undo in the top bar.** On the Timeline, Steps and the
@@ -325,9 +317,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Enter puts the usual size back. The sizes are remembered on this
   computer, and a size kept from a wider window gives way to a narrower
   one.
-- **The hand on the process map means "stays with a person"** (contract
-  C25). A step added by hand with no system is a plain box now, not a box
-  with the hand: the hand and the gear say what the automation does.
 - **Steps gives the step editor its room on a laptop** (plan D2). On Steps
   the step panel keeps only what the editor beside it lacks: the step's
   video and one row per time the step happened, each with its transaction,

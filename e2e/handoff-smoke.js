@@ -11,16 +11,18 @@
  *       miss (each entry a link; its button Hand off anyway); an entry's
  *       click cancels the hand-off (no version, no zip) and opens Steps on
  *       its step; six long entries fit the window;
- *   (a2) contract C25: in Steps, the reference transaction's first three
- *       steps get The automation does it, Stays with a person and No longer
- *       needed from the editor's Automation choice (Ctrl+Z puts the last
- *       back, Ctrl+Y makes it again), and two of them a Done by (the
- *       recording's role, Order processor, the field's placeholder); the
- *       first hand-off's map then draws a gear, a hand and a plain task with
- *       who does each under it, its PDD's context lines say who does each
- *       step and its section 7 lists them under their headings, and its
- *       workbook has the Automation and Done by columns; read only, both
- *       read as text (d);
+ *   (a2) contract C25 as amended 2026-11-13: in Steps, the editor has no
+ *       Automation choice; the reference transaction's third step is ticked
+ *       No longer needed (its row tagged; Ctrl+Z takes it back, Ctrl+Y
+ *       makes it again); a stored automation "not_needed" with no waste
+ *       flag reads as ticked and stays when unticked; two steps get a Done
+ *       by (the recording's role, Order processor, the field's
+ *       placeholder); the first hand-off's map then draws plain tasks (no
+ *       service task) with who does each under it, its PDD's context lines
+ *       say who does each step, the ticked one prints No longer needed.
+ *       and section 7 has no headings by choice, and its workbook has a
+ *       Done by column and no Automation column; read only, the tick's
+ *       words and Done by read as text (d);
  *   (a) Export, Hand off...: one dialog, "What changed in this version?",
  *       filled with "First hand-off"; "Order entry v1.zip" is made next to
  *       the project folder and shown in its folder; it holds the project
@@ -251,7 +253,7 @@ const EDITING = [
   "#btn-flow-only-when", "#btn-flow-go-to", "#btn-flow-remove-condition", ".flow-link-remove",
   "#btn-step-hide", "#btn-step-make-sub", "#btn-step-dissolve", "#btn-step-add-shot", "[data-shot-act]",
   "#btn-step-add-note", "[data-note-act]", "#btn-step-attach", "#btn-step-split", "#btn-step-merge",
-  "#btn-step-merge-selected", "#btn-step-delete", ".si-split-btn", "#step-automation", "#step-done-by",
+  "#btn-step-merge-selected", "#btn-step-delete", ".si-split-btn", "#flag-waste", "#step-automation", "#step-done-by",
   "#btn-info-add", ".info-remove", ".info-input",
   "#btn-fork-refmap", "#btn-toggle-refmaps", "#refmap-panel", "#btn-map-asis-edit", "#btn-map-asis-recopy",
   "#btn-update-steps", "#btn-help-reanalyze", "#btn-restore-annotations",
@@ -436,13 +438,14 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     const onDisk = (id) => (readJson(ANNO).steps || []).find((x) => x.step_id === id) || {};
     const untilDisk = (id, pred) => waitFor(() => { const st = onDisk(id); return pred(st) ? st : null; }, T);
     const [s1, s2, s3] = ref.steps;
-    const choices = [[s1, "automated"], [s2, "person"], [s3, "not_needed"]];
     const editor = {};
-    for (const [st, value] of choices) {
+    for (const st of [s1, s2, s3]) {
       await select(st.id);
       editor[st.id] = await page.evaluate(() => ({
-        options: [...document.querySelectorAll("#step-automation option")].map((o) => o.textContent),
-        title: document.querySelector("label.step-automation").title,
+        automation: !!document.getElementById("step-automation"),
+        tick: !!document.querySelector('label.step-waste > input#flag-waste[type="checkbox"]'),
+        tickText: ((document.querySelector("label.step-waste") || {}).textContent || "").trim(),
+        tickTitle: (document.querySelector("label.step-waste") || {}).title || "",
         placeholder: document.getElementById("step-done-by").placeholder,
         doneByTitle: document.querySelector("label.step-doneby").title,
         // C26 (lane D6): the step's recorded fields, read only, marked Recorded.
@@ -451,17 +454,47 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
         recordedMarks: [...document.querySelectorAll("#step-info .info-recorded .info-from")].map((m) => m.textContent),
         recordedFields: document.querySelectorAll("#step-info .info-recorded input, #step-info .info-recorded button").length,
       }));
-      await page.selectOption("#step-automation", value);
-      await untilDisk(st.id, (x) => x.automation === value);
     }
-    const saved = choices.map(([st]) => onDisk(st.id));
-    // Ctrl+Z puts the last choice back, Ctrl+Y makes it again.
+    // C25 as amended 2026-11-13: the choice a project saved on 2026-11-12
+    // holds is kept untouched and only "not_needed" (with no waste flag) is
+    // read, as ticked. s1 and s2 carry such stored choices on the page; the
+    // Done by edits below save them with the rest.
+    const stored = await page.evaluate(([a, b]) => {
+      const steps = require("./state.js").getSession().annotations.steps;
+      const one = steps.find((x) => x.step_id === a), two = steps.find((x) => x.step_id === b);
+      one.automation = "automated";
+      two.automation = "not_needed";
+      delete two.flags;
+      return true;
+    }, [s1.id, s2.id]);
+    await select(s1.id);
+    await select(s2.id);
+    const oldChoice = await page.evaluate((id) => ({
+      checked: !!(document.getElementById("flag-waste") || {}).checked,
+      tag: ((document.querySelector('#step-list .step-row[data-step-id="' + id + '"] .step-tag-waste') || {}).textContent || "").trim(),
+    }), s2.id);
+    // Untick it: the waste flag written false decides; automation stays.
+    await page.click("#flag-waste");
+    const unticked2 = await untilDisk(s2.id, (x) => x.flags && x.flags.waste === false && x.automation === "not_needed");
+    // Tick No longer needed on the third.
+    await select(s3.id);
+    await page.click("#flag-waste");
+    const ticked = await untilDisk(s3.id, (x) => x.flags && x.flags.waste === true);
+    await wait(300);
+    const tagOf = (id) => page.evaluate((sid) => {
+      const t = document.querySelector('#step-list .step-row[data-step-id="' + sid + '"] .step-tag-waste');
+      return t ? { text: t.textContent.trim(), title: t.title } : null;
+    }, id);
+    const tag = await tagOf(s3.id);
+    // Ctrl+Z takes it back, Ctrl+Y makes it again.
     await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); return true; });
     await wait(300);
     await page.keyboard.press("Control+Z");
-    const undone = await untilDisk(s3.id, (x) => x.automation === undefined && !(x.flags && x.flags.waste));
+    const undone = await untilDisk(s3.id, (x) => !(x.flags && x.flags.waste));
+    await wait(300);
+    const tagUndone = await tagOf(s3.id);
     await page.keyboard.press("Control+Y");
-    const redone = await untilDisk(s3.id, (x) => x.automation === "not_needed" && x.flags && x.flags.waste === true);
+    const redone = await untilDisk(s3.id, (x) => x.flags && x.flags.waste === true);
     // Done by on the first and the third; the second keeps the role.
     for (const [st, who] of [[s1, "Order desk clerk"], [s3, "Credit control"]]) {
       await select(st.id);
@@ -469,13 +502,13 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       await page.press("#step-done-by", "Enter");
       await untilDisk(st.id, (x) => x.done_by === who);
     }
-    await select(s1.id);
+    await select(s3.id);
     const shown = await page.evaluate(() => {
       const pane = document.getElementById("step-detail");
       const r = pane.getBoundingClientRect();
       const inside = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1 && b.width > 0; };
-      return { value: document.getElementById("step-automation").value, doneBy: document.getElementById("step-done-by").value,
-        fits: inside("#step-automation") && inside("#step-done-by") && pane.scrollWidth <= pane.clientWidth + 1 };
+      return { checked: document.getElementById("flag-waste").checked, doneBy: document.getElementById("step-done-by").value,
+        fits: inside("label.step-waste") && inside("#step-done-by") && pane.scrollWidth <= pane.clientWidth + 1 };
     });
     await shotsBothThemes(page, "c25-editor", size);
     scope = { s1, s2, s3, editor };
@@ -484,22 +517,25 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       withRecorded.length >= 1 && withRecorded.every((e) => e.recordedMarks.length === e.recorded.length &&
         e.recordedMarks.every((m) => m === "Recorded") && e.recordedFields === 0 && e.recorded.every((r) => r.length === 3 && r[0])),
       JSON.stringify(Object.values(editor).map((e) => e.recorded)));
-    const words = ["Not decided yet", "The automation does it", "Stays with a person", "No longer needed"];
-    record("(a2) C25: the step editor's Automation choice (four options in C25's words, its tooltip) set on three steps saves each, a draft becoming edited, No longer needed setting the waste flag and any other clearing it",
-      Object.values(editor).every((e) => JSON.stringify(e.options) === JSON.stringify(words) &&
-        e.title === "What the automation will do with this step.") &&
-        saved[0].automation === "automated" && saved[1].automation === "person" && saved[2].automation === "not_needed" &&
-        saved.every((x) => x.state !== "auto_suggested") && saved[2].flags.waste === true &&
-        saved[0].flags.waste === false && saved[1].flags.waste === false,
-      JSON.stringify({ editor: Object.values(editor)[0], saved: saved.map((x) => [x.automation, x.state, x.flags]) }));
-    record("(a2) C25: Ctrl+Z puts the last choice back (and the waste flag), Ctrl+Y makes it again", !!undone && !!redone,
-      JSON.stringify({ undone: undone && [undone.automation, undone.flags], redone: redone && redone.automation }));
+    const TITLE = "This step should not be needed: rework, duplicate effort or copying between systems.";
+    const s3disk = onDisk(s3.id);
+    record("(a2) C25 as amended: the step editor has no Automation choice but the tick No longer needed (its tooltip); ticked, the waste flag is saved (no automation written), a draft becomes edited, and the Steps row says No longer needed",
+      Object.values(editor).every((e) => !e.automation && e.tick && e.tickText === "No longer needed" && e.tickTitle === TITLE) &&
+        !!ticked && s3disk.flags.waste === true && !("automation" in s3disk) && s3disk.state !== "auto_suggested" &&
+        !!tag && tag.text === "No longer needed" && tag.title === TITLE,
+      JSON.stringify({ editor: Object.values(editor)[0], s3: [s3disk.state, s3disk.flags, s3disk.automation], tag }));
+    record("(a2) C25: Ctrl+Z takes the tick back (the flag and the row's tag), Ctrl+Y makes it again",
+      !!undone && tagUndone === null && !!redone, JSON.stringify({ undone: undone && undone.flags, tagUndone, redone: redone && redone.flags }));
+    record("(a2) C25: a stored automation \"not_needed\" with no waste flag reads as ticked (the tick and the row's tag); unticked, the flag false decides and the stored value stays",
+      stored && oldChoice.checked && oldChoice.tag === "No longer needed" && !!unticked2 &&
+        onDisk(s1.id).automation === "automated",
+      JSON.stringify({ oldChoice, s2: unticked2 && [unticked2.automation, unticked2.flags], s1: onDisk(s1.id).automation }));
     record("(a2) C25: Done by, after the system, shows the recording's role as its placeholder, saves a typed value on Enter, and the editor fits the pane",
       Object.values(editor).every((e) => e.placeholder === "Order processor" && e.doneByTitle === "") &&
         onDisk(s1.id).done_by === "Order desk clerk" && onDisk(s3.id).done_by === "Credit control" && !("done_by" in onDisk(s2.id)) &&
-        shown.value === "automated" && shown.doneBy === "Order desk clerk" && shown.fits,
+        shown.checked && shown.doneBy === "Credit control" && shown.fits,
       JSON.stringify(shown));
-  } catch (e) { record("(a2) C25: the Automation choice and Done by", false, errText(e)); }
+  } catch (e) { record("(a2) C25: No longer needed and Done by", false, errText(e)); }
 
   /* ---- (a) the first hand-off ---- */
   let entry1 = null;
@@ -615,37 +651,37 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
         return m ? m[1] : null;
       };
       const ids = {};
-      for (const m of bpmnText.matchAll(/<bpmn:(?:task|serviceTask|manualTask|subProcess) id="([^"]*)" name="([^"]*)"/g)) ids[m[1]] = m[2];
+      for (const m of bpmnText.matchAll(/<bpmn:(?:task|manualTask|subProcess) id="([^"]*)" name="([^"]*)"/g)) ids[m[1]] = m[2];
       const labels = {};
       for (const m of bpmnText.matchAll(/<bpmn:textAnnotation id="(TextAnnotation_doneby(?:_\d+)?)">\s*<bpmn:text>([^<]*)<\/bpmn:text>/g)) labels[m[1]] = m[2];
       const under = {};
       for (const m of bpmnText.matchAll(/<bpmn:association id="Association_doneby_\d+"[^>]*sourceRef="([^"]*)" targetRef="([^"]*)"/g)) under[ids[m[1]]] = labels[m[2]];
       const kinds = { s1: kindOf(s1.name), s2: kindOf(s2.name), s3: kindOf(s3.name) };
-      record("(a) C25: the hand-off's map draws the gear on the step the automation does, the hand on the one that stays with a person, a plain task on the one no longer needed, and who does each under its task",
-        kinds.s1 === "serviceTask" && kinds.s2 === "manualTask" && kinds.s3 === "task" &&
+      record("(a) C25 as amended: the hand-off's map draws no service task (a stored choice draws nothing: the three recorded steps are plain tasks) and who does each under its task",
+        kinds.s1 === "task" && kinds.s2 === "task" && kinds.s3 === "task" && !/serviceTask/.test(bpmnText) &&
           under[xmlEsc(s1.name)] === "Order desk clerk" && under[xmlEsc(s2.name)] === "Order processor" &&
           under[xmlEsc(s3.name)] === "Credit control" &&
           !("TextAnnotation_doneby" in labels),
-        JSON.stringify({ kinds, under }));
+        JSON.stringify({ kinds, under, service: /serviceTask/.test(bpmnText) }));
       const text = pdd.text;
-      const at = (name) => {
-        const i = text.indexOf(": " + name + "\n");
-        return i < 0 ? "" : text.slice(i, text.indexOf("\n", i + name.length + 3));
-      };
       const ctx = (name) => { const i = text.indexOf(": " + name + "\n"); return i < 0 ? "" : text.slice(i).split("\n")[1]; };
-      const seven = text.slice(text.indexOf("7. Improvement and automation scope"));
-      const head = (h, name) => new RegExp(h + "\\nStep \\d+: " + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\n").test(seven);
-      record("(a) C25: the PDD's context lines say who does each step, and its section 7 lists the three under their headings",
+      const block = (name) => {
+        const i = text.indexOf(": " + name + "\n");
+        if (i < 0) return "";
+        const next = text.indexOf("\nStep ", i + 1);
+        return text.slice(i, next < 0 ? undefined : next);
+      };
+      const seven = text.slice(text.indexOf("7. Improvement and automation scope"), text.indexOf("\n8. ") < 0 ? undefined : text.indexOf("\n8. "));
+      record("(a) C25: the PDD's context lines say who does each step, the step ticked No longer needed says No longer needed. under it (the other two not), and section 7 has no headings by choice",
         / · done by Order desk clerk · /.test(ctx(s1.name)) && / · done by Order processor · /.test(ctx(s2.name)) &&
           / · done by Credit control · /.test(ctx(s3.name)) &&
-          head("The automation does it", s1.name) && head("Stays with a person", s2.name) && head("No longer needed", s3.name) &&
-          seven.indexOf("The automation does it") < seven.indexOf("Stays with a person") &&
-          seven.indexOf("Stays with a person") < seven.indexOf("No longer needed") &&
-          seven.indexOf("No longer needed") < seven.indexOf("Not decided yet"),
-        JSON.stringify({ c1: ctx(s1.name), c2: ctx(s2.name), c3: ctx(s3.name), at: at(s1.name), seven: seven.slice(0, 400) }));
+          block(s3.name).includes("\nNo longer needed.") && !block(s1.name).includes("No longer needed.") &&
+          !block(s2.name).includes("No longer needed.") &&
+          !["The automation does it", "Stays with a person", "No longer needed", "Not decided yet"].some((h) => seven.includes(h)),
+        JSON.stringify({ c1: ctx(s1.name), c2: ctx(s2.name), c3: ctx(s3.name), b3: block(s3.name).slice(0, 300), seven: seven.slice(0, 400) }));
       const sheet = x.text(2);
-      record("(a) C25: the Technical details' Steps and controls has an Automation and a Done by column with the steps' values",
-        sheet.includes(">Automation<") && sheet.includes(">Done by<") && sheet.includes(">The automation does it<") &&
+      record("(a) C25 as amended: the Technical details' Steps and controls has a Done by column with the steps' values and no Automation column",
+        !sheet.includes(">Automation<") && sheet.includes(">Done by<") && !sheet.includes(">The automation does it<") &&
           sheet.includes(">Order desk clerk<") && sheet.includes(">Order processor<"),
         JSON.stringify({ automation: sheet.includes(">Automation<"), doneBy: sheet.includes(">Done by<") }));
     }
@@ -818,24 +854,29 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     const pane = await dev.evaluate(() => ({
       name: document.getElementById("step-name").readOnly, desc: document.getElementById("step-desc").readOnly,
       system: (document.getElementById("step-system") || { readOnly: true }).readOnly,
-      // C25: the Automation choice and Done by as text.
-      automation: ((document.getElementById("step-automation-text") || {}).textContent || "").trim(),
+      // C25: No longer needed and Done by as text.
       doneBy: ((document.getElementById("step-done-by-text") || {}).textContent || "").trim(),
-      fields: !!document.getElementById("step-automation") || !!document.getElementById("step-done-by"),
+      fields: !!document.getElementById("flag-waste") || !!document.getElementById("step-done-by") ||
+        !!document.getElementById("step-automation") || !!document.getElementById("step-automation-text"),
     }));
-    record("(d) the step pane's fields are read only; C25: the Automation choice and Done by read as text",
-      pane.name && pane.desc && pane.system && !pane.fields &&
-        /^Automation: (Not decided yet|The automation does it|Stays with a person|No longer needed)$/.test(pane.automation) &&
-        /^Done by \S/.test(pane.doneBy), JSON.stringify(pane));
-    // The first step of the reference transaction is (a2)'s first: its choice
-    // and its Done by, as text.
+    record("(d) the step pane's fields are read only; C25: no tick and no Automation choice, Done by as text",
+      pane.name && pane.desc && pane.system && !pane.fields && /^Done by \S/.test(pane.doneBy), JSON.stringify(pane));
+    // (a2)'s first step (not ticked: nothing said) and third (ticked: its
+    // words), with their Done by, as text.
     if (scope) {
-      await dev.click('#step-list .step-row[data-step-id="' + scope.s1.id + '"] .step-name').catch(() => {});
-      await wait(300);
-      const first = await dev.evaluate(() => [((document.getElementById("step-automation-text") || {}).textContent || "").trim(),
-        ((document.getElementById("step-done-by-text") || {}).textContent || "").trim()]);
-      record("(d) C25: a step's choice and Done by read as text in the hand-off opened read only",
-        first[0] === "Automation: The automation does it" && first[1] === "Done by Order desk clerk", JSON.stringify(first));
+      const read = async (id) => {
+        await dev.click('#step-list .step-row[data-step-id="' + id + '"] .step-name').catch(() => {});
+        await wait(300);
+        return dev.evaluate(() => [((document.getElementById("step-not-needed-text") || {}).textContent || "").trim(),
+          ((document.getElementById("step-done-by-text") || {}).textContent || "").trim(),
+          !!document.querySelector("#step-detail label.step-waste")]);
+      };
+      const first = await read(scope.s1.id);
+      const third = await read(scope.s3.id);
+      record("(d) C25: read only, a ticked step says No longer needed as text and an unticked one says nothing; Done by as text",
+        JSON.stringify(first) === JSON.stringify(["", "Done by Order desk clerk", false]) &&
+          JSON.stringify(third) === JSON.stringify(["No longer needed", "Done by Credit control", false]),
+        JSON.stringify({ first, third }));
     }
     bad.steps = await visibleEditing(dev);
     await shotsBothThemes(dev, "readonly-steps", size);

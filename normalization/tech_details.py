@@ -20,8 +20,7 @@ library (xlsx_writer.py). Its sheets:
                       recorder identified it (identity source, confidence),
                       the window title, the program and the system, the
                       library activity the step is with its code (contract
-                      C21), what the automation does with the step and who
-                      does it (contract C25);
+                      C21), and who does the step (contract C25);
   Information         contract C26: one row per field recorded in a step 3.2
                       prints (and in a sub-step its chapter prints) and per
                       line of information the analyst typed there: the step,
@@ -59,7 +58,7 @@ from handoff_versions import version_line
 from pdd_export import (DEFAULT_REQUEST_CODE, DEFAULT_REQUEST_NAME, SECRET_VALUE, _Session, _align_key,
                         _entered, _members, _step_name, printed_steps, rekey_pairs)
 from recorder_noise import is_blank_value
-from step_context import AUTOMATION_WORDS, step_automation, step_information, step_system
+from step_context import step_information, step_system
 from xlsx_writer import Sheet, write_workbook
 
 ABOUT = "About"
@@ -75,8 +74,8 @@ NOT_RECORDED = "Not recorded"
 
 STEPS_HEADER = ("Step", "Step name", "Action", "Value", "Control type", "Automation id", "Name",
                 "Class name", "Identity source", "Confidence", "Window title", "Program", "System",
-                "Activity", "Code", "Automation", "Done by")
-_STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12, 24, 22)
+                "Activity", "Code", "Done by")
+_STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12, 22)
 INFO_HEADER = ("Step", "Information", "Example", "Where it goes", "From")
 _INFO_WIDTHS = (36, 28, 24, 40, 20)
 DATA_HEADER = ("Field", "Automation id", "Control type", "System and screen", "Step")
@@ -91,8 +90,7 @@ _APPS_WIDTHS = (22, 22, 12, 19, 8)
 SHEET_LINES = (
     (STEPS, "Every recorded click, entry and choice of the reference transaction, in the order "
             "of its steps, with the control it acted on, how the recorder identified it, the "
-            "library activity its step is, with the activity's code, what the automation does "
-            "with the step and who does it."),
+            "library activity its step is, with the activity's code, and who does the step."),
     (INFO, "The information each step of the reference transaction uses or enters: the fields "
            "recorded in it, with the value typed as an example, and the lines the analyst typed."),
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
@@ -203,9 +201,8 @@ def _time(s, eid: str):
 def steps_rows(s) -> list[list[Any]]:
     """The rows of Steps and controls (STEPS_HEADER). Activity and Code are
     the name and the code of the library activity the row's step is
-    (contract C21, `library_activity`), empty when it is none. Automation
-    and Done by (contract C25) are what the automation does with the row's
-    step, in the PDD's words, and who does it (its Done by, else the
+    (contract C21, `library_activity`), empty when it is none. Done by
+    (contract C25) is who does the row's step (its Done by, else the
     recording's role; empty when neither is set)."""
     labels = _sub_labels(s)
     rows: list[list[Any]] = []
@@ -228,7 +225,7 @@ def steps_rows(s) -> list[list[Any]]:
                          _number(data.get("confidence")), title, app, system,
                          activity.name if activity is not None else "",
                          activity.code if activity is not None else "",
-                         AUTOMATION_WORDS[step_automation(holder)], s.ctx.done_by(holder)])
+                         s.ctx.done_by(holder)])
     return rows
 
 

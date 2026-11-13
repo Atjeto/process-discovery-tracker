@@ -90,9 +90,8 @@ The Python pipeline the viewer runs by itself; see
   the analyst set on steps (a decision for a step that happens only under a
   condition, a loop back, a skip, an early end), the start named after the
   trigger, the main end after the result and each early end after its
-  condition, each task's kind from what the automation does with its step
-  (a service task, the gear, for *The automation does it*, a manual task,
-  the hand, for *Stays with a person*, else a plain task), the system of
+  condition, a step done outside every system as a manual task (the hand)
+  and every other as a plain task, the system of
   each task in a short label above it (or said once, "System: SAP", when
   every task is done in one system), who does it in a short label under it
   (the step's *Done by*, else the recording's role; said once, "Done by:
@@ -129,10 +128,7 @@ The Python pipeline the viewer runs by itself; see
   information the analyst typed on its steps (a step with no system under
   "Not in a system"; never an example); the
   volume and effort as the analyst writes it; improvement and automation
-  scope with the steps by what the automation does with each (*The
-  automation does it*, *Stays with a person*, *No longer needed*, *Not
-  decided yet*, each heading only when it holds a step, and none while no
-  step has a choice), the re-keyed data
+  scope with the re-keyed data
   (a value typed again in another system) and
   the To-Be map; notes; attachments (each name a link to its file where
   the files travel with the PDD). The analyst's fields survive every
@@ -145,8 +141,8 @@ The Python pipeline the viewer runs by itself; see
   in the viewer: every recorded click, entry and choice of the reference transaction
   in the PDD's step order (Step 3, Step 3.2), with its control type,
   automation id, name, class name, how the recorder identified it and how
-  far that can be trusted, the window, the program and the system, what
-  the automation does with its step and who does it; every
+  far that can be trusted, the window, the program and the system, and who
+  does its step; every
   field typed or chosen, with what was entered in each transaction (a
   password never recorded); the values typed again in another system (the
   PDD's re-keyed data); and each program's coverage, whether it ran on a
@@ -454,9 +450,8 @@ The viewer says *transaction* for one pass through the process and
   under one step, with *Add*; *Information* (C26): the fields recorded in
   the step, marked *Recorded*, then the analyst's lines, each
   *Information*, *Example* and *Where it goes* with *Remove*, and *Add
-  information*; the Flow line; *Automation*: Not decided yet,
-  The automation does it, Stays with a person or No longer needed, in place
-  of the Waste tick, as text in a project opened read only); the screenshots, the
+  information*; the Flow line; the tick *No longer needed* (the waste flag;
+  in a project opened read only its words when ticked)); the screenshots, the
   one the PDD prints marked; *Recorded* (the actions with the control each
   acted on, the scissors to split), open or closed as you last left it; the
   attachments and notes, and one row of adds. The step panel adds what the

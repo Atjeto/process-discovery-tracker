@@ -45,6 +45,7 @@ const AC = require("./analyst-content.js");
 const { isBlankValue } = require("./step-facts.js");
 const StepOrder = require("./step-order.js");
 const StepInfo = require("./step-information.js");
+const StepScope = require("./step-scope.js");
 
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
 const ELLIPSIS = String.fromCharCode(0x2026);
@@ -712,12 +713,10 @@ function _dissolveGroup(anno, transactions, path, g) {
     const desc = _t(g.description);
     if (desc) first.description = _t(first.description) ? _t(first.description) + "\n\n" + desc : desc;
     if (g.pdd_screenshot && !first.pdd_screenshot) first.pdd_screenshot = g.pdd_screenshot;
-    if (g.flags && g.flags.waste === true) first.flags = Object.assign({}, first.flags, { waste: true });
-    // C25: the group's choice and Done by, when its first sub-step has none.
-    if (typeof g.automation === "string" && first.automation === undefined) {
-      first.automation = g.automation;
-      first.flags = Object.assign({}, first.flags, { waste: g.automation === "not_needed" });
-    }
+    // C25: a group no longer needed (its waste flag, or the choice a project
+    // saved on 2026-11-12 holds) makes its first sub-step so.
+    if (StepScope.isNotNeeded(g)) first.flags = Object.assign({}, first.flags, { waste: true });
+    // C25: the group's Done by, when its first sub-step has none.
     if (typeof g.done_by === "string" && g.done_by.trim() && !(typeof first.done_by === "string" && first.done_by.trim())) first.done_by = g.done_by;
     // C26: the group's information goes after its first sub-step's.
     if (StepInfo.hasEntries(g)) StepInfo.putJoined(first, [first, g]);

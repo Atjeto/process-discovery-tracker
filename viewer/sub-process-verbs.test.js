@@ -293,19 +293,27 @@ test("C19 Dissolve a group: its sub-steps come back in its place, in every trans
   assert.equal(anno.attachments[0].step_id, "check1");
 });
 
-test("C25 Dissolve a group: its Automation choice and its Done by go to its first sub-step, when that has none", () => {
+test("C25 Dissolve a group: No longer needed and its Done by go to its first sub-step, which keeps its own Done by", () => {
   const { t1, t2, t3, root } = groupFixture();
   const anno = { steps: root };
   const r = SPV.groupInto(root, [t1, t2, t3], [], ["check1", "create1"], { name: "Create the sales order", newId });
-  for (const g of r.groups) { g.automation = "not_needed"; g.flags = { waste: true }; g.done_by = "Credit control"; }
-  // The second transaction's first sub-step has its own.
-  t2[0].automation = "person";
+  assert.equal(r.groups.length, 3, "run 1 once, run 2 twice");
+  const [g1, g2, g3] = r.groups;
+  g1.flags = { waste: true }; g1.done_by = "Credit control";
+  // A group carrying the choice a project saved on 2026-11-12, no flag: ticked.
+  g2.automation = "not_needed"; delete g2.flags; g2.done_by = "Credit control";
+  // Another stored choice is ignored: not ticked.
+  g3.automation = "person"; g3.flags = { waste: false };
+  // The second transaction's first sub-step has its own Done by.
   t2[0].done_by = "Ana";
   const txs = ["run1", "run2", "run3"].map((c) => root.filter((s) => s.case_id === c));
   SPV.dissolve(anno, txs, [], "Create the sales order");
-  const first = (c) => root.find((s) => s.case_id === c && s.step_id.startsWith("check"));
-  assert.deepEqual([first("run1").automation, first("run1").flags.waste, first("run1").done_by], ["not_needed", true, "Credit control"]);
-  assert.deepEqual([first("run2").automation, first("run2").done_by], ["person", "Ana"]);
+  const byId = (id) => root.find((s) => s.step_id === id);
+  const waste = (s) => !!(s.flags && s.flags.waste);
+  assert.deepEqual([waste(byId("check1")), byId("check1").done_by, byId("check1").automation], [true, "Credit control", undefined]);
+  assert.deepEqual([waste(byId("check2a")), byId("check2a").done_by, byId("check2a").automation], [true, "Ana", undefined]);
+  assert.equal(waste(byId("check2b")), false, "another stored choice ticks nothing");
+  assert.equal(byId("check2b").automation, undefined, "the choice is never written");
 });
 
 test("C19 Dissolve an opened step: it drops its sub-steps, what the analyst added to them moves to it, and the loss counts only what the analyst wrote", () => {

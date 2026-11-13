@@ -980,7 +980,7 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     drawn is there; then it moves the same way.
 
     Contract C18, each keyed by a task (its id()): `task_tags` its element
-    ("task", "serviceTask", "manualTask", "subProcess"; else by its class); `systems` the system it is
+    ("task", "manualTask"; else by its class); `systems` the system it is
     done in (2.0.1): a one-line text annotation above it, joined by an
     association, so a process manager changes it by typing in any BPMN
     tool (a colour could be changed in none of them); `notes` its (text,
@@ -999,8 +999,7 @@ def export_bpmn(bpmn_obj, out_path: str, *,
     it (its notes under that), joined by an association; `map_done_by` the
     one role or person of a map whose every task is done by it, said once
     ("Done by: Sales assistant") as `map_system` is, in place of a label
-    under every task; a task's kind (the gear, the hand) comes in
-    `task_tags`. Every
+    under every task. Every
     element has its place on the diagram, and a named event its name's:
     the layout keeps room for them all (_layout_full), and the lines and
     the flows' names keep clear of them.

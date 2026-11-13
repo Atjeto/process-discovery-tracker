@@ -1110,12 +1110,12 @@ function xlsxRows(files, sheetName) {
     y.plain = named("task");
     y.names = (await session()).anno.steps.map((x) => x.name);
   } catch (x) { y.err = errText(x); }
-  record("(y) lane FX2: steps the analyst added stay added: Add step at a moment inside one splits it into two added steps, Merge with next makes one added step of them again; each keeps Delete, and the step map draws them as plain tasks (C25: no choice made, so no hand; the hand means only Stays with a person)",
+  record("(y) lane FX2: steps the analyst added stay added: Add step at a moment inside one splits it into two added steps, Merge with next makes one added step of them again; each keeps Delete, and the step map draws them as manual tasks (no system set)",
     !y.err && y.halves.length === 2 && y.halves.every((x) => x.state === "manually_authored") && y.halves[0].same &&
       Math.abs(y.halves[0].to - 12) < 0.6 && Math.abs(y.halves[1].from - 12) < 0.6 &&
       y.deletable.length === 2 && y.deletable.every(Boolean) &&
       y.merged.state === "manually_authored" && Math.abs(y.merged.from - y.halves[0].from) < 0.2 && Math.abs(y.merged.to - y.halves[1].to) < 0.2 &&
-      y.mergedDeletable && y.names.length === 2 && y.names.every((nm) => y.plain.includes(nm)) && !y.names.some((nm) => y.manual.includes(nm)),
+      y.mergedDeletable && y.names.length === 2 && y.names.every((nm) => y.manual.includes(nm)) && !y.names.some((nm) => y.plain.includes(nm)),
     JSON.stringify(y));
 
   // ================= C. Step flow (contract C17) =================

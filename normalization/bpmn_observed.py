@@ -25,15 +25,16 @@ documentation a person reads say "transaction" for a run (AD-29).
 Contract C18 draws the map the way BPM tools do, from what the session
 already holds: the main end event is named by the outcome (the Result, else
 "End") and each link to the end ends at an end event of its own, named by
-its `when`; a task's kind says what the automation does with its step
-(contract C25: the gear of a service task for "The automation does it", the
-hand of a manual task for "Stays with a person", else a plain task); the
-analyst's notes on a step are a text annotation joined to its task, and the
-files attached to it data objects joined to it; the system a task is done
-in is a short text annotation above it (2.0.1: a process manager changes it
-by typing in any BPMN tool, which a colour allowed in none), said once for a
-map whose every task is done in one system, and who does it (C25) a short
-text annotation under it, said once the same way (_map_extras).
+its `when`; a step done in a system (recorded, or added by hand with its
+system set) is a plain task and a step done outside every system a manual
+task, the hand marker (C18 as lane CL amended it: the same person marker on
+every box said nothing); the analyst's notes on a step are a text annotation
+joined to its task, and the files attached to it data objects joined to it;
+the system a task is done in is a short text annotation above it (2.0.1: a
+process manager changes it by typing in any BPMN tool, which a colour
+allowed in none), said once for a map whose every task is done in one
+system, and who does it (C25) a short text annotation under it, said once
+the same way (_map_extras).
 
 Contract C19 splits a process into sub-processes: every map of
 sub_process_maps.map_tree is a plane of the one file. A sub-process node is
@@ -52,8 +53,8 @@ from pm4py.objects.log.obj import Event, EventLog, Trace
 
 import step_flow
 from _dt import parse_ts as _parse_ts  # public re-export
-from step_context import (fmt_ms, process_order, step_automation, step_done_by, step_duration_ms,
-                          step_sort_key, step_system)
+from step_context import (fmt_ms, process_order, step_done_by, step_duration_ms, step_sort_key,
+                          step_system)
 
 
 def _start_key(step: dict[str, Any]) -> tuple[int, float]:
@@ -553,21 +554,23 @@ _NOTE_MAX = 90
 _ID_BAD = re.compile(r"[^A-Za-z0-9_\-]")
 
 
-# Contract C25: a task's kind follows what the automation does with its step:
-# the gear for "The automation does it", the hand for "Stays with a person",
-# a plain task for "Not decided yet" and "No longer needed".
-_TASK_KIND = {"automated": "serviceTask", "person": "manualTask"}
+def _hand_added(step: dict[str, Any]) -> bool:
+    """True for a step the analyst added by hand: manually authored, with no
+    recorded interaction."""
+    evidence = step.get("evidence")
+    ids = evidence.get("interaction_event_ids") if isinstance(evidence, dict) else None
+    return step.get("state") == "manually_authored" and not ids
 
 
-def _automation_of(steps: list[dict[str, Any]]) -> str:
-    """What the automation does with a task's steps (contract C25,
-    step_context.step_automation): the choice of the first of them that has
-    one (the reference transaction's step first), else "undecided"."""
-    for s in steps:
-        choice = step_automation(s)
-        if choice != "undecided":
-            return choice
-    return "undecided"
+def _outside_systems(step: dict[str, Any], context: Any) -> bool:
+    """True for a step done outside every system: added by hand, with no
+    recorded interaction and no system (none set by the analyst, none
+    derived). Its task is a manual task, BPMN's hand marker; a step done in a
+    system, recorded or added by hand with its system set, is a plain task
+    (C18 as lane CL amended it). A sub-process is never one: it is drawn as
+    a collapsed sub-process (C19)."""
+    return (_hand_added(step) and not isinstance(step.get("sub_steps"), list)
+            and not _system_of(step, context))
 
 
 def _done_by_of(steps: list[dict[str, Any]], context: Any) -> str:
@@ -662,13 +665,12 @@ def _data_objects(anno: dict[str, Any], steps: list[dict[str, Any]],
 def _map_extras(anno: dict[str, Any], model: Any, context: Any, *,
                 used: set | None = None) -> dict[str, Any]:
     """What contract C18 puts beside the map's tasks, as mining.export_bpmn
-    takes it (keyed by a task's id()): its kind (contract C25: what the
-    automation does with its step, _automation_of: a service task, the gear,
-    for "automated", a manual task, the hand, for "person", else a plain
-    task); the system it is done in (2.0.1), as a label above it, or once
-    for the map when every task of it is done in one system (_extras_of);
-    who does it (C25), as a label under it, or once for the map the same
-    way; its steps' notes (one text annotation, cut at _NOTE_MAX
+    takes it (keyed by a task's id()): its kind (a manual task when every
+    step it stands for was done outside every system, _outside_systems;
+    else a plain task); the system it is done in (2.0.1), as a label above
+    it, or once for the map when every task of it is done in one system
+    (_extras_of); who does it (C25), as a label under it, or once for the
+    map the same way; its steps' notes (one text annotation, cut at _NOTE_MAX
     characters, whole in its documentation when cut); the files attached
     to its steps (a data object each, _data_objects). A task's system is
     the one its documentation names (its reference transaction's step
@@ -700,8 +702,8 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
     in any BPMN tool, where a colour could be changed in none), unless every
     task of the map that is done in a system is done in the same one: the
     map then says it once (`map_system`) and labels no task (_said_once).
-    Contract C25: a task's kind is what the automation does with it
-    (_automation_of, _TASK_KIND), and who does it (_done_by_of) is a label
+    A manual task (done outside every system) carries the hand marker and
+    no system label. Contract C25: who does a task (_done_by_of) is a label
     under it (`done_by`), said once for the map (`map_done_by`) by the same
     rule. `waste` holds the tasks a step of which is flagged as waste
     (_wasted), each of them, as the live map marks its box (lane FX3)."""
@@ -718,8 +720,9 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
         if label not in by_label:
             continue
         steps = by_label[label]
-        task_tags[id(node)] = _TASK_KIND.get(_automation_of(steps), "task")
-        if node_system.get(label):
+        manual = all(_outside_systems(s, context) for s in steps)
+        task_tags[id(node)] = "manualTask" if manual else "task"
+        if not manual and node_system.get(label):
             systems[id(node)] = node_system[label]
         who = _done_by_of(steps, context)
         if who:

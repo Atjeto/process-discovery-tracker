@@ -7,9 +7,9 @@
   const StepFlow = require("./step-flow.js");
   const { escapeHtml, escapeAttr, sinceStart } = require("./dom.js");
   const FieldRefusal = require("./field-refusal.js");
-  // C25: what the automation does with the step, and who does it.
+  // C25: whether the step is no longer needed, and who does it.
   const StepScope = require("./step-scope.js");
-  const { NOT_NEEDED_TITLE } = StepScope;
+  const { NOT_NEEDED_TITLE, NOT_NEEDED_LABEL } = StepScope;
   // C26: the information the step uses or enters.
   const StepInfo = require("./step-information.js");
   const EMPTY_NAME = "A step needs a name, so the name it had is back.";
@@ -128,11 +128,11 @@
         (s.state === "hidden" ? " step-hidden" : "");
       row.dataset.stepId = s.step_id;
       row.dataset.state = s.state || "";
-      // Waste is the only per-step flag (ADR-0027), since C25 the Automation
-      // choice No longer needed, said in its words: a small tag, never a
+      // Waste is the only per-step flag (ADR-0027), since C25 the step
+      // editor's No longer needed, said in its words: a small tag, never a
       // strikethrough (which read as removed).
-      const flagBadges = StepScope.automationOf(s) === "not_needed"
-        ? `<span class="step-tag-waste" title="${escapeAttr(NOT_NEEDED_TITLE)}">${escapeHtml(StepScope.labelOf("not_needed"))}</span>` : "";
+      const flagBadges = StepScope.isNotNeeded(s)
+        ? `<span class="step-tag-waste" title="${escapeAttr(NOT_NEEDED_TITLE)}">${escapeHtml(NOT_NEEDED_LABEL)}</span>` : "";
       const chip = stepChip(s.state);
       const chipHtml = (o.baseline && chip.cls === o.baseline) ? ""
         : `<span class="step-chip step-chip-${escapeAttr(chip.cls)}">${escapeHtml(chip.label)}</span>`;
@@ -301,7 +301,7 @@
      page: an editor for the analyst, in the order the work goes, each fact
      once). Nothing waits for a Save button: the name and (C25) Done by save
      on Enter or when the field is left, the description when it is left,
-     Automation when a choice is made;
+     No longer needed on its click;
      each is one undoable edit. The verbs that change the step's shape are
      the Steps toolbar's (steps-view.js), the scissors excepted.
        the head: the name as the title (C21: the library's picker under it),
@@ -321,9 +321,9 @@
          the step under it (C8), each sentence with Add, Information (C26:
          `informationHtml`, the recorded fields, then the analyst's lines,
          each change one undoable edit), the Flow line (C17:
-         Only when and Decision, each a sentence of fields) and Automation
-         (C25: what the automation does with the step, in place of the Waste
-         tick; read only, the choice as text);
+         Only when and Decision, each a sentence of fields) and No longer
+         needed (C25: the tick that keeps the waste flag; read only, its
+         words when ticked, nothing when not);
        the step's screenshots, the one the PDD prints marked;
        what it is made of: Recorded (a native <details>, open or closed as
          the analyst last left it; open in a hand-off opened read only): how
@@ -340,7 +340,7 @@
      field's picker: `picker` (library.js pickerFor) and
      onPickActivity(stepId, activityId), and (C25) `doneBy` ({ placeholder,
      role }: what the Done by field shows while empty, the recording's role),
-     onDoneBy(stepId, text) and onAutomation(stepId, value). Lane PANE: the same editor draws
+     onDoneBy(stepId, text) and onToggleWaste(stepId, on). Lane PANE: the same editor draws
      the step opened in the Timeline's pane (views/timeline-pane.js), in its
      own host: `onTimeline` leaves out Show on timeline (the step is on it),
      and `afterFactsHtml` goes under the line of facts (the pane's Also
@@ -375,7 +375,7 @@
           ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
           ${informationHtml(step, callbacks)}
           ${flowSectionHtml(step, callbacks.flow)}
-          ${automationHtml(step, callbacks)}
+          ${notNeededHtml(step, callbacks)}
         </div>
         ${callbacks.shotsHtml ? `<div class="step-shots-part">${callbacks.shotsHtml}</div>` : ""}
         <div class="step-made">
@@ -413,11 +413,11 @@
       callbacks.onDescription(step.step_id, v);
     };
     descEl.addEventListener("blur", commitDesc);
-    // C25: a choice saves at once; Done by saves as the name does.
-    const autoEl = host.querySelector("#step-automation");
-    if (autoEl) autoEl.addEventListener("change", () => {
-      if (_rendering || !autoEl.isConnected) return;
-      if (callbacks.onAutomation) callbacks.onAutomation(step.step_id, autoEl.value);
+    // C25: No longer needed saves on its click; Done by saves as the name does.
+    const wasteEl = host.querySelector("#flag-waste");
+    if (wasteEl) wasteEl.addEventListener("change", () => {
+      if (_rendering || !wasteEl.isConnected) return;
+      if (callbacks.onToggleWaste) callbacks.onToggleWaste(step.step_id, wasteEl.checked);
     });
     wireDoneBy(host.querySelector("#step-done-by"), step, callbacks);
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
@@ -622,18 +622,15 @@
     }
   }
 
-  /* C25: what the automation does with the step, the last line of what you
-     write: a choice of four (step-scope.js CHOICES), or in a project opened
-     read only the choice as text. */
-  const AUTOMATION_TITLE = "What the automation will do with this step.";
-  function automationHtml(step, callbacks) {
-    const value = StepScope.automationOf(step);
+  /* C25: No longer needed, the last line of what you write: a tick that keeps
+     the waste flag (step-scope.js isNotNeeded); in a project opened read
+     only its words when ticked, nothing when not. */
+  function notNeededHtml(step, callbacks) {
+    const on = StepScope.isNotNeeded(step);
     if (callbacks.readOnly) {
-      return `<p class="step-automation" id="step-automation-text">Automation: ${escapeHtml(StepScope.labelOf(value))}</p>`;
+      return on ? `<p class="step-not-needed" id="step-not-needed-text">${escapeHtml(NOT_NEEDED_LABEL)}</p>` : "";
     }
-    const options = StepScope.CHOICES.map((c) =>
-      `<option value="${escapeAttr(c.value)}"${c.value === value ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
-    return `<label class="step-automation" title="${escapeAttr(AUTOMATION_TITLE)}">Automation <select id="step-automation">${options}</select></label>`;
+    return `<label class="step-waste" title="${escapeAttr(NOT_NEEDED_TITLE)}"><input type="checkbox" id="flag-waste"${on ? " checked" : ""}> ${escapeHtml(NOT_NEEDED_LABEL)}</label>`;
   }
 
   /* C25: who does the step, on the line of facts after the system: a field

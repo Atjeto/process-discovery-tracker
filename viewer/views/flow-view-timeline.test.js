@@ -167,16 +167,6 @@ test("sinceStartToIso puts a typed time since the recording started on the recor
   assert.equal(sinceStartToIso(NaN, "0:19"), null);
 });
 
-/* Lane FX3 (validation pass 3, F20): why the capture app ended a transaction
-   by itself, in plain words; a code the app does not know shows nothing. */
-const { markerReasonText } = require("./flow-view-markers.js");
-
-test("lane FX3: a marker's reason reads in plain words, never as its code", () => {
-  assert.equal(markerReasonText("auto_close_for_sibling"), "the next transaction started");
-  assert.equal(markerReasonText("auto_end_idle"), "after a long idle stretch");
-  for (const other of ["some_future_code", "", null, undefined, 3]) assert.equal(markerReasonText(other), "", String(other));
-});
-
 test("lane FX3: the Timeline's header controls act on a drawn timeline: a recording or a video", () => {
   const { timelineDrawable } = Timeline;
   assert.equal(timelineDrawable({ events: [{ type: "activity" }], recordingAvailable: false }), true);

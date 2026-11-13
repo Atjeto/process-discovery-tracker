@@ -1239,7 +1239,7 @@ def _merge_steps(existing: list, fresh: list,
 
     Contract C22: so is a draft the analyst placed elsewhere in the process
     (it carries `placed_after`), kept as `edited` by the same rule, and
-    (contract C25) a draft given an `automation` or a `done_by`, and
+    (contract C25) a draft given a `done_by`, and
     (contract C26) a draft given a line of `information`.
 
     Contract C19: a draft opened as a sub-process (it carries `sub_steps`,

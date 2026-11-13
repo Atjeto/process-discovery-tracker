@@ -52,11 +52,7 @@ application work), and it reads in the reader's order:
      enters ("Information: Customer number, Order lines.").
   6. Volume and effort: as the analyst states it (C6 `document.effort`),
      never the recorded times, which are a walkthrough's.
-  7. Improvement and automation scope: the analyst's field, the steps 3.2
-     prints by what the automation does with each (contract C25: "The
-     automation does it", "Stays with a person", "No longer needed", "Not
-     decided yet", each heading only when it holds a step; none while no
-     step has a choice), the re-keyed
+  7. Improvement and automation scope: the analyst's field, the re-keyed
      data (a value typed again in another system in the same transaction),
      and the To-Be map when one was chosen.
   8. Notes: only when written.
@@ -129,8 +125,8 @@ from _dt import parse_ts_or_none as _parse_ts
 from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
-from step_context import (AUTOMATION_WORDS, StepContext, clock, has_video, place_starts,
-                          process_order, recording_role, step_automation, step_information, step_start,
+from step_context import (StepContext, clock, has_video, place_starts, process_order,
+                          recording_role, step_information, step_not_needed, step_start,
                           step_system, untimed_key, video_count)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
@@ -1493,9 +1489,8 @@ def _write_step(doc, s, step, number, steps, level=None):
     (else its library activity's, C21), the information it uses or enters
     (contract C26: "Information: Customer number, Order lines.", the fields
     recorded in it and the lines the analyst typed, names only), its
-    attachments, its screenshots, "No longer needed." on a sub-step of a
-    chapter the automation does not need (C25; a step of 3.2 is listed so in
-    section 7) and its flow (C17).
+    attachments, its screenshots, the waste flag (C25: the step editor's
+    No longer needed, step_context.step_not_needed) and its flow (C17).
     Contract C19: `level` is the map it is drawn in; in a
     sub-process's chapter it is numbered "Step <chapter number>.<number>". A
     group of steps (`group: true`) prints no recorded field (only the lines
@@ -1532,12 +1527,8 @@ def _write_step(doc, s, step, number, steps, level=None):
     alt = f"Screenshot of step {_step_number(number, level)}: {_step_name(step)}"
     for ref in [] if group else s.screenshots(step):
         _embed_screenshot(doc, s.folder, ref, step, alt)
-    # C25: a step no longer needed (an older project's waste flag reads so
-    # too) is listed under "No longer needed" in section 7, which lists the
-    # steps 3.2 prints; a sub-step of a chapter, which section 7 does not
-    # list, says it here, in the choice's words.
-    if step_automation(step) == "not_needed" and level is not None and level.path:
-        p = doc.add_paragraph(AUTOMATION_WORDS["not_needed"] + ".")
+    if step_not_needed(step):
+        p = doc.add_paragraph("No longer needed.")
         for run in p.runs:
             run.italic = True
     # C17: where the process goes after the step, besides the next step.
@@ -2195,31 +2186,10 @@ def _write_effort(doc, s):
 
 # ---- 7. Improvement and automation scope, 8. Notes ---------------------------------
 
-# Contract C25: the order of section 7's headings, by what the automation does
-# with a step.
-_AUTOMATION_ORDER = ("automated", "person", "not_needed", "undecided")
-
-
 def printed_steps(s) -> list:
     """The steps 3.2 prints, in its order: the reference transaction's, else
     (no transaction with steps) every step in time order."""
     return s.run_steps(s.pattern_index) if s.pattern_index is not None else list(s.steps)
-
-
-def _automation_groups(s) -> list[tuple[str, list[tuple[int, dict]]]]:
-    """Section 7's lists (contract C25): [(heading, [(step number, step)])]
-    of the steps 3.2 prints, by what the automation does with each
-    (step_context.step_automation), in the order "The automation does it",
-    "Stays with a person", "No longer needed", "Not decided yet"; a heading
-    only when it holds a step. Nothing while no step has a choice other
-    than "undecided": a project where nothing was decided does not list
-    every step under "Not decided yet"."""
-    by_choice: dict[str, list[tuple[int, dict]]] = {}
-    for number, step in enumerate(printed_steps(s), start=1):
-        by_choice.setdefault(step_automation(step), []).append((number, step))
-    if not any(c != "undecided" for c in by_choice):
-        return []
-    return [(AUTOMATION_WORDS[c], by_choice[c]) for c in _AUTOMATION_ORDER if by_choice.get(c)]
 
 
 def _write_improvement(doc, s, tobe_map_image, notes_follow):
@@ -2228,12 +2198,6 @@ def _write_improvement(doc, s, tobe_map_image, notes_follow):
                           "what to improve or automate, what stays manual, and why")
     # A value typed again in another system in the same transaction: a
     # finding for the improvement scope, stated once per pair of fields.
-    # C25: the steps 3.2 prints by what the automation does with them, each
-    # heading only when it holds a step.
-    for heading, numbered in _automation_groups(s):
-        doc.add_paragraph().add_run(heading).bold = True
-        for number, step in numbered:
-            doc.add_paragraph(f"Step {number}: {_step_name(step)}", style="List Bullet")
     rekeys = _rekeyed(s)
     if rekeys:
         doc.add_paragraph().add_run("Re-keyed data").bold = True

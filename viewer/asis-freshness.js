@@ -19,8 +19,8 @@
  * conditions on the lines, the paths no transaction took and how often each
  * was taken), each box's notes, files, the system set on its steps, whether
  * it is done outside every system (the hand marker), whether it is a
- * sub-process, whether it is flagged as waste and (C25) what the automation
- * does with it and who does it, and the Trigger and the
+ * sub-process, whether it is flagged as waste and (C25) who does it, and
+ * the Trigger and the
  * Result that name the start and the end. A confirmed transaction, a
  * description, a screenshot or the reference transaction draw nothing on
  * the map, so they change nothing here.
@@ -53,11 +53,25 @@ function _firstLine(doc, key) {
 
 function _sorted(list) { return [...new Set(list)].sort(); }
 
+/* The choice the step editor's Automation select read a step as while it
+   existed (2026-11-12 to 13; C25 as amended cut it): its `automation` when
+   one of the four, else "not_needed" for a step flagged as waste without
+   one, else "undecided". Only stepsMapSignature's `legacy` form reads it, so
+   a copy made in those days keeps its signature. */
+const _LEGACY_CHOICES = new Set(["undecided", "automated", "person", "not_needed"]);
+function _legacyChoice(s) {
+  const v = s.automation;
+  if (v === undefined || v === null) return s.flags && s.flags.waste === true ? "not_needed" : "undecided";
+  return typeof v === "string" && _LEGACY_CHOICES.has(v) ? v : "undecided";
+}
+
 /* What one box of a map shows beside its name, from the steps it stands
    for: [notes, files, systems, manual, sub-process, waste], then (C25) only
-   when a step of it has one, the choices made on it and the Done by typed
-   on it, so a copy made before C25 keeps its signature. */
-function _boxFacts(steps, notesBy, filesBy) {
+   when a step of it has one, an empty list (in the `legacy` form, the
+   choices made on it, _legacyChoice) and the Done by typed on it, so a copy
+   made before C25, or while the Automation choice existed, keeps its
+   signature. */
+function _boxFacts(steps, notesBy, filesBy, legacy) {
   const ids = steps.map((s) => s.step_id);
   const notes = _sorted(ids.flatMap((id) => notesBy.get(id) || []));
   const files = _sorted(ids.flatMap((id) => filesBy.get(id) || []));
@@ -65,7 +79,7 @@ function _boxFacts(steps, notesBy, filesBy) {
   const manual = steps.every((s) => s.state === "manually_authored" &&
     !((s.evidence && s.evidence.interaction_event_ids) || []).length && !_line(s.system));
   const facts = [notes, files, systems, manual, steps.some(SPM.isSubProcess), steps.some((s) => !!(s.flags && s.flags.waste))];
-  const choices = steps.map((s) => StepScope.automationOf(s)).filter((v) => v !== "undecided");
+  const choices = legacy ? steps.map(_legacyChoice).filter((v) => v !== "undecided") : [];
   const doneBy = _sorted(steps.map((s) => StepScope.cleanDoneBy(s.done_by)).filter(Boolean));
   if (choices.length || doneBy.length) facts.push(choices, doneBy);
   return facts;
@@ -75,9 +89,11 @@ function _boxFacts(steps, notesBy, filesBy) {
  * The signature of the maps the steps draw (see the header).
  * @param {object} annotations  annotations.json as the project holds it
  * @param {object|null} stats   stats.json (its case_stats give the transactions)
+ * @param {boolean} [legacy]    the form a copy made on 2026-11-12 or 13 kept
+ *   (_boxFacts); copyStale accepts either form
  * @returns {string} a SHA-256 hex digest
  */
-function stepsMapSignature(annotations, stats) {
+function stepsMapSignature(annotations, stats, legacy) {
   const anno = annotations && typeof annotations === "object" ? annotations : {};
   const runs = RunsModel.buildRuns(stats || null, Array.isArray(anno.steps) ? anno.steps : []).runs;
   const txs = runs.map((r) => r.members);
@@ -94,7 +110,7 @@ function stepsMapSignature(annotations, stats) {
       const node = mapNodeLabel(st);
       byBox.set(node, (byBox.get(node) || []).concat([st]));
     }
-    const boxes = [...byBox.keys()].sort().map((node) => [node, _boxFacts(byBox.get(node), notesBy, filesBy)]);
+    const boxes = [...byBox.keys()].sort().map((node) => [node, _boxFacts(byBox.get(node), notesBy, filesBy, !!legacy)]);
     return [m.path, edges, boxes];
   }).sort((a, b) => JSON.stringify(a[0]) < JSON.stringify(b[0]) ? -1 : 1);
   const doc = anno.document;
@@ -116,7 +132,9 @@ function copyStale(sess, entry) {
   if (!sess || !entry) return false;
   if (copyPredatesLabels(sess, entry)) return true;
   if (typeof entry.forked_from_steps === "string" && entry.forked_from_steps) {
-    return entry.forked_from_steps !== stepsMapSignature(sess.annotations, sess.stats);
+    if (entry.forked_from_steps === stepsMapSignature(sess.annotations, sess.stats)) return false;
+    // A copy made while the Automation choice existed kept its choices too.
+    return entry.forked_from_steps !== stepsMapSignature(sess.annotations, sess.stats, true);
   }
   if (!entry.source || entry.source.level !== "step" || !sess.sessionFolder) return false;
   const now = RefStore.sourceMarks(path.join(sess.sessionFolder, "process_map_step.bpmn"));

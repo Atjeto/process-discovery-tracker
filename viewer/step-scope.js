@@ -1,18 +1,18 @@
 "use strict";
 
 /*
- * step-scope.js: what the automation does with a step and who does it
- * (contract C25), the rules the step editor saves and reads by.
+ * step-scope.js: whether a step is no longer needed and who does it
+ * (contract C25 as amended 2026-11-13), the rules the step editor saves and
+ * reads by.
  *
- *   step.automation: "undecided" (also: absent), "automated", "person" or
- *     "not_needed", in the step editor's Automation choice read as "Not
- *     decided yet", "The automation does it", "Stays with a person", "No
- *     longer needed". It took the place of the Waste tick: flags.waste stays
- *     in step with it ("not_needed" sets it true, any other choice false),
- *     so every reader of waste keeps working, and a step flagged as waste
- *     without a choice (an older project) reads as "not_needed". An unknown
- *     value reads as "undecided". The pipeline reads it the same way
- *     (normalization/step_context.py step_automation).
+ *   No longer needed: the step editor's tick, kept in flags.waste (true when
+ *     ticked; every reader of waste keeps working). A step whose flags.waste
+ *     is not a boolean and that carries automation: "not_needed" (the choice
+ *     a project saved on 2026-11-12 holds) reads as ticked; any other
+ *     automation value is ignored. The tick never writes automation, and a
+ *     stored one round-trips untouched (C10): an untick writes flags.waste
+ *     false, which then decides. The pipeline reads it the same way
+ *     (normalization/step_context.py step_not_needed).
  *   step.done_by: a role or a person, one line, at most 80 characters.
  *     Without one the step is done by the recording's role
  *     (manifest.config.worker.role, its first letter a capital), else nobody
@@ -21,44 +21,27 @@
  * Pure: no DOM, no electron.
  */
 
-/* The choices, in the order the step editor lists them. */
-const CHOICES = [
-  { value: "undecided", label: "Not decided yet" },
-  { value: "automated", label: "The automation does it" },
-  { value: "person", label: "Stays with a person" },
-  { value: "not_needed", label: "No longer needed" },
-];
-const VALUES = new Set(CHOICES.map((c) => c.value));
 const DONE_BY_MAX = 80;
-/* The tooltip of the "No longer needed" tag (a Steps row, the step panel),
-   where "Waste" was. */
-const NOT_NEEDED_TITLE = "Automation: this step is no longer needed.";
+/* The tick's words, and the tag a Steps row and the step panel show. */
+const NOT_NEEDED_LABEL = "No longer needed";
+/* The tooltip of the tick and of the tag. */
+const NOT_NEEDED_TITLE = "This step should not be needed: rework, duplicate effort or copying between systems.";
 
-/* What the automation does with `step`: one of CHOICES' values. */
-function automationOf(step) {
-  if (!step || typeof step !== "object") return "undecided";
-  const v = step.automation;
-  if (v === undefined || v === null) return step.flags && step.flags.waste === true ? "not_needed" : "undecided";
-  return typeof v === "string" && VALUES.has(v) ? v : "undecided";
+/* Whether `step` is no longer needed (see the header). */
+function isNotNeeded(step) {
+  if (!step || typeof step !== "object") return false;
+  const waste = step.flags && typeof step.flags === "object" ? step.flags.waste : undefined;
+  if (typeof waste === "boolean") return waste;
+  return step.automation === "not_needed";
 }
 
-/* The words a choice reads as ("Not decided yet" for an unknown one). */
-function labelOf(value) {
-  const hit = CHOICES.find((c) => c.value === value);
-  return hit ? hit.label : CHOICES[0].label;
-}
-
-/* Set the choice on `step` (mutated), flags.waste in step with it. "undecided"
-   takes the key away. False when `value` is no choice or the step reads as it
-   already. */
-function setAutomation(step, value) {
-  if (!step || !VALUES.has(value)) return false;
-  const was = automationOf(step);
-  const wasteWas = !!(step.flags && step.flags.waste === true);
-  const waste = value === "not_needed";
-  if (was === value && wasteWas === waste && (value === "undecided" ? step.automation === undefined : step.automation === value)) return false;
-  if (value === "undecided") delete step.automation; else step.automation = value;
-  step.flags = Object.assign({}, step.flags || {}, { waste });
+/* Tick or untick No longer needed on `step` (mutated): flags.waste set to
+   `on`, automation left as it is. False when the step reads so already. */
+function setNotNeeded(step, on) {
+  if (!step || typeof step !== "object") return false;
+  const want = !!on;
+  if (isNotNeeded(step) === want) return false;
+  step.flags = Object.assign({}, step.flags || {}, { waste: want });
   return true;
 }
 
@@ -104,6 +87,6 @@ function setDoneBy(step, text) {
 }
 
 module.exports = {
-  CHOICES, DONE_BY_MAX, NOT_NEEDED_TITLE, automationOf, labelOf, setAutomation, cleanDoneBy, recordingRole, doneByOf,
+  DONE_BY_MAX, NOT_NEEDED_LABEL, NOT_NEEDED_TITLE, isNotNeeded, setNotNeeded, cleanDoneBy, recordingRole, doneByOf,
   doneByPlaceholder, setDoneBy,
 };

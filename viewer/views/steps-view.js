@@ -1208,8 +1208,8 @@ function stepDetailCallbacks(selected, interactionsById) {
   return {
     onRename: (stepId, name) => inlineRenameStep(stepId, name, false),
     onDescription: describeStepAction,
-    // C25: what the automation does with the step, and who does it.
-    onAutomation: (stepId, value) => setAutomationAction(stepId, value),
+    // C25: whether the step is no longer needed, and who does it.
+    onToggleWaste: (stepId, on) => setNotNeededAction(stepId, on),
     onDoneBy: (stepId, text) => setDoneByAction(stepId, text),
     doneBy: { placeholder: StepScope.doneByPlaceholder(_manifest()), role: StepScope.recordingRole(_manifest()) },
     onSplitAt: (after) => { if (selected) splitStep(selected.step_id, after); },
@@ -1665,17 +1665,17 @@ async function describeStepAction(stepId, text) {
   try { await persistAnnotations(anno, "edit step description"); } catch (_) { /* already shown */ }
 }
 
-/* C25: what the automation does with a step (its Automation choice, waste in
-   step with it), one undoable edit; a draft becomes edited. */
-async function setAutomationAction(stepId, value) {
+/* C25: tick or untick No longer needed on a step (its waste flag), one
+   undoable edit; a draft becomes edited. */
+async function setNotNeededAction(stepId, on) {
   if (!State.getSession() || RO.isReadOnly(State.getSession())) return;
   const anno = ensureAnnoShape(State.getSession().annotations);
   const step = _findStep(stepId);
-  if (!step || !StepScope.setAutomation(step, value)) return;
+  if (!step || !StepScope.setNotNeeded(step, on)) return;
   _markEdited(step);
   try {
-    await persistAnnotations(anno, "set what the automation does");
-    toast("Automation: " + StepScope.labelOf(value) + ".", "success");
+    await persistAnnotations(anno, on ? "mark the step as no longer needed" : "mark the step as needed");
+    toast(on ? "Marked as no longer needed." : "Marked as needed.", "success");
   } catch (_) { /* already shown */ }
 }
 
@@ -3734,12 +3734,11 @@ function showStepContextMenu(stepId, x, y) {
       if (s) watchStep(s);
     });
   }
-  // C25: the step editor's Automation choice of "No longer needed" (it took
-  // the place of the waste flag), and back to "Not decided yet".
+  // C25: the step editor's No longer needed (the waste flag), and its inverse.
   addSep();
-  const notNeeded = StepScope.automationOf(step) === "not_needed";
-  addItem(notNeeded ? "Mark as not decided yet" : "Mark as no longer needed",
-    () => setAutomationAction(stepId, notNeeded ? "undecided" : "not_needed"));
+  const notNeeded = StepScope.isNotNeeded(step);
+  addItem(notNeeded ? "Mark as needed" : "Mark as no longer needed",
+    () => setNotNeededAction(stepId, !notNeeded));
 
   document.body.appendChild(menu);
   placeMenu(menu, x, y);   // at (x, y), kept inside the window

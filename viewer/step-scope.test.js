@@ -1,49 +1,53 @@
 "use strict";
 
-/* step-scope.js (contract C25): what the automation does with a step and who
-   does it, the rules the step editor saves and reads by; the pipeline's
-   step_context.py reads the same keys the same way (test_step_scope.py). */
+/* step-scope.js (contract C25 as amended 2026-11-13): whether a step is no
+   longer needed and who does it, the rules the step editor saves and reads
+   by; the pipeline's step_context.py reads the same keys the same way
+   (test_step_scope.py). */
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const S = require("./step-scope.js");
 
-test("the four choices, in the editor's order and in C25's words", () => {
-  assert.deepEqual(S.CHOICES.map((c) => [c.value, c.label]), [
-    ["undecided", "Not decided yet"], ["automated", "The automation does it"],
-    ["person", "Stays with a person"], ["not_needed", "No longer needed"]]);
+test("the tick's words and its tooltip: one sentence of 90 characters or fewer", () => {
+  assert.equal(S.NOT_NEEDED_LABEL, "No longer needed");
+  assert.equal(S.NOT_NEEDED_TITLE, "This step should not be needed: rework, duplicate effort or copying between systems.");
+  assert.ok(S.NOT_NEEDED_TITLE.length <= 90);
+  assert.equal(S.CHOICES, undefined, "no Automation choice");
+  assert.equal(S.automationOf, undefined);
 });
 
-test("a step reads as its choice: absent, each value, an older waste flag, an unknown value", () => {
-  assert.equal(S.automationOf({}), "undecided");
-  assert.equal(S.automationOf(null), "undecided");
-  for (const c of S.CHOICES) assert.equal(S.automationOf({ automation: c.value }), c.value);
-  assert.equal(S.automationOf({ flags: { waste: true } }), "not_needed", "flags.waste without a choice");
-  assert.equal(S.automationOf({ flags: { waste: false } }), "undecided");
-  assert.equal(S.automationOf({ automation: "automated", flags: { waste: true } }), "automated", "a choice wins");
-  assert.equal(S.automationOf({ automation: "robot" }), "undecided", "an unknown value");
-  assert.equal(S.automationOf({ automation: "robot", flags: { waste: true } }), "undecided");
-  assert.equal(S.labelOf("person"), "Stays with a person");
-  assert.equal(S.labelOf("robot"), "Not decided yet");
+test("a step is no longer needed when its waste flag is set", () => {
+  assert.equal(S.isNotNeeded({ flags: { waste: true } }), true);
+  assert.equal(S.isNotNeeded({ flags: { waste: false } }), false);
+  assert.equal(S.isNotNeeded({}), false);
+  assert.equal(S.isNotNeeded(null), false);
+  assert.equal(S.isNotNeeded({ flags: { waste: "yes" } }), false);
 });
 
-test("a choice keeps flags.waste in step: No longer needed sets it, any other clears it", () => {
+test("the choice a project saved on 2026-11-12 reads as ticked; the other choices are ignored", () => {
+  assert.equal(S.isNotNeeded({ automation: "not_needed" }), true);
+  assert.equal(S.isNotNeeded({ automation: "not_needed", flags: {} }), true);
+  for (const v of ["automated", "person", "undecided", "robot", 3]) assert.equal(S.isNotNeeded({ automation: v }), false, String(v));
+  assert.equal(S.isNotNeeded({ automation: "person", flags: { waste: true } }), true, "the flag decides");
+  assert.equal(S.isNotNeeded({ automation: "not_needed", flags: { waste: false } }), false, "an untick holds");
+});
+
+test("the tick writes flags.waste only: never automation, which round-trips untouched", () => {
   const st = { flags: { waste: false } };
-  assert.equal(S.setAutomation(st, "not_needed"), true);
-  assert.deepEqual([st.automation, st.flags.waste], ["not_needed", true]);
-  assert.equal(S.setAutomation(st, "automated"), true);
-  assert.deepEqual([st.automation, st.flags.waste], ["automated", false]);
-  assert.equal(S.setAutomation(st, "undecided"), true);
-  assert.equal("automation" in st, false, "Not decided yet takes the key away");
-  assert.equal(st.flags.waste, false);
-  assert.equal(S.setAutomation(st, "undecided"), false, "no change");
-  assert.equal(S.setAutomation(st, "robot"), false, "no such choice");
-  const old = { flags: { waste: true } };
-  assert.equal(S.setAutomation(old, "person"), true);
-  assert.deepEqual([old.automation, old.flags.waste], ["person", false]);
-  const bare = {};
-  assert.equal(S.setAutomation(bare, "not_needed"), true);
-  assert.deepEqual(bare.flags, { waste: true });
+  assert.equal(S.setNotNeeded(st, true), true);
+  assert.deepEqual(st, { flags: { waste: true } });
+  assert.equal(S.setNotNeeded(st, true), false, "no change");
+  assert.equal(S.setNotNeeded(st, false), true);
+  assert.deepEqual(st, { flags: { waste: false } });
+  const old = { automation: "not_needed" };
+  assert.equal(S.setNotNeeded(old, false), true, "an old choice reads ticked, so an untick writes");
+  assert.deepEqual(old, { automation: "not_needed", flags: { waste: false } });
+  assert.equal(S.isNotNeeded(old), false);
+  const kept = { automation: "person", flags: { waste: false, other: 1 } };
+  assert.equal(S.setNotNeeded(kept, true), true);
+  assert.deepEqual(kept, { automation: "person", flags: { waste: true, other: 1 } });
+  assert.equal(S.setNotNeeded(null, true), false);
 });
 
 test("who does a step: its own Done by (one line, at most 80 characters), else the recording's role, else nobody", () => {

@@ -784,7 +784,8 @@ lives at `derived_maps/<map_id>.bpmn`.
   merges, and the stale copy stays. A copy made before the step map had
   what C18 added (`viewer/reference-maps.js` `predatesRichMap`: none of a
   user or manual task, the legend, a colour or, since 2.0.1, a system
-  label; since C25 a service task or a Done by label count too) says that
+  label; since C25 a Done by label counts too, and a service task, which
+  the step map drew only while C25's Automation choice existed) says that
   Copy again brings them.
 - **`pdd_role`**: `null` | `as_is` | `to_be`: which PDD slot the map fills
   (one map per slot). At export the viewer renders the copy to PNG and passes
@@ -831,7 +832,7 @@ delete.
   "only_when": "string, optional: the step happens only under this condition (C17)",
   "links": [{ "to": "a step_id, or \"end\"", "when": "string: when the process goes there (C17)" }],
   "placed_after": "string, optional: the step_id of the step it comes after in the process, or \"start\" (C22)",
-  "automation": "string, optional: undecided|automated|person|not_needed, what the automation does with the step (C25)",
+  "automation": "string, optional, no longer written: undecided|automated|person|not_needed, kept untouched; \"not_needed\" without a waste flag reads as No longer needed (C25 as amended)",
   "done_by": "string, optional: a role or a person who does the step, at most 80 characters (C25)",
   "information": [{ "name": "string, required, at most 80 characters", "example": "string, optional, at most 120", "goes_to": "string, optional, at most 120" }],
   "sub_steps": ["step entities, the same shape, recursively: the step is a sub-process (C19)"],
@@ -1035,33 +1036,31 @@ analysis, the PDD's sections 4 to 9) sees the main level only.
   map without one gets no PDD chapter. The map node is the main rule at
   every level.
 
-**What the automation does with a step, and who does it (contract C25).**
-Two viewer-written keys, both optional, set in the step editor (Steps, and
-the step opened in the Timeline's pane), at any level (a sub-step carries
-them the same way):
+**Whether a step is no longer needed, and who does it (contract C25, as
+amended 2026-11-13).** Set in the step editor (Steps, and the step opened in
+the Timeline's pane), at any level (a sub-step carries them the same way):
 
-- **`automation`**: `"undecided"` (also: the key absent), `"automated"`
-  (the automation does it), `"person"` (it stays with a person) or
-  `"not_needed"` (no longer needed), read as "Not decided yet", "The
-  automation does it", "Stays with a person", "No longer needed". It took
-  the place of the step editor's Waste tick, and `flags.waste` stays in step
-  with it: `"not_needed"` sets `flags.waste: true`, any other choice sets it
-  `false`, so every reader of waste keeps working. A step with
-  `flags.waste: true` and no `automation` (an older project, a vocabulary's
-  default) reads as `"not_needed"`; an unknown value reads as
-  `"undecided"` (`viewer/step-scope.js` `automationOf`,
-  `normalization/step_context.py` `step_automation`).
+- **No longer needed**: the step editor's tick, kept in `flags.waste`
+  (`true` when ticked, `false` when unticked). A step whose `flags.waste`
+  is not a boolean and that carries `automation: "not_needed"` reads as
+  ticked (`viewer/step-scope.js` `isNotNeeded`,
+  `normalization/step_context.py` `step_not_needed`).
+- **`automation`** *(no longer written)*: the Automation choice the step
+  editor had on 2026-11-12 and 13 (`"undecided"`, `"automated"`,
+  `"person"`, `"not_needed"`). A project that holds it keeps it untouched
+  (C10); only `"not_needed"` is read, as above; the other values are
+  ignored.
 - **`done_by`**: a role or a person, one line, at most 80 characters.
   Without one, the step is done by the recording's role,
   `manifest.config.worker.role` (its first letter a capital), else nobody is
   named (`step-scope.js` `doneByOf`, `step_context.py` `step_done_by`).
 
-A draft given either becomes `edited` (the viewer does it, and
-re-normalization keeps a draft that still carries one as `edited`). The step
-map draws them (below: the task's kind, a Done by label), the PDD prints who
-does a step on its context line and, once a step has a choice other than
-"undecided", lists the steps by choice in its section
-7, and the Technical details have a column for each.
+A draft ticked or given a Done by becomes `edited` (the viewer does it, and
+re-normalization keeps a draft that still carries a Done by as `edited`).
+The step map draws who does a step (below: a Done by label) and marks a
+step no longer needed with its Waste note, the PDD prints who does a step
+on its context line and "Flagged as waste." under a step no longer needed,
+and the Technical details have a Done by column.
 
 **The information a step uses or enters (contract C26).** One
 viewer-written key, optional, set in the step editor's *Information*
@@ -1796,15 +1795,14 @@ the main line); the map keeps its merge gateways.
   condition, or a path no transaction took), a single run is drawn from
   the edges too, early ends included.
 - **Tasks.** Named by the step names; the system stays out of the name. A
-  task's kind says what the automation does with its step (contract C25,
-  the step's `automation`; for a task of several steps, the choice of the
-  first of them that has one, the reference transaction's first): a
-  `serviceTask` (the gear) for "automated", a `manualTask` (the hand) for
-  "person", a plain `task` for "undecided" and "not_needed". C25 dropped
-  the rule of lane CL (a step added by hand with no system was a manual
-  task): the hand now means only "stays with a person". (Before C18 as
-  lane CL amended it every recorded step was a `userTask`.) A collapsed
-  sub-process (C19) is none of them.
+  task is a `manualTask` (BPMN's hand marker) when every step it stands for
+  was done outside every system: added by hand (manually authored, no
+  recorded interaction) with no system set; else a plain `task`, a step
+  done in a system (C18 as lane CL amended it: every recorded step was a
+  `userTask` before, the same person marker on every box). A step's stored
+  `automation` changes no kind (C25 as amended 2026-11-13; while the choice
+  existed a `serviceTask` drew it). A collapsed sub-process (C19) is
+  neither.
   Its documentation holds its description, then its system, screen, the
   number of transactions it happened in and its average time.
 - **Events.** The start event takes the first line of `document.trigger`

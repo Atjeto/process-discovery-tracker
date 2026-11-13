@@ -133,7 +133,7 @@ function bpmnFirstTasks(file) {
     if (seen.has(n)) continue;
     seen.add(n);
     if (/Gateway$/.test(kinds[n] || "")) todo.push(...(out[n] || []));
-    else if (/^(task|userTask|manualTask|serviceTask|subProcess)$/.test(kinds[n] || "")) tasks.push(names[n]);
+    else if (/^(task|userTask|manualTask|subProcess)$/.test(kinds[n] || "")) tasks.push(names[n]);
   }
   return tasks;
 }
@@ -889,12 +889,13 @@ async function unreadableAnnotationsPin() {
     !fh.err && held(fh.apps, "btn-ignored-apps") && held(fh.gallery, "btn-open-gallery") && held(fh.editor, "btn-fork-refmap"),
     JSON.stringify(fh));
 
-  // Lane FX3 (validation pass 3, F20): why the capture app ended a
-  // transaction by itself, in plain words, never its code. Lane PANE: the
-  // Markers tab is gone; the transaction's header in the pane's Steps tab
-  // says it. The demo's markers carry no reason, so three are given one on
-  // the page (the recording's file is not touched) and the pane is drawn
-  // again; the headers are read in the transactions' order.
+  // Lane FX3 (validation pass 3, F20) said why the capture app ended a
+  // transaction by itself; the narration sweep (2026-11-13) took that line
+  // off the transaction's header in the pane's Steps tab: it told how the
+  // capture app behaved and nothing was done with it. The demo's markers
+  // carry no reason, so three are given one on the page (the recording's
+  // file is not touched) and the pane is drawn again; each header is there
+  // and says no reason.
   const reasons = {};
   try {
     await page.locator('.view-mode-btn[data-level="flow"]').click({ timeout: 15000 });
@@ -911,7 +912,7 @@ async function unreadableAnnotationsPin() {
       const runs = require("./runs-model.js").buildRuns(s.stats, s.annotations.steps).runs;
       const heads = [...document.querySelectorAll("#tp-steps .tp-tx-head[data-case-id]")];
       const rows = runs.slice(0, 3).map((r) => { const h = heads.find((x) => x.dataset.caseId === r.caseId);
-        return h ? ((h.querySelector(".tp-tx-why") || {}).textContent || "") : null; });
+        return h ? (h.querySelector(".tp-tx-why") ? "why" : "") + (/Ended by itself|the next transaction started|long idle stretch/.test(h.textContent) ? "said" : "") : null; });
       ends.slice(0, 3).forEach((e, i) => { if (was[i] === undefined) delete e.data.reason; else e.data.reason = was[i]; });
       Pane.render();
       return rows;
@@ -920,8 +921,8 @@ async function unreadableAnnotationsPin() {
     await page.mouse.move(2, 600);
     await wait(500);   // the level buttons' colour transition ends before the next check reads them
   } catch (e) { logActionError("FX3 marker reasons", e); reasons.err = String(e.message).split("\n")[0]; }
-  record("lane FX3, lane PANE: a transaction's header in the pane's Steps tab says why it ended by itself in plain words (the next transaction started, after a long idle stretch), never a raw code",
-    !reasons.err && JSON.stringify(reasons.rows) === JSON.stringify(["Ended by itself: the next transaction started.", "Ended by itself: after a long idle stretch.", ""]),
+  record("narration sweep, lane PANE: a transaction's header in the pane's Steps tab never says why it ended by itself (no .tp-tx-why line, no reason in its text), whatever the end marker's reason",
+    !reasons.err && JSON.stringify(reasons.rows) === JSON.stringify(["", "", ""]),
     JSON.stringify(reasons));
 
   // F3: the active level button stays legible under the mouse (the global
