@@ -56,7 +56,11 @@
  * Lane SCREEN, on a third project made from the video:
  *   (s1) to (s4) the screen's order and the timeline's first row: Play, the
  *       clock, Start transaction and End transaction, Add step, Add note,
- *       the messages in the row, the keyboard.
+ *       the messages in the row, the keyboard;
+ *   (s6) the two dividers (between the video and the pane, between the
+ *       stage and the timeline): a line seen at rest, dragged both ways, the
+ *       keys, a double-click and Enter giving the usual size back and
+ *       forgetting the stored one.
  * Lane LANES, on a fourth project made from the video, then on the recording
  * the smokes use (the demo session, a stretch left out of the analysis):
  *   (t1) to (t8) the lanes in the order of the work, the Steps lane readable
@@ -619,6 +623,68 @@ async function laneScreen(TMP) {
     !s4.err && JSON.stringify(s4.order.map((o) => o.id)) === JSON.stringify(["btn-tl-play", "btn-tl-clock", "tl-speed", "btn-add-step", "btn-tl-transaction", "btn-tl-note",
       "btn-lanes", "btn-zoom-out", "btn-zoom-reset", "btn-zoom-in"]) && s4.order.every((o) => o.name && o.ring) &&
       s4.spacePlays && s4.enterPauses, JSON.stringify(s4));
+
+  // (s6) the two dividers: seen at rest, dragged both ways, the keys, the
+  // usual size back, remembered.
+  const s6 = {};
+  try {
+    const sizes = () => ev(() => {
+      const w = (id) => Math.round(document.getElementById(id).getBoundingClientRect().width);
+      const h = (id) => Math.round(document.getElementById(id).getBoundingClientRect().height);
+      const ls = (k) => { try { return localStorage.getItem(k); } catch (_) { return "?"; } };
+      return { video: w("video-pane"), pane: w("timeline-pane"), stage: h("lower-workspace"), tl: h("timeline-section"),
+        least: Math.max(240, parseFloat(document.getElementById("lower-workspace").style.getPropertyValue("--video-head-w")) || 0),
+        vw: ls("pdt.stage.videoWidth"), th: ls("pdt.stage.timelineHeight") };
+    });
+    const mid = (id) => ev((i) => { const r = document.getElementById(i).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, id);
+    const dragBy = async (id, dx, dy) => {
+      const c = await mid(id);
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(c.x + (dx * i) / 8, c.y + (dy * i) / 8);
+      await page.mouse.up();
+      await wait(250);
+      return sizes();
+    };
+    const dbl = async (id) => { const c = await mid(id); await page.mouse.dblclick(c.x, c.y); await wait(250); return sizes(); };
+    const key = async (k) => { await page.keyboard.press(k); await wait(250); return sizes(); };
+    s6.look = await ev(() => ["resize-video", "resize-timeline"].map((id) => {
+      const el = document.getElementById(id), line = getComputedStyle(el, "::before"), cs = getComputedStyle(el), r = el.getBoundingClientRect();
+      return { role: el.getAttribute("role"), tab: el.tabIndex, orient: el.getAttribute("aria-orientation"), label: el.getAttribute("aria-label"), title: el.title,
+        line: line.backgroundColor, lineW: id === "resize-video" ? line.width : line.height, target: id === "resize-video" ? r.width : r.height, cursor: cs.cursor };
+    }));
+    s6.d0 = await sizes();
+    s6.right = await dragBy("resize-video", 200, 0);
+    s6.reset = await dbl("resize-video");
+    s6.left = await dragBy("resize-video", -200, 0);
+    await dbl("resize-video");
+    await page.focus("#resize-video");
+    s6.kRight = await key("ArrowRight");
+    s6.kShift = await key("Shift+ArrowRight");
+    s6.kHome = await key("Home");
+    s6.kEnd = await key("End");
+    s6.aria = await ev(() => ["aria-valuenow", "aria-valuemin", "aria-valuemax"].map((a) => document.getElementById("resize-video").getAttribute(a)));
+    s6.kEnter = await key("Enter");
+    s6.up = await dragBy("resize-timeline", 0, -100);
+    await page.focus("#resize-timeline");
+    s6.kDown = await key("ArrowDown");
+    s6.tlReset = await dbl("resize-timeline");
+  } catch (e) { s6.err = errText(e); }
+  const near = (a, b) => Math.abs(a - b) <= 1;
+  const room = s6.d0 ? s6.d0.video + s6.d0.pane : 0;
+  const most = room - 360;
+  record("(s6) the Timeline's dividers: separators with a name, a 1 px line seen at rest, a 12 px target; the video's dragged 200 px right and left follows within its limits (the pane keeps 360 px), a double-click puts the usual width back; Right 24 px, Shift+Right 96 px, Home and End the limits, Enter the usual width and nothing stored; the timeline's dragged up 100 px grows by 100, Down takes 24, a double-click gives 272 back",
+    !s6.err && s6.look.every((l) => l.role === "separator" && l.tab === 0 && l.lineW === "1px" && l.line !== "rgba(0, 0, 0, 0)" && l.target >= 8) &&
+      s6.look[0].orient === "vertical" && s6.look[0].label === "Video and pane" && s6.look[0].title === "Drag to give the video or the pane more room." && s6.look[0].cursor === "col-resize" &&
+      s6.look[1].orient === "horizontal" && s6.look[1].label === "Stage and timeline" && s6.look[1].title === "Drag to give the video or the timeline more height." && s6.look[1].cursor === "row-resize" &&
+      near(s6.right.video, Math.min(s6.d0.video + 200, most)) && s6.right.pane >= 359 && s6.right.vw === String(s6.right.video) &&
+      near(s6.reset.video, s6.d0.video) && s6.reset.vw === null &&
+      near(s6.left.video, Math.max(s6.d0.video - 200, s6.d0.least)) && s6.left.vw === String(s6.left.video) &&
+      near(s6.kRight.video, Math.min(s6.d0.video + 24, most)) && near(s6.kShift.video, Math.min(s6.d0.video + 120, most)) &&
+      near(s6.kHome.video, s6.d0.least) && near(s6.kEnd.video, most) && near(s6.kEnd.pane, 360) && s6.aria[0] === s6.aria[2] &&
+      near(s6.kEnter.video, s6.d0.video) && s6.kEnter.vw === null &&
+      near(s6.up.tl, s6.d0.tl + 100) && s6.up.th === String(s6.up.tl) && near(s6.kDown.tl, s6.d0.tl + 76) &&
+      near(s6.tlReset.tl, s6.d0.tl) && s6.tlReset.th === null, JSON.stringify(s6));
   record("lane SCREEN: zero PAGE ERRORs", errs.length === 0, errs.slice(0, 5).join(" | "));
   await v.close();
 }

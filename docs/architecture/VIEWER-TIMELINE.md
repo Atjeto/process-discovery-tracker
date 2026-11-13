@@ -16,10 +16,14 @@ page does not scroll (`#view-session.on-timeline`, set by `renderer.js`
 lists scroll in the pane and the lanes in the timeline (`.tl-lanes`) under
 its first row. The timeline is 272 px high unless its divider was dragged
 (the stage keeps at least its min-height, the timeline giving way first);
-the video takes at most 58% of the stage's width and no more than the
-stage's height at 16:9 (container units of the stage), less when its
-divider was dragged. At 1366x768 that is a video 778 wide, a pane 552 x
-440 and a timeline 1366 x 272. Lane W2: a recording without a video, with
+the video takes 58% of the stage's width, or the stage's height at 16:9
+when that is less (container units of the stage), until its divider is
+moved: then the width it was given, either way at least 240 px (or what
+the video's header buttons need) and never so wide that the pane has less
+than 360 px. The picture (the video, or the screen from the screenshots)
+is contained in its pane, letterboxed, never cropped or stretched. At
+1366x768 the video project of the smokes shows a video 775 wide, a pane
+555 wide and a timeline 1366 x 272. Lane W2: a recording without a video, with
 screenshots, shows its screen at the clock's moment where the video would
 be, at the video's size (*The screen of a recording without a video*,
 below); one with no screenshot shows the line *No video linked* with
@@ -51,7 +55,7 @@ that says so; no divider.
 | [`stretch-keys.js`](../../viewer/stretch-keys.js) | Pure (lane W2): I and O, the pair they make (`press`) and the words they say. Unit-tested. |
 | [`lane-keys.js`](../../viewer/lane-keys.js) | Pure (lane W2): a lane as one Tab stop: its marks in time order (`timeOrder`), the mark the lane takes the focus on (`startAt`), where Left, Right, Home and End go (`stepTo`), a mark's name (`markName`). Unit-tested. |
 | [`shot-groups.js`](../../viewer/shot-groups.js) | Pure (lane W2): the screenshots close together drawn as one mark (`groupShots`, `markWidth`) and its tooltip. Unit-tested. |
-| [`layout-controls.js`](../../viewer/layout-controls.js) | The two dividers and the video modes. |
+| [`layout-controls.js`](../../viewer/layout-controls.js) | The two dividers (a drag, the keys, the usual size back, the sizes kept) and the video modes; its pure rules (`clampSplit`, `videoWidth`, `headWidth`, `ariaValues`, `keyTarget`) are unit-tested. |
 
 ## The one clock
 
@@ -616,13 +620,26 @@ is known and nothing after: the video's own time no longer shows there.
   still work. The zoom and the scroll persist per project folder in
   `pdt.timelineState`. On the first open of a project the timeline scrolls
   to the first transaction when it starts later.
-- **Resize**: `#resize-timeline`, between the stage and the timeline, sets
-  the timeline's height (`--tl-height`, 150 to 640 px, the stylesheet's 272
-  until dragged, `pdt.stage.timelineHeight`; dragged up, the timeline
-  grows); `#resize-video` the video's width (`--video-width`,
-  `pdt.stage.videoWidth`, kept at most 58% of the stage and its height at
-  16:9). The sizes the layout before lane SCREEN stored (`pdt.timelineHeight`,
-  `pdt.videoWidth`) are not read.
+- **Resize** (`layout-controls.js`, the Steps divider's shape:
+  `pane-splitter.js`): `#resize-video`, between the video and the pane, sets
+  the video pane's width (`--video-width`, `pdt.stage.videoWidth`);
+  `#resize-timeline`, between the stage and the timeline, the timeline's
+  height (`--tl-height`, `pdt.stage.timelineHeight`, the stylesheet's 272
+  until moved; moved up, the timeline grows). Each is a `role="separator"`
+  (`aria-label` "Video and pane", "Stage and timeline"; `aria-valuenow` the
+  video's or the stage's share in percent) with a 1 px line in `--fg-3` and
+  a grip seen at rest, a 12 px target and a focus ring. A drag follows the
+  pointer between the limits; Left and Right (Up and Down) move it 24 px,
+  96 px with Shift, Home and End to the limits; a double-click or Enter puts
+  the usual size back and forgets the stored one. The limits are the
+  stylesheet's on `.lower-workspace` (`--stage-video-least` 240 px,
+  `--stage-pane-min` 360 px; the video's header buttons raise the video's
+  least through `--video-head-w`, measured by `layout-controls.js`) and,
+  for the height, the stage's min-height and a timeline of 150 px. The
+  stylesheet clamps a stored width at any window width (the same rule as
+  `videoWidth`, unit-tested), so a size kept from a wider window gives way
+  and comes back when the window does. The sizes the layout before lane
+  SCREEN stored (`pdt.timelineHeight`, `pdt.videoWidth`) are not read.
 - **Raw events** (`.event-table-host`, only with events): one line under the
   timeline; opened, its table shows above that line (at most a third of the
   window high), the line staying where it was, the stage and then the

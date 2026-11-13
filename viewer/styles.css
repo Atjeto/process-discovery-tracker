@@ -448,9 +448,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
    the pane, the lanes in the timeline under its first row. The timeline is
    --tl-height high (272 px, or what its divider was dragged to,
    layout-controls.js), the stage takes the rest and never less than its
-   min-height, the timeline giving way first. The video takes at most 58%
-   of the stage's width and no more than its height at 16:9
-   (container units of the stage); --video-width is its divider's. */
+   min-height, the timeline giving way first. The video pane is
+   --video-width wide (its divider's, layout-controls.js), else 58% of the
+   stage's width or its height at 16:9 when that is less (container units
+   of the stage); either way at least --stage-video-min and never so wide
+   that the pane has less than --stage-pane-min, at any window width. */
 .session-layout { display: flex; flex-direction: column; gap: 10px; margin-top: 12px;
   flex: 1; }
 .view.on-timeline { padding: 0; overflow: hidden; }
@@ -474,10 +476,15 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 
 /* The stage: the video and the pane, side by side. */
 .lower-workspace { display: flex; gap: 0; align-items: stretch;
-  flex: 1 1 0; min-height: 200px; padding: 8px 12px 0; container-type: size; }
-.lower-workspace .video-pane { min-width: 200px;
-  flex: 0 0 min(var(--video-width, 100cqw), 58cqw, calc(100cqh * 16 / 9)); }
-.lower-workspace .annotations-pane { flex: 1 1 auto; min-width: 280px; }
+  flex: 1 1 0; min-height: 200px; padding: 8px 12px 0; container-type: size;
+  --stage-video-least: 240px; --stage-pane-min: 360px; --stage-handle: 12px;
+  /* The video pane is never narrower than its header's buttons need
+     (--video-head-w, measured by layout-controls.js). */
+  --stage-video-min: max(var(--stage-video-least), var(--video-head-w, 0px)); }
+.lower-workspace .video-pane { min-width: 0;
+  flex: 0 0 max(var(--stage-video-min),
+    min(var(--video-width, min(58cqw, calc(100cqh * 16 / 9))), calc(100cqw - var(--stage-handle) - var(--stage-pane-min)))); }
+.lower-workspace .annotations-pane { flex: 1 1 auto; min-width: 0; }
 /* The pane's lists scroll inside it instead of stretching the stage. */
 .lower-workspace:not(.no-recording) .annotations-pane { contain: size; }
 
@@ -607,7 +614,9 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .video-controls .vc-buttons { display: flex; gap: 4px; }
 .video-controls button { padding: 4px 6px; background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 3px; color: #c0c4d0;
-  cursor: pointer; display: flex; align-items: center; line-height: 0; }
+  cursor: pointer; display: flex; align-items: center; line-height: 0;
+  flex: 0 0 auto; white-space: nowrap; }
+.video-controls .vc-status { flex: 0 0 auto; }
 .video-controls button:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .video-controls button[hidden] { display: none; }
 /* Sync video..., a text button beside the two icon buttons. */
@@ -616,7 +625,6 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 /* Drag-resize handles */
 .resize-v { cursor: row-resize; height: 8px; width: 100%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; }
-.resize-h#resize-video { width: 12px; }
 .resize-v::after { content: ""; width: 36px; height: 3px; border-radius: 2px;
   background: var(--rule); transition: background 0.15s; }
 .resize-v:hover::after, .resize-v.dragging::after { background: var(--fg-4); }
@@ -625,6 +633,26 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: row; overflow: hid
 .resize-h::after { content: ""; width: 3px; height: 36px; border-radius: 2px;
   background: var(--rule); transition: background 0.15s; }
 .resize-h:hover::after, .resize-h.dragging::after { background: var(--fg-4); }
+/* The Timeline's two dividers (layout-controls.js): a line in --fg-3 (3:1
+   or more against the page, the pane and the video in both themes) with a
+   grip in its middle, at rest too; the accent while hovered, dragged or
+   focused, with the focus ring for the keyboard. The target is 12 px. */
+.lower-workspace > #resize-video { width: var(--stage-handle); position: relative; touch-action: none; }
+#session-layout-flow > #resize-timeline { height: 12px; position: relative; touch-action: none; }
+#resize-video::before, #resize-timeline::before { content: ""; position: absolute; background: var(--fg-3); }
+#resize-video::before { top: 0; bottom: 0; left: calc(50% - 0.5px); width: 1px; }
+#resize-timeline::before { left: 0; right: 0; top: calc(50% - 0.5px); height: 1px; }
+/* The divider's line is the timeline's edge while the divider shows. */
+#session-layout-flow:not(:has(> .lower-workspace.no-timeline)) > #resize-timeline + .timeline-pane { border-top-color: transparent; }
+#resize-video::after, #resize-timeline::after { position: relative; background: var(--fg-3);
+  box-shadow: 0 0 0 2px var(--bg); }
+#resize-video::after { width: 5px; height: 36px; border-radius: 3px; }
+#resize-timeline::after { width: 36px; height: 5px; border-radius: 3px; }
+#resize-video:hover::before, #resize-video:hover::after, #resize-video.dragging::before, #resize-video.dragging::after,
+#resize-video:focus-visible::before, #resize-video:focus-visible::after,
+#resize-timeline:hover::before, #resize-timeline:hover::after, #resize-timeline.dragging::before, #resize-timeline.dragging::after,
+#resize-timeline:focus-visible::before, #resize-timeline:focus-visible::after { background: var(--accent-2); }
+#resize-video:focus-visible, #resize-timeline:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
 /* The timeline's first row (lane SCREEN, plan section 11.3): one line, in
    the order the Tab key goes: Play, the clock, Add step, Start or End
    transaction, Add note (or, while a stretch is selected, its times and its

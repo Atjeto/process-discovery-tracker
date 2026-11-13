@@ -312,6 +312,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Timeline's dividers move both ways** (the owner: "a divider in
+  between that is adjustable"). The line between the video and the pane
+  follows a drag to either side, from the video's least width (240 px, or
+  what the video's buttons need) to the pane's least width (360 px): the
+  video is no longer held under 58% of the stage or its height at 16:9,
+  which made a drag to the right do nothing. The picture stays whole in
+  its pane, black bars where it is narrower. Both dividers, the other
+  between the stage and the timeline, are a line with a grip seen at rest,
+  are reached with Tab (Left and Right, or Up and Down, move them 24 px,
+  96 px with Shift; Home and End go to the ends), and a double-click or
+  Enter puts the usual size back. The sizes are remembered on this
+  computer, and a size kept from a wider window gives way to a narrower
+  one.
 - **The hand on the process map means "stays with a person"** (contract
   C25). A step added by hand with no system is a plain box now, not a box
   with the hand: the hand and the gear say what the automation does.

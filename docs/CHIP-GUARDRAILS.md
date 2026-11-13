@@ -386,6 +386,14 @@ menu's play item is *Play* (it read *Watch*).
   the window's full width at the bottom; `#view-session.on-timeline` (the
   page does not scroll there). `#video` has no `controls` (only during a
   sync's first step). There is no `#playback-bar`.
+- The dividers `#resize-video` and `#resize-timeline` are `role="separator"`
+  with `tabindex="0"` (Left and Right, or Up and Down, 24 px, Shift 96 px;
+  Home, End; Enter or a double-click puts the usual size back and removes
+  `localStorage["pdt.stage.videoWidth"]` or `["pdt.stage.timelineHeight"]`).
+  Drag with `page.mouse` from the divider's centre; measure
+  `#video-pane` and `#timeline-pane` widths, `#timeline-section` height.
+  The video pane keeps at least 240 px (or `--video-head-w` on
+  `#lower-workspace`), the pane at least 360 px.
 - The first row `#tl-row` (`.timeline-header`), in Tab order: `#btn-tl-play`
   (only with a video; `aria-label` "Play" or "Pause"), the clock
   `#btn-tl-clock` ("0:05 / 0:31"; a click shows the field `#tl-clock-field`,

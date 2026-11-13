@@ -229,7 +229,14 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
               <div class="video-overlay" id="video-overlay"></div>
             </div>
 
-            <div class="resize-h" id="resize-video" title="Drag to resize video width"></div>
+            <!-- The divider (layout-controls.js): drag it, or use Left, Right, Home
+                 and End while it has the focus (Shift for a longer step); a
+                 double-click or Enter gives the usual widths back. -->
+            <div class="resize-h" id="resize-video" role="separator" tabindex="0"
+                 aria-orientation="vertical" aria-controls="video-pane"
+                 aria-valuenow="58" aria-valuemin="0" aria-valuemax="100"
+                 aria-label="Video and pane"
+                 title="Drag to give the video or the pane more room."></div>
 
             <!-- Lane PANE (plan section 11.2): the pane beside the video, a tab for
                  each kind of thing (views/timeline-pane.js). The tabs are real tabs
@@ -266,8 +273,14 @@ try { require("./app-zoom.js").applyStored(); } catch (e) {}
           </div>
 
           <!-- Lane SCREEN (plan section 11.1): the divider between the stage and
-               the timeline (a drag shares the height between them). -->
-          <div class="resize-v" id="resize-timeline" title="Drag to give the video or the timeline more height"></div>
+               the timeline (a drag shares the height between them; Up, Down,
+               Home and End while it has the focus; a double-click or Enter
+               gives the usual heights back; layout-controls.js). -->
+          <div class="resize-v" id="resize-timeline" role="separator" tabindex="0"
+               aria-orientation="horizontal" aria-controls="lower-workspace"
+               aria-valuenow="60" aria-valuemin="0" aria-valuemax="100"
+               aria-label="Stage and timeline"
+               title="Drag to give the video or the timeline more height."></div>
 
           <!-- The timeline: the full width of the window at the bottom, always.
                Its first row (lane SCREEN, plan section 11.3) holds how to play
