@@ -17,7 +17,8 @@
  *   3. the PDD and the Technical details of this version, by the PDD's own
  *      path (renderer.js writeDocuments: the analysis first when the step map
  *      is older than the steps, then one run with --handoff N); where nothing
- *      was recorded and no step lists information (C26) the pipeline writes
+ *      was recorded and no step lists information (C26) or an exception (C27)
+ *      the pipeline writes
  *      no Technical details, and the zip goes out without them;
  *   4. the process map as a picture and as BPMN, by the two map exports'
  *      own paths (renderer.js writeHandoffMaps); none when no map can be
@@ -43,6 +44,7 @@ const Handoff = require("../handoff.js");
 const RO = require("../read-only.js");
 const AC = require("../analyst-content.js");
 const StepInfo = require("../step-information.js");
+const StepExc = require("../step-exceptions.js");
 const Readiness = require("../readiness.js");
 const { toast } = require("../dom.js");
 const { promptModal } = require("../modals.js");
@@ -175,9 +177,11 @@ async function openVersionFile(kind) {
 }
 
 /* Whether the pipeline writes the project's Technical details: something was
-   recorded, or (C26) a step lists information the analyst typed. Pure. */
+   recorded, or (C26) a step lists information the analyst typed, or (C27)
+   a step has an exception. Pure. */
 function holdsTechDetails(sess) {
-  return AC.hasRecording(sess) || StepInfo.anyEntries(((sess && sess.annotations) || {}).steps);
+  const steps = ((sess && sess.annotations) || {}).steps;
+  return AC.hasRecording(sess) || StepInfo.anyEntries(steps) || StepExc.anyEntries(steps);
 }
 
 /* The dialog's line on what the zip holds: the Technical details only where

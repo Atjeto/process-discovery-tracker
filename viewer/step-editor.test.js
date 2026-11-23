@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { describeInteraction, renderInteractionList, recordedHtml, recordedOpen, splitBlocker,
-  nameFieldHtml, activityListHtml, wireNameField, informationHtml, occurrencesHtml } = require("./step-editor.js");
+  nameFieldHtml, activityListHtml, wireNameField, informationHtml, occurrencesHtml, exceptionsHtml } = require("./step-editor.js");
 const Library = require("./library.js");
 
 /* ---- ADR-0027 regression guard ------------------------------------- */
@@ -345,7 +345,7 @@ test("2.0.1: the step editor in the order of the work: the head (with Play and S
   const order = ['<div class="step-head">', "${nameFieldHtml(step, callbacks.picker)}", 'step-state"', '<span class="step-code" id="step-code"',
     'id="step-facts"', "${callbacks.systemHtml", "${doneByHtml(step, callbacks)}", "${occurrencesHtml(callbacks)}", 'id="btn-step-watch"', 'id="btn-step-jump"',
     '<div class="step-write" id="step-doc">', '<textarea id="step-desc"', "${saidDuringStepHtml(", "${informationHtml(step, callbacks)}",
-    "${flowSectionHtml(", "${notNeededHtml(step, callbacks)}",
+    "${exceptionsHtml(step, callbacks)}", "${flowSectionHtml(", "${notNeededHtml(step, callbacks)}",
     "${callbacks.shotsHtml", '<div class="step-made">', "${recordedHtml(", '<div class="step-attached">'];
   for (let i = 1; i < order.length; i++) {
     assert.ok(at(order[i - 1]) >= 0 && at(order[i - 1]) < at(order[i]), "in order: " + order[i]);
@@ -386,6 +386,31 @@ test("C26: read only, the same rows as text and no acts; a step with neither sho
   const none = informationHtml({ step_id: "s3" }, {});
   assert.ok(none.includes(">Information</span>") && none.includes('id="btn-info-add"'), "the section and its add");
   assert.ok(!none.includes("info-head") && !none.includes("<ul"), "no header row without a row");
+});
+
+test("C27: the Exceptions section: the analyst's entries as two labelled fields with Remove, then Add exception", () => {
+  const step = { step_id: "s1", exceptions: [{ when: "The customer number is not found", then: "Search by name" }, { when: "The stock is empty" }] };
+  const html = exceptionsHtml(step, {});
+  assert.ok(html.includes('<span class="step-sect-title" id="step-exc-title">Exceptions</span>'), "its heading");
+  assert.ok(html.includes('role="group" aria-labelledby="step-exc-title"'));
+  for (const [id, word] of [["exc-col-when", "When"], ["exc-col-then", "What is done"]]) {
+    assert.ok(html.includes(`id="${id}">${word}</span>`), "the header row names " + word);
+  }
+  assert.ok(html.indexOf('data-i="1"') < html.indexOf('id="btn-exc-add"'), "the entries, then Add exception");
+  assert.ok(html.includes('id="exc-when-0" data-key="when" aria-labelledby="exc-col-when" maxlength="120" value="The customer number is not found"'));
+  assert.ok(html.includes('id="exc-then-1" data-key="then" aria-labelledby="exc-col-then" maxlength="200" value=""'));
+  assert.equal((html.match(/title="Removes this exception\.">Remove<\/button>/g) || []).length, 2, "Remove on each entry");
+  assert.ok(html.includes('title="Adds what happens when something goes wrong at this step, and what is done.">Add exception</button>'));
+});
+
+test("C27: read only, the entries as text and no acts; a step with none shows Add exception only", () => {
+  const step = { step_id: "s2", exceptions: [{ when: "The stock is empty", then: "Order from the supplier" }] };
+  const ro = exceptionsHtml(step, { readOnly: true });
+  assert.ok(!ro.includes("<input") && !ro.includes("btn-exc-add") && !ro.includes("exc-remove"), "no field and no act");
+  assert.ok(ro.includes(">The stock is empty</span>") && ro.includes(">Order from the supplier</span>"));
+  const none = exceptionsHtml({ step_id: "s3" }, {});
+  assert.ok(none.includes(">Exceptions</span>") && none.includes('id="btn-exc-add"'), "the section and its add");
+  assert.ok(!none.includes("exc-head") && !none.includes("<ul"), "no header row without a row");
 });
 
 test("lane D6: in two transactions or more, the facts' \"in N of M transactions\" is a link to the step panel; on the Timeline it is text", () => {

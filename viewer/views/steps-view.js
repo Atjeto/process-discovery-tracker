@@ -82,6 +82,8 @@ const ShowHere = require("../show-here.js");
 const LeftOut = require("../left-out.js");
 const StepScope = require("../step-scope.js");
 const StepInfo = require("../step-information.js");
+// C27: the exceptions of a step.
+const StepExc = require("../step-exceptions.js");
 
 const OUTSIDE = RunsModel.OUTSIDE;
 
@@ -1233,6 +1235,10 @@ function stepDetailCallbacks(selected, interactionsById) {
     onInfoAdd: (id, entry) => _infoEdit(id, "add information", (s) => StepInfo.addEntry(s, entry)),
     onInfoField: (id, i, key, value) => _infoField(id, i, key, value),
     onInfoRemove: (id, i) => _infoEdit(id, "remove information", (s) => StepInfo.removeEntry(s, i)),
+    // C27: the exceptions of the step, each change one undoable edit.
+    onExcAdd: (id, entry) => _infoEdit(id, "add an exception", (s) => StepExc.addEntry(s, entry)),
+    onExcField: (id, i, key, value) => _excField(id, i, key, value),
+    onExcRemove: (id, i) => _infoEdit(id, "remove an exception", (s) => StepExc.removeEntry(s, i)),
     // Lane HV: a hand-off opened read only shows its recorded actions open.
     readOnly: RO.isReadOnly(State.getSession()),
     // C16: the System field (first on the line of facts), the step's
@@ -1289,7 +1295,8 @@ function _keepsTyping(id) {
   return id === "step-name" || id === "step-desc" || id === "step-system" || id === "step-done-by" ||
     id === "step-start" || id === "step-end" ||
     id === "step-only-when" || /^flow-link-when-\d+$/.test(id) ||
-    /^info-(name|example|where)-(\d+|new)$/.test(id);   // C26
+    /^info-(name|example|where)-(\d+|new)$/.test(id) ||   // C26
+    /^exc-(when|then)-(\d+|new)$/.test(id);   // C27
 }
 
 /* Draw the step editor for `step` into `host`: the Steps level's pane
@@ -1514,6 +1521,15 @@ async function _infoField(stepId, i, key, value) {
   const saved = await _infoEdit(stepId, key === "name" && !String(value || "").trim() ? "remove information" : "change information",
     (s) => { result = StepInfo.setField(s, i, key, value); return !!result; });
   if (saved && result === "removed") toast(StepInfo.WORDS.emptyName, "info");
+}
+
+/* C27: a field of an exception changed (one undoable edit, as C26's); an
+   entry whose When was emptied goes, and the message says so. */
+async function _excField(stepId, i, key, value) {
+  let result = "";
+  const saved = await _infoEdit(stepId, key === "when" && !String(value || "").trim() ? "remove an exception" : "change an exception",
+    (s) => { result = StepExc.setField(s, i, key, value); return !!result; });
+  if (saved && result === "removed") toast(StepExc.WORDS.emptyWhen, "info");
 }
 
 /* The toast's sentence when taking steps out dropped the links that went to
@@ -1914,6 +1930,7 @@ async function splitStep(stepId, after) {
   // C17: the condition stays with the first half, the links leave the second.
   StepFlow.splitFlow(first, second);
   StepInfo.splitInformation(first, second);   // C26: the lines stay with the first half
+  StepExc.splitExceptions(first, second);   // C27: the exceptions too
   loc.list.splice(loc.list.indexOf(s), 1, first, second);
   _splitPlace(first, second, true);   // C22
   await persistAnnotations(anno, 'split step');
@@ -2035,6 +2052,7 @@ function _stepAt(t, dry) {
     }
     StepFlow.splitFlow(first, second);   // C17, as in splitStep
     StepInfo.splitInformation(first, second);   // C26, as in splitStep
+    StepExc.splitExceptions(first, second);   // C27, as in splitStep
     place.list.splice(place.index, 1, first, second);
     // C22: a step of the analyst's cut here is the step being marked and
     // the new one the next step, which its time places; a recorded step's two
@@ -2639,6 +2657,8 @@ function mergeStepObjects(toMerge) {
   if (keys) merged.draft_keys = keys;
   // C26: every member's lines, once each.
   StepInfo.putJoined(merged, toMerge);
+  // C27: every member's exceptions, once each.
+  StepExc.putJoined(merged, toMerge);
   const links = StepFlow.mergedLinks(toMerge);
   if (links.length) merged.links = links; else delete merged.links;
   return merged;

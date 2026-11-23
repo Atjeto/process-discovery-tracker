@@ -1998,6 +1998,58 @@ function xlsxRows(files, sheetName) {
       await wait(600);
       I.disk = (readJson(path.join(EPROJ, "annotations.json")).steps || []).filter((x) => Array.isArray(x.information))
         .map((x) => ({ id: x.step_id, state: x.state, info: x.information }));
+      // C27 (lane EX): an exception written on the second step, read back
+      // from the disk; Ctrl+Z takes it away and Ctrl+Y brings it back.
+      const X = (E.exc = {});
+      const excOf = (sid) => page.evaluate((s) => {
+        const st = (require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === s);
+        return st && Array.isArray(st.exceptions) ? st.exceptions : [];
+      }, sid);
+      const excCount = (sid, n) => page.waitForFunction(([s, k]) => {
+        const st = (require("./state.js").getSession().annotations.steps || []).find((x) => x.step_id === s);
+        return ((st && st.exceptions) || []).length === k;
+      }, [sid, n], { timeout: T });
+      const diskExc = (sid) => ((readJson(path.join(EPROJ, "annotations.json")).steps || []).find((x) => x.step_id === sid) || {}).exceptions || null;
+      X.empty = await page.evaluate(() => {
+        const sect = document.getElementById("step-exc");
+        const add = document.getElementById("btn-exc-add");
+        const info = document.getElementById("step-info");
+        return sect ? { head: (document.getElementById("step-exc-title") || {}).textContent, rows: sect.querySelectorAll(".exc-row").length,
+          add: add ? add.textContent : null, addTitle: add ? add.title : null,
+          afterInfo: !!info && !!(info.compareDocumentPosition(sect) & Node.DOCUMENT_POSITION_FOLLOWING) } : null;
+      });
+      await page.click("#btn-exc-add");
+      await page.waitForSelector("#exc-when-new", { timeout: T });
+      X.focus = await page.evaluate(() => (document.activeElement || {}).id || "");
+      await page.keyboard.type("The stock is empty");
+      await page.keyboard.press("Tab");
+      await page.keyboard.type("Order from the supplier");
+      await page.keyboard.press("Enter");
+      await excCount(E.selected[1], 1);
+      await wait(600);
+      X.editor = await page.evaluate(() => {
+        const sect = document.getElementById("step-exc");
+        const label = (el) => (document.getElementById(el.getAttribute("aria-labelledby") || "") || {}).textContent || "";
+        return {
+          cols: [...sect.querySelectorAll(".exc-head .exc-col")].map((c) => c.textContent),
+          rows: [...sect.querySelectorAll(".exc-row[data-i]")].map((row) => [...row.querySelectorAll("input")].map((i) => i.value)),
+          labels: [...sect.querySelectorAll(".exc-row[data-i] input")].map(label),
+          remove: [...sect.querySelectorAll(".exc-remove")].map((b) => [b.textContent, b.title]),
+        };
+      });
+      X.disk = diskExc(E.selected[1]);
+      await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); return true; });
+      await wait(300);
+      await page.keyboard.press("Control+z");
+      await excCount(E.selected[1], 0);
+      await wait(600);
+      X.undone = diskExc(E.selected[1]);
+      X.undoneRows = await page.evaluate(() => document.querySelectorAll("#step-exc .exc-row[data-i]").length);
+      await page.keyboard.press("Control+y");
+      await excCount(E.selected[1], 1);
+      await wait(600);
+      X.redone = diskExc(E.selected[1]);
+      X.mem = await excOf(E.selected[1]);
       // The PDD, exported: section 5 names the lines under their systems,
       // each step its "Information:" line, and no example is printed.
       const pddFiles = await exportPdd("call-info");
@@ -2005,6 +2057,11 @@ function xlsxRows(files, sheetName) {
       I.pdd = { five: pddDoc.rows.filter((r) => /^(System|SAP|Not in a system) \| /.test(r)),
         lines: pddDoc.paras.filter((t) => t.startsWith("Information: ")),
         examples: ["10482", "Sold-to party", "2026-11-20"].filter((x) => pddDoc.paras.concat(pddDoc.rows).some((t) => t.includes(x))) };
+      // C27: the step's line, after its Information line, and 4.x's paragraph.
+      X.pdd = { lines: pddDoc.paras.filter((t) => t.startsWith("Exception: ")),
+        afterInfo: pddDoc.paras.indexOf("Exception: The stock is empty: Order from the supplier.") ===
+          pddDoc.paras.indexOf("Information: Delivery date.") + 1,
+        section: pddDoc.paras.filter((t) => t.startsWith("Step 2, Enter the order: when ")) };
       await level("overview");
       E.written = await checklist();
       for (const [key, value] of Object.entries(FULL)) await docField(key, value);
@@ -2045,10 +2102,16 @@ function xlsxRows(files, sheetName) {
         const sheet = xlsxRows(zipFiles(files["Order to cash call v1 Technical details.xlsx"]), "Information");
         E.sheets = sheet.names;
         E.infoSheet = sheet.rows;
+        // C27: the Exceptions sheet, after Information.
+        E.excSheet = xlsxRows(zipFiles(files["Order to cash call v1 Technical details.xlsx"]), "Exceptions").rows;
       }
       if (files["Order to cash call v1 PDD.docx"]) {
         const d = docxText(zipFiles(files["Order to cash call v1 PDD.docx"]));
         E.zipPdd = { five: d.rows.filter((r) => /^(System|SAP|Not in a system) \| /.test(r)), lines: d.paras.filter((t) => t.startsWith("Information: ")) };
+        // C27: 4.x prints the document's field, then the step's exception.
+        const field = d.paras.indexOf(FULL.exceptions);
+        E.zipExc = { lines: d.paras.filter((t) => t.startsWith("Exception: ")),
+          section: field >= 0 ? d.paras.slice(field, field + 2) : null };
       }
       E.note = files["Start here.txt"] ? files["Start here.txt"].toString("utf8") : "";
       E.wantNote = entry ? require(path.join(VIEWER, "handoff.js")).startHereText({ base: "Order to cash call", version: 1, entry,
@@ -2127,6 +2190,35 @@ function xlsxRows(files, sheetName) {
         ["Step 1: Take the call", "Order lines", "2", "", "Typed by the analyst"],
         ["Step 2: Enter the order", "Delivery date", "2026-11-20", "", "Typed by the analyst"]]),
       JSON.stringify({ sheets: E.sheets, rows: E.infoSheet }));
+    // C27 (lane EX): the exceptions of a step.
+    const X = E.exc || {};
+    const excWant = [{ when: "The stock is empty", then: "Order from the supplier" }];
+    record("(E11) C27: Steps' editor has an Exceptions section after Information: with nothing yet, its heading and Add exception (its tooltip) only; Add exception opens a row with its When focused",
+      !E.err && !!X.empty && X.empty.head === "Exceptions" && X.empty.rows === 0 && X.empty.add === "Add exception" &&
+      X.empty.addTitle === "Adds what happens when something goes wrong at this step, and what is done." && X.empty.afterInfo &&
+      X.focus === "exc-when-new",
+      JSON.stringify({ empty: X.empty, focus: X.focus }));
+    record("(E12) C27: an exception typed and saved on Enter: two fields under When and What is done (each labelled by its column), Remove (its tooltip); on the disk as typed; Ctrl+Z takes it away from the disk and the editor, Ctrl+Y brings it back",
+      !E.err && !!X.editor && JSON.stringify(X.editor.cols) === JSON.stringify(["When", "What is done", ""]) &&
+      JSON.stringify(X.editor.rows) === JSON.stringify([["The stock is empty", "Order from the supplier"]]) &&
+      JSON.stringify(X.editor.labels) === JSON.stringify(["When", "What is done"]) &&
+      JSON.stringify(X.editor.remove) === JSON.stringify([["Remove", "Removes this exception."]]) &&
+      JSON.stringify(X.disk) === JSON.stringify(excWant) && X.undone === null && X.undoneRows === 0 &&
+      JSON.stringify(X.redone) === JSON.stringify(excWant) && JSON.stringify(X.mem) === JSON.stringify(excWant),
+      JSON.stringify({ editor: X.editor, disk: X.disk, undone: X.undone, undoneRows: X.undoneRows, redone: X.redone }));
+    const excLine = "Exception: The stock is empty: Order from the supplier.";
+    const excPara = "Step 2, Enter the order: when the stock is empty, order from the supplier.";
+    record("(E13) C27: the exported PDD prints the exception under its step after its Information line and in 4.x Exceptions; the hand-off's PDD prints it after the document's field",
+      !E.err && !!X.pdd && JSON.stringify(X.pdd.lines) === JSON.stringify([excLine]) && X.pdd.afterInfo &&
+      JSON.stringify(X.pdd.section) === JSON.stringify([excPara]) && !!E.zipExc &&
+      JSON.stringify(E.zipExc.lines) === JSON.stringify([excLine]) &&
+      JSON.stringify(E.zipExc.section) === JSON.stringify([FULL.exceptions, excPara]),
+      JSON.stringify({ pdd: X.pdd, zip: E.zipExc }));
+    record("(E14) C27: the hand-off's Technical details have an Exceptions sheet after Information (Step, When, What is done), the exception as typed",
+      !E.err && Array.isArray(E.sheets) && E.sheets.indexOf("Exceptions") === E.sheets.indexOf("Information") + 1 &&
+      JSON.stringify(E.excSheet) === JSON.stringify([["Step", "When", "What is done"],
+        ["Step 2: Enter the order", "The stock is empty", "Order from the supplier"]]),
+      JSON.stringify({ sheets: E.sheets, rows: E.excSheet }));
   }
   } // end of D.
 

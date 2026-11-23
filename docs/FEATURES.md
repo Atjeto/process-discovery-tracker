@@ -450,7 +450,8 @@ The viewer says *transaction* for one pass through the process and
   under one step, with *Add*; *Information* (C26): the fields recorded in
   the step, marked *Recorded*, then the analyst's lines, each
   *Information*, *Example* and *Where it goes* with *Remove*, and *Add
-  information*; the Flow line; the tick *No longer needed* (the waste flag;
+  information*; *Exceptions* (C27): the analyst's entries, each *When* and
+  *What is done* with *Remove*, and *Add exception*; the Flow line; the tick *No longer needed* (the waste flag;
   in a project opened read only its words when ticked)); the screenshots, the
   one the PDD prints marked; *Recorded* (the actions with the control each
   acted on, the scissors to split), open or closed as you last left it; the

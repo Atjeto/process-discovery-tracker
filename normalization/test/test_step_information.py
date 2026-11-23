@@ -290,8 +290,8 @@ def test_the_information_sheet_of_a_recording_lists_the_recorded_fields_with_the
     wrote, out = _tech(tmp_path, _recording(typed=False))
     assert wrote is True
     names, rows = _sheet_rows(out, "Information")
-    assert names == ["About", "Steps and controls", "Information", "Data fields", "Re-keyed values",
-                     "Applications"]
+    assert names == ["About", "Steps and controls", "Information", "Exceptions", "Data fields",
+                     "Re-keyed values", "Applications"]
     assert rows[0] == ["Step", "Information", "Example", "Where it goes", "From"]
     assert [r[:3] + [r[4]] for r in rows[1:]] == [
         ["Step 1: Find the customer", "Customer number", "10482", "Recorded"],

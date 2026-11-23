@@ -29,7 +29,7 @@
  *       folder (its annotations.json with the version entry) and, at its
  *       root, "Order entry v1 PDD.docx" (Document control reads "Version 1,
  *       handed off <date> by <user>" over a Version history table of one
- *       row), "Order entry v1 Technical details.xlsx" (its six sheets;
+ *       row), "Order entry v1 Technical details.xlsx" (its seven sheets;
  *       C26: its Information sheet holds the recorded fields the step
  *       editor shows as Recorded rows in (a2)),
  *       "Order entry v1 map.svg", "Order entry v1 map.bpmn" and "Start
@@ -629,8 +629,8 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
       pdd.text.includes("The files are in the " + root + "attachments folder beside this document"),
       JSON.stringify(docxLinks(files["Order entry v1 PDD.docx"])));
     const x = xlsxInfo(files["Order entry v1 Technical details.xlsx"]);
-    record("(a) its Technical details hold the six sheets (C26: Information after Steps and controls), and the About sheet names the version",
-      JSON.stringify(x.names) === JSON.stringify(["About", "Steps and controls", "Information", "Data fields", "Re-keyed values", "Applications"]) &&
+    record("(a) its Technical details hold the seven sheets (C26: Information after Steps and controls; C27: Exceptions after it), and the About sheet names the version",
+      JSON.stringify(x.names) === JSON.stringify(["About", "Steps and controls", "Information", "Exceptions", "Data fields", "Re-keyed values", "Applications"]) &&
       x.text(1).includes(line1) && x.text(2).includes("Step 1"), x.names.join(", "));
     // C26: the Information sheet holds the recorded fields the editor shows.
     if (scope) {
@@ -759,7 +759,7 @@ const visibleEditing = (page) => page.evaluate((sels) => sels.filter((s) =>
     await waitFor(() => fs.existsSync(tech) && fs.statSync(tech).size > 0, 120000, 300);
     const x = xlsxInfo(fs.readFileSync(tech));
     record("(c) Export, Technical details (.xlsx) writes the workbook on its own, a working copy",
-      x.names.length === 6 && x.names[2] === "Information" && x.text(1).includes("Working copy after version 2") &&
+      x.names.length === 7 && x.names[2] === "Information" && x.text(1).includes("Working copy after version 2") &&
         (await shown()).includes(tech), x.names.join(", "));
   } catch (e) { record("(c) exports between hand-offs", false, errText(e)); }
   await nativeCheck(v.app, "(c)");

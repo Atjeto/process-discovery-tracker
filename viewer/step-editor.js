@@ -12,6 +12,8 @@
   const { NOT_NEEDED_TITLE, NOT_NEEDED_LABEL } = StepScope;
   // C26: the information the step uses or enters.
   const StepInfo = require("./step-information.js");
+  // C27: the exceptions of the step.
+  const StepExc = require("./step-exceptions.js");
   const EMPTY_NAME = "A step needs a name, so the name it had is back.";
   // C21: the activities the name field's picker keeps as the analyst types.
   const { filterActivities } = require("./library.js");
@@ -320,7 +322,8 @@
          its hint: the actions are under Recorded) with what was said during
          the step under it (C8), each sentence with Add, Information (C26:
          `informationHtml`, the recorded fields, then the analyst's lines,
-         each change one undoable edit), the Flow line (C17:
+         each change one undoable edit), Exceptions (C27: `exceptionsHtml`,
+         the analyst's entries, each change one undoable edit), the Flow line (C17:
          Only when and Decision, each a sentence of fields) and No longer
          needed (C25: the tick that keeps the waste flag; read only, its
          words when ticked, nothing when not);
@@ -374,6 +377,7 @@
           <label class="step-field">Description <textarea id="step-desc" placeholder="${escapeAttr(DESC_HINT)}">${escapeHtml(desc)}</textarea></label>
           ${saidDuringStepHtml(callbacks.transcriptSaid, desc)}
           ${informationHtml(step, callbacks)}
+          ${exceptionsHtml(step, callbacks)}
           ${flowSectionHtml(step, callbacks.flow)}
           ${notNeededHtml(step, callbacks)}
         </div>
@@ -422,6 +426,7 @@
     wireDoneBy(host.querySelector("#step-done-by"), step, callbacks);
     wireSaidDuringStep(host, callbacks.transcriptSaid, commitDesc);
     wireInformation(host, step, callbacks);
+    wireExceptions(host, step, callbacks);
     wireFlow(host, step, callbacks);
     // C16: the System field, the screenshots, notes and attachments.
     if (callbacks.wireExtras) callbacks.wireExtras(host, () => _rendering);
@@ -619,6 +624,155 @@
     if (_infoFocus && _infoFocus.stepId === id) {
       const el = sect.querySelector("#" + _infoFocus.id);
       if (el) { _infoFocus = null; el.focus(); }
+    }
+  }
+
+  /* C27: the Exceptions section, after Information: the analyst's entries,
+     each a row of two fields (When, What is done) with Remove; then Add
+     exception. A header row names the columns, and each field is labelled
+     by its column (aria-labelledby). It works as the Information section
+     does (C26): a field saves when it is left or on Enter, Escape puts back
+     what it held; an entry whose When is emptied goes (the steps view says
+     so). Add exception opens a row that is kept once it has a When, when the
+     focus leaves the row or on Enter (Escape closes it); until then a redraw
+     keeps what was typed in it. Read only: the rows as text, no acts. The
+     steps view makes each add, change or remove one undoable edit
+     (callbacks.onExcAdd, onExcField, onExcRemove). */
+  let _excOpen = { stepId: null, adding: false, draft: {} };
+  let _excFocus = null;   // { stepId, id }: a part to focus once drawn
+  function _excOpenFor(step) {
+    if (_excOpen.stepId !== step.step_id) {
+      _excOpen = { stepId: step.step_id, adding: false, draft: {} };
+      _excFocus = null;
+    }
+    return _excOpen;
+  }
+  const EXC_IDS = { when: "exc-when", then: "exc-then" };
+  const EXC_COLS = { when: "exc-col-when", then: "exc-col-then" };
+
+  function _excTextRow(e) {
+    const cell = (v) => `<span class="exc-cell" title="${escapeAttr(v || "")}">${escapeHtml(v || "")}</span>`;
+    return `<li class="exc-row">` + cell(e.when) + cell(e.then) + `<span class="exc-col"></span></li>`;
+  }
+  function _excEditRow(key, e) {
+    const field = (k) => `<input type="text" class="exc-input" id="${EXC_IDS[k]}-${key}" data-key="${k}" aria-labelledby="${EXC_COLS[k]}"` +
+      ` maxlength="${k === "when" ? StepExc.WHEN_MAX : StepExc.THEN_MAX}" value="${escapeAttr(e[k] || "")}" autocomplete="off">`;
+    return `<li class="exc-row${key === "new" ? " pending" : ""}" data-i="${key}">` + field("when") + field("then") +
+      `<button type="button" class="link-btn exc-remove" title="${escapeAttr(StepExc.WORDS.removeTitle)}">${escapeHtml(StepExc.WORDS.remove)}</button></li>`;
+  }
+
+  function exceptionsHtml(step, callbacks) {
+    if (!step) return "";
+    const W = StepExc.WORDS;
+    const entries = StepExc.entriesOf(step);
+    const ro = !!(callbacks && callbacks.readOnly);
+    const open = ro ? { adding: false, draft: {} } : _excOpenFor(step);
+    let rows = ro ? entries.map((e) => _excTextRow(e)).join("") : entries.map((e, i) => _excEditRow(String(i), e)).join("");
+    if (open.adding) rows += _excEditRow("new", open.draft);
+    const head = rows
+      ? `<div class="exc-row exc-head"><span class="exc-col" id="${EXC_COLS.when}">${escapeHtml(W.when)}</span>` +
+        `<span class="exc-col" id="${EXC_COLS.then}">${escapeHtml(W.then)}</span><span class="exc-col"></span></div>` +
+        `<ul class="exc-rows" id="step-exc-rows">${rows}</ul>`
+      : "";
+    const add = ro ? "" : `<button type="button" class="link-btn" id="btn-exc-add" title="${escapeAttr(W.addTitle)}">${escapeHtml(W.add)}</button>`;
+    return `<div class="step-sect step-exc" id="step-exc" role="group" aria-labelledby="step-exc-title">` +
+      `<div class="step-sect-head"><span class="step-sect-title" id="step-exc-title">${escapeHtml(W.heading)}</span></div>` +
+      head + add + `</div>`;
+  }
+
+  /* Wire the Exceptions section just drawn (wireInformation's pattern). */
+  function wireExceptions(host, step, callbacks) {
+    const sect = host.querySelector("#step-exc");
+    if (!sect || callbacks.readOnly) return;
+    const open = _excOpenFor(step);
+    const id = step.step_id;
+    const redraw = () => {
+      const cur = host.querySelector("#step-exc");
+      if (!cur) return;
+      _rendering = true;
+      try {
+        const box = document.createElement("div");
+        box.innerHTML = exceptionsHtml(step, callbacks);
+        cur.replaceWith(box.firstElementChild);
+      } finally { _rendering = false; }
+      wireExceptions(host, step, callbacks);
+    };
+    const live = (el) => !_rendering && el && el.isConnected;
+    const close = () => { open.adding = false; open.draft = {}; };
+    const addBtn = sect.querySelector("#btn-exc-add");
+    if (addBtn) addBtn.addEventListener("click", () => {
+      if (!open.adding) { open.adding = true; open.draft = {}; }
+      _excFocus = { stepId: id, id: EXC_IDS.when + "-new" };
+      redraw();
+    });
+    for (const row of sect.querySelectorAll(".exc-row[data-i]")) {
+      const key = row.dataset.i;
+      const inputs = Array.from(row.querySelectorAll(".exc-input"));
+      if (key === "new") {
+        // The row being added: kept once it has a When, when the focus
+        // leaves the row or on Enter; Escape closes it.
+        let done = false;
+        const commit = (byKey) => {
+          if (done || !live(row)) return;
+          const entry = {};
+          for (const el of inputs) entry[el.dataset.key] = el.value;
+          if (!StepExc.cleanEntry(entry)) {
+            // No When: a row left with nothing in it closes; one with text
+            // waits for its When.
+            if (!inputs.some((el) => el.value.trim())) { done = true; close(); redraw(); }
+            return;
+          }
+          done = true;
+          close();
+          if (byKey) _excFocus = { stepId: id, id: "btn-exc-add" };
+          if (callbacks.onExcAdd) callbacks.onExcAdd(id, entry);
+        };
+        for (const el of inputs) {
+          el.addEventListener("input", () => { open.draft[el.dataset.key] = el.value; });
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(true); }
+            else if (e.key === "Escape") {
+              e.preventDefault();
+              done = true;
+              close();
+              _excFocus = { stepId: id, id: "btn-exc-add" };
+              redraw();
+            }
+          });
+        }
+        row.addEventListener("focusout", (e) => {
+          if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+          commit(false);
+        });
+        row.querySelector(".exc-remove").addEventListener("click", () => {
+          done = true;
+          close();
+          _excFocus = { stepId: id, id: "btn-exc-add" };
+          redraw();
+        });
+        continue;
+      }
+      const i = parseInt(key, 10);
+      for (const el of inputs) {
+        const shown = el.value;
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+          else if (e.key === "Escape") { e.preventDefault(); el.value = shown; if (callbacks.onTimeline) el.blur(); }
+        });
+        el.addEventListener("blur", () => {
+          if (!live(el)) return;
+          const v = el.value.replace(/\s+/g, " ").trim();
+          if (v === shown.replace(/\s+/g, " ").trim()) return;
+          if (callbacks.onExcField) callbacks.onExcField(id, i, el.dataset.key, el.value);
+        });
+      }
+      row.querySelector(".exc-remove").addEventListener("click", () => {
+        if (callbacks.onExcRemove) callbacks.onExcRemove(id, i);
+      });
+    }
+    if (_excFocus && _excFocus.stepId === id) {
+      const el = sect.querySelector("#" + _excFocus.id);
+      if (el) { _excFocus = null; el.focus(); }
     }
   }
 
@@ -1219,5 +1373,7 @@
     nameFieldHtml, activityListHtml, wireNameField, DESC_HINT,
     // C26 and lane D6, for the tests.
     informationHtml, occurrencesHtml,
+    // C27, for the tests.
+    exceptionsHtml,
   };
 })();

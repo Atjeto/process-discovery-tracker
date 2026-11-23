@@ -53,8 +53,8 @@ from pm4py.objects.log.obj import Event, EventLog, Trace
 
 import step_flow
 from _dt import parse_ts as _parse_ts  # public re-export
-from step_context import (fmt_ms, process_order, step_done_by, step_duration_ms, step_sort_key,
-                          step_system)
+from step_context import (fmt_ms, process_order, step_done_by, step_duration_ms, step_exceptions,
+                          step_sort_key, step_system)
 
 
 def _start_key(step: dict[str, Any]) -> tuple[int, float]:
@@ -621,6 +621,26 @@ def _notes_of(anno: dict[str, Any], steps: list[dict[str, Any]]) -> str:
     return "\n".join(texts)
 
 
+def _exceptions_of(steps: list[dict[str, Any]]) -> tuple[str, str]:
+    """(text, documentation) of the exceptions the analyst wrote on these
+    steps (contract C27, step_context.step_exceptions) in the steps' order,
+    then each step's, an entry written twice once: "Exception: <when>" per
+    entry on its own line (the `then` is not drawn), and the whole of each,
+    "When <when>: <then>", for the click; ("", "") when none."""
+    seen: set[tuple[str, str]] = set()
+    shown: list[str] = []
+    whole: list[str] = []
+    for s in steps:
+        for e in step_exceptions(s):
+            key = (e["when"], e["then"])
+            if key in seen:
+                continue
+            seen.add(key)
+            shown.append(f"Exception: {e['when']}")
+            whole.append(f"When {e['when']}: {e['then']}" if e["then"] else f"When {e['when']}")
+    return "\n".join(shown), "\n".join(whole)
+
+
 def _file_name(value: Any) -> str:
     """The file name of an attachment's `file` without any folder part, or ""
     when it is not a usable name (the PDD's rule, C16)."""
@@ -706,12 +726,16 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
     no system label. Contract C25: who does a task (_done_by_of) is a label
     under it (`done_by`), said once for the map (`map_done_by`) by the same
     rule. `waste` holds the tasks a step of which is flagged as waste
-    (_wasted), each of them, as the live map marks its box (lane FX3)."""
+    (_wasted), each of them, as the live map marks its box (lane FX3).
+    Contract C27: a task's steps' exceptions (_exceptions_of) are one text
+    annotation under it (`exceptions`), on the first task of a label as its
+    notes are."""
     from pm4py.objects.bpmn.obj import BPMN
     task_tags: dict[int, str] = {}
     systems: dict[int, str] = {}
     done_by: dict[int, str] = {}
     notes: dict[int, tuple[str, str | None]] = {}
+    exceptions: dict[int, tuple[str, str]] = {}
     data: dict[int, list[tuple[str, str, str]]] = {}
     waste: set[int] = set()
     done: set[str] = set()
@@ -732,6 +756,9 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
         if label in done:
             continue
         done.add(label)
+        shown, whole = _exceptions_of(steps)
+        if shown:
+            exceptions[id(node)] = (shown, whole)
         text = _notes_of(anno, steps)
         if text:
             shown = _cut(text, _NOTE_MAX)
@@ -743,7 +770,7 @@ def _extras_of(anno: dict[str, Any], model: Any, by_label: dict[str, list[dict[s
     done_by, map_done_by = _said_once(done_by)
     return {"task_tags": task_tags, "systems": systems, "map_system": map_system,
             "done_by": done_by, "map_done_by": map_done_by,
-            "notes": notes, "data": data, "waste": waste}
+            "notes": notes, "exceptions": exceptions, "data": data, "waste": waste}
 
 
 # ---- contract C19: a map per sub-process, each a plane of the one file ----------

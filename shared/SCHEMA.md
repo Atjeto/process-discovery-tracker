@@ -835,6 +835,7 @@ delete.
   "automation": "string, optional, no longer written: undecided|automated|person|not_needed, kept untouched; \"not_needed\" without a waste flag reads as No longer needed (C25 as amended)",
   "done_by": "string, optional: a role or a person who does the step, at most 80 characters (C25)",
   "information": [{ "name": "string, required, at most 80 characters", "example": "string, optional, at most 120", "goes_to": "string, optional, at most 120" }],
+  "exceptions": [{ "when": "string, required, at most 120 characters", "then": "string, optional, at most 200" }],
   "sub_steps": ["step entities, the same shape, recursively: the step is a sub-process (C19)"],
   "group": "true on a group of steps made into a sub-process (C19), else absent",
   "evidence": {
@@ -1086,6 +1087,28 @@ system in section 5, and one line "Information: ..." under a step; the
 Technical details list every line and every recorded field, with its
 example, on their *Information* sheet, and are written for a project without
 a recording once a step lists information.
+
+**The exceptions of a step (contract C27).** One viewer-written key,
+optional, set in the step editor's *Exceptions* section (after
+*Information*), at any level (a sub-step carries it the same way):
+
+- **`exceptions`**: `[{ "when", "then" }]`, the analyst's entries in the
+  analyst's order, for example `{ "when": "The customer number is not
+  found", "then": "Search the customer by name and create it first" }`.
+  `when` is required (one line, at most 120 characters); `then` is optional
+  (one line, at most 200, the key left out when empty). An entry whose
+  `when` is empty is not kept, and a step with no entry has no key
+  (`viewer/step-exceptions.js` `entriesOf`, `normalization/step_context.py`
+  `step_exceptions`).
+
+A draft that gets, changes or loses an entry becomes `edited` (the viewer
+does it); the pipeline never writes the key and round-trips it untouched.
+The PDD prints each entry under its step ("Exception: <when>: <then>.") and
+in its *Exceptions* section after the document's field; the step map draws
+them in one text annotation under the task (`TextAnnotation_exc_<k>`, after
+the Done by label, before the notes); the Technical details list them on
+their *Exceptions* sheet, and are written for a project without a
+recording once a step has one.
 
 `flags.waste` is the **only** per-step flag ([ADR-0027](../docs/adr/0027-retire-per-step-path-flags.md)),
 kept in step with `automation` (C25, above).

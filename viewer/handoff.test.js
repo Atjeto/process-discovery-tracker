@@ -141,6 +141,16 @@ test("C26: the dialog counts the Technical details in where a step lists informa
   assert.equal(holdsTechDetails(video([{ state: "edited", information: [{ name: "  " }] }])), false, "a line without a name is not kept");
 });
 
+test("C27: the dialog counts the Technical details in where a step has an exception, in a project without a recording too", () => {
+  const { holdsTechDetails } = require("./views/handoff-ui.js");
+  const video = (steps) => ({ manifest: { source: "video" }, events: [], annotations: { steps } });
+  assert.equal(holdsTechDetails(video([{ state: "manually_authored", exceptions: [{ when: "The stock is empty" }] }])), true);
+  assert.equal(holdsTechDetails(video([{ state: "edited", sub_steps: [{ state: "edited", exceptions: [{ when: "The price is missing" }] }] }])), true,
+    "a sub-step's exception");
+  assert.equal(holdsTechDetails(video([{ state: "hidden", exceptions: [{ when: "The stock is empty" }] }])), false, "a hidden step prints nothing");
+  assert.equal(holdsTechDetails(video([{ state: "edited", exceptions: [{ when: " ", then: "Call" }] }])), false, "an exception without a When is not kept");
+});
+
 /* Lane B-V2: what a reader of this version will miss, in the dialog. */
 test("with nothing missing the hand-off dialog is exactly the dialog it was", () => {
   const { dialogOptions } = require("./views/handoff-ui.js");

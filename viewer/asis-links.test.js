@@ -219,6 +219,21 @@ test("lane FX2: a step's notes are the pipeline's TextAnnotation_<n> (a plane's 
   assert.strictEqual(L.isStepNote(sub.Sub1_TextAnnotation_legend), false);
 });
 
+test("C27: a step's exceptions (TextAnnotation_exc_<k>, a plane's with its prefix) show their whole text on a click and stay on the PDD's pictures", () => {
+  const ann = (id, text, doc) => ({ id, type: "bpmn:TextAnnotation", businessObject: { id, $type: "bpmn:TextAnnotation", text,
+    documentation: doc ? [{ text: doc }] : [], $instanceOf: (t) => t === "bpmn:TextAnnotation" } });
+  const whole = "When the customer number is not found: Search the customer by name\nWhen the stock is empty";
+  for (const id of ["TextAnnotation_exc_1", "Sub2_TextAnnotation_exc_3"]) {
+    const el = ann(id, "Exception: the customer number is not found\nException: the stock is empty", whole);
+    assert.strictEqual(L.isException(el), true, id);
+    assert.strictEqual(L.isStepNote(el), false, "never a note: the PDD's pictures keep it");
+    assert.strictEqual(L.isSystemLabel(el), false);
+    assert.deepStrictEqual(L.elementAction(el), { kind: "note", text: whole });
+  }
+  assert.strictEqual(L.isException(ann("TextAnnotation_1", "A note.")), false);
+  assert.strictEqual(L.isException(ann("TextAnnotation_doneby_1", "Ana")), false);
+});
+
 test("C19: a click on the canvas of a sub-process's plane (its root, whose business object is the sub-process) does nothing", async () => {
   const el = await subElements();
   assert.strictEqual(L.elementAction(el.plane), null);

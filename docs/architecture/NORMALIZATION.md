@@ -491,7 +491,12 @@ gaps. The sections, in the reader's order:
    "Information: Customer number, Order lines.", the fields recorded in it
    and then the lines the analyst typed on it, `step.information`, names
    only, each once whatever its letters' case; a group of steps names only
-   the lines typed on it, its chapter its steps'), its attachments, its
+   the lines typed on it, its chapter its steps'), then (contract C27,
+   `step.exceptions`) one line per exception, "Exception: <when>: <then>.",
+   which 4.x Exceptions also prints after its field, one paragraph each
+   over the printed steps in the process order (`exception_paragraphs`),
+   the step map drawing them under the task (`TextAnnotation_exc_<k>`) and
+   the Technical details on their Exceptions sheet, its attachments, its
    screenshots, the
    waste flag ("No longer needed.", C25: the step editor's No longer
    needed, `step_context.step_not_needed`, a stored `automation:

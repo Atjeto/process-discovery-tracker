@@ -485,6 +485,36 @@ def declares_information(step: Any) -> bool:
     return bool(step_information(step))
 
 
+# ---- contract C27: the exceptions of a step ----------------------------------------
+
+EXC_WHEN_MAX = 120
+EXC_THEN_MAX = 200
+
+
+def step_exceptions(step: Any) -> list[dict]:
+    """The exceptions the analyst wrote on a step (contract C27,
+    `step.exceptions`, viewer/step-exceptions.js), cleaned as the viewer
+    keeps them: [{"when", "then"}] in the analyst's order, a `when` at most
+    EXC_WHEN_MAX characters and a `then` at most EXC_THEN_MAX ("" when not
+    given); an entry without a `when`, or anything but a mapping, is left
+    out. The pipeline never writes the key."""
+    items = step.get("exceptions") if isinstance(step, dict) else None
+    out: list[dict] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        when = _info_line(item.get("when"), EXC_WHEN_MAX)
+        if when:
+            out.append({"when": when, "then": _info_line(item.get("then"), EXC_THEN_MAX)})
+    return out
+
+
+def declares_exceptions(step: Any) -> bool:
+    """True when the analyst wrote an exception on the step (contract C27).
+    The viewer makes a draft that gets one `edited` (step-exceptions.js)."""
+    return bool(step_exceptions(step))
+
+
 def fmt_ms(ms: Any) -> str:
     """A duration in the reader's words, the one rule the viewer's dom.js
     formatDuration shares (2.0.1): "under 1s", "42s", "2m 07s", "3m",

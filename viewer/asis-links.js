@@ -11,7 +11,9 @@
  *     DataObjectReference_<attachment id> and ends its documentation with
  *     "attachments/<file>" (mining.export_bpmn);
  *   a text annotation shows its note: its documentation holds the whole text
- *     when the map shows it cut, else its text is the whole note;
+ *     when the map shows it cut, else its text is the whole note; a step's
+ *     exceptions (C27: TextAnnotation_exc_<k> under a task) show the same
+ *     way, their documentation "When <when>: <then>" per entry;
  *   a system label (2.0.1: TextAnnotation_system_<k> above a task, or a
  *     map's one TextAnnotation_system), a Done by label (C25:
  *     TextAnnotation_doneby_<k> under a task, or TextAnnotation_doneby),
@@ -45,6 +47,11 @@ const DATA_PREFIX = "DataObjectReference_";
    plane with its prefix). The legend is TextAnnotation_legend, and one the
    analyst draws in the map editor gets bpmn-js's own id. */
 const NOTE_ID = /^TextAnnotation_\d+$/;
+/* C27: the text annotation of a step's exceptions (mining.py:
+   TextAnnotation_exc_1, ...; in a sub-process's plane with its prefix). It
+   is the process, not the analyst's working note: the PDD's pictures keep it
+   (never isStepNote). */
+const EXCEPTION_ID = /^TextAnnotation_exc_\d+$/;
 
 /* bpmn-js's is(): the element's business object is an instance of `type`. */
 function is(element, type) {
@@ -93,6 +100,12 @@ function isSystemLabel(element) {
    Map on screen keeps them. */
 function isStepNote(element) {
   return is(element, "bpmn:TextAnnotation") && NOTE_ID.test(Planes.baseId(_bo(element).id));
+}
+
+/* C27: a step's exceptions on the map. A click shows their whole text, as
+   a note's does; the PDD's pictures keep them. */
+function isException(element) {
+  return is(element, "bpmn:TextAnnotation") && EXCEPTION_ID.test(Planes.baseId(_bo(element).id));
 }
 
 /* The root of a plane: bpmn-js draws a sub-process's map on a root whose
@@ -208,4 +221,4 @@ function attachmentFor(action, attachments) {
   return (action.file && list.find((a) => _fileName(a.file) === action.file)) || null;
 }
 
-module.exports = { LEGEND_ID, is, documentation, isLegend, isSystemLabel, isStepNote, elementAction, taskNode, projectPath, attachmentFor };
+module.exports = { LEGEND_ID, is, documentation, isLegend, isSystemLabel, isStepNote, isException, elementAction, taskNode, projectPath, attachmentFor };

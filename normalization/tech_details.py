@@ -26,7 +26,10 @@ library (xlsx_writer.py). Its sheets:
                       line of information the analyst typed there: the step,
                       the information, its example, where it goes, and From
                       ("Recorded" or "Typed by the analyst");
-  Data fields        one row per field typed or chosen in a step, with
+  Exceptions          contract C27: one row per exception the analyst wrote
+                      on a step 3.2 prints (or a sub-step its chapter
+                      prints): the step, when it happens and what is done;
+  Data fields       one row per field typed or chosen in a step, with
                       the field's identity and one column per transaction
                       holding what was entered there; a password field reads "typed
                       (hidden)" (pdd_export.SECRET_VALUE), as recorded;
@@ -39,11 +42,11 @@ library (xlsx_writer.py). Its sheets:
                       coverage hint, whether it ran on a remote or terminal
                       surface (capture_detail's rule) and its steps.
 
-A cell the recording has no value for stays empty. A workbook whose five
+A cell the recording has no value for stays empty. A workbook whose six
 sheets after About would hold their headers alone (a project without a
-recording, C16, and without typed information, C26) is not written
-(holds_rows): a project made from a video or from nothing whose steps list
-information now gets one, its Information sheet. Pure apart from reading
+recording, C16, without typed information, C26, and without an exception,
+C27) is not written (holds_rows): a project made from a video or from
+nothing whose steps list information or an exception now gets one. Pure apart from reading
 the app vocabularies (through pdd_export's session); no python-docx.
 """
 
@@ -58,12 +61,13 @@ from handoff_versions import version_line
 from pdd_export import (DEFAULT_REQUEST_CODE, DEFAULT_REQUEST_NAME, SECRET_VALUE, _Session, _align_key,
                         _entered, _members, _step_name, printed_steps, rekey_pairs)
 from recorder_noise import is_blank_value
-from step_context import step_information, step_system
+from step_context import step_exceptions, step_information, step_system
 from xlsx_writer import Sheet, write_workbook
 
 ABOUT = "About"
 STEPS = "Steps and controls"
 INFO = "Information"
+EXC = "Exceptions"
 DATA = "Data fields"
 REKEYED = "Re-keyed values"
 APPS = "Applications"
@@ -78,6 +82,8 @@ STEPS_HEADER = ("Step", "Step name", "Action", "Value", "Control type", "Automat
 _STEPS_WIDTHS = (9, 30, 9, 24, 14, 24, 26, 22, 15, 11, 40, 16, 16, 30, 12, 22)
 INFO_HEADER = ("Step", "Information", "Example", "Where it goes", "From")
 _INFO_WIDTHS = (36, 28, 24, 40, 20)
+EXC_HEADER = ("Step", "When", "What is done")
+_EXC_WIDTHS = (36, 50, 60)
 DATA_HEADER = ("Field", "Automation id", "Control type", "System and screen", "Step")
 _DATA_WIDTHS = (24, 24, 14, 30, 30)
 REKEYED_HEADER = ("Source system", "Source field", "Target system", "Target field", "Values",
@@ -93,6 +99,7 @@ SHEET_LINES = (
             "library activity its step is, with the activity's code, and who does the step."),
     (INFO, "The information each step of the reference transaction uses or enters: the fields "
            "recorded in it, with the value typed as an example, and the lines the analyst typed."),
+    (EXC, "The exceptions the analyst wrote on each step: when it happens, and what is done."),
     (DATA, "Every field typed or chosen in a step, with what was entered in it in each "
            "transaction. A password field reads \"typed (hidden)\": the recorder never reads it."),
     (REKEYED, "The values typed in one system and typed again in another in the same "
@@ -290,6 +297,48 @@ def information_rows(s) -> list[list[Any]]:
     return rows
 
 
+# ---- Exceptions (contract C27) -----------------------------------------------------
+
+def exceptions_rows(s) -> list[list[Any]]:
+    """The rows of Exceptions (EXC_HEADER), contract C27: for each step 3.2
+    prints, in its order, and each of its sub-steps a chapter prints (as the
+    Information sheet holds them; a hidden one left out, a sub-step no
+    chapter prints giving its entries to the step above it), the exceptions
+    the analyst wrote on it in their order. Step is its number and name as
+    the Information sheet writes it ("Step 3: Enter the order")."""
+    labels = _sub_labels(s)
+    rows: list[list[Any]] = []
+    for number, step in enumerate(printed_steps(s), start=1):
+        holders: list[tuple[str, dict]] = []
+        entries: dict[int, list[dict]] = {}
+
+        def walk(st, lab, holder):
+            if holder is st:
+                holders.append((lab, st))
+            for member in _members(st):
+                if isinstance(member, dict):
+                    entries.setdefault(id(holder), []).extend(step_exceptions(member))
+            for sub in st.get("sub_steps") or []:
+                if not isinstance(sub, dict) or sub.get("state") == "hidden":
+                    continue
+                sid = sub.get("step_id")
+                if isinstance(sid, str) and sid in labels:
+                    walk(sub, labels[sid], sub)
+                else:
+                    walk(sub, lab, holder)
+
+        walk(step, f"Step {number}", step)
+        for label, holder in holders:
+            name = f"{label}: {_step_name(holder)}"
+            seen: list[dict] = []
+            for entry in entries.get(id(holder), []):
+                if entry in seen:
+                    continue
+                seen.append(entry)
+                rows.append([name, entry["when"], entry["then"]])
+    return rows
+
+
 # ---- Data fields -------------------------------------------------------------------
 
 OUTSIDE = "Outside the transactions"
@@ -445,6 +494,8 @@ def tech_sheets(*, session_folder, annotations, stats, manifest, events,
               widths=list(_STEPS_WIDTHS)),
         Sheet(INFO, [list(INFO_HEADER)] + information_rows(s), bold_rows={0}, freeze=1,
               widths=list(_INFO_WIDTHS)),
+        Sheet(EXC, [list(EXC_HEADER)] + exceptions_rows(s), bold_rows={0}, freeze=1,
+              widths=list(_EXC_WIDTHS)),
         Sheet(DATA, [data_header] + data, bold_rows={0}, freeze=1,
               widths=list(_DATA_WIDTHS) + [22] * (len(data_header) - len(DATA_HEADER))),
         Sheet(REKEYED, [list(REKEYED_HEADER)] + rekeyed_rows(s), bold_rows={0}, freeze=1,
@@ -456,10 +507,11 @@ def tech_sheets(*, session_folder, annotations, stats, manifest, events,
 
 def holds_rows(sheets: list[Sheet]) -> bool:
     """Whether the workbook holds anything: a row below the header on one of
-    the sheets after About (Steps and controls, Information, Data fields,
-    Re-keyed values, Applications). About does not count: it describes the
-    others. A project without a recording (C16) has none unless its steps
-    list information (C26), and a workbook of headers alone is not a
+    the sheets after About (Steps and controls, Information, Exceptions,
+    Data fields, Re-keyed values, Applications). About does not count: it
+    describes the others. A project without a recording (C16) has none
+    unless its steps list information (C26) or an exception (C27), and a
+    workbook of headers alone is not a
     deliverable."""
     return any(len(sheet.rows) > 1 for sheet in sheets if sheet.name != ABOUT)
 

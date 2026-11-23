@@ -6,6 +6,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Write down the exceptions of a step** (contract C27, a process
+  manager's request). The step editor has an *Exceptions* section after
+  *Information*: each exception is *When* it happens and *What is done*,
+  with *Remove*, and *Add exception* adds one; every change is one Ctrl+Z.
+  The PDD prints each exception under its step ("Exception: The customer
+  number is not found: Search the customer by name.") and in its
+  *Exceptions* section after what you wrote there; the process map shows
+  them in one label under the step's task, which stays on the PDD's map
+  picture and in the BPMN a BPMN tool opens; the Technical details have an
+  *Exceptions* sheet, so a project made from a video or from nothing gets
+  the workbook, and its hand-off zip holds it, once a step has one.
+
 ### Fixed
 
 - **The analysis runs in a project folder with a long path** (over 260

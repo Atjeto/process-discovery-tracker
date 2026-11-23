@@ -41,6 +41,12 @@ application work), and it reads in the reader's order:
      the wording is the document's own), then the business rules and the
      exceptions. With the one implicit run (C16) there is nothing to
      compare: "4. Rules and exceptions", 4.1 the rules, 4.2 the exceptions.
+     Contract C27: the Exceptions subsection prints the document's field,
+     then one paragraph per exception written on a printed step, in the
+     process order ("2 Enter the order: when the stock is empty, order from
+     the supplier."); under the step in 3.2 (and in a sub-process's
+     chapter), after its "Information:" line, one line per exception
+     ("Exception: <when>: <then>.").
   5. Systems and information used: each system the process uses, with the
      information the reference transaction entered in it, named for the
      reader (a workbook's cells as one entry), and the information the
@@ -126,7 +132,7 @@ from handoff_versions import HISTORY_HEADER, history_rows, version_line
 from library import PROJECT_FILE as LIBRARY_FILE, load_library
 from session_io import has_recording, session_source
 from step_context import (StepContext, clock, has_video, place_starts, process_order,
-                          recording_role, step_information, step_not_needed, step_start,
+                          recording_role, step_exceptions, step_information, step_not_needed, step_start,
                           step_system, untimed_key, video_count)
 from step_flow import (END, START, condition_of, cut_positions, left_out_stretches, links_of,
                        node_of)
@@ -843,6 +849,19 @@ class _Session:
             line["name"] for line, _member in self.typed_information(step)]
         return _once(names)
 
+    def exceptions(self, step) -> list[dict]:
+        """The exceptions the analyst wrote on a printed step (contract C27,
+        step_context.step_exceptions), its members' in their order, an entry
+        written twice once."""
+        out: list[dict] = []
+        for member in _members(step):
+            if not isinstance(member, dict):
+                continue
+            for entry in step_exceptions(member):
+                if entry not in out:
+                    out.append(entry)
+        return out
+
     def business_names(self, entries) -> list[str]:
         """The fields of `entries` (as entries() gives them), each once in the
         order first entered, a workbook's cells as one entry: a spreadsheet
@@ -1514,6 +1533,9 @@ def _write_step(doc, s, step, number, steps, level=None):
     info = s.information_names(step, recorded=not group)
     if info:
         doc.add_paragraph("Information: " + ", ".join(info) + ".")
+    # C27: the exceptions written on the step, one line each.
+    for entry in s.exceptions(step):
+        doc.add_paragraph(_exception_line(entry))
     attached = s.step_attachments(step)
     if attached:
         p = doc.add_paragraph("Attachments: ")
@@ -1844,6 +1866,16 @@ def _clause(condition: str) -> str:
     return condition.rstrip().rstrip(".").rstrip()
 
 
+def _in_sentence(text: str) -> str:
+    """Typed text placed inside a sentence: its first capital lowered when
+    the letter after it is lower case ("The stock is empty" reads "the stock
+    is empty"; "SAP rejects it" keeps its name)."""
+    text = text.strip()
+    if len(text) >= 2 and text[0].isupper() and text[1].islower():
+        return text[0].lower() + text[1:]
+    return text
+
+
 def _differences(pattern_steps, run_steps, left_out=None, origin=None) -> list[str]:
     """One line per difference of a run from the pattern run (_difference_items),
     after the one line on its stretches left out (_left_out_text) when it has
@@ -1926,9 +1958,52 @@ def _write_variations(doc, s):
     _field_or_placeholder(doc, s.field("business_rules"),
                           "the business rules the process follows")
     doc.add_heading(f"4.{first + 1} Exceptions", level=2)
-    _field_or_placeholder(doc, s.field("exceptions"),
-                          "the business exceptions and the application errors "
-                          "that can interrupt the process, and how each one is handled")
+    # C27: the document's field, then the exceptions written on the printed
+    # steps; the placeholder only when there is neither.
+    on_steps = exception_paragraphs(s)
+    if s.field("exceptions") or not on_steps:
+        _field_or_placeholder(doc, s.field("exceptions"),
+                              "the business exceptions and the application errors "
+                              "that can interrupt the process, and how each one is handled")
+    for line in on_steps:
+        doc.add_paragraph(line)
+
+
+def _exception_line(entry) -> str:
+    """A step's exception under it (contract C27): "Exception: <when>:
+    <then>.", without a `then` "Exception: <when>."."""
+    if entry["then"]:
+        return f"Exception: {_clause(entry['when'])}: {_sentence(entry['then'])}"
+    return f"Exception: {_sentence(entry['when'])}"
+
+
+def exception_paragraphs(s) -> list[str]:
+    """4.x's paragraphs of the exceptions written on steps (contract C27):
+    one per entry over every printed step in the process order, 3.2's steps
+    each followed by the steps of its sub-process's chapter (depth first, as
+    the document numbers them): "Step <number>, <step name>: when <when>,
+    <then>." (without a `then`, "...: when <when>."); the typed text loses
+    its first capital inside the sentence (_in_sentence). A hidden step
+    prints nothing."""
+    out: list[str] = []
+
+    def walk(steps, level):
+        for number, step in enumerate(steps, start=1):
+            if not isinstance(step, dict) or step.get("state") == "hidden":
+                continue
+            head = f"Step {_step_number(number, level)}, {_step_name(step)}: when "
+            for entry in s.exceptions(step):
+                when = _in_sentence(entry["when"])
+                if entry["then"]:
+                    out.append(head + f"{_clause(when)}, {_sentence(_in_sentence(entry['then']))}")
+                else:
+                    out.append(head + _sentence(when))
+            path = tuple((level.path if level is not None else []) + [node_of(step)])
+            if path in s.chapters and path in s.level_at:
+                walk(s.level_at[path].first, s.level_at[path])
+
+    walk(printed_steps(s), s.levels[0] if s.levels else None)
+    return out
 
 
 def _write_differences(doc, s):

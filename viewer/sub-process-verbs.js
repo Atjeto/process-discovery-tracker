@@ -45,6 +45,7 @@ const AC = require("./analyst-content.js");
 const { isBlankValue } = require("./step-facts.js");
 const StepOrder = require("./step-order.js");
 const StepInfo = require("./step-information.js");
+const StepExc = require("./step-exceptions.js");
 const StepScope = require("./step-scope.js");
 
 const NOISE = new Set(["null", "(null)", "undefined", "(undefined)"]);
@@ -720,6 +721,8 @@ function _dissolveGroup(anno, transactions, path, g) {
     if (typeof g.done_by === "string" && g.done_by.trim() && !(typeof first.done_by === "string" && first.done_by.trim())) first.done_by = g.done_by;
     // C26: the group's information goes after its first sub-step's.
     if (StepInfo.hasEntries(g)) StepInfo.putJoined(first, [first, g]);
+    // C27: and its exceptions.
+    if (StepExc.hasEntries(g)) StepExc.putJoined(first, [first, g]);
   }
   // Untimed sub-steps take the group's place among the untimed steps.
   const untimed = subs.filter((s) => !AC.hasTime(s));
@@ -756,6 +759,8 @@ function dissolve(anno, transactions, path, node) {
       // C26: the information written on its sub-steps moves to the step.
       const subs = SPM.descendants(s).filter((d) => d && d.state !== "hidden");
       if (subs.some(StepInfo.hasEntries)) StepInfo.putJoined(s, [s].concat(subs));
+      // C27: and their exceptions.
+      if (subs.some(StepExc.hasEntries)) StepExc.putJoined(s, [s].concat(subs));
       delete s.sub_steps;
       opened++;
     }

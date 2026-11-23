@@ -2001,6 +2001,8 @@ input[aria-invalid="true"], input.time-field[aria-invalid="true"] { border-color
 .app.read-only .flow-link-remove,
 .app.read-only #btn-info-add,
 .app.read-only .info-remove,
+.app.read-only #btn-exc-add,
+.app.read-only .exc-remove,
 .app.read-only #step-verbs,
 .app.read-only #btn-step-split,
 .app.read-only #btn-step-hide,
@@ -2765,6 +2767,23 @@ button.danger:disabled {
 .step-info input.info-input:focus { border-color: var(--accent); outline: 2px solid var(--accent-2); outline-offset: 1px; }
 .step-info .info-remove { justify-self: start; font-size: 12px; }
 .step-info #btn-info-add { margin-top: 6px; font-size: 12px; }
+/* C27: the Exceptions section (step-editor.js exceptionsHtml), the
+   Information section's grid with two fields: When, What is done, Remove. */
+.step-exc .exc-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.step-exc .exc-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 5.5em;
+  align-items: center; gap: 4px 6px; min-width: 0; font-size: 12px; color: var(--fg);
+}
+.step-exc .exc-head { margin-top: 4px; margin-bottom: 2px; }
+.step-exc .exc-col { font-size: 12px; font-weight: 600; color: var(--fg-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-exc .exc-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 0; }
+.step-exc input.exc-input {
+  min-width: 0; width: 100%; margin: 0; padding: 3px 6px; background: var(--bg-2); color: var(--fg);
+  border: 1px solid var(--field-border); border-radius: 3px; font-family: inherit; font-size: 12px;
+}
+.step-exc input.exc-input:focus { border-color: var(--accent); outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.step-exc .exc-remove { justify-self: start; font-size: 12px; }
+.step-exc #btn-exc-add { margin-top: 6px; font-size: 12px; }
 .att-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-row .link-btn, .step-note .link-btn { flex: none; font-size: 12px; }
 .att-file, .att-step { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
