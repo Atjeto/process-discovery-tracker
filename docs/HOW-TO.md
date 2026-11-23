@@ -117,7 +117,12 @@ On the Timeline, Steps and the Map, the top bar shows the next act, such as
    adds a line: the information, an example and where it goes, such as
    *Customer number*, *10482*, *SAP, Sold-to party*. The PDD names the
    information, never an example; the Technical details give the developers
-   the examples too. Tick *No longer needed*, under the Flow line, on a
+   the examples too. *Add exception*, under *Exceptions*, adds what happens
+   when something goes wrong at the step and what is done then, such as
+   *The customer number is not found* and *Search the customer by name*.
+   The PDD prints each exception under its step and in its *Exceptions*
+   section, and the map shows it under the step's task. Tick *No longer
+   needed*, under the Flow line, on a
    step that should not be needed (rework, duplicate effort): Steps and the
    step panel tag it *No longer needed*. *Done by*, after
    the system on the step's line, names who does the step, a role or a
