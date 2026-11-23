@@ -348,3 +348,16 @@ def test_a_sub_process_plane_draws_its_steps_exceptions_with_its_prefix():
 def test_a_map_without_exceptions_has_no_such_annotation():
     root = _written(_without_exceptions(_video())[0])
     assert not [el for el in root.iter(f"{_BPMN}textAnnotation") if "_exc_" in el.get("id")]
+
+def test_a_draft_with_an_exception_is_kept_as_edited_by_a_re_analysis():
+    # As a draft with information (C26): the pipeline never drops the analyst's
+    # words, and never rewrites the key.
+    from step_suggest import _merge_steps
+    line = [{"when": "The stock is empty", "then": "Order from the supplier"}]
+    drafts = [{"step_id": f"d{k}", "case_id": "c1", "name": "Save", "state": "auto_suggested",
+               "time_range": {"start": f"2026-09-01T09:00:0{k}Z", "end": f"2026-09-01T09:00:0{k}Z"},
+               "evidence": {"interaction_event_ids": []}, **extra}
+              for k, extra in enumerate(({"exceptions": copy.deepcopy(line)}, {}))]
+    kept = _merge_steps(drafts, [])
+    assert [(s["step_id"], s["state"]) for s in kept] == [("d0", "edited")]
+    assert kept[0]["exceptions"] == line
