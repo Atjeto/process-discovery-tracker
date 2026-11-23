@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0] (2026-11-23): the Timeline workspace, and what the SME gives at the end
+
 ### Added
 
 - **Write down the information each step uses or enters** (contract C26,
