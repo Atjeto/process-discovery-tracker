@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.1] (2026-11-23): a long project path, and the exceptions of a step
+
 ### Added
 
 - **Write down the exceptions of a step** (contract C27, a process
