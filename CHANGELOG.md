@@ -6,6 +6,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The analysis runs in a project folder with a long path** (over 260
+  characters, as a project made beside a Teams recording deep in OneDrive
+  gets); the message of a failed analysis shows every letter.
+  `normalize.py` and `transcript_import.py` turn every path of their
+  command line into an extended-length path once (`session_io.long_path`),
+  and nothing they show or write carries its prefix (`plain_path`); the
+  viewer starts Python with `PYTHONUTF8`.
+
 ## [2.1.0] (2026-11-23): the Timeline workspace, and what the SME gives at the end
 
 ### Added

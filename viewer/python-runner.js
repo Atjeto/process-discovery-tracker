@@ -109,6 +109,14 @@ function scriptTakesFlag(script, flag) {
   return _flags.get(k);
 }
 
+/* The environment Python runs in: the viewer's, with PYTHONUTF8 so Python
+   writes its messages in UTF-8 through the pipe (else in the Windows code
+   page, and a letter such as the š of a folder name read as UTF-8 shows as
+   a replacement character). */
+function pythonEnv() {
+  return Object.assign({}, process.env, { PYTHONUTF8: "1" });
+}
+
 function runNormalize(opts) {
   const { taxonomyPath, onLog, onProc } = opts || {};
   /* onProc(child) fires once with the spawned process handle so the
@@ -126,7 +134,7 @@ function runNormalize(opts) {
 
     const proc = spawn(python, args, {
       cwd: path.dirname(script),
-      env: process.env,
+      env: pythonEnv(),
       windowsHide: true,
     });
     let cancelled = false;
@@ -207,7 +215,7 @@ function runTranscriptImport(opts) {
     // C23: `out`, the transcript file written (transcript.json by default).
     const args = [script, sessionFolder, file].concat(outFile && outFile !== "transcript.json" ? ["--out", outFile] : []);
     const proc = spawn(resolvePython(), args, {
-      cwd: path.dirname(script), env: process.env, windowsHide: true,
+      cwd: path.dirname(script), env: pythonEnv(), windowsHide: true,
     });
     const out = [], err = [];
     proc.stdout.on("data", (b) => out.push(b));
@@ -244,5 +252,5 @@ function transcriptImportResult(run) {
 
 module.exports = {
   runNormalize, buildNormalizeArgs, scriptTakesFlag, resolvePython, resolveNormalizeScript, resolveDefaultTaxonomy,
-  resolveTranscriptScript, runTranscriptImport, transcriptImportResult,
+  resolveTranscriptScript, runTranscriptImport, transcriptImportResult, pythonEnv,
 };

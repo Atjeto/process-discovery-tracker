@@ -720,7 +720,7 @@ SCHEMA.md.
 |---|---|
 | `normalize.py` | CLI entry point and the thin orchestrator; re-exports the names older callers import from it. |
 | `pipeline_stages.py` | The `_run_*` stage helpers and `_init_existing_anno`, which keeps the analyst's blocks and never seeds or rewrites the keys of cut features (contract C10). Heavy optional imports (pm4py, the PDD, the Technical details) stay inside the stage that needs them. |
-| `session_io.py` | `load_events`, `load_manifest`, `load_annotations` (raises `AnnotationsUnreadable`), `write_annotations` and `write_json_atomic` (temp file, then `os.replace`), the screenshot hash pass, and `session_source` / `has_recording` (C16). |
+| `session_io.py` | `load_events`, `load_manifest`, `load_annotations` (raises `AnnotationsUnreadable`), `write_annotations` and `write_json_atomic` (temp file, then `os.replace`), the screenshot hash pass, and `session_source` / `has_recording` (C16). The entry points (`normalize.py`, `transcript_import.py`) take long paths: each path of the command line goes through `long_path` once (Windows' extended-length form, for a folder past 260 characters), and `plain_path` takes the prefix off whatever is shown or written. |
 | `pipeline_config.py` | Per-session settings from `annotations.json`: the ignored apps, the excluded ranges, and the calibration block (only `coalesce_idle_ms` and `filter_browser_chrome` still apply; the old segmenter's keys are read and ignored). |
 | `process_filter.py` | Drops PDT's own windows and the excluded apps and window titles from the derived stream. |
 | `coalesce.py` | Folds typing bursts into one final-value event. |

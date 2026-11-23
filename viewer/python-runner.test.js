@@ -12,7 +12,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { buildNormalizeArgs, scriptTakesFlag, transcriptImportResult } = require("./python-runner.js");
+const { buildNormalizeArgs, scriptTakesFlag, transcriptImportResult, pythonEnv } = require("./python-runner.js");
 
 test("buildNormalizeArgs passes the app's library as --library", () => {
   assert.deepEqual(
@@ -81,4 +81,16 @@ test("transcriptImportResult: a crash without the error line says so, with its l
   assert.equal(r.ok, false);
   assert.equal(r.error, "the transcript import stopped (exit 1): ImportError: session_io");
   assert.equal(transcriptImportResult({ code: null, stderr: "" }).error, "the transcript import stopped (no exit code)");
+});
+
+test("lane LP: Python runs with PYTHONUTF8, so its messages reach the viewer in UTF-8, at both spawns", () => {
+  const before = process.env.PYTHONUTF8;
+  const env = pythonEnv();
+  assert.equal(env.PYTHONUTF8, "1");
+  for (const key of Object.keys(process.env)) if (key !== "PYTHONUTF8") assert.equal(env[key], process.env[key], key);
+  assert.equal(process.env.PYTHONUTF8, before, "the viewer's own environment is left as it was");
+  const source = fs.readFileSync(path.join(__dirname, "python-runner.js"), "utf8");
+  assert.equal((source.match(/spawn\(/g) || []).length, 2);
+  assert.equal((source.match(/env: pythonEnv\(\)/g) || []).length, 2);
+  assert.ok(!source.includes("env: process.env"));
 });

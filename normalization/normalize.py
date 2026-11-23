@@ -62,7 +62,7 @@ from process_filter import filter_excluded
 from session_io import (
     _coerce_event_shape, load_events, load_manifest, load_annotations,
     write_annotations, compute_screenshot_hashes, AnnotationsUnreadable,
-    has_recording, Staging, clear_staged,
+    has_recording, Staging, clear_staged, long_path, plain_path, plain_streams,
 )
 from marker_edits import apply_marker_edits
 from library import project_library
@@ -251,12 +251,12 @@ def _normalize_staged(
         pdd_attachments=pdd_attachments)
 
     return {
-        "session_folder": str(session_folder),
+        "session_folder": plain_path(session_folder),
         "events_in": len(raw),
         "events_out": sum(1 for e in collapsed if e.get("type") == "activity"),
         "cases": len(cases),
         "outputs": {
-            "stats": str(stats_path),
+            "stats": plain_path(stats_path),
         },
     }
 
@@ -334,6 +334,21 @@ def main():
                              "folder's attachments): each attachment's name in the PDD links to its "
                              "file there. Without it the names are plain text.")
     args = parser.parse_args()
+
+    # Every path of the command line becomes an extended-length path, once,
+    # so the pipeline works in a project folder past 260 characters
+    # (Windows without LongPathsEnabled, as on a locked-down laptop); every
+    # path made from these inherits it. What is shown stays plain: stdout
+    # and stderr go through session_io.plain_path. --pdd-attachments is not
+    # a path to open: it is the link the PDD writes, relative to the PDD.
+    plain_streams()
+    if args.session_folder is not None:
+        args.session_folder = long_path(args.session_folder)
+    for name in ("taxonomy", "pdd_out", "pdd_map_image", "pdd_map_images",
+                 "pdd_tobe_image", "library", "tech_out"):
+        value = getattr(args, name)
+        if value:
+            setattr(args, name, str(long_path(value)))
 
     setup_logging()
 

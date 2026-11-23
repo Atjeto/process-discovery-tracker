@@ -139,7 +139,9 @@ from typing import Any
 # sys.path; add it so the sibling import below resolves (as normalize.py does).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from session_io import AnnotationsUnreadable, load_annotations, write_json_atomic  # noqa: E402
+from session_io import (  # noqa: E402
+    AnnotationsUnreadable, load_annotations, write_json_atomic, long_path, plain_path, plain_streams,
+)
 
 FORMAT_VERSION = 1
 
@@ -609,7 +611,7 @@ def summary_line(name: str, doc: dict[str, Any]) -> str:
 
 
 def _fail(code: int, message: str) -> int:
-    one_line = str(message).replace("\r", " ").replace("\n", " ")
+    one_line = plain_path(message).replace("\r", " ").replace("\n", " ")
     print(f"[transcript] ERROR: {one_line}", file=sys.stderr, flush=True)
     return code
 
@@ -628,7 +630,10 @@ def main(argv: list[str] | None = None) -> int:
                             f"transcript-<n>.json")
     if len(args) != 2:
         return _fail(1, USAGE)
-    session, source = Path(args[0]), Path(args[1])
+    # Both paths become extended-length paths, once, so a project folder past
+    # 260 characters works (session_io.long_path); --out is a file name in
+    # the folder and inherits it. The messages show them plain.
+    session, source = long_path(args[0]), long_path(args[1])
     if not session.is_dir() or not (session / "events.jsonl").is_file():
         # The viewer shows this line; a person calls the folder a project.
         return _fail(1, f"{session} is not a project folder (it has no events.jsonl)")
@@ -651,4 +656,6 @@ if __name__ == "__main__":
     # encode.
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
+    # No line shows the extended-length prefix (a crash's traceback too).
+    plain_streams()
     sys.exit(main())

@@ -45,7 +45,8 @@ from step_suggest import (
 import app_vocab
 from app_names import build_app_names
 import stats_compute as stats
-from session_io import write_annotations, compute_screenshot_hashes, has_recording, Staging
+from session_io import (write_annotations, compute_screenshot_hashes, has_recording, Staging,
+                        plain_path)
 from marker_edits import apply_marker_edits
 from pipeline_config import (
     _step_ignored_processes, _excluded_ranges, _step_calibration_kwargs,
@@ -301,9 +302,9 @@ def _run_stats(
     summary["meta"] = {
         "normalization_run_at": datetime.now(timezone.utc).isoformat(),
         "taxonomy_version": (taxonomy or {}).get("version"),
-        "taxonomy_path": str(taxonomy_path) if taxonomy_path else None,
+        "taxonomy_path": plain_path(taxonomy_path) if taxonomy_path else None,
         "taxonomy_report": taxonomy_report,
-        "session_folder": str(session_folder),
+        "session_folder": plain_path(session_folder),
         "worker_id": worker_id,
         "raw_event_count": len(raw),
         "dropped_jsonl_lines": dropped_lines,
@@ -385,7 +386,7 @@ def _run_analysis(
 
     def _failed(stage: str, error: str) -> None:
         print(f"[normalize] WARNING: {stage} failed: {error}")
-        stage_errors.append({"stage": stage, "error": error})
+        stage_errors.append({"stage": stage, "error": plain_path(error)})
 
     classified = stats._filter_excluded(classified, _excluded_ranges(existing_anno))
 

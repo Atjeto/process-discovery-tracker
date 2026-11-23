@@ -15,12 +15,76 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# Windows' extended-length prefix: a path written after it may be longer than
+# 260 characters without LongPathsEnabled, which a locked-down laptop never
+# has (a project made beside a Teams recording deep in OneDrive is past it).
+_LONG = "\\\\?\\"
+_LONG_UNC = "\\\\?\\UNC\\"
+
+
+def long_path(p: str | Path | None) -> Path | None:
+    """`p` as an extended-length path on Windows (the prefix plus the
+    absolute path; a UNC path becomes the prefix plus UNC\\server\\share\\...),
+    so every path made from it can pass 260 characters. The entry points
+    (normalize.py, transcript_import.py) apply it once to every path of the
+    command line. Off Windows, and for a path already prefixed, `p` as a
+    Path; None stays None. Anything shown or written goes through
+    plain_path."""
+    if p is None:
+        return None
+    text = str(p)
+    if os.name != "nt" or text.startswith(_LONG):
+        return Path(text)
+    # The prefix turns off Windows' own normalizing, so the path is made
+    # absolute and normalized (slashes, `.`, `..`) first.
+    full = os.path.abspath(text)
+    if full.startswith("\\\\"):
+        return Path(_LONG_UNC + full[2:])
+    return Path(_LONG + full)
+
+
+def plain_path(p: str | Path) -> str:
+    """`p` without the extended-length prefix long_path puts on it, as text:
+    for a path shown in a message or written into a file. A message holding
+    such a path anywhere comes back with it plain too."""
+    text = str(p)
+    # An OSError shows its filename as a repr, every backslash doubled.
+    text = text.replace(_LONG_UNC.replace("\\", "\\\\"), "\\\\\\\\")
+    text = text.replace(_LONG.replace("\\", "\\\\"), "")
+    return text.replace(_LONG_UNC, "\\\\").replace(_LONG, "")
+
+
+class PlainStream:
+    """A text stream that writes through to `stream` with every path plain
+    (plain_path): normalize.py and transcript_import.py put it over stdout
+    and stderr, so no line the viewer reads carries the prefix, an exception
+    naming a long path included."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, text):
+        return self._stream.write(plain_path(text) if isinstance(text, str) else text)
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def plain_streams() -> None:
+    """Put PlainStream over sys.stdout and sys.stderr, once."""
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name)
+        if stream is not None and not isinstance(stream, PlainStream):
+            setattr(sys, name, PlainStream(stream))
 
 
 def _coerce_event_shape(obj: dict[str, Any], line_no: int) -> dict[str, Any]:

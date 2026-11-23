@@ -23,6 +23,15 @@ _FMT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 _DATEFMT = "%Y-%m-%dT%H:%M:%S"
 
 
+class _PlainFormatter(logging.Formatter):
+    """The log line with every path plain (session_io.plain_path): the entry
+    points hand the pipeline extended-length paths, which no line shows."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        from session_io import plain_path
+        return plain_path(super().format(record))
+
+
 def setup_logging(session_folder: Path | str | None = None, level: int = logging.WARNING) -> None:
     root = logging.getLogger()
     root.setLevel(min(level, logging.INFO))
@@ -34,7 +43,7 @@ def setup_logging(session_folder: Path | str | None = None, level: int = logging
     if not have_stream:
         sh = logging.StreamHandler()
         sh.setLevel(level)
-        sh.setFormatter(logging.Formatter(_FMT, _DATEFMT))
+        sh.setFormatter(_PlainFormatter(_FMT, _DATEFMT))
         root.addHandler(sh)
 
     if session_folder is None:
@@ -53,5 +62,5 @@ def setup_logging(session_folder: Path | str | None = None, level: int = logging
         log_path, maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8"
     )
     fh.setLevel(logging.INFO)
-    fh.setFormatter(logging.Formatter(_FMT, _DATEFMT))
+    fh.setFormatter(_PlainFormatter(_FMT, _DATEFMT))
     root.addHandler(fh)
